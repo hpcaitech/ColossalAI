@@ -17,9 +17,10 @@ def _check_depth_env_var(depth):
     env_depth = env.depth_3d
 
     if env_depth:
-        assert int(env_depth) == depth, \
-            'DEPTH_3D has been set in the current environment and ' \
-            'does not match with the value passed to this initialized'
+        assert int(env_depth) == depth, (
+            "DEPTH_3D has been set in the current environment and "
+            "does not match with the value passed to this initialized"
+        )
     else:
         env.depth_3d = depth
 
@@ -63,7 +64,7 @@ class Initializer_3D_Input(ProcessGroupInitializer):
                 for k in range(self.depth):
                     ranks = [h * self.depth**3 + i + self.depth * (j + self.depth * k) for j in range(self.depth)]
                     group = dist.new_group(ranks)
-                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                    group_cpu = dist.new_group(ranks, backend="gloo") if dist.get_backend() != "gloo" else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
@@ -114,7 +115,7 @@ class Initializer_3D_Weight(ProcessGroupInitializer):
                 for j in range(self.depth):
                     ranks = [h * self.depth**3 + i + self.depth * (j + self.depth * k) for i in range(self.depth)]
                     group = dist.new_group(ranks)
-                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                    group_cpu = dist.new_group(ranks, backend="gloo") if dist.get_backend() != "gloo" else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
@@ -165,7 +166,7 @@ class Initializer_3D_Output(ProcessGroupInitializer):
                 for j in range(self.depth):
                     ranks = [h * self.depth**3 + i + self.depth * (j + self.depth * k) for k in range(self.depth)]
                     group = dist.new_group(ranks)
-                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                    group_cpu = dist.new_group(ranks, backend="gloo") if dist.get_backend() != "gloo" else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
@@ -219,7 +220,7 @@ class Initializer_3D_InputxWeight(ProcessGroupInitializer):
                     for i in range(self.depth)
                 ]
                 group = dist.new_group(ranks)
-                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                group_cpu = dist.new_group(ranks, backend="gloo") if dist.get_backend() != "gloo" else group
 
                 if self.rank in ranks:
                     local_rank = ranks.index(self.rank)
@@ -273,7 +274,7 @@ class Initializer_3D_OutputxWeight(ProcessGroupInitializer):
                     for i in range(self.depth)
                 ]
                 group = dist.new_group(ranks)
-                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                group_cpu = dist.new_group(ranks, backend="gloo") if dist.get_backend() != "gloo" else group
 
                 if self.rank in ranks:
                     local_rank = ranks.index(self.rank)
@@ -302,8 +303,9 @@ class Initializer_3D(ProcessGroupInitializer):
         super().__init__(*args)
         self.num_group = self.world_size // self.tensor_parallel_size
         self.depth = round(math.pow(self.tensor_parallel_size, 1 / 3))
-        assert self.tensor_parallel_size == self.depth ** 3, \
-            f'3D depth ({self.depth}) if not cube root of tensor parallel size ({self.tensor_parallel_size})'
+        assert (
+            self.tensor_parallel_size == self.depth**3
+        ), f"3D depth ({self.depth}) if not cube root of tensor parallel size ({self.tensor_parallel_size})"
         _check_depth_env_var(self.depth)
 
         self.input_initializer = Initializer_3D_Input(self.num_group, self.depth, *args)
@@ -324,6 +326,6 @@ class Initializer_3D(ProcessGroupInitializer):
             self.weight_initializer.init_dist_group(),
             self.output_initializer.init_dist_group(),
             self.input_x_weight_initializer.init_dist_group(),
-            self.output_x_weight_initializer.init_dist_group()
+            self.output_x_weight_initializer.init_dist_group(),
         ]
         return parallel_setting

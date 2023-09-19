@@ -7,7 +7,7 @@ from torch.distributed import ProcessGroup
 from .parallel_module import ParallelModule
 from .utils import create_randomizer_with_offset
 
-__all__ = ['DropoutForParallelInput', 'DropoutForReplicatedInput']
+__all__ = ["DropoutForParallelInput", "DropoutForReplicatedInput"]
 
 
 class DropoutForParallelInput(ParallelModule, nn.Dropout):
@@ -31,8 +31,9 @@ class DropoutForParallelInput(ParallelModule, nn.Dropout):
         self.randomizer = create_randomizer_with_offset(seed, process_group=process_group)
 
     @staticmethod
-    def from_native_module(module: nn.Dropout,
-                           process_group: Union[ProcessGroup, List[ProcessGroup]] = None) -> "DropoutForParallelInput":
+    def from_native_module(
+        module: nn.Dropout, process_group: Union[ProcessGroup, List[ProcessGroup]] = None
+    ) -> "DropoutForParallelInput":
         """
         Create a DropoutForParallelInput layer from a native dropout layer.
         """
@@ -68,8 +69,8 @@ class DropoutForReplicatedInput(ParallelModule, nn.Dropout):
 
     @staticmethod
     def from_native_module(
-            module: nn.Dropout,
-            process_group: Union[ProcessGroup, List[ProcessGroup]] = None) -> "DropoutForReplicatedInput":
+        module: nn.Dropout, process_group: Union[ProcessGroup, List[ProcessGroup]] = None
+    ) -> "DropoutForReplicatedInput":
         """
         Create a Dropout1D layer from a native dropout layer.
         """

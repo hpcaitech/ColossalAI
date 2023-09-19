@@ -27,7 +27,7 @@ def has_inf_or_nan(tensor):
             raise
         return True
     else:
-        if tensor_sum == float('inf') or tensor_sum == -float('inf') or tensor_sum != tensor_sum:
+        if tensor_sum == float("inf") or tensor_sum == -float("inf") or tensor_sum != tensor_sum:
             return True
         return False
 

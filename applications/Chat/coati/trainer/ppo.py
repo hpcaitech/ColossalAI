@@ -8,7 +8,7 @@ from coati.models.loss import GPTLMLoss, PolicyLoss, ValueLoss
 from coati.models.utils import calc_action_log_probs
 from torch import Tensor
 from torch.optim import Optimizer
-from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.data import DistributedSampler
 from tqdm import tqdm
 
 from colossalai.utils import get_current_device
@@ -24,11 +24,11 @@ def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, acto
     hf_model = get_base_model(unwrapper_model)
     new_kwargs = {**generate_kwargs}
     # use huggingface models method directly
-    if 'prepare_inputs_fn' not in generate_kwargs and hasattr(hf_model, 'prepare_inputs_for_generation'):
-        new_kwargs['prepare_inputs_fn'] = hf_model.prepare_inputs_for_generation
+    if "prepare_inputs_fn" not in generate_kwargs and hasattr(hf_model, "prepare_inputs_for_generation"):
+        new_kwargs["prepare_inputs_fn"] = hf_model.prepare_inputs_for_generation
 
-    if 'update_model_kwargs_fn' not in generate_kwargs and hasattr(hf_model, '_update_model_kwargs_for_generation'):
-        new_kwargs['update_model_kwargs_fn'] = hf_model._update_model_kwargs_for_generation
+    if "update_model_kwargs_fn" not in generate_kwargs and hasattr(hf_model, "_update_model_kwargs_for_generation"):
+        new_kwargs["update_model_kwargs_fn"] = hf_model._update_model_kwargs_for_generation
 
     return new_kwargs
 
@@ -60,38 +60,34 @@ class PPOTrainer(OnPolicyTrainer):
         generate_kwargs (dict, optional): the kwargs to use while model generating
     """
 
-    def __init__(self,
-                 strategy: Strategy,
-                 actor: Actor,
-                 critic: Critic,
-                 reward_model: nn.Module,
-                 initial_model: Actor,
-                 actor_optim: Optimizer,
-                 critic_optim: Optimizer,
-                 kl_coef: float = 0.1,
-                 ptx_coef: float = 0.9,
-                 train_batch_size: int = 8,
-                 buffer_limit: int = 0,
-                 buffer_cpu_offload: bool = True,
-                 eps_clip: float = 0.2,
-                 vf_coef: float = 1.0,
-                 value_clip: float = 0.4,
-                 sample_buffer: bool = False,
-                 dataloader_pin_memory: bool = True,
-                 offload_inference_models: bool = True,
-                 callbacks: List[Callback] = [],
-                 **generate_kwargs
-                 ) -> None:
+    def __init__(
+        self,
+        strategy: Strategy,
+        actor: Actor,
+        critic: Critic,
+        reward_model: nn.Module,
+        initial_model: Actor,
+        actor_optim: Optimizer,
+        critic_optim: Optimizer,
+        kl_coef: float = 0.1,
+        ptx_coef: float = 0.9,
+        train_batch_size: int = 8,
+        buffer_limit: int = 0,
+        buffer_cpu_offload: bool = True,
+        eps_clip: float = 0.2,
+        vf_coef: float = 1.0,
+        value_clip: float = 0.4,
+        sample_buffer: bool = False,
+        dataloader_pin_memory: bool = True,
+        offload_inference_models: bool = True,
+        callbacks: List[Callback] = [],
+        **generate_kwargs,
+    ) -> None:
         if isinstance(strategy, GeminiStrategy):
-            assert not offload_inference_models, \
-                "GeminiPlugin is not compatible with manual model.to('cpu')"
+            assert not offload_inference_models, "GeminiPlugin is not compatible with manual model.to('cpu')"
 
         data_buffer = NaiveExperienceBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
-        super().__init__(
-            strategy, data_buffer,
-            sample_buffer, dataloader_pin_memory,
-            callbacks
-        )
+        super().__init__(strategy, data_buffer, sample_buffer, dataloader_pin_memory, callbacks)
 
         self.generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
         self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, kl_coef)
@@ -130,18 +126,16 @@ class PPOTrainer(OnPolicyTrainer):
         num_actions = experience.action_mask.size(1)
         actor_output = self.actor(experience.sequences, attention_mask=experience.attention_mask)
         action_log_probs = calc_action_log_probs(actor_output, experience.sequences, num_actions)
-        actor_loss = self.actor_loss_fn(action_log_probs,
-                                        experience.action_log_probs,
-                                        experience.advantages,
-                                        action_mask=experience.action_mask)
+        actor_loss = self.actor_loss_fn(
+            action_log_probs, experience.action_log_probs, experience.advantages, action_mask=experience.action_mask
+        )
 
         # ptx loss
         if self.ptx_coef != 0:
             batch = self.pretrain_dataloader.next()
             batch = to_device(batch, self.device)
-            ptx_log_probs = self.actor(batch['input_ids'],
-                                       attention_mask=batch['attention_mask'])['logits']
-            ptx_loss = self.ptx_loss_fn(ptx_log_probs, batch['labels'])
+            ptx_log_probs = self.actor(batch["input_ids"], attention_mask=batch["attention_mask"])["logits"]
+            ptx_loss = self.ptx_loss_fn(ptx_log_probs, batch["labels"])
             actor_loss = ptx_loss * self.ptx_coef + actor_loss * (1 - self.ptx_coef)
 
         self.strategy.backward(actor_loss, self.actor, self.actor_optim)
@@ -149,24 +143,23 @@ class PPOTrainer(OnPolicyTrainer):
         self.actor_optim.zero_grad()
 
         # value loss
-        values = self.critic(experience.sequences,
-                             action_mask=experience.action_mask,
-                             attention_mask=experience.attention_mask)
-        critic_loss = self.critic_loss_fn(values,
-                                          experience.values,
-                                          experience.reward,
-                                          action_mask=experience.action_mask)
+        values = self.critic(
+            experience.sequences, action_mask=experience.action_mask, attention_mask=experience.attention_mask
+        )
+        critic_loss = self.critic_loss_fn(
+            values, experience.values, experience.reward, action_mask=experience.action_mask
+        )
         critic_loss = critic_loss * self.vf_coef
         self.strategy.backward(critic_loss, self.critic, self.critic_optim)
         self.strategy.optimizer_step(self.critic_optim)
         self.critic_optim.zero_grad()
 
-        return {'reward': experience.reward.mean().item()}
+        return {"reward": experience.reward.mean().item()}
 
     def _learn(self, update_step: int):
         if self.offload_inference_models:
-            self.experience_maker.initial_model.to('cpu')
-            self.experience_maker.reward_model.to('cpu')
+            self.experience_maker.initial_model.to("cpu")
+            self.experience_maker.reward_model.to("cpu")
 
         # buffer may be empty at first, we should rebuild at each training
         if self.sample_buffer:
@@ -178,11 +171,7 @@ class PPOTrainer(OnPolicyTrainer):
         else:
             if isinstance(self.dataloader.sampler, DistributedSampler):
                 self.dataloader.sampler.set_epoch(update_step)
-            pbar = tqdm(
-                self.dataloader,
-                desc=f'Train epoch [{update_step + 1}]',
-                disable=not is_rank_0()
-            )
+            pbar = tqdm(self.dataloader, desc=f"Train epoch [{update_step + 1}]", disable=not is_rank_0())
             for experience in pbar:
                 self._on_learn_batch_start()
                 experience.to_device(self.device)

@@ -1,5 +1,5 @@
 import warnings
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
@@ -15,10 +15,10 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 
 
 class LlamaPipelineForwards:
-    '''
+    """
     This class serves as a micro library for forward function substitution of Llama models
     under pipeline setting.
-    '''
+    """
 
     @staticmethod
     def llama_model_forward(
@@ -39,8 +39,9 @@ class LlamaPipelineForwards:
         logger = logging.get_logger(__name__)
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (output_hidden_states
-                                if output_hidden_states is not None else self.config.output_hidden_states)
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
@@ -69,13 +70,13 @@ class LlamaPipelineForwards:
 
         # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
         if use_cache:
-            logger.warning_once('use_cache=True is not supported for pipeline models at the moment.')
+            logger.warning_once("use_cache=True is not supported for pipeline models at the moment.")
             use_cache = False
 
         if past_key_values is not None:
@@ -83,10 +84,9 @@ class LlamaPipelineForwards:
             seq_length_with_past = seq_length_with_past + past_key_values_length
 
         if position_ids is None:
-            position_ids = torch.arange(past_key_values_length,
-                                        seq_length + past_key_values_length,
-                                        dtype=torch.long,
-                                        device=device)
+            position_ids = torch.arange(
+                past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
+            )
             position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
         else:
             position_ids = position_ids.view(-1, seq_length).long()
@@ -94,16 +94,18 @@ class LlamaPipelineForwards:
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
         if attention_mask is None:
-            attention_mask = torch.ones((batch_size, seq_length_with_past),
-                                        dtype=torch.bool,
-                                        device=hidden_states.device)
-        attention_mask = self._prepare_decoder_attention_mask(attention_mask, (batch_size, seq_length), hidden_states,
-                                                              past_key_values_length)
+            attention_mask = torch.ones(
+                (batch_size, seq_length_with_past), dtype=torch.bool, device=hidden_states.device
+            )
+        attention_mask = self._prepare_decoder_attention_mask(
+            attention_mask, (batch_size, seq_length), hidden_states, past_key_values_length
+        )
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
                 logger.warning_once(
-                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...")
+                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+                )
                 use_cache = False
 
         # decoder layers
@@ -121,7 +123,6 @@ class LlamaPipelineForwards:
             if self.gradient_checkpointing and self.training:
 
                 def create_custom_forward(module):
-
                     def custom_forward(*inputs):
                         # None for past_key_value
                         return module(*inputs, output_attentions, None)
@@ -169,7 +170,7 @@ class LlamaPipelineForwards:
                 attentions=all_self_attns,
             )
         # always return dict for imediate stage
-        return {'hidden_states': hidden_states}
+        return {"hidden_states": hidden_states}
 
     @staticmethod
     def llama_for_causal_lm_forward(
@@ -189,42 +190,43 @@ class LlamaPipelineForwards:
         stage_index: Optional[List[int]] = None,
     ):
         r"""
-            Args:
-                labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-                    Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
-                    config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
-                    (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+        Args:
+            labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+                Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+                config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+                (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
 
-            Returns:
+        Returns:
 
-            Example:
+        Example:
 
-            ```python
-            >>> from transformers import AutoTokenizer, LlamaForCausalLM
+        ```python
+        >>> from transformers import AutoTokenizer, LlamaForCausalLM
 
-            >>> model = LlamaForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
-            >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
+        >>> model = LlamaForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
+        >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
 
-            >>> prompt = "Hey, are you consciours? Can you talk to me?"
-            >>> inputs = tokenizer(prompt, return_tensors="pt")
+        >>> prompt = "Hey, are you consciours? Can you talk to me?"
+        >>> inputs = tokenizer(prompt, return_tensors="pt")
 
-            >>> # Generate
-            >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
-            >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-            "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
-            ```"""
+        >>> # Generate
+        >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
+        >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+        "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
+        ```"""
         logger = logging.get_logger(__name__)
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (output_hidden_states
-                                if output_hidden_states is not None else self.config.output_hidden_states)
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
@@ -244,9 +246,6 @@ class LlamaPipelineForwards:
             stage_index=stage_index,
         )
         past_key_values = None
-        all_hidden_states = None
-        all_self_attentions = None
-        all_cross_attentions = None
 
         if stage_manager.is_last_stage():
             hidden_states = outputs[0]
@@ -276,8 +275,8 @@ class LlamaPipelineForwards:
                 attentions=outputs.attentions,
             )
         else:
-            hidden_states = outputs.get('hidden_states')
-            return {'hidden_states': hidden_states}
+            hidden_states = outputs.get("hidden_states")
+            return {"hidden_states": hidden_states}
 
     @staticmethod
     def llama_for_sequence_classification_forward(
@@ -307,10 +306,10 @@ class LlamaPipelineForwards:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
         transformer_outputs = LlamaPipelineForwards.llama_model_forward(
@@ -388,15 +387,14 @@ class LlamaPipelineForwards:
             )
 
         else:
-            hidden_states = transformer_outputs.get('hidden_states')
-            return {'hidden_states': hidden_states}
+            hidden_states = transformer_outputs.get("hidden_states")
+            return {"hidden_states": hidden_states}
 
 
 def get_llama_flash_attention_forward():
-    
-    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
-
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
+
+    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
     llama_version = 2
     try:
@@ -453,16 +451,15 @@ def get_llama_flash_attention_forward():
         if attention_mask != None:
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                 raise ValueError(
-                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}")
+                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
+                )
             flash_attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool)).contiguous()
             attn_mask_type = AttnMaskType.paddedcausal
 
         attention = ColoAttention(embed_dim=self.hidden_size, num_heads=self.num_heads)
-        attn_output = attention(query_states,
-                                key_states,
-                                value_states,
-                                attn_mask=flash_attention_mask,
-                                attn_mask_type=attn_mask_type)
+        attn_output = attention(
+            query_states, key_states, value_states, attn_mask=flash_attention_mask, attn_mask_type=attn_mask_type
+        )
 
         attn_output = self.o_proj(attn_output)
 

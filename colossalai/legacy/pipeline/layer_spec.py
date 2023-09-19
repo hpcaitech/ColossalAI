@@ -4,9 +4,7 @@ from colossalai.utils.model.utils import call_to_str
 
 
 class LayerSpec:
-    """
-
-    """
+    """ """
 
     def __init__(self, typename, *module_args, **module_kwargs):
         self.typename = typename
@@ -16,7 +14,7 @@ class LayerSpec:
         self._param_count = 0
 
         if not issubclass(typename, torch.nn.Module):
-            raise RuntimeError('LayerSpec only supports torch.nn.Module types.')
+            raise RuntimeError("LayerSpec only supports torch.nn.Module types.")
 
     def __repr__(self):
         return call_to_str(self.typename.__name__, self.module_args, self.module_kwargs)

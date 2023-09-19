@@ -2,7 +2,6 @@ import copy
 
 import pytest
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
@@ -14,7 +13,6 @@ from colossalai.zero import LowLevelZeroOptimizer
 
 
 class MlpModel(nn.Module):
-
     def __init__(self):
         super(MlpModel, self).__init__()
         self.linear1 = nn.Linear(123, 253)
@@ -74,14 +72,12 @@ def exam_zero_1_2():
     # create optimizer
     zero1_optimizer = torch.optim.Adam(zero1_model.parameters(), lr=1)
     zero2_optimizer = torch.optim.Adam(zero2_model.parameters(), lr=1)
-    zero1_optimizer = LowLevelZeroOptimizer(zero1_optimizer,
-                                            overlap_communication=True,
-                                            initial_scale=128,
-                                            verbose=True)
-    zero2_optimizer = LowLevelZeroOptimizer(zero2_optimizer,
-                                            overlap_communication=True,
-                                            partition_grad=True,
-                                            initial_scale=128)
+    zero1_optimizer = LowLevelZeroOptimizer(
+        zero1_optimizer, overlap_communication=True, initial_scale=128, verbose=True
+    )
+    zero2_optimizer = LowLevelZeroOptimizer(
+        zero2_optimizer, overlap_communication=True, partition_grad=True, initial_scale=128
+    )
     # create data
     seed_all(2001 + local_rank)
     input_data = torch.randn(32, 123).cuda()
@@ -109,7 +105,7 @@ def exam_zero_1_2():
         assert torch.equal(z1p.data, z2p.data)
 
 
-@parameterize('dtype', [torch.float16, torch.bfloat16])
+@parameterize("dtype", [torch.float16, torch.bfloat16])
 def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
     """
     In this test, two pairs of model and optimizers are created.
@@ -134,10 +130,9 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
     # we only test stage 1 here
     # in `check_sharded_param_consistency.py`, we will test whether
     # level 1 and 2 will produce exactly the same results
-    zero_optimizer = LowLevelZeroOptimizer(zero_optimizer,
-                                           overlap_communication=True,
-                                           initial_scale=1,
-                                           reduce_bucket_size=1024 * 1024)
+    zero_optimizer = LowLevelZeroOptimizer(
+        zero_optimizer, overlap_communication=True, initial_scale=1, reduce_bucket_size=1024 * 1024
+    )
 
     torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1)
 
@@ -178,7 +173,7 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
 
     exam_zero_1_torch_ddp(world_size=world_size)
     exam_zero_1_2()
@@ -190,5 +185,5 @@ def test_zero_1_2():
     spawn(run_dist, 2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_zero_1_2()

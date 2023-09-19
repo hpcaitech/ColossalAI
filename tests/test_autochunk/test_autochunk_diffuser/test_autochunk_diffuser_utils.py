@@ -83,9 +83,11 @@ def assert_codegen_run(
             max_mem_ori = torch.cuda.max_memory_allocated() / 1024**2
             print("origin mem: %.2fMB, autochunk mem: %.2fMB" % (max_mem_ori - now_mem_ori, max_mem_gm - now_mem_gm))
 
-    assert torch.allclose(out_gm["sample"], out_model["sample"],
-                          atol=1e-3), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
-                              torch.abs(out_gm["sample"] - out_model["sample"]))
+    assert torch.allclose(
+        out_gm["sample"], out_model["sample"], atol=1e-3
+    ), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
+        torch.abs(out_gm["sample"] - out_model["sample"])
+    )
 
     return chunks
 
@@ -129,7 +131,7 @@ def run_test(
     if get_chunk_target is not None:
         chunk_found = [i["region"] for i in chunks]
         chunk_target = get_chunk_target()[max_memory]
-        assert (chunk_found == chunk_target), "found regions %s doesn't equal target regions %s" % (
+        assert chunk_found == chunk_target, "found regions %s doesn't equal target regions %s" % (
             str(chunk_found),
             str(chunk_target),
         )

@@ -50,7 +50,7 @@ class CrossEntropyLoss2D(_Loss):
             float: the loss between logits and targets.
         """
         targets = split_batch_2d(targets)
-        loss = cross_entropy(logits, targets, reduction='none', *self.loss_args, **self.loss_kwargs)
+        loss = cross_entropy(logits, targets, reduction="none", *self.loss_args, **self.loss_kwargs)
         if self.reduction_mean:
             loss = loss.mean()
             loss = reduce_by_batch_2d(loss, True)
@@ -69,9 +69,9 @@ class _VocabParallelCrossEntropy2D(torch.autograd.Function):
         # vocab_parallel_logits: [b/q, s, v/q]
         # target: [b/q, s]
         logits_max = torch.max(logits, dim=-1)[0]
-        torch.distributed.all_reduce(logits_max,
-                                     op=torch.distributed.ReduceOp.MAX,
-                                     group=gpc.get_group(ParallelMode.PARALLEL_2D_ROW))
+        torch.distributed.all_reduce(
+            logits_max, op=torch.distributed.ReduceOp.MAX, group=gpc.get_group(ParallelMode.PARALLEL_2D_ROW)
+        )
         # Subtract the maximum value.
         # vocab_parallel_logits.sub_(logits_max.unsqueeze(dim=-1))
         logits = logits - logits_max.unsqueeze(dim=-1)
@@ -90,7 +90,7 @@ class _VocabParallelCrossEntropy2D(torch.autograd.Function):
             end=logits.size()[0],
         )
         predicted_logits = logits[arange_1d, masked_target]
-        predicted_logits[target_mask] = 0.
+        predicted_logits[target_mask] = 0.0
         dist.all_reduce(predicted_logits, group=gpc.get_group(ParallelMode.PARALLEL_2D_ROW))
 
         exp_logits = torch.exp(logits)
@@ -119,7 +119,7 @@ class _VocabParallelCrossEntropy2D(torch.autograd.Function):
 
         # Add the gradient from matching classes.
         arange_1d = torch.arange(start=0, end=grad_2d.size()[0], device=get_current_device())
-        grad_2d[arange_1d, masked_target] -= (1.0 - target_mask.view(-1).float())
+        grad_2d[arange_1d, masked_target] -= 1.0 - target_mask.view(-1).float()
 
         # Finally elementwise multiplication with the output gradients.
         grad_input.mul_(output_grad.unsqueeze(dim=-1))

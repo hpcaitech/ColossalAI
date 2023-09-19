@@ -7,10 +7,8 @@ from colossalai.legacy.zero.sharded_param.sharded_tensor import ShardedTensor
 
 
 class BaseShardStrategy(ABC):
-
     def __init__(self) -> None:
-        """Abstract Shard Strategy. Use to shard a tensors on multiple GPUs.
-        """
+        """Abstract Shard Strategy. Use to shard a tensors on multiple GPUs."""
         super().__init__()
 
     @abstractmethod

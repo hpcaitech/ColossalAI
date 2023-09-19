@@ -18,7 +18,6 @@ class BucketTensorShardStrategy(TensorShardStrategy):
     """
 
     def gather(self, tensor_list: List[ShardedTensor], process_group: Optional[dist.ProcessGroup] = None):
-
         tensor_list: List[ShardedTensor] = [t for t in tensor_list if t.is_sharded]
         if len(tensor_list) == 0:
             return
@@ -40,8 +39,8 @@ class BucketTensorShardStrategy(TensorShardStrategy):
         buffer_list = [buffer.to(target_device) for buffer in buffer_list]
         offset = 0
         for i, t in enumerate(tensor_list):
-            gathered_payload = [buffer[offset:offset + tensor_numels[i]] for buffer in buffer_list]
-            gathered_payload = torch.cat(gathered_payload)[:t.origin_numel].view(t.origin_shape)
+            gathered_payload = [buffer[offset : offset + tensor_numels[i]] for buffer in buffer_list]
+            gathered_payload = torch.cat(gathered_payload)[: t.origin_numel].view(t.origin_shape)
             t.payload_reset(gathered_payload)
             t.is_sharded = False
             offset += tensor_numels[i]

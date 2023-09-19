@@ -30,7 +30,7 @@ def check_linear():
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
-    k = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
+    gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
 
     layer = Linear2p5D(INPUT_SIZE, OUTPUT_SIZE, dtype=dtype, skip_bias_add=False)
 
@@ -50,7 +50,7 @@ def check_linear():
     W = W.clone()
     W.requires_grad = True
 
-    B_shape = (OUTPUT_SIZE)
+    B_shape = OUTPUT_SIZE
     B_master = torch.randn(B_shape, dtype=dtype, device=device)
     torch.distributed.broadcast(B_master, src=0)
     B = torch.chunk(B_master, TESSERACT_DIM, dim=0)[j]
@@ -60,7 +60,7 @@ def check_linear():
     layer.weight = Parameter(W)
     layer.bias = Parameter(B)
     out = layer(A)
-    bias = layer.bias
+    layer.bias
 
     A_master = A_master.clone()
     A_master.requires_grad = True
@@ -73,7 +73,7 @@ def check_linear():
     C = torch.chunk(C, TESSERACT_DIM, dim=-1)[j]
 
     check_equal(out, C)
-    print_rank_0('linear forward: pass')
+    print_rank_0("linear forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
@@ -100,7 +100,7 @@ def check_linear():
     if i == 0:
         check_equal(B_grad, layer.bias.grad)
 
-    print_rank_0('linear backward: pass')
+    print_rank_0("linear backward: pass")
 
 
 def check_layernorm():
@@ -111,7 +111,7 @@ def check_layernorm():
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
-    k = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
+    gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
 
     layernorm = LayerNorm2p5D(INPUT_SIZE, dtype=dtype)
 
@@ -138,7 +138,7 @@ def check_layernorm():
     C = torch.chunk(C, TESSERACT_DIM, dim=-1)[j]
 
     check_equal(out, C)
-    print_rank_0('layer norm forward: pass')
+    print_rank_0("layer norm forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
@@ -152,7 +152,7 @@ def check_layernorm():
     A_grad = torch.chunk(A_grad, TESSERACT_DIM, dim=0)[i]
     A_grad = torch.chunk(A_grad, TESSERACT_DIM, dim=-1)[j]
     check_equal(A_grad, A.grad)
-    print_rank_0('layer norm backward: pass')
+    print_rank_0("layer norm backward: pass")
 
 
 def check_embed():
@@ -160,7 +160,7 @@ def check_embed():
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
-    k = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
+    gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
 
     embed = Embedding2p5D(VOCAB_SIZE, HIDDEN_SIZE)
     embed = embed.to(dtype).to(device)
@@ -184,7 +184,7 @@ def check_embed():
     C = torch.chunk(C_master, TESSERACT_DIM, dim=0)[i]
     C = torch.chunk(C, TESSERACT_DIM, dim=-1)[j]
     check_equal(out, C)
-    print_rank_0('embed forward: pass')
+    print_rank_0("embed forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
@@ -200,7 +200,7 @@ def check_embed():
     B_grad = torch.chunk(B_grad, TESSERACT_DIM, dim=-1)[j]
     B_grad = torch.chunk(B_grad, TESSERACT_DIM, dim=-1)[i]
     check_equal(B_grad, embed.weight.grad)
-    print_rank_0('embed backward: pass')
+    print_rank_0("embed backward: pass")
 
 
 def check_patch_embed():
@@ -208,7 +208,7 @@ def check_patch_embed():
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
-    k = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
+    gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
 
     layer = PatchEmbedding2p5D(IMG_SIZE, 4, 3, HIDDEN_SIZE, dtype=dtype)
     torch.nn.init.ones_(layer.cls_token)
@@ -242,7 +242,7 @@ def check_patch_embed():
     C = torch.chunk(C_master, TESSERACT_DIM, dim=0)[i]
     C = torch.chunk(C, TESSERACT_DIM, dim=-1)[j]
     check_equal(out, C)
-    print_rank_0('patch embed forward: pass')
+    print_rank_0("patch embed forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
@@ -274,7 +274,7 @@ def check_patch_embed():
     bias_grad = torch.chunk(bias_grad, TESSERACT_DIM)[j]
     bias_grad = torch.chunk(bias_grad, TESSERACT_DIM)[i]
     check_equal(bias_grad, layer.bias.grad)
-    print_rank_0('patch embed backward: pass')
+    print_rank_0("patch embed backward: pass")
 
 
 def check_vocab_parallel_embed():
@@ -282,7 +282,7 @@ def check_vocab_parallel_embed():
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
-    k = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
+    gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
 
     embed = VocabParallelEmbedding2p5D(VOCAB_SIZE, HIDDEN_SIZE)
     embed = embed.to(dtype).to(device)
@@ -306,7 +306,7 @@ def check_vocab_parallel_embed():
     C = torch.chunk(C_master, TESSERACT_DIM, dim=0)[i]
     C = torch.chunk(C, TESSERACT_DIM, dim=-1)[j]
     check_equal(out, C)
-    print_rank_0('vocab parallel embed forward: pass')
+    print_rank_0("vocab parallel embed forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
@@ -322,7 +322,7 @@ def check_vocab_parallel_embed():
     B_grad = torch.chunk(B_grad, TESSERACT_DIM, dim=-1)[j]
     B_grad = torch.chunk(B_grad, TESSERACT_DIM, dim=0)[i]
     check_equal(B_grad, embed.weight.grad)
-    print_rank_0('vocab parallel embed backward: pass')
+    print_rank_0("vocab parallel embed backward: pass")
 
 
 def check_classifier_no_given_weight():
@@ -374,7 +374,7 @@ def check_classifier_no_given_weight():
     # C = torch.chunk(C, TESSERACT_DIM, dim=-1)[j]
 
     check_equal(out, C)
-    print_rank_0('classifier (no given weight) forward: pass')
+    print_rank_0("classifier (no given weight) forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
@@ -401,7 +401,7 @@ def check_classifier_no_given_weight():
     # if i == 0:
     check_equal(B_grad, layer.bias.grad)
 
-    print_rank_0('classifier (no given weight) backward: pass')
+    print_rank_0("classifier (no given weight) backward: pass")
 
 
 def check_vocab_parallel_classifier_no_given_weight():
@@ -409,7 +409,7 @@ def check_vocab_parallel_classifier_no_given_weight():
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
-    k = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
+    gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
 
     layer = VocabParallelClassifier2p5D(HIDDEN_SIZE, VOCAB_SIZE, bias=True)
     layer = layer.to(dtype).to(device)
@@ -442,7 +442,7 @@ def check_vocab_parallel_classifier_no_given_weight():
     C = torch.chunk(C_master, TESSERACT_DIM, dim=0)[i]
     C = torch.chunk(C, TESSERACT_DIM, dim=-1)[j]
     check_equal(out, C)
-    print_rank_0('vocab parallel classifier (no given weight) forward: pass')
+    print_rank_0("vocab parallel classifier (no given weight) forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
@@ -468,7 +468,7 @@ def check_vocab_parallel_classifier_no_given_weight():
     B_grad = torch.chunk(B_grad, TESSERACT_DIM)[j]
     if i == 0:
         check_equal(B_grad, layer.bias.grad)
-    print_rank_0('vocab parallel classifier (no given weight) backward: pass')
+    print_rank_0("vocab parallel classifier (no given weight) backward: pass")
 
 
 def check_classifier_given_embed_weight():
@@ -476,7 +476,7 @@ def check_classifier_given_embed_weight():
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
-    k = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
+    gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
 
     embed = Embedding2p5D(VOCAB_SIZE, HIDDEN_SIZE)
     embed = embed.to(dtype).to(device)
@@ -504,7 +504,7 @@ def check_classifier_given_embed_weight():
     C_master = layer_master(embed_master(A_master))
     C = torch.chunk(C_master, TESSERACT_DIM, dim=0)[i]
     check_equal(out, C)
-    print_rank_0('classifier (given embed weight) forward: pass')
+    print_rank_0("classifier (given embed weight) forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
@@ -520,7 +520,7 @@ def check_classifier_given_embed_weight():
     W_grad = torch.chunk(W_grad, TESSERACT_DIM, dim=-1)[j]
     W_grad = torch.chunk(W_grad, TESSERACT_DIM, dim=-1)[i]
     check_equal(W_grad, embed.weight.grad)
-    print_rank_0('classifier (given embed weight) backward: pass')
+    print_rank_0("classifier (given embed weight) backward: pass")
 
 
 def check_vocab_parallel_classifier_given_embed_weight():
@@ -528,7 +528,7 @@ def check_vocab_parallel_classifier_given_embed_weight():
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
-    k = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
+    gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
 
     embed = VocabParallelEmbedding2p5D(VOCAB_SIZE, HIDDEN_SIZE)
     embed = embed.to(dtype).to(device)
@@ -557,7 +557,7 @@ def check_vocab_parallel_classifier_given_embed_weight():
     C = torch.chunk(C_master, TESSERACT_DIM, dim=0)[i]
     C = torch.chunk(C, TESSERACT_DIM, dim=-1)[j]
     check_equal(out, C)
-    print_rank_0('vocab parallel classifier (given embed weight) forward: pass')
+    print_rank_0("vocab parallel classifier (given embed weight) forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
@@ -574,15 +574,15 @@ def check_vocab_parallel_classifier_given_embed_weight():
     W_grad = torch.chunk(W_grad, TESSERACT_DIM, dim=-1)[j]
     W_grad = torch.chunk(W_grad, TESSERACT_DIM, dim=0)[i]
     check_equal(W_grad, embed.weight.grad)
-    print_rank_0('vocab parallel classifier (given embed weight) backward: pass')
+    print_rank_0("vocab parallel classifier (given embed weight) backward: pass")
 
 
 def check_loss():
     device = get_current_device()
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
-    j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
-    k = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
+    gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
+    gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
 
     criterion = CrossEntropyLoss2p5D()
     criterion_master = torch.nn.CrossEntropyLoss()
@@ -601,7 +601,7 @@ def check_loss():
     out_master.requires_grad = True
     loss_master = criterion_master(out_master, target_master)
     check_equal(loss, loss_master)
-    print_rank_0('cross entropy loss forward: pass')
+    print_rank_0("cross entropy loss forward: pass")
 
     loss.backward()
     loss_master.backward()
@@ -609,7 +609,7 @@ def check_loss():
     out_grad = out_master.grad
     out_grad = torch.chunk(out_grad, TESSERACT_DIM, dim=0)[i]
     check_equal(out_grad, out.grad)
-    print_rank_0('cross entropy loss backward: pass')
+    print_rank_0("cross entropy loss backward: pass")
 
 
 def check_vocab_parallel_loss():
@@ -617,7 +617,7 @@ def check_vocab_parallel_loss():
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
-    k = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
+    gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
 
     criterion = VocabParallelCrossEntropyLoss2p5D()
     criterion_master = torch.nn.CrossEntropyLoss()
@@ -637,7 +637,7 @@ def check_vocab_parallel_loss():
     out_master.requires_grad = True
     loss_master = criterion_master(out_master, target_master)
     check_equal(loss, loss_master)
-    print_rank_0('vocab parallel cross entropy loss forward: pass')
+    print_rank_0("vocab parallel cross entropy loss forward: pass")
 
     loss.backward()
     loss_master.backward()
@@ -646,7 +646,7 @@ def check_vocab_parallel_loss():
     out_grad = torch.chunk(out_grad, TESSERACT_DIM, dim=0)[i]
     out_grad = torch.chunk(out_grad, TESSERACT_DIM, dim=-1)[j]
     check_equal(out_grad, out.grad)
-    print_rank_0('vocab parallel cross entropy loss backward: pass')
+    print_rank_0("vocab parallel cross entropy loss backward: pass")
 
 
 # def check_attention():

@@ -24,6 +24,7 @@ class Experience:
 
     "A" is the number of actions.
     """
+
     sequences: torch.Tensor
     action_log_probs: torch.Tensor
     values: torch.Tensor
@@ -58,13 +59,9 @@ class Experience:
 
 
 class ExperienceMaker(ABC):
-
-    def __init__(self,
-                 actor: Actor,
-                 critic: nn.Module,
-                 reward_model: nn.Module,
-                 initial_model: Actor,
-                 kl_coef: float = 0.1) -> None:
+    def __init__(
+        self, actor: Actor, critic: nn.Module, reward_model: nn.Module, initial_model: Actor, kl_coef: float = 0.1
+    ) -> None:
         super().__init__()
         self.actor = actor
         self.critic = critic

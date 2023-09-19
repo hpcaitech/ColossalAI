@@ -86,14 +86,12 @@ def parse_args():
         default=None,
         help="The configuration name of the dataset to use (via the datasets library).",
     )
-    parser.add_argument("--train_file",
-                        type=str,
-                        default=None,
-                        help="A csv or a json file containing the training data.")
-    parser.add_argument("--validation_file",
-                        type=str,
-                        default=None,
-                        help="A csv or a json file containing the validation data.")
+    parser.add_argument(
+        "--train_file", type=str, default=None, help="A csv or a json file containing the training data."
+    )
+    parser.add_argument(
+        "--validation_file", type=str, default=None, help="A csv or a json file containing the validation data."
+    )
     parser.add_argument(
         "--validation_split_percentage",
         default=5,
@@ -161,10 +159,9 @@ def parse_args():
         help="The scheduler type to use.",
         choices=["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"],
     )
-    parser.add_argument("--num_warmup_steps",
-                        type=int,
-                        default=0,
-                        help="Number of steps for the warmup in the lr scheduler.")
+    parser.add_argument(
+        "--num_warmup_steps", type=int, default=0, help="Number of steps for the warmup in the lr scheduler."
+    )
     parser.add_argument("--output_dir", type=str, default=None, help="Where to store the final model.")
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
@@ -178,9 +175,11 @@ def parse_args():
         "--block_size",
         type=int,
         default=None,
-        help=("Optional input sequence length after tokenization. The training dataset will be truncated in block of"
-              " this size for training. Default to the model max input length for single sentence inputs (take into"
-              " account special tokens)."),
+        help=(
+            "Optional input sequence length after tokenization. The training dataset will be truncated in block of"
+            " this size for training. Default to the model max input length for single sentence inputs (take into"
+            " account special tokens)."
+        ),
     )
     parser.add_argument(
         "--preprocessing_num_workers",
@@ -188,17 +187,16 @@ def parse_args():
         default=None,
         help="The number of processes to use for the preprocessing.",
     )
-    parser.add_argument("--overwrite_cache",
-                        type=bool,
-                        default=False,
-                        help="Overwrite the cached training and evaluation sets")
-    parser.add_argument("--no_keep_linebreaks",
-                        action="store_true",
-                        help="Do not keep line breaks when using TXT files.")
+    parser.add_argument(
+        "--overwrite_cache", type=bool, default=False, help="Overwrite the cached training and evaluation sets"
+    )
+    parser.add_argument(
+        "--no_keep_linebreaks", action="store_true", help="Do not keep line breaks when using TXT files."
+    )
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
-    parser.add_argument("--hub_model_id",
-                        type=str,
-                        help="The name of the repository to keep in sync with the local `output_dir`.")
+    parser.add_argument(
+        "--hub_model_id", type=str, help="The name of the repository to keep in sync with the local `output_dir`."
+    )
     parser.add_argument("--hub_token", type=str, help="The token to use to push to the Model Hub.")
     parser.add_argument(
         "--checkpointing_steps",
@@ -221,13 +219,15 @@ def parse_args():
         "--report_to",
         type=str,
         default="all",
-        help=('The integration to report the results and logs to. Supported platforms are `"tensorboard"`,'
-              ' `"wandb"` and `"comet_ml"`. Use `"all"` (default) to report to all integrations.'
-              "Only applicable when `--with_tracking` is passed."),
+        help=(
+            'The integration to report the results and logs to. Supported platforms are `"tensorboard"`,'
+            ' `"wandb"` and `"comet_ml"`. Use `"all"` (default) to report to all integrations.'
+            "Only applicable when `--with_tracking` is passed."
+        ),
     )
 
     parser.add_argument("--mem_cap", type=int, default=0, help="use mem cap")
-    parser.add_argument("--init_in_cpu", action='store_true', default=False, help="init training model in cpu")
+    parser.add_argument("--init_in_cpu", action="store_true", default=False, help="init training model in cpu")
     args = parser.parse_args()
 
     # Sanity checks
@@ -250,6 +250,7 @@ def parse_args():
 
 def colo_memory_cap(size_in_GB):
     from colossalai.utils import colo_device_memory_capacity, colo_set_process_memory_fraction, get_current_device
+
     cuda_capacity = colo_device_memory_capacity(get_current_device())
     if size_in_GB * (1024**3) < cuda_capacity:
         colo_set_process_memory_fraction(size_in_GB * (1024**3) / cuda_capacity)
@@ -257,7 +258,6 @@ def colo_memory_cap(size_in_GB):
 
 
 class DummyDataloader:
-
     def __init__(self, length, batch_size, seq_len, vocab_size):
         self.length = length
         self.batch_size = batch_size
@@ -380,32 +380,36 @@ def main():
         logger.warning("You are instantiating a new config instance from scratch.")
     logger.info("Model config has been created", ranks=[0])
 
-    if args.model_name_or_path == 'facebook/opt-13b':
+    if args.model_name_or_path == "facebook/opt-13b":
         tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path)
     else:
-        print(f'load model from {args.model_name_or_path}')
+        print(f"load model from {args.model_name_or_path}")
         tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=not args.use_slow_tokenizer)
     logger.info(f"{tokenizer.__class__.__name__} has been created", ranks=[0])
 
     if args.init_in_cpu:
-        init_dev = torch.device('cpu')
+        init_dev = torch.device("cpu")
     else:
         init_dev = get_current_device()
 
     cai_version = colossalai.__version__
-    logger.info(f'using Colossal-AI version {cai_version}')
+    logger.info(f"using Colossal-AI version {cai_version}")
     # build model
     if version.parse(cai_version) >= version.parse("0.3.1"):
         from contextlib import nullcontext
 
         from colossalai.lazy import LazyInitContext
-        ctx = LazyInitContext(
-            default_device=init_dev
-        ) if args.model_name_or_path is None or args.model_name_or_path == 'facebook/opt-13b' else nullcontext()
+
+        ctx = (
+            LazyInitContext(default_device=init_dev)
+            if args.model_name_or_path is None or args.model_name_or_path == "facebook/opt-13b"
+            else nullcontext()
+        )
     else:
         from colossalai.zero import ColoInitContext
+
         ctx = ColoInitContext(device=init_dev)
-    if args.model_name_or_path is None or args.model_name_or_path == 'facebook/opt-13b':
+    if args.model_name_or_path is None or args.model_name_or_path == "facebook/opt-13b":
         # currently, there has a bug in pretrained opt-13b
         # we can not import it until huggingface fix it
         logger.info("Train a new model from scratch", ranks=[0])
@@ -414,17 +418,20 @@ def main():
     else:
         logger.info("Finetune a pre-trained model", ranks=[0])
         with ctx:
-            model = OPTForCausalLM.from_pretrained(args.model_name_or_path,
-                                                   from_tf=bool(".ckpt" in args.model_name_or_path),
-                                                   config=config,
-                                                   local_files_only=False)
+            model = OPTForCausalLM.from_pretrained(
+                args.model_name_or_path,
+                from_tf=bool(".ckpt" in args.model_name_or_path),
+                config=config,
+                local_files_only=False,
+            )
 
     # enable graident checkpointing
     model.gradient_checkpointing_enable()
 
-    PLACEMENT_POLICY = 'auto'
+    PLACEMENT_POLICY = "auto"
     if version.parse(cai_version) >= version.parse("0.3.1"):
         from colossalai.zero import GeminiDDP
+
         model = GeminiDDP(model, offload_optim_frac=1.0, pin_memory=True)
     elif version.parse(cai_version) > version.parse("0.1.10"):
         try:
@@ -435,16 +442,19 @@ def main():
         model = GeminiDDP(model, device=get_current_device(), placement_policy=PLACEMENT_POLICY, pin_memory=True)
     elif version.parse(cai_version) <= version.parse("0.1.10") and version.parse(cai_version) >= version.parse("0.1.9"):
         from colossalai.gemini import ChunkManager, GeminiManager
+
         pg = ProcessGroup()
         chunk_size = ChunkManager.search_chunk_size(model, 64 * 1024**2, 32)
-        chunk_manager = ChunkManager(chunk_size,
-                                     pg,
-                                     enable_distributed_storage=True,
-                                     init_device=GeminiManager.get_default_device(PLACEMENT_POLICY))
+        chunk_manager = ChunkManager(
+            chunk_size,
+            pg,
+            enable_distributed_storage=True,
+            init_device=GeminiManager.get_default_device(PLACEMENT_POLICY),
+        )
         gemini_manager = GeminiManager(PLACEMENT_POLICY, chunk_manager)
         model = ZeroDDP(model, gemini_manager)
 
-    logger.info(f'{model.__class__.__name__} has been created', ranks=[0])
+    logger.info(f"{model.__class__.__name__} has been created", ranks=[0])
 
     if not args.synthetic:
         # Preprocessing the datasets.
@@ -470,12 +480,15 @@ def main():
         if block_size > 1024:
             logger.warning(
                 f"The tokenizer picked seems to have a very large `model_max_length` ({tokenizer.model_max_length}). "
-                "Picking 1024 instead. You can change that default value by passing --block_size xxx.")
+                "Picking 1024 instead. You can change that default value by passing --block_size xxx."
+            )
         block_size = 1024
     else:
         if args.block_size > tokenizer.model_max_length:
-            logger.warning(f"The block_size passed ({args.block_size}) is larger than the maximum length for the model"
-                           f"({tokenizer.model_max_length}). Using block_size={tokenizer.model_max_length}.")
+            logger.warning(
+                f"The block_size passed ({args.block_size}) is larger than the maximum length for the model"
+                f"({tokenizer.model_max_length}). Using block_size={tokenizer.model_max_length}."
+            )
         block_size = min(args.block_size, tokenizer.model_max_length)
 
     # Main data processing function that will concatenate all texts from our dataset and generate chunks of block_size.
@@ -489,8 +502,8 @@ def main():
             total_length = (total_length // block_size) * block_size
         # Split by chunks of max_len.
         result = {
-            k: [t[i:i + block_size] for i in range(0, total_length, block_size)
-               ] for k, t in concatenated_examples.items()
+            k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
+            for k, t in concatenated_examples.items()
         }
         result["labels"] = result["input_ids"].copy()
         return result
@@ -520,19 +533,23 @@ def main():
         #     logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
         # DataLoaders creation:
-        train_dataloader = get_dataloader(train_dataset,
-                                          shuffle=True,
-                                          add_sampler=True,
-                                          collate_fn=default_data_collator,
-                                          batch_size=args.per_device_train_batch_size)
-        eval_dataloader = DataLoader(eval_dataset,
-                                     collate_fn=default_data_collator,
-                                     batch_size=args.per_device_eval_batch_size)
+        train_dataloader = get_dataloader(
+            train_dataset,
+            shuffle=True,
+            add_sampler=True,
+            collate_fn=default_data_collator,
+            batch_size=args.per_device_train_batch_size,
+        )
+        eval_dataloader = DataLoader(
+            eval_dataset, collate_fn=default_data_collator, batch_size=args.per_device_eval_batch_size
+        )
     else:
-        train_dataloader = DummyDataloader(30, args.per_device_train_batch_size, config.max_position_embeddings,
-                                           config.vocab_size)
-        eval_dataloader = DummyDataloader(10, args.per_device_train_batch_size, config.max_position_embeddings,
-                                          config.vocab_size)
+        train_dataloader = DummyDataloader(
+            30, args.per_device_train_batch_size, config.max_position_embeddings, config.vocab_size
+        )
+        eval_dataloader = DummyDataloader(
+            10, args.per_device_train_batch_size, config.max_position_embeddings, config.vocab_size
+        )
     logger.info("Dataloaders have been created", ranks=[0])
 
     # Optimizer
@@ -593,7 +610,6 @@ def main():
     global_step = 0
 
     for epoch in range(starting_epoch, args.num_train_epochs):
-
         if completed_steps >= args.max_train_steps:
             break
 
@@ -601,7 +617,7 @@ def main():
         for step, batch in enumerate(train_dataloader):
             batch = {k: v.cuda() for k, v in batch.items()}
             outputs = model(use_cache=False, **batch)
-            loss = outputs['loss']
+            loss = outputs["loss"]
             optimizer.backward(loss)
 
             if step % args.gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
@@ -624,7 +640,7 @@ def main():
                 batch = {k: v.cuda() for k, v in batch.items()}
                 outputs = model(**batch)
 
-        loss = outputs['loss'].unsqueeze(0)
+        loss = outputs["loss"].unsqueeze(0)
         losses.append(loss)
 
         losses = torch.cat(losses)
@@ -640,7 +656,7 @@ def main():
     if args.output_dir is not None:
         model_state = model.state_dict()
         if is_main_process:
-            torch.save(model_state, args.output_dir + '/epoch_{}_model.pth'.format(completed_steps))
+            torch.save(model_state, args.output_dir + "/epoch_{}_model.pth".format(completed_steps))
         dist.barrier()
         # load_state = torch.load(args.output_dir + '/epoch_{}_model.pth'.format(completed_steps))
         # model.load_state_dict(load_state, strict=False)

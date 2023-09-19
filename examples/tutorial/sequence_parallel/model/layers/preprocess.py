@@ -6,7 +6,6 @@ from colossalai.legacy.core import global_context as gpc
 
 
 class PreProcessor(nn.Module):
-
     def __init__(self, sub_seq_length):
         super().__init__()
         self.sub_seq_length = sub_seq_length
@@ -15,10 +14,9 @@ class PreProcessor(nn.Module):
         # Create position ids
         seq_length = token_ids.size(1)
         local_rank = gpc.get_local_rank(ParallelMode.SEQUENCE)
-        position_ids = torch.arange(seq_length * local_rank,
-                                    seq_length * (local_rank + 1),
-                                    dtype=torch.long,
-                                    device=token_ids.device)
+        position_ids = torch.arange(
+            seq_length * local_rank, seq_length * (local_rank + 1), dtype=torch.long, device=token_ids.device
+        )
         position_ids = position_ids.unsqueeze(0).expand_as(token_ids)
 
         return position_ids
@@ -42,7 +40,7 @@ class PreProcessor(nn.Module):
         extended_attention_mask = attention_mask_bss.unsqueeze(1)
 
         # Convert attention mask to binary:
-        extended_attention_mask = (extended_attention_mask < 0.5)
+        extended_attention_mask = extended_attention_mask < 0.5
 
         return extended_attention_mask
 

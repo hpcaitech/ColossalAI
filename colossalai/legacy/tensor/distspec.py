@@ -1,12 +1,12 @@
 from enum import Enum
 from typing import List
 
-__all__ = ['ReplicaSpec', 'ShardSpec']
+__all__ = ["ReplicaSpec", "ShardSpec"]
 
 
 class DistPlacementPattern(Enum):
-    REPLICATE = 'r'
-    SHARD = 's'
+    REPLICATE = "r"
+    SHARD = "s"
 
 
 class _DistSpec:
@@ -25,7 +25,6 @@ class _DistSpec:
     """
 
     def __init__(self, dist_placement_pattern: DistPlacementPattern, **meta_info):
-
         self.placement = dist_placement_pattern
         for k, v in meta_info.items():
             setattr(self, k, v)
@@ -34,15 +33,15 @@ class _DistSpec:
         if dir(self) != dir(other):
             return False
         for attr in dir(self):
-            if not attr.startswith('__') and getattr(self, attr) != getattr(other, attr):
+            if not attr.startswith("__") and getattr(self, attr) != getattr(other, attr):
                 return False
         return True
 
     def __repr__(self) -> str:
         attr_list = []
         for attr in dir(self):
-            if not attr.startswith('__'):
-                attr_list.append(f'{attr}={str(getattr(self, attr))}')
+            if not attr.startswith("__"):
+                attr_list.append(f"{attr}={str(getattr(self, attr))}")
         attr_str = ", ".join(attr_list)
         return "DistSpec(" + attr_str + ")"
 

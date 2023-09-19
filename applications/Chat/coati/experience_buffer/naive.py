@@ -11,23 +11,23 @@ from .utils import BufferItem, make_experience_batch, split_experience_batch
 class NaiveExperienceBuffer(ExperienceBuffer):
     """Naive experience buffer class. It stores experience.
 
-     Args:
-         sample_batch_size (int): Batch size when sampling.
-         limit (int, optional): Limit of number of experience samples. A number <= 0 means unlimited. Defaults to 0.
-         cpu_offload (bool, optional): Whether to offload experience to cpu when sampling. Defaults to True.
+    Args:
+        sample_batch_size (int): Batch size when sampling.
+        limit (int, optional): Limit of number of experience samples. A number <= 0 means unlimited. Defaults to 0.
+        cpu_offload (bool, optional): Whether to offload experience to cpu when sampling. Defaults to True.
     """
 
     def __init__(self, sample_batch_size: int, limit: int = 0, cpu_offload: bool = True) -> None:
         super().__init__(sample_batch_size, limit)
         self.cpu_offload = cpu_offload
-        self.target_device = torch.device(f'cuda:{torch.cuda.current_device()}')
+        self.target_device = torch.device(f"cuda:{torch.cuda.current_device()}")
         # TODO(ver217): add prefetch
         self.items: List[BufferItem] = []
 
     @torch.no_grad()
     def append(self, experience: Experience) -> None:
         if self.cpu_offload:
-            experience.to_device(torch.device('cpu'))
+            experience.to_device(torch.device("cpu"))
         items = split_experience_batch(experience)
         self.items.extend(items)
         if self.limit > 0:

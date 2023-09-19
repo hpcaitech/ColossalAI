@@ -76,8 +76,10 @@ def report_memory_usage(message, logger=None, report_cpu=False):
     gpu_cached = _bytes_to_MB(torch.cuda.memory_reserved())
     gpu_max_cached = _bytes_to_MB(torch.cuda.max_memory_reserved())
 
-    full_log = f"{message}: GPU: allocated {gpu_allocated} MB, max allocated {gpu_max_allocated} MB, " \
+    full_log = (
+        f"{message}: GPU: allocated {gpu_allocated} MB, max allocated {gpu_max_allocated} MB, "
         + f"cached: {gpu_cached} MB, max cached: {gpu_max_cached} MB"
+    )
 
     if report_cpu:
         # python doesn't do real-time garbage collection so do it explicitly to get the correct RAM reports
@@ -91,7 +93,7 @@ def report_memory_usage(message, logger=None, report_cpu=False):
     logger.info(full_log)
 
     # get the peak memory to report correct data, so reset the counter for the next call
-    if hasattr(torch.cuda, "reset_peak_memory_stats"):    # pytorch 1.4+
+    if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
         torch.cuda.reset_peak_memory_stats()
 
 
@@ -106,10 +108,10 @@ def colo_device_memory_capacity(device: torch.device) -> int:
         int: size in byte
     """
     assert isinstance(device, torch.device)
-    if device.type == 'cpu':
+    if device.type == "cpu":
         # In the context of 1-CPU-N-GPU, the memory capacity of the current process is 1/N overall CPU memory.
         return colo_get_cpu_memory_capacity() / gpc.num_processes_on_current_node
-    if device.type == 'cuda':
+    if device.type == "cuda":
         return torch.cuda.get_device_properties(get_current_device()).total_memory * _GLOBAL_CUDA_MEM_FRACTION
 
 
@@ -123,16 +125,16 @@ def colo_device_memory_used(device: torch.device) -> int:
     Returns:
         int: memory size in bytes
     """
-    if device.type == 'cpu':
+    if device.type == "cpu":
         mem_info = _get_cpu_memory_info()
         # In the context of 1-CPU-N-GPU, the memory usage of the current process is 1/N CPU memory used.
         # Each process consumes the same amount of memory.
         ret = mem_info.used / gpc.num_processes_on_current_node
         return ret
-    elif device.type == 'cuda':
+    elif device.type == "cuda":
         ret: int = torch.cuda.memory_allocated(device)
         # get the peak memory to report correct data, so reset the counter for the next call
-        if hasattr(torch.cuda, "reset_peak_memory_stats"):    # pytorch 1.4+
+        if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
             torch.cuda.reset_peak_memory_stats(device)
         return ret
 
@@ -145,9 +147,9 @@ def colo_set_process_memory_fraction(ratio: float) -> None:
     Args:
         ratio (float): a ratio between 0. ~ 1.
     """
-    if version.parse(torch.__version__) < version.parse('1.8'):
-        logger = get_dist_logger('colo_set_process_memory_fraction')
-        logger.warning('colo_set_process_memory_fraction failed because torch version is less than 1.8')
+    if version.parse(torch.__version__) < version.parse("1.8"):
+        logger = get_dist_logger("colo_set_process_memory_fraction")
+        logger.warning("colo_set_process_memory_fraction failed because torch version is less than 1.8")
         return
     global _GLOBAL_CUDA_MEM_FRACTION
     _GLOBAL_CUDA_MEM_FRACTION = ratio

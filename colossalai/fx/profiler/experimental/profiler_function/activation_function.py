@@ -1,5 +1,7 @@
 from typing import Tuple
+
 import torch
+
 from ..registry import meta_profiler_function
 
 # TODO: different activation has different FLOPs count, currently unused.

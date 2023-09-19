@@ -23,7 +23,7 @@ CONFIG = dict(NUM_MICRO_BATCHES=2, parallel=dict(pipeline=dict(size=2), tensor=d
 
 
 def run_schedule(rank, world_size, port):
-    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     # build model
     model = resnet18(num_classes=10)
@@ -33,20 +33,23 @@ def run_schedule(rank, world_size, port):
     elif gpc.get_local_rank(ParallelMode.PIPELINE) == 1:
 
         class Flatten(nn.Module):
-
             def forward(self, x):
                 return torch.flatten(x, 1)
 
         model = nn.Sequential(model.layer3, model.layer4, model.avgpool, Flatten(), model.fc)
 
-    print_rank_0('model is created')
+    print_rank_0("model is created")
 
-    train_dataset = CIFAR10(root=Path(os.environ['DATA']),
-                            download=True,
-                            transform=transforms.Compose([
-                                transforms.ToTensor(),
-                                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
-                            ]))
+    train_dataset = CIFAR10(
+        root=Path(os.environ["DATA"]),
+        download=True,
+        transform=transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
+            ]
+        ),
+    )
 
     train_dataloader = get_dataloader(
         dataset=train_dataset,
@@ -83,5 +86,5 @@ def test_pipeline_schedule():
     spawn(run_schedule, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_pipeline_schedule()

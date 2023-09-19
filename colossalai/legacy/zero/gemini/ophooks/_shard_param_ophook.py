@@ -19,25 +19,25 @@ class ShardParamHook(BaseOpHook):
 
     def pre_fwd_exec(self, module: torch.nn.Module, *args):
         for param in module.parameters():
-            assert hasattr(param, 'ca_attr')
+            assert hasattr(param, "ca_attr")
             param.ca_attr.gather()
             param.data = param.ca_attr.payload()
 
     def post_fwd_exec(self, module: torch.nn.Module, *args):
         for param in module.parameters():
-            assert hasattr(param, 'ca_attr')
+            assert hasattr(param, "ca_attr")
             param.ca_attr.shard()
             param.data = param.ca_attr.payload()
 
     def pre_bwd_exec(self, module: torch.nn.Module, input, output):
         for param in module.parameters():
-            assert hasattr(param, 'ca_attr')
+            assert hasattr(param, "ca_attr")
             param.ca_attr.gather()
             param.data = param.ca_attr.payload()
 
     def post_bwd_exec(self, module: torch.nn.Module, input):
         for param in module.parameters():
-            assert hasattr(param, 'ca_attr')
+            assert hasattr(param, "ca_attr")
             param.ca_attr.shard()
             param.data = param.ca_attr.payload()
 

@@ -14,25 +14,27 @@ class DummyDataLoader(DummyDataGenerator):
     batch_size = 4
 
     def generate(self):
-        data = torch.randn((DummyDataLoader.batch_size, DummyDataLoader.num_channel, DummyDataLoader.img_size,
-                            DummyDataLoader.img_size),
-                           device=get_current_device())
-        label = torch.randint(low=0,
-                              high=DummyDataLoader.num_class,
-                              size=(DummyDataLoader.batch_size,),
-                              device=get_current_device())
+        data = torch.randn(
+            (
+                DummyDataLoader.batch_size,
+                DummyDataLoader.num_channel,
+                DummyDataLoader.img_size,
+                DummyDataLoader.img_size,
+            ),
+            device=get_current_device(),
+        )
+        label = torch.randint(
+            low=0, high=DummyDataLoader.num_class, size=(DummyDataLoader.batch_size,), device=get_current_device()
+        )
         return data, label
 
 
-@non_distributed_component_funcs.register(name='beit')
+@non_distributed_component_funcs.register(name="beit")
 def get_training_components():
-
     def model_builder(checkpoint=False):
-        model = Beit(img_size=DummyDataLoader.img_size,
-                     num_classes=DummyDataLoader.num_class,
-                     embed_dim=32,
-                     depth=2,
-                     num_heads=4)
+        model = Beit(
+            img_size=DummyDataLoader.img_size, num_classes=DummyDataLoader.num_class, embed_dim=32, depth=2, num_heads=4
+        )
         return model
 
     trainloader = DummyDataLoader()

@@ -29,8 +29,8 @@ def get_gpu_mem():
     return torch.cuda.memory_allocated() / 1024**2
 
 
-def get_mem_info(prefix=''):
-    return f'{prefix}GPU memory usage: {get_gpu_mem():.2f} MB, CPU memory usage: {get_cpu_mem():.2f} MB'
+def get_mem_info(prefix=""):
+    return f"{prefix}GPU memory usage: {get_gpu_mem():.2f} MB, CPU memory usage: {get_cpu_mem():.2f} MB"
 
 
 def get_tflops(model_numel, batch_size, seq_len, step_time):
@@ -51,14 +51,14 @@ def main():
     logger = get_dist_logger()
     config = transformers.GPT2Config(n_position=SEQ_LENGTH, n_layer=NUM_LAYERS, n_head=NUM_HEADS, n_embd=HIDDEN_DIM)
     if FP16:
-        model = GPT2LMHeadModel(config=config).half().to('cuda')
+        model = GPT2LMHeadModel(config=config).half().to("cuda")
     else:
-        model = GPT2LMHeadModel(config=config).to('cuda')
+        model = GPT2LMHeadModel(config=config).to("cuda")
     global_numel = sum([p.numel() for p in model.parameters()])
 
     meta_input_sample = {
-        'input_ids': torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64).to('meta'),
-        'attention_mask': torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64).to('meta'),
+        "input_ids": torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64).to("meta"),
+        "attention_mask": torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64).to("meta"),
     }
 
     gm, solution = autoparallelize(model, meta_input_sample, return_solution=True)
@@ -72,7 +72,7 @@ def main():
     criterion = GPTLMLoss()
 
     optimizer = torch.optim.Adam(gm.parameters(), lr=0.01)
-    logger.info(get_mem_info(prefix='After init model, '), ranks=[0])
+    logger.info(get_mem_info(prefix="After init model, "), ranks=[0])
     get_tflops_func = partial(get_tflops, global_numel, BATCH_SIZE, SEQ_LENGTH)
     torch.cuda.synchronize()
     model.train()
@@ -89,10 +89,11 @@ def main():
         torch.cuda.synchronize()
         step_time = time() - start
         logger.info(
-            f'[{n+1}/{NUM_STEPS}] Loss:{loss.item():.3f}, Step time: {step_time:.3f}s, TFLOPS: {get_tflops_func(step_time):.3f}',
-            ranks=[0])
+            f"[{n+1}/{NUM_STEPS}] Loss:{loss.item():.3f}, Step time: {step_time:.3f}s, TFLOPS: {get_tflops_func(step_time):.3f}",
+            ranks=[0],
+        )
     torch.cuda.synchronize()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

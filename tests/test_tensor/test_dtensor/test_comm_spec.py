@@ -20,10 +20,9 @@ def check_all_gather(process_groups_dict, rank):
     tensor_to_check = torch.cat((torch.ones(2, 2), torch.zeros(2, 2)), 1).cuda()
 
     # CommSpec:(comm_pattern:allgather, gather_dim:1, logical_process_axis:1)
-    comm_spec = CommSpec(CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
-                         process_groups_dict,
-                         gather_dim=1,
-                         logical_process_axis=1)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.GATHER_FWD_SPLIT_BWD, process_groups_dict, gather_dim=1, logical_process_axis=1
+    )
     sharded_tensor_to_comm = sharded_tensor_to_comm = comm_spec.covert_spec_to_action(sharded_tensor_to_comm)
 
     assert sharded_tensor_to_comm.equal(tensor_to_check)
@@ -38,10 +37,9 @@ def check_shard(process_groups_dict, rank):
     tensor_to_shard = torch.cat((sharded_tensor_to_comm_0, sharded_tensor_to_comm_1), 1)
 
     # CommSpec:(comm_pattern:shard, shard_dim:1, logical_process_axis:1)
-    comm_spec = CommSpec(CollectiveCommPattern.SPLIT_FWD_GATHER_BWD,
-                         process_groups_dict,
-                         shard_dim=1,
-                         logical_process_axis=1)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.SPLIT_FWD_GATHER_BWD, process_groups_dict, shard_dim=1, logical_process_axis=1
+    )
     tensor_to_shard = comm_spec.covert_spec_to_action(tensor_to_shard)
 
     if rank in (0, 2):
@@ -79,11 +77,13 @@ def check_all_to_all(process_groups_dict, rank):
         tensor_to_check = torch.tensor([[1], [1], [3], [3]], dtype=tensor_to_comm.dtype).cuda()
 
     # CommSpec:(comm_pattern:shard, shard_dim:1, logical_process_axis:1)
-    comm_spec = CommSpec(CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD,
-                         process_groups_dict,
-                         gather_dim=0,
-                         shard_dim=1,
-                         logical_process_axis=0)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD,
+        process_groups_dict,
+        gather_dim=0,
+        shard_dim=1,
+        logical_process_axis=0,
+    )
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
     assert tensor_to_comm.equal(tensor_to_check)
@@ -124,7 +124,7 @@ def check_all_reduce_bwd(process_groups_dict, rank):
 
 def check_comm(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     physical_mesh_id = torch.arange(0, 4)
     assert rank == dist.get_rank()
@@ -157,5 +157,5 @@ def test_comm_spec():
     spawn(check_comm, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_comm_spec()

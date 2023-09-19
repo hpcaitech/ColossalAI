@@ -1,3 +1,3 @@
 from .chatglm_actor import ChatGLMActor
 
-__all__ = ['ChatGLMActor']
+__all__ = ["ChatGLMActor"]

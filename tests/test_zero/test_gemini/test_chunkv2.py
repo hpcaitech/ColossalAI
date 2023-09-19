@@ -31,26 +31,28 @@ def check_equal(param, param_cp):
     return torch.equal(temp, param_cp.data)
 
 
-@parameterize('init_device', [None, torch.device('cpu')])
-@parameterize('keep_gathered', [True, False])
-@parameterize('pin_memory', [True, False])
+@parameterize("init_device", [None, torch.device("cpu")])
+@parameterize("keep_gathered", [True, False])
+@parameterize("pin_memory", [True, False])
 def exam_chunk_basic(init_device, keep_gathered, pin_memory):
     world_size = torch.distributed.get_world_size()
     pg = _get_default_group()
-    my_chunk = Chunk(chunk_size=1024,
-                     process_group=pg,
-                     dtype=torch.float32,
-                     init_device=init_device,
-                     cpu_shard_init=True,
-                     keep_gathered=keep_gathered,
-                     pin_memory=pin_memory)
+    my_chunk = Chunk(
+        chunk_size=1024,
+        process_group=pg,
+        dtype=torch.float32,
+        init_device=init_device,
+        cpu_shard_init=True,
+        keep_gathered=keep_gathered,
+        pin_memory=pin_memory,
+    )
 
     param_list = []
     param_cp_list = []
 
-    add_param(param_list, param_cp_list, 8, 8, 8, device='cuda')
+    add_param(param_list, param_cp_list, 8, 8, 8, device="cuda")
     add_param(param_list, param_cp_list, 4, 4)
-    add_param(param_list, param_cp_list, 4, 8, 2, device='cuda')
+    add_param(param_list, param_cp_list, 4, 8, 2, device="cuda")
     add_param(param_list, param_cp_list, 1, 1, 5)
 
     for param in param_list:
@@ -62,12 +64,12 @@ def exam_chunk_basic(init_device, keep_gathered, pin_memory):
 
     if keep_gathered is False:
         assert my_chunk.cpu_shard.size(0) == 1024 // world_size
-        assert my_chunk.device_type == 'cpu'
+        assert my_chunk.device_type == "cpu"
         assert my_chunk.can_move
         my_chunk.shard_move(get_current_device())
     else:
         assert my_chunk.cuda_global_chunk.size(0) == 1024
-        assert my_chunk.device_type == 'cuda'
+        assert my_chunk.device_type == "cuda"
         assert not my_chunk.can_move
 
     assert dist_sum(my_chunk.valid_end) == my_chunk.utilized_size
@@ -75,7 +77,7 @@ def exam_chunk_basic(init_device, keep_gathered, pin_memory):
     assert not flag, "has_inf_or_nan is {}".format(flag)
 
     my_chunk.access_chunk()
-    assert my_chunk.device_type == 'cuda'
+    assert my_chunk.device_type == "cuda"
     for param, param_cp in zip(param_list, param_cp_list):
         check_equal(param, param_cp)
 
@@ -97,25 +99,25 @@ def exam_chunk_basic(init_device, keep_gathered, pin_memory):
 
     if keep_gathered is False:
         assert my_chunk.cuda_shard.size(0) == 1024 // world_size
-        assert my_chunk.device_type == 'cuda'
+        assert my_chunk.device_type == "cuda"
         assert my_chunk.can_move
     else:
         assert my_chunk.cuda_global_chunk.size(0) == 1024
-        assert my_chunk.device_type == 'cuda'
+        assert my_chunk.device_type == "cuda"
         assert not my_chunk.can_move
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_chunk_basic()
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [1, 2, 4])
+@pytest.mark.parametrize("world_size", [1, 2, 4])
 @rerun_if_address_is_in_use()
 def test_chunk_function(world_size):
     spawn(run_dist, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_chunk_function(4)

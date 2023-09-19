@@ -22,7 +22,7 @@ class ShardGradMemTracerHook(BaseOpHook):
 
     def pre_bwd_exec(self, module: torch.nn.Module, input, output):
         for param in module.parameters():
-            assert hasattr(param, '_sharded_grad')
+            assert hasattr(param, "_sharded_grad")
             param._sharded_grad.setup()
 
     def post_bwd_exec(self, module: torch.nn.Module, input):

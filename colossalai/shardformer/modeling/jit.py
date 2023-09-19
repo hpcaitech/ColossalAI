@@ -2,7 +2,6 @@ import torch
 
 
 def get_dropout_add_func():
-
     from transformers.models.bloom.modeling_bloom import dropout_add
 
     def self_dropout_add(self, x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
@@ -12,7 +11,6 @@ def get_dropout_add_func():
 
 
 def get_jit_fused_dropout_add_func():
-
     from colossalai.kernel.jit import bias_dropout_add_fused_inference, bias_dropout_add_fused_train
 
     def self_dropout_add(self, x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
@@ -25,7 +23,6 @@ def get_jit_fused_dropout_add_func():
 
 
 def get_jit_fused_gelu_forward_func():
-
     from colossalai.kernel.jit.bias_gelu import bias_gelu
 
     def bloom_gelu_forward(x: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:

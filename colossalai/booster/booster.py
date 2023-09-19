@@ -16,7 +16,7 @@ from .mixed_precision import MixedPrecision, mixed_precision_factory
 from .plugin import Plugin
 from .plugin.pp_plugin_base import PipelinePluginBase
 
-__all__ = ['Booster']
+__all__ = ["Booster"]
 
 
 class Booster:
@@ -60,28 +60,31 @@ class Booster:
         plugin (Plugin): The plugin to run the training. Default: None.
     """
 
-    def __init__(self,
-                 device: Optional[str] = None,
-                 mixed_precision: Optional[Union[MixedPrecision, str]] = None,
-                 plugin: Optional[Plugin] = None) -> None:
+    def __init__(
+        self,
+        device: Optional[str] = None,
+        mixed_precision: Optional[Union[MixedPrecision, str]] = None,
+        plugin: Optional[Plugin] = None,
+    ) -> None:
         if plugin is not None:
             assert isinstance(
-                plugin, Plugin), f'Expected the argument plugin to be an instance of Plugin, but got {type(plugin)}.'
+                plugin, Plugin
+            ), f"Expected the argument plugin to be an instance of Plugin, but got {type(plugin)}."
         self.plugin = plugin
 
         # set accelerator
         if self.plugin and self.plugin.control_device():
             self.accelerator = None
             if device is not None:
-                warnings.warn('The plugin will control the accelerator, so the device argument will be ignored.')
+                warnings.warn("The plugin will control the accelerator, so the device argument will be ignored.")
         else:
-            device = device or 'cuda'
+            device = device or "cuda"
             self.accelerator = Accelerator(device)
 
         # set precision
         if self.plugin and self.plugin.control_precision():
             if mixed_precision is not None:
-                warnings.warn('The plugin will control the precision, so the mixed_precision argument will be ignored.')
+                warnings.warn("The plugin will control the precision, so the mixed_precision argument will be ignored.")
             self.mixed_precision = None
         elif mixed_precision is None:
             self.mixed_precision = None
@@ -95,7 +98,7 @@ class Booster:
                 self.mixed_precision = mixed_precision
             else:
                 raise ValueError(
-                    f'Expected the argument mixed_precision to be a string or an instance of Precision, but got {type(mixed_precision)}.'
+                    f"Expected the argument mixed_precision to be a string or an instance of Precision, but got {type(mixed_precision)}."
                 )
 
         if self.plugin is not None and self.plugin.control_checkpoint_io():
@@ -131,7 +134,8 @@ class Booster:
         # transform model for mixed precision
         if self.plugin:
             model, optimizer, criterion, dataloader, lr_scheduler = self.plugin.configure(
-                model, optimizer, criterion, dataloader, lr_scheduler)
+                model, optimizer, criterion, dataloader, lr_scheduler
+            )
 
         if self.plugin and not self.plugin.control_device():
             # transform model for accelerator
@@ -154,13 +158,15 @@ class Booster:
         # TODO(frank lee): implement this method with plugin
         optimizer.backward(loss)
 
-    def execute_pipeline(self,
-                         data_iter: Iterator,
-                         model: nn.Module,
-                         criterion: Callable[[Any, Any], torch.Tensor],
-                         optimizer: Optional[Optimizer] = None,
-                         return_loss: bool = True,
-                         return_outputs: bool = False) -> Dict[str, Any]:
+    def execute_pipeline(
+        self,
+        data_iter: Iterator,
+        model: nn.Module,
+        criterion: Callable[[Any, Any], torch.Tensor],
+        optimizer: Optional[Optimizer] = None,
+        return_loss: bool = True,
+        return_outputs: bool = False,
+    ) -> Dict[str, Any]:
         """
         Execute forward & backward when utilizing pipeline parallel.
         Return loss or Huggingface style model outputs if needed.
@@ -185,8 +191,9 @@ class Booster:
                             ret_dict['loss'] is the loss of forward if return_loss is set to True, else None.
                             ret_dict['outputs'] is the Huggingface style model outputs during forward if return_output is set to True, else None.
         """
-        assert isinstance(self.plugin,
-                          PipelinePluginBase), f'The plugin {self.plugin.__class__.__name__} does not support pipeline.'
+        assert isinstance(
+            self.plugin, PipelinePluginBase
+        ), f"The plugin {self.plugin.__class__.__name__} does not support pipeline."
         return self.plugin.execute_pipeline(data_iter, model, criterion, optimizer, return_loss, return_outputs)
 
     def no_sync(self, model: nn.Module = None, optimizer: OptimizerWrapper = None) -> contextmanager:
@@ -200,8 +207,10 @@ class Booster:
         Returns:
             contextmanager: Context to disable gradient synchronization.
         """
-        assert self.plugin is not None, f'no_sync is only enabled when a plugin is provided and the plugin supports no_sync.'
-        assert self.plugin.support_no_sync(), f'The plugin {self.plugin.__class__.__name__} does not support no_sync.'
+        assert (
+            self.plugin is not None
+        ), f"no_sync is only enabled when a plugin is provided and the plugin supports no_sync."
+        assert self.plugin.support_no_sync(), f"The plugin {self.plugin.__class__.__name__} does not support no_sync."
         return self.plugin.no_sync(model, optimizer)
 
     def load_model(self, model: Union[nn.Module, ModelWrapper], checkpoint: str, strict: bool = True) -> None:
@@ -217,14 +226,16 @@ class Booster:
         """
         self.checkpoint_io.load_model(model, checkpoint, strict)
 
-    def save_model(self,
-                   model: Union[nn.Module, ModelWrapper],
-                   checkpoint: str,
-                   shard: bool = False,
-                   gather_dtensor: bool = True,
-                   prefix: Optional[str] = None,
-                   size_per_shard: int = 1024,
-                   use_safetensors: bool = False) -> None:
+    def save_model(
+        self,
+        model: Union[nn.Module, ModelWrapper],
+        checkpoint: str,
+        shard: bool = False,
+        gather_dtensor: bool = True,
+        prefix: Optional[str] = None,
+        size_per_shard: int = 1024,
+        use_safetensors: bool = False,
+    ) -> None:
         """Save model to checkpoint.
 
         Args:
@@ -239,13 +250,15 @@ class Booster:
             size_per_shard (int, optional): Maximum size of checkpoint shard file in MB. This is useful only when ``shard=True``. Defaults to 1024.
             use_safetensors (bool, optional): whether to use safe tensors. Default: False. If set to True, the checkpoint will be saved.
         """
-        self.checkpoint_io.save_model(model,
-                                      checkpoint=checkpoint,
-                                      shard=shard,
-                                      gather_dtensor=gather_dtensor,
-                                      prefix=prefix,
-                                      size_per_shard=size_per_shard,
-                                      use_safetensors=use_safetensors)
+        self.checkpoint_io.save_model(
+            model,
+            checkpoint=checkpoint,
+            shard=shard,
+            gather_dtensor=gather_dtensor,
+            prefix=prefix,
+            size_per_shard=size_per_shard,
+            use_safetensors=use_safetensors,
+        )
 
     def load_optimizer(self, optimizer: Optimizer, checkpoint: str) -> None:
         """Load optimizer from checkpoint.
@@ -260,13 +273,15 @@ class Booster:
         """
         self.checkpoint_io.load_optimizer(optimizer, checkpoint)
 
-    def save_optimizer(self,
-                       optimizer: Optimizer,
-                       checkpoint: str,
-                       shard: bool = False,
-                       gather_dtensor: bool = True,
-                       prefix: Optional[str] = None,
-                       size_per_shard: int = 1024) -> None:
+    def save_optimizer(
+        self,
+        optimizer: Optimizer,
+        checkpoint: str,
+        shard: bool = False,
+        gather_dtensor: bool = True,
+        prefix: Optional[str] = None,
+        size_per_shard: int = 1024,
+    ) -> None:
         """
         Save optimizer to checkpoint.
 

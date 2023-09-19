@@ -45,7 +45,7 @@ class Initializer_Model(ProcessGroupInitializer):
         for i in range(self.num_group):
             ranks = [i * self.model_parallel_size + j for j in range(self.model_parallel_size)]
             group = dist.new_group(ranks)
-            group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+            group_cpu = dist.new_group(ranks, backend="gloo") if dist.get_backend() != "gloo" else group
 
             if self.rank in ranks:
                 local_rank = ranks.index(self.rank)

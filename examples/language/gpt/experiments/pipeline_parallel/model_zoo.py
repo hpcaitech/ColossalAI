@@ -4,22 +4,25 @@ from transformers import GPT2Config, GPT2LMHeadModel
 
 ## Define the Model and Loss Based on Huggingface transformers GPT2LMHeadModel
 class GPTLMModel(nn.Module):
-
-    def __init__(self,
-                 hidden_size=768,
-                 num_layers=12,
-                 num_attention_heads=12,
-                 max_seq_len=1024,
-                 vocab_size=50257,
-                 checkpoint=False):
+    def __init__(
+        self,
+        hidden_size=768,
+        num_layers=12,
+        num_attention_heads=12,
+        max_seq_len=1024,
+        vocab_size=50257,
+        checkpoint=False,
+    ):
         super().__init__()
         self.checkpoint = checkpoint
-        self.config = GPT2Config(n_embd=hidden_size,
-                                 n_layer=num_layers,
-                                 n_head=num_attention_heads,
-                                 n_positions=max_seq_len,
-                                 n_ctx=max_seq_len,
-                                 vocab_size=vocab_size)
+        self.config = GPT2Config(
+            n_embd=hidden_size,
+            n_layer=num_layers,
+            n_head=num_attention_heads,
+            n_positions=max_seq_len,
+            n_ctx=max_seq_len,
+            vocab_size=vocab_size,
+        )
         self.model = GPT2LMHeadModel(self.config)
         if checkpoint:
             self.model.gradient_checkpointing_enable()
@@ -70,4 +73,4 @@ def model_builder(model_size: str) -> callable:
         raise TypeError(f"model_builder {model_size}")
 
 
-__all__ = ['model_builder']
+__all__ = ["model_builder"]

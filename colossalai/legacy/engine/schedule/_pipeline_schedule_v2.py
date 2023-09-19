@@ -21,7 +21,7 @@ def pack_return_tensors(return_tensors):
     elif isinstance(output[0], (list, tuple)):
         output = tuple(torch.cat(tensors, dim=0) for tensors in zip(*output))
     else:
-        raise TypeError(f'Output of model must be tensor or list/tuple of tensors')
+        raise TypeError(f"Output of model must be tensor or list/tuple of tensors")
     if isinstance(label[0], torch.Tensor):
         label = torch.cat(label, dim=0)
     else:
@@ -59,12 +59,9 @@ class PipelineScheduleV2(PipelineSchedule):
 
     """
 
-    def forward_backward_step(self,
-                              engine: Engine,
-                              data_iter: Iterable,
-                              forward_only=False,
-                              return_loss=True,
-                              return_output_label=True) -> Tuple[torch.Tensor]:
+    def forward_backward_step(
+        self, engine: Engine, data_iter: Iterable, forward_only=False, return_loss=True, return_output_label=True
+    ) -> Tuple[torch.Tensor]:
         """Runs non-interleaved 1F1B schedule, with communication between pipeline stages.
         Returns a tuple with losses if the last stage, an empty tuple otherwise.
 
@@ -80,14 +77,15 @@ class PipelineScheduleV2(PipelineSchedule):
             Tuple[:class:`torch.Tensor`]: A tuple of (output, label, loss), loss and label could be None.
         """
 
-        assert forward_only or return_loss, \
-            'The argument \'return_loss\' has to be True when \'forward_only\' is False, but got False.'
+        assert (
+            forward_only or return_loss
+        ), "The argument 'return_loss' has to be True when 'forward_only' is False, but got False."
         self.load_batch(data_iter)
 
         # num_warmup_microbatches is the step when not all the processes are working
-        num_warmup_microbatches = \
-            (gpc.get_world_size(ParallelMode.PIPELINE)
-             - gpc.get_local_rank(ParallelMode.PIPELINE) - 1)
+        num_warmup_microbatches = (
+            gpc.get_world_size(ParallelMode.PIPELINE) - gpc.get_local_rank(ParallelMode.PIPELINE) - 1
+        )
         num_warmup_microbatches = min(num_warmup_microbatches, self.num_microbatches)
         num_microbatches_remaining = self.num_microbatches - num_warmup_microbatches
 
@@ -109,11 +107,9 @@ class PipelineScheduleV2(PipelineSchedule):
         for i in range(num_warmup_microbatches):
             input_obj = comm.recv_forward()
 
-            output_obj = self._forward_step(engine,
-                                            input_obj,
-                                            return_tensors,
-                                            return_output_label=return_output_label,
-                                            accum_loss=accum_loss)
+            output_obj = self._forward_step(
+                engine, input_obj, return_tensors, return_output_label=return_output_label, accum_loss=accum_loss
+            )
 
             comm.send_forward(output_obj)
 
@@ -129,13 +125,11 @@ class PipelineScheduleV2(PipelineSchedule):
 
         # Run 1F1B in steady state.
         for i in range(num_microbatches_remaining):
-            last_iteration = (i == (num_microbatches_remaining - 1))
+            last_iteration = i == (num_microbatches_remaining - 1)
 
-            output_obj = self._forward_step(engine,
-                                            input_obj,
-                                            return_tensors,
-                                            return_output_label=return_output_label,
-                                            accum_loss=accum_loss)
+            output_obj = self._forward_step(
+                engine, input_obj, return_tensors, return_output_label=return_output_label, accum_loss=accum_loss
+            )
             if forward_only:
                 comm.send_forward(output_obj)
 

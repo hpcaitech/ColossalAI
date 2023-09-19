@@ -3,20 +3,27 @@ from typing import Any, Dict, List
 
 import gpt_evaluate
 import metrics
-import pandas as pd
 import unieval
 from utils import analyze_automatic_results, get_data_per_category, save_automatic_results
 
 
 class Evaluator(object):
     """
-        A class named Evaluator includes GPT-3.5/GPT-4 evaluation
-        and automatic evaluation
+    A class named Evaluator includes GPT-3.5/GPT-4 evaluation
+    and automatic evaluation
 
     """
 
-    def __init__(self, params: Dict[str, Any], battle_prompt: Dict[str, Any], gpt_evaluation_prompt: Dict[str, Any],
-                 gpt_model: str, language: str, path_for_UniEval: Dict[str, str], gpt_with_reference: bool) -> None:
+    def __init__(
+        self,
+        params: Dict[str, Any],
+        battle_prompt: Dict[str, Any],
+        gpt_evaluation_prompt: Dict[str, Any],
+        gpt_model: str,
+        language: str,
+        path_for_UniEval: Dict[str, str],
+        gpt_with_reference: bool,
+    ) -> None:
         self.params = params
         self.battle_prompt = battle_prompt
         self.gpt_evaluation_prompt = gpt_evaluation_prompt
@@ -103,7 +110,8 @@ class Evaluator(object):
 
             if self.params[category]["UniEval"] and self.language == "cn":
                 raise Exception(
-                    "UniEval doesn't support Chinese! Please remove UniEval config in your Chinese config file.")
+                    "UniEval doesn't support Chinese! Please remove UniEval config in your Chinese config file."
+                )
 
             category_metrics = self.params[category]["UniEval"]
 
@@ -134,10 +142,9 @@ class Evaluator(object):
                 sources_list = [answer["instruction"] + answer["input"] for answer in answers_per_category[category]]
 
                 data = unieval.convert_data_to_unieval_format(predicts_list, sources_list, targets_list)
-                scores = uni_evaluator.evaluate(data,
-                                                category,
-                                                dims=list(self.unieval_metric_stats[task][category].keys()),
-                                                overall=False)
+                scores = uni_evaluator.evaluate(
+                    data, category, dims=list(self.unieval_metric_stats[task][category].keys()), overall=False
+                )
                 avg_scores = unieval.calculate_average_score(scores)
 
                 self.unieval_metric_stats[task][category].update(avg_scores)
@@ -165,7 +172,8 @@ class Evaluator(object):
                 category,
                 self.gpt_model,
                 self.language,
-                references=targets_per_category[category] if self.gpt_with_reference else None)
+                references=targets_per_category[category] if self.gpt_with_reference else None,
+            )
 
     def save(self, path: str, model_name_list: List[str]) -> None:
         """
@@ -204,16 +212,18 @@ class Evaluator(object):
                 gpt_base_save_path = os.path.join(path, "gpt_evaluate", "gpt_evaluate_results")
                 gpt_evaluation_results_save_path = os.path.join(gpt_base_save_path, "evaluation_results")
 
-                all_evaluations = gpt_evaluate.save_gpt_evaluation_results(model_name_list[0],
-                                                                           self.gpt_evaluation_results,
-                                                                           gpt_evaluation_results_save_path)
+                all_evaluations = gpt_evaluate.save_gpt_evaluation_results(
+                    model_name_list[0], self.gpt_evaluation_results, gpt_evaluation_results_save_path
+                )
 
                 # Start to calculate scores and save statistics.
                 gpt_evaluation_statistics_save_path = os.path.join(gpt_base_save_path, "evaluation_statistics")
-                gpt_evaluate.save_gpt_evaluation_statistics(model_name_list[0], all_evaluations,
-                                                            gpt_evaluation_statistics_save_path)
+                gpt_evaluate.save_gpt_evaluation_statistics(
+                    model_name_list[0], all_evaluations, gpt_evaluation_statistics_save_path
+                )
 
                 # Save charts and csv.
                 gpt_evaluation_analyses_save_path = os.path.join(gpt_base_save_path, "evaluation_analyses")
-                gpt_evaluate.analyze_gpt_evaluation_statistics(gpt_evaluation_statistics_save_path,
-                                                               gpt_evaluation_analyses_save_path)
+                gpt_evaluate.analyze_gpt_evaluation_statistics(
+                    gpt_evaluation_statistics_save_path, gpt_evaluation_analyses_save_path
+                )

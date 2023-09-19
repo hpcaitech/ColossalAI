@@ -22,37 +22,26 @@ from tests.kit.model_zoo import model_zoo
 
 # TODO (Baizhou): Add test cases for shard=False
 @clear_cache_before_run()
-@parameterize('shard', [True])
-@parameterize('model_name', ['transformers_gpt'])
-@parameterize('size_per_shard', [32])
-@parameterize('test_config', [{
-    'tp_size': 4,
-    'pp_size': 1,
-    'precision': 'fp32',
-}, {
-    'tp_size': 2,
-    'pp_size': 2,
-    'num_microbatches': 4,
-    'precision': 'fp16',
-    'initial_scale': 1
-}, {
-    'tp_size': 2,
-    'pp_size': 1,
-    'zero_stage': 2,
-    'precision': 'fp16',
-    'initial_scale': 1
-}, {
-    'tp_size': 1,
-    'pp_size': 2,
-    'num_microbatches': 4,
-    'zero_stage': 1,
-    'precision': 'fp16',
-    'initial_scale': 1
-}])
+@parameterize("shard", [True])
+@parameterize("model_name", ["transformers_gpt"])
+@parameterize("size_per_shard", [32])
+@parameterize(
+    "test_config",
+    [
+        {
+            "tp_size": 4,
+            "pp_size": 1,
+            "precision": "fp32",
+        },
+        {"tp_size": 2, "pp_size": 2, "num_microbatches": 4, "precision": "fp16", "initial_scale": 1},
+        {"tp_size": 2, "pp_size": 1, "zero_stage": 2, "precision": "fp16", "initial_scale": 1},
+        {"tp_size": 1, "pp_size": 2, "num_microbatches": 4, "zero_stage": 1, "precision": "fp16", "initial_scale": 1},
+    ],
+)
 def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_config: dict):
-
-    (model_fn, data_gen_fn, output_transform_fn, loss_fn,
-     _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
+    (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) = next(
+        iter(model_zoo.get_sub_registry(model_name).values())
+    )
     criterion = loss_fn
     plugin = HybridParallelPlugin(**test_config)
     booster = Booster(plugin=plugin)
@@ -65,10 +54,10 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     def _preprocess_data(data):
         if booster.plugin.stage_manager is not None:
             for k, v in data.items():
-                if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__:
+                if torch.is_tensor(v) or "Tensor" in v.__class__.__name__:
                     new_shape = [1] * v.dim()
                     new_shape[0] = 4
-                    data[k] = v.to('cuda').repeat(*new_shape)
+                    data[k] = v.to("cuda").repeat(*new_shape)
             return iter([data])
         else:
             return {k: v.cuda() for k, v in data.items()}
@@ -80,12 +69,9 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     data = data_gen_fn()
     model.train()
     if booster.plugin.stage_manager is not None:
-        booster.execute_pipeline(_preprocess_data(data),
-                                 model,
-                                 _criterion,
-                                 optimizer,
-                                 return_loss=True,
-                                 return_outputs=False)
+        booster.execute_pipeline(
+            _preprocess_data(data), model, _criterion, optimizer, return_loss=True, return_outputs=False
+        )
     else:
         output = model(**_preprocess_data(data))
         loss = criterion(output)
@@ -94,7 +80,6 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     optimizer.step()
 
     with shared_tempdir() as tempdir:
-
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
         booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
@@ -115,18 +100,12 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     model.train()
     new_model.train()
     if booster.plugin.stage_manager is not None:
-        booster.execute_pipeline(_preprocess_data(data),
-                                 model,
-                                 _criterion,
-                                 optimizer,
-                                 return_loss=True,
-                                 return_outputs=False)
-        booster.execute_pipeline(_preprocess_data(data),
-                                 new_model,
-                                 _criterion,
-                                 new_optimizer,
-                                 return_loss=True,
-                                 return_outputs=False)
+        booster.execute_pipeline(
+            _preprocess_data(data), model, _criterion, optimizer, return_loss=True, return_outputs=False
+        )
+        booster.execute_pipeline(
+            _preprocess_data(data), new_model, _criterion, new_optimizer, return_loss=True, return_outputs=False
+        )
     else:
         old_model_loss = criterion(model(**_preprocess_data(data)))
         optimizer.backward(old_model_loss)
@@ -141,10 +120,9 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
 
     if stage_manager is None or stage_manager.is_first_stage():
         assert_close_loose(model.unwrap().wte.weight.data, new_model.unwrap().wte.weight.data, atol=5e-3, rtol=5e-3)
-        assert_close_loose(model.unwrap().h[0].mlp.c_fc.weight.data,
-                           new_model.unwrap().h[0].mlp.c_fc.weight.data,
-                           atol=5e-3,
-                           rtol=5e-3)
+        assert_close_loose(
+            model.unwrap().h[0].mlp.c_fc.weight.data, new_model.unwrap().h[0].mlp.c_fc.weight.data, atol=5e-3, rtol=5e-3
+        )
 
     dist.barrier()
     Randomizer.reset_index()
@@ -153,12 +131,12 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
 
 def run_dist(rank, world_size, port):
     config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [4])
+@pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
 def test_hybrid_ckpIO(world_size):
     spawn(run_dist, world_size)

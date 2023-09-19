@@ -6,7 +6,7 @@ from torch.distributed import ProcessGroup
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
-__all__ = ['ShardConfig']
+__all__ = ["ShardConfig"]
 
 
 @dataclass
@@ -45,7 +45,8 @@ class ShardConfig:
     def __post_init__(self):
         if not self.enable_tensor_parallelism and self.enable_sequence_parallelism:
             raise ValueError(
-                "enable_sequence_parallelism can only be set to True when enable_tensor_parallelism is True")
+                "enable_sequence_parallelism can only be set to True when enable_tensor_parallelism is True"
+            )
         if not self.enable_sequence_parallelism and self.enable_sequence_overlap:
             raise ValueError("enable_sequence_overlap can only be set to True when enable_sequence_parallelism is True")
         if not self.enable_tensor_parallelism:

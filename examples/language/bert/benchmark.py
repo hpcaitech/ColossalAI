@@ -32,9 +32,7 @@ DATASET_LEN = 1000
 
 
 class RandintDataset(Dataset):
-
     def __init__(self, dataset_length: int, sequence_length: int, vocab_size: int, n_class: int):
-
         self._sequence_length = sequence_length
         self._vocab_size = vocab_size
         self._n_class = n_class
@@ -42,10 +40,13 @@ class RandintDataset(Dataset):
         self._datas = torch.randint(
             low=0,
             high=self._vocab_size,
-            size=(self._dataset_length, self._sequence_length,),
+            size=(
+                self._dataset_length,
+                self._sequence_length,
+            ),
             dtype=torch.long,
         )
-        self._labels = torch.randint(low=0, high=self._n_class, size=(self._dataset_length, 1), dtype=torch.long) 
+        self._labels = torch.randint(low=0, high=self._n_class, size=(self._dataset_length, 1), dtype=torch.long)
 
     def __len__(self):
         return self._dataset_length
@@ -59,13 +60,15 @@ def main():
     # Parse Arguments
     # ==============================
     parser = argparse.ArgumentParser()
-    parser.add_argument('-t', '--task', default='mrpc', help="GLUE task to run")
-    parser.add_argument('-p',
-                        '--plugin',
-                        type=str,
-                        default='torch_ddp',
-                        choices=['torch_ddp', 'torch_ddp_fp16', 'gemini', 'low_level_zero'],
-                        help="plugin to use")
+    parser.add_argument("-t", "--task", default="mrpc", help="GLUE task to run")
+    parser.add_argument(
+        "-p",
+        "--plugin",
+        type=str,
+        default="torch_ddp",
+        choices=["torch_ddp", "torch_ddp_fp16", "gemini", "low_level_zero"],
+        help="plugin to use",
+    )
     parser.add_argument(
         "--model_type",
         type=str,
@@ -88,13 +91,13 @@ def main():
     # Instantiate Plugin and Booster
     # ==============================
     booster_kwargs = {}
-    if args.plugin == 'torch_ddp_fp16':
-        booster_kwargs['mixed_precision'] = 'fp16'
-    if args.plugin.startswith('torch_ddp'):
+    if args.plugin == "torch_ddp_fp16":
+        booster_kwargs["mixed_precision"] = "fp16"
+    if args.plugin.startswith("torch_ddp"):
         plugin = TorchDDPPlugin()
-    elif args.plugin == 'gemini':
-        plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, initial_scale=2**5)
-    elif args.plugin == 'low_level_zero':
+    elif args.plugin == "gemini":
+        plugin = GeminiPlugin(placement_policy="cuda", strict_ddp_mode=True, initial_scale=2**5)
+    elif args.plugin == "low_level_zero":
         plugin = LowLevelZeroPlugin(initial_scale=2**5)
 
     booster = Booster(plugin=plugin, **booster_kwargs)
@@ -103,10 +106,9 @@ def main():
     # Prepare Dataloader
     # ==============================
 
-    train_dataset = RandintDataset(dataset_length=DATASET_LEN,
-                                   sequence_length=SEQ_LEN,
-                                   vocab_size=VOCAB_SIZE,
-                                   n_class=NUM_LABELS)
+    train_dataset = RandintDataset(
+        dataset_length=DATASET_LEN, sequence_length=SEQ_LEN, vocab_size=VOCAB_SIZE, n_class=NUM_LABELS
+    )
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE)
 
     # ====================================
@@ -159,16 +161,12 @@ def main():
     # Benchmark model
     # ==============================
 
-    results = benchmark(model,
-                        booster,
-                        optimizer,
-                        lr_scheduler,
-                        train_dataloader,
-                        criterion=criterion,
-                        epoch_num=NUM_EPOCHS)
+    results = benchmark(
+        model, booster, optimizer, lr_scheduler, train_dataloader, criterion=criterion, epoch_num=NUM_EPOCHS
+    )
 
     coordinator.print_on_master(results)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

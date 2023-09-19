@@ -62,10 +62,10 @@ def _cuda_safe_tensor_to_object(tensor: torch.Tensor, tensor_size: torch.Size) -
         Any: object after unpickled
     """
     buf = tensor.numpy().tobytes()[:tensor_size]
-    if b'cuda' in buf:
+    if b"cuda" in buf:
         buf_array = bytearray(buf)
         device_index = torch.cuda.current_device()
-        buf_array[buf_array.find(b'cuda') + 5] = 48 + device_index
+        buf_array[buf_array.find(b"cuda") + 5] = 48 + device_index
         buf = bytes(buf_array)
 
     io_bytes = io.BytesIO(buf)
@@ -123,8 +123,8 @@ def _broadcast_object_list(object_list: List[Any], src: int, dst: int, device=No
     if local_rank == src:
         object_tensor = torch.cat(tensor_list)
     else:
-        object_tensor = torch.empty(    # type: ignore[call-overload]
-            torch.sum(object_sizes_tensor).item(),    # type: ignore[arg-type]
+        object_tensor = torch.empty(  # type: ignore[call-overload]
+            torch.sum(object_sizes_tensor).item(),  # type: ignore[arg-type]
             dtype=torch.uint8,
         )
 
@@ -138,7 +138,7 @@ def _broadcast_object_list(object_list: List[Any], src: int, dst: int, device=No
 
     if local_rank != src:
         for i, obj_size in enumerate(object_sizes_tensor):
-            obj_view = object_tensor[offset:offset + obj_size]
+            obj_view = object_tensor[offset : offset + obj_size]
             obj_view = obj_view.type(torch.uint8)
             if obj_view.device != torch.device("cpu"):
                 obj_view = obj_view.cpu()
@@ -147,8 +147,10 @@ def _broadcast_object_list(object_list: List[Any], src: int, dst: int, device=No
             unpickle_object = _cuda_safe_tensor_to_object(obj_view, obj_size)
 
             # unconsistence in device
-            if isinstance(unpickle_object,
-                          torch.Tensor) and unpickle_object.device.index != torch.cuda.current_device():
+            if (
+                isinstance(unpickle_object, torch.Tensor)
+                and unpickle_object.device.index != torch.cuda.current_device()
+            ):
                 unpickle_object = unpickle_object.cuda()
 
             object_list[i] = unpickle_object

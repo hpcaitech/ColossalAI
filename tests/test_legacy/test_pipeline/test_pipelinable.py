@@ -2,14 +2,13 @@ import pytest
 import torch
 
 from colossalai.legacy.pipeline.pipelinable import PipelinableContext
-from colossalai.testing import rerun_if_address_is_in_use, rerun_on_exception, spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 NUM_CHUNKS = 1
 PIPELINE_SIZE = 2
 
 
 class MLP(torch.nn.Module):
-
     def __init__(self, dim: int = 256):
         super().__init__()
         intermediate_dim = dim * 4
@@ -55,5 +54,5 @@ def test_pipelinable():
     spawn(run_pipelinable, 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_pipelinable()

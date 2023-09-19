@@ -22,11 +22,11 @@ def get_timestamp_us():
 
 
 def generic_instant_event(name, pid, tid, timestamp, args):
-    return {'ph': 'i', 's': 't', 'name': name, 'pid': pid, 'tid': tid, 'ts': timestamp, 'args': args}
+    return {"ph": "i", "s": "t", "name": name, "pid": pid, "tid": tid, "ts": timestamp, "args": args}
 
 
 class StatefulTensorMemoryEvent:
-    EVENT_NAME = '[statefulTensorMemory]'
+    EVENT_NAME = "[statefulTensorMemory]"
 
     def __init__(self, timestamp: int, device_type: DeviceType, bytes_: int) -> None:
         self.pid = os.getpid()
@@ -37,22 +37,23 @@ class StatefulTensorMemoryEvent:
         self.bytes = bytes_
 
     def state_dict(self):
-        return generic_instant_event(StatefulTensorMemoryEvent.EVENT_NAME, self.pid, self.tid, self.timestamp, {
-            'Device Type': self.device_type.value,
-            'Device Id': self.device_id,
-            'Bytes': self.bytes
-        })
+        return generic_instant_event(
+            StatefulTensorMemoryEvent.EVENT_NAME,
+            self.pid,
+            self.tid,
+            self.timestamp,
+            {"Device Type": self.device_type.value, "Device Id": self.device_id, "Bytes": self.bytes},
+        )
 
 
 class StatefulTensorMemoryTracer:
-
     def __init__(self) -> None:
         self.events: List[StatefulTensorMemoryEvent] = []
         self._tracing = False
 
     def sample(self):
-        cuda_mem = StatefulTensor.GST_MGR.total_mem['cuda']
-        cpu_mem = StatefulTensor.GST_MGR.total_mem['cpu']
+        cuda_mem = StatefulTensor.GST_MGR.total_mem["cuda"]
+        cpu_mem = StatefulTensor.GST_MGR.total_mem["cpu"]
         timestamp = get_timestamp_us()
         if self._tracing:
             self.events.append(StatefulTensorMemoryEvent(timestamp, DeviceType.CUDA, cuda_mem))
@@ -70,7 +71,6 @@ class StatefulTensorMemoryTracer:
 
 
 class StatefulTensorMemoryTracerHook(BaseOpHook):
-
     def __init__(self, tracer: StatefulTensorMemoryTracer):
         super().__init__()
         self.tracer = tracer
@@ -104,7 +104,6 @@ class StatefulTensorMemoryTracerHook(BaseOpHook):
 
 
 class StatefulTensorMemoryProfilerExtention(ProfilerExtension):
-
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
         self.tracer = StatefulTensorMemoryTracer()
@@ -131,5 +130,5 @@ class StatefulTensorMemoryProfilerExtention(ProfilerExtension):
             # self.hook_registered = False
 
     def extend_chrome_trace(self, trace: dict) -> dict:
-        trace['traceEvents'].extend(self.tracer.state_dict())
+        trace["traceEvents"].extend(self.tracer.state_dict())
         return trace

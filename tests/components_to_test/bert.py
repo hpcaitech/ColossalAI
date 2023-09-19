@@ -8,12 +8,12 @@ from .registry import non_distributed_component_funcs
 
 
 def get_bert_data_loader(
-        n_class,
-        batch_size,
-        total_samples,
-        sequence_length,
-        device=torch.device('cpu:0'),
-        is_distributed=False,
+    n_class,
+    batch_size,
+    total_samples,
+    sequence_length,
+    device=torch.device("cpu:0"),
+    is_distributed=False,
 ):
     train_data = torch.randint(
         low=0,
@@ -32,7 +32,7 @@ def get_bert_data_loader(
     return train_loader
 
 
-@non_distributed_component_funcs.register(name='bert')
+@non_distributed_component_funcs.register(name="bert")
 def get_training_components():
     hidden_dim = 8
     num_head = 4
@@ -41,20 +41,21 @@ def get_training_components():
     vocab_size = 32
 
     def bert_model_builder(checkpoint: bool = False):
-        config = BertConfig(vocab_size=vocab_size,
-                            gradient_checkpointing=checkpoint,
-                            hidden_size=hidden_dim,
-                            intermediate_size=hidden_dim * 4,
-                            num_attention_heads=num_head,
-                            max_position_embeddings=sequence_length,
-                            num_hidden_layers=num_layer,
-                            hidden_dropout_prob=0.,
-                            attention_probs_dropout_prob=0.)
-        print('building BertForSequenceClassification model')
+        config = BertConfig(
+            vocab_size=vocab_size,
+            gradient_checkpointing=checkpoint,
+            hidden_size=hidden_dim,
+            intermediate_size=hidden_dim * 4,
+            num_attention_heads=num_head,
+            max_position_embeddings=sequence_length,
+            num_hidden_layers=num_layer,
+            hidden_dropout_prob=0.0,
+            attention_probs_dropout_prob=0.0,
+        )
+        print("building BertForSequenceClassification model")
 
         # adapting huggingface BertForSequenceClassification for single unittest calling interface
         class ModelAdaptor(BertForSequenceClassification):
-
             def forward(self, input_ids, labels):
                 """
                 inputs: data, label
@@ -69,16 +70,20 @@ def get_training_components():
         return model
 
     is_distributed = torch.distributed.is_initialized()
-    trainloader = get_bert_data_loader(n_class=vocab_size,
-                                       batch_size=2,
-                                       total_samples=10000,
-                                       sequence_length=sequence_length,
-                                       is_distributed=is_distributed)
-    testloader = get_bert_data_loader(n_class=vocab_size,
-                                      batch_size=2,
-                                      total_samples=10000,
-                                      sequence_length=sequence_length,
-                                      is_distributed=is_distributed)
+    trainloader = get_bert_data_loader(
+        n_class=vocab_size,
+        batch_size=2,
+        total_samples=10000,
+        sequence_length=sequence_length,
+        is_distributed=is_distributed,
+    )
+    testloader = get_bert_data_loader(
+        n_class=vocab_size,
+        batch_size=2,
+        total_samples=10000,
+        sequence_length=sequence_length,
+        is_distributed=is_distributed,
+    )
 
     criterion = None
     return bert_model_builder, trainloader, testloader, torch.optim.Adam, criterion

@@ -1,17 +1,12 @@
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
 from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.core import global_context as gpc
-from colossalai.logging import get_dist_logger
-
-from .cross_entropy import vocab_cross_entropy
 
 
 class BertLoss(nn.Module):
-
     def forward(self, lm_loss, sop_logits, loss_mask, sentence_order):
         lm_loss_ = lm_loss.float()
         loss_mask = loss_mask.float()

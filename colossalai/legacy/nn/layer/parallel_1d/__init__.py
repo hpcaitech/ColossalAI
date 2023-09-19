@@ -12,6 +12,14 @@ from .layers import (
 )
 
 __all__ = [
-    'Linear1D', 'Linear1D_Col', 'Linear1D_Row', 'Embedding1D', 'Dropout1D', 'Classifier1D', 'VocabParallelClassifier1D',
-    'VocabParallelEmbedding1D', 'LayerNorm1D', 'PatchEmbedding1D'
+    "Linear1D",
+    "Linear1D_Col",
+    "Linear1D_Row",
+    "Embedding1D",
+    "Dropout1D",
+    "Classifier1D",
+    "VocabParallelClassifier1D",
+    "VocabParallelEmbedding1D",
+    "LayerNorm1D",
+    "PatchEmbedding1D",
 ]

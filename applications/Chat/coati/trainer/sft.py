@@ -39,8 +39,9 @@ class SFTTrainer(SLTrainer):
         accumulation_steps: int = 8,
     ) -> None:
         if accumulation_steps > 1:
-            assert not isinstance(strategy, GeminiStrategy), \
-                "Accumulation steps are not supported in stage 3 of ColossalAI"
+            assert not isinstance(
+                strategy, GeminiStrategy
+            ), "Accumulation steps are not supported in stage 3 of ColossalAI"
 
         super().__init__(strategy, max_epochs, model, optim)
 
@@ -50,15 +51,11 @@ class SFTTrainer(SLTrainer):
     def _train(self, epoch: int):
         self.model.train()
         for batch_id, batch in enumerate(self.train_dataloader):
-
             batch = to_device(batch, torch.cuda.current_device())
             if "attention_mask" in batch:
-                outputs = self.model(batch["input_ids"],
-                                    attention_mask=batch["attention_mask"],
-                                    labels=batch["labels"])
+                outputs = self.model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
             else:
-                outputs = self.model(batch["input_ids"],
-                                    labels=batch["labels"])
+                outputs = self.model(batch["input_ids"], labels=batch["labels"])
 
             loss = outputs.loss
             loss = loss / self.accumulation_steps
@@ -73,12 +70,14 @@ class SFTTrainer(SLTrainer):
                 self.optimizer.zero_grad()
                 self.scheduler.step()
                 if is_rank_0() and self.use_wandb:
-                    wandb.log({
-                        "loss": self.total_loss / self.accumulation_steps,
-                        "lr": self.scheduler.get_last_lr()[0],
-                        "epoch": epoch,
-                        "batch_id": batch_id
-                    })
+                    wandb.log(
+                        {
+                            "loss": self.total_loss / self.accumulation_steps,
+                            "lr": self.scheduler.get_last_lr()[0],
+                            "epoch": epoch,
+                            "batch_id": batch_id,
+                        }
+                    )
                 self.total_loss = 0
                 self.step_bar.update()
 
@@ -89,9 +88,9 @@ class SFTTrainer(SLTrainer):
                 loss_sum, num_seen = 0, 0
                 for batch in self.eval_dataloader:
                     batch = to_device(batch, torch.cuda.current_device())
-                    outputs = self.model(batch["input_ids"],
-                                         attention_mask=batch["attention_mask"],
-                                         labels=batch["labels"])
+                    outputs = self.model(
+                        batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"]
+                    )
                     loss = outputs.loss
 
                     loss_sum += loss.item()
@@ -99,13 +98,15 @@ class SFTTrainer(SLTrainer):
 
                 loss_mean = loss_sum / num_seen
                 if dist.get_rank() == 0:
-                    self.logger.info(f'Eval Epoch {epoch}/{self.max_epochs} loss {loss_mean}')
+                    self.logger.info(f"Eval Epoch {epoch}/{self.max_epochs} loss {loss_mean}")
 
-    def _before_fit(self,
-                    train_dataloader: DataLoader,
-                    eval_dataloader: Optional[DataLoader] = None,
-                    logger: Optional[DistributedLogger] = None,
-                    use_wandb: bool = False):
+    def _before_fit(
+        self,
+        train_dataloader: DataLoader,
+        eval_dataloader: Optional[DataLoader] = None,
+        logger: Optional[DistributedLogger] = None,
+        use_wandb: bool = False,
+    ):
         """
         Args:
             train_dataloader: the dataloader to use for training
@@ -124,6 +125,6 @@ class SFTTrainer(SLTrainer):
         self.no_epoch_bar = True
         self.step_bar = tqdm.trange(
             len(self.train_dataloader) // self.accumulation_steps * self.max_epochs,
-            desc=f'steps',
-            disable=not is_rank_0()
+            desc=f"steps",
+            disable=not is_rank_0(),
         )

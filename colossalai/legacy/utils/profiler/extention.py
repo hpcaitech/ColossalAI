@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 
 
 class ProfilerExtension(ABC):
-
     @abstractmethod
     def prepare_trace(self):
         pass

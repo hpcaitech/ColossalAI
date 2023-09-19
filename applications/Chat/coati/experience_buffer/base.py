@@ -7,9 +7,9 @@ from coati.experience_maker.base import Experience
 class ExperienceBuffer(ABC):
     """Experience buffer base class. It stores experience.
 
-     Args:
-         sample_batch_size (int): Batch size when sampling.
-         limit (int, optional): Limit of number of experience samples. A number <= 0 means unlimited. Defaults to 0.
+    Args:
+        sample_batch_size (int): Batch size when sampling.
+        limit (int, optional): Limit of number of experience samples. A number <= 0 means unlimited. Defaults to 0.
     """
 
     def __init__(self, sample_batch_size: int, limit: int = 0) -> None:
