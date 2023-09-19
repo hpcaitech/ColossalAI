@@ -1,6 +1,7 @@
 import random
 from contextlib import nullcontext
 from functools import partial
+from types import MethodType
 from typing import Any, Callable, Iterator, List, Optional, OrderedDict, Tuple, Union
 
 import numpy as np
@@ -18,7 +19,7 @@ from torch.utils.data.distributed import DistributedSampler
 from colossalai.amp.naive_amp.mixed_precision_optimizer import MixedPrecisionOptimizer
 from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
@@ -456,42 +457,33 @@ class HybridParallelPlugin(PipelinePluginBase):
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
-                if self.precision in ["fp16", "bf16"]:
-                    optimizer = HybridParallelAMPOptimizer(
-                        optimizer,
-                        model,
-                        use_pipeline=self.enable_pipeline_parallelism,
-                        param_info=param_info,
-                        precision=self.precision,
-                        max_norm=self.max_norm,
-                        **self.amp_config,
-                    )
-                    self.checkpoint_io.link_master_and_working_param(
-                        optimizer.working_to_master_map, optimizer.master_to_working_map
-                    )
+                if self.precision in ['fp16', 'bf16']:
+                    optimizer = HybridParallelAMPOptimizer(optimizer,
+                                                           model,
+                                                           use_pipeline=self.enable_pipeline_parallelism,
+                                                           param_info=param_info,
+                                                           precision=self.precision,
+                                                           max_norm=self.max_norm,
+                                                           **self.amp_config)
                 else:
                     optimizer = HybridParallelNaiveOptimizer(
                         optimizer, model, use_pipeline=self.enable_pipeline_parallelism, param_info=param_info
                     )
             else:
                 assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
-                assert self.precision != "fp32", "Please set precision to 'fp16' or 'bf16' when using ZeRO."
-                optimizer = HybridParallelZeroOptimizer(
-                    optimizer,
-                    model,
-                    use_pipeline=self.enable_pipeline_parallelism,
-                    param_info=param_info,
-                    dp_process_group=self.dp_group,
-                    tp_process_group=self.tp_group,
-                    verbose=True,
-                    clip_grad_norm=self.max_norm,
-                    **self.zero_config,
-                    **self.amp_config,
-                )
-                self.checkpoint_io.link_master_and_working_param(
-                    optimizer._param_store.working_to_master_param, optimizer._param_store.master_to_working_param
-                )
-
+                assert self.precision != 'fp32', "Please set precision to 'fp16' or 'bf16' when using ZeRO."
+                optimizer = HybridParallelZeroOptimizer(optimizer,
+                                                        model,
+                                                        use_pipeline=self.enable_pipeline_parallelism,
+                                                        param_info=param_info,
+                                                        dp_process_group=self.dp_group,
+                                                        tp_process_group=self.tp_group,
+                                                        verbose=True,
+                                                        clip_grad_norm=self.max_norm,
+                                                        **self.zero_config,
+                                                        **self.amp_config)
+        # inject update_master_params
+        model.module.update_master_params = MethodType(optimizer.update_master_params, model)
         return model, optimizer, criterion, dataloader, lr_scheduler
 
     def execute_pipeline(
@@ -567,8 +559,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         )
 
     def get_checkpoint_io(self) -> CheckpointIO:
-        self.checkpoint_io = HybridParallelCheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
-        return self.checkpoint_io
+        return HybridParallelCheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
 
     def no_sync(self, model: Module) -> Iterator[None]:
         raise NotImplementedError

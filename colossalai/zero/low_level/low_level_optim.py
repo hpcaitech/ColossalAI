@@ -648,3 +648,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 if padding_size > 0:
                     working_param = torch.nn.functional.pad(working_param, [0, padding_size])
                 master_param.copy_(working_param.chunk(self._world_size)[self._local_rank])
+
+    def get_working_to_master_map(self) -> Dict[int, torch.Tensor]:
+        return self._param_store.working_to_master_param
+
+    def get_master_to_working_map(self) -> Dict[int, torch.Tensor]:
+        return self._param_store.master_to_working_param

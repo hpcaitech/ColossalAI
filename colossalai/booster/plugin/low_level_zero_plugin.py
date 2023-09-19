@@ -65,10 +65,6 @@ class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
             kwargs = tree_map(self.convert_fn, kwargs)
         return super().forward(*args, **kwargs)
 
-    def unwrap(self):
-        # TODO(ver217): this is a workaround for loading model
-        return self
-
 
 class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
     def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool = False):
@@ -194,44 +190,19 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
                             v_list = v.split(v.numel() // self.coordinator.world_size)
                             state_dict[param_idx][k] = v_list[self.coordinator.rank].detach().clone()
             load_states_into_optimizer(optimizer, state_dict, id_map)
-
         sharded_optimizer_loading_epilogue(optimizer)
 
-    def save_unsharded_model(
-        self, model: LowLevelZeroModel, checkpoint: str, gather_dtensor: bool, use_safetensors: bool
-    ):
-        assert isinstance(model, LowLevelZeroModel)
-        super().save_unsharded_model(model.module, checkpoint, gather_dtensor, use_safetensors)
-
-    def save_sharded_model(
-        self,
-        model: nn.Module,
-        checkpoint_path: str,
-        gather_dtensor: bool = True,
-        prefix: Optional[str] = None,
-        max_shard_size: int = 1024,
-        use_safetensors: bool = False,
-    ):
-        assert isinstance(model, LowLevelZeroModel)
-        super().save_sharded_model(
-            model.module, checkpoint_path, gather_dtensor, prefix, max_shard_size, use_safetensors
-        )
-
-    def load_unsharded_model(self, model: LowLevelZeroModel, checkpoint: str, strict: bool = True):
-        assert isinstance(model, LowLevelZeroModel)
-        super().load_unsharded_model(model.module, checkpoint, strict)
+    def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool = True):
+        super().load_unsharded_model(model, checkpoint, strict)
         model.update_master_params()
 
-    def load_sharded_model(
-        self,
-        model: LowLevelZeroModel,
-        checkpoint_index_file: Path,
-        strict: bool = False,
-        use_safetensors: bool = False,
-        load_sub_module: bool = True,
-    ):
-        assert isinstance(model, LowLevelZeroModel)
-        super().load_sharded_model(model.module, checkpoint_index_file, strict, use_safetensors, load_sub_module)
+    def load_sharded_model(self,
+                           model: nn.Module,
+                           checkpoint_index_file: Path,
+                           strict: bool = False,
+                           use_safetensors: bool = False,
+                           load_sub_module: bool = True):
+        super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors, load_sub_module)
         model.update_master_params()
 
 
@@ -346,7 +317,7 @@ class LowLevelZeroPlugin(DPPluginBase):
                 optimizer, **self.zero_optim_kwargs, verbose=self.verbose
             )
             # inject update_master_params
-            model.update_master_params = MethodType(optimizer.update_master_params, model)
+            model.module.update_master_params = MethodType(optimizer.update_master_params, model)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 

@@ -71,8 +71,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         self.tp_size = dist.get_world_size(tp_group)
         self.use_zero = zero_stage > 0
         self.verbose = verbose
-        self.working_to_master_map = None
-        self.master_to_working_map = None
         self.coordinator = DistCoordinator()
 
     @staticmethod
@@ -347,23 +345,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             _load(extra_state_key)
 
         # Update master params if mixed-precision training is enabled.
-        with torch.no_grad():
-            if self.working_to_master_map is not None:
-                for param in model.parameters():
-                    if (param is None) or (id(param) not in self.working_to_master_map):
-                        continue
-                    master_param = self.working_to_master_map[id(param)]
-                    if self.use_zero:
-                        # master_param is sharded under Zero setting
-                        padding_size = (self.dp_size - param.numel() % self.dp_size) % self.dp_size
-                        if padding_size > 0:
-                            padded_param = torch.nn.functional.pad(param.data.view(-1), [0, padding_size])
-                        else:
-                            padded_param = param.data.view(-1)
-                        sharded_param = padded_param.split(padded_param.numel() // self.dp_size)[self.dp_rank]
-                        master_param.data.copy_(sharded_param.data)
-                    else:
-                        master_param.data.copy_(param.data)
+        model.update_master_params()
 
         if self.verbose:
             logging.info(f"The model has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
@@ -410,9 +392,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             use_zero=self.use_zero,
             dp_group=self.dp_group,
             tp_group=self.tp_group,
-            master_to_working_map=self.master_to_working_map,
-            size_per_shard=size_per_shard,
-        )
+            master_to_working_map=optimizer.get_master_to_working_map(),
+            size_per_shard=size_per_shard)
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
         index_file = CheckpointIndexFile(checkpoint)
         control_saving = self.dp_rank == 0 and self.tp_rank == 0
@@ -525,9 +506,10 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         # When Zero is used, the mapped parameter objects should be fp32 master parameters.
         # IDs should be obtained through saved param2id mapping earlier saved in optimizer.param_info.
         id_map = {}
+        master_to_working_map = optimizer.get_master_to_working_map()
         for pg in optimizer.optim.param_groups:
-            for param in pg["params"]:
-                param_id = _get_param_id_from_optimizer_param(param, self.master_to_working_map)
+            for param in pg['params']:
+                param_id = _get_param_id_from_optimizer_param(param, master_to_working_map)
                 id_map[param_id] = param
 
         # Read checkpoint index file.
@@ -560,7 +542,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             for param in pg["params"]:
                 if param is None:
                     continue
-                param_id = _get_param_id_from_optimizer_param(param, self.master_to_working_map)
+                param_id = _get_param_id_from_optimizer_param(param, master_to_working_map)
                 if param_id not in weight_map:
                     continue
                 filename = weight_map[param_id]
@@ -577,8 +559,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         # Then shard the loaded optimizer states if using tp/zero.
         for param, state in optimizer.optim.state.items():
             device = param.device
-            if self.master_to_working_map is not None:
-                working_param = self.master_to_working_map[id(param)]
+            if master_to_working_map is not None:
+                working_param = master_to_working_map[id(param)]
             else:
                 working_param = param
             original_shape = optimizer.param_info["param2shape"][id(working_param)]
@@ -613,42 +595,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         """
         if self.coordinator.is_master():
             super().save_lr_scheduler(lr_scheduler, checkpoint)
-
-    def link_master_and_working_param(
-        self,
-        working_to_master_map: Dict[Union[int, torch.Tensor], torch.Tensor],
-        master_to_working_map: Dict[Union[int, torch.Tensor], torch.Tensor],
-    ):
-        """
-        Create mappings between working params (for forward/backward) and master params (for optimizer update) with passed in mappings.
-        This mapping can only be created when mixied precision is used.
-        The created mappings should be mappings from integer parameter addresses to parameter objects.
-
-        Args:
-            working_to_master_map (Dict[Union[int, torch.Tensor], torch.Tensor]): A mapping from working parameters objects/addresses to master parameter objects.
-            master_to_working_map (Dict[Union[int, torch.Tensor], torch.Tensor]): A mapping from master parameters objects/addresses to working parameter objects.
-        """
-        self.working_to_master_map = dict()
-        for k, v in working_to_master_map.items():
-            if isinstance(k, torch.Tensor):
-                self.working_to_master_map[id(k)] = v
-            elif isinstance(k, int):
-                self.working_to_master_map[k] = v
-            else:
-                raise ValueError(
-                    f"The passed in mapping should have keys of type 'int' or 'torch.Tensor', but got {type(k)}!"
-                )
-
-        self.master_to_working_map = dict()
-        for k, v in master_to_working_map.items():
-            if isinstance(k, torch.Tensor):
-                self.master_to_working_map[id(k)] = v
-            elif isinstance(k, int):
-                self.master_to_working_map[k] = v
-            else:
-                raise ValueError(
-                    f"The passed in mapping should have keys of type 'int' or 'torch.Tensor', but got {type(k)}!"
-                )
 
     @staticmethod
     def gather_from_sharded_optimizer_state(

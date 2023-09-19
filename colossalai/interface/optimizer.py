@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Dict, Union
 
 import torch
 import torch.nn as nn
@@ -133,3 +133,25 @@ class OptimizerWrapper:
         Unwrap the optimizer for checkpoint saving/loading.
         """
         return self.optim
+
+    def update_master_params(self, model: nn.Module) -> None:
+        """If mixed precision is used, update master params from working params.
+
+        Args:
+            model (nn.Module): The model to update master params
+        """
+        return None
+
+    def get_working_to_master_map(self) -> Dict[int, torch.Tensor]:
+        """
+        If mixed precision is used, return the mapping from working parameters' object IDs to master parameter objects.
+        Else return None
+        """
+        return None
+
+    def get_master_to_working_map(self) -> Dict[int, torch.Tensor]:
+        """
+        If mixed precision is used, return the mapping from master parameters' object IDs to working parameter objects.
+        Else return None
+        """
+        return None
