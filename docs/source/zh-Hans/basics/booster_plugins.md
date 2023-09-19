@@ -11,15 +11,40 @@
 
 我们现在提供以下插件:
 
-- [Low Level Zero 插件](#low-level-zero-插件): 它包装了 `colossalai.zero.low_level.LowLevelZeroOptimizer`，可用于使用 Zero-dp 训练模型。它仅支持 Zero 阶段1和阶段2。
-- [Gemini 插件](#gemini-插件): 它包装了 [Gemini](../features/zero_with_chunk.md)，Gemini 实现了基于Chunk内存管理和异构内存管理的 Zero-3。
 - [Torch DDP 插件](#torch-ddp-插件): 它包装了 `torch.nn.parallel.DistributedDataParallel` 并且可用于使用数据并行训练模型。
 - [Torch FSDP 插件](#torch-fsdp-插件): 它包装了 `torch.distributed.fsdp.FullyShardedDataParallel` 并且可用于使用 Zero-dp 训练模型。
+- [Low Level Zero 插件](#low-level-zero-插件): 它包装了 `colossalai.zero.low_level.LowLevelZeroOptimizer`，可用于使用 Zero-dp 训练模型。它仅支持 Zero 阶段1和阶段2。
+- [Gemini 插件](#gemini-插件): 它包装了 [Gemini](../features/zero_with_chunk.md)，Gemini 实现了基于Chunk内存管理和异构内存管理的 Zero-3。
 - [Hybrid Pararllel 插件](#hybrid-parallel-插件): 它为Shardformer，流水线管理器，混合精度运算，TorchDDP以及Zero-1/Zero-2功能提供了一个统一且简洁的接口。使用该插件可以简单高效地实现transformer模型在张量并行，流水线并行以及数据并行（DDP, Zero）间任意组合并行训练策略，同时支持多种训练速度和内存的优化工具。有关这些训练策略和优化工具的具体信息将在下一章中阐述。
 
 更多插件即将推出。
 
+## 插件选择
+- [Torch DDP 插件](#torch-ddp-插件): 适用于参数少于 20 亿的模型。
+- [Torch FSDP 插件](#torch-fsdp-插件) / [Low Level Zero 插件](#low-level-zero-插件): 适用于参数少于 100 亿的模型。
+- [Gemini 插件](#gemini-插件): 适合参数超过 100 亿的模型，且跨节点带宽高、中小规模集群（千卡以下）的场景。
+- [Hybrid Pararllel 插件](#hybrid-parallel-插件): 适合参数超过 600 亿的模型、超长序列、超大词表等特殊模型，且跨节点带宽低、大规模集群（千卡以上）的场景。
+
 ## 插件
+
+### Torch DDP 插件
+
+更多详细信息，请参阅 [Pytorch 文档](https://pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel).
+
+{{ autodoc:colossalai.booster.plugin.TorchDDPPlugin }}
+
+### Torch FSDP 插件
+
+> ⚠ 如果 torch 版本低于 1.12.0，此插件将不可用。
+
+> ⚠ 该插件现在还不支持保存/加载分片的模型 checkpoint。
+
+> ⚠ 该插件现在还不支持使用了multi params group的optimizer。
+
+更多详细信息，请参阅 [Pytorch 文档](https://pytorch.org/docs/main/fsdp.html).
+
+{{ autodoc:colossalai.booster.plugin.TorchFSDPPlugin }}
+
 
 ### Low Level Zero 插件
 
@@ -49,26 +74,6 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 这个插件实现了基于Chunk内存管理和异构内存管理的 Zero-3。它可以训练大型模型而不会损失太多速度。它也不支持局部梯度累积。更多详细信息，请参阅 [Gemini 文档](../features/zero_with_chunk.md).
 
 {{ autodoc:colossalai.booster.plugin.GeminiPlugin }}
-
-
-### Torch DDP 插件
-
-更多详细信息，请参阅 [Pytorch 文档](https://pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel).
-
-{{ autodoc:colossalai.booster.plugin.TorchDDPPlugin }}
-
-### Torch FSDP 插件
-
-> ⚠ 如果 torch 版本低于 1.12.0，此插件将不可用。
-
-> ⚠ 该插件现在还不支持保存/加载分片的模型 checkpoint。
-
-> ⚠ 该插件现在还不支持使用了multi params group的optimizer。
-
-更多详细信息，请参阅 [Pytorch 文档](https://pytorch.org/docs/main/fsdp.html).
-
-{{ autodoc:colossalai.booster.plugin.TorchFSDPPlugin }}
-
 
 ### Hybrid Parallel 插件
 
