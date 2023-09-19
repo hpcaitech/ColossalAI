@@ -36,8 +36,8 @@ loss_fn = lambda x: x.loss
 
 config = ChatGLMConfig(num_layers=2,
                        padded_vocab_size=65024,
-                       hidden_size=64,
-                       num_attention_heads=4,
+                       hidden_size=128,
+                       num_attention_heads=8,
                        multi_query_attention=True,
                        multi_query_group_num=2,
                        kv_channels=16,
