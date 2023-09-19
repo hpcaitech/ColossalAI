@@ -4,14 +4,18 @@ from typing import Callable, Dict, Optional, Union
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from packaging import version
 from torch import Tensor
 from torch.nn import Parameter
 from torch.utils._pytree import tree_map
 
-from colossalai._analyzer._subclasses import MetaTensor
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.d_tensor import distribute_tensor
 from colossalai.tensor.d_tensor.sharding_spec import ShardingSpec
+
+from .construction import ConstructorManager
+
+import colossalai._analyzer._subclasses._meta_registration  # noqa
 
 # reference: https://pytorch.org/cppdocs/notes/tensor_creation.html
 _NORMAL_FACTORY = [
@@ -54,7 +58,21 @@ _LEGACY_TENSOR_CONSTRUCTOR = {
     "BoolTensor": torch.bool,
 }
 
-_EMPTY_DATA = torch.empty(0)
+# These ops have at least one lazy tensor argument and maybe a scalar argument
+# scalar value should be converted to meta tensor
+# this is a hack for torch 2.0
+_EXPAND_SCALAR_OPS = [
+    "where",
+    "clamp",
+    "clamp_min",
+    "clamp_max",
+    "clamp_",
+    "clamp_min_",
+    "clamp_max_",
+]
+_old_tensor_factory = torch.tensor
+
+_EMPTY_DATA = torch.empty(1)
 
 
 class _MyTensor(Tensor):
@@ -145,33 +163,48 @@ class LazyTensor(torch.Tensor):
     """
 
     _repr = True
-    _meta_data: Optional[MetaTensor] = None  # shape, dtype, device
+    _meta_data: Optional[torch.Tensor] = None  # shape, dtype, device
     _pre_op_fn: Callable[["LazyTensor"], None] = lambda *args: None
 
     default_device: Optional[torch.device] = None
+    _device: torch.device  # fake device of mate tensor
 
     @staticmethod
     def __new__(cls, func, *args, meta_data=None, concrete_data=None, **kwargs):
+        # tips for torch 2.0:
+        # torch 2.0 disables torch dispatch for subclass of tensor
+        # MetaTensor is cannot be used
+        # Now lazy tensor contains device injection and meta tensor
         if concrete_data is not None:
             # some ops don't support meta backend and should have concrete data
             elem = concrete_data
         else:
             if meta_data is None:
-                device = kwargs.get("device", "cpu")
-                elem = func(*args, **{**kwargs, "device": "meta"})
-                meta_data = MetaTensor(elem, device=device)
-            elem = meta_data._tensor
+                with ConstructorManager.disable():
+                    meta_data = func(*args, **{**kwargs, "device": "meta"})
+            elem = meta_data
         # As a meta tensor cannot be modified __class__ to torch.Tensor, we should use an empty real tensor here
         r = torch.Tensor._make_subclass(cls, _EMPTY_DATA, require_grad=elem.requires_grad)
         r._meta_data = meta_data
+        # TODO: test this
+        # if isinstance(r, nn.Parameter):
+        #     r = nn.Parameter(r)
         return r
 
     def __init__(self, func, *args, meta_data=None, concrete_data=None, **kwargs):
+        self._device = torch.device(kwargs.get("device", None) or "cpu")
         if func.__name__ in _NORMAL_FACTORY:
             kwargs = {**kwargs, "device": LazyTensor.default_device}
         self._factory_method = (func, args, kwargs)  # (func, args, kwargs)
         self._op_buffer = []  # (func, args, kwargs, replace)
         self._materialized_data: Optional[torch.Tensor] = concrete_data  # materialized data
+
+    @property
+    def device(self) -> torch.device:
+        return self._materialized_data.device if self._materialized_data is not None else self._device
+
+    def __repr__(self):
+        return f"LazyTensor(..., size={tuple(self.shape)}, device='{self.device}', dtype={self.dtype})"
 
     def materialize(self) -> torch.Tensor:
         """Materialize the ``LazyTensor`` to ``torch.Tensor`` by modifying __class__ (inplace).
@@ -303,22 +336,25 @@ class LazyTensor(torch.Tensor):
                     meta = x._meta_data if is_change_meta_op else x._meta_data.data
                     meta_to_lazy[meta] = t
                     return meta
+                elif version.parse(torch.__version__) >= version.parse("2.0.0") and func.__name__ in _EXPAND_SCALAR_OPS:
+                    return _old_tensor_factory(x, device="meta")
                 return x
 
             def wrap(y, i=None):
-                if isinstance(y, MetaTensor):
-                    if y in meta_to_lazy:
-                        # inplace op, just return origin lazy tensor
-                        return meta_to_lazy[y]
+                if isinstance(y, torch.Tensor):
+                    if y.is_meta:
+                        if y in meta_to_lazy:
+                            # inplace op, just return origin lazy tensor
+                            return meta_to_lazy[y]
+                        else:
+                            # out of place op, create new lazy tensor
+                            fn = lambda *a, **kw: func(*a, **kw) if i is None else func(*a, **kw)[i]
+                            fn.__name__ = func.__name__
+                            lazy_y = LazyTensor(fn, *args, meta_data=y, **kwargs)
+                            return lazy_y
                     else:
-                        # out of place op, create new lazy tensor
-                        fn = lambda *a, **kw: func(*a, **kw) if i is None else func(*a, **kw)[i]
-                        fn.__name__ = func.__name__
-                        lazy_y = LazyTensor(fn, *args, meta_data=y, **kwargs)
-                        return lazy_y
-                elif type(y) is Tensor:
-                    # for early materialized tensor
-                    return LazyTensor(lambda: None, concrete_data=y)
+                        # for early materialized tensor
+                        return LazyTensor(lambda: None, concrete_data=y)
                 return y
 
             cls._pre_op_fn()
@@ -327,9 +363,36 @@ class LazyTensor(torch.Tensor):
                 return type(o)(wrap(y, i=i) for i, y in enumerate(o))
             return wrap(o)
 
-    @classmethod
-    def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
-        pass  # skip
+    def to(self, *args, **kwargs) -> torch.Tensor:
+        if self._materialized_data is not None:
+            return LazyTensor(lambda: None, concrete_data=self._materialized_data.to(*args, **kwargs))
+
+        device = None
+
+        def replace(x):
+            nonlocal device
+            if isinstance(x, (str, int, torch.device)) and not isinstance(x, bool):
+                device = x
+                return torch.device("meta")
+            return x
+
+        meta_data = self._meta_data.to(*tree_map(replace, args), **tree_map(replace, kwargs))
+
+        def factory_fn(*a, **kw):
+            new_tensor = self.materialize() if type(self) is LazyTensor else self
+            return new_tensor.to(*args, **kwargs)
+
+        return LazyTensor(factory_fn, meta_data=meta_data, device=device)
+
+    def cpu(self, *args, **kwargs):
+        if self.device.type == "cpu":
+            return self.to(*args, **kwargs)
+        return self.to(*args, device="cpu", **kwargs)
+
+    def cuda(self, device=None, non_blocking=False):
+        if device is not None:
+            return self.to(device=device, non_blocking=non_blocking)
+        return self.to(device="cuda:0", non_blocking=non_blocking)
 
     def clone(self) -> "LazyTensor":
         def factory_fn():
@@ -455,7 +518,6 @@ class LazyInitContext:
         default_device: Optional[Union[torch.device, str, int]] = None,
     ):
         assert tensor_cls is LazyTensor or tensor_cls is _MyTensor
-        self.overrides = {}
         self.tensor_cls = tensor_cls
         self.old_default_device = LazyTensor.default_device
         self.default_device = default_device
@@ -478,7 +540,9 @@ class LazyInitContext:
             # factory_like functions (eg. torch.empty_like())
             def wrapper(*args, **kwargs):
                 orig_t = args[0]
-                return self.tensor_cls(orig_target, *args[1:], device=orig_t.device, dtype=orig_t.dtype, **kwargs)
+                return self.tensor_cls(
+                    orig_target, *orig_t.shape, *args[1:], device=orig_t.device, dtype=orig_t.dtype, **kwargs
+                )
 
             return wrapper, target
 
@@ -513,13 +577,13 @@ class LazyInitContext:
 
             return wrapper, target
 
-        self.overrides = {
+        overrides = {
             target: wrap_factory_method(getattr(torch, target))
             for target in _NORMAL_FACTORY
             if callable(getattr(torch, target, None))
         }
 
-        self.overrides.update(
+        overrides.update(
             {
                 target + "_like": wrap_factory_like_method(getattr(torch, target), getattr(torch, target + "_like"))
                 for target in _NORMAL_FACTORY
@@ -527,7 +591,7 @@ class LazyInitContext:
             }
         )
 
-        self.overrides.update(
+        overrides.update(
             {
                 target: wrap_legacy_constructor(getattr(torch, target), dtype)
                 for target, dtype in _LEGACY_TENSOR_CONSTRUCTOR.items()
@@ -535,7 +599,7 @@ class LazyInitContext:
             }
         )
 
-        self.overrides.update(
+        overrides.update(
             {
                 target: wrap_no_meta_factory(getattr(torch, target))
                 for target in _NO_META_FACTORY
@@ -543,14 +607,12 @@ class LazyInitContext:
             }
         )
 
-        for name, (wrapper, orig) in self.overrides.items():
-            setattr(torch, name, wrapper)
+        ConstructorManager.apply(overrides)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.tensor_cls.default_device = self.old_default_device
         LazyInitContext._replaced = False
-        for name, (wrapper, orig) in self.overrides.items():
-            setattr(torch, name, orig)
+        ConstructorManager.clear()
 
     @staticmethod
     def materialize(module: nn.Module, verbose: bool = False) -> nn.Module:
