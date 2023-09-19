@@ -4,8 +4,8 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.nn.functional import cross_entropy
 from torch.nn.modules.loss import _Loss
 
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn.layer.parallel_2d import reduce_by_batch_2d, split_batch_2d
 from colossalai.legacy.nn.layer.parallel_2d._utils import assert_summa_initialization
 from colossalai.legacy.registry import LOSSES

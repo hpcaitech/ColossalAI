@@ -6,9 +6,9 @@ import torch.fx
 import colossalai
 from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
 from colossalai.autochunk.utils import flat_list
-from colossalai.core import global_context as gpc
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
+from colossalai.legacy.core import global_context as gpc
 from colossalai.testing import free_port
 
 if AUTOCHUNK_AVAILABLE:

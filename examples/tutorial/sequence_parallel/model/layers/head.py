@@ -1,14 +1,16 @@
-import colossalai
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .pooler import Pooler
-from .linear import Linear
-from .embedding import VocabEmbedding
-from colossalai.core import global_context as gpc
-from colossalai.context import ParallelMode
-from colossalai.kernel import LayerNorm
 from loss_func.cross_entropy import vocab_cross_entropy
+
+import colossalai
+from colossalai.kernel import LayerNorm
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
+
+from .embedding import VocabEmbedding
+from .linear import Linear
+from .pooler import Pooler
 
 
 class BertLMHead(nn.Module):
@@ -19,10 +21,11 @@ class BertLMHead(nn.Module):
         layernorm_epsilon: tolerance for layer norm divisions
     """
 
-    def __init__(self,
-                 vocab_size,
-                 hidden_size,
-                 ):
+    def __init__(
+        self,
+        vocab_size,
+        hidden_size,
+    ):
 
         super(BertLMHead, self).__init__()
         self.bias = torch.nn.Parameter(torch.zeros(vocab_size))

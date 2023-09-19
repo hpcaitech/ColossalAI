@@ -3,8 +3,8 @@ import torch
 import torch.distributed as dist
 
 import colossalai
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn.layer.parallel_sequence import RingAV, RingQK
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
@@ -120,7 +120,7 @@ def check_ring_av(rank, world_size):
 
 
 def run_test(rank, world_size, port):
-    colossalai.launch(rank=rank, world_size=world_size, config=CONFIG, host='localhost', port=port)
+    colossalai.legacy.launch(rank=rank, world_size=world_size, config=CONFIG, host='localhost', port=port)
 
     # check_ring_qk(rank, world_size)
     check_ring_av(rank, world_size)

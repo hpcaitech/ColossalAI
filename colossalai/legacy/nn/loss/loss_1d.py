@@ -3,8 +3,8 @@ import torch.distributed as dist
 from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.nn.modules.loss import _Loss
 
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.registry import LOSSES
 
 

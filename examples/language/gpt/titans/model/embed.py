@@ -6,8 +6,8 @@ from torch import nn as nn
 from torch.nn import functional as F
 from torch.nn.parameter import Parameter
 
-from colossalai.context import ParallelMode, seed
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode, seed
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn.layer.base_layer import ParallelLayer
 from colossalai.legacy.nn.layer.parallel_1d._utils import gather_forward_split_backward, reduce_grad, reduce_input
 from colossalai.legacy.nn.layer.parallel_1d.layers import Linear1D_Row

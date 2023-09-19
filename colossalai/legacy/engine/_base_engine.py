@@ -8,6 +8,7 @@ from torch import Tensor
 from torch.nn import Module
 from torch.nn.modules.loss import _Loss
 
+from colossalai.interface import OptimizerWrapper
 from colossalai.legacy.engine.gradient_handler import BaseGradientHandler
 from colossalai.legacy.engine.schedule import (
     BaseSchedule,
@@ -15,9 +16,8 @@ from colossalai.legacy.engine.schedule import (
     NonPipelineSchedule,
     PipelineSchedule,
 )
+from colossalai.legacy.zero.gemini import BaseOpHook, register_ophooks_recursively
 from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.zero.legacy.gemini import BaseOpHook, register_ophooks_recursively
 
 
 class Engine:
@@ -27,7 +27,7 @@ class Engine:
 
     Args:
         model (``torch.nn.Module``): The neural network model.
-        optimizer (``colossalai.nn.optimizer.ColossalaiOptimizer``): Optimizer for updating the parameters.
+        optimizer (``colossalai.interface.OptimizerWrapper``): Optimizer for updating the parameters.
         criterion (``torch.nn.modules.loss._Loss``, optional): Loss function for calculating loss.
         gradient_handlers (List[``BaseGradientHandler``], optional): A list of gradient handler used in backward.
         clip_grad_norm (float, optional): The norm of gradient clipping.
@@ -61,7 +61,7 @@ class Engine:
 
     def __init__(self,
                  model: Module,
-                 optimizer: "ColossalaiOptimizer",
+                 optimizer: "OptimizerWrapper",
                  criterion: Optional[_Loss] = None,
                  gradient_handlers: Optional[List[BaseGradientHandler]] = None,
                  clip_grad_norm: float = 0.0,
@@ -157,7 +157,7 @@ class Engine:
         """Execute parameter update
         """
         self._all_reduce_gradients()
-        self.optimizer.clip_grad_norm(self.model, self._clip_grad_norm)
+        self.optimizer.clip_grad_by_norm(self._clip_grad_norm)
         return self.optimizer.step()
 
     def backward(self, loss: Tensor):

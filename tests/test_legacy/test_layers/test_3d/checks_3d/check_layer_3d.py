@@ -5,8 +5,8 @@ import time
 
 import torch
 
-from colossalai.constants import INPUT_GROUP_3D, OUTPUT_GROUP_3D, WEIGHT_GROUP_3D
-from colossalai.core import global_context
+from colossalai.legacy.constants import INPUT_GROUP_3D, OUTPUT_GROUP_3D, WEIGHT_GROUP_3D
+from colossalai.legacy.core import global_context
 from colossalai.legacy.nn import (
     Classifier3D,
     CrossEntropyLoss3D,
@@ -21,8 +21,9 @@ from colossalai.legacy.nn import (
     VocabParallelEmbedding3D,
 )
 from colossalai.legacy.nn.layer.parallel_3d._utils import get_parallel_mode_from_env
+from colossalai.legacy.utils import print_rank_0
 from colossalai.logging import get_dist_logger
-from colossalai.utils import get_current_device, print_rank_0
+from colossalai.utils import get_current_device
 
 from .common import BATCH_SIZE, DEPTH, HIDDEN_SIZE, IMG_SIZE, NUM_CLASSES, SEQ_LENGTH, VOCAB_SIZE, check_equal
 

@@ -1,7 +1,7 @@
 import torch
 
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn import TransformerSelfAttentionRing
 from colossalai.utils import get_current_device
 

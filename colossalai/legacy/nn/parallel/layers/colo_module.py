@@ -1,7 +1,7 @@
 from typing import Dict, List
 
-from colossalai.tensor import ComputePattern
-from colossalai.tensor.distspec import _DistSpec
+from colossalai.legacy.tensor import ComputePattern
+from colossalai.legacy.tensor.distspec import _DistSpec
 
 
 class ColoModule(object):

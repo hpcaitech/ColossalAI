@@ -10,12 +10,12 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 
+from colossalai.interface import OptimizerWrapper
 from colossalai.legacy.engine import BaseGradientHandler
-from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.utils import conditional_context
 
 
-class GradAccumOptimizer(ColossalaiOptimizer):
+class GradAccumOptimizer(OptimizerWrapper):
     """A wrapper for the optimizer to enable gradient accumulation by skipping the steps
     before accumulation size is reached.
 
@@ -74,7 +74,7 @@ class GradAccumOptimizer(ColossalaiOptimizer):
         if self.accumulate_step < self.accumulate_size:
             pass
         else:
-            self.optim.clip_grad_norm(model, max_norm)
+            self.optim.clip_grad_by_norm(max_norm)
 
     def backward(self, loss: Tensor) -> None:
         """Execute backward pass.
