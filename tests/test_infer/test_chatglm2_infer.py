@@ -8,12 +8,12 @@ from packaging import version
 from transformers import AutoModel, AutoTokenizer
 
 import colossalai
-from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
+from tests.kit.model_zoo import model_zoo
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 TPSIZE = 1
@@ -28,31 +28,29 @@ CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
 }])
 def run_chatglm2_test(test_config):
 
-    chatglm2_model_path = "/home/lccjh/data2/lccjh/chatglm2-6b"
-    assert os.path.isdir(chatglm2_model_path) is True
+    sub_model_zoo = model_zoo.get_sub_registry('transformers_chatglm_for_conditional_generation')
 
     tokenizer = AutoTokenizer.from_pretrained("THUDM/chatglm2-6b", trust_remote_code=True)
     # pad_token_id = 0
+    for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
+        orig_model = model_fn()
+        orig_model = orig_model.half()
+        text = ["how is the weather today?"]
+        input_ids = tokenizer.batch_encode_plus(text, return_tensors='pt', padding=True)
+        shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
+                                   inference_only=True)
+        infer_engine = TPInferEngine(orig_model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
 
-    model = ChatGLMForConditionalGeneration.from_pretrained(chatglm2_model_path, pad_token_id=tokenizer.eos_token_id)
-    #init_to_get_rotary(model.model, base=10000)
-    model = model.half()
+        generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
+        outputs = infer_engine.generate(input_ids, **generate_kwargs)
+        assert outputs is not None
 
-    text = ["how is the weather today?", "i am ", "你好？"]
-    input_ids = tokenizer.batch_encode_plus(text, return_tensors='pt', padding=True)
-    shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
-                               inference_only=True)
-    infer_engine = TPInferEngine(model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-
-    generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
-    outputs = infer_engine.generate(input_ids, **generate_kwargs)
-
-    # print("outputs.shape: ", outputs[0].shape)
-    # print("outputs: ", outputs[0])
-    if not dist.is_initialized() or dist.get_rank() == 0:
-        for o in outputs:
-            output_text = tokenizer.decode(o)
-            print(output_text)
+        # print("outputs.shape: ", outputs[0].shape)
+        # print("outputs: ", outputs[0])
+        if not dist.is_initialized() or dist.get_rank() == 0:
+            for o in outputs:
+                output_text = tokenizer.decode(o)
+                print(output_text)
 
 
 def check_chatglm2(rank, world_size, port):

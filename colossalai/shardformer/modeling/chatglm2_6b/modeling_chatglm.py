@@ -385,12 +385,10 @@ class SelfAttention(torch.nn.Module):
     def __init__(self, config: ChatGLMConfig, layer_number, device=None):
         super(SelfAttention, self).__init__()
         self.layer_number = max(1, layer_number)
-
         self.projection_size = config.kv_channels * config.num_attention_heads
         # Per attention head and per partition values.
         self.hidden_size_per_attention_head = (self.projection_size // config.num_attention_heads)
         self.num_attention_heads_per_partition = config.num_attention_heads
-
         self.multi_query_attention = config.multi_query_attention
         self.qkv_hidden_size = 3 * self.projection_size
         if self.multi_query_attention:
