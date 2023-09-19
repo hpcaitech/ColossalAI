@@ -19,15 +19,6 @@ We currently provide the following plugins:
 
 More plugins are coming soon.
 
-## Choosing Your Plugin
-
-Generally only one plugin is used to train a model. Our recommended use case for each plugin is as follows.
-
-- [Torch DDP Plugin](#torch-ddp-plugin): It is suitable for models with less than 2 billion parameters.
-- [Torch FSDP Plugin](#torch-fsdp-plugin) / [Low Level Zero Plugin](#low-level-zero-plugin): It is suitable for models with less than 10 billion parameters.
-- [Gemini Plugin](#gemini-plugin): it is suitable for models with more than 10 billion parameters and is ideal for scenarios with high cross-node bandwidth and medium to small-scale clusters (below a thousand cards).
-- [Hybrid Pararllel Plugin](#hybrid-parallel-plugin): It is suitable for models with more than 60 billion parameters, exceptionally long sequences, very large vocabularies, and is best suited for scenarios with low cross-node bandwidth and large-scale clusters (a thousand cards or more).
-
 ## Plugins
 
 ### Torch DDP Plugin
@@ -95,5 +86,14 @@ This plugin implements the combination of various parallel training strategies a
 > ⚠ This plugin only supports sharded checkpointing methods for model/optimizer at present. Unsharded checkpointing methods will be supported in future release.
 
 {{ autodoc:colossalai.booster.plugin.HybridParallelPlugin }}
+
+## Choosing Your Plugin
+
+Generally only one plugin is used to train a model. Our recommended use case for each plugin is as follows.
+
+- [Torch DDP Plugin](#torch-ddp-plugin): It is suitable for models with less than 2 billion parameters.
+- [Torch FSDP Plugin](#torch-fsdp-plugin) / [Low Level Zero Plugin](#low-level-zero-plugin): It is suitable for models with less than 10 billion parameters.
+- [Gemini Plugin](#gemini-plugin): It is suitable for models with more than 10 billion parameters and is ideal for scenarios with high cross-node bandwidth and medium to small-scale clusters (below a thousand cards).
+- [Hybrid Pararllel Plugin](#hybrid-parallel-plugin): It is suitable for models with more than 60 billion parameters, or special models such as those with exceptionally long sequences, very large vocabularies, and is best suited for scenarios with low cross-node bandwidth and large-scale clusters (a thousand cards or more).
 
 <!-- doc-test-command: echo  -->

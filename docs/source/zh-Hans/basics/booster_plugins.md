@@ -19,12 +19,6 @@
 
 更多插件即将推出。
 
-## 插件选择
-- [Torch DDP 插件](#torch-ddp-插件): 适用于参数少于 20 亿的模型。
-- [Torch FSDP 插件](#torch-fsdp-插件) / [Low Level Zero 插件](#low-level-zero-插件): 适用于参数少于 100 亿的模型。
-- [Gemini 插件](#gemini-插件): 适合参数超过 100 亿的模型，且跨节点带宽高、中小规模集群（千卡以下）的场景。
-- [Hybrid Pararllel 插件](#hybrid-parallel-插件): 适合参数超过 600 亿的模型、超长序列、超大词表等特殊模型，且跨节点带宽低、大规模集群（千卡以上）的场景。
-
 ## 插件
 
 ### Torch DDP 插件
@@ -92,5 +86,11 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 > ⚠ 该插件当前只对模型和优化器支持分片的checkpoint方法。不分片的checkpoint方法会在未来的版本中被支持。
 
 {{ autodoc:colossalai.booster.plugin.HybridParallelPlugin }}
+
+## 插件选择
+- [Torch DDP 插件](#torch-ddp-插件): 适用于参数少于 20 亿的模型。
+- [Torch FSDP 插件](#torch-fsdp-插件) / [Low Level Zero 插件](#low-level-zero-插件): 适用于参数少于 100 亿的模型。
+- [Gemini 插件](#gemini-插件): 适合参数超过 100 亿的模型，且跨节点带宽高、中小规模集群（千卡以下）的场景。
+- [Hybrid Pararllel 插件](#hybrid-parallel-插件): 适合参数超过 600 亿的模型、超长序列、超大词表等特殊模型，且跨节点带宽低、大规模集群（千卡以上）的场景。
 
 <!-- doc-test-command: echo  -->
