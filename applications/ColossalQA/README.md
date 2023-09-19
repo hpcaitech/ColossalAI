@@ -28,7 +28,7 @@ Retrieval-based Question Answering (QA) is a crucial application of natural lang
 
 #### Step 1: Collect Data
 
-A successful retrieval QA system starts with high-quality data. You need a collection of text documents that's related to your application. You may also need to manually design how your data will be presented to the language model. 
+A successful retrieval QA system starts with high-quality data. You need a collection of text documents that's related to your application. You may also need to manually design how your data will be presented to the language model.
 
 #### Step 2: Split Data
 
@@ -40,7 +40,7 @@ You are free to choose any vectorstore from a varity of [vector stores](https://
 - document addition by id (add_documents method with ids argument)
 - delete by id (delete method with)
 
-#### Step 4: Retrieve Relative Text 
+#### Step 4: Retrieve Relative Text
 Upon querying, we will run a reference resolution on user's input, the goal of this step is to remove ambiguous reference in user's query such as "this company", "him". We then embed the query with the same embedding function and query the vectorstore to retrieve the top-k most similar documents.
 
 #### Step 5: Format Prompt
@@ -58,7 +58,7 @@ Fig.2. Design of the memory module
 </p>
 
 ### Supported LLMs and Embedding Models
-We support all language models that can be loaded by [```transformers.AutoModel.from_pretrained```](https://huggingface.co/transformers/v3.0.2/model_doc/auto.html#transformers.AutoModel.from_pretrained). However, since retrieval QA relies heavily on language model's zero-shot, instruction following and logic reasoning ability, small models are generally not recommended. In the local demo, we use ChatGLM2 for Chinese and LLaMa2 for English. To change the base LLM, you also need to modify the prompt accordingly. 
+We support all language models that can be loaded by [```transformers.AutoModel.from_pretrained```](https://huggingface.co/transformers/v3.0.2/model_doc/auto.html#transformers.AutoModel.from_pretrained). However, since retrieval QA relies heavily on language model's zero-shot, instruction following and logic reasoning ability, small models are generally not recommended. In the local demo, we use ChatGLM2 for Chinese and LLaMa2 for English. To change the base LLM, you also need to modify the prompt accordingly.
 
 In this demo, we use ["moka-ai/m3e-base"](https://huggingface.co/moka-ai/m3e-base) as default embedding model. This model supports homogeneous text similarity calculation in both Chinese and English.
 
@@ -107,7 +107,7 @@ python retrieval_conversation_universal.py \
     --zh_model_path /path/to/chatglm2-6b \
     --zh_model_name chatglm2 \
     --en_model_name llama \
-    --sql_file_path /path/to/any/folder   
+    --sql_file_path /path/to/any/folder
 ```
 
 To run retrieval_conversation_en.py.
@@ -128,7 +128,7 @@ python retrieval_conversation_zh.py \
     --sql_file_path /path/to/any/folder
 ```
 
-After runing the script, it will ask you to provide the path to your data during the execution of the script. You can also pass a glob path to load multiple files at once. Please read this [guide](https://docs.python.org/3/library/glob.html) on how to define glob path. Follow the instruction and provide all files for your retrieval conversation system then type "ESC" to finish loading documents. If csv files are provided, please use "," as delimiter and "\"" as quotation mark. For json and jsonl files. The default format is 
+After runing the script, it will ask you to provide the path to your data during the execution of the script. You can also pass a glob path to load multiple files at once. Please read this [guide](https://docs.python.org/3/library/glob.html) on how to define glob path. Follow the instruction and provide all files for your retrieval conversation system then type "ESC" to finish loading documents. If csv files are provided, please use "," as delimiter and "\"" as quotation mark. For json and jsonl files. The default format is
 ```
 {
   "data":[
@@ -149,11 +149,61 @@ For other formats, please refer to [this document](https://python.langchain.com/
 - [x] Add customer retriever for fast construction and retrieving (with incremental update)
 
 ## Reference
-- [Langchain Repository: https://github.com/langchain-ai/langchain](https://github.com/langchain-ai/langchain)
 
-- [Document Segmentation: https://modelscope.cn/models/damo/nlp_bert_document-segmentation_chinese-base/quickstart](https://modelscope.cn/models/damo/nlp_bert_document-segmentation_chinese-base/quickstart)
-
-- [Incremental Update: https://python.langchain.com/docs/modules/data_connection/indexing?ref=blog.langchain.dev](https://python.langchain.com/docs/modules/data_connection/indexing?ref=blog.langchain.dev)
-
-- [LangChain-Chatchat: https://github.com/chatchat-space/Langchain-Chatchat/tree/master](https://github.com/chatchat-space/Langchain-Chatchat/tree/master)
-
+```bibtex
+@software{Chase_LangChain_2022,
+author = {Chase, Harrison},
+month = oct,
+title = {{LangChain}},
+url = {https://github.com/hwchase17/langchain},
+year = {2022}
+}
+```
+```bibtex
+@inproceedings{DBLP:conf/asru/ZhangCLLW21,
+  author    = {Qinglin Zhang and
+               Qian Chen and
+               Yali Li and
+               Jiaqing Liu and
+               Wen Wang},
+  title     = {Sequence Model with Self-Adaptive Sliding Window for Efficient Spoken
+               Document Segmentation},
+  booktitle = {{IEEE} Automatic Speech Recognition and Understanding Workshop, {ASRU}
+               2021, Cartagena, Colombia, December 13-17, 2021},
+  pages     = {411--418},
+  publisher = {{IEEE}},
+  year      = {2021},
+  url       = {https://doi.org/10.1109/ASRU51503.2021.9688078},
+  doi       = {10.1109/ASRU51503.2021.9688078},
+  timestamp = {Wed, 09 Feb 2022 09:03:04 +0100},
+  biburl    = {https://dblp.org/rec/conf/asru/ZhangCLLW21.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+```
+```bibtex
+@misc{touvron2023llama,
+      title={Llama 2: Open Foundation and Fine-Tuned Chat Models},
+      author={Hugo Touvron and Louis Martin and Kevin Stone and Peter Albert and Amjad Almahairi and Yasmine Babaei and Nikolay Bashlykov and Soumya Batra and Prajjwal Bhargava and Shruti Bhosale and Dan Bikel and Lukas Blecher and Cristian Canton Ferrer and Moya Chen and Guillem Cucurull and David Esiobu and Jude Fernandes and Jeremy Fu and Wenyin Fu and Brian Fuller and Cynthia Gao and Vedanuj Goswami and Naman Goyal and Anthony Hartshorn and Saghar Hosseini and Rui Hou and Hakan Inan and Marcin Kardas and Viktor Kerkez and Madian Khabsa and Isabel Kloumann and Artem Korenev and Punit Singh Koura and Marie-Anne Lachaux and Thibaut Lavril and Jenya Lee and Diana Liskovich and Yinghai Lu and Yuning Mao and Xavier Martinet and Todor Mihaylov and Pushkar Mishra and Igor Molybog and Yixin Nie and Andrew Poulton and Jeremy Reizenstein and Rashi Rungta and Kalyan Saladi and Alan Schelten and Ruan Silva and Eric Michael Smith and Ranjan Subramanian and Xiaoqing Ellen Tan and Binh Tang and Ross Taylor and Adina Williams and Jian Xiang Kuan and Puxin Xu and Zheng Yan and Iliyan Zarov and Yuchen Zhang and Angela Fan and Melanie Kambadur and Sharan Narang and Aurelien Rodriguez and Robert Stojnic and Sergey Edunov and Thomas Scialom},
+      year={2023},
+      eprint={2307.09288},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
+```
+```bibtex
+@article{zeng2022glm,
+  title={Glm-130b: An open bilingual pre-trained model},
+  author={Zeng, Aohan and Liu, Xiao and Du, Zhengxiao and Wang, Zihan and Lai, Hanyu and Ding, Ming and Yang, Zhuoyi and Xu, Yifan and Zheng, Wendi and Xia, Xiao and others},
+  journal={arXiv preprint arXiv:2210.02414},
+  year={2022}
+}
+```
+```bibtex
+@inproceedings{du2022glm,
+  title={GLM: General Language Model Pretraining with Autoregressive Blank Infilling},
+  author={Du, Zhengxiao and Qian, Yujie and Liu, Xiao and Ding, Ming and Qiu, Jiezhong and Yang, Zhilin and Tang, Jie},
+  booktitle={Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+  pages={320--335},
+  year={2022}
+}
+```

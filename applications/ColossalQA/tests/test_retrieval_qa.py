@@ -1,16 +1,7 @@
 import os
+
 from colossalqa.retrieval_conversation_universal import UniversalRetrievalConversation
-import traceback
-import warnings
-import sys
 
-def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
-
-    log = file if hasattr(file,'write') else sys.stderr
-    traceback.print_stack(file=log)
-    log.write(warnings.formatwarning(message, category, filename, lineno, line))
-
-warnings.showwarning = warn_with_traceback
 
 def test_en_retrievalQA():
     data_path_en = os.environ.get('TEST_DATA_PATH_EN')
@@ -20,14 +11,24 @@ def test_en_retrievalQA():
     zh_model_name = os.environ.get('ZH_MODEL_NAME')
     en_model_name = os.environ.get('EN_MODEL_NAME')
     sql_file_path = os.environ.get('SQL_FILE_PATH')
-    qa_session = UniversalRetrievalConversation(
-                files_en=[{'data_path':data_path_en, 'name':'company information', 'separator':'\n'}], 
-                files_zh=[{'data_path':data_path_zh, 'name':'company information', 'separator':'\n'}], 
-                zh_model_path=zh_model_path, en_model_path=en_model_path,
-                zh_model_name=zh_model_name, en_model_name=en_model_name,
-                sql_file_path=sql_file_path)
+    qa_session = UniversalRetrievalConversation(files_en=[{
+        'data_path': data_path_en,
+        'name': 'company information',
+        'separator': '\n'
+    }],
+                                                files_zh=[{
+                                                    'data_path': data_path_zh,
+                                                    'name': 'company information',
+                                                    'separator': '\n'
+                                                }],
+                                                zh_model_path=zh_model_path,
+                                                en_model_path=en_model_path,
+                                                zh_model_name=zh_model_name,
+                                                en_model_name=en_model_name,
+                                                sql_file_path=sql_file_path)
     ans = qa_session.run("which company runs business in hotel industry?", which_language='en')
     print(ans)
+
 
 def test_zh_retrievalQA():
     data_path_en = os.environ.get('TEST_DATA_PATH_EN')
@@ -37,16 +38,25 @@ def test_zh_retrievalQA():
     zh_model_name = os.environ.get('ZH_MODEL_NAME')
     en_model_name = os.environ.get('EN_MODEL_NAME')
     sql_file_path = os.environ.get('SQL_FILE_PATH')
-    qa_session = UniversalRetrievalConversation(
-                files_en=[{'data_path':data_path_en, 'name':'company information', 'separator':'\n'}], 
-                files_zh=[{'data_path':data_path_zh, 'name':'company information', 'separator':'\n'}], 
-                zh_model_path=zh_model_path, en_model_path=en_model_path,
-                zh_model_name=zh_model_name, en_model_name=en_model_name,
-                sql_file_path=sql_file_path)
+    qa_session = UniversalRetrievalConversation(files_en=[{
+        'data_path': data_path_en,
+        'name': 'company information',
+        'separator': '\n'
+    }],
+                                                files_zh=[{
+                                                    'data_path': data_path_zh,
+                                                    'name': 'company information',
+                                                    'separator': '\n'
+                                                }],
+                                                zh_model_path=zh_model_path,
+                                                en_model_path=en_model_path,
+                                                zh_model_name=zh_model_name,
+                                                en_model_name=en_model_name,
+                                                sql_file_path=sql_file_path)
     ans = qa_session.run("哪家公司在经营酒店业务？", which_language='zh')
     print(ans)
 
 
 if __name__ == "__main__":
-    # test_en_retrievalQA()
+    test_en_retrievalQA()
     test_zh_retrievalQA()
