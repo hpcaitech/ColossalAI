@@ -4,7 +4,7 @@ from ..sharding_strategy import OperationData, OperationDataType
 from .node_handler import NodeHandler
 from .strategy import GetattrGenerator, StrategyGenerator
 
-__all__ = ['GetattrHandler']
+__all__ = ["GetattrHandler"]
 
 
 class GetattrHandler(NodeHandler):

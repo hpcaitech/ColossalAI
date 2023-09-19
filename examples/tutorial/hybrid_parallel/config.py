@@ -18,11 +18,11 @@ NUM_HEADS = 4
 MLP_RATIO = 2
 NUM_CLASSES = 10
 CHECKPOINT = False
-SEQ_LENGTH = (IMG_SIZE // PATCH_SIZE)**2 + 1    # add 1 for cls token
+SEQ_LENGTH = (IMG_SIZE // PATCH_SIZE) ** 2 + 1  # add 1 for cls token
 
 # parallel setting
 TENSOR_PARALLEL_SIZE = 2
-TENSOR_PARALLEL_MODE = '1d'
+TENSOR_PARALLEL_MODE = "1d"
 
 parallel = dict(
     pipeline=2,
@@ -33,4 +33,4 @@ fp16 = dict(mode=AMP_TYPE.NAIVE)
 clip_grad_norm = 1.0
 
 # pipeline config
-NUM_MICRO_BATCHES = parallel['pipeline']
+NUM_MICRO_BATCHES = parallel["pipeline"]

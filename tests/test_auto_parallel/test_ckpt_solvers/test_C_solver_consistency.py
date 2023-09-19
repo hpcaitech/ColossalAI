@@ -8,6 +8,7 @@ import torchvision.models as tm
 import colossalai
 from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.fx._compatibility import is_compatible_with_meta
+
 # from colossalai.fx.passes.algorithms import solver_rotor
 # from colossalai.fx.passes.algorithms.operation import Sequence
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
@@ -19,18 +20,18 @@ if is_compatible_with_meta():
 
 try:
     from colossalai.fx.codegen import ActivationCheckpointCodeGen
+
     withcodegen = True
 except:
-    from colossalai.fx.codegen import python_code_with_activation_checkpoint
     withcodegen = False
 
 
 def _run_C_solver_consistency_test(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     for M, mem_budget in [(tm.resnet50, 4000), (tm.densenet121, 8080)]:
         model = M()
-        data = torch.rand(128, 3, 224, 224, device='meta')
+        data = torch.rand(128, 3, 224, 224, device="meta")
 
         tracer = ColoTracer()
         graph = tracer.trace(model, meta_args={"x": data})
@@ -54,15 +55,17 @@ def _run_C_solver_consistency_test(rank, world_size, port):
         for m in range(len(opt_python)):
             for d in range(1, len(opt_python[0])):
                 for i in range(len(opt_python[0]) - d):
-                    assert opt_python[m][i][i + d] == opt_C[m][i][i + d], \
-                    f"item ({m}, {i}, {i + d}) is not consistent with python version!\npython version: {opt_python[m][i][i + d]}\nC version: {opt_C[m][i][i + d]}"
+                    assert (
+                        opt_python[m][i][i + d] == opt_C[m][i][i + d]
+                    ), f"item ({m}, {i}, {i + d}) is not consistent with python version!\npython version: {opt_python[m][i][i + d]}\nC version: {opt_C[m][i][i + d]}"
 
         sequence_python = sequence_python.list_operations()
         sequence_C = sequence_C.list_operations()
 
         # make sure the sequences are the same
-        assert len(sequence_python) == len(sequence_C) and \
-        all(python_op.__repr__() == C_op.__repr__() for (python_op, C_op) in zip(sequence_python, sequence_C))
+        assert len(sequence_python) == len(sequence_C) and all(
+            python_op.__repr__() == C_op.__repr__() for (python_op, C_op) in zip(sequence_python, sequence_C)
+        )
 
     gpc.destroy()
 
@@ -74,5 +77,5 @@ def test_C_solver_consistency():
     spawn(_run_C_solver_consistency_test, 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     _run_C_solver_consistency_test(rank=0)

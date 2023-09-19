@@ -16,11 +16,11 @@ CONFIG = dict()
 
 def run_test(rank, world_size, port):
     world_size = 4
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     expert_module = nn.Linear
     expert_factor = dict(in_features=D_MODEL, out_features=D_FF, device=get_current_device())
 
-    MOE_CONTEXT.setup(42)    # MOE environment initialization
+    MOE_CONTEXT.setup(42)  # MOE environment initialization
     exp0 = Experts(expert_module, 1, **expert_factor)
     exp1 = Experts(expert_module, 2, **expert_factor)
     exp2 = Experts(expert_module, 4, **expert_factor)
@@ -64,5 +64,5 @@ def test_moe_initialization():
     spawn(run_test, 4)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_moe_initialization()

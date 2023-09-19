@@ -31,11 +31,13 @@ class PolicyLoss(nn.Module):
         super().__init__()
         self.clip_eps = clip_eps
 
-    def forward(self,
-                log_probs: torch.Tensor,
-                old_log_probs: torch.Tensor,
-                advantages: torch.Tensor,
-                action_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self,
+        log_probs: torch.Tensor,
+        old_log_probs: torch.Tensor,
+        advantages: torch.Tensor,
+        action_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         ratio = (log_probs - old_log_probs).exp()
         surr1 = ratio * advantages
         surr2 = ratio.clamp(1 - self.clip_eps, 1 + self.clip_eps) * advantages
@@ -55,14 +57,16 @@ class ValueLoss(nn.Module):
         super().__init__()
         self.clip_eps = clip_eps
 
-    def forward(self,
-                values: torch.Tensor,
-                old_values: torch.Tensor,
-                reward: torch.Tensor,
-                action_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self,
+        values: torch.Tensor,
+        old_values: torch.Tensor,
+        reward: torch.Tensor,
+        action_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         values_clipped = old_values + (values - old_values).clamp(-self.clip_eps, self.clip_eps)
-        surr1 = (values_clipped - reward)**2
-        surr2 = (values - reward)**2
+        surr1 = (values_clipped - reward) ** 2
+        surr2 = (values - reward) ** 2
         loss = torch.max(surr1, surr2)
         loss = loss.mean()
         return 0.5 * loss

@@ -4,7 +4,6 @@ from rpc_test_utils import RpcTestModel, parse_args, rpc_run
 from torch import nn
 
 from colossalai.legacy.pipeline.rpc import ChimeraPipelineEngine
-from colossalai.testing import assert_close
 
 # global variable for model created
 feat_num = 100
@@ -20,7 +19,7 @@ def partition(pp_rank: int, chunk: int, stage_num: int):
 def run_master(args):
     torch.manual_seed(100)
 
-    epoch = args.epoch
+    args.epoch
     device = args.device
     stage_num = args.world_size
     chunk = 1
@@ -32,11 +31,13 @@ def run_master(args):
 
     assert sample_num % batch_size == 0
 
-    engine = ChimeraPipelineEngine(partition_fn=partition,
-                                   stage_num=stage_num,
-                                   num_microbatches=num_microbatches,
-                                   device=device,
-                                   checkpoint=use_checkpoint)
+    engine = ChimeraPipelineEngine(
+        partition_fn=partition,
+        stage_num=stage_num,
+        num_microbatches=num_microbatches,
+        device=device,
+        checkpoint=use_checkpoint,
+    )
     engine.initialize_optimizer(torch.optim.Adam, lr=1e-3)
 
     input_sample = torch.randn((sample_num, feat_num), device=device)
@@ -56,7 +57,8 @@ def run_master(args):
 
     # compute forward result and backward grad of parameters just in rank_0
     test_model = nn.Sequential(
-        *[partition(pp_rank, chunk, actual_stage_num) for pp_rank in range(actual_stage_num)]).to(device)
+        *[partition(pp_rank, chunk, actual_stage_num) for pp_rank in range(actual_stage_num)]
+    ).to(device)
     # input_sample = input_sample[len(input_sample) // 2:]
     input_sample = input_sample.requires_grad_()
     out_val = test_model(input_sample).sum()

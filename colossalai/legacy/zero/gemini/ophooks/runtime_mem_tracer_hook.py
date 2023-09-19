@@ -15,8 +15,7 @@ class TrainingPhase(Enum):
     BACKWARD = 1
 
 
-class GradMemStats():
-
+class GradMemStats:
     def __init__(self) -> None:
         self.unreleased_grad_flag = {}
         self.unreleased_grad_volume = 0
@@ -26,8 +25,7 @@ class GradMemStats():
         self.unreleased_grad_volume = 0
 
 
-class GradMemTracerHook():
-
+class GradMemTracerHook:
     def __init__(self, grad_stats: GradMemStats):
         self.grad_hook_list = []
         self._grad_stats = grad_stats
@@ -50,7 +48,6 @@ class GradMemTracerHook():
 
 
 class ParamMemTracerHook(ColoParamOpHook):
-
     def __init__(self, memstats: MemStats, gradstats: GradMemStats) -> None:
         super().__init__()
         self._training_phase = TrainingPhase.FORWARD
@@ -79,10 +76,9 @@ class ParamMemTracerHook(ColoParamOpHook):
             if cur_dev == "cpu":
                 if p.grad is not None and p.grad.device.type == "cpu":
                     raise NotImplementedError("Only run in forward propagation")
-                p.data = torch.empty(p.data.shape,
-                                     device="cuda",
-                                     dtype=p.data.dtype,
-                                     requires_grad=p.data.requires_grad)
+                p.data = torch.empty(
+                    p.data.shape, device="cuda", dtype=p.data.dtype, requires_grad=p.data.requires_grad
+                )
             elif cur_dev == "cuda":
                 alloc_storage(p.data)
 

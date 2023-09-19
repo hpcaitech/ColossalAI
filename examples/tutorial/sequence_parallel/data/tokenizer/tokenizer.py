@@ -25,16 +25,15 @@ from .bert_tokenization import FullTokenizer as FullBertTokenizer
 def build_tokenizer(vocab_file, tokenizer_type, vocab_extra_ids=0):
     """Initialize tokenizer."""
     if not gpc.is_initialized(ParallelMode.GLOBAL) or gpc.get_global_rank() == 0:
-        print('> building {} tokenizer ...'.format(tokenizer_type), flush=True)
+        print("> building {} tokenizer ...".format(tokenizer_type), flush=True)
 
     # Select and instantiate the tokenizer.
-    if tokenizer_type == 'BertWordPieceLowerCase':
+    if tokenizer_type == "BertWordPieceLowerCase":
         tokenizer = _BertWordPieceTokenizer(vocab_file=vocab_file, lower_case=True, vocab_extra_ids=vocab_extra_ids)
-    elif tokenizer_type == 'BertWordPieceCase':
+    elif tokenizer_type == "BertWordPieceCase":
         tokenizer = _BertWordPieceTokenizer(vocab_file=vocab_file, lower_case=False, vocab_extra_ids=vocab_extra_ids)
     else:
-        raise NotImplementedError('{} tokenizer is not '
-                                  'implemented.'.format(tokenizer_type))
+        raise NotImplementedError("{} tokenizer is not " "implemented.".format(tokenizer_type))
 
     # Add vocab size.
     padded_vocab_size = _vocab_size_with_padding(tokenizer.vocab_size)
@@ -55,9 +54,11 @@ def _vocab_size_with_padding(orig_vocab_size, make_vocab_size_divisible_by=128):
     while (after % multiple) != 0:
         after += 1
     if not gpc.is_initialized(ParallelMode.GLOBAL) or gpc.get_global_rank() == 0:
-        print(' > padded vocab (size: {}) with {} dummy tokens '
-              '(new size: {})'.format(orig_vocab_size, after - orig_vocab_size, after),
-              flush=True)
+        print(
+            " > padded vocab (size: {}) with {} dummy tokens "
+            "(new size: {})".format(orig_vocab_size, after - orig_vocab_size, after),
+            flush=True,
+        )
     return after
 
 
@@ -77,46 +78,38 @@ class AbstractTokenizer(ABC):
     @abstractmethod
     def vocab(self):
         """Dictionary from vocab text token to id token."""
-        pass
 
     @property
     @abstractmethod
     def inv_vocab(self):
         """Dictionary from vocab id token to text token."""
-        pass
 
     @abstractmethod
     def tokenize(self, text):
         pass
 
     def detokenize(self, token_ids):
-        raise NotImplementedError('detokenizer is not implemented for {} '
-                                  'tokenizer'.format(self.name))
+        raise NotImplementedError("detokenizer is not implemented for {} " "tokenizer".format(self.name))
 
     @property
     def cls(self):
-        raise NotImplementedError('CLS is not provided for {} '
-                                  'tokenizer'.format(self.name))
+        raise NotImplementedError("CLS is not provided for {} " "tokenizer".format(self.name))
 
     @property
     def sep(self):
-        raise NotImplementedError('SEP is not provided for {} '
-                                  'tokenizer'.format(self.name))
+        raise NotImplementedError("SEP is not provided for {} " "tokenizer".format(self.name))
 
     @property
     def pad(self):
-        raise NotImplementedError('PAD is not provided for {} '
-                                  'tokenizer'.format(self.name))
+        raise NotImplementedError("PAD is not provided for {} " "tokenizer".format(self.name))
 
     @property
     def eod(self):
-        raise NotImplementedError('EOD is not provided for {} '
-                                  'tokenizer'.format(self.name))
+        raise NotImplementedError("EOD is not provided for {} " "tokenizer".format(self.name))
 
     @property
     def mask(self):
-        raise NotImplementedError('MASK is not provided for {} '
-                                  'tokenizer'.format(self.name))
+        raise NotImplementedError("MASK is not provided for {} " "tokenizer".format(self.name))
 
 
 class _BertWordPieceTokenizer(AbstractTokenizer):
@@ -124,24 +117,24 @@ class _BertWordPieceTokenizer(AbstractTokenizer):
 
     def __init__(self, vocab_file, lower_case=True, vocab_extra_ids=0):
         if lower_case:
-            name = 'BERT Lower Case'
+            name = "BERT Lower Case"
         else:
-            name = 'BERT Upper Case'
+            name = "BERT Upper Case"
         super().__init__(name)
         self.tokenizer = FullBertTokenizer(vocab_file, do_lower_case=lower_case)
-        self.cls_id = self.tokenizer.vocab['[CLS]']
-        self.sep_id = self.tokenizer.vocab['[SEP]']
-        self.pad_id = self.tokenizer.vocab['[PAD]']
-        self.mask_id = self.tokenizer.vocab['[MASK]']
+        self.cls_id = self.tokenizer.vocab["[CLS]"]
+        self.sep_id = self.tokenizer.vocab["[SEP]"]
+        self.pad_id = self.tokenizer.vocab["[PAD]"]
+        self.mask_id = self.tokenizer.vocab["[MASK]"]
         self._additional_special_tokens = []
 
         # (dsachan) Add BOS and EOS tokens
-        SPECIAL_TOKENS = {'eos_token': '[EOS]', 'bos_token': '[BOS]'}
-        self._bos_token = '[BOS]'
+        SPECIAL_TOKENS = {"eos_token": "[EOS]", "bos_token": "[BOS]"}
+        self._bos_token = "[BOS]"
         self.add_token(self._bos_token)
         self._bos_token_id = self.vocab.get(self._bos_token)
 
-        self._eos_token = '[EOS]'
+        self._eos_token = "[EOS]"
         self.add_token(self._eos_token)
         self._eos_token_id = self.vocab.get(self._eos_token)
 
@@ -185,7 +178,7 @@ class _BertWordPieceTokenizer(AbstractTokenizer):
 
     def decode_token_ids(self, token_ids):
         tokens = self.tokenizer.convert_ids_to_tokens(token_ids)
-        exclude_list = ['[PAD]', '[CLS]']
+        exclude_list = ["[PAD]", "[CLS]"]
         non_pads = [t for t in tokens if t not in exclude_list]
 
         result = ""
@@ -215,32 +208,32 @@ class _BertWordPieceTokenizer(AbstractTokenizer):
 
     @property
     def bos_token(self):
-        """ Beginning of sentence token id """
+        """Beginning of sentence token id"""
         return self._bos_token
 
     @property
     def eos_token(self):
-        """ End of sentence token id """
+        """End of sentence token id"""
         return self._eos_token
 
     @property
     def additional_special_tokens(self):
-        """ All the additional special tokens you may want to use (list of strings)."""
+        """All the additional special tokens you may want to use (list of strings)."""
         return self._additional_special_tokens
 
     @property
     def bos_token_id(self):
-        """ Id of the beginning of sentence token in the vocabulary."""
+        """Id of the beginning of sentence token in the vocabulary."""
         return self._bos_token_id
 
     @property
     def eos_token_id(self):
-        """ Id of the end of sentence token in the vocabulary."""
+        """Id of the end of sentence token in the vocabulary."""
         return self._eos_token_id
 
     @property
     def additional_special_tokens_ids(self):
-        """ Ids of all the additional special tokens in the vocabulary (list of integers)."""
+        """Ids of all the additional special tokens in the vocabulary (list of integers)."""
         return [self.vocab.get(token) for token in self._additional_special_tokens]
 
     @additional_special_tokens.setter

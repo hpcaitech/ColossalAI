@@ -13,7 +13,7 @@ def check_equal(a, b):
     """
     This function checks if two tensors are equal within tolerance
     """
-    assert torch.allclose(a.float(), b.float(), rtol=1e-4, atol=1e-3), f'a = {a}, b = {b}'
+    assert torch.allclose(a.float(), b.float(), rtol=1e-4, atol=1e-3), f"a = {a}, b = {b}"
 
 
 def run_naive_amp():
@@ -25,7 +25,7 @@ def run_naive_amp():
     torch.backends.cudnn.deterministic = True
 
     # create layer
-    test_models = ['repeated_computed_layers', 'nested_model', 'resnet18']
+    test_models = ["repeated_computed_layers", "nested_model", "resnet18"]
     for test_name in test_models:
         get_component_func = non_distributed_component_funcs.get_callable(test_name)
         model_builder, train_dataloader, _, optim_class, _ = get_component_func()
@@ -41,9 +41,10 @@ def run_naive_amp():
 
         # inject naive and apex amp
         naive_amp_config = dict(initial_scale=128, clip_grad_norm=1.0)
-        naive_amp_model, naive_amp_optimizer = convert_to_naive_amp(naive_amp_model, naive_amp_optimizer,
-                                                                    naive_amp_config)
-        apex_amp_config = dict(opt_level='O2', loss_scale=128, keep_batchnorm_fp32=False)
+        naive_amp_model, naive_amp_optimizer = convert_to_naive_amp(
+            naive_amp_model, naive_amp_optimizer, naive_amp_config
+        )
+        apex_amp_config = dict(opt_level="O2", loss_scale=128, keep_batchnorm_fp32=False)
         apex_amp_model, apex_amp_optimizer = convert_to_apex_amp(apex_amp_model, apex_amp_optimizer, apex_amp_config)
 
         # create data
@@ -78,7 +79,7 @@ def run_naive_amp():
 
 
 def run_dist(rank, world_size, port):
-    colossalai.legacy.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.legacy.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
     run_naive_amp()
 
 
@@ -89,5 +90,5 @@ def test_naive_amp():
     spawn(run_dist, 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_naive_amp()

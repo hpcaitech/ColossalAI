@@ -8,7 +8,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Parameter
 
-import colossalai
 from colossalai.kernel import FusedScaleMaskSoftmax
 from colossalai.kernel.cuda_native.scaled_softmax import AttnMaskType
 from colossalai.legacy.context import seed
@@ -33,18 +32,20 @@ class TransformerSelfAttentionRing(nn.Module):
 
     """
 
-    def __init__(self,
-                 hidden_size,
-                 num_attention_heads,
-                 attention_dropout,
-                 attention_mask_func,
-                 layer_number,
-                 apply_query_key_layer_scaling: bool = False,
-                 convert_fp16_to_fp32_in_softmax: bool = False,
-                 attn_mask_type=AttnMaskType.padding,
-                 masked_softmax_fusion=True,
-                 fp16=False,
-                 bf16=False):
+    def __init__(
+        self,
+        hidden_size,
+        num_attention_heads,
+        attention_dropout,
+        attention_mask_func,
+        layer_number,
+        apply_query_key_layer_scaling: bool = False,
+        convert_fp16_to_fp32_in_softmax: bool = False,
+        attn_mask_type=AttnMaskType.padding,
+        masked_softmax_fusion=True,
+        fp16=False,
+        bf16=False,
+    ):
         super().__init__()
         self.convert_fp16_to_fp32_in_softmax = convert_fp16_to_fp32_in_softmax
         self.apply_query_key_layer_scaling = apply_query_key_layer_scaling
@@ -59,8 +60,9 @@ class TransformerSelfAttentionRing(nn.Module):
         if self.apply_query_key_layer_scaling:
             self.convert_fp16_to_fp32_in_softmax = True
 
-        assert self.hidden_size % self.num_attention_heads == 0, \
-            'hidden size is not divisible by the number of attention heads'
+        assert (
+            self.hidden_size % self.num_attention_heads == 0
+        ), "hidden size is not divisible by the number of attention heads"
 
         self.hidden_size_per_attention_head = self.hidden_size // num_attention_heads
 
@@ -79,9 +81,15 @@ class TransformerSelfAttentionRing(nn.Module):
             self.coeff = layer_number
             self.norm_factor *= self.coeff
 
-        self.scale_mask_softmax = FusedScaleMaskSoftmax(fp16, bf16, self.attn_mask_type, masked_softmax_fusion,
-                                                        self.attention_mask_func, self.convert_fp16_to_fp32_in_softmax,
-                                                        self.coeff)
+        self.scale_mask_softmax = FusedScaleMaskSoftmax(
+            fp16,
+            bf16,
+            self.attn_mask_type,
+            masked_softmax_fusion,
+            self.attention_mask_func,
+            self.convert_fp16_to_fp32_in_softmax,
+            self.coeff,
+        )
 
         self.attention_dropout = nn.Dropout(attention_dropout)
 
@@ -102,21 +110,28 @@ class TransformerSelfAttentionRing(nn.Module):
         mixed_x_layer = self.query_key_value(hidden_states)
 
         # [sub_seq_len, batch_size, num_heads, 3 * head_size] --> 3 [sub_seq_len, batch_size, num_heads, head_size]
-        new_tensor_shape = mixed_x_layer.size()[:-1] + (self.num_attention_heads,
-                                                        3 * self.hidden_size_per_attention_head)
+        new_tensor_shape = mixed_x_layer.size()[:-1] + (
+            self.num_attention_heads,
+            3 * self.hidden_size_per_attention_head,
+        )
         mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
 
         # split into query, key and value
         last_dim = mixed_x_layer.dim() - 1
         last_dim_value = mixed_x_layer.size(-1)
-        assert last_dim_value % 3 == 0, 'the last dimension is not a multiple of 3, ' \
-                                        'cannot be divided into query, key and value'
+        assert last_dim_value % 3 == 0, (
+            "the last dimension is not a multiple of 3, " "cannot be divided into query, key and value"
+        )
         partition_size = last_dim_value // 3
         (query_layer, key_layer, value_layer) = torch.split(mixed_x_layer, partition_size, dim=last_dim)
 
         # attention scores: [batch_size, num_heads, sub_seq_len, seq_len]
-        output_size = (query_layer.size(1), query_layer.size(2), query_layer.size(0),
-                       key_layer.size(0) * self.world_size)
+        output_size = (
+            query_layer.size(1),
+            query_layer.size(2),
+            query_layer.size(0),
+            key_layer.size(0) * self.world_size,
+        )
 
         # [sub_seq_len, batch_size, num_heads, head_size] -> [sub_seq_len, batch_size * num_heads, head_size]
         query_layer = query_layer.view(output_size[2], output_size[0] * output_size[1], -1)
@@ -125,11 +140,12 @@ class TransformerSelfAttentionRing(nn.Module):
 
         # attention_scores: [batch_size * num_heads, sub_seq_len, seq_len]
         attention_scores = RingQK.apply(
-            query_layer.transpose(0, 1).contiguous(),    # [batch_size * num_heads, sub_seq_len, head_size]
-            key_layer.transpose(0, 1).contiguous(),    # [batch_size * num_heads, sub_seq_len, head_size],
+            query_layer.transpose(0, 1).contiguous(),  # [batch_size * num_heads, sub_seq_len, head_size]
+            key_layer.transpose(0, 1).contiguous(),  # [batch_size * num_heads, sub_seq_len, head_size],
             batch_size,
             self.num_attention_heads,
-            sub_seq_length)
+            sub_seq_length,
+        )
 
         attention_scores /= self.norm_factor
 
@@ -151,12 +167,18 @@ class TransformerSelfAttentionRing(nn.Module):
 
         # # change view [b * num_heads, sub_seq_len, seq_len]
         attention_probs = attention_probs.view(
-            attention_probs.size(0) * attention_probs.size(1), attention_probs.size(2), attention_probs.size(3))
+            attention_probs.size(0) * attention_probs.size(1), attention_probs.size(2), attention_probs.size(3)
+        )
 
         # matmul: [batch_size * num_heads, sub_seq_len, head_size]
-        context_layer = RingAV.apply(attention_probs,
-                                     value_layer.transpose(0, 1).contiguous(), batch_size, self.num_attention_heads,
-                                     self.hidden_size_per_attention_head, sub_seq_length)
+        context_layer = RingAV.apply(
+            attention_probs,
+            value_layer.transpose(0, 1).contiguous(),
+            batch_size,
+            self.num_attention_heads,
+            self.hidden_size_per_attention_head,
+            sub_seq_length,
+        )
 
         # change view [batch_size, num_heads, sub_seq_len, head_size]
         context_layer = context_layer.view(*output_size)
@@ -165,8 +187,9 @@ class TransformerSelfAttentionRing(nn.Module):
         context_layer = context_layer.permute(2, 0, 1, 3).contiguous()
 
         # [sub_seq_len, batch_size, num_heads, head_size] -> [sub_seq_len, batch_size, hidden_size]
-        new_context_layer_shape = context_layer.size()[:-2] + (self.hidden_size_per_attention_head *
-                                                               self.num_attention_heads,)
+        new_context_layer_shape = context_layer.size()[:-2] + (
+            self.hidden_size_per_attention_head * self.num_attention_heads,
+        )
         context_layer = context_layer.view(*new_context_layer_shape)
 
         output, bias = self.dense(context_layer)
@@ -174,11 +197,13 @@ class TransformerSelfAttentionRing(nn.Module):
         return output, bias
 
     def __repr__(self):
-        return f'TransformerSelfAttentionRing(apply_query_key_layer_scaling={self.apply_query_key_layer_scaling}, ' \
-            f'layer_number={self.layer_number}, hidden_size:{self.hidden_size}, attention_dropout={self.attention_dropout}, ' \
-            f'attn_mask_type={self.attn_mask_type}, num_attention_heads={self.num_attention_heads}, ' \
-            f'hidden_size_per_attention_head={self.hidden_size_per_attention_head}, coeff={self.coeff}, norm_factor={self.norm_factor}, ' \
-            f'convert_fp16_to_fp32_in_softmax={self.convert_fp16_to_fp32_in_softmax})'
+        return (
+            f"TransformerSelfAttentionRing(apply_query_key_layer_scaling={self.apply_query_key_layer_scaling}, "
+            f"layer_number={self.layer_number}, hidden_size:{self.hidden_size}, attention_dropout={self.attention_dropout}, "
+            f"attn_mask_type={self.attn_mask_type}, num_attention_heads={self.num_attention_heads}, "
+            f"hidden_size_per_attention_head={self.hidden_size_per_attention_head}, coeff={self.coeff}, norm_factor={self.norm_factor}, "
+            f"convert_fp16_to_fp32_in_softmax={self.convert_fp16_to_fp32_in_softmax})"
+        )
 
 
 class _Linear(nn.Module):
@@ -208,10 +233,12 @@ class _Linear(nn.Module):
         self.output_size = output_size
         self.skip_bias_add = skip_bias_add
 
-        self.weight = Parameter(torch.empty(
-            self.output_size,
-            self.input_size,
-        ))
+        self.weight = Parameter(
+            torch.empty(
+                self.output_size,
+                self.input_size,
+            )
+        )
         nn.init.xavier_normal_(self.weight)
 
         if bias:
@@ -220,7 +247,7 @@ class _Linear(nn.Module):
             with torch.no_grad():
                 self.bias.zero_()
         else:
-            self.register_parameter('bias', None)
+            self.register_parameter("bias", None)
 
     def forward(self, input_):
         # Matrix multiply.
@@ -233,5 +260,7 @@ class _Linear(nn.Module):
             return output
 
     def __repr__(self):
-        return f'Linear(in_features={self.input_size}, out_features={self.output_size}, ' + \
-            f'bias={self.bias is not None}, skip_bias_add={self.skip_bias_add})'
+        return (
+            f"Linear(in_features={self.input_size}, out_features={self.output_size}, "
+            + f"bias={self.bias is not None}, skip_bias_add={self.skip_bias_add})"
+        )

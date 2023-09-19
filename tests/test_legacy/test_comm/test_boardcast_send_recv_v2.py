@@ -16,11 +16,15 @@ torch.manual_seed(123)
 
 def check_layer(rank, world_size, port):
     disable_existing_loggers()
-    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl', verbose=False)
+    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl", verbose=False)
     rank = gpc.get_local_rank(ParallelMode.PIPELINE)
 
     if rank == 0:
-        obj = [torch.randn(3,)]
+        obj = [
+            torch.randn(
+                3,
+            )
+        ]
         _send_object(obj, 1)
 
     if rank == 1:
@@ -30,7 +34,11 @@ def check_layer(rank, world_size, port):
         _recv_object(3)
 
     if rank == 3:
-        obj = [torch.randn(3,)]
+        obj = [
+            torch.randn(
+                3,
+            )
+        ]
         _send_object(obj, 2)
 
     gpc.destroy()
@@ -43,5 +51,5 @@ def test_object_list_p2p():
     spawn(check_layer, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_object_list_p2p()

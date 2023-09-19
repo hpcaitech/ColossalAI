@@ -17,17 +17,16 @@ from .embed import HiddenParallelEmbedding, HiddenParallelGPTLMHead1D, VocabPara
 from .gpt1d import FusedGPTTransformerLayer1D, GPTTransformerLayer1D
 
 __all__ = [
-    'GPT2_small_pipeline_1D',
-    'GPT2_exlarge_pipeline_1D',
-    'GPT3_pipeline_1D',
-    'GPT2_exlarge_pipeline_hybrid',
-    'GPT2_small_pipeline_hybrid',
-    'GPT3_pipeline_hybrid',
+    "GPT2_small_pipeline_1D",
+    "GPT2_exlarge_pipeline_1D",
+    "GPT3_pipeline_1D",
+    "GPT2_exlarge_pipeline_hybrid",
+    "GPT2_small_pipeline_hybrid",
+    "GPT3_pipeline_hybrid",
 ]
 
 
 class GenericPipelineGPT(nn.Module):
-
     def __init__(self, embedding=None, blocks=None, norm=None, head=None) -> None:
         super().__init__()
         self.embedding = embedding
@@ -44,7 +43,7 @@ class GenericPipelineGPT(nn.Module):
         batch_size = hidden_states.shape[0]
         attention_mask = attention_mask.view(batch_size, -1)
         attention_mask = attention_mask[:, None, None, :]
-        attention_mask = attention_mask.to(dtype=hidden_states.dtype)    # fp16 compatibility
+        attention_mask = attention_mask.to(dtype=hidden_states.dtype)  # fp16 compatibility
         attention_mask = (1.0 - attention_mask) * -10000.0
         for block in self.blocks:
             hidden_states, attention_mask = block(hidden_states, attention_mask)
@@ -54,25 +53,26 @@ class GenericPipelineGPT(nn.Module):
 
 
 class PipelineGPT1D(GenericPipelineGPT):
-
-    def __init__(self,
-                 num_layers: int = 12,
-                 hidden_size: int = 768,
-                 num_attention_heads: int = 12,
-                 vocab_size: int = 50304,
-                 embed_drop_rate: float = 0.,
-                 act_func: str = 'gelu',
-                 mlp_ratio: int = 4.0,
-                 attn_drop_rate: float = 0.,
-                 drop_rate: float = 0.,
-                 dtype: torch.dtype = torch.float,
-                 checkpoint: bool = False,
-                 max_position_embeddings: int = 1024,
-                 layer_norm_epsilon: float = 1e-5,
-                 apply_post_layer_norm: bool = False,
-                 first: bool = False,
-                 last: bool = False,
-                 embed_split_hidden=False):
+    def __init__(
+        self,
+        num_layers: int = 12,
+        hidden_size: int = 768,
+        num_attention_heads: int = 12,
+        vocab_size: int = 50304,
+        embed_drop_rate: float = 0.0,
+        act_func: str = "gelu",
+        mlp_ratio: int = 4.0,
+        attn_drop_rate: float = 0.0,
+        drop_rate: float = 0.0,
+        dtype: torch.dtype = torch.float,
+        checkpoint: bool = False,
+        max_position_embeddings: int = 1024,
+        layer_norm_epsilon: float = 1e-5,
+        apply_post_layer_norm: bool = False,
+        first: bool = False,
+        last: bool = False,
+        embed_split_hidden=False,
+    ):
         embedding = None
         norm = None
         head = None
@@ -83,19 +83,24 @@ class PipelineGPT1D(GenericPipelineGPT):
             head_cls = HiddenParallelGPTLMHead1D
         if first:
             embedding = embed_cls(hidden_size, vocab_size, max_position_embeddings, embed_drop_rate, dtype=dtype)
-        blocks = nn.ModuleList([
-            GPTTransformerLayer1D(hidden_size,
-                                  num_attention_heads,
-                                  act_func=act_func,
-                                  mlp_ratio=mlp_ratio,
-                                  attention_dropout_prob=attn_drop_rate,
-                                  hidden_dropout_prob=drop_rate,
-                                  dtype=dtype,
-                                  checkpoint=checkpoint,
-                                  max_position_embeddings=max_position_embeddings,
-                                  layer_norm_epsilon=layer_norm_epsilon,
-                                  apply_post_layer_norm=apply_post_layer_norm) for _ in range(num_layers)
-        ])
+        blocks = nn.ModuleList(
+            [
+                GPTTransformerLayer1D(
+                    hidden_size,
+                    num_attention_heads,
+                    act_func=act_func,
+                    mlp_ratio=mlp_ratio,
+                    attention_dropout_prob=attn_drop_rate,
+                    hidden_dropout_prob=drop_rate,
+                    dtype=dtype,
+                    checkpoint=checkpoint,
+                    max_position_embeddings=max_position_embeddings,
+                    layer_norm_epsilon=layer_norm_epsilon,
+                    apply_post_layer_norm=apply_post_layer_norm,
+                )
+                for _ in range(num_layers)
+            ]
+        )
         if last:
             norm = nn.LayerNorm(hidden_size, eps=layer_norm_epsilon)
             head = head_cls(vocab_size=vocab_size, embed_dim=hidden_size, dtype=dtype)
@@ -103,25 +108,26 @@ class PipelineGPT1D(GenericPipelineGPT):
 
 
 class FusedPipelineGPT1D(GenericPipelineGPT):
-
-    def __init__(self,
-                 num_layers: int = 12,
-                 hidden_size: int = 768,
-                 num_attention_heads: int = 12,
-                 vocab_size: int = 50304,
-                 embed_drop_rate: float = 0.,
-                 act_func: str = 'gelu',
-                 mlp_ratio: int = 4.0,
-                 attn_drop_rate: float = 0.,
-                 drop_rate: float = 0.,
-                 dtype: torch.dtype = torch.float,
-                 checkpoint: bool = False,
-                 max_position_embeddings: int = 1024,
-                 layer_norm_epsilon: float = 1e-5,
-                 apply_post_layer_norm: bool = False,
-                 first: bool = False,
-                 last: bool = False,
-                 embed_split_hidden=False):
+    def __init__(
+        self,
+        num_layers: int = 12,
+        hidden_size: int = 768,
+        num_attention_heads: int = 12,
+        vocab_size: int = 50304,
+        embed_drop_rate: float = 0.0,
+        act_func: str = "gelu",
+        mlp_ratio: int = 4.0,
+        attn_drop_rate: float = 0.0,
+        drop_rate: float = 0.0,
+        dtype: torch.dtype = torch.float,
+        checkpoint: bool = False,
+        max_position_embeddings: int = 1024,
+        layer_norm_epsilon: float = 1e-5,
+        apply_post_layer_norm: bool = False,
+        first: bool = False,
+        last: bool = False,
+        embed_split_hidden=False,
+    ):
         embedding = None
         norm = None
         head = None
@@ -132,19 +138,24 @@ class FusedPipelineGPT1D(GenericPipelineGPT):
             head_cls = HiddenParallelGPTLMHead1D
         if first:
             embedding = embed_cls(hidden_size, vocab_size, max_position_embeddings, embed_drop_rate, dtype=dtype)
-        blocks = nn.ModuleList([
-            FusedGPTTransformerLayer1D(hidden_size,
-                                       num_attention_heads,
-                                       act_func=act_func,
-                                       mlp_ratio=mlp_ratio,
-                                       attention_dropout_prob=attn_drop_rate,
-                                       hidden_dropout_prob=drop_rate,
-                                       dtype=dtype,
-                                       checkpoint=checkpoint,
-                                       max_position_embeddings=max_position_embeddings,
-                                       layer_norm_epsilon=layer_norm_epsilon,
-                                       apply_post_layer_norm=apply_post_layer_norm) for _ in range(num_layers)
-        ])
+        blocks = nn.ModuleList(
+            [
+                FusedGPTTransformerLayer1D(
+                    hidden_size,
+                    num_attention_heads,
+                    act_func=act_func,
+                    mlp_ratio=mlp_ratio,
+                    attention_dropout_prob=attn_drop_rate,
+                    hidden_dropout_prob=drop_rate,
+                    dtype=dtype,
+                    checkpoint=checkpoint,
+                    max_position_embeddings=max_position_embeddings,
+                    layer_norm_epsilon=layer_norm_epsilon,
+                    apply_post_layer_norm=apply_post_layer_norm,
+                )
+                for _ in range(num_layers)
+            ]
+        )
         if last:
             norm = kernel.LayerNorm(hidden_size, eps=layer_norm_epsilon)
             head = head_cls(vocab_size=vocab_size, embed_dim=hidden_size, dtype=dtype)
@@ -153,7 +164,7 @@ class FusedPipelineGPT1D(GenericPipelineGPT):
     def forward(self, hidden_states=None, input_ids=None, attention_mask=None):
         if self.embedding is not None:
             hidden_states = self.embedding(input_ids=input_ids)
-        attention_mask = attention_mask.to(dtype=hidden_states.dtype)    # fp16 compatibility
+        attention_mask = attention_mask.to(dtype=hidden_states.dtype)  # fp16 compatibility
         for block in self.blocks:
             hidden_states, attention_mask = block(hidden_states, attention_mask)
         if self.norm is not None:
@@ -162,44 +173,48 @@ class FusedPipelineGPT1D(GenericPipelineGPT):
 
 
 class PipelineGPTHybrid(GenericPipelineGPT):
-
-    def __init__(self,
-                 num_layers: int = 12,
-                 hidden_size: int = 768,
-                 num_attention_heads: int = 12,
-                 vocab_size: int = 50304,
-                 embed_drop_rate: float = 0.,
-                 act_func: str = 'gelu',
-                 mlp_ratio: int = 4,
-                 attn_drop_rate: float = 0.,
-                 drop_rate: float = 0.,
-                 dtype: torch.dtype = torch.float,
-                 checkpoint: bool = False,
-                 max_position_embeddings: int = 1024,
-                 layer_norm_epsilon: float = 1e-5,
-                 apply_post_layer_norm: bool = False,
-                 first: bool = False,
-                 last: bool = False,
-                 embed_split_hidden=False):
+    def __init__(
+        self,
+        num_layers: int = 12,
+        hidden_size: int = 768,
+        num_attention_heads: int = 12,
+        vocab_size: int = 50304,
+        embed_drop_rate: float = 0.0,
+        act_func: str = "gelu",
+        mlp_ratio: int = 4,
+        attn_drop_rate: float = 0.0,
+        drop_rate: float = 0.0,
+        dtype: torch.dtype = torch.float,
+        checkpoint: bool = False,
+        max_position_embeddings: int = 1024,
+        layer_norm_epsilon: float = 1e-5,
+        apply_post_layer_norm: bool = False,
+        first: bool = False,
+        last: bool = False,
+        embed_split_hidden=False,
+    ):
         embedding = None
         norm = None
         head = None
         if first:
-            embedding = col_gpt.GPTEmbedding(hidden_size,
-                                             vocab_size,
-                                             max_position_embeddings,
-                                             dropout=embed_drop_rate,
-                                             dtype=dtype)
-        blocks = nn.ModuleList([
-            col_gpt.GPTBlock(hidden_size,
-                             num_attention_heads,
-                             mlp_ratio=mlp_ratio,
-                             attention_dropout=attn_drop_rate,
-                             dropout=drop_rate,
-                             dtype=dtype,
-                             checkpoint=checkpoint,
-                             activation=nn.functional.gelu) for _ in range(num_layers)
-        ])
+            embedding = col_gpt.GPTEmbedding(
+                hidden_size, vocab_size, max_position_embeddings, dropout=embed_drop_rate, dtype=dtype
+            )
+        blocks = nn.ModuleList(
+            [
+                col_gpt.GPTBlock(
+                    hidden_size,
+                    num_attention_heads,
+                    mlp_ratio=mlp_ratio,
+                    attention_dropout=attn_drop_rate,
+                    dropout=drop_rate,
+                    dtype=dtype,
+                    checkpoint=checkpoint,
+                    activation=nn.functional.gelu,
+                )
+                for _ in range(num_layers)
+            ]
+        )
         if last:
             norm = col_nn.LayerNorm(hidden_size, eps=layer_norm_epsilon)
             # head = col_gpt.GPTLMHead(vocab_size=vocab_size,
@@ -215,7 +230,7 @@ def _filter_kwargs(func, kwargs):
     return {k: v for k, v in kwargs.items() if k in sig.parameters}
 
 
-def _build_generic_gpt_pipeline_1d(module_cls, num_layers, num_chunks, device=torch.device('cuda'), **kwargs):
+def _build_generic_gpt_pipeline_1d(module_cls, num_layers, num_chunks, device=torch.device("cuda"), **kwargs):
     logger = get_dist_logger()
 
     if gpc.is_initialized(ParallelMode.PIPELINE):
@@ -233,10 +248,10 @@ def _build_generic_gpt_pipeline_1d(module_cls, num_layers, num_chunks, device=to
     parts = partition_uniform(num_layers, pipeline_size, num_chunks)[pipeline_rank]
     models = []
     for start, end in parts:
-        kwargs['num_layers'] = end - start
-        kwargs['first'] = start == 0
-        kwargs['last'] = end == num_layers
-        logger.info(f'Rank{rank} build layer {start}-{end}, {end-start}/{num_layers} layers')
+        kwargs["num_layers"] = end - start
+        kwargs["first"] = start == 0
+        kwargs["last"] = end == num_layers
+        logger.info(f"Rank{rank} build layer {start}-{end}, {end-start}/{num_layers} layers")
         chunk = module_cls(**_filter_kwargs(module_cls.__init__, kwargs)).to(device)
 
         if wrapper is not None:
@@ -253,70 +268,82 @@ def _build_generic_gpt_pipeline_1d(module_cls, num_layers, num_chunks, device=to
     numel = 0
     for _, param in model.named_parameters(recurse=True):
         numel += param.numel()
-    logger.info(f'Rank{rank}/{pipeline_rank} model size = {numel * 2 / 1e9} GB')
+    logger.info(f"Rank{rank}/{pipeline_rank} model size = {numel * 2 / 1e9} GB")
     return model
 
 
-def _build_gpt_pipeline_1d(num_layers, num_chunks, device=torch.device('cuda'), fused=False, **kwargs):
+def _build_gpt_pipeline_1d(num_layers, num_chunks, device=torch.device("cuda"), fused=False, **kwargs):
     model = FusedPipelineGPT1D if fused else PipelineGPT1D
     return _build_generic_gpt_pipeline_1d(model, num_layers, num_chunks, device, **kwargs)
 
 
-def _build_gpt_pipeline_hybrid(num_layers, num_chunks, device=torch.device('cuda'), **kwargs):
+def _build_gpt_pipeline_hybrid(num_layers, num_chunks, device=torch.device("cuda"), **kwargs):
     return _build_generic_gpt_pipeline_1d(PipelineGPTHybrid, num_layers, num_chunks, device, **kwargs)
 
 
 def GPT2_small_pipeline_1D(num_chunks=1, checkpoint=False, dtype=torch.float, embed_split_hidden=False, fused=False):
-    cfg = dict(hidden_size=768,
-               num_attention_heads=12,
-               checkpoint=checkpoint,
-               dtype=dtype,
-               embed_split_hidden=embed_split_hidden)
+    cfg = dict(
+        hidden_size=768,
+        num_attention_heads=12,
+        checkpoint=checkpoint,
+        dtype=dtype,
+        embed_split_hidden=embed_split_hidden,
+    )
     return _build_gpt_pipeline_1d(12, num_chunks, fused=fused, **cfg)
 
 
 def GPT2_exlarge_pipeline_1D(num_chunks=1, checkpoint=False, dtype=torch.float, embed_split_hidden=False, fused=False):
-    cfg = dict(hidden_size=1600,
-               num_attention_heads=32,
-               checkpoint=checkpoint,
-               dtype=dtype,
-               embed_split_hidden=embed_split_hidden)
+    cfg = dict(
+        hidden_size=1600,
+        num_attention_heads=32,
+        checkpoint=checkpoint,
+        dtype=dtype,
+        embed_split_hidden=embed_split_hidden,
+    )
     return _build_gpt_pipeline_1d(48, num_chunks, fused=fused, **cfg)
 
 
 def GPT3_pipeline_1D(num_chunks=1, checkpoint=False, dtype=torch.float, embed_split_hidden=False, fused=False):
-    cfg = dict(hidden_size=12288,
-               num_attention_heads=96,
-               checkpoint=checkpoint,
-               max_position_embeddings=2048,
-               dtype=dtype,
-               embed_split_hidden=embed_split_hidden)
+    cfg = dict(
+        hidden_size=12288,
+        num_attention_heads=96,
+        checkpoint=checkpoint,
+        max_position_embeddings=2048,
+        dtype=dtype,
+        embed_split_hidden=embed_split_hidden,
+    )
     return _build_gpt_pipeline_1d(96, num_chunks, fused=fused, **cfg)
 
 
 def GPT2_exlarge_pipeline_hybrid(num_chunks=1, checkpoint=False, dtype=torch.float, embed_split_hidden=False):
-    cfg = dict(hidden_size=1600,
-               num_attention_heads=32,
-               checkpoint=checkpoint,
-               dtype=dtype,
-               embed_split_hidden=embed_split_hidden)
+    cfg = dict(
+        hidden_size=1600,
+        num_attention_heads=32,
+        checkpoint=checkpoint,
+        dtype=dtype,
+        embed_split_hidden=embed_split_hidden,
+    )
     return _build_gpt_pipeline_hybrid(48, num_chunks, **cfg)
 
 
 def GPT2_small_pipeline_hybrid(num_chunks=1, checkpoint=False, dtype=torch.float, embed_split_hidden=False):
-    cfg = dict(hidden_size=768,
-               num_attention_heads=12,
-               checkpoint=checkpoint,
-               dtype=dtype,
-               embed_split_hidden=embed_split_hidden)
+    cfg = dict(
+        hidden_size=768,
+        num_attention_heads=12,
+        checkpoint=checkpoint,
+        dtype=dtype,
+        embed_split_hidden=embed_split_hidden,
+    )
     return _build_gpt_pipeline_hybrid(12, num_chunks, **cfg)
 
 
 def GPT3_pipeline_hybrid(num_chunks=1, checkpoint=False, dtype=torch.float, embed_split_hidden=False):
-    cfg = dict(hidden_size=12288,
-               num_attention_heads=96,
-               checkpoint=checkpoint,
-               max_position_embeddings=2048,
-               dtype=dtype,
-               embed_split_hidden=embed_split_hidden)
+    cfg = dict(
+        hidden_size=12288,
+        num_attention_heads=96,
+        checkpoint=checkpoint,
+        max_position_embeddings=2048,
+        dtype=dtype,
+        embed_split_hidden=embed_split_hidden,
+    )
     return _build_gpt_pipeline_hybrid(96, num_chunks, **cfg)

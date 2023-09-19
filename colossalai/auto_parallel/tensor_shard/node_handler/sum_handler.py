@@ -7,7 +7,7 @@ from .node_handler import NodeHandler
 from .registry import operator_registry
 from .strategy import StrategyGenerator, SumGenerator
 
-__all__ = ['SumHandler']
+__all__ = ["SumHandler"]
 
 
 @operator_registry.register(torch.Tensor.sum)
@@ -55,7 +55,7 @@ class SumHandler(NodeHandler):
         #   sum_mapping_dict[1] = 0 means the 0th dim of output is the 1st dim of input
         #   sum_mapping_dict[3] = 1 means the 1st dim of output is the 3rd dim of input
         sum_mapping_dict = {}
-        if 'keepdim' in self.node.kwargs and self.node.kwargs['keepdim']:
+        if "keepdim" in self.node.kwargs and self.node.kwargs["keepdim"]:
             for i in range(num_dims):
                 sum_mapping_dict.update({i: i})
         else:
@@ -67,7 +67,7 @@ class SumHandler(NodeHandler):
             assert output_index == self.node._meta_data.dim()
 
         sum_info = (sum_dims, sum_mapping_dict)
-        physical_shape_operand = OperationData(name='sum_info', type=OperationDataType.ARG, data=sum_info)
+        physical_shape_operand = OperationData(name="sum_info", type=OperationDataType.ARG, data=sum_info)
 
         output_data = self.node._meta_data
         physical_output_operand = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=output_data)
@@ -75,7 +75,7 @@ class SumHandler(NodeHandler):
         mapping = {
             "input": physical_input_operand,
             "sum_info": physical_shape_operand,
-            "output": physical_output_operand
+            "output": physical_output_operand,
         }
 
         return mapping

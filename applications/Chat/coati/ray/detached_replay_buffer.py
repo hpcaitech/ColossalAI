@@ -1,20 +1,15 @@
-import asyncio
-import copy
-import random
-from threading import Lock
-from typing import Any, List
+from typing import List
 
-import ray
 import torch
-from coati.experience_buffer import ExperienceBuffer
 from coati.experience_buffer.utils import BufferItem, make_experience_batch, split_experience_batch
 from coati.experience_maker.base import Experience
+
 # from torch.multiprocessing import Queue
 from ray.util.queue import Queue
 
 
 class DetachedReplayBuffer:
-    '''
+    """
         Detached replay buffer. Share Experience across workers on the same node.
         Therefore, a trainer node is expected to have only one instance.
         It is ExperienceMakerHolder's duty to call append(exp) method, remotely.
@@ -24,7 +19,7 @@ class DetachedReplayBuffer:
         tp_world_size: Number of workers in the same tp group
         limit: Limit of number of experience sample BATCHs. A number <= 0 means unlimited. Defaults to 0.
         cpu_offload: Whether to offload experience to cpu when sampling. Defaults to True.
-    '''
+    """
 
     def __init__(self, sample_batch_size: int, limit: int = 0) -> None:
         self.sample_batch_size = sample_batch_size
@@ -34,23 +29,23 @@ class DetachedReplayBuffer:
 
     @torch.no_grad()
     def append(self, experience: Experience) -> None:
-        '''
+        """
         Expected to be called remotely.
-        '''
+        """
         items = split_experience_batch(experience)
         self.extend(items)
 
     @torch.no_grad()
     def extend(self, items: List[BufferItem]) -> None:
-        '''
+        """
         Expected to be called remotely.
-        '''
+        """
         self.batch_collector.extend(items)
         while len(self.batch_collector) >= self.sample_batch_size:
-            items = self.batch_collector[:self.sample_batch_size]
+            items = self.batch_collector[: self.sample_batch_size]
             experience = make_experience_batch(items)
             self.items.put(experience, block=True)
-            self.batch_collector = self.batch_collector[self.sample_batch_size:]
+            self.batch_collector = self.batch_collector[self.sample_batch_size :]
 
     def clear(self) -> None:
         # self.items.close()

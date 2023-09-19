@@ -13,7 +13,7 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 @pytest.mark.skip("this is not used")
 @clear_cache_before_run()
 def test_runtime_mem_tracer():
-    test_models = ['gpt2', 'bert', 'simple_net', 'repeated_computed_layers', 'nested_model', 'albert']
+    test_models = ["gpt2", "bert", "simple_net", "repeated_computed_layers", "nested_model", "albert"]
 
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
@@ -35,7 +35,7 @@ def test_runtime_mem_tracer():
         for p1, p2 in zip(model_bk.parameters(), model.parameters()):
             torch.allclose(p1.to(torch.half), p2)
 
-        non_model_data_list = runtime_mem_tracer._memstats.non_model_data_list('cuda')
+        non_model_data_list = runtime_mem_tracer._memstats.non_model_data_list("cuda")
         cuda_non_model_data_list = np.array(non_model_data_list) / 1024**2
         print("cuda_non_model_data_list", len(cuda_non_model_data_list))
         print(non_model_data_list)
@@ -46,9 +46,9 @@ def test_runtime_mem_tracer():
         cnt2 = 0
         for p in model.parameters():
             cnt2 += 1
-        assert cnt2 == cnt1, f'visited param number {cnt1} vs real param number {cnt2}'
+        assert cnt2 == cnt1, f"visited param number {cnt1} vs real param number {cnt2}"
         del model
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_runtime_mem_tracer()

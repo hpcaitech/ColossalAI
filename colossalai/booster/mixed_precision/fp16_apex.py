@@ -23,16 +23,18 @@ class FP16ApexMixedPrecision(MixedPrecision):
         max_loss_scale(float, default=2.**24 ): Sets a ceiling for the loss scale values that can be chosen by dynamic loss scaling. If dynamic loss scaling is not used, max_loss_scale is ignored.
     """
 
-    def __init__(self,
-                 opt_level: Optional[str] = "O1",
-                 cast_model_type: torch.dtype = None,
-                 patch_torch_functions: bool = None,
-                 keep_batchnorm_fp32: Union[bool, str] = None,
-                 master_weights: bool = None,
-                 loss_scale: Union[float, str] = None,
-                 cast_model_outputs: Any = None,
-                 num_losses: Optional[int] = 1,
-                 verbosity: int = 1,
-                 min_loss_scale: float = None,
-                 max_loss_scale: float = 2.**24) -> None:
+    def __init__(
+        self,
+        opt_level: Optional[str] = "O1",
+        cast_model_type: torch.dtype = None,
+        patch_torch_functions: bool = None,
+        keep_batchnorm_fp32: Union[bool, str] = None,
+        master_weights: bool = None,
+        loss_scale: Union[float, str] = None,
+        cast_model_outputs: Any = None,
+        num_losses: Optional[int] = 1,
+        verbosity: int = 1,
+        min_loss_scale: float = None,
+        max_loss_scale: float = 2.0**24,
+    ) -> None:
         pass

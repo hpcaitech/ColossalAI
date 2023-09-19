@@ -13,7 +13,7 @@ from colossalai.legacy.tensor import ComputePattern, ComputeSpec, ShardSpec
 
 def set_seed(seed):
     random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -27,12 +27,12 @@ def check_equal(A, B):
 
 def replace_parameter_add_grad(layer, weight=None, bias=None):
     if weight is not None:
-        delattr(layer, 'weight')
-        setattr(layer, 'weight', weight)
+        delattr(layer, "weight")
+        setattr(layer, "weight", weight)
         layer.weight.requires_grad = True
     if bias is not None:
-        delattr(layer, 'bias')
-        setattr(layer, 'bias', bias)
+        delattr(layer, "bias")
+        setattr(layer, "bias", bias)
         layer.bias.requires_grad = True
 
 
@@ -47,12 +47,9 @@ def tensor_equal(t_a: torch.Tensor, t_b: torch.Tensor, rtol: float = 1e-3, atol:
     return True
 
 
-def tensor_shard_equal(tensor: torch.Tensor,
-                       shard: torch.Tensor,
-                       rank: int,
-                       world_size: int,
-                       rtol: float = 1e-3,
-                       atol: float = 1e-1):
+def tensor_shard_equal(
+    tensor: torch.Tensor, shard: torch.Tensor, rank: int, world_size: int, rtol: float = 1e-3, atol: float = 1e-1
+):
     assert tensor.ndim == shard.ndim
     if tensor.shape == shard.shape:
         return tensor_equal(tensor, shard, rtol, atol)

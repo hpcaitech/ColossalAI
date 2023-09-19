@@ -9,10 +9,9 @@ from colossalai.context import Config
 from .torch_amp import TorchAMPLoss, TorchAMPModel, TorchAMPOptimizer
 
 
-def convert_to_torch_amp(model: nn.Module,
-                         optimizer: Optimizer,
-                         criterion: Optional[_Loss] = None,
-                         amp_config: Optional[Config] = None):
+def convert_to_torch_amp(
+    model: nn.Module, optimizer: Optimizer, criterion: Optional[_Loss] = None, amp_config: Optional[Config] = None
+):
     """A helper function to wrap training components with Pytorch AMP modules
 
     Args:
@@ -42,4 +41,4 @@ def convert_to_torch_amp(model: nn.Module,
     return model, optimizer, criterion
 
 
-__all__ = ['convert_to_torch_amp', 'TorchAMPModel', 'TorchAMPLoss', 'TorchAMPOptimizer']
+__all__ = ["convert_to_torch_amp", "TorchAMPModel", "TorchAMPLoss", "TorchAMPOptimizer"]

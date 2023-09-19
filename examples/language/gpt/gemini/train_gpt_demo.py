@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument(
         "--distplan",
         type=str,
-        default='CAI_Gemini',
+        default="CAI_Gemini",
         help="The distributed plan [colossalai, zero1, zero2, torch_ddp, torch_zero].",
     )
     parser.add_argument(
@@ -54,7 +54,6 @@ def parse_args():
 
 
 class GPTLMLoss(nn.Module):
-
     def __init__(self):
         super().__init__()
         self.loss_fn = nn.CrossEntropyLoss()
@@ -74,8 +73,8 @@ def get_gpu_mem():
     return torch.cuda.memory_allocated() / 1024**2
 
 
-def get_mem_info(prefix=''):
-    return f'{prefix}GPU memory usage: {get_gpu_mem():.2f} MB, CPU memory usage: {get_cpu_mem():.2f} MB'
+def get_mem_info(prefix=""):
+    return f"{prefix}GPU memory usage: {get_gpu_mem():.2f} MB, CPU memory usage: {get_cpu_mem():.2f} MB"
 
 
 def get_model_size(model: nn.Module):
@@ -91,11 +90,11 @@ def model_size_formatter(numel: int) -> str:
     MB_SIZE = 10**6
     KB_SIZE = 10**3
     if numel >= GB_SIZE:
-        return f'{numel / GB_SIZE:.1f}B'
+        return f"{numel / GB_SIZE:.1f}B"
     elif numel >= MB_SIZE:
-        return f'{numel / MB_SIZE:.1f}M'
+        return f"{numel / MB_SIZE:.1f}M"
     elif numel >= KB_SIZE:
-        return f'{numel / KB_SIZE:.1f}K'
+        return f"{numel / KB_SIZE:.1f}K"
     else:
         return str(numel)
 
@@ -103,7 +102,7 @@ def model_size_formatter(numel: int) -> str:
 def set_cpu_maximum_parallelism():
     conf_str = torch.__config__.parallel_info()
     inter_str = conf_str.split("hardware_concurrency() : ")[1]
-    max_concurrency = inter_str.split('\n')[0]
+    max_concurrency = inter_str.split("\n")[0]
     os.environ["OMP_NUM_THREADS"] = max_concurrency
     print(f"environmental variable OMP_NUM_THREADS is set to {max_concurrency}.")
 
@@ -130,7 +129,7 @@ def main():
     WARMUP_STEPS = 1
     assert WARMUP_STEPS < NUM_STEPS, "warmup steps should smaller than the total steps"
     assert (NUM_STEPS - WARMUP_STEPS) % 2 == 1, "the number of valid steps should be odd to take the median"
-    PROF_FLAG = False    # The flag of profiling, False by default
+    PROF_FLAG = False  # The flag of profiling, False by default
 
     disable_existing_loggers()
     colossalai.launch_from_torch(config={})
@@ -159,10 +158,9 @@ def main():
 
         plugin = None
         if args.distplan.startswith("CAI_ZeRO"):
-            plugin = LowLevelZeroPlugin(stage=zero_stage,
-                                        reduce_bucket_size_in_m=12,
-                                        overlap_communication=True,
-                                        verbose=True)
+            plugin = LowLevelZeroPlugin(
+                stage=zero_stage, reduce_bucket_size_in_m=12, overlap_communication=True, verbose=True
+            )
         elif args.distplan == "CAI_Gemini":
             plugin = GeminiPlugin(search_range_m=128, hidden_dim=model.config.n_embd)
         else:
@@ -171,7 +169,7 @@ def main():
         # build a highly optimized gpu/cpu optimizer
         optimizer = HybridAdam(model.parameters(), lr=1e-3)
 
-        logger.info(get_mem_info(prefix='After init optim, '), ranks=[0])
+        logger.info(get_mem_info(prefix="After init optim, "), ranks=[0])
     elif args.distplan.startswith("Pytorch"):
         assert args.tp_degree == 1, "The degree of TP should be 1 for DDP examples."
         model = model_builder(args.model_type)(checkpoint=True).cuda()
@@ -180,6 +178,7 @@ def main():
             optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
         elif args.distplan.endswith("ZeRO"):
             from torch.distributed.optim import ZeroRedundancyOptimizer
+
             optimizer = ZeroRedundancyOptimizer(model.parameters(), optimizer_class=torch.optim.Adam, lr=1e-3)
 
     else:
@@ -191,7 +190,7 @@ def main():
     # model is shared after TP
     numel = get_model_size(model)
     logger.info(f"the size of testing model size is {model_size_formatter(numel)}.")
-    logger.info(get_mem_info(prefix='After init model, '), ranks=[0])
+    logger.info(get_mem_info(prefix="After init model, "), ranks=[0])
 
     # Tflops_per_GPU = global_batch * global_numel * seq_len * 8 / #gpu
     # = (batch_per_DP_group * dp_degree) * (numel * tp_degree) * seq_len * 8 / (tp_degree * dp_degree)
@@ -213,19 +212,19 @@ def main():
         torch.cuda.synchronize()
         fwd_end = time()
         fwd_time = fwd_end - start
-        logger.info(get_mem_info(prefix=f'[{n + 1}/{NUM_STEPS}] Forward '), ranks=[0])
+        logger.info(get_mem_info(prefix=f"[{n + 1}/{NUM_STEPS}] Forward "), ranks=[0])
         booster.backward(loss, optimizer)
 
         torch.cuda.synchronize()
         bwd_end = time()
         bwd_time = bwd_end - fwd_end
-        logger.info(get_mem_info(prefix=f'[{n + 1}/{NUM_STEPS}] Backward '), ranks=[0])
+        logger.info(get_mem_info(prefix=f"[{n + 1}/{NUM_STEPS}] Backward "), ranks=[0])
 
         optimizer.step()
         torch.cuda.synchronize()
         optim_time = time() - bwd_end
         step_time = time() - start
-        logger.info(get_mem_info(prefix=f'[{n + 1}/{NUM_STEPS}] Optimizer step '), ranks=[0])
+        logger.info(get_mem_info(prefix=f"[{n + 1}/{NUM_STEPS}] Optimizer step "), ranks=[0])
 
         step_tflops = get_tflops_func(step_time)
         logger.info(
@@ -235,10 +234,9 @@ def main():
         if n >= WARMUP_STEPS:
             tflops_list.append(step_tflops)
 
-    demo_profiler = get_profile_context(PROF_FLAG,
-                                        WARMUP_STEPS,
-                                        NUM_STEPS - WARMUP_STEPS,
-                                        save_dir=f"profile/{get_time_stamp()}-demo")
+    demo_profiler = get_profile_context(
+        PROF_FLAG, WARMUP_STEPS, NUM_STEPS - WARMUP_STEPS, save_dir=f"profile/{get_time_stamp()}-demo"
+    )
 
     with demo_profiler as prof:
         for n in range(NUM_STEPS):
@@ -251,5 +249,5 @@ def main():
     torch.cuda.synchronize()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

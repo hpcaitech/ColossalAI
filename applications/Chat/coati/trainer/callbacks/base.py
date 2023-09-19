@@ -5,7 +5,7 @@ from coati.experience_maker import Experience
 
 class Callback(ABC):
     """
-        Base callback class. It defines the interface for callbacks.
+    Base callback class. It defines the interface for callbacks.
     """
 
     def on_fit_start(self) -> None:

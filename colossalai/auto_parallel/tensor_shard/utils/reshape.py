@@ -8,6 +8,7 @@ class PreviousStatus(Enum):
     """
     This class shows the status of previous comparison.
     """
+
     RESET = 0
     # ORIGIN means the dimension size of original tensor is larger in the previous comparison.
     ORIGIN = 1
@@ -130,8 +131,9 @@ def detect_reshape_mapping(origin_shape: torch.Size, tgt_shape: torch.Size) -> D
     return reshape_mapping_dict
 
 
-def check_keep_sharding_status(input_dim_partition_dict: Dict[int, List[int]],
-                               reshape_mapping_dict: Dict[Tuple[int], Tuple[int]]) -> bool:
+def check_keep_sharding_status(
+    input_dim_partition_dict: Dict[int, List[int]], reshape_mapping_dict: Dict[Tuple[int], Tuple[int]]
+) -> bool:
     """
     This method is used to check whether the reshape operation could implement without converting
     the input to fully replicated status.
@@ -172,14 +174,16 @@ def check_keep_sharding_status(input_dim_partition_dict: Dict[int, List[int]],
     return True
 
 
-def infer_output_dim_partition_dict(input_dim_partition_dict: Dict[int, List[int]],
-                                    reshape_mapping_dict: Dict[Tuple[int], Tuple[int]]) -> Dict[Tuple[int], Tuple[int]]:
+def infer_output_dim_partition_dict(
+    input_dim_partition_dict: Dict[int, List[int]], reshape_mapping_dict: Dict[Tuple[int], Tuple[int]]
+) -> Dict[Tuple[int], Tuple[int]]:
     """
     This method is used to infer the output dim partition dict for a reshape operation,
     given the input dim partition dict and reshape mapping dict.
     """
-    assert check_keep_sharding_status(input_dim_partition_dict, reshape_mapping_dict), \
-        'we only infer output dim partition dict for the reshape operation could keep sharding spec.'
+    assert check_keep_sharding_status(
+        input_dim_partition_dict, reshape_mapping_dict
+    ), "we only infer output dim partition dict for the reshape operation could keep sharding spec."
     sharded_dims = list(input_dim_partition_dict.keys())
     output_dim_partition_dict = {}
     for input_dims, output_dims in reshape_mapping_dict.items():

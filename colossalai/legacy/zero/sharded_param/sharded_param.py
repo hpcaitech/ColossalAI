@@ -19,7 +19,6 @@ def get_empty_tensor(device: torch.device, dtype: torch.dtype):
 
 
 class ShardedParamV2(object):
-
     def __init__(self, param: torch.nn.Parameter, set_data_none: bool = False) -> None:
         self._sharded_data_tensor: ShardedTensor = ShardedTensor(param.data)
         self.saved_grad: StatefulTensor = StatefulTensor(None, TensorState.FREE)
@@ -36,8 +35,7 @@ class ShardedParamV2(object):
             self.set_data_none()
 
     def get_payload_tensors(self) -> List[StatefulTensor]:
-        """returns stateful tensors kept by this class.
-        """
+        """returns stateful tensors kept by this class."""
         return [self._sharded_data_tensor]
 
     def set_data_none(self):

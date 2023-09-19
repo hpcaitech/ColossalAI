@@ -19,13 +19,9 @@ class Lars(Optimizer):
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
     """
 
-    def __init__(self,
-                 params: Iterable[torch.nn.Parameter],
-                 lr=1e-3,
-                 momentum=0,
-                 eeta=1e-3,
-                 weight_decay=0,
-                 epsilon=0.0) -> None:
+    def __init__(
+        self, params: Iterable[torch.nn.Parameter], lr=1e-3, momentum=0, eeta=1e-3, weight_decay=0, epsilon=0.0
+    ) -> None:
         if not isinstance(lr, float) or lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
         if momentum < 0.0:
@@ -54,14 +50,14 @@ class Lars(Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
-            weight_decay = group['weight_decay']
-            momentum = group['momentum']
-            eeta = group['eeta']
-            lr = group['lr']
-            lars = group['lars']
-            eps = group['epsilon']
+            weight_decay = group["weight_decay"]
+            momentum = group["momentum"]
+            eeta = group["eeta"]
+            lr = group["lr"]
+            lars = group["lars"]
+            eps = group["epsilon"]
 
-            for p in group['params']:
+            for p in group["params"]:
                 if p.grad is None:
                     continue
                 decayed_grad = p.grad
@@ -69,9 +65,11 @@ class Lars(Optimizer):
                 if lars:
                     w_norm = torch.norm(p)
                     g_norm = torch.norm(p.grad)
-                    trust_ratio = torch.where(w_norm > 0 and g_norm > 0,
-                                              eeta * w_norm / (g_norm + weight_decay * w_norm + eps),
-                                              torch.ones_like(w_norm))
+                    trust_ratio = torch.where(
+                        w_norm > 0 and g_norm > 0,
+                        eeta * w_norm / (g_norm + weight_decay * w_norm + eps),
+                        torch.ones_like(w_norm),
+                    )
                     trust_ratio.clamp_(0.0, 50)
                     scaled_lr *= trust_ratio.item()
                     if weight_decay != 0:
@@ -80,10 +78,10 @@ class Lars(Optimizer):
 
                 if momentum != 0:
                     param_state = self.state[p]
-                    if 'momentum_buffer' not in param_state:
-                        buf = param_state['momentum_buffer'] = torch.clone(decayed_grad).detach()
+                    if "momentum_buffer" not in param_state:
+                        buf = param_state["momentum_buffer"] = torch.clone(decayed_grad).detach()
                     else:
-                        buf = param_state['momentum_buffer']
+                        buf = param_state["momentum_buffer"]
                         buf.mul_(momentum).add_(decayed_grad)
                     decayed_grad = buf
 

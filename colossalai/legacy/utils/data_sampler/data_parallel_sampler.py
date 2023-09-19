@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 
-T_co = TypeVar('T_co', covariant=True)
+T_co = TypeVar("T_co", covariant=True)
 
 
 class DataParallelSampler(Sampler):
@@ -44,11 +44,11 @@ class DataParallelSampler(Sampler):
             self.num_samples = math.ceil(
                 # `type:ignore` is required because Dataset cannot provide a default __len__
                 # see NOTE in pytorch/torch/utils/data/sampler.py
-                (len(self.dataset) - self.num_replicas) / \
-                self.num_replicas  # type: ignore[arg-type]
+                (len(self.dataset) - self.num_replicas)
+                / self.num_replicas  # type: ignore[arg-type]
             )
         else:
-            self.num_samples = math.ceil(len(self.dataset) / self.num_replicas)    # type: ignore[arg-type]
+            self.num_samples = math.ceil(len(self.dataset) / self.num_replicas)  # type: ignore[arg-type]
         self.total_size = self.num_samples * self.num_replicas
         self.shuffle = shuffle
         self.seed = seed
@@ -65,7 +65,7 @@ class DataParallelSampler(Sampler):
             # set_epoch manually
             self.epoch += 1
         else:
-            indices = list(range(len(self.dataset)))    # type: ignore[arg-type]
+            indices = list(range(len(self.dataset)))  # type: ignore[arg-type]
 
         if not self.drop_last:
             # add extra samples to make it evenly divisible
@@ -76,11 +76,11 @@ class DataParallelSampler(Sampler):
                 indices += (indices * math.ceil(padding_size / len(indices)))[:padding_size]
         else:
             # remove tail of data to make it evenly divisible.
-            indices = indices[:self.total_size]
+            indices = indices[: self.total_size]
         assert len(indices) == self.total_size
 
         # subsample
-        indices = indices[self.rank:self.total_size:self.num_replicas]
+        indices = indices[self.rank : self.total_size : self.num_replicas]
         assert len(indices) == self.num_samples
 
         return iter(indices)
@@ -99,14 +99,9 @@ class DataParallelSampler(Sampler):
         self.epoch = epoch
 
 
-def get_dataloader(dataset,
-                   shuffle=False,
-                   seed=1024,
-                   add_sampler=True,
-                   drop_last=False,
-                   pin_memory=False,
-                   num_workers=0,
-                   **kwargs):
+def get_dataloader(
+    dataset, shuffle=False, seed=1024, add_sampler=True, drop_last=False, pin_memory=False, num_workers=0, **kwargs
+):
     r"""Set up a deterministic dataloader (also configure seed workers, samplers and whether shuffle or not)
 
     Note:
@@ -144,18 +139,22 @@ def get_dataloader(dataset,
         random.seed(worker_seed)
 
     if sampler is None:
-        return DataLoader(dataset,
-                          worker_init_fn=seed_worker,
-                          shuffle=shuffle,
-                          drop_last=drop_last,
-                          pin_memory=pin_memory,
-                          num_workers=num_workers,
-                          **_kwargs)
+        return DataLoader(
+            dataset,
+            worker_init_fn=seed_worker,
+            shuffle=shuffle,
+            drop_last=drop_last,
+            pin_memory=pin_memory,
+            num_workers=num_workers,
+            **_kwargs,
+        )
     else:
-        return DataLoader(dataset,
-                          sampler=sampler,
-                          worker_init_fn=seed_worker,
-                          drop_last=drop_last,
-                          pin_memory=pin_memory,
-                          num_workers=num_workers,
-                          **_kwargs)
+        return DataLoader(
+            dataset,
+            sampler=sampler,
+            worker_init_fn=seed_worker,
+            drop_last=drop_last,
+            pin_memory=pin_memory,
+            num_workers=num_workers,
+            **_kwargs,
+        )

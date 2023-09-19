@@ -6,10 +6,10 @@ from colossalai._analyzer._subclasses.flop_tensor import flop_mapping
 from colossalai._analyzer.fx.node_util import compute_size_in_bytes as activation_size
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, OperationDataType, TrainCycleItem
 
-from ..constants import BCAST_FUNC_OP, NO_SAVE_ACTIVATION
+from ..constants import BCAST_FUNC_OP
 from ..registry import meta_register
 
-__all__ = ['binary_elementwise_meta_info']
+__all__ = ["binary_elementwise_meta_info"]
 
 
 @meta_register.register(BCAST_FUNC_OP)
@@ -61,6 +61,6 @@ def binary_elementwise_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, Train
     # store fwd_in, fwd_buffer, fwd_out
     fwd_in = []
     fwd_buffer = []
-    fwd_out = [torch.zeros_like(output_op_data.data, device='meta')]
+    fwd_out = [torch.zeros_like(output_op_data.data, device="meta")]
 
     return compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out

@@ -24,7 +24,7 @@ torchrun \
   --mem_cap ${MEMCAP} \
   --plugin ${PLUGIN} \
   --batch_size ${BS}
-  
+
 done
 done
 done

@@ -5,9 +5,11 @@ import torch
 
 try:
     import diffusers
+
     MODELS = [diffusers.UNet2DModel]
     HAS_REPO = True
     from packaging import version
+
     SKIP_UNET_TEST = version.parse(diffusers.__version__) > version.parse("0.10.2")
 except:
     MODELS = []

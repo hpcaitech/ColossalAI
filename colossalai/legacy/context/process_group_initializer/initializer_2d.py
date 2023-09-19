@@ -14,9 +14,10 @@ def _check_summa_env_var(summa_dim):
     env_summa_dim = env.summa_dim
 
     if env_summa_dim:
-        assert int(env_summa_dim) == summa_dim, \
-            'SUMMA_DIM has been set in the current environment and ' \
-            'does not match with the value passed to this initialized'
+        assert int(env_summa_dim) == summa_dim, (
+            "SUMMA_DIM has been set in the current environment and "
+            "does not match with the value passed to this initialized"
+        )
     else:
         env.summa_dim = summa_dim
 
@@ -57,7 +58,7 @@ class Initializer_2D_Row(ProcessGroupInitializer):
             for j in range(self.summa_dim):
                 ranks = [i * self.tensor_parallel_size + j * self.summa_dim + k for k in range(self.summa_dim)]
                 group = dist.new_group(ranks)
-                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                group_cpu = dist.new_group(ranks, backend="gloo") if dist.get_backend() != "gloo" else group
 
                 if self.rank in ranks:
                     local_rank = ranks.index(self.rank)
@@ -106,7 +107,7 @@ class Initializer_2D_Col(ProcessGroupInitializer):
             for j in range(self.summa_dim):
                 ranks = [i * self.tensor_parallel_size + j + k * self.summa_dim for k in range(self.summa_dim)]
                 group = dist.new_group(ranks)
-                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                group_cpu = dist.new_group(ranks, backend="gloo") if dist.get_backend() != "gloo" else group
 
                 if self.rank in ranks:
                     local_rank = ranks.index(self.rank)
@@ -137,8 +138,9 @@ class Initializer_2D(ProcessGroupInitializer):
         self.num_group = self.world_size // self.tensor_parallel_size
         self.summa_dim = int(math.sqrt(self.tensor_parallel_size))
 
-        assert self.tensor_parallel_size == self.summa_dim ** 2, \
-            "2D summa dim should equal to tensor parallel size ^ 0.5"
+        assert (
+            self.tensor_parallel_size == self.summa_dim**2
+        ), "2D summa dim should equal to tensor parallel size ^ 0.5"
         _check_summa_env_var(self.summa_dim)
 
         self.col_initializer = Initializer_2D_Col(self.num_group, self.summa_dim, *args, **kwargs)

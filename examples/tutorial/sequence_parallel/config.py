@@ -4,7 +4,7 @@ from colossalai.legacy.amp import AMP_TYPE
 TRAIN_ITERS = 10
 DECAY_ITERS = 4
 WARMUP_FRACTION = 0.01
-GLOBAL_BATCH_SIZE = 32    # dp world size * sentences per GPU
+GLOBAL_BATCH_SIZE = 32  # dp world size * sentences per GPU
 EVAL_ITERS = 10
 EVAL_INTERVAL = 10
 LR = 0.0001
@@ -28,8 +28,8 @@ SEED = 1234
 NUM_MICRO_BATCHES = 4
 
 # colossalai config
-parallel = dict(pipeline=1, tensor=dict(size=2, mode='sequence'))
+parallel = dict(pipeline=1, tensor=dict(size=2, mode="sequence"))
 
 fp16 = dict(mode=AMP_TYPE.NAIVE, verbose=True)
 
-gradient_handler = [dict(type='SequenceParallelGradientHandler')]
+gradient_handler = [dict(type="SequenceParallelGradientHandler")]

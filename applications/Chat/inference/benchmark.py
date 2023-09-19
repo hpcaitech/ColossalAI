@@ -84,28 +84,34 @@ inst = [instructions[0]] * 4
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        'pretrained',
-        help='Path to pretrained model. Can be a local path or a model name from the HuggingFace model hub.')
-    parser.add_argument('--quant',
-                        choices=['8bit', '4bit'],
-                        default=None,
-                        help='Quantization mode. Default: None (no quantization, fp16).')
+        "pretrained",
+        help="Path to pretrained model. Can be a local path or a model name from the HuggingFace model hub.",
+    )
     parser.add_argument(
-        '--gptq_checkpoint',
+        "--quant",
+        choices=["8bit", "4bit"],
         default=None,
-        help='Path to GPTQ checkpoint. This is only useful when quantization mode is 4bit. Default: None.')
-    parser.add_argument('--gptq_group_size',
-                        type=int,
-                        default=128,
-                        help='Group size for GPTQ. This is only useful when quantization mode is 4bit. Default: 128.')
+        help="Quantization mode. Default: None (no quantization, fp16).",
+    )
+    parser.add_argument(
+        "--gptq_checkpoint",
+        default=None,
+        help="Path to GPTQ checkpoint. This is only useful when quantization mode is 4bit. Default: None.",
+    )
+    parser.add_argument(
+        "--gptq_group_size",
+        type=int,
+        default=128,
+        help="Group size for GPTQ. This is only useful when quantization mode is 4bit. Default: 128.",
+    )
     args = parser.parse_args()
 
-    if args.quant == '4bit':
-        assert args.gptq_checkpoint is not None, 'Please specify a GPTQ checkpoint.'
+    if args.quant == "4bit":
+        assert args.gptq_checkpoint is not None, "Please specify a GPTQ checkpoint."
 
     tokenizer = AutoTokenizer.from_pretrained(args.pretrained)
 
-    if args.quant == '4bit':
+    if args.quant == "4bit":
         with low_resource_init():
             config = LlamaConfig.from_pretrained(args.pretrained)
             model = LlamaForCausalLM(config)
@@ -114,12 +120,12 @@ if __name__ == "__main__":
     else:
         model = LlamaForCausalLM.from_pretrained(
             args.pretrained,
-            load_in_8bit=(args.quant == '8bit'),
+            load_in_8bit=(args.quant == "8bit"),
             torch_dtype=torch.float16,
             device_map="auto",
         )
-        if args.quant != '8bit':
-            model.half()    # seems to fix bugs for some users.
+        if args.quant != "8bit":
+            model.half()  # seems to fix bugs for some users.
         model.eval()
 
     total_tokens = 0
@@ -129,7 +135,7 @@ if __name__ == "__main__":
         resp, tokens = evaluate(model, tokenizer, instruction, temperature=0.2, num_beams=1)
         total_tokens += tokens
         print(f"Response: {resp}")
-        print('\n----------------------------\n')
+        print("\n----------------------------\n")
     duration = time() - start
-    print(f'Total time: {duration:.3f} s, {total_tokens/duration:.3f} tokens/s')
-    print(f'Peak CUDA mem: {torch.cuda.max_memory_allocated()/1024**3:.3f} GB')
+    print(f"Total time: {duration:.3f} s, {total_tokens/duration:.3f} tokens/s")
+    print(f"Peak CUDA mem: {torch.cuda.max_memory_allocated()/1024**3:.3f} GB")

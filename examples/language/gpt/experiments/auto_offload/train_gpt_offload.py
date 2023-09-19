@@ -3,7 +3,6 @@ import time
 
 import pytest
 import torch
-from model_zoo import GPTLMLoss, get_gpt2_components
 from torch.utils._pytree import tree_map
 
 import colossalai
@@ -14,18 +13,19 @@ from colossalai.fx.profiler import parameter_size
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import spawn
 from colossalai.utils import get_current_device
+from model_zoo import GPTLMLoss, get_gpt2_components
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_type', type=str, default="gpt2_medium")
-    parser.add_argument('--batch_size', type=int, default=64)
-    parser.add_argument('--solver_type', type=str, default='asyn')
-    parser.add_argument('--memory_budget', type=float, default=16)
+    parser.add_argument("--model_type", type=str, default="gpt2_medium")
+    parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--solver_type", type=str, default="asyn")
+    parser.add_argument("--memory_budget", type=float, default=16)
     return parser.parse_args()
 
 
-@pytest.mark.skipif(NOT_NVML, reason='pynvml is not installed')
+@pytest.mark.skipif(NOT_NVML, reason="pynvml is not installed")
 def train_gpt(args):
     memory_budget = args.memory_budget * 1024 * 1024 * 1024
     solver_type = args.solver_type
@@ -34,10 +34,15 @@ def train_gpt(args):
 
     # build model
     model_builder, data_gen = get_gpt2_components(model_type=model_type, batch_size=batch_size)
-    label = torch.randint(low=0, high=128, size=(
-        64,
-        8,
-    ), device=get_current_device())
+    label = torch.randint(
+        low=0,
+        high=128,
+        size=(
+            64,
+            8,
+        ),
+        device=get_current_device(),
+    )
     criterion = GPTLMLoss()
 
     start_time = time.time()
@@ -80,18 +85,20 @@ def train_gpt(args):
     exec_time = sum(sorted(time_list)[:5]) / 5
     runtime_peak_mem_alc = torch.cuda.max_memory_allocated() / 1024**2
     runtime_peak_mem_res = torch.cuda.max_memory_reserved() / 1024**2
-    print(f'solver_type: {solver_type} | model_type: {model_type}')
-    print(f'| exec_time={exec_time:.3f} s | param_size={param_size:.3f} MB '
-          f'| runtime_peak_mem_alc={runtime_peak_mem_alc:.3f} MB| runtime_peak_mem_res={runtime_peak_mem_res:.3f} MB|')
+    print(f"solver_type: {solver_type} | model_type: {model_type}")
+    print(
+        f"| exec_time={exec_time:.3f} s | param_size={param_size:.3f} MB "
+        f"| runtime_peak_mem_alc={runtime_peak_mem_alc:.3f} MB| runtime_peak_mem_res={runtime_peak_mem_res:.3f} MB|"
+    )
     print(time_list)
 
 
 def run(rank, world_size, port, args):
     config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     train_gpt(args)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_args()
     spawn(run, 1, args=args)

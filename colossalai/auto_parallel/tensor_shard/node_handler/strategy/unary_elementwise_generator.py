@@ -5,7 +5,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, 
 
 from .strategy_generator import FollowingStrategyGenerator
 
-__all__ = ['UnaryElementwiseGenerator']
+__all__ = ["UnaryElementwiseGenerator"]
 
 
 class UnaryElementwiseGenerator(FollowingStrategyGenerator):
@@ -21,12 +21,12 @@ class UnaryElementwiseGenerator(FollowingStrategyGenerator):
         strategy.compute_cost = compute_cost
 
     def update_memory_cost(self, strategy: ShardingStrategy):
-        '''
+        """
         Compute the memory cost per device with this specific strategy.
-        '''
+        """
         forward_size_mapping = {
-            'input': self._compute_size_in_bytes(strategy, "input"),
-            'output': self._compute_size_in_bytes(strategy, "output")
+            "input": self._compute_size_in_bytes(strategy, "input"),
+            "output": self._compute_size_in_bytes(strategy, "output"),
         }
 
         backward_size_mapping = copy.deepcopy(forward_size_mapping)
@@ -44,8 +44,9 @@ class UnaryElementwiseGenerator(FollowingStrategyGenerator):
         bwd_mem_cost = MemoryCost(activation=bwd_activation_cost, parameter=bwd_parameter_cost)
 
         # compute total cost
-        total_mem_cost = MemoryCost(activation=fwd_activation_cost + bwd_activation_cost,
-                                    parameter=fwd_parameter_cost + bwd_parameter_cost)
+        total_mem_cost = MemoryCost(
+            activation=fwd_activation_cost + bwd_activation_cost, parameter=fwd_parameter_cost + bwd_parameter_cost
+        )
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
@@ -69,9 +70,11 @@ class UnaryElementwiseGenerator(FollowingStrategyGenerator):
             # we keep same strategies with different name for node merging, and it will not increase the searching space,
             # because in solver, this node will be merged into other nodes, and solver will not create a new variable for this node.
             name = f'{sharding_spec_mapping["input"].sharding_sequence} -> {sharding_spec_mapping["output"].sharding_sequence}_{index}'
-            strategy = self.get_sharding_strategy(name=name,
-                                                  sharding_spec_mapping=sharding_spec_mapping,
-                                                  communication_action_mapping=communication_action_mapping)
+            strategy = self.get_sharding_strategy(
+                name=name,
+                sharding_spec_mapping=sharding_spec_mapping,
+                communication_action_mapping=communication_action_mapping,
+            )
             strategy_list.append(strategy)
 
         return strategy_list

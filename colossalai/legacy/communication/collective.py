@@ -9,10 +9,10 @@ from torch.distributed import ReduceOp
 from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 
-_all_gather_func = dist._all_gather_base \
-    if "all_gather_into_tensor" not in dir(dist) else dist.all_gather_into_tensor
-_reduce_scatter_func = dist._reduce_scatter_base \
-    if "reduce_scatter_tensor" not in dir(dist) else dist.reduce_scatter_tensor
+_all_gather_func = dist._all_gather_base if "all_gather_into_tensor" not in dir(dist) else dist.all_gather_into_tensor
+_reduce_scatter_func = (
+    dist._reduce_scatter_base if "reduce_scatter_tensor" not in dir(dist) else dist.reduce_scatter_tensor
+)
 
 
 def all_gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, async_op: bool = False) -> Tensor:
@@ -50,11 +50,9 @@ def all_gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, async_op: 
         return out
 
 
-def reduce_scatter(tensor: Tensor,
-                   dim: int,
-                   parallel_mode: ParallelMode,
-                   op: ReduceOp = ReduceOp.SUM,
-                   async_op: bool = False) -> Tensor:
+def reduce_scatter(
+    tensor: Tensor, dim: int, parallel_mode: ParallelMode, op: ReduceOp = ReduceOp.SUM, async_op: bool = False
+) -> Tensor:
     r"""Reduces all tensors then scatters it in a specific dimension to all
     members in the parallel group.
 
@@ -93,10 +91,9 @@ def reduce_scatter(tensor: Tensor,
         return out
 
 
-def all_reduce(tensor: Tensor,
-               parallel_mode: ParallelMode,
-               op: ReduceOp = ReduceOp.SUM,
-               async_op: bool = False) -> Tensor:
+def all_reduce(
+    tensor: Tensor, parallel_mode: ParallelMode, op: ReduceOp = ReduceOp.SUM, async_op: bool = False
+) -> Tensor:
     r"""Reduces the tensor data across whole parallel group in such a way that all get the final result.
 
     Note:
@@ -201,16 +198,17 @@ def scatter_object_list(scatter_object_output_list, scatter_object_input_list, s
     if dist.distributed_c10d._rank_not_in_group(group):
         return
 
-    if (not isinstance(scatter_object_output_list, list) or len(scatter_object_output_list) < 1):
+    if not isinstance(scatter_object_output_list, list) or len(scatter_object_output_list) < 1:
         raise RuntimeError("Expected argument scatter_object_output_list to be a list of size at least 1.")
 
     # set tensor device to cuda if backend is nccl
-    device = torch.cuda.current_device() if dist.get_backend(group) == 'nccl' else torch.device("cpu")
+    device = torch.cuda.current_device() if dist.get_backend(group) == "nccl" else torch.device("cpu")
 
-    my_rank = dist.get_rank()    # use global rank
+    my_rank = dist.get_rank()  # use global rank
     if my_rank == src:
         tensor_list, tensor_sizes = zip(
-            *[dist.distributed_c10d._object_to_tensor(obj) for obj in scatter_object_input_list])
+            *[dist.distributed_c10d._object_to_tensor(obj) for obj in scatter_object_input_list]
+        )
         tensor_list = list(map(lambda x: x.to(device), tensor_list))
         tensor_sizes = list(map(lambda x: x.to(device), tensor_sizes))
 

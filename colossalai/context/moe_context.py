@@ -9,14 +9,13 @@ from colossalai.legacy.tensor import ProcessGroup
 
 def _check_sanity():
     from colossalai.legacy.core import global_context as gpc
+
     if gpc.tensor_parallel_size > 1 or gpc.pipeline_parallel_size > 1:
-        raise NotImplementedError("Moe is not compatible with tensor or "
-                                  "pipeline parallel at present.")
+        raise NotImplementedError("Moe is not compatible with tensor or " "pipeline parallel at present.")
 
 
 class MoeParallelInfo:
-    """Moe parallelism information, storing parallel sizes and groups.
-    """
+    """Moe parallelism information, storing parallel sizes and groups."""
 
     def __init__(self, ep_size: int, dp_size: int):
         _check_sanity()
@@ -61,9 +60,11 @@ class MoeContext(metaclass=SingletonMeta):
         self.world_size = dist.get_world_size()
 
         from colossalai.legacy.core import global_context as gpc
-        self.max_ep_size = gpc.config.get('max_ep_size', self.world_size)
-        assert self.world_size % self.max_ep_size == 0, \
-            "Maximum expert parallel size must be a factor of the number of GPUs"
+
+        self.max_ep_size = gpc.config.get("max_ep_size", self.world_size)
+        assert (
+            self.world_size % self.max_ep_size == 0
+        ), "Maximum expert parallel size must be a factor of the number of GPUs"
         self.min_dp_size = self.world_size // self.max_ep_size
 
         # Enabling kernel optimization may raise error in some cases
@@ -71,6 +72,7 @@ class MoeContext(metaclass=SingletonMeta):
         self.use_kernel_optim = use_kernel_optim
 
         from .random import moe_set_seed
+
         moe_set_seed(seed)
         self.has_setup = True
 
@@ -88,11 +90,13 @@ class MoeContext(metaclass=SingletonMeta):
             number of local experts, the MoeParallelInfo of the current ep_size
         """
 
-        gt_flag = num_experts % self.max_ep_size == 0    # check whether num_experts is greater
-        lt_flag = self.max_ep_size % num_experts == 0    # check whether num_experts is less
+        gt_flag = num_experts % self.max_ep_size == 0  # check whether num_experts is greater
+        lt_flag = self.max_ep_size % num_experts == 0  # check whether num_experts is less
 
-        assert gt_flag or lt_flag, "Automatic experts placement dose not not support expert number" \
-                                   " is not a multiple of ep size or vice versa."
+        assert gt_flag or lt_flag, (
+            "Automatic experts placement dose not not support expert number"
+            " is not a multiple of ep size or vice versa."
+        )
 
         # If the number of experts is greater than maximum expert parallel size. a.k.a ep_size,
         # there are multiple experts in each GPU and each GPU has different experts

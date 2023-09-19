@@ -20,14 +20,14 @@ def _get_code_location(depth: int):
         upper_frame = inspect.stack()[i]
         function_name = inspect.stack()[i - 1].function
         ret.append(upper_frame.filename)
-        ret.append('(')
+        ret.append("(")
         ret.append(str(upper_frame.lineno))
-        ret.append('): ')
+        ret.append("): ")
         ret.append(function_name)
         if i != length - 1:
-            ret.append('\n')
+            ret.append("\n")
 
-    return ''.join(ret)
+    return "".join(ret)
 
 
 torch_all_reduce = dist.all_reduce
@@ -42,7 +42,7 @@ class CommEvent(object):
     volume recording.
     """
 
-    def __init__(self, count: int = 0, comm_vol: float = 0., cuda_time: int = 0):
+    def __init__(self, count: int = 0, comm_vol: float = 0.0, cuda_time: int = 0):
         self.self_count = count
         self.self_comm_vol = comm_vol
         self.self_cuda_time = cuda_time
@@ -54,8 +54,7 @@ class CommEvent(object):
 
 
 class CommProfiler(BaseProfiler):
-    """Communication profiler. Records all communication events.
-    """
+    """Communication profiler. Records all communication events."""
 
     def __init__(self, depth: int = 0, total_count: int = 0, total_comm_vol: float = 0, total_cuda_time: int = 0):
         super().__init__(profiler_name="Collective_Communication", priority=0)
@@ -114,8 +113,10 @@ class CommProfiler(BaseProfiler):
             res.append(sep)
 
         if self.warn_flag:
-            append("Warning: there exists multiple communication operations in the same time. As a result, "
-                   "the profiling result is not accurate.")
+            append(
+                "Warning: there exists multiple communication operations in the same time. As a result, "
+                "the profiling result is not accurate."
+            )
 
         if self.total_cuda_time == 0:
             return "No collective communication has been called yet!"
@@ -126,24 +127,29 @@ class CommProfiler(BaseProfiler):
         append("total number of calls: {}".format(self.total_count))
         append("All events:")
 
-        separation = '-' * 74
-        row_format = '{:^10}' + '{:^12}' * 2 + '{:^16}' + '{:^12}' * 2
+        separation = "-" * 74
+        row_format = "{:^10}" + "{:^12}" * 2 + "{:^16}" + "{:^12}" * 2
 
         append(separation)
-        append(row_format.format('Location', 'GPU time', 'Percentage', 'Comm volume', 'Bandwidth', 'Num of calls'))
+        append(row_format.format("Location", "GPU time", "Percentage", "Comm volume", "Bandwidth", "Num of calls"))
         append(separation)
 
         show_list = sorted(self.ops_record.items(), key=lambda kv: -kv[1].self_cuda_time)
         for location, event in show_list:
             append(location)
             append(
-                row_format.format('', _format_time(event.self_cuda_time),
-                                  '{:.1f}%'.format(event.self_cuda_time / self.total_cuda_time * 100.0),
-                                  _format_memory(event.self_comm_vol),
-                                  _format_bandwidth(event.self_comm_vol, event.self_cuda_time), event.self_count))
+                row_format.format(
+                    "",
+                    _format_time(event.self_cuda_time),
+                    "{:.1f}%".format(event.self_cuda_time / self.total_cuda_time * 100.0),
+                    _format_memory(event.self_comm_vol),
+                    _format_bandwidth(event.self_comm_vol, event.self_cuda_time),
+                    event.self_count,
+                )
+            )
             append()
 
-        return ''.join(res)
+        return "".join(res)
 
     @property
     def has_aync_op(self):
@@ -195,8 +201,7 @@ class CommProfiler(BaseProfiler):
 
 
 class CommHandler(object):
-    """Communication handler. A dummy handler to wait aync operations.
-    """
+    """Communication handler. A dummy handler to wait aync operations."""
 
     def __init__(self, profiler: CommProfiler):
         super().__init__()
@@ -212,11 +217,9 @@ def async_check(profiler: CommProfiler):
         profiler.wait_async_op()
 
 
-def all_reduce(tensor: torch.Tensor,
-               op: ReduceOp = ReduceOp.SUM,
-               group=None,
-               async_op: bool = False,
-               profiler: CommProfiler = None) -> Optional[CommHandler]:
+def all_reduce(
+    tensor: torch.Tensor, op: ReduceOp = ReduceOp.SUM, group=None, async_op: bool = False, profiler: CommProfiler = None
+) -> Optional[CommHandler]:
     async_check(profiler)
 
     comm_size = dist.get_world_size(group)
@@ -231,12 +234,14 @@ def all_reduce(tensor: torch.Tensor,
     profiler.close_profiler(group)
 
 
-def reduce_scatter(output: torch.Tensor,
-                   input_list: List[torch.Tensor],
-                   op: ReduceOp = ReduceOp.SUM,
-                   group=None,
-                   async_op: bool = False,
-                   profiler: CommProfiler = None) -> Optional[CommHandler]:
+def reduce_scatter(
+    output: torch.Tensor,
+    input_list: List[torch.Tensor],
+    op: ReduceOp = ReduceOp.SUM,
+    group=None,
+    async_op: bool = False,
+    profiler: CommProfiler = None,
+) -> Optional[CommHandler]:
     async_check(profiler)
 
     comm_size = dist.get_world_size(group)
@@ -254,11 +259,13 @@ def reduce_scatter(output: torch.Tensor,
     profiler.close_profiler(group)
 
 
-def all_gather(tensor_list: List[torch.Tensor],
-               tensor: torch.Tensor,
-               group=None,
-               async_op: bool = False,
-               profiler: CommProfiler = None) -> Optional[CommHandler]:
+def all_gather(
+    tensor_list: List[torch.Tensor],
+    tensor: torch.Tensor,
+    group=None,
+    async_op: bool = False,
+    profiler: CommProfiler = None,
+) -> Optional[CommHandler]:
     async_check(profiler)
 
     comm_size = dist.get_world_size(group)
@@ -276,11 +283,9 @@ def all_gather(tensor_list: List[torch.Tensor],
     profiler.close_profiler(group)
 
 
-def broadcast(tensor: torch.Tensor,
-              src: int,
-              group=None,
-              async_op: bool = False,
-              profiler: CommProfiler = None) -> Optional[CommHandler]:
+def broadcast(
+    tensor: torch.Tensor, src: int, group=None, async_op: bool = False, profiler: CommProfiler = None
+) -> Optional[CommHandler]:
     async_check(profiler)
 
     comm_vol = 1.0 * tensor.element_size() * tensor.numel()
@@ -293,12 +298,14 @@ def broadcast(tensor: torch.Tensor,
     profiler.close_profiler(group)
 
 
-def reduce(tensor: torch.Tensor,
-           dst: int,
-           op: ReduceOp = ReduceOp.SUM,
-           group=None,
-           async_op: bool = False,
-           profiler: CommProfiler = None) -> Optional[CommHandler]:
+def reduce(
+    tensor: torch.Tensor,
+    dst: int,
+    op: ReduceOp = ReduceOp.SUM,
+    group=None,
+    async_op: bool = False,
+    profiler: CommProfiler = None,
+) -> Optional[CommHandler]:
     async_check(profiler)
 
     comm_vol = 1.0 * tensor.element_size() * tensor.numel()

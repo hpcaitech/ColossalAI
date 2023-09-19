@@ -93,7 +93,7 @@ torchrun --nproc_per_node 2 train_dreambooth_colossalai.py \
 ```
 
 ## New API
-We have modified our previous implementation of Dreambooth with our new Booster API, which offers a more flexible and efficient way to train your model. The new API is more user-friendly and easy to use. You can find the new API in `train_dreambooth_colossalai.py`. 
+We have modified our previous implementation of Dreambooth with our new Booster API, which offers a more flexible and efficient way to train your model. The new API is more user-friendly and easy to use. You can find the new API in `train_dreambooth_colossalai.py`.
 We have also offer a shell script `test_ci.sh` for you to go through all our plugins for the booster.
 For more information about the booster API you can refer to https://colossalai.org/docs/basics/booster_api/.
 
@@ -111,7 +111,7 @@ For more information about the booster API you can refer to https://colossalai.o
 | low_level_zero |  4   |     8      |    28.87    |  2.02   |
 
 The evaluation is performed on 4 Nvidia A100 GPUs with 80GB memory each, with GPU 0 & 1, 2 & 3 connected with NVLink.
-We finetuned the [stable-diffusion-v1-4](https://huggingface.co/stabilityai/stable-diffusion-v1-4) model with 512x512 resolution on the [Teyvat](https://huggingface.co/datasets/Fazzie/Teyvat) dataset and compared 
+We finetuned the [stable-diffusion-v1-4](https://huggingface.co/stabilityai/stable-diffusion-v1-4) model with 512x512 resolution on the [Teyvat](https://huggingface.co/datasets/Fazzie/Teyvat) dataset and compared
 the memory cost and the throughput for the plugins.
 
 

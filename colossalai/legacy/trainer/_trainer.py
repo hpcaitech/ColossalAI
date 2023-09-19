@@ -151,7 +151,7 @@ class Trainer:
     @staticmethod
     def _should_display_progress(display_progress: bool):
         """Only display progress on DP rank 0, TP rank 0 and PP last rank"""
-        return (display_progress and is_dp_rank_0() and is_tp_rank_0() and is_no_pp_or_last_stage())
+        return display_progress and is_dp_rank_0() and is_tp_rank_0() and is_no_pp_or_last_stage()
 
     def _train_epoch(
         self,
@@ -293,8 +293,7 @@ class Trainer:
             assert isinstance(hooks, list), f"expected argument hooks be to list, but got {type(hooks)}"
 
             for hook in hooks:
-                assert isinstance(hook, BaseHook), \
-                    f'expected the hook to be of type BaseHook, but got {type(hook)}'
+                assert isinstance(hook, BaseHook), f"expected the hook to be of type BaseHook, but got {type(hook)}"
         else:
             hooks = []
         self.hooks = hooks

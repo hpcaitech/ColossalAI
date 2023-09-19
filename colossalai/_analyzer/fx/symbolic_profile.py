@@ -1,5 +1,3 @@
-import torch
-import torch.fx
 from torch.fx import GraphModule
 
 from .passes import ShapeProp, graph_profile_pass, shape_prop_pass
@@ -7,7 +5,6 @@ from .passes.graph_profile import FlopProfiler
 
 
 def register_flop_count_impl(func):
-
     def wrapper(impl):
         FlopProfiler._custom_flop_count_impl[func] = impl
         return impl
@@ -16,7 +13,6 @@ def register_flop_count_impl(func):
 
 
 def register_shape_impl(func):
-
     def wrapper(impl):
         ShapeProp._custom_dispatch_func[func] = impl
         return impl

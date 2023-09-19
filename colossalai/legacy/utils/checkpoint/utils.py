@@ -8,7 +8,7 @@ from colossalai.tensor import ColoTensor
 
 def robust_broadcast(tensor):
     with torch.no_grad():
-        is_cpu_ten = tensor.device.type == 'cpu'
+        is_cpu_ten = tensor.device.type == "cpu"
         if is_cpu_ten:
             b_data = tensor.cuda()
         else:
@@ -21,8 +21,7 @@ def robust_broadcast(tensor):
 
 
 def gather_tensor(colo_tensor: ColoTensor) -> None:
-    """Make colo_tensor replicated when the rank is 0
-    """
+    """Make colo_tensor replicated when the rank is 0"""
     if not colo_tensor.is_replicate():
         pg = colo_tensor.get_process_group()
         # for the group which contains rank 0
@@ -36,12 +35,11 @@ def gather_tensor(colo_tensor: ColoTensor) -> None:
         dist.barrier()
 
     if dist.get_rank() == 0:
-        setattr(colo_tensor, 'save_ready', True)    # set saving signature
+        setattr(colo_tensor, "save_ready", True)  # set saving signature
 
 
 def scatter_tensor(colo_tensor: ColoTensor, dist_spec: _DistSpec) -> None:
-    """Reversal operation of `gather_tensor`.
-    """
+    """Reversal operation of `gather_tensor`."""
     if dist_spec.placement == DistPlacementPattern.REPLICATE:
         robust_broadcast(colo_tensor.data)
     else:
@@ -57,7 +55,8 @@ def scatter_tensor(colo_tensor: ColoTensor, dist_spec: _DistSpec) -> None:
             colo_tensor.set_dist_spec(dist_spec)
         else:
             rep_tensor = ColoTensor(
-                entire_data, ColoTensorSpec(pg=colo_tensor.get_process_group(), compute_attr=colo_tensor.compute_spec))
+                entire_data, ColoTensorSpec(pg=colo_tensor.get_process_group(), compute_attr=colo_tensor.compute_spec)
+            )
             rep_tensor.set_dist_spec(dist_spec)
             with torch.no_grad():
                 colo_tensor.data.copy_(rep_tensor.data)

@@ -32,7 +32,7 @@ def check_send_recv_forward():
     local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
 
     if local_rank == 0:
-        device = torch.device('cuda:0')
+        device = torch.device("cuda:0")
         data_to_send = data.to(device)
         data_list_to_send = []
         for data_in_list in data_list:
@@ -42,7 +42,7 @@ def check_send_recv_forward():
         send_forward(data_list_to_send, scatter_gather_tensors=use_scatter_gather_tensors)
 
     elif local_rank == 1:
-        device = torch.device('cuda:1')
+        device = torch.device("cuda:1")
 
         data_recv = recv_forward(TENSOR_SIZE, scatter_gather_tensors=use_scatter_gather_tensors)
         data_list_recv = recv_forward(TENSOR_SIZE_LIST, scatter_gather_tensors=use_scatter_gather_tensors)
@@ -60,7 +60,7 @@ def check_send_recv_forward():
 def check_send_recv_backward():
     disable_existing_loggers()
     if gpc.get_local_rank(ParallelMode.PIPELINE) == 0:
-        device = torch.device('cuda:0')
+        device = torch.device("cuda:0")
         grad_recv = recv_backward(TENSOR_SIZE)
         grad_list_recv = recv_backward(TENSOR_SIZE_LIST)
 
@@ -73,7 +73,7 @@ def check_send_recv_backward():
             grad_to_check = grad_send.to(device)
             assert grad_recv.equal(grad_to_check)
     else:
-        device = torch.device('cuda:1')
+        device = torch.device("cuda:1")
         grad_to_send = grad.to(device)
         grad_list_to_send = []
         for grad_in_list in grad_list:
@@ -104,7 +104,7 @@ def check_small_pipeline():
 
 def check_layer(rank, world_size, port):
     disable_existing_loggers()
-    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     disable_existing_loggers()
     # check_send_recv_forward()
@@ -120,6 +120,6 @@ def test_object_list_p2p():
     spawn(check_layer, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     disable_existing_loggers()
     test_object_list_p2p()

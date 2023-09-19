@@ -1,8 +1,7 @@
 import torch
 from rpc_test_utils import RpcTestModel, parse_args, rpc_run
-from torch import nn
 
-from colossalai.legacy.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine, OneFOneBPipelineEngine
+from colossalai.legacy.pipeline.rpc._pipeline_schedule import OneFOneBPipelineEngine
 
 # global variable for model created
 feat_num = 100
@@ -32,12 +31,14 @@ def run_master(args):
 
     input_sample = torch.randn((sample_num, feat_num), device=device)
 
-    engine = OneFOneBPipelineEngine(partition_fn=partition,
-                                    stage_num=stage_num,
-                                    num_microbatches=num_microbatches,
-                                    device=device,
-                                    chunk=chunk,
-                                    checkpoint=use_checkpoint)
+    engine = OneFOneBPipelineEngine(
+        partition_fn=partition,
+        stage_num=stage_num,
+        num_microbatches=num_microbatches,
+        device=device,
+        chunk=chunk,
+        checkpoint=use_checkpoint,
+    )
 
     for _ in range(epoch):
         _ = engine.forward_backward(input_sample, forward_only=False)

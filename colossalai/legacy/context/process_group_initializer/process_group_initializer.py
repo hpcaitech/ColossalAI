@@ -18,8 +18,15 @@ class ProcessGroupInitializer(ABC):
         tensor_parallel_size (int): Size of tensor parallel.
     """
 
-    def __init__(self, rank: int, world_size: int, config: Config, data_parallel_size: int, pipeline_parallel_size: int,
-                 tensor_parallel_size: int):
+    def __init__(
+        self,
+        rank: int,
+        world_size: int,
+        config: Config,
+        data_parallel_size: int,
+        pipeline_parallel_size: int,
+        tensor_parallel_size: int,
+    ):
         self.rank = rank
         self.world_size = world_size
         self.data_parallel_size = data_parallel_size

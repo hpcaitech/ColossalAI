@@ -12,7 +12,7 @@ from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 
-os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 
 
 def init_to_get_rotary(self, base=10000):
@@ -28,8 +28,9 @@ def init_to_get_rotary(self, base=10000):
     else:
         max_seq_len = 2048 * rope_scaling_factor
     base = float(base)
-    inv_freq = 1.0 / (base**(torch.arange(0, self.config.head_dim_, 2, device="cpu", dtype=torch.float32) /
-                             self.config.head_dim_))
+    inv_freq = 1.0 / (
+        base ** (torch.arange(0, self.config.head_dim_, 2, device="cpu", dtype=torch.float32) / self.config.head_dim_)
+    )
     t = torch.arange(max_seq_len + 1024 * 64, device="cpu", dtype=torch.float32) / rope_scaling_factor
     freqs = torch.outer(t, inv_freq)
 
@@ -75,8 +76,8 @@ def run_llama_test(args):
 
     generate_kwargs = dict(max_new_tokens=max_output_len, do_sample=False)
     input_tokens = {
-        "input_ids": torch.randint(1, 1000, (max_batch_size, max_input_len), device='cuda'),
-        "attention_mask": torch.ones((max_batch_size, max_input_len), device='cuda')
+        "input_ids": torch.randint(1, 1000, (max_batch_size, max_input_len), device="cuda"),
+        "attention_mask": torch.ones((max_batch_size, max_input_len), device="cuda"),
     }
 
     iters = 10
@@ -105,7 +106,7 @@ def run_llama_test(args):
 
 def check_llama(rank, world_size, port, args):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_llama_test(args)
 
 
@@ -117,11 +118,11 @@ def test_llama(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-p', '--path', type=str, help='Model path', required=True)
-    parser.add_argument('-tp', '--tp_size', type=int, default=1, help='Tensor parallel size')
-    parser.add_argument('-b', '--batch_size', type=int, default=16, help='Maximum batch size')
-    parser.add_argument('--input_len', type=int, default=1024, help='Maximum input length')
-    parser.add_argument('--output_len', type=int, default=128, help='Maximum output length')
+    parser.add_argument("-p", "--path", type=str, help="Model path", required=True)
+    parser.add_argument("-tp", "--tp_size", type=int, default=1, help="Tensor parallel size")
+    parser.add_argument("-b", "--batch_size", type=int, default=16, help="Maximum batch size")
+    parser.add_argument("--input_len", type=int, default=1024, help="Maximum input length")
+    parser.add_argument("--output_len", type=int, default=128, help="Maximum output length")
 
     args = parser.parse_args()
 

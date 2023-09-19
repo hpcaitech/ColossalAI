@@ -3,12 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from loss_func.cross_entropy import vocab_cross_entropy
 
-import colossalai
 from colossalai.kernel import LayerNorm
 from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 
-from .embedding import VocabEmbedding
 from .linear import Linear
 from .pooler import Pooler
 
@@ -26,7 +24,6 @@ class BertLMHead(nn.Module):
         vocab_size,
         hidden_size,
     ):
-
         super(BertLMHead, self).__init__()
         self.bias = torch.nn.Parameter(torch.zeros(vocab_size))
 
@@ -46,7 +43,6 @@ class BertLMHead(nn.Module):
 
 
 class BertBinaryHead(nn.Module):
-
     def __init__(self, hidden_size):
         super().__init__()
         self.pooler = Pooler(hidden_size)
@@ -62,7 +58,6 @@ class BertBinaryHead(nn.Module):
 
 
 class BertDualHead(nn.Module):
-
     def __init__(self, hidden_size, vocab_size, add_binary_head):
         super().__init__()
         self.lm_head = BertLMHead(vocab_size, hidden_size)

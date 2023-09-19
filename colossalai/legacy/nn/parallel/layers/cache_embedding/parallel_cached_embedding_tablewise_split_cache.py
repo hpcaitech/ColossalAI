@@ -19,21 +19,23 @@ class ParallelCachedEmbeddingBagTablewiseSpiltCache(abc.ABC, nn.Module):
     every table assigned to this class instance is managed by a CachedEmbeddingBag.
     """
 
-    def __init__(self,
-                 embedding_bag_config_list: List[TablewiseEmbeddingBagConfig],
-                 embedding_dim: int,
-                 padding_idx=None,
-                 max_norm=None,
-                 norm_type=2.,
-                 scale_grad_by_freq=False,
-                 sparse=False,
-                 mode='mean',
-                 include_last_offset=False,
-                 dtype=None,
-                 device=None,
-                 warmup_ratio=0.7,
-                 pin_weight=False,
-                 evict_strategy: EvictionStrategy = EvictionStrategy.LFU):
+    def __init__(
+        self,
+        embedding_bag_config_list: List[TablewiseEmbeddingBagConfig],
+        embedding_dim: int,
+        padding_idx=None,
+        max_norm=None,
+        norm_type=2.0,
+        scale_grad_by_freq=False,
+        sparse=False,
+        mode="mean",
+        include_last_offset=False,
+        dtype=None,
+        device=None,
+        warmup_ratio=0.7,
+        pin_weight=False,
+        evict_strategy: EvictionStrategy = EvictionStrategy.LFU,
+    ):
         super(ParallelCachedEmbeddingBagTablewiseSpiltCache, self).__init__()
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
@@ -56,24 +58,27 @@ class ParallelCachedEmbeddingBagTablewiseSpiltCache(abc.ABC, nn.Module):
             if config.assigned_rank != self.rank:
                 continue
             self.cached_embedding_bag_list.append(
-                CachedEmbeddingBag(num_embeddings=config.num_embeddings,
-                                   embedding_dim=embedding_dim,
-                                   padding_idx=padding_idx,
-                                   max_norm=max_norm,
-                                   norm_type=norm_type,
-                                   scale_grad_by_freq=scale_grad_by_freq,
-                                   sparse=sparse,
-                                   _weight=config.initial_weight,
-                                   mode=mode,
-                                   include_last_offset=include_last_offset,
-                                   dtype=dtype,
-                                   device=device,
-                                   cuda_row_num=config.cuda_row_num,
-                                   ids_freq_mapping=config.ids_freq_mapping,
-                                   warmup_ratio=warmup_ratio,
-                                   buffer_size=config.buffer_size,
-                                   pin_weight=pin_weight,
-                                   evict_strategy=evict_strategy))
+                CachedEmbeddingBag(
+                    num_embeddings=config.num_embeddings,
+                    embedding_dim=embedding_dim,
+                    padding_idx=padding_idx,
+                    max_norm=max_norm,
+                    norm_type=norm_type,
+                    scale_grad_by_freq=scale_grad_by_freq,
+                    sparse=sparse,
+                    _weight=config.initial_weight,
+                    mode=mode,
+                    include_last_offset=include_last_offset,
+                    dtype=dtype,
+                    device=device,
+                    cuda_row_num=config.cuda_row_num,
+                    ids_freq_mapping=config.ids_freq_mapping,
+                    warmup_ratio=warmup_ratio,
+                    buffer_size=config.buffer_size,
+                    pin_weight=pin_weight,
+                    evict_strategy=evict_strategy,
+                )
+            )
 
         # prepare list shape for all_to_all output
         self.embedding_dim_per_rank = [0 for i in range(self.world_size)]
@@ -95,22 +100,26 @@ class ParallelCachedEmbeddingBagTablewiseSpiltCache(abc.ABC, nn.Module):
                         indices_end_position = offsets[batch_size * (handle_table + 1)]
                 with record_function("part 2"):
                     # local_indices = indices[indices_start_position:indices_end_position] - self.global_tables_offsets[handle_table]
-                    local_indices = indices.narrow(0, indices_start_position, indices_end_position -
-                                                   indices_start_position).sub(self.global_tables_offsets[handle_table])
+                    local_indices = indices.narrow(
+                        0, indices_start_position, indices_end_position - indices_start_position
+                    ).sub(self.global_tables_offsets[handle_table])
                     if self.include_last_offset:
                         # local_offsets = offsets[batch_size * handle_table:batch_size * (handle_table + 1) + 1] - offsets[batch_size * (handle_table)]
-                        local_offsets = offsets.narrow(0, batch_size * handle_table,
-                                                       batch_size + 1).sub(offsets[batch_size * (handle_table)])
+                        local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size + 1).sub(
+                            offsets[batch_size * (handle_table)]
+                        )
                     else:
                         # local_offsets = offsets[batch_size * handle_table:batch_size * (handle_table + 1)] - offsets[batch_size * (handle_table)]
-                        local_offsets = offsets.narrow(0, batch_size * handle_table,
-                                                       batch_size).sub(offsets[batch_size * (handle_table)])
+                        local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size).sub(
+                            offsets[batch_size * (handle_table)]
+                        )
                 local_per_sample_weights = None
                 if per_sample_weights != None:
                     local_per_sample_weights = per_sample_weights[indices_start_position:indices_end_position]
             with record_function("(tablewise) tablewise forward"):
-                local_output_list.append(self.cached_embedding_bag_list[i](local_indices, local_offsets,
-                                                                           local_per_sample_weights))
+                local_output_list.append(
+                    self.cached_embedding_bag_list[i](local_indices, local_offsets, local_per_sample_weights)
+                )
 
         # get result of shape = (batch_size, (len(assigned_table_list)*embedding_dim))
         local_output = torch.cat(local_output_list, 1)

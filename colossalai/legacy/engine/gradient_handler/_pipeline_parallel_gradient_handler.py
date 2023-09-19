@@ -26,17 +26,21 @@ class PipelineSharedModuleGradientHandler(BaseGradientHandler):
     """
 
     def handle_gradient(self):
-        """A method running a all-reduce operation in sub pipeline parallel groups.
-        """
+        """A method running a all-reduce operation in sub pipeline parallel groups."""
         if gpc.pipeline_parallel_size > 1:
             # bucketize and all-reduce
             buckets = defaultdict(lambda: defaultdict(list))
             # Pack the buckets.
             for param in self._model.parameters():
-                group = getattr(param, 'pipeline_shared_module_pg', None)
-                if param.requires_grad and group is not None and (
-                    (hasattr(param, 'colo_attr') and not param.colo_attr.saved_grad.is_null())
-                        or param.grad is not None):
+                group = getattr(param, "pipeline_shared_module_pg", None)
+                if (
+                    param.requires_grad
+                    and group is not None
+                    and (
+                        (hasattr(param, "colo_attr") and not param.colo_attr.saved_grad.is_null())
+                        or param.grad is not None
+                    )
+                ):
                     tp = param.data.type()
                     buckets[group][tp].append(param)
 
@@ -44,7 +48,7 @@ class PipelineSharedModuleGradientHandler(BaseGradientHandler):
             for group, group_buckets in buckets.items():
                 for tp, bucket in group_buckets.items():
                     grads = [
-                        param.colo_attr.grad_payload if hasattr(param, 'colo_attr') else param.grad.data
+                        param.colo_attr.grad_payload if hasattr(param, "colo_attr") else param.grad.data
                         for param in bucket
                     ]
                     coalesced = _flatten_dense_tensors(grads).to(torch.cuda.current_device())
