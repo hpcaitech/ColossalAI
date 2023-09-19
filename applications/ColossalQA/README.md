@@ -65,6 +65,7 @@ In this demo, we use ["moka-ai/m3e-base"](https://huggingface.co/moka-ai/m3e-bas
 ### Serving
 Currently we provide an interface for infering with LLMs served by third party packages such as [vllm](https://github.com/vllm-project/vllm) we will replace it with colossal inference and serving when ready. Please refer class VllmLLM for more details.
 
+
 ## Install
 
 Install colossalqa
@@ -75,6 +76,12 @@ pip install -e .
 ```
 
 To use the vllm server, please refer to the official guide [here](https://github.com/vllm-project/vllm/tree/main) for installation instruction. Simply run the following command from another terminal.
+```
+# Install vllm
+git clone https://github.com/vllm-project/vllm.git
+cd vllm
+pip install -e .  # This may take 5-10 minutes.
+```
 ```bash
 cd ./vllm/entrypoints
 python api_server.py --host localhost --port $PORT_NUMBER --model $PATH_TO_MODEL --swap-space $SWAP_SPACE_IN_GB

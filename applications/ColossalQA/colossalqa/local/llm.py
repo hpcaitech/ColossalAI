@@ -12,7 +12,7 @@ from transformers import (
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
 from colossalqa.mylogging import get_logger
-from .utils import post_http_request, get_response
+from colossalqa.local.utils import post_http_request, get_response, TEST_PROMPT_CHATGLM
 
 logger = get_logger()
 
@@ -26,7 +26,7 @@ class ColossalAPI:
         '''
         self.model_type = model_type
         if model_type == 'llama':
-            self.actor = LlamaForCausalLM.from_pretrained(pretrain, torch_dtype=torch.float16, trust_remote_code=True)
+            self.actor = LlamaForCausalLM.from_pretrained(pretrain, torch_dtype=torch.float16)
         else:
             self.actor = AutoModel.from_pretrained(pretrain, torch_dtype=torch.float16, trust_remote_code=True)
     
@@ -102,7 +102,7 @@ class ColossalLLM(LLM):
 
         generate_args = {k:kwargs[k] for k in kwargs if k not in ['stop', 'n']}
         out = self.api.generate(prompt, **generate_args)
-        if len(stop)!=0:
+        if isinstance(stop, list) and len(stop)!=0:
             for stopping_words in stop:
                 if stopping_words in out:
                     out = out.split(stopping_words)[0]
@@ -173,7 +173,8 @@ class VllmLLM(LLM):
     
 if __name__ == '__main__':
     import os
-    llm = ColossalLLM(n=10)
     model_path = os.environ.get('ZH_MODEL_PATH')
-    llm.set_llm("chatglm2", model_path)
-    logger.info(llm("Question: what dog doesn't bark? Answer:", max_new_tokens=10))
+    model_name = 'chatglm2'
+    colossal_api = ColossalAPI(model_name, model_path)
+    llm = ColossalLLM(n=1, api=colossal_api)
+    logger.info(llm(TEST_PROMPT_CHATGLM, max_new_tokens=100), verbose=True)

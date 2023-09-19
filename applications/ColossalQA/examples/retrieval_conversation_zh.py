@@ -53,10 +53,12 @@ if __name__ == '__main__':
         if file=='Esc':
             break
         data_name = input("Enter a short description of the data:")
+        separator = input("Enter a separator to force separating text into chunks, if no separator is given, the defaut separator is '\\n\\n', press ENTER directly to skip:")
+        separator = separator if separator!='' else '\n\n'
         retriever_data = DocumentLoader([[file, data_name.replace(' ', '_')]]).all_data
 
         # Split
-        text_splitter = NeuralTextSplitter()
+        text_splitter = NeuralTextSplitter(separator=separator.replace('\\n','\n').replace('\\t','\t'))
         splits = text_splitter.split_documents(retriever_data)
         documents.extend(splits)
     # Create retriever

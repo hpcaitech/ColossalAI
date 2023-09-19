@@ -28,18 +28,19 @@ class UniversalRetrievalConversation:
         Args:
             embedding_model_path: local or huggingface embedding model
             embedding_model_device: 
-            files_zh: [[file_path, name_of_file],...] defines the files used as supporting documents for Chinese retrieval QA
-            files_en: [[file_path, name_of_file],...] defines the files used as supporting documents for English retrieval QA
+            files_zh: [[file_path, name_of_file, separator],...] defines the files used as supporting documents for Chinese retrieval QA
+            files_en: [[file_path, name_of_file, separator],...] defines the files used as supporting documents for English retrieval QA
         '''
         self.embedding = HuggingFaceEmbeddings(model_name=embedding_model_path,
                            model_kwargs={'device': embedding_model_device},
                            encode_kwargs={'normalize_embeddings': False})
-
+        print("Select files for constructing Chinese retriever")
         docs_zh = self.load_supporting_docs(files=files_zh)
         # Create retriever
         self.information_retriever_zh = CustomRetriever(k=3, sql_file_path=sql_file_path, verbose=True)
         self.information_retriever_zh.add_documents(docs=docs_zh, cleanup='incremental', mode='by_source', embedding=self.embedding)
         
+        print("Select files for constructing English retriever")
         docs_en = self.load_supporting_docs(files=files_en)
         # Create retriever
         self.information_retriever_en = CustomRetriever(k=3, sql_file_path=sql_file_path, verbose=True)
@@ -58,8 +59,8 @@ class UniversalRetrievalConversation:
         documents = []
         if files:
             for file in files:
-                retriever_data = DocumentLoader([file]).all_data
-                text_splitter = NeuralTextSplitter()
+                retriever_data = DocumentLoader([[file['data_path'], file['name']]]).all_data
+                text_splitter = NeuralTextSplitter(separator=file['separator'] if file['separator']!='' else '\n')
                 splits = text_splitter.split_documents(retriever_data)
                 documents.extend(splits)
         else:
@@ -68,10 +69,12 @@ class UniversalRetrievalConversation:
                 if file=='Esc':
                     break
                 data_name = input("Enter a short description of the data:")
+                separator = input("Enter a separator to force separating text into chunks, if no separator is given, the defaut separator is '\\n\\n', press ENTER directly to skip:")
+                separator = separator if separator!='' else '\n\n'
                 retriever_data = DocumentLoader([[file, data_name.replace(' ', '_')]]).all_data
 
                 # Split
-                text_splitter = NeuralTextSplitter()
+                text_splitter = NeuralTextSplitter(separator=separator.replace('\\n','\n').replace('\\t','\t'))
                 splits = text_splitter.split_documents(retriever_data)
                 documents.extend(splits)
         return documents
@@ -86,11 +89,7 @@ class UniversalRetrievalConversation:
             if 'END' == user_input:
                 print("Agent: Happy to chat with you ：)")
                 break    
-            if "zh"==lang:
-                agent_response, self.memory = self.chinese_retrieval_conversation.run(user_input, self.memory)
-            else:
-                agent_response, self.memory = self.english_retrieval_conversation.run(user_input, self.memory)
-            agent_response = agent_response.split('\n')[0]
+            agent_response = self.run(user_input, which_language=lang)
             print(f"Agent: {agent_response}")
 
     def run(self, user_input: str, which_language = str):

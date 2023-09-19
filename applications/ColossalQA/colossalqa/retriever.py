@@ -68,6 +68,9 @@ class CustomRetriever(BaseRetriever):
         for source in data_by_source:
             if source not in self.vector_stores:
                 hash_encoding = hashlib.sha3_224(source.encode()).hexdigest()
+                if os.path.exists(f"{self.sql_file_path}/{hash_encoding}.db"):
+                    # Remove the stale file
+                    os.remove(f"{self.sql_file_path}/{hash_encoding}.db")
                 # Create a new sql database to store indexes, sql files are stored in the same directory as the source file
                 sql_path = f"sqlite:///{self.sql_file_path}/{hash_encoding}.db"
                 self.vector_stores[source] = Chroma(embedding_function=embedding, 
@@ -143,6 +146,5 @@ class CustomRetriever(BaseRetriever):
         else:
             self.buffer.pop(0)
             self.buffer.append([query_, documents])
-
-        logger.info("retrieved documents:\n{documents}", verbose=self.verbose)
+        logger.info(f"retrieved documents:\n{str(documents)}", verbose=self.verbose)
         return documents
