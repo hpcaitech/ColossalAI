@@ -82,9 +82,11 @@ class TPInferEngine:
         assert self.head_num % self.tp_size == 0, f"Cannot shard {self.head_num} heads with tp size {self.tp_size}"
         self.head_num //= self.tp_size    # update sharded number of heads
         if self.multi_query_group_num:
+            # NOTE the logic of MQA tensor parallelism should be specified.
             assert self.multi_query_group_num % self.tp_size == 0, f"Cannot shard {self.multi_query_group_num} query groups with tp size {self.tp_size}"
-            self.cache_manager = MemoryManager(self.max_total_token_num, self.dtype, self.multi_query_group_num,
-                                               self.head_dim, self.layer_num)
+            self.cache_manager = MemoryManager(self.max_total_token_num, self.dtype,
+                                               self.multi_query_group_num // self.tp_size, self.head_dim,
+                                               self.layer_num)
         else:
             self.cache_manager = MemoryManager(self.max_total_token_num, self.dtype, self.head_num, self.head_dim,
                                                self.layer_num)
