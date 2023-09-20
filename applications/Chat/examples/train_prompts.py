@@ -192,6 +192,12 @@ def main(args):
         use_wandb=args.use_wandb,
     )
 
+    if args.lora_rank > 0 and args.merge_lora_weights:
+        from coati.models.lora import LORA_MANAGER
+
+        # NOTE: set model to eval to merge LoRA weights
+        LORA_MANAGER.merge_weights = True
+        actor.eval()
     # save model checkpoint after fitting
     strategy.save_model(actor, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
@@ -227,6 +233,7 @@ if __name__ == "__main__":
     parser.add_argument("--ptx_batch_size", type=int, default=1)
     parser.add_argument("--experience_batch_size", type=int, default=8)
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
+    parser.add_argument("--merge_lora_weights", type=bool, default=True)
     parser.add_argument("--lr", type=float, default=1e-7)
     parser.add_argument("--kl_coef", type=float, default=0.1)
     parser.add_argument("--ptx_coef", type=float, default=0.9)
