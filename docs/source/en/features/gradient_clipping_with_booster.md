@@ -1,4 +1,4 @@
-# Gradient Clipping (Latest)
+# Gradient Clipping
 
 Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 

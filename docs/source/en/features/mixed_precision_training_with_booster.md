@@ -1,4 +1,4 @@
-# Auto Mixed Precision Training (Latest)
+# Auto Mixed Precision Training
 
 Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 

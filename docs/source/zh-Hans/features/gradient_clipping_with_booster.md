@@ -1,4 +1,4 @@
-# 梯度裁剪 (新版本)
+# 梯度裁剪
 
 作者: [Mingyan Jiang](https://github.com/jiangmingyan)
 
