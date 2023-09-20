@@ -74,11 +74,15 @@ echo "[Test]: testing sft ..."
 # FIXME: This is a hack to skip tests that are not working
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: These tests can be passed locally, skipped for long execution time
+#  - *-gemini: Gemini plugin does not support `from_pretrained` yet
 SKIPPED_TESTS=(
     "gpt2-ddp"
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
+    "gpt2-colossalai_gemini"
+    "opt-colossalai_gemini"
+    "bloom-colossalai_gemini"
 )
 
 GRAD_CKPTS=('' '--grad_checkpoint')
@@ -125,11 +129,15 @@ echo "[Test]: testing reward model ..."
 # FIXME: This is a hack to skip tests that are not working
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: These tests can be passed locally, skipped for long execution time
+#  - *-gemini: Gemini plugin does not support `from_pretrained` yet
 SKIPPED_TESTS=(
     "gpt2-ddp"
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
+    "gpt2-colossalai_gemini"
+    "opt-colossalai_gemini"
+    "bloom-colossalai_gemini"
 )
 
 LOSS_FNS=('log_sig' 'log_exp')
@@ -179,6 +187,7 @@ echo "[Test]: testing RLHF ..."
 # FIXME: This is a hack to skip tests that are not working
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: These tests can be passed locally, skipped for long execution time
+#  - *-gemini: Gemini plugin does not support `from_pretrained` yet
 SKIPPED_TESTS=(
     "gpt2-ddp"
     "llama-ddp"
