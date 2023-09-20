@@ -122,7 +122,7 @@ class Llama2Forwards:
         stride_sinbs,
         stride_sind,
         max_total_len,
-        H,  # N_CTX 代表要计算的上下文长度
+        H,  # N_CTX
         BLOCK_HEAD: tl.constexpr,
         BLOCK_SEQ: tl.constexpr,
         BLOCK_DMODEL: tl.constexpr,

@@ -425,7 +425,7 @@ class Llama2TokenAttentionForwards:
         stride_od,
         stride_b_loc_b,
         stride_b_loc_s,
-        other_kv_index,  # 避免读取到nan的数据
+        other_kv_index,  # avoid nan information
         kv_group_num,
         BLOCK_DMODEL: tl.constexpr,
         BLOCK_N: tl.constexpr,
@@ -693,7 +693,7 @@ class Llama2TokenAttentionForwards:
         B_Loc,
         B_Start_Loc,
         B_Seqlen,
-        max_input_len,  # B_Start_Loc 保存的是如果连续存储时候的累加输入和
+        max_input_len,  # B_Start_Loc cumsum of input lens if continuous
         stride_b_loc_b,
         stride_b_loc_s,
         stride_ph,
