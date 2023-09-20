@@ -1,7 +1,6 @@
 import pytest
 import torch
 from packaging import version
-from torch import nn
 from torch.optim import SGD
 from torchvision.models import resnet18
 from utils import shared_tempdir
@@ -9,11 +8,10 @@ from utils import shared_tempdir
 import colossalai
 from colossalai.booster import Booster
 
-if version.parse(torch.__version__) >= version.parse('1.12.0'):
-    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+if version.parse(torch.__version__) >= version.parse("1.12.0"):
     from colossalai.booster.plugin import TorchFSDPPlugin
 
-from colossalai.testing import rerun_if_address_is_in_use, spawn, check_state_dict_equal
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def compare_nested_dict(dict1, dict2):
@@ -72,15 +70,16 @@ def check_torch_fsdp_ckpt():
         booster.save_optimizer(optimizer, optim_ckpt_path, shard=False)
 
         full_msd = fsdp_model.state_dict()
-        #full_osd = FSDP.full_optim_state_dict(fsdp_model, optimizer)
+        # full_osd = FSDP.full_optim_state_dict(fsdp_model, optimizer)
         sharded_osd = optimizer.state_dict()
         import copy
+
         sharded_osd = copy.deepcopy(sharded_osd)
 
         run_model()
 
         full_msd_updated = fsdp_model.state_dict()
-        #full_osd_updated = FSDP.full_optim_state_dict(fsdp_model, optimizer, rank0_only=True)
+        # full_osd_updated = FSDP.full_optim_state_dict(fsdp_model, optimizer, rank0_only=True)
         sharded_osd_updated = optimizer.state_dict()
 
         assert not compare_nested_dict(sharded_osd, sharded_osd_updated)
@@ -92,9 +91,9 @@ def check_torch_fsdp_ckpt():
         booster.load_optimizer(optimizer, optim_ckpt_path)
 
         full_msd_restore = fsdp_model.state_dict()
-        #full_osd_restore = FSDP.full_optim_state_dict(fsdp_model, optimizer, rank0_only=True)
+        # full_osd_restore = FSDP.full_optim_state_dict(fsdp_model, optimizer, rank0_only=True)
         sharded_osd_restore = optimizer.state_dict()
-        
+
         assert compare_nested_dict(sharded_osd, sharded_osd_restore)
         assert compare_nested_dict(full_msd_restore, full_msd)
         outputs_sec = fsdp_model(inputs)
@@ -103,11 +102,11 @@ def check_torch_fsdp_ckpt():
 
 def run_dist(rank, world_size, port):
     # init dist env
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
     check_torch_fsdp_ckpt()
 
 
-@pytest.mark.skipif(version.parse(torch.__version__) < version.parse('1.12.0'), reason="requires torch1.12 or higher")
+@pytest.mark.skipif(version.parse(torch.__version__) < version.parse("1.12.0"), reason="requires torch1.12 or higher")
 @rerun_if_address_is_in_use()
 def test_torch_fsdp_ckpt():
     spawn(run_dist, 2)

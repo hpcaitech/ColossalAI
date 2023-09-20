@@ -11,3 +11,4 @@ sse_starlette
 wandb
 sentencepiece
 gpustat
+tensorboard

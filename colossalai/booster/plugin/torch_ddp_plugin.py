@@ -1,4 +1,4 @@
-from typing import Callable, Iterator, List, Optional, Tuple, Union
+from typing import Callable, Iterator, List, Optional, Tuple
 
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -12,11 +12,10 @@ from colossalai.interface import ModelWrapper, OptimizerWrapper
 
 from .dp_plugin_base import DPPluginBase
 
-__all__ = ['TorchDDPPlugin']
+__all__ = ["TorchDDPPlugin"]
 
 
 class TorchDDPCheckpointIO(GeneralCheckpointIO):
-
     def __init__(self) -> None:
         super().__init__()
         self.coordinator = DistCoordinator()
@@ -49,25 +48,29 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         if self.coordinator.is_master():
             super().save_lr_scheduler(lr_scheduler, checkpoint)
 
-    def save_sharded_model(self,
-                           model: nn.Module,
-                           checkpoint_path: str,
-                           gather_dtensor: bool = True,
-                           prefix: Optional[str] = None,
-                           max_shard_size: int = 1024,
-                           use_safetensors: bool = False):
+    def save_sharded_model(
+        self,
+        model: nn.Module,
+        checkpoint_path: str,
+        gather_dtensor: bool = True,
+        prefix: Optional[str] = None,
+        max_shard_size: int = 1024,
+        use_safetensors: bool = False,
+    ):
         """
         Save model to checkpoint but only on master process.
         """
         if self.coordinator.is_master():
             super().save_sharded_model(model, checkpoint_path, gather_dtensor, prefix, max_shard_size, use_safetensors)
 
-    def save_sharded_optimizer(self,
-                               optimizer: Optimizer,
-                               checkpoint: str,
-                               gather_dtensor: bool = True,
-                               prefix: Optional[str] = None,
-                               size_per_shard: int = 1024):
+    def save_sharded_optimizer(
+        self,
+        optimizer: Optimizer,
+        checkpoint: str,
+        gather_dtensor: bool = True,
+        prefix: Optional[str] = None,
+        size_per_shard: int = 1024,
+    ):
         """
         Save optimizer to checkpoint but only on master process.
         """
@@ -76,7 +79,6 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
 
 
 class TorchDDPModel(ModelWrapper):
-
     def __init__(self, module: nn.Module, *args, **kwargs) -> None:
         super().__init__(module)
         self.module = DDP(module, *args, **kwargs)
@@ -109,20 +111,24 @@ class TorchDDPPlugin(DPPluginBase):
         static_graph (bool, optional): Whether to use static graph. Defaults to False.
     """
 
-    def __init__(self,
-                 broadcast_buffers: bool = True,
-                 bucket_cap_mb: int = 25,
-                 find_unused_parameters: bool = False,
-                 check_reduction: bool = False,
-                 gradient_as_bucket_view: bool = False,
-                 static_graph: bool = False) -> None:
+    def __init__(
+        self,
+        broadcast_buffers: bool = True,
+        bucket_cap_mb: int = 25,
+        find_unused_parameters: bool = False,
+        check_reduction: bool = False,
+        gradient_as_bucket_view: bool = False,
+        static_graph: bool = False,
+    ) -> None:
         super().__init__()
-        self.ddp_kwargs = dict(broadcast_buffers=broadcast_buffers,
-                               bucket_cap_mb=bucket_cap_mb,
-                               find_unused_parameters=find_unused_parameters,
-                               check_reduction=check_reduction,
-                               gradient_as_bucket_view=gradient_as_bucket_view,
-                               static_graph=static_graph)
+        self.ddp_kwargs = dict(
+            broadcast_buffers=broadcast_buffers,
+            bucket_cap_mb=bucket_cap_mb,
+            find_unused_parameters=find_unused_parameters,
+            check_reduction=check_reduction,
+            gradient_as_bucket_view=gradient_as_bucket_view,
+            static_graph=static_graph,
+        )
 
     def support_no_sync(self) -> bool:
         return True
@@ -131,13 +137,13 @@ class TorchDDPPlugin(DPPluginBase):
         return False
 
     def supported_precisions(self) -> List[str]:
-        return ['fp16', 'fp16_apex', 'bf16', 'fp8']
+        return ["fp16", "fp16_apex", "bf16", "fp8"]
 
     def control_device(self) -> bool:
         return True
 
     def supported_devices(self) -> List[str]:
-        return ['cuda']
+        return ["cuda"]
 
     def configure(
         self,
@@ -156,8 +162,7 @@ class TorchDDPPlugin(DPPluginBase):
         # wrap the model with PyTorch DDP
         model = TorchDDPModel(model, **self.ddp_kwargs)
 
-        if optimizer is not None and \
-                not isinstance(optimizer, OptimizerWrapper):
+        if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer = OptimizerWrapper(optimizer)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
@@ -169,5 +174,5 @@ class TorchDDPPlugin(DPPluginBase):
         return TorchDDPCheckpointIO()
 
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
-        assert isinstance(model, TorchDDPModel), 'Model is not boosted by TorchDDPPlugin.'
+        assert isinstance(model, TorchDDPModel), "Model is not boosted by TorchDDPPlugin."
         return model.module.no_sync()

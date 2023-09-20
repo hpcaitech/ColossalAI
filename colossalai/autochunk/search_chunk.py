@@ -8,7 +8,7 @@ from .reorder_graph import ReorderGraph
 from .select_chunk import SelectChunk
 from .trace_flow import TraceFlow
 from .trace_indice import TraceIndice
-from .utils import NodeMgr, get_logger, get_node_shape, is_non_compute_node, is_non_compute_node_except_placeholder
+from .utils import NodeMgr, get_logger, is_non_compute_node, is_non_compute_node_except_placeholder
 
 
 class SearchChunk(object):
@@ -121,8 +121,10 @@ class SearchChunk(object):
         # check if peak node already in chunk info
         if chunk_regions is not None:
             for i in chunk_regions:
-                if i["region"][0] < peak_region[0] <= i["region"][1] or \
-                    i["region"][0] < peak_region[1] <= i["region"][1]:
+                if (
+                    i["region"][0] < peak_region[0] <= i["region"][1]
+                    or i["region"][0] < peak_region[1] <= i["region"][1]
+                ):
                     return None
 
         active_node_num = [len(i) for i in active_node]
@@ -146,9 +148,9 @@ class SearchChunk(object):
                 region = i["region"]
                 if chunk_region_start >= region[0] and chunk_region_end <= region[1]:
                     return None
-                elif (region[0] <= chunk_region_start <= region[1] and chunk_region_end > region[1]):
+                elif region[0] <= chunk_region_start <= region[1] and chunk_region_end > region[1]:
                     chunk_region_start = region[1] + 1
-                elif (region[0] <= chunk_region_end <= region[1] and chunk_region_start < region[0]):
+                elif region[0] <= chunk_region_end <= region[1] and chunk_region_start < region[0]:
                     chunk_region_end = region[0] - 1
         return chunk_region_start, chunk_region_end
 
@@ -171,7 +173,7 @@ class SearchChunk(object):
             chunk_infos: possible regions found
         """
         start_traces = input_trace[start_idx]
-        if len(start_traces) > 1:    # TODO need to be removed
+        if len(start_traces) > 1:  # TODO need to be removed
             return []
         end_trace = output_trace[end_idx]
         end_node = self.node_mgr.get_node_by_idx(end_idx)
@@ -180,8 +182,9 @@ class SearchChunk(object):
         for end_dim, _ in enumerate(end_trace["indice"]):
             for start_node, start_trace in start_traces.items():
                 for start_dim, _ in enumerate(start_trace["indice"]):
-                    if not self.trace_flow.check_region_start_end(start_node, start_dim, start_idx, end_node, end_dim,
-                                                                  end_idx):
+                    if not self.trace_flow.check_region_start_end(
+                        start_node, start_dim, start_idx, end_node, end_dim, end_idx
+                    ):
                         continue
                     # flow search
                     chunk_info = self.trace_flow.flow_search(start_idx, start_dim, end_idx, end_dim)
@@ -203,7 +206,7 @@ class SearchChunk(object):
         """
         possible_chunk_region = []
         output_trace = copy.deepcopy(self.trace_indice.indice_trace_list)
-        input_trace = []    # trace of a node's input nodes
+        input_trace = []  # trace of a node's input nodes
         for _, n in enumerate(self.node_mgr.get_node_list()):
             cur_trace = {}
             for arg in n.args:
@@ -215,7 +218,8 @@ class SearchChunk(object):
             for end_idx in range(peak_region[1], max_chunk_region[1] + 1):
                 # skip non compute nodes
                 if is_non_compute_node(self.node_mgr.get_node_by_idx(start_idx)) or is_non_compute_node(
-                        self.node_mgr.get_node_by_idx(end_idx)):
+                    self.node_mgr.get_node_by_idx(end_idx)
+                ):
                     continue
                 # select free dim
                 chunk_info = self._find_chunk_info(input_trace, output_trace, start_idx, end_idx)
@@ -279,15 +283,18 @@ class SearchChunk(object):
             chunk_infos.append(chunk_info)
 
             mem_peak, _, active_node = self.estimate_memory.estimate_chunk_inference_mem(
-                self.node_mgr.get_node_list(), chunk_infos)
+                self.node_mgr.get_node_list(), chunk_infos
+            )
 
             if self.print_progress:
-                get_logger().info("AutoChunk find chunk region %d = (%d, %d)" %
-                                  (len(chunk_infos), chunk_info["region"][0], chunk_info["region"][1]))
+                get_logger().info(
+                    "AutoChunk find chunk region %d = (%d, %d)"
+                    % (len(chunk_infos), chunk_info["region"][0], chunk_info["region"][1])
+                )
 
         if self.print_mem:
             self.print_mem = False
-            self.estimate_memory.estimate_chunk_inference_mem(self.node_mgr.get_node_list(),
-                                                              chunk_infos,
-                                                              print_mem=True)
+            self.estimate_memory.estimate_chunk_inference_mem(
+                self.node_mgr.get_node_list(), chunk_infos, print_mem=True
+            )
         return chunk_infos

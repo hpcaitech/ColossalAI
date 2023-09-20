@@ -1,5 +1,4 @@
 import socket
-from typing import List
 
 
 class HostInfo:
@@ -34,7 +33,7 @@ class HostInfo:
         """
 
         if port is None:
-            port = 22    # no port specified, lets just use the ssh port
+            port = 22  # no port specified, lets just use the ssh port
 
         # socket.getfqdn("127.0.0.1") does not return localhost
         # on some users' machines
@@ -50,7 +49,7 @@ class HostInfo:
         return localaddrs == targetaddrs
 
     def __str__(self):
-        return f'hostname: {self.hostname}, port: {self.port}'
+        return f"hostname: {self.hostname}, port: {self.port}"
 
     def __repr__(self):
         return self.__str__()

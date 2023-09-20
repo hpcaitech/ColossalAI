@@ -49,7 +49,7 @@ class Conversation:
 
     def to_gradio_chatbot(self):
         ret = []
-        for i, (role, msg) in enumerate(self.messages[self.offset:]):
+        for i, (role, msg) in enumerate(self.messages[self.offset :]):
             if i % 2 == 0:
                 ret.append([msg, None])
             else:
@@ -57,12 +57,14 @@ class Conversation:
         return ret
 
     def copy(self):
-        return Conversation(system=self.system,
-                            roles=self.roles,
-                            messages=[[x, y] for x, y in self.messages],
-                            offset=self.offset,
-                            sep_style=self.sep_style,
-                            sep=self.sep)
+        return Conversation(
+            system=self.system,
+            roles=self.roles,
+            messages=[[x, y] for x, y in self.messages],
+            offset=self.offset,
+            sep_style=self.sep_style,
+            sep=self.sep,
+        )
 
     def dict(self):
         return {
@@ -70,7 +72,7 @@ class Conversation:
             "roles": self.roles,
             "messages": self.messages,
             "offset": self.offset,
-            "sep": self.sep
+            "sep": self.sep,
         }
 
 

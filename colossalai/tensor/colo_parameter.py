@@ -11,7 +11,7 @@ WHITE_LIST_FUNCS = {torch.Tensor.__getitem__}
 
 
 def is_no_hook_op(func) -> bool:
-    return func.__name__.startswith('__') and func not in WHITE_LIST_FUNCS
+    return func.__name__.startswith("__") and func not in WHITE_LIST_FUNCS
 
 
 def filter_colo_parameters(*args, **kwargs):
@@ -36,18 +36,16 @@ def filter_colo_parameters(*args, **kwargs):
 
 
 def replace_args(args, kwargs, new_args):
-    args = new_args[:len(args)]
-    for k, v in zip(kwargs.keys(), new_args[len(args):]):
+    args = new_args[: len(args)]
+    for k, v in zip(kwargs.keys(), new_args[len(args) :]):
         kwargs[k] = v
     return tuple(args), kwargs
 
 
 class ColoParameter(ColoTensor, torch.nn.Parameter):
-    r"""A kind of ColoTensor to be considered as a module parameter.
+    r"""A kind of ColoTensor to be considered as a module parameter."""
 
-    """
-
-    def __new__(cls, data: Optional[torch.Tensor] = None, requires_grad: bool = True) -> 'ColoParameter':
+    def __new__(cls, data: Optional[torch.Tensor] = None, requires_grad: bool = True) -> "ColoParameter":
         if data is None:
             data = torch.empty(0)
         return torch.Tensor._make_subclass(cls, data, requires_grad)

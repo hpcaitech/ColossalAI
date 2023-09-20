@@ -1,4 +1,3 @@
-from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple
 
 import torch.distributed as dist
@@ -28,13 +27,11 @@ class PipelineStageManager:
         # init prev and next coord
         coord = self.pg_mesh.coordinate()
         # the prev rank of rank0 is the last rank
-        prev_coord = coord[: self.pipeline_axis] + \
-            (coord[self.pipeline_axis] - 1,) + coord[self.pipeline_axis + 1:]
-        self.prev_rank = self.pg_mesh.ravel(prev_coord, self.pg_mesh.shape, mode='wrap')
+        prev_coord = coord[: self.pipeline_axis] + (coord[self.pipeline_axis] - 1,) + coord[self.pipeline_axis + 1 :]
+        self.prev_rank = self.pg_mesh.ravel(prev_coord, self.pg_mesh.shape, mode="wrap")
         # the next rank of the last rank is rank0
-        next_coord = coord[: self.pipeline_axis] + \
-            (coord[self.pipeline_axis] + 1,) + coord[self.pipeline_axis + 1:]
-        self.next_rank = self.pg_mesh.ravel(next_coord, self.pg_mesh.shape, mode='wrap')
+        next_coord = coord[: self.pipeline_axis] + (coord[self.pipeline_axis] + 1,) + coord[self.pipeline_axis + 1 :]
+        self.next_rank = self.pg_mesh.ravel(next_coord, self.pg_mesh.shape, mode="wrap")
 
         # init p2p process groups
         stages = list(range(self.num_stages))

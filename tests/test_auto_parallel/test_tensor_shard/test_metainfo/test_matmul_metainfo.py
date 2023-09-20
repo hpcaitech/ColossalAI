@@ -5,26 +5,27 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationDat
 from colossalai.testing.utils import clear_cache_before_run, parameterize
 from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import print_results
 
-if torch.__version__ >= '1.12.0':
-    from colossalai.auto_parallel.meta_profiler import ShardMetaInfo, meta_register
+if torch.__version__ >= "1.12.0":
+    from colossalai.auto_parallel.meta_profiler import meta_register
 
 
-@pytest.mark.skipif(torch.__version__ < '1.12.0', reason="need pytorch 1.12.0 or higher for aten level operations")
+@pytest.mark.skipif(torch.__version__ < "1.12.0", reason="need pytorch 1.12.0 or higher for aten level operations")
 @clear_cache_before_run()
 @parameterize(
-    'tensor_shapes',
+    "tensor_shapes",
     [
-        [[128], [128]],    # dot product
-        [[64, 128], [128]],    # mat-vec
-        [[128], [128, 64]],    # vec-mat
-        [[64, 64, 128], [128]],    # batched mat-vec
-        [[128], [64, 128, 64]],    # vec-batched mat
-        [[64, 128], [128, 192]],    # mat-mat
-        [[64, 64, 128], [128, 192]],    # batched mat-mat
-        [[64, 128], [64, 128, 192]],    # mat-batched mat
-        [[64, 64, 128], [64, 128, 192]],    # batched mat-batched mat (matched batch dims)
-        [[64, 1, 64, 128], [64, 128, 192]],    # batched mat-batched mat (unmatched batch dims)
-    ])
+        [[128], [128]],  # dot product
+        [[64, 128], [128]],  # mat-vec
+        [[128], [128, 64]],  # vec-mat
+        [[64, 64, 128], [128]],  # batched mat-vec
+        [[128], [64, 128, 64]],  # vec-batched mat
+        [[64, 128], [128, 192]],  # mat-mat
+        [[64, 64, 128], [128, 192]],  # batched mat-mat
+        [[64, 128], [64, 128, 192]],  # mat-batched mat
+        [[64, 64, 128], [64, 128, 192]],  # batched mat-batched mat (matched batch dims)
+        [[64, 1, 64, 128], [64, 128, 192]],  # batched mat-batched mat (unmatched batch dims)
+    ],
+)
 def test_matmul_function_meta_info(tensor_shapes):
     meta_func = meta_register.get(torch.matmul)
 
@@ -55,7 +56,7 @@ def test_matmul_function_meta_info(tensor_shapes):
 
     # construct args and kwargs
     args = [input_data, other_data, output_data]
-    kwargs = {'inplace': False}
+    kwargs = {"inplace": False}
 
     # estimated results
     compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out = meta_func(*args, **kwargs)
@@ -85,9 +86,17 @@ def test_matmul_function_meta_info(tensor_shapes):
     compute_cost: TrainCycleItem
     memory_cost: TrainCycleItem
 
-    print_results([input_real_tensor, other_real_tensor], [output_real_tensor], compute_cost, memory_cost,
-                  fwd_allocated, fwd_peak, bwd_allocated, bwd_peak)
+    print_results(
+        [input_real_tensor, other_real_tensor],
+        [output_real_tensor],
+        compute_cost,
+        memory_cost,
+        fwd_allocated,
+        fwd_peak,
+        bwd_allocated,
+        bwd_peak,
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_matmul_function_meta_info()

@@ -1,6 +1,5 @@
 import pytest
 import torch
-from torch.nn.parallel import DistributedDataParallel as DDP
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
@@ -21,19 +20,13 @@ from tests.test_shardformer.test_model._utils import (
 
 
 def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
+    org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
+        model_fn, loss_fn, test_config
+    )
 
-    org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = \
-        build_model_from_hybrid_plugin(model_fn, loss_fn, test_config)
-
-    org_loss, org_output, sharded_loss, sharded_output = \
-        run_forward_backward_with_hybrid_plugin(
-            org_model,
-            sharded_model,
-            sharded_optimizer,
-            data_gen_fn,
-            output_transform_fn,
-            criterion,
-            booster)
+    org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
+        org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
+    )
 
     stage_manager = booster.plugin.stage_manager
     tp_group = booster.plugin.tp_group
@@ -42,22 +35,18 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     t5 = unwrap_model(org_model)
     sharded_t5 = unwrap_model(sharded_model)
 
-    row_layer_for_check = ['shared', 'encoder.block[0].layer[0].SelfAttention.q']
+    row_layer_for_check = ["shared", "encoder.block[0].layer[0].SelfAttention.q"]
 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
-    if test_config['precision'] == 'fp32':
+    if test_config["precision"] == "fp32":
         atol, rtol = 1e-5, 1e-3
     else:
         atol, rtol = 5e-3, 5e-3
     if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
-        row_layer_grads = get_grad_tensors_for_check(t5,
-                                                     sharded_t5,
-                                                     row_layer_for_check,
-                                                     tp_group,
-                                                     atol=atol,
-                                                     rtol=rtol,
-                                                     dim=0)
+        row_layer_grads = get_grad_tensors_for_check(
+            t5, sharded_t5, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0
+        )
         grads_to_check.update(row_layer_grads)
 
     # optimizer executes step
@@ -66,18 +55,18 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
-        if test_config['precision'] == 'fp32':
+        if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
 
-        if org_model.__class__.__name__ != 'T5ForConditionalGeneration':
+        if org_model.__class__.__name__ != "T5ForConditionalGeneration":
             check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
     # check weights
-    if test_config['precision'] == 'fp32':
+    if test_config["precision"] == "fp32":
         atol, rtol = 5e-4, 1e-3
     else:
         atol, rtol = 5e-3, 5e-3
@@ -90,67 +79,70 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     torch.cuda.empty_cache()
 
 
-@parameterize('test_config', [{
-    'tp_size': 2,
-    'pp_size': 2,
-    'num_microbatches': 2,
-    'enable_all_optimization': True,
-    'use_lazy_init': True,
-    'precision': 'fp16',
-    'initial_scale': 1,
-}, {
-    'tp_size': 1,
-    'pp_size': 2,
-    'num_microbatches': 4,
-    'use_lazy_init': False,
-    'precision': 'fp16',
-    'initial_scale': 1,
-}, {
-    'tp_size': 4,
-    'pp_size': 1,
-    'enable_all_optimization': True,
-    'use_lazy_init': False,
-    'precision': 'fp32',
-}, {
-    'tp_size': 1,
-    'pp_size': 4,
-    'num_microbatches': 4,
-    'enable_all_optimization': False,
-    'use_lazy_init': False,
-    'precision': 'fp32'
-}, {
-    'tp_size': 2,
-    'pp_size': 1,
-    'enable_all_optimization': True,
-    'use_lazy_init': False,
-    'precision': 'fp32'
-}, {
-    'tp_size': 2,
-    'pp_size': 1,
-    'enable_all_optimization': True,
-    'use_lazy_init': True,
-    'zero_stage': 2,
-    'precision': 'fp16',
-    'initial_scale': 1
-}, {
-    'tp_size': 1,
-    'pp_size': 2,
-    'num_microbatches': 2,
-    'enable_all_optimization': True,
-    'use_lazy_init': True,
-    'zero_stage': 1,
-    'precision': 'fp16',
-    'initial_scale': 1
-}])
+@parameterize(
+    "test_config",
+    [
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 4,
+            "use_lazy_init": False,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 4,
+            "pp_size": 1,
+            "enable_all_optimization": True,
+            "use_lazy_init": False,
+            "precision": "fp32",
+        },
+        {
+            "tp_size": 1,
+            "pp_size": 4,
+            "num_microbatches": 4,
+            "enable_all_optimization": False,
+            "use_lazy_init": False,
+            "precision": "fp32",
+        },
+        {"tp_size": 2, "pp_size": 1, "enable_all_optimization": True, "use_lazy_init": False, "precision": "fp32"},
+        {
+            "tp_size": 2,
+            "pp_size": 1,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "zero_stage": 2,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "zero_stage": 1,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+    ],
+)
 @clear_cache_before_run()
 def run_t5_test(test_config):
-
-    sub_model_zoo = model_zoo.get_sub_registry('transformers_t5')
+    sub_model_zoo = model_zoo.get_sub_registry("transformers_t5")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-
         # skip 4-stage pp test for t5_encoder
-        if test_config['pp_size'] > 2 and name == 'transformers_t5_encoder_model':
+        if test_config["pp_size"] > 2 and name == "transformers_t5_encoder_model":
             continue
 
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
@@ -160,29 +152,32 @@ def run_t5_test(test_config):
     torch.cuda.empty_cache()
 
 
-@parameterize('test_config', [
-    {
-        'tp_size': 2,
-        'pp_size': 2,
-        'num_microbatches': 4,
-        'enable_all_optimization': False,
-        'use_lazy_init': False,
-        'precision': 'fp32',
-        'initial_scale': 1,
-    },
-    {
-        'tp_size': 2,
-        'pp_size': 2,
-        'num_microbatches': 4,
-        'enable_all_optimization': False,
-        'use_lazy_init': False,
-        'precision': 'fp16',
-        'zero_stage': 1,
-        'initial_scale': 1,
-    },
-])
+@parameterize(
+    "test_config",
+    [
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "num_microbatches": 4,
+            "enable_all_optimization": False,
+            "use_lazy_init": False,
+            "precision": "fp32",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "num_microbatches": 4,
+            "enable_all_optimization": False,
+            "use_lazy_init": False,
+            "precision": "fp16",
+            "zero_stage": 1,
+            "initial_scale": 1,
+        },
+    ],
+)
 def run_t5_3d_test(test_config):
-    sub_model_zoo = model_zoo.get_sub_registry('transformers_t5')
+    sub_model_zoo = model_zoo.get_sub_registry("transformers_t5")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
@@ -193,13 +188,13 @@ def run_t5_3d_test(test_config):
 
 def check_t5(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_t5_test()
 
 
 def check_t5_3d(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_t5_3d_test()
 
 

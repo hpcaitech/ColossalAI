@@ -1,6 +1,7 @@
-import numpy as np
-import cv2
 import math
+
+import cv2
+import numpy as np
 
 
 def apply_min_size(sample, size, image_interpolation_method=cv2.INTER_AREA):
@@ -28,13 +29,9 @@ def apply_min_size(sample, size, image_interpolation_method=cv2.INTER_AREA):
     shape[1] = math.ceil(scale * shape[1])
 
     # resize
-    sample["image"] = cv2.resize(
-        sample["image"], tuple(shape[::-1]), interpolation=image_interpolation_method
-    )
+    sample["image"] = cv2.resize(sample["image"], tuple(shape[::-1]), interpolation=image_interpolation_method)
 
-    sample["disparity"] = cv2.resize(
-        sample["disparity"], tuple(shape[::-1]), interpolation=cv2.INTER_NEAREST
-    )
+    sample["disparity"] = cv2.resize(sample["disparity"], tuple(shape[::-1]), interpolation=cv2.INTER_NEAREST)
     sample["mask"] = cv2.resize(
         sample["mask"].astype(np.float32),
         tuple(shape[::-1]),
@@ -46,8 +43,7 @@ def apply_min_size(sample, size, image_interpolation_method=cv2.INTER_AREA):
 
 
 class Resize(object):
-    """Resize sample to given size (width, height).
-    """
+    """Resize sample to given size (width, height)."""
 
     def __init__(
         self,
@@ -133,24 +129,14 @@ class Resize(object):
                     # fit height
                     scale_width = scale_height
             else:
-                raise ValueError(
-                    f"resize_method {self.__resize_method} not implemented"
-                )
+                raise ValueError(f"resize_method {self.__resize_method} not implemented")
 
         if self.__resize_method == "lower_bound":
-            new_height = self.constrain_to_multiple_of(
-                scale_height * height, min_val=self.__height
-            )
-            new_width = self.constrain_to_multiple_of(
-                scale_width * width, min_val=self.__width
-            )
+            new_height = self.constrain_to_multiple_of(scale_height * height, min_val=self.__height)
+            new_width = self.constrain_to_multiple_of(scale_width * width, min_val=self.__width)
         elif self.__resize_method == "upper_bound":
-            new_height = self.constrain_to_multiple_of(
-                scale_height * height, max_val=self.__height
-            )
-            new_width = self.constrain_to_multiple_of(
-                scale_width * width, max_val=self.__width
-            )
+            new_height = self.constrain_to_multiple_of(scale_height * height, max_val=self.__height)
+            new_width = self.constrain_to_multiple_of(scale_width * width, max_val=self.__width)
         elif self.__resize_method == "minimal":
             new_height = self.constrain_to_multiple_of(scale_height * height)
             new_width = self.constrain_to_multiple_of(scale_width * width)
@@ -160,9 +146,7 @@ class Resize(object):
         return (new_width, new_height)
 
     def __call__(self, sample):
-        width, height = self.get_size(
-            sample["image"].shape[1], sample["image"].shape[0]
-        )
+        width, height = self.get_size(sample["image"].shape[1], sample["image"].shape[0])
 
         # resize sample
         sample["image"] = cv2.resize(
@@ -180,9 +164,7 @@ class Resize(object):
                 )
 
             if "depth" in sample:
-                sample["depth"] = cv2.resize(
-                    sample["depth"], (width, height), interpolation=cv2.INTER_NEAREST
-                )
+                sample["depth"] = cv2.resize(sample["depth"], (width, height), interpolation=cv2.INTER_NEAREST)
 
             sample["mask"] = cv2.resize(
                 sample["mask"].astype(np.float32),
@@ -195,8 +177,7 @@ class Resize(object):
 
 
 class NormalizeImage(object):
-    """Normlize image by given mean and std.
-    """
+    """Normlize image by given mean and std."""
 
     def __init__(self, mean, std):
         self.__mean = mean
@@ -209,8 +190,7 @@ class NormalizeImage(object):
 
 
 class PrepareForNet(object):
-    """Prepare sample for usage as network input.
-    """
+    """Prepare sample for usage as network input."""
 
     def __init__(self):
         pass

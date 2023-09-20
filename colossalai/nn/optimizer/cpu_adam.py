@@ -61,36 +61,39 @@ class CPUAdam(NVMeOptimizer):
     # Param weight, grad, momentum and variance
     num_fp32_shards_per_param = 4
 
-    def __init__(self,
-                 model_params,
-                 lr=1e-3,
-                 bias_correction=True,
-                 betas=(0.9, 0.999),
-                 eps=1e-8,
-                 weight_decay=0,
-                 adamw_mode=True,
-                 nvme_offload_fraction: float = 0.0,
-                 nvme_offload_dir: Optional[str] = None):
-
+    def __init__(
+        self,
+        model_params,
+        lr=1e-3,
+        bias_correction=True,
+        betas=(0.9, 0.999),
+        eps=1e-8,
+        weight_decay=0,
+        adamw_mode=True,
+        nvme_offload_fraction: float = 0.0,
+        nvme_offload_dir: Optional[str] = None,
+    ):
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
         super(CPUAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)
         self.adamw_mode = adamw_mode
         cpu_adam = CPUAdamBuilder().load()
         self.cpu_adam_op = cpu_adam.CPUAdamOptimizer(lr, betas[0], betas[1], eps, weight_decay, adamw_mode)
 
-    def torch_adam_update(self,
-                          data,
-                          grad,
-                          exp_avg,
-                          exp_avg_sq,
-                          lr,
-                          beta1,
-                          beta2,
-                          eps,
-                          weight_decay,
-                          bias_correction1,
-                          bias_correction2,
-                          use_adamw=False):
+    def torch_adam_update(
+        self,
+        data,
+        grad,
+        exp_avg,
+        exp_avg_sq,
+        lr,
+        beta1,
+        beta2,
+        eps,
+        weight_decay,
+        bias_correction1,
+        bias_correction2,
+        use_adamw=False,
+    ):
         grad = grad.to(data.dtype)
 
         if weight_decay != 0:
@@ -117,10 +120,9 @@ class CPUAdam(NVMeOptimizer):
             with torch.enable_grad():
                 loss = closure()
 
-        self._pre_step('exp_avg', 'exp_avg_sq')
+        self._pre_step("exp_avg", "exp_avg_sq")
         for _, group in enumerate(self.param_groups):
-            for _, p in enumerate(group['params']):
-
+            for _, p in enumerate(group["params"]):
                 if p.grad is None:
                     continue
 
@@ -128,48 +130,81 @@ class CPUAdam(NVMeOptimizer):
 
                 target_device = p.device
                 if len(state) == 0:
-                    state['step'] = 0
+                    state["step"] = 0
 
                     # FIXME(ver217): CPU adam kernel only supports fp32 states now
                     assert p.dtype is torch.float, "CPUAdam only support fp32 parameters"
                     # gradient momentums
-                    state['exp_avg'] = torch.zeros_like(p, device=target_device)
+                    state["exp_avg"] = torch.zeros_like(p, device=target_device)
                     # gradient variances
-                    state['exp_avg_sq'] = torch.zeros_like(p, device=target_device)
+                    state["exp_avg_sq"] = torch.zeros_like(p, device=target_device)
                     self._post_state_init(p)
 
-                state['step'] += 1
-                beta1, beta2 = group['betas']
+                state["step"] += 1
+                beta1, beta2 = group["betas"]
 
-                if target_device.type == 'cpu':
+                if target_device.type == "cpu":
                     assert p.data.numel() == p.grad.data.numel(), "parameter and gradient should have the same size"
-                    assert state['exp_avg'].device.type == 'cpu', "exp_avg should stay on cpu"
-                    assert state['exp_avg_sq'].device.type == 'cpu', "exp_avg should stay on cpu"
-                    self._pre_update(p, 'exp_avg', 'exp_avg_sq')
+                    assert state["exp_avg"].device.type == "cpu", "exp_avg should stay on cpu"
+                    assert state["exp_avg_sq"].device.type == "cpu", "exp_avg should stay on cpu"
+                    self._pre_update(p, "exp_avg", "exp_avg_sq")
                     if p.grad.dtype is torch.bfloat16:
                         # cpu adam kernel does not support bf16 now
-                        bias_correction1 = 1 - beta1**state['step']
-                        bias_correction2 = 1 - beta2**state['step']
-                        self.torch_adam_update(p.data, p.grad.data, state['exp_avg'], state['exp_avg_sq'], group['lr'],
-                                               beta1, beta2, group['eps'], group['weight_decay'], bias_correction1,
-                                               bias_correction2, self.adamw_mode)
+                        bias_correction1 = 1 - beta1 ** state["step"]
+                        bias_correction2 = 1 - beta2 ** state["step"]
+                        self.torch_adam_update(
+                            p.data,
+                            p.grad.data,
+                            state["exp_avg"],
+                            state["exp_avg_sq"],
+                            group["lr"],
+                            beta1,
+                            beta2,
+                            group["eps"],
+                            group["weight_decay"],
+                            bias_correction1,
+                            bias_correction2,
+                            self.adamw_mode,
+                        )
                     else:
-                        self.cpu_adam_op.step(state['step'], group['lr'], beta1, beta2, group['eps'],
-                                              group['weight_decay'], group['bias_correction'], p.data, p.grad.data,
-                                              state['exp_avg'], state['exp_avg_sq'], div_scale)
-                    self._post_update(p, 'exp_avg', 'exp_avg_sq')
-                elif target_device.type == 'cuda':
+                        self.cpu_adam_op.step(
+                            state["step"],
+                            group["lr"],
+                            beta1,
+                            beta2,
+                            group["eps"],
+                            group["weight_decay"],
+                            group["bias_correction"],
+                            p.data,
+                            p.grad.data,
+                            state["exp_avg"],
+                            state["exp_avg_sq"],
+                            div_scale,
+                        )
+                    self._post_update(p, "exp_avg", "exp_avg_sq")
+                elif target_device.type == "cuda":
                     assert div_scale == -1, "div_scale should remain default"
-                    assert state['exp_avg'].device.type == 'cuda', "exp_avg should stay on cuda"
-                    assert state['exp_avg_sq'].device.type == 'cuda', "exp_avg should stay on cuda"
+                    assert state["exp_avg"].device.type == "cuda", "exp_avg should stay on cuda"
+                    assert state["exp_avg_sq"].device.type == "cuda", "exp_avg should stay on cuda"
 
-                    bias_correction1 = 1 - beta1**state['step']
-                    bias_correction2 = 1 - beta2**state['step']
+                    bias_correction1 = 1 - beta1 ** state["step"]
+                    bias_correction2 = 1 - beta2 ** state["step"]
 
                     # adam on cuda
-                    self.torch_adam_update(p.data, p.grad.data, state['exp_avg'], state['exp_avg_sq'], group['lr'],
-                                           beta1, beta2, group['eps'], group['weight_decay'], bias_correction1,
-                                           bias_correction2, self.adamw_mode)
+                    self.torch_adam_update(
+                        p.data,
+                        p.grad.data,
+                        state["exp_avg"],
+                        state["exp_avg_sq"],
+                        group["lr"],
+                        beta1,
+                        beta2,
+                        group["eps"],
+                        group["weight_decay"],
+                        bias_correction1,
+                        bias_correction2,
+                        self.adamw_mode,
+                    )
                 else:
                     raise RuntimeError
         self._post_step()

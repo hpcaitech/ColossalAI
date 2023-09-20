@@ -11,7 +11,16 @@ from ._lr_scheduler_hook import LRSchedulerHook
 from ._metric_hook import AccuracyHook, LossHook, MetricHook, ThroughputHook
 
 __all__ = [
-    'BaseHook', 'MetricHook', 'LossHook', 'AccuracyHook', 'LogMetricByEpochHook', 'TensorboardHook',
-    'LogTimingByEpochHook', 'LogMemoryByEpochHook', 'LRSchedulerHook', 'ThroughputHook', 'LogMetricByStepHook',
-    'SaveCheckpointHook'
+    "BaseHook",
+    "MetricHook",
+    "LossHook",
+    "AccuracyHook",
+    "LogMetricByEpochHook",
+    "TensorboardHook",
+    "LogTimingByEpochHook",
+    "LogMemoryByEpochHook",
+    "LRSchedulerHook",
+    "ThroughputHook",
+    "LogMetricByStepHook",
+    "SaveCheckpointHook",
 ]

@@ -10,7 +10,7 @@ from colossalai.tensor.sharding_spec import ShardingSpecException
 
 from .strategy_generator import StrategyGenerator
 
-__all__ = ['GetattrGenerator']
+__all__ = ["GetattrGenerator"]
 
 
 class GetattrGenerator(StrategyGenerator):
@@ -26,10 +26,10 @@ class GetattrGenerator(StrategyGenerator):
         strategy.compute_cost = compute_cost
 
     def update_memory_cost(self, strategy: ShardingStrategy):
-        '''
+        """
         Compute the memory cost per device with this specific strategy.
-        '''
-        forward_size_mapping = {'output': self._compute_size_in_bytes(strategy, "output")}
+        """
+        forward_size_mapping = {"output": self._compute_size_in_bytes(strategy, "output")}
 
         # compute fwd cost incurred
         # fwd_cost = output
@@ -47,7 +47,7 @@ class GetattrGenerator(StrategyGenerator):
     def enumerate_all_possible_output(self, mesh_dim_0, mesh_dim_1):
         # we check for the output logical shape to get the number of dimensions
         dim_partition_list = []
-        dim_size = len(self.op_data['output'].logical_shape)
+        dim_size = len(self.op_data["output"].logical_shape)
 
         # enumerate all the 2D sharding cases
         sharding_list_2d = enumerate_all_possible_2d_sharding(mesh_dim_0, mesh_dim_1, dim_size)
@@ -78,7 +78,8 @@ class GetattrGenerator(StrategyGenerator):
                 sharding_strategy = self.get_sharding_strategy(
                     name=name,
                     sharding_spec_mapping=sharding_spec_mapping,
-                    communication_action_mapping=communication_action_mapping)
+                    communication_action_mapping=communication_action_mapping,
+                )
                 strategy_list.append(sharding_strategy)
             except ShardingSpecException:
                 continue

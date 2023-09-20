@@ -8,8 +8,7 @@ import torch.nn.functional as F
 
 
 class LoraLinear(lora.LoRALayer, nn.Module):
-    """Replace in-place ops to out-of-place ops to fit gemini. Convert a torch.nn.Linear to LoraLinear.
-    """
+    """Replace in-place ops to out-of-place ops to fit gemini. Convert a torch.nn.Linear to LoraLinear."""
 
     def __init__(
         self,
@@ -17,16 +16,14 @@ class LoraLinear(lora.LoRALayer, nn.Module):
         bias: Optional[nn.Parameter],
         r: int = 0,
         lora_alpha: int = 1,
-        lora_dropout: float = 0.,
-        fan_in_fan_out: bool = False,    # Set this to True if the layer to replace stores weight like (fan_in, fan_out)
+        lora_dropout: float = 0.0,
+        fan_in_fan_out: bool = False,  # Set this to True if the layer to replace stores weight like (fan_in, fan_out)
         merge_weights: bool = True,
     ):
         nn.Module.__init__(self)
-        lora.LoRALayer.__init__(self,
-                                r=r,
-                                lora_alpha=lora_alpha,
-                                lora_dropout=lora_dropout,
-                                merge_weights=merge_weights)
+        lora.LoRALayer.__init__(
+            self, r=r, lora_alpha=lora_alpha, lora_dropout=lora_dropout, merge_weights=merge_weights
+        )
         self.weight = weight
         self.bias = bias
 
@@ -47,13 +44,12 @@ class LoraLinear(lora.LoRALayer, nn.Module):
             self.weight.data = self.weight.data.T
 
     def reset_parameters(self):
-        if hasattr(self, 'lora_A'):
-            # initialize A the same way as the default for nn.Linear and B to zero
+        if hasattr(self, "lora_A"):
+            # Initialize A with the default values for nn.Linear and set B to zero.
             nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
             nn.init.zeros_(self.lora_B)
 
     def train(self, mode: bool = True):
-
         def T(w):
             return w.T if self.fan_in_fan_out else w
 
@@ -70,9 +66,7 @@ class LoraLinear(lora.LoRALayer, nn.Module):
                     self.weight.data -= T(self.lora_B @ self.lora_A) * self.scaling
             self.merged = False
 
-    # def eval(self):
-    def merge(self):
-
+    def eval(self):
         def T(w):
             return w.T if self.fan_in_fan_out else w
 
@@ -82,16 +76,12 @@ class LoraLinear(lora.LoRALayer, nn.Module):
         if self.merge_weights and not self.merged:
             # Merge the weights and mark it
             if self.r > 0:
-                print(type(self.lora_A), type(self.lora_B))
-                weight = T(self.lora_B @ self.lora_A) * self.scaling
-                self.weight.data = self.weight.data + weight
-                delattr(self, 'lora_A')
-                delattr(self, 'lora_B')
-            print("eval eval eval eval" + str(self.merged))
+                self.weight.data += T(self.lora_B @ self.lora_A) * self.scaling
+                delattr(self, "lora_A")
+                delattr(self, "lora_B")
             self.merged = True
 
     def forward(self, x: torch.Tensor):
-
         def T(w):
             return w.T if self.fan_in_fan_out else w
 
@@ -104,9 +94,11 @@ class LoraLinear(lora.LoRALayer, nn.Module):
             return F.linear(x, T(self.weight), bias=self.bias)
 
 
-def _lora_linear_wrapper(linear: nn.Linear, lora_rank: int, merge_weights: bool = False) -> LoraLinear:
-    assert lora_rank <= linear.in_features, f'LoRA rank ({lora_rank}) must be less than or equal to in features ({linear.in_features})'
-    lora_linear = LoraLinear(linear.weight, linear.bias, r=lora_rank, merge_weights=merge_weights)
+def _lora_linear_wrapper(linear: nn.Linear, lora_rank: int) -> LoraLinear:
+    assert (
+        lora_rank <= linear.in_features
+    ), f"LoRA rank ({lora_rank}) must be less than or equal to in features ({linear.in_features})"
+    lora_linear = LoraLinear(linear.weight, linear.bias, r=lora_rank, merge_weights=False)
     return lora_linear
 
 
@@ -118,10 +110,7 @@ def _convert_to_lora_recursively(module: nn.Module, lora_rank: int, merge_weight
             _convert_to_lora_recursively(child, lora_rank, merge_weights)
 
 
-def convert_to_lora_module(module: nn.Module,
-                           lora_rank: int,
-                           lora_train_bias: str = 'none',
-                           merge_weights: bool = False) -> nn.Module:
+def convert_to_lora_module(module: nn.Module, lora_rank: int, lora_train_bias: str = "none") -> nn.Module:
     """Convert a torch.nn.Module to a LoRA module.
 
     Args:
@@ -149,7 +138,7 @@ class LoRAModule(nn.Module):
             Defaults to 'none'.
     """
 
-    def __init__(self, lora_rank: int = 0, lora_train_bias: str = 'none') -> None:
+    def __init__(self, lora_rank: int = 0, lora_train_bias: str = "none") -> None:
         super().__init__()
         self.lora_rank = lora_rank
         self.lora_train_bias = lora_train_bias

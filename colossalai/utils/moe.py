@@ -1,10 +1,12 @@
-import torch.nn as nn
-import torch.distributed as dist
-from colossalai.core import global_context as gpc
-from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.context import ParallelMode
-from .common import is_using_ddp
 from typing import Dict, List
+
+import torch.distributed as dist
+import torch.nn as nn
+
+from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.utils import is_using_ddp
 
 
 def get_moe_epsize_param_dict(model: nn.Module) -> Dict[int, List[nn.Parameter]]:
@@ -17,8 +19,8 @@ def get_moe_epsize_param_dict(model: nn.Module) -> Dict[int, List[nn.Parameter]]
     """
     epsize_param_dict = dict()
     for param in model.parameters():
-        if not hasattr(param, 'moe_info'):
-            ep_size = 1    # set ep_size to 1 for dp parameters
+        if not hasattr(param, "moe_info"):
+            ep_size = 1  # set ep_size to 1 for dp parameters
         else:
             ep_size = param.moe_info.ep_size
         if ep_size not in epsize_param_dict:
@@ -35,7 +37,6 @@ def sync_moe_model_param(model: nn.Module):
         model (:class:`torch.nn.Module`): A pyTorch model on whose parameters you check the consistency.
     """
     if is_using_ddp():
-
         param_dict = get_moe_epsize_param_dict(model)
 
         # synchronize the parameters whose dp_group is the whole world

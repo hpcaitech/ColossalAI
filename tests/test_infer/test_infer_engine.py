@@ -2,14 +2,12 @@ from itertools import accumulate
 
 import pytest
 import torch
-import torch.nn as nn
 from packaging import version
-from transformers import BloomConfig, BloomForCausalLM, LlamaConfig, LlamaForCausalLM
+from transformers import BloomConfig, BloomForCausalLM
 from transformers.tokenization_utils_base import BatchEncoding
 
 import colossalai
 from colossalai.inference.tensor_parallel import TPInferEngine
-from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
@@ -19,12 +17,17 @@ MAX_BATCH_SIZE = 4
 MAX_INPUT_LEN = 16
 MAX_OUTPUT_LEN = 8
 
-CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
+CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
 
 
-@parameterize('test_config', [{
-    'tp_size': TP_SIZE,
-}])
+@parameterize(
+    "test_config",
+    [
+        {
+            "tp_size": TP_SIZE,
+        }
+    ],
+)
 def run(test_config):
     model_config = BloomConfig(num_hidden_layers=4, hidden_size=128, intermediate_size=256, num_attention_heads=4)
     model = BloomForCausalLM(model_config)
@@ -32,8 +35,9 @@ def run(test_config):
     model.to(torch.cuda.current_device())
 
     # 1. check TPInferEngine init and model optimization
-    shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
-                               inference_only=True)
+    shard_config = ShardConfig(
+        enable_tensor_parallelism=True if test_config["tp_size"] > 1 else False, inference_only=True
+    )
     infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
 
     assert infer_engine.cache_manager is not None
@@ -41,13 +45,17 @@ def run(test_config):
     assert infer_engine.head_num == model_config.num_attention_heads // TP_SIZE
 
     # 2. check data preparation
-    input_ids_list = [[80540, 15473, 3331, 11970, 90472, 361, 61335], [80540, 15473, 3331, 11970],
-                      [80540, 15473, 3331, 11970], [80540, 15473]]
+    input_ids_list = [
+        [80540, 15473, 3331, 11970, 90472, 361, 61335],
+        [80540, 15473, 3331, 11970],
+        [80540, 15473, 3331, 11970],
+        [80540, 15473],
+    ]
     batch_size = len(input_ids_list)
     max_seq_len = max(len(li) for li in input_ids_list)
     attention_mask = [[0] * max_seq_len for _ in range(batch_size)]
     for i, li in enumerate(input_ids_list):
-        attention_mask[i][max_seq_len - len(li):] = [1 for _ in range(len(li))]
+        attention_mask[i][max_seq_len - len(li) :] = [1 for _ in range(len(li))]
     data = dict(input_ids=input_ids_list, attention_mask=attention_mask)
     inputs_batch_encoding = BatchEncoding(data=data)
     seq_lengths = [len(li) for li in input_ids_list]
@@ -78,7 +86,7 @@ def run(test_config):
 
 def check_engine(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run()
 
 
@@ -90,5 +98,5 @@ def test_engine():
     spawn(check_engine, TP_SIZE)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_engine()

@@ -1,10 +1,7 @@
-import copy
-from typing import Any, Callable, Dict, Iterable, List, Tuple
+from typing import Dict, List
 
 import torch
 from torch.fx.node import Node
-
-from colossalai.fx.profiler import activation_size, parameter_size
 
 from .utils import NodeMgr, get_node_shape, is_non_memory_node
 
@@ -62,12 +59,9 @@ class EstimateMemory(object):
                 delete_node_dict[node] = max(node_user_idx)
         return delete_node_dict
 
-    def _remove_deactive_node(self,
-                              user_idx: int,
-                              user: Node,
-                              active_nodes: List,
-                              delete_node_dict: List,
-                              kept_nodes: List = None) -> None:
+    def _remove_deactive_node(
+        self, user_idx: int, user: Node, active_nodes: List, delete_node_dict: List, kept_nodes: List = None
+    ) -> None:
         """
         remove deactivate nodes from active nodes
         """
@@ -169,7 +163,7 @@ class EstimateMemory(object):
         use_chunk = True if chunk_infos is not None else False
         chunk_within = False
         chunk_region_idx = None
-        chunk_ratio = 1    # use it to estimate chunk mem
+        chunk_ratio = 1  # use it to estimate chunk mem
         chunk_inputs_all = []
 
         if use_chunk:
@@ -184,7 +178,6 @@ class EstimateMemory(object):
             chunk_sizes = [i["chunk_size"] if "chunk_size" in i else 1 for i in chunk_infos]
 
         for idx, node in enumerate(node_mgr.get_node_list()):
-
             # if node in chunk start nodes, change chunk ratio and add chunk_tensor
             if use_chunk and idx in chunk_starts:
                 chunk_within = True
@@ -193,8 +186,9 @@ class EstimateMemory(object):
 
             # determine chunk ratio for current node
             if chunk_within:
-                chunk_ratio = self._get_chunk_ratio(node, chunk_node_dim[chunk_region_idx],
-                                                    chunk_sizes[chunk_region_idx])
+                chunk_ratio = self._get_chunk_ratio(
+                    node, chunk_node_dim[chunk_region_idx], chunk_sizes[chunk_region_idx]
+                )
 
             # add current node as active node
             self._add_active_node(node, active_nodes, chunk_ratio)
@@ -222,7 +216,7 @@ class EstimateMemory(object):
 
             # if node in chunk end nodes, restore chunk settings
             if use_chunk and idx in chunk_ends:
-                self._remove_deactive_node(idx, node, active_nodes, delete_node_dict)    # dont provide kept nodes now
+                self._remove_deactive_node(idx, node, active_nodes, delete_node_dict)  # dont provide kept nodes now
                 chunk_within = False
                 chunk_ratio = 1
                 chunk_region_idx = None

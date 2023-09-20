@@ -8,14 +8,13 @@ from .accuracy_2p5d import Accuracy2p5D
 from .accuracy_3d import Accuracy3D
 
 _parallel_accuracy = {
-    '2d': Accuracy2D,
-    '2.5d': Accuracy2p5D,
-    '3d': Accuracy3D,
+    "2d": Accuracy2D,
+    "2.5d": Accuracy2p5D,
+    "3d": Accuracy3D,
 }
 
 
 class Accuracy(nn.Module):
-
     def __init__(self):
         super().__init__()
         tensor_parallel = get_tensor_parallel_mode()

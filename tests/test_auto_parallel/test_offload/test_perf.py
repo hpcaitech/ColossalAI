@@ -17,18 +17,22 @@ from tests.test_auto_parallel.test_offload.model_utils import *
 from tests.test_tensor.common_utils import set_seed
 
 
-@parameterize('model_name', ['gpt2_'])
-@parameterize('memory_budget', [5000])
-@parameterize('solver_name', ['asyn'])
+@parameterize("model_name", ["gpt2_"])
+@parameterize("memory_budget", [5000])
+@parameterize("solver_name", ["asyn"])
 def exam_fwd_bwd(model_name: str, memory_budget: float, solver_name: str):
-
     # build model
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, data_gen = get_components_func()
-    label = torch.randint(low=0, high=128, size=(
-        64,
-        8,
-    ), device=get_current_device())
+    label = torch.randint(
+        low=0,
+        high=128,
+        size=(
+            64,
+            8,
+        ),
+        device=get_current_device(),
+    )
     criterion = LMLoss()
 
     set_seed(42)
@@ -50,17 +54,19 @@ def exam_fwd_bwd(model_name: str, memory_budget: float, solver_name: str):
     hybrid_optimizer = HybridAdam(model.model.parameters(), lr=1e-3)
     optim = AMPOptimizer(hybrid_optimizer, model)
 
-    with ColoInitContext(device=torch.device('cpu')):
+    with ColoInitContext(device=torch.device("cpu")):
         gemini_model = model_builder()
     gemini_model.train()
 
     hybrid_optimizer = HybridAdam(gemini_model.parameters(), lr=1e-3)
-    gemini_config = dict(strict_ddp_mode=False,
-                         device=torch.device('cpu'),
-                         placement_policy='cpu',
-                         pin_memory=True,
-                         hidden_dim=8192,
-                         search_range_m=128)
+    gemini_config = dict(
+        strict_ddp_mode=False,
+        device=torch.device("cpu"),
+        placement_policy="cpu",
+        pin_memory=True,
+        hidden_dim=8192,
+        search_range_m=128,
+    )
     gemini_model = zero_model_wrapper(gemini_model, 3, gemini_config)
     optim_config = dict(reduce_bucket_size=12 * 1024 * 1024, overlap_communication=True, verbose=True)
     gemini_optim = zero_optim_wrapper(gemini_model, hybrid_optimizer, optim_config=optim_config)
@@ -89,9 +95,11 @@ def exam_fwd_bwd(model_name: str, memory_budget: float, solver_name: str):
     exec_time = sum(sorted(time_list)[:5]) / 5
     runtime_peak_mem_alc = torch.cuda.max_memory_allocated() / 1024**2
     runtime_peak_mem_res = torch.cuda.max_memory_reserved() / 1024**2
-    print(f'gemini | model_name: {model_name}')
-    print(f'| exec_time={exec_time:.3f} s | param_size={param_size:.3f} MB '
-          f'| runtime_peak_mem_alc={runtime_peak_mem_alc:.3f} MB| runtime_peak_mem_res={runtime_peak_mem_res:.3f} MB|')
+    print(f"gemini | model_name: {model_name}")
+    print(
+        f"| exec_time={exec_time:.3f} s | param_size={param_size:.3f} MB "
+        f"| runtime_peak_mem_alc={runtime_peak_mem_alc:.3f} MB| runtime_peak_mem_res={runtime_peak_mem_res:.3f} MB|"
+    )
     print(time_list)
 
     del data_args
@@ -124,24 +132,26 @@ def exam_fwd_bwd(model_name: str, memory_budget: float, solver_name: str):
     exec_time = sum(sorted(time_list)[:5]) / 5
     runtime_peak_mem_alc = torch.cuda.max_memory_allocated() / 1024**2
     runtime_peak_mem_res = torch.cuda.max_memory_reserved() / 1024**2
-    print(f'solver_name: {solver_name} | model_name: {model_name}')
-    print(f'| exec_time={exec_time:.3f} s | param_size={param_size:.3f} MB '
-          f'| runtime_peak_mem_alc={runtime_peak_mem_alc:.3f} MB| runtime_peak_mem_res={runtime_peak_mem_res:.3f} MB|')
+    print(f"solver_name: {solver_name} | model_name: {model_name}")
+    print(
+        f"| exec_time={exec_time:.3f} s | param_size={param_size:.3f} MB "
+        f"| runtime_peak_mem_alc={runtime_peak_mem_alc:.3f} MB| runtime_peak_mem_res={runtime_peak_mem_res:.3f} MB|"
+    )
     print(time_list)
 
 
 def run_dist(rank, world_size, port):
     config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_fwd_bwd()
 
 
 @pytest.mark.skip("this test failed")
-@pytest.mark.skipif(NOT_NVML, reason='pynvml is not installed')
+@pytest.mark.skipif(NOT_NVML, reason="pynvml is not installed")
 @rerun_if_address_is_in_use()
 def test_perf():
     spawn(run_dist, 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_perf()

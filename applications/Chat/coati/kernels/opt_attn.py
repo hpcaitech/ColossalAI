@@ -21,11 +21,12 @@ class XOPTAttention(OPTAttention):
         output_attentions: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor], Optional[Tuple[Tensor]]]:
         if not self.training:
-            return super().forward(hidden_states, key_value_states, past_key_value, attention_mask, layer_head_mask,
-                                   output_attentions)
+            return super().forward(
+                hidden_states, key_value_states, past_key_value, attention_mask, layer_head_mask, output_attentions
+            )
         """Input shape: Batch x Time x Channel"""
-        assert layer_head_mask is None, 'Xformers attention does not support layer_head_mask'
-        assert not output_attentions, 'Xformers attention does not support output_attentions'
+        assert layer_head_mask is None, "Xformers attention does not support layer_head_mask"
+        assert not output_attentions, "Xformers attention does not support output_attentions"
 
         # if key_value_states are provided this layer is used as a cross-attention layer
         # for the decoder
@@ -69,12 +70,14 @@ class XOPTAttention(OPTAttention):
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
 
-        attn_output = xops.memory_efficient_attention(query_states,
-                                                      key_states,
-                                                      value_states,
-                                                      attn_bias=xops.LowerTriangularMask(),
-                                                      p=self.dropout if self.training else 0.0,
-                                                      scale=self.scaling)
+        attn_output = xops.memory_efficient_attention(
+            query_states,
+            key_states,
+            value_states,
+            attn_bias=xops.LowerTriangularMask(),
+            p=self.dropout if self.training else 0.0,
+            scale=self.scaling,
+        )
 
         # Use the `embed_dim` from the config (stored in the class) rather than `hidden_state` because `attn_output` can be
         # partitioned across GPUs when using tensor-parallelism.

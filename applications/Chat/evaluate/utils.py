@@ -1,7 +1,6 @@
 import io
 import json
 import os
-import re
 import string
 from typing import Dict
 
@@ -55,7 +54,7 @@ def jload(f, mode="r"):
 
 
 def get_json_list(file_path):
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         json_list = []
         for line in f:
             json_list.append(json.loads(line))
@@ -187,9 +186,9 @@ def analyze_automatic_results(results_path: str, save_path: str) -> None:
     frame_all.to_csv(os.path.join(save_path, "automatic_evaluation_statistics.csv"))
 
     for metric in tqdm.tqdm(
-            frame_per_metric.keys(),
-            desc=f"automatic metrics: ",
-            total=len(frame_per_metric.keys()),
+        frame_per_metric.keys(),
+        desc=f"automatic metrics: ",
+        total=len(frame_per_metric.keys()),
     ):
         data = pd.DataFrame(frame_per_metric[metric])
 

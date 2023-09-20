@@ -1,5 +1,4 @@
 import argparse
-import json
 import os
 
 import openai
@@ -9,7 +8,8 @@ from utils import jload
 
 def main(args):
     assert len(args.answer_file_list) == len(
-        args.model_name_list), "The number of answer files and model names should be equal!"
+        args.model_name_list
+    ), "The number of answer files and model names should be equal!"
 
     # load config
     config = jload(args.config_file)
@@ -36,7 +36,8 @@ def main(args):
 
         if len(args.model_name_list) == 1 and not gpt_evaluation_prompt:
             raise Exception(
-                "No prompt file for gpt evaluation provided. Please specify the prompt file for gpt evaluation!")
+                "No prompt file for gpt evaluation provided. Please specify the prompt file for gpt evaluation!"
+            )
 
         if args.gpt_model == "text-davinci-003" and args.gpt_with_reference:
             raise Exception(
@@ -44,8 +45,15 @@ def main(args):
             )
 
         # initialize evaluator
-        evaluator = Evaluator(metrics_per_category, battle_prompt, gpt_evaluation_prompt, args.gpt_model,
-                              config["language"], config.get("path_for_UniEval", None), args.gpt_with_reference)
+        evaluator = Evaluator(
+            metrics_per_category,
+            battle_prompt,
+            gpt_evaluation_prompt,
+            args.gpt_model,
+            config["language"],
+            config.get("path_for_UniEval", None),
+            args.gpt_with_reference,
+        )
         if len(args.model_name_list) == 2:
             answers1 = jload(args.answer_file_list[0])
             answers2 = jload(args.answer_file_list[1])
@@ -68,41 +76,41 @@ def main(args):
         raise ValueError(f'Unsupported language {config["language"]}!')
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='ColossalAI LLM evaluation pipeline.')
-    parser.add_argument('--config_file',
-                        type=str,
-                        default=None,
-                        required=True,
-                        help='path to the file of target results')
-    parser.add_argument('--battle_prompt_file', type=str, default=None, help='path to the prompt file for battle')
-    parser.add_argument('--gpt_evaluation_prompt_file',
-                        type=str,
-                        default=None,
-                        help='path to the prompt file for gpt evaluation')
-    parser.add_argument('--target_file', type=str, default=None, help='path to the target answer (ground truth) file')
-    parser.add_argument('--answer_file_list',
-                        type=str,
-                        nargs='+',
-                        default=[],
-                        required=True,
-                        help='path to the answer files of at most 2 models')
-    parser.add_argument('--model_name_list',
-                        type=str,
-                        nargs='+',
-                        default=[],
-                        required=True,
-                        help='the names of at most 2 models')
-    parser.add_argument('--gpt_model',
-                        default="gpt-3.5-turbo",
-                        choices=["text-davinci-003", "gpt-3.5-turbo", "gpt-4"],
-                        help='which GPT model to use for evaluation')
-    parser.add_argument('--gpt_with_reference',
-                        default=False,
-                        action="store_true",
-                        help='whether to include reference answer in gpt evaluation')
-    parser.add_argument('--save_path', type=str, default="results", help='path to save evaluation results')
-    parser.add_argument('--openai_key', type=str, default=None, required=True, help='Your openai key')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="ColossalAI LLM evaluation pipeline.")
+    parser.add_argument(
+        "--config_file", type=str, default=None, required=True, help="path to the file of target results"
+    )
+    parser.add_argument("--battle_prompt_file", type=str, default=None, help="path to the prompt file for battle")
+    parser.add_argument(
+        "--gpt_evaluation_prompt_file", type=str, default=None, help="path to the prompt file for gpt evaluation"
+    )
+    parser.add_argument("--target_file", type=str, default=None, help="path to the target answer (ground truth) file")
+    parser.add_argument(
+        "--answer_file_list",
+        type=str,
+        nargs="+",
+        default=[],
+        required=True,
+        help="path to the answer files of at most 2 models",
+    )
+    parser.add_argument(
+        "--model_name_list", type=str, nargs="+", default=[], required=True, help="the names of at most 2 models"
+    )
+    parser.add_argument(
+        "--gpt_model",
+        default="gpt-3.5-turbo",
+        choices=["text-davinci-003", "gpt-3.5-turbo", "gpt-4"],
+        help="which GPT model to use for evaluation",
+    )
+    parser.add_argument(
+        "--gpt_with_reference",
+        default=False,
+        action="store_true",
+        help="whether to include reference answer in gpt evaluation",
+    )
+    parser.add_argument("--save_path", type=str, default="results", help="path to save evaluation results")
+    parser.add_argument("--openai_key", type=str, default=None, required=True, help="Your openai key")
     args = parser.parse_args()
 
     if args.openai_key is not None:

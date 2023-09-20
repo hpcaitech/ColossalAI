@@ -59,7 +59,7 @@ class Registry:
             for lib in self._third_party_lib:
                 if hasattr(lib, module_name):
                     return getattr(lib, module_name)
-            raise NameError(f'Module {module_name} not found in the registry {self.name}')
+            raise NameError(f"Module {module_name} not found in the registry {self.name}")
 
     def has(self, module_name: str):
         """Searches for a module with name `module_name` and returns a boolean value indicating

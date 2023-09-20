@@ -26,11 +26,9 @@ class ModelWrapper(nn.Module):
 
 
 class AMPModelMixin:
-    """This mixin class defines the interface for AMP training.
-    """
+    """This mixin class defines the interface for AMP training."""
 
     def update_master_params(self):
         """
         Update the master parameters for AMP training.
         """
-        pass

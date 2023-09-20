@@ -33,8 +33,14 @@ def move_to_cuda(batch):
 
 
 @torch.no_grad()
-def evaluate(model: nn.Module, test_dataloader: Union[DataLoader, List[DataLoader]], num_labels: int, task_name: str,
-             eval_splits: List[str], coordinator: DistCoordinator):
+def evaluate(
+    model: nn.Module,
+    test_dataloader: Union[DataLoader, List[DataLoader]],
+    num_labels: int,
+    task_name: str,
+    eval_splits: List[str],
+    coordinator: DistCoordinator,
+):
     metric = datasets.load_metric("glue", task_name, process_id=coordinator.rank, num_process=coordinator.world_size)
     model.eval()
 
@@ -58,7 +64,7 @@ def evaluate(model: nn.Module, test_dataloader: Union[DataLoader, List[DataLoade
         results = metric.compute()
         dist.all_reduce(accum_loss.div_(len(dataloader)))
         if coordinator.is_master():
-            results['loss'] = accum_loss.item() / coordinator.world_size
+            results["loss"] = accum_loss.item() / coordinator.world_size
         return results
 
     if isinstance(test_dataloader, DataLoader):
@@ -68,14 +74,21 @@ def evaluate(model: nn.Module, test_dataloader: Union[DataLoader, List[DataLoade
         final_results = {}
         for split, sub_loader in zip(eval_splits, test_dataloader):
             results = evaluate_subset(sub_loader)
-            final_results.update({f'{k}_{split}': v for k, v in results.items()})
+            final_results.update({f"{k}_{split}": v for k, v in results.items()})
         return final_results
 
 
-def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, lr_scheduler, train_dataloader: DataLoader,
-                booster: Booster, coordinator: DistCoordinator):
+def train_epoch(
+    epoch: int,
+    model: nn.Module,
+    optimizer: Optimizer,
+    lr_scheduler,
+    train_dataloader: DataLoader,
+    booster: Booster,
+    coordinator: DistCoordinator,
+):
     model.train()
-    with tqdm(train_dataloader, desc=f'Epoch [{epoch + 1}/{NUM_EPOCHS}]', disable=not coordinator.is_master()) as pbar:
+    with tqdm(train_dataloader, desc=f"Epoch [{epoch + 1}/{NUM_EPOCHS}]", disable=not coordinator.is_master()) as pbar:
         for batch in pbar:
             # Forward pass
             batch = move_to_cuda(batch)
@@ -89,7 +102,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, lr_scheduler
             lr_scheduler.step()
 
             # Print log info
-            pbar.set_postfix({'loss': loss.item()})
+            pbar.set_postfix({"loss": loss.item()})
 
 
 def main():
@@ -97,14 +110,16 @@ def main():
     # Parse Arguments
     # ==============================
     parser = argparse.ArgumentParser()
-    parser.add_argument('-t', '--task', default='mrpc', help="GLUE task to run")
-    parser.add_argument('-p',
-                        '--plugin',
-                        type=str,
-                        default='torch_ddp',
-                        choices=['torch_ddp', 'torch_ddp_fp16', 'gemini', 'low_level_zero'],
-                        help="plugin to use")
-    parser.add_argument('--target_f1', type=float, default=None, help="target f1 score. Raise exception if not reached")
+    parser.add_argument("-t", "--task", default="mrpc", help="GLUE task to run")
+    parser.add_argument(
+        "-p",
+        "--plugin",
+        type=str,
+        default="torch_ddp",
+        choices=["torch_ddp", "torch_ddp_fp16", "gemini", "low_level_zero"],
+        help="plugin to use",
+    )
+    parser.add_argument("--target_f1", type=float, default=None, help="target f1 score. Raise exception if not reached")
     args = parser.parse_args()
 
     # ==============================
@@ -115,19 +130,19 @@ def main():
 
     # local_batch_size = BATCH_SIZE // coordinator.world_size
     lr = LEARNING_RATE * coordinator.world_size
-    model_name = 'bert-base-uncased'
+    model_name = "bert-base-uncased"
 
     # ==============================
     # Instantiate Plugin and Booster
     # ==============================
     booster_kwargs = {}
-    if args.plugin == 'torch_ddp_fp16':
-        booster_kwargs['mixed_precision'] = 'fp16'
-    if args.plugin.startswith('torch_ddp'):
+    if args.plugin == "torch_ddp_fp16":
+        booster_kwargs["mixed_precision"] = "fp16"
+    if args.plugin.startswith("torch_ddp"):
         plugin = TorchDDPPlugin()
-    elif args.plugin == 'gemini':
-        plugin = GeminiPlugin(placement_policy='cuda', strict_ddp_mode=True, initial_scale=2**5)
-    elif args.plugin == 'low_level_zero':
+    elif args.plugin == "gemini":
+        plugin = GeminiPlugin(placement_policy="cuda", strict_ddp_mode=True, initial_scale=2**5)
+    elif args.plugin == "low_level_zero":
         plugin = LowLevelZeroPlugin(initial_scale=2**5)
 
     booster = Booster(plugin=plugin, **booster_kwargs)
@@ -135,11 +150,9 @@ def main():
     # ==============================
     # Prepare Dataloader
     # ==============================
-    data_builder = GLUEDataBuilder(model_name,
-                                   plugin,
-                                   args.task,
-                                   train_batch_size=BATCH_SIZE,
-                                   eval_batch_size=BATCH_SIZE)
+    data_builder = GLUEDataBuilder(
+        model_name, plugin, args.task, train_batch_size=BATCH_SIZE, eval_batch_size=BATCH_SIZE
+    )
     train_dataloader = data_builder.train_dataloader()
     test_dataloader = data_builder.test_dataloader()
 
@@ -185,14 +198,15 @@ def main():
     for epoch in range(NUM_EPOCHS):
         train_epoch(epoch, model, optimizer, lr_scheduler, train_dataloader, booster, coordinator)
 
-    results = evaluate(model, test_dataloader, data_builder.num_labels, args.task, data_builder.eval_splits,
-                       coordinator)
+    results = evaluate(
+        model, test_dataloader, data_builder.num_labels, args.task, data_builder.eval_splits, coordinator
+    )
 
     if coordinator.is_master():
         print(results)
-        if args.target_f1 is not None and 'f1' in results:
-            assert results['f1'] >= args.target_f1, f'f1 score {results["f1"]} is lower than target {args.target_f1}'
+        if args.target_f1 is not None and "f1" in results:
+            assert results["f1"] >= args.target_f1, f'f1 score {results["f1"]} is lower than target {args.target_f1}'
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

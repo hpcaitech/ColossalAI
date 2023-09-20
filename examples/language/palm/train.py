@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument(
         "--distplan",
         type=str,
-        default='colossalai',
+        default="colossalai",
         help="The distributed plan [colossalai, pytorch].",
     )
     parser.add_argument(
@@ -46,12 +46,14 @@ def parse_args():
         default=1.0,
         help="Fraction of optimizer states to be offloaded. This is only used for gemini.",
     )
-    parser.add_argument('-p',
-                        '--plugin',
-                        type=str,
-                        default='torch_ddp',
-                        choices=['torch_ddp', 'torch_ddp_fp16', 'gemini', 'low_level_zero'],
-                        help="plugin to use")
+    parser.add_argument(
+        "-p",
+        "--plugin",
+        type=str,
+        default="torch_ddp",
+        choices=["torch_ddp", "torch_ddp_fp16", "gemini", "low_level_zero"],
+        help="plugin to use",
+    )
     parser.add_argument(
         "--batch_size",
         type=int,
@@ -122,7 +124,6 @@ print("generate dataset ready!")
 
 
 class TextSamplerDataset(Dataset):
-
     def __init__(self, data, seq_len):
         super().__init__()
         self.data = data
@@ -130,7 +131,7 @@ class TextSamplerDataset(Dataset):
 
     def __getitem__(self, index):
         rand_start = torch.randint(0, self.data.size(0) - self.seq_len, (1,))
-        full_seq = self.data[rand_start:rand_start + self.seq_len + 1].long()
+        full_seq = self.data[rand_start : rand_start + self.seq_len + 1].long()
         return full_seq.cuda()
 
     def __len__(self):
@@ -146,18 +147,18 @@ if args.distplan == "colossalai":
     # instantiate GPT-like decoder model
 
     booster_kwargs = {}
-    if args.plugin == 'torch_ddp_fp16':
-        booster_kwargs['mixed_precision'] = 'fp16'
-    if args.plugin.startswith('torch_ddp'):
+    if args.plugin == "torch_ddp_fp16":
+        booster_kwargs["mixed_precision"] = "fp16"
+    if args.plugin.startswith("torch_ddp"):
         plugin = TorchDDPPlugin()
-    elif args.plugin == 'gemini':
+    elif args.plugin == "gemini":
         plugin = GeminiPlugin(offload_optim_frac=args.offload_optim_frac, initial_scale=2**5)
-    elif args.plugin == 'low_level_zero':
+    elif args.plugin == "low_level_zero":
         plugin = LowLevelZeroPlugin(initial_scale=2**5)
     logger.info(f"plugin: {plugin}")
     booster = Booster(plugin=plugin, **booster_kwargs)
 
-    ctx = LazyInitContext(default_device=get_current_device()) if args.plugin == 'gemini' else nullcontext()
+    ctx = LazyInitContext(default_device=get_current_device()) if args.plugin == "gemini" else nullcontext()
 
     with ctx:
         model = PaLM(num_tokens=50304, dim=4096, depth=64)
@@ -182,7 +183,6 @@ get_tflops_func = partial(get_tflops, numel, args.batch_size, SEQ_LEN)
 model.train()
 tflops_list = []
 for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10.0, desc="training"):
-
     if args.distplan == "colossalai":
         optimizer.zero_grad()
         start = time()
@@ -231,12 +231,12 @@ logger.info(f"Median TFLOPS is {tflops_list[median_index]:.3f}")
 #         loss = model(next(val_loader))
 #         print(f"validation loss: {loss.item()}")
 
-    # if i % GENERATE_EVERY == 0:
-    #     model.eval()
-    #     inp = random.choice(val_dataset)[:-1]
-    #     prime = decode_tokens(inp)
-    #     print(f"%s \n\n %s", (prime, "*" * 100))
+# if i % GENERATE_EVERY == 0:
+#     model.eval()
+#     inp = random.choice(val_dataset)[:-1]
+#     prime = decode_tokens(inp)
+#     print(f"%s \n\n %s", (prime, "*" * 100))
 
-    #     sample = model.generate(inp[None, ...], GENERATE_LENGTH)
-    #     output_str = decode_tokens(sample[0])
-    #     print(output_str)
+#     sample = model.generate(inp[None, ...], GENERATE_LENGTH)
+#     output_str = decode_tokens(sample[0])
+#     print(output_str)

@@ -54,14 +54,9 @@ class FusedSGD(Optimizer):
         The Nesterov version is analogously modified.
     """
 
-    def __init__(self,
-                 params,
-                 lr=required,
-                 momentum=0,
-                 dampening=0,
-                 weight_decay=0,
-                 nesterov=False,
-                 wd_after_momentum=False):
+    def __init__(
+        self, params, lr=required, momentum=0, dampening=0, weight_decay=0, nesterov=False, wd_after_momentum=False
+    ):
         if lr is not required and lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
         if momentum < 0.0:
@@ -78,20 +73,21 @@ class FusedSGD(Optimizer):
 
         if multi_tensor_applier.available:
             from colossalai.kernel.op_builder import FusedOptimBuilder
+
             fused_optim = FusedOptimBuilder().load()
 
             # Skip buffer
-            self._dummy_overflow_buf = torch.tensor([0],
-                                                    dtype=torch.int,
-                                                    device=self.param_groups[0]["params"][0].device)
+            self._dummy_overflow_buf = torch.tensor(
+                [0], dtype=torch.int, device=self.param_groups[0]["params"][0].device
+            )
             self.multi_tensor_sgd = fused_optim.multi_tensor_sgd
         else:
-            raise RuntimeError('FusedSGD requires cuda extensions')
+            raise RuntimeError("FusedSGD requires cuda extensions")
 
     def __setstate__(self, state):
         super(FusedSGD, self).__setstate__(state)
         for group in self.param_groups:
-            group.setdefault('nesterov', False)
+            group.setdefault("nesterov", False)
 
     def get_momentums(self, params):
         momentums = []
@@ -101,13 +97,13 @@ class FusedSGD(Optimizer):
             # torch.optim.SGD initializes momentum in the main loop, we have
             # to do it here, and track whether or not we've done so, so that
             # momentum application can be skipped in the main kernel.
-            if 'momentum_buffer' not in param_state:
+            if "momentum_buffer" not in param_state:
                 first_run = True
-                buf = param_state['momentum_buffer'] = torch.zeros_like(p)
+                buf = param_state["momentum_buffer"] = torch.zeros_like(p)
                 momentums.append(buf)
             else:
                 first_run = False
-                momentums.append(param_state['momentum_buffer'])
+                momentums.append(param_state["momentum_buffer"])
         return momentums, first_run
 
     def step(self, closure=None):
@@ -122,10 +118,10 @@ class FusedSGD(Optimizer):
             loss = closure()
 
         for group in self.param_groups:
-            weight_decay = group['weight_decay']
-            momentum = group['momentum']
-            dampening = group['dampening']
-            nesterov = group['nesterov']
+            weight_decay = group["weight_decay"]
+            momentum = group["momentum"]
+            dampening = group["dampening"]
+            nesterov = group["nesterov"]
 
             # For each group, there are 3 possible combinations we need to consider:
             # grad_type, param_to_update_type, momentum_type
@@ -133,15 +129,26 @@ class FusedSGD(Optimizer):
             # 2. fp32, fp32, fp32
             # 3. fp16, fp32, fp32
             g_l, p_l = [], []
-            for p in group['params']:
+            for p in group["params"]:
                 if p.grad is None:
                     continue
                 if p.grad.data.is_sparse:
-                    raise RuntimeError('FusedSGD does not support sparse gradients')
+                    raise RuntimeError("FusedSGD does not support sparse gradients")
                 g_l.append(p.grad)
                 p_l.append(p)
             m_l, first_run = self.get_momentums(p_l)
-            multi_tensor_applier(self.multi_tensor_sgd, self._dummy_overflow_buf, [g_l, p_l, m_l], weight_decay,
-                                 momentum, dampening, group['lr'], nesterov, first_run, self.wd_after_momentum, 1.0)
+            multi_tensor_applier(
+                self.multi_tensor_sgd,
+                self._dummy_overflow_buf,
+                [g_l, p_l, m_l],
+                weight_decay,
+                momentum,
+                dampening,
+                group["lr"],
+                nesterov,
+                first_run,
+                self.wd_after_momentum,
+                1.0,
+            )
 
         return loss
