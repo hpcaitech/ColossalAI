@@ -13,7 +13,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
 from colossalai.cluster import DistCoordinator
-from colossalai.interface import OptimizerWrapper
+from colossalai.interface import ModelWrapper, OptimizerWrapper
 
 from .general_checkpoint_io import GeneralCheckpointIO
 from .index_file import CheckpointIndexFile
@@ -157,7 +157,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
     def save_sharded_model(
         self,
-        model: nn.Module,
+        model: ModelWrapper,
         checkpoint: str,
         gather_dtensor: bool = True,
         prefix: Optional[str] = None,
@@ -181,6 +181,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             size_per_shard (int, optional): Size per shard in MB. Defaults to 1024.
             use_safetensors (bool, optional): Whether to use safe tensors. Defaults to False.
         """
+
+        assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
+        model = model.unwrap()
 
         if os.path.isfile(checkpoint):
             logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
@@ -277,7 +280,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                         f"index located at {final_index_file_path}."
                     )
 
-    def load_sharded_model(self, model: nn.Module, checkpoint_index_file: Path, strict: bool = False):
+    def load_sharded_model(self, model: ModelWrapper, checkpoint_index_file: Path, strict: bool = False):
         """
         Load sharded model with the given path to index file of checkpoint folder.
 
@@ -287,6 +290,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             strict (bool, optional): For name matching during loading state_dict. Defaults to False.
                                      This argument should be manually set to False since params on same device might be stored in different files.
         """
+        assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
+        model_before_wrapping = model  # backup for model before wrapping
+        model = model.unwrap()
 
         # Check whether the checkpoint uses safetensors.
         use_safetensors = False
@@ -345,8 +351,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             _load(extra_state_key)
 
         # Update master params if mixed-precision training is enabled.
-        if hasattr(model, "update_master_params") and callable(model.update_master_params):
-            model.update_master_params()
+        model_before_wrapping.update_master_params()
 
         if self.verbose:
             logging.info(f"The model has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
@@ -375,6 +380,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             prefix (str): Perfix of file to save
             size_per_shard (int): Max file size of each file shard that store state tensors
         """
+        assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
         if os.path.isfile(checkpoint):
             logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
             return
@@ -494,6 +500,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             checkpoint_index_file (str): Path to the index file of checkpointing folder.
             prefix (str): Not used.
         """
+        assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
 
         def _get_param_id_from_optimizer_param(
             param: torch.Tensor, master_to_working_map: Optional[Dict[int, torch.Tensor]] = None
