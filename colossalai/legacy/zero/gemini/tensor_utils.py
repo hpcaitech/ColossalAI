@@ -30,16 +30,17 @@ def colo_tensor_mem_usage(tensor: Union[torch.Tensor, StatefulTensor]) -> Tuple[
     cuda_use, cpu_use = 0, 0
 
     mem_use = t.storage().size() * t.element_size()
-    if t.device.type == 'cuda':
+    if t.device.type == "cuda":
         cuda_use += mem_use
-    elif t.device.type == 'cpu':
+    elif t.device.type == "cpu":
         cpu_use += mem_use
 
     return cuda_use, cpu_use
 
 
-def colo_model_data_tensor_move(src_t: Union[StatefulTensor, torch.Tensor], tgt_t: Union[StatefulTensor,
-                                                                                         torch.Tensor]) -> None:
+def colo_model_data_tensor_move(
+    src_t: Union[StatefulTensor, torch.Tensor], tgt_t: Union[StatefulTensor, torch.Tensor]
+) -> None:
     """
     A colossal API for model data tensor move.
     The src and target tensors could be resident on both CPU and GPU.
@@ -71,8 +72,9 @@ def colo_model_data_tensor_move(src_t: Union[StatefulTensor, torch.Tensor], tgt_
         src_t.data = torch.empty(0, device=src_dev, dtype=src_t_payload.dtype)
 
 
-def colo_model_data_tensor_move_inline(t: Union[StatefulTensor, torch.Tensor], target_device: Union[torch.device,
-                                                                                                    int]) -> None:
+def colo_model_data_tensor_move_inline(
+    t: Union[StatefulTensor, torch.Tensor], target_device: Union[torch.device, int]
+) -> None:
     """
     move a tensor to the target_device
     Args:
@@ -80,14 +82,14 @@ def colo_model_data_tensor_move_inline(t: Union[StatefulTensor, torch.Tensor], t
         target_device: a target device, if type is int, it the index of cuda card.
     """
     if not isinstance(target_device, torch.device):
-        target_device = torch.device(f'cuda:{target_device}')
+        target_device = torch.device(f"cuda:{target_device}")
 
     if isinstance(t, torch.Tensor):
         t.data = t.data.to(target_device)
     elif isinstance(t, StatefulTensor):
         t.move_to(target_device)
     else:
-        raise TypeError(f'colo_model_data_tensor_move_inline dose not accept type {type(t)}')
+        raise TypeError(f"colo_model_data_tensor_move_inline dose not accept type {type(t)}")
 
 
 def colo_model_data_move_to_cpu(t: Union[StatefulTensor, torch.Tensor]) -> None:
@@ -100,9 +102,9 @@ def colo_model_data_move_to_cpu(t: Union[StatefulTensor, torch.Tensor]) -> None:
     if isinstance(t, torch.Tensor):
         t.data = t.data.cpu()
     elif isinstance(t, StatefulTensor):
-        t.move_to(torch.device('cpu'))
+        t.move_to(torch.device("cpu"))
     else:
-        raise TypeError(f'colo_model_data_move_to_cpu dose not accept type {type(t)}')
+        raise TypeError(f"colo_model_data_move_to_cpu dose not accept type {type(t)}")
 
 
 def colo_model_tensor_clone(t: Union[StatefulTensor, torch.Tensor], target_device: torch.device) -> torch.Tensor:

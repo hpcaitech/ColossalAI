@@ -43,7 +43,7 @@ class Initializer_Tensor(ProcessGroupInitializer):
         for i in range(self.num_tensor_parallel_group):
             ranks = [i * self.tensor_parallel_size + j for j in range(self.tensor_parallel_size)]
             group = dist.new_group(ranks)
-            group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+            group_cpu = dist.new_group(ranks, backend="gloo") if dist.get_backend() != "gloo" else group
 
             if self.rank in ranks:
                 local_rank = ranks.index(self.rank)

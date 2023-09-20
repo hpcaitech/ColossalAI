@@ -9,14 +9,14 @@ NUM_EPOCHS = 2
 NUM_CHUNKS = 1
 
 
-@pytest.mark.skip('balance split v2 is not ready')
+@pytest.mark.skip("balance split v2 is not ready")
 def test_gpt():
     MODEL_LIST = [
         transformers.GPT2Model,
         transformers.GPT2LMHeadModel,
         transformers.GPT2DoubleHeadsModel,
         transformers.GPT2ForTokenClassification,
-    # transformers.GPT2ForSequenceClassification, # not supported yet
+        # transformers.GPT2ForSequenceClassification, # not supported yet
     ]
     config = transformers.GPT2Config(n_position=64, n_layer=4, n_head=8)
 
@@ -32,5 +32,5 @@ def test_gpt():
         split_model_and_compare_output(model, data_gen)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_gpt()

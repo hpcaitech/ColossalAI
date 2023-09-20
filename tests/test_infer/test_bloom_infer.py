@@ -1,5 +1,3 @@
-import os
-
 import pytest
 import torch
 from packaging import version
@@ -16,22 +14,27 @@ MAX_BATCH_SIZE = 4
 MAX_INPUT_LEN = 16
 MAX_OUTPUT_LEN = 32
 
-CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
+CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
 
 
-@parameterize('test_config', [{
-    'tp_size': TP_SIZE,
-}])
+@parameterize(
+    "test_config",
+    [
+        {
+            "tp_size": TP_SIZE,
+        }
+    ],
+)
 def run(test_config):
-
-    sub_model_zoo = model_zoo.get_sub_registry('transformers_bloom_for_causal_lm')
+    sub_model_zoo = model_zoo.get_sub_registry("transformers_bloom_for_causal_lm")
     for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
         orig_model = model_fn()
         orig_model = orig_model.half()
         data = data_gen_fn()
 
-        shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
-                                   inference_only=True)
+        shard_config = ShardConfig(
+            enable_tensor_parallelism=True if test_config["tp_size"] > 1 else False, inference_only=True
+        )
         infer_engine = TPInferEngine(orig_model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
 
         generate_kwargs = dict(do_sample=False)
@@ -42,7 +45,7 @@ def run(test_config):
 
 def check_bloom(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run()
 
 
@@ -54,5 +57,5 @@ def test_bloom_infer():
     spawn(check_bloom, TP_SIZE)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_bloom_infer()

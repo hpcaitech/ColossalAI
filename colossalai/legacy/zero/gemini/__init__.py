@@ -4,6 +4,11 @@ from .stateful_tensor_mgr import StatefulTensorMgr
 from .tensor_placement_policy import AutoTensorPlacementPolicy, CPUTensorPlacementPolicy, CUDATensorPlacementPolicy
 
 __all__ = [
-    'StatefulTensorMgr', 'StatefulTensor', 'CPUTensorPlacementPolicy', 'CUDATensorPlacementPolicy',
-    'AutoTensorPlacementPolicy', 'register_ophooks_recursively', 'BaseOpHook'
+    "StatefulTensorMgr",
+    "StatefulTensor",
+    "CPUTensorPlacementPolicy",
+    "CUDATensorPlacementPolicy",
+    "AutoTensorPlacementPolicy",
+    "register_ophooks_recursively",
+    "BaseOpHook",
 ]

@@ -16,10 +16,9 @@ from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import n
 
 def check_binary_elementwise_handler_with_tensor(rank, world_size, port, op, other_dim):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     class BinaryElementwiseOpModel(nn.Module):
-
         def __init__(self, op):
             super().__init__()
             self.op = op
@@ -41,16 +40,18 @@ def check_binary_elementwise_handler_with_tensor(rank, world_size, port, op, oth
     # construct input args
     input_args = [x1, x2]
     # construct meta arg names
-    meta_arg_names = ['x1', 'x2']
-    numerical_test_for_node_strategy(model=model,
-                                     device_mesh=device_mesh,
-                                     node_index=node_index,
-                                     strategy_number=strategy_number,
-                                     input_args=input_args,
-                                     meta_arg_names=meta_arg_names)
+    meta_arg_names = ["x1", "x2"]
+    numerical_test_for_node_strategy(
+        model=model,
+        device_mesh=device_mesh,
+        node_index=node_index,
+        strategy_number=strategy_number,
+        input_args=input_args,
+        meta_arg_names=meta_arg_names,
+    )
 
     tracer = ColoTracer(bias_addition_split=True)
-    meta_args = {'x1': torch.rand(4, 4).to('meta'), 'x2': torch.rand([4] * other_dim).to('meta')}
+    meta_args = {"x1": torch.rand(4, 4).to("meta"), "x2": torch.rand([4] * other_dim).to("meta")}
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
     shape_prop_pass(gm, *meta_args.values())
@@ -70,23 +71,23 @@ def check_binary_elementwise_handler_with_tensor(rank, world_size, port, op, oth
         assert op_data.logical_shape is not None
         assert op_data.data is not None
 
-    assert mapping['input'].name == "x1"
-    assert mapping['input'].data.is_meta
-    assert mapping['input'].data.shape == torch.Size([4, 4])
-    assert mapping['input'].type == OperationDataType.ARG
-    assert mapping['input'].logical_shape == torch.Size([4, 4])
+    assert mapping["input"].name == "x1"
+    assert mapping["input"].data.is_meta
+    assert mapping["input"].data.shape == torch.Size([4, 4])
+    assert mapping["input"].type == OperationDataType.ARG
+    assert mapping["input"].logical_shape == torch.Size([4, 4])
 
-    assert mapping['other'].name == "x2"
-    assert mapping['other'].data.is_meta
-    assert mapping['other'].data.shape == torch.Size([4] * other_dim)
-    assert mapping['other'].type == OperationDataType.ARG
-    assert mapping['other'].logical_shape == torch.Size([4, 4])
+    assert mapping["other"].name == "x2"
+    assert mapping["other"].data.is_meta
+    assert mapping["other"].data.shape == torch.Size([4] * other_dim)
+    assert mapping["other"].type == OperationDataType.ARG
+    assert mapping["other"].logical_shape == torch.Size([4, 4])
 
-    assert mapping['output'].name == str(op_node)
-    assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.Size([4, 4])
-    assert mapping['output'].type == OperationDataType.OUTPUT
-    assert mapping['output'].logical_shape == torch.Size([4, 4])
+    assert mapping["output"].name == str(op_node)
+    assert mapping["output"].data.is_meta
+    assert mapping["output"].data.shape == torch.Size([4, 4])
+    assert mapping["output"].type == OperationDataType.OUTPUT
+    assert mapping["output"].logical_shape == torch.Size([4, 4])
 
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
@@ -95,19 +96,19 @@ def check_binary_elementwise_handler_with_tensor(rank, world_size, port, op, oth
     assert len(strategy_name_list) == 9
 
     # check if the sharding strategy is correct
-    assert '[S0, S1] = [S0, S1] <binary-elementwise-op> [S0, S1]' in strategy_name_list
-    assert '[S1, S0] = [S1, S0] <binary-elementwise-op> [S1, S0]' in strategy_name_list
-    assert '[S01, R] = [S01, R] <binary-elementwise-op> [S01, R]' in strategy_name_list
-    assert '[R, S01] = [R, S01] <binary-elementwise-op> [R, S01]' in strategy_name_list
-    assert '[S0, R] = [S0, R] <binary-elementwise-op> [S0, R]' in strategy_name_list
-    assert '[R, S0] = [R, S0] <binary-elementwise-op> [R, S0]' in strategy_name_list
-    assert '[S1, R] = [S1, R] <binary-elementwise-op> [S1, R]' in strategy_name_list
-    assert '[R, S1] = [R, S1] <binary-elementwise-op> [R, S1]' in strategy_name_list
-    assert '[R, R] = [R, R] <binary-elementwise-op> [R, R]' in strategy_name_list
+    assert "[S0, S1] = [S0, S1] <binary-elementwise-op> [S0, S1]" in strategy_name_list
+    assert "[S1, S0] = [S1, S0] <binary-elementwise-op> [S1, S0]" in strategy_name_list
+    assert "[S01, R] = [S01, R] <binary-elementwise-op> [S01, R]" in strategy_name_list
+    assert "[R, S01] = [R, S01] <binary-elementwise-op> [R, S01]" in strategy_name_list
+    assert "[S0, R] = [S0, R] <binary-elementwise-op> [S0, R]" in strategy_name_list
+    assert "[R, S0] = [R, S0] <binary-elementwise-op> [R, S0]" in strategy_name_list
+    assert "[S1, R] = [S1, R] <binary-elementwise-op> [S1, R]" in strategy_name_list
+    assert "[R, S1] = [R, S1] <binary-elementwise-op> [R, S1]" in strategy_name_list
+    assert "[R, R] = [R, R] <binary-elementwise-op> [R, R]" in strategy_name_list
 
     for strategy in strategies_vector:
-        input_sharding_spec = strategy.get_sharding_spec_by_name('x1')
-        other_sharding_spec = strategy.get_sharding_spec_by_name('x2')
+        input_sharding_spec = strategy.get_sharding_spec_by_name("x1")
+        other_sharding_spec = strategy.get_sharding_spec_by_name("x2")
         output_sharding_spec = strategy.get_sharding_spec_by_name(str(op_node))
 
         # make sure the sharding spec is the same for input and output
@@ -121,7 +122,6 @@ def check_binary_elementwise_handler_with_tensor(rank, world_size, port, op, oth
 
 
 class BEOpModelWithNodeConst(nn.Module):
-
     def __init__(self, op):
         super().__init__()
         self.op = op
@@ -133,7 +133,6 @@ class BEOpModelWithNodeConst(nn.Module):
 
 
 class BEOpModelWithIntConst(nn.Module):
-
     def __init__(self, op, const):
         super().__init__()
         self.op = op
@@ -146,7 +145,7 @@ class BEOpModelWithIntConst(nn.Module):
 
 def check_binary_elementwise_handler_with_int(rank, world_size, port, op, other_dim, model_cls):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
@@ -163,15 +162,17 @@ def check_binary_elementwise_handler_with_int(rank, world_size, port, op, other_
     # construct input args
     input_args = [x1]
     # construct meta arg names
-    meta_arg_names = ['x1']
-    numerical_test_for_node_strategy(model=model,
-                                     device_mesh=device_mesh,
-                                     node_index=node_index,
-                                     strategy_number=strategy_number,
-                                     input_args=input_args,
-                                     meta_arg_names=meta_arg_names)
+    meta_arg_names = ["x1"]
+    numerical_test_for_node_strategy(
+        model=model,
+        device_mesh=device_mesh,
+        node_index=node_index,
+        strategy_number=strategy_number,
+        input_args=input_args,
+        meta_arg_names=meta_arg_names,
+    )
     tracer = ColoTracer(bias_addition_split=True)
-    meta_args = {'x1': torch.rand(4, 4).to('meta')}
+    meta_args = {"x1": torch.rand(4, 4).to("meta")}
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
     shape_prop_pass(gm, *meta_args.values())
@@ -188,17 +189,17 @@ def check_binary_elementwise_handler_with_int(rank, world_size, port, op, other_
     # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
-    assert mapping['input'].name == "x1"
-    assert mapping['input'].data.is_meta
-    assert mapping['input'].data.shape == torch.Size([4, 4])
-    assert mapping['input'].type == OperationDataType.ARG
-    assert mapping['input'].logical_shape == torch.Size([4, 4])
+    assert mapping["input"].name == "x1"
+    assert mapping["input"].data.is_meta
+    assert mapping["input"].data.shape == torch.Size([4, 4])
+    assert mapping["input"].type == OperationDataType.ARG
+    assert mapping["input"].logical_shape == torch.Size([4, 4])
 
-    assert mapping['output'].name == str(op_node)
-    assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.Size([4, 4])
-    assert mapping['output'].type == OperationDataType.OUTPUT
-    assert mapping['output'].logical_shape == torch.Size([4, 4])
+    assert mapping["output"].name == str(op_node)
+    assert mapping["output"].data.is_meta
+    assert mapping["output"].data.shape == torch.Size([4, 4])
+    assert mapping["output"].type == OperationDataType.OUTPUT
+    assert mapping["output"].logical_shape == torch.Size([4, 4])
 
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
@@ -207,27 +208,27 @@ def check_binary_elementwise_handler_with_int(rank, world_size, port, op, other_
     assert len(strategy_name_list) == 9
 
     # check if the sharding strategy is correct
-    assert '[S0, S1] = [S0, S1] <binary-elementwise-op> [S0, S1]' in strategy_name_list
-    assert '[S1, S0] = [S1, S0] <binary-elementwise-op> [S1, S0]' in strategy_name_list
-    assert '[S01, R] = [S01, R] <binary-elementwise-op> [S01, R]' in strategy_name_list
-    assert '[R, S01] = [R, S01] <binary-elementwise-op> [R, S01]' in strategy_name_list
-    assert '[S0, R] = [S0, R] <binary-elementwise-op> [S0, R]' in strategy_name_list
-    assert '[R, S0] = [R, S0] <binary-elementwise-op> [R, S0]' in strategy_name_list
-    assert '[S1, R] = [S1, R] <binary-elementwise-op> [S1, R]' in strategy_name_list
-    assert '[R, S1] = [R, S1] <binary-elementwise-op> [R, S1]' in strategy_name_list
-    assert '[R, R] = [R, R] <binary-elementwise-op> [R, R]' in strategy_name_list
+    assert "[S0, S1] = [S0, S1] <binary-elementwise-op> [S0, S1]" in strategy_name_list
+    assert "[S1, S0] = [S1, S0] <binary-elementwise-op> [S1, S0]" in strategy_name_list
+    assert "[S01, R] = [S01, R] <binary-elementwise-op> [S01, R]" in strategy_name_list
+    assert "[R, S01] = [R, S01] <binary-elementwise-op> [R, S01]" in strategy_name_list
+    assert "[S0, R] = [S0, R] <binary-elementwise-op> [S0, R]" in strategy_name_list
+    assert "[R, S0] = [R, S0] <binary-elementwise-op> [R, S0]" in strategy_name_list
+    assert "[S1, R] = [S1, R] <binary-elementwise-op> [S1, R]" in strategy_name_list
+    assert "[R, S1] = [R, S1] <binary-elementwise-op> [R, S1]" in strategy_name_list
+    assert "[R, R] = [R, R] <binary-elementwise-op> [R, R]" in strategy_name_list
 
     for strategy in strategies_vector:
-        input_sharding_spec = strategy.get_sharding_spec_by_name('x1')
+        input_sharding_spec = strategy.get_sharding_spec_by_name("x1")
         output_sharding_spec = strategy.get_sharding_spec_by_name(str(op_node))
 
         # make sure the sharding spec is the same for input and output
         assert input_sharding_spec.sharding_sequence == output_sharding_spec.sharding_sequence
 
 
-@run_on_environment_flag(name='AUTO_PARALLEL')
-@parameterize('op', [torch.add])
-@parameterize('other_dim', [1, 2])
+@run_on_environment_flag(name="AUTO_PARALLEL")
+@parameterize("op", [torch.add])
+@parameterize("other_dim", [1, 2])
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_binary_elementwise_handler_with_tensor(op, other_dim):
@@ -239,10 +240,10 @@ def test_binary_elementwise_handler_with_tensor(op, other_dim):
     )
 
 
-@run_on_environment_flag(name='AUTO_PARALLEL')
-@parameterize('op', [torch.add])
-@parameterize('other_dim', [1, 2])
-@parameterize('model_cls', [BEOpModelWithNodeConst, BEOpModelWithIntConst])
+@run_on_environment_flag(name="AUTO_PARALLEL")
+@parameterize("op", [torch.add])
+@parameterize("other_dim", [1, 2])
+@parameterize("model_cls", [BEOpModelWithNodeConst, BEOpModelWithIntConst])
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_binary_elementwise_handler_with_int(op, model_cls, other_dim):
@@ -255,6 +256,6 @@ def test_binary_elementwise_handler_with_int(op, model_cls, other_dim):
     )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_binary_elementwise_handler_with_tensor()
     test_binary_elementwise_handler_with_int()

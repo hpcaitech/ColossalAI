@@ -3,9 +3,8 @@ import logging
 import os
 from functools import reduce
 from pathlib import Path
-from typing import Iterator, Optional, OrderedDict, Tuple
+from typing import Optional
 
-import torch.distributed as dist
 import torch.nn as nn
 from torch.optim import Optimizer
 
@@ -16,7 +15,6 @@ from .index_file import CheckpointIndexFile
 from .utils import (
     get_model_base_filenames,
     get_optimizer_base_filenames,
-    get_shard_filename,
     is_safetensors_available,
     load_param_groups_into_optimizer,
     load_shard_state_dict,
@@ -33,7 +31,7 @@ from .utils import (
     unwrap_optimizer,
 )
 
-__all__ = ['GeneralCheckpointIO']
+__all__ = ["GeneralCheckpointIO"]
 
 
 class GeneralCheckpointIO(CheckpointIO):
@@ -70,8 +68,10 @@ class GeneralCheckpointIO(CheckpointIO):
         # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
         if param_group_path is None:
-            raise RuntimeError(f'Invalid index file path {index_file_path} for an optimizer. \
-                               Lacking param group file under current directory.')
+            raise RuntimeError(
+                f"Invalid index file path {index_file_path} for an optimizer. \
+                               Lacking param group file under current directory."
+            )
         id_map = load_param_groups_into_optimizer(optimizer, param_group_path)
 
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()
@@ -123,19 +123,23 @@ class GeneralCheckpointIO(CheckpointIO):
 
         # Save shards of optimizer states.
         # In general cases, is_master is set to True to get the right behavior.
-        total_size = save_state_dict_shards(sharded_state_dict=sharded_state,
-                                            checkpoint=checkpoint,
-                                            index_file=index_file,
-                                            base_filename=states_name,
-                                            is_master=True,
-                                            use_safetensors=False)
+        total_size = save_state_dict_shards(
+            sharded_state_dict=sharded_state,
+            checkpoint=checkpoint,
+            index_file=index_file,
+            base_filename=states_name,
+            is_master=True,
+            use_safetensors=False,
+        )
 
         # Wrap up index file.
         index_file.append_meta_data("total_size", total_size)
         index_file.write_index_file(save_index_file)
-        logging.info(f"The optimizer is going to be split to checkpoint shards. "
-                     f"You can find where each parameters has been saved in the "
-                     f"index located at {save_index_file}.")
+        logging.info(
+            f"The optimizer is going to be split to checkpoint shards. "
+            f"You can find where each parameters has been saved in the "
+            f"index located at {save_index_file}."
+        )
 
     def load_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: Path):
         checkpoint = load_state_dict(checkpoint)
@@ -150,13 +154,15 @@ class GeneralCheckpointIO(CheckpointIO):
         # TODO(FrankLeeeee): handle distributed tensors
         save_state_dict(optimizer.state_dict(), checkpoint, use_safetensors=False)
 
-    def save_sharded_model(self,
-                           model: nn.Module,
-                           checkpoint_path: str,
-                           gather_dtensor: bool = False,
-                           prefix: Optional[str] = None,
-                           max_shard_size: int = 1024,
-                           use_safetensors: bool = False):
+    def save_sharded_model(
+        self,
+        model: nn.Module,
+        checkpoint_path: str,
+        gather_dtensor: bool = False,
+        prefix: Optional[str] = None,
+        max_shard_size: int = 1024,
+        use_safetensors: bool = False,
+    ):
         """
         implement this method as it can be supported by Huggingface model,
         save shard model, save model to multiple files
@@ -175,26 +181,32 @@ class GeneralCheckpointIO(CheckpointIO):
 
         # Save shards of optimizer states.
         # In general cases, is_master is set to True to get the right behavior.
-        total_size = save_state_dict_shards(sharded_state_dict=state_dict_shard,
-                                            checkpoint=checkpoint_path,
-                                            index_file=index_file,
-                                            base_filename=weights_name,
-                                            is_master=True,
-                                            use_safetensors=use_safetensors)
+        total_size = save_state_dict_shards(
+            sharded_state_dict=state_dict_shard,
+            checkpoint=checkpoint_path,
+            index_file=index_file,
+            base_filename=weights_name,
+            is_master=True,
+            use_safetensors=use_safetensors,
+        )
 
         index_file.append_meta_data("total_size", total_size)
         index_file.write_index_file(save_index_file)
         save_config_file(model, checkpoint_path, is_master=True)
-        logging.info(f"The model is going to be split to checkpoint shards. "
-                     f"You can find where each parameters has been saved in the "
-                     f"index located at {save_index_file}.")
+        logging.info(
+            f"The model is going to be split to checkpoint shards. "
+            f"You can find where each parameters has been saved in the "
+            f"index located at {save_index_file}."
+        )
 
-    def load_sharded_model(self,
-                           model: nn.Module,
-                           checkpoint_index_file: Path,
-                           strict: bool = False,
-                           use_safetensors: bool = False,
-                           load_sub_module: bool = True):
+    def load_sharded_model(
+        self,
+        model: nn.Module,
+        checkpoint_index_file: Path,
+        strict: bool = False,
+        use_safetensors: bool = False,
+        load_sub_module: bool = True,
+    ):
         """
         load shard model, load model from multiple files
         """
@@ -219,7 +231,11 @@ class GeneralCheckpointIO(CheckpointIO):
         if strict:
             remain_keys = reduce(lambda a, b: a & b, map(set, missing_keys))
             if len(remain_keys) > 0:
-                error_msgs = 'Missing key(s) in state_dict: {}. '.format(', '.join(
-                    '"{}"'.format(k) for k in missing_keys))
-                raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(
-                    self.__class__.__name__, "\n\t".join(error_msgs)))
+                error_msgs = "Missing key(s) in state_dict: {}. ".format(
+                    ", ".join('"{}"'.format(k) for k in missing_keys)
+                )
+                raise RuntimeError(
+                    "Error(s) in loading state_dict for {}:\n\t{}".format(
+                        self.__class__.__name__, "\n\t".join(error_msgs)
+                    )
+                )

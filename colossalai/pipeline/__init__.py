@@ -3,9 +3,9 @@ from .schedule import InterleavedSchedule, OneForwardOneBackwardSchedule, Pipeli
 from .stage_manager import PipelineStageManager
 
 __all__ = [
-    'PipelineSchedule',
-    'OneForwardOneBackwardSchedule',
-    'InterleavedSchedule',
-    'PipelineP2PCommunication',
-    'PipelineStageManager',
+    "PipelineSchedule",
+    "OneForwardOneBackwardSchedule",
+    "InterleavedSchedule",
+    "PipelineP2PCommunication",
+    "PipelineStageManager",
 ]

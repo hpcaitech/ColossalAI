@@ -16,7 +16,6 @@ from ._utils import get_parallel_mode_from_env, push_async_grad
 
 
 class _Linear3D(torch.autograd.Function):
-
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(
@@ -52,7 +51,8 @@ class _Linear3D(torch.autograd.Function):
         input_grad, input_op = reduce_scatter(input_grad, 0, ctx.input_parallel_mode, async_op=True)
 
         weight_grad = torch.matmul(
-            input_.reshape(-1, input_.shape[-1]).transpose(0, 1), output_grad.reshape(-1, output_grad.shape[-1]))
+            input_.reshape(-1, input_.shape[-1]).transpose(0, 1), output_grad.reshape(-1, output_grad.shape[-1])
+        )
         weight_grad, op = reduce_scatter(weight_grad, 0, ctx.weight_parallel_mode, async_op=True)
         weight_grad = push_async_grad(op, weight_grad, ctx.weight_id)
 
@@ -92,7 +92,6 @@ def linear_3d(
 
 
 class _Classifier3D(torch.autograd.Function):
-
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(
@@ -131,7 +130,8 @@ class _Classifier3D(torch.autograd.Function):
     def backward(ctx, output_grad: Tensor) -> Tuple[Tensor, ...]:
         input_, weight = ctx.saved_tensors
         weight_grad = torch.matmul(
-            output_grad.reshape(-1, output_grad.shape[-1]).transpose(0, 1), input_.reshape(-1, input_.shape[-1]))
+            output_grad.reshape(-1, output_grad.shape[-1]).transpose(0, 1), input_.reshape(-1, input_.shape[-1])
+        )
         weight_grad = reduce(weight_grad, ctx.src_rank, ctx.input_parallel_mode)
         if gpc.get_local_rank(ctx.input_parallel_mode) == gpc.get_local_rank(ctx.output_parallel_mode):
             weight_grad, op = all_reduce(weight_grad, ctx.weight_parallel_mode, async_op=True)
@@ -187,7 +187,6 @@ def classifier_3d(
 
 
 class _VocabParallelClassifier3D(torch.autograd.Function):
-
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(
@@ -230,7 +229,8 @@ class _VocabParallelClassifier3D(torch.autograd.Function):
         input_grad, input_op = reduce_scatter(input_grad, 0, ctx.input_parallel_mode, async_op=True)
 
         weight_grad = torch.matmul(
-            input_.reshape(-1, input_.shape[-1]).transpose(0, 1), output_grad.reshape(-1, output_grad.shape[-1]))
+            input_.reshape(-1, input_.shape[-1]).transpose(0, 1), output_grad.reshape(-1, output_grad.shape[-1])
+        )
         weight_grad, op = reduce_scatter(weight_grad.transpose(0, 1), 0, ctx.weight_parallel_mode, async_op=True)
         weight_grad = push_async_grad(op, weight_grad, ctx.weight_id)
 
@@ -296,7 +296,7 @@ def norm_backward(grad: Tensor, mu: Tensor, sigma: Tensor, weight: Tensor):
     # dbias, dweight = grad, grad * mu / sigma
     dz = grad * weight
     dmu = dz / sigma
-    dvar = dz * mu * (-0.5) * sigma**(-3)
+    dvar = dz * mu * (-0.5) * sigma ** (-3)
     dmean = -dmu
     dvar = torch.sum(dvar, -1, keepdim=True)
     dmean = torch.sum(dmean, -1, keepdim=True)
@@ -305,7 +305,6 @@ def norm_backward(grad: Tensor, mu: Tensor, sigma: Tensor, weight: Tensor):
 
 
 class _Layernorm3D(torch.autograd.Function):
-
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
     def forward(
@@ -415,20 +414,24 @@ def split_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Te
     """
     dim_size = tensor.size(dim)
     world_size = gpc.get_world_size(parallel_mode)
-    assert dim_size % world_size == 0, \
-        f'The dimension {dim} to split, size ({dim_size}) is not a multiple of world size ({world_size}), ' \
-        f'cannot split tensor evenly'
+    assert dim_size % world_size == 0, (
+        f"The dimension {dim} to split, size ({dim_size}) is not a multiple of world size ({world_size}), "
+        f"cannot split tensor evenly"
+    )
     if tensor.size(dim) <= 1:
         return tensor
-    output = torch.chunk(tensor, gpc.get_world_size(parallel_mode),
-                         dim=dim)[gpc.get_local_rank(parallel_mode)].contiguous()
+    output = torch.chunk(tensor, gpc.get_world_size(parallel_mode), dim=dim)[
+        gpc.get_local_rank(parallel_mode)
+    ].contiguous()
     return output
 
 
-def split_batch_3d(input_: Tensor,
-                   dim: int = 0,
-                   input_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_INPUT,
-                   weight_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_WEIGHT) -> Tensor:
+def split_batch_3d(
+    input_: Tensor,
+    dim: int = 0,
+    input_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_INPUT,
+    weight_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_WEIGHT,
+) -> Tensor:
     r"""Splits 3D tensor in batch.
 
     Args:
@@ -456,7 +459,6 @@ def split_batch_3d(input_: Tensor,
 
 
 class _ReduceTensor3D(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, input_, parallel_mode):
         return all_reduce(input_, parallel_mode)
@@ -481,7 +483,6 @@ def reduce_tensor_3d(tensor: Tensor, parallel_mode: ParallelMode) -> Tensor:
 
 
 class _AllGatherTensor3D(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, input_, dim, parallel_mode):
         ctx.dim = dim
@@ -511,7 +512,6 @@ def all_gather_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) 
 
 
 class _ReduceScatterTensor3D(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, input_, dim, parallel_mode):
         ctx.dim = dim
@@ -538,21 +538,23 @@ def reduce_scatter_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMo
     """
     dim_size = tensor.size(dim)
     world_size = gpc.get_world_size(parallel_mode)
-    assert dim_size % world_size == 0, \
-        f'The batch size ({dim_size}) is not a multiple of square of 3D depth ({world_size}).'
+    assert (
+        dim_size % world_size == 0
+    ), f"The batch size ({dim_size}) is not a multiple of square of 3D depth ({world_size})."
 
     return _ReduceScatterTensor3D.apply(tensor, dim, parallel_mode)
 
 
 class _ReduceByBatch3D(torch.autograd.Function):
-
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx,
-                input_: Tensor,
-                input_parallel_mode: ParallelMode,
-                weight_parallel_mode: ParallelMode,
-                reduce_mean: bool = False) -> Tensor:
+    def forward(
+        ctx,
+        input_: Tensor,
+        input_parallel_mode: ParallelMode,
+        weight_parallel_mode: ParallelMode,
+        reduce_mean: bool = False,
+    ) -> Tensor:
         output = all_reduce(input_, input_parallel_mode)
         output = all_reduce(output, weight_parallel_mode)
         ctx.reduce_mean = reduce_mean
@@ -571,10 +573,9 @@ class _ReduceByBatch3D(torch.autograd.Function):
             return output_grad, None, None, None
 
 
-def reduce_by_batch_3d(tensor: Tensor,
-                       input_parallel_mode: ParallelMode,
-                       weight_parallel_mode: ParallelMode,
-                       reduce_mean: bool = False) -> Tensor:
+def reduce_by_batch_3d(
+    tensor: Tensor, input_parallel_mode: ParallelMode, weight_parallel_mode: ParallelMode, reduce_mean: bool = False
+) -> Tensor:
     r"""All-reduce the input from the model parallel region.
 
     Args:

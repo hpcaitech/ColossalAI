@@ -1,6 +1,5 @@
 # might want to consider combine with InferenceConfig in colossalai/ppinference/inference_config.py later
 from dataclasses import dataclass
-from typing import Any
 
 import torch
 
@@ -31,7 +30,7 @@ class BatchInferState:
     decode_mem_index: torch.Tensor = None
     decode_layer_id: int = None
 
-    device: torch.device = torch.device('cuda')
+    device: torch.device = torch.device("cuda")
 
     @property
     def total_token_num(self):
@@ -43,13 +42,15 @@ class BatchInferState:
         self.cache_manager = manager
 
     @staticmethod
-    def init_block_loc(b_loc: torch.Tensor, seq_len: torch.Tensor, max_len_in_batch: int,
-                       alloc_mem_index: torch.Tensor):
-        """ in-place update block loc mapping based on the sequence length of the inputs in current bath"""
+    def init_block_loc(
+        b_loc: torch.Tensor, seq_len: torch.Tensor, max_len_in_batch: int, alloc_mem_index: torch.Tensor
+    ):
+        """in-place update block loc mapping based on the sequence length of the inputs in current bath"""
         start_index = 0
         seq_len_numpy = seq_len.cpu().numpy()
         for i, cur_seq_len in enumerate(seq_len_numpy):
-            b_loc[i, max_len_in_batch - cur_seq_len:max_len_in_batch] = alloc_mem_index[start_index:start_index +
-                                                                                        cur_seq_len]
+            b_loc[i, max_len_in_batch - cur_seq_len : max_len_in_batch] = alloc_mem_index[
+                start_index : start_index + cur_seq_len
+            ]
             start_index += cur_seq_len
         return

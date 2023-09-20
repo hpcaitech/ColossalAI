@@ -23,7 +23,9 @@ from colossalai.legacy.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
-CONFIG = dict(parallel=dict(pipeline=dict(size=1), tensor=dict(size=4, mode='2d')),)
+CONFIG = dict(
+    parallel=dict(pipeline=dict(size=1), tensor=dict(size=4, mode="2d")),
+)
 
 
 def check_operations():
@@ -48,7 +50,7 @@ def check_layer():
 
 def check_layer_and_operation(rank, world_size, port):
     disable_existing_loggers()
-    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
@@ -65,5 +67,5 @@ def test_2d():
     spawn(check_layer_and_operation, 4)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_2d()

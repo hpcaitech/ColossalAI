@@ -24,7 +24,7 @@ class TensorShardStrategy(BaseShardStrategy):
             self._gather_tensor(t, process_group)
 
     def _shard_tensor(self, t: ShardedTensor, process_group: Optional[dist.ProcessGroup] = None):
-        """ Shard tensor among processes.
+        """Shard tensor among processes.
 
         Args:
             t (ShardedTensor): a tensor to be sharded.
@@ -33,9 +33,11 @@ class TensorShardStrategy(BaseShardStrategy):
         """
         if t.is_sharded:
             return
-        if t.payload.device.type == 'cuda':
-            assert t.payload.device == get_current_device(), f"shard tensor on cuda device index {t.payload.device.index},"\
+        if t.payload.device.type == "cuda":
+            assert t.payload.device == get_current_device(), (
+                f"shard tensor on cuda device index {t.payload.device.index},"
                 f" but current cuda device is {get_current_device()}"
+            )
         sharded_payload, _ = get_shard(t.payload, dist.get_rank(process_group), dist.get_world_size(process_group))
         t.payload_reset(sharded_payload)
         t.is_sharded = True

@@ -4,7 +4,6 @@ from colossalai.legacy.zero.gemini.stateful_tensor import StatefulTensor, Tensor
 
 
 class ShardedTensor(StatefulTensor):
-
     def __init__(self, tensor: torch.Tensor, state: TensorState = TensorState.HOLD) -> None:
         r"""
         A tensor sharded in multiple processes. Constructed from an existing torch.Tensor instance.

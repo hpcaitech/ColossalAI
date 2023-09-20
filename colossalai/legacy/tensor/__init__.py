@@ -6,12 +6,12 @@ from .process_group import ProcessGroup
 from .tensor_spec import ColoTensorSpec
 
 __all__ = [
-    'ComputePattern',
-    'ComputeSpec',
-    'distspec',
-    'DistSpecManager',
-    'ProcessGroup',
-    'ColoTensorSpec',
-    'ShardSpec',
-    'ReplicaSpec',
+    "ComputePattern",
+    "ComputeSpec",
+    "distspec",
+    "DistSpecManager",
+    "ProcessGroup",
+    "ColoTensorSpec",
+    "ShardSpec",
+    "ReplicaSpec",
 ]

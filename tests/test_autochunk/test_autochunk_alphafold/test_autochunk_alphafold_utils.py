@@ -8,7 +8,6 @@ from colossalai.autochunk.autochunk_codegen import AUTOCHUNK_AVAILABLE
 from colossalai.autochunk.utils import flat_list
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
-from colossalai.legacy.core import global_context as gpc
 from colossalai.testing import free_port
 
 if AUTOCHUNK_AVAILABLE:
@@ -80,9 +79,9 @@ def assert_codegen_run(
     out_gm = flat_list(out_gm)
     out_model = flat_list(out_model)
     for out_gm_i, out_model_i in zip(out_gm, out_model):
-        assert torch.allclose(out_gm_i, out_model_i,
-                              atol=1e-4), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
-                                  torch.abs(out_gm_i - out_model_i))
+        assert torch.allclose(
+            out_gm_i, out_model_i, atol=1e-4
+        ), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(torch.abs(out_gm_i - out_model_i))
 
     return chunks
 

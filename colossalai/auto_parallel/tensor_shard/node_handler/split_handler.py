@@ -7,7 +7,7 @@ from .node_handler import NodeHandler
 from .registry import operator_registry
 from .strategy import SplitGenerator, StrategyGenerator
 
-__all__ = ['SplitHandler']
+__all__ = ["SplitHandler"]
 
 
 @operator_registry.register(torch.Tensor.split)
@@ -38,7 +38,7 @@ class SplitHandler(NodeHandler):
             split_dim = self.node.args[2]
         else:
             if self.node.kwargs:
-                split_dim = self.node.kwargs['dim']
+                split_dim = self.node.kwargs["dim"]
             else:
                 split_dim = 0
 
@@ -48,7 +48,7 @@ class SplitHandler(NodeHandler):
             split_dim += num_dims
 
         split_info = (split_size, split_dim)
-        physical_shape_operand = OperationData(name='split_info', type=OperationDataType.ARG, data=split_info)
+        physical_shape_operand = OperationData(name="split_info", type=OperationDataType.ARG, data=split_info)
 
         output_data = self.node._meta_data
         physical_output_operand = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=output_data)
@@ -56,7 +56,7 @@ class SplitHandler(NodeHandler):
         mapping = {
             "input": physical_input_operand,
             "split_info": physical_shape_operand,
-            "output": physical_output_operand
+            "output": physical_output_operand,
         }
 
         return mapping

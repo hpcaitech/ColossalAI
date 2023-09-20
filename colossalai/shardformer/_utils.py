@@ -13,14 +13,14 @@ def get_obj_list_element(obj, attr: str):
         attr (str): The suffix of the attribute to get
 
     """
-    re_pattern = r'\[\d+\]'
+    re_pattern = r"\[\d+\]"
     prog = re.compile(re_pattern)
     result = prog.search(attr)
     if result:
         matched_brackets = result.group()
-        matched_index = matched_brackets.replace('[', '')
-        matched_index = matched_index.replace(']', '')
-        attr_ = attr.replace(matched_brackets, '')
+        matched_index = matched_brackets.replace("[", "")
+        matched_index = matched_index.replace("]", "")
+        attr_ = attr.replace(matched_brackets, "")
         container_obj = getattr(obj, attr_)
         obj = container_obj[int(matched_index)]
     else:
@@ -38,14 +38,14 @@ def set_obj_list_element(obj, attr: str, value):
         obj (object): The object to set
         attr (str): the string including a list index like `layers[0]`
     """
-    re_pattern = r'\[\d+\]'
+    re_pattern = r"\[\d+\]"
     prog = re.compile(re_pattern)
     result = prog.search(attr)
     if result:
         matched_brackets = result.group()
-        matched_index = matched_brackets.replace('[', '')
-        matched_index = matched_index.replace(']', '')
-        attr_ = attr.replace(matched_brackets, '')
+        matched_index = matched_brackets.replace("[", "")
+        matched_index = matched_index.replace("]", "")
+        attr_ = attr.replace(matched_brackets, "")
         container_obj = getattr(obj, attr_)
         container_obj[int(matched_index)] = value
     else:
@@ -60,7 +60,7 @@ def hasattr_(obj, attr: str):
         obj (object): The object to check
         attr (str): The multi level attr to check
     """
-    attrs = attr.split('.')
+    attrs = attr.split(".")
     for a in attrs:
         try:
             obj = get_obj_list_element(obj, a)
@@ -80,7 +80,7 @@ def setattr_(obj, attr: str, value, ignore: bool = False):
         ignore (bool): Whether to ignore when the attr doesn't exist
     """
 
-    attrs = attr.split('.')
+    attrs = attr.split(".")
     for a in attrs[:-1]:
         try:
             obj = get_obj_list_element(obj, a)
@@ -101,7 +101,7 @@ def getattr_(obj, attr: str, ignore: bool = False):
         ignore (bool): Whether to ignore when the attr doesn't exist
     """
 
-    attrs = attr.split('.')
+    attrs = attr.split(".")
     for a in attrs:
         try:
             obj = get_obj_list_element(obj, a)

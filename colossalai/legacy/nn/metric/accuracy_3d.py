@@ -9,8 +9,7 @@ from ._utils import calc_acc
 
 
 class Accuracy3D(nn.Module):
-    """Accuracy for 3D parallelism
-    """
+    """Accuracy for 3D parallelism"""
 
     def __init__(self):
         super().__init__()
@@ -26,7 +25,7 @@ class Accuracy3D(nn.Module):
 
         Returns:
             float: the accuracy of prediction.
-         """
+        """
         with torch.no_grad():
             targets = split_tensor_3d(targets, 0, self.weight_parallel_mode)
             targets = split_tensor_3d(targets, 0, self.input_parallel_mode)

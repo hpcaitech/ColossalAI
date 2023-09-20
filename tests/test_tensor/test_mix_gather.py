@@ -17,12 +17,13 @@ def check_mix_gather_S0S1(device_mesh, rank):
     f_target_pair = (f, [0])
     b_target_pair = (b, [1])
     gather_dim, logical_process_axes = mix_gather_simulator(f_target_pair, b_target_pair)
-    tensor_slice = [4, 2]    # (4, 2)
+    tensor_slice = [4, 2]  # (4, 2)
     rank_slice = 4
     f_start = (rank // rank_slice) * tensor_slice[0]
     b_start = (rank % rank_slice) * tensor_slice[1]
-    tensor_to_comm = tensor_to_check[f_start:f_start + tensor_slice[0],
-                                     b_start:b_start + tensor_slice[1]].contiguous().cuda()
+    tensor_to_comm = (
+        tensor_to_check[f_start : f_start + tensor_slice[0], b_start : b_start + tensor_slice[1]].contiguous().cuda()
+    )
 
     dim_partition_dict = {0: [0], 1: [1]}
 
@@ -31,12 +32,14 @@ def check_mix_gather_S0S1(device_mesh, rank):
     #     device_mesh_shape: (2, 4)
     source_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
 
-    comm_spec = CommSpec(CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD,
-                         sharding_spec=source_spec,
-                         gather_dim=gather_dim,
-                         logical_process_axis=logical_process_axes,
-                         forward_only=True,
-                         mix_gather=True)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD,
+        sharding_spec=source_spec,
+        gather_dim=gather_dim,
+        logical_process_axis=logical_process_axes,
+        forward_only=True,
+        mix_gather=True,
+    )
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
     assert tensor_to_comm.equal(tensor_to_check)
@@ -48,12 +51,13 @@ def check_two_all_gather_S0S1(device_mesh, rank):
 
     dim_partition_dict = {0: [0], 1: [1]}
 
-    tensor_slice = [tensor_width // 2, tensor_width // 4]    # (4, 2)
+    tensor_slice = [tensor_width // 2, tensor_width // 4]  # (4, 2)
     rank_slice = 4
     f_start = (rank // rank_slice) * tensor_slice[0]
     b_start = (rank % rank_slice) * tensor_slice[1]
-    tensor_to_comm = tensor_to_check[f_start:f_start + tensor_slice[0],
-                                     b_start:b_start + tensor_slice[1]].contiguous().cuda()
+    tensor_to_comm = (
+        tensor_to_check[f_start : f_start + tensor_slice[0], b_start : b_start + tensor_slice[1]].contiguous().cuda()
+    )
 
     # DistSpec:
     #     shard_sequence: S0,S1
@@ -61,10 +65,9 @@ def check_two_all_gather_S0S1(device_mesh, rank):
     sharding_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
 
     # CommSpec:(comm_pattern:allgather, gather_dim:0, logical_process_axis:0)
-    comm_spec = CommSpec(CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
-                         sharding_spec,
-                         gather_dim=0,
-                         logical_process_axis=0)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.GATHER_FWD_SPLIT_BWD, sharding_spec, gather_dim=0, logical_process_axis=0
+    )
 
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
@@ -75,10 +78,9 @@ def check_two_all_gather_S0S1(device_mesh, rank):
     sharding_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
 
     # CommSpec:(comm_pattern:allgather, gather_dim:1, logical_process_axis:1)
-    comm_spec = CommSpec(CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
-                         sharding_spec,
-                         gather_dim=1,
-                         logical_process_axis=1)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.GATHER_FWD_SPLIT_BWD, sharding_spec, gather_dim=1, logical_process_axis=1
+    )
 
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
@@ -95,8 +97,9 @@ def check_mix_gather_S1S0(device_mesh, rank):
     rank_slice = 4
     f_start = (rank % rank_slice) * tensor_slice[0]
     b_start = (rank // rank_slice) * tensor_slice[1]
-    tensor_to_comm = tensor_to_check[f_start:f_start + tensor_slice[0],
-                                     b_start:b_start + tensor_slice[1]].contiguous().cuda()
+    tensor_to_comm = (
+        tensor_to_check[f_start : f_start + tensor_slice[0], b_start : b_start + tensor_slice[1]].contiguous().cuda()
+    )
 
     dim_partition_dict = {0: [1], 1: [0]}
 
@@ -105,12 +108,14 @@ def check_mix_gather_S1S0(device_mesh, rank):
     #     device_mesh_shape: (2, 4)
     source_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
 
-    comm_spec = CommSpec(CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD,
-                         sharding_spec=source_spec,
-                         gather_dim=gather_dim,
-                         logical_process_axis=logical_process_axes,
-                         forward_only=True,
-                         mix_gather=True)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD,
+        sharding_spec=source_spec,
+        gather_dim=gather_dim,
+        logical_process_axis=logical_process_axes,
+        forward_only=True,
+        mix_gather=True,
+    )
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
     assert tensor_to_comm.equal(tensor_to_check)
@@ -120,12 +125,13 @@ def check_two_all_gather_S1S0(device_mesh, rank):
     tensor_width = 8
     tensor_to_check = torch.arange(int(tensor_width * tensor_width)).reshape((tensor_width, tensor_width)).cuda()
 
-    tensor_slice = [tensor_width // 4, tensor_width // 2]    # (4, 2)
+    tensor_slice = [tensor_width // 4, tensor_width // 2]  # (4, 2)
     rank_slice = 4
     f_start = (rank % rank_slice) * tensor_slice[0]
     b_start = (rank // rank_slice) * tensor_slice[1]
-    tensor_to_comm = tensor_to_check[f_start:f_start + tensor_slice[0],
-                                     b_start:b_start + tensor_slice[1]].contiguous().cuda()
+    tensor_to_comm = (
+        tensor_to_check[f_start : f_start + tensor_slice[0], b_start : b_start + tensor_slice[1]].contiguous().cuda()
+    )
 
     dim_partition_dict = {0: [1], 1: [0]}
 
@@ -135,10 +141,9 @@ def check_two_all_gather_S1S0(device_mesh, rank):
     sharding_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
 
     # CommSpec:(comm_pattern:allgather, gather_dim:0, logical_process_axis:1)
-    comm_spec = CommSpec(CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
-                         sharding_spec,
-                         gather_dim=0,
-                         logical_process_axis=1)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.GATHER_FWD_SPLIT_BWD, sharding_spec, gather_dim=0, logical_process_axis=1
+    )
 
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
@@ -149,10 +154,9 @@ def check_two_all_gather_S1S0(device_mesh, rank):
     sharding_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
 
     # CommSpec:(comm_pattern:allgather, gather_dim:1, logical_process_axis:0)
-    comm_spec = CommSpec(CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
-                         sharding_spec,
-                         gather_dim=1,
-                         logical_process_axis=0)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.GATHER_FWD_SPLIT_BWD, sharding_spec, gather_dim=1, logical_process_axis=0
+    )
 
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
@@ -165,7 +169,7 @@ def check_mix_gather_S01R(device_mesh, rank):
     f_target_pair = (f, [0, 1])
     b_target_pair = (b, [])
     gather_dim, logical_process_axes = mix_gather_simulator(f_target_pair, b_target_pair)
-    tensor_to_comm = tensor_to_check[rank:rank + 1, :].contiguous().cuda()
+    tensor_to_comm = tensor_to_check[rank : rank + 1, :].contiguous().cuda()
 
     dim_partition_dict = {0: [0, 1]}
     # DistSpec:
@@ -173,12 +177,14 @@ def check_mix_gather_S01R(device_mesh, rank):
     #     device_mesh_shape: (2, 4)
     source_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
 
-    comm_spec = CommSpec(CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD,
-                         sharding_spec=source_spec,
-                         gather_dim=gather_dim,
-                         logical_process_axis=logical_process_axes,
-                         forward_only=True,
-                         mix_gather=True)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD,
+        sharding_spec=source_spec,
+        gather_dim=gather_dim,
+        logical_process_axis=logical_process_axes,
+        forward_only=True,
+        mix_gather=True,
+    )
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
     assert tensor_to_comm.equal(tensor_to_check)
@@ -189,7 +195,7 @@ def check_two_all_gather_S01R(device_mesh, rank):
     tensor_to_check = torch.arange(int(tensor_width * tensor_width)).reshape((tensor_width, tensor_width)).cuda()
 
     rank_stride = tensor_width // 8
-    tensor_to_comm = tensor_to_check[rank:rank + rank_stride, :].contiguous().cuda()
+    tensor_to_comm = tensor_to_check[rank : rank + rank_stride, :].contiguous().cuda()
 
     dim_partition_dict = {0: [0, 1]}
 
@@ -199,10 +205,9 @@ def check_two_all_gather_S01R(device_mesh, rank):
     sharding_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
 
     # CommSpec:(comm_pattern:allgather, gather_dim:0, logical_process_axis:0)
-    comm_spec = CommSpec(CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
-                         sharding_spec,
-                         gather_dim=0,
-                         logical_process_axis=1)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.GATHER_FWD_SPLIT_BWD, sharding_spec, gather_dim=0, logical_process_axis=1
+    )
 
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
@@ -214,10 +219,9 @@ def check_two_all_gather_S01R(device_mesh, rank):
     sharding_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
 
     # CommSpec:(comm_pattern:allgather, gather_dim:0, logical_process_axis:1)
-    comm_spec = CommSpec(CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
-                         sharding_spec,
-                         gather_dim=0,
-                         logical_process_axis=0)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.GATHER_FWD_SPLIT_BWD, sharding_spec, gather_dim=0, logical_process_axis=0
+    )
 
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
@@ -231,7 +235,7 @@ def check_mix_gather_RS01(device_mesh, rank):
     f_target_pair = (f, [])
     b_target_pair = (b, [0, 1])
     gather_dim, logical_process_axes = mix_gather_simulator(f_target_pair, b_target_pair)
-    tensor_to_comm = tensor_to_check[:, rank:rank + 1].contiguous().cuda()
+    tensor_to_comm = tensor_to_check[:, rank : rank + 1].contiguous().cuda()
 
     dim_partition_dict = {1: [0, 1]}
     # DistSpec:
@@ -239,12 +243,14 @@ def check_mix_gather_RS01(device_mesh, rank):
     #     device_mesh_shape: (2, 4)
     source_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
 
-    comm_spec = CommSpec(CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD,
-                         sharding_spec=source_spec,
-                         gather_dim=gather_dim,
-                         logical_process_axis=logical_process_axes,
-                         forward_only=True,
-                         mix_gather=True)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD,
+        sharding_spec=source_spec,
+        gather_dim=gather_dim,
+        logical_process_axis=logical_process_axes,
+        forward_only=True,
+        mix_gather=True,
+    )
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
     assert tensor_to_comm.equal(tensor_to_check)
@@ -255,7 +261,7 @@ def check_two_all_gather_RS01(device_mesh, rank):
     tensor_to_check = torch.arange(int(tensor_width * tensor_width)).reshape((tensor_width, tensor_width)).cuda()
 
     rank_stride = tensor_width // 8
-    tensor_to_comm = tensor_to_check[:, rank:rank + rank_stride].contiguous().cuda()
+    tensor_to_comm = tensor_to_check[:, rank : rank + rank_stride].contiguous().cuda()
 
     dim_partition_dict = {1: [0, 1]}
 
@@ -265,10 +271,9 @@ def check_two_all_gather_RS01(device_mesh, rank):
     sharding_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
 
     # CommSpec:(comm_pattern:allgather, gather_dim:1, logical_process_axis:0)
-    comm_spec = CommSpec(CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
-                         sharding_spec,
-                         gather_dim=1,
-                         logical_process_axis=1)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.GATHER_FWD_SPLIT_BWD, sharding_spec, gather_dim=1, logical_process_axis=1
+    )
 
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
@@ -280,10 +285,9 @@ def check_two_all_gather_RS01(device_mesh, rank):
     sharding_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
 
     # CommSpec:(comm_pattern:allgather, gather_dim:1, logical_process_axis:1)
-    comm_spec = CommSpec(CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
-                         sharding_spec,
-                         gather_dim=1,
-                         logical_process_axis=0)
+    comm_spec = CommSpec(
+        CollectiveCommPattern.GATHER_FWD_SPLIT_BWD, sharding_spec, gather_dim=1, logical_process_axis=0
+    )
 
     tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
@@ -292,7 +296,7 @@ def check_two_all_gather_RS01(device_mesh, rank):
 
 def check_comm(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     physical_mesh_id = torch.arange(0, 8)
     assert rank == dist.get_rank()
@@ -326,5 +330,5 @@ def test_mix_gather():
     spawn(check_comm, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_mix_gather()

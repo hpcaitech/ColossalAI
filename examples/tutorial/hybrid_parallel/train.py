@@ -14,8 +14,7 @@ from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.utils import is_using_pp
 
 
-class DummyDataloader():
-
+class DummyDataloader:
     def __init__(self, length, batch_size):
         self.length = length
         self.batch_size = batch_size
@@ -50,7 +49,7 @@ def main():
     logger = get_dist_logger()
     logger.info("initialized distributed environment", ranks=[0])
 
-    if hasattr(gpc.config, 'LOG_PATH'):
+    if hasattr(gpc.config, "LOG_PATH"):
         if gpc.get_global_rank() == 0:
             log_path = gpc.config.LOG_PATH
             if not os.path.exists(log_path):
@@ -60,15 +59,17 @@ def main():
     use_pipeline = is_using_pp()
 
     # create model
-    model_kwargs = dict(img_size=gpc.config.IMG_SIZE,
-                        patch_size=gpc.config.PATCH_SIZE,
-                        hidden_size=gpc.config.HIDDEN_SIZE,
-                        depth=gpc.config.DEPTH,
-                        num_heads=gpc.config.NUM_HEADS,
-                        mlp_ratio=gpc.config.MLP_RATIO,
-                        num_classes=10,
-                        init_method='jax',
-                        checkpoint=gpc.config.CHECKPOINT)
+    model_kwargs = dict(
+        img_size=gpc.config.IMG_SIZE,
+        patch_size=gpc.config.PATCH_SIZE,
+        hidden_size=gpc.config.HIDDEN_SIZE,
+        depth=gpc.config.DEPTH,
+        num_heads=gpc.config.NUM_HEADS,
+        mlp_ratio=gpc.config.MLP_RATIO,
+        num_classes=10,
+        init_method="jax",
+        checkpoint=gpc.config.CHECKPOINT,
+    )
 
     if use_pipeline:
         pipelinable = PipelinableContext()
@@ -102,16 +103,18 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=gpc.config.LEARNING_RATE, weight_decay=gpc.config.WEIGHT_DECAY)
 
     # create lr scheduler
-    lr_scheduler = CosineAnnealingWarmupLR(optimizer=optimizer,
-                                           total_steps=gpc.config.NUM_EPOCHS,
-                                           warmup_steps=gpc.config.WARMUP_EPOCHS)
+    lr_scheduler = CosineAnnealingWarmupLR(
+        optimizer=optimizer, total_steps=gpc.config.NUM_EPOCHS, warmup_steps=gpc.config.WARMUP_EPOCHS
+    )
 
     # initialize
-    engine, train_dataloader, test_dataloader, _ = colossalai.initialize(model=model,
-                                                                         optimizer=optimizer,
-                                                                         criterion=criterion,
-                                                                         train_dataloader=train_dataloader,
-                                                                         test_dataloader=test_dataloader)
+    engine, train_dataloader, test_dataloader, _ = colossalai.initialize(
+        model=model,
+        optimizer=optimizer,
+        criterion=criterion,
+        train_dataloader=train_dataloader,
+        test_dataloader=test_dataloader,
+    )
 
     logger.info("Engine is built", ranks=[0])
 
@@ -121,7 +124,7 @@ def main():
         data_iter = iter(train_dataloader)
 
         if gpc.get_global_rank() == 0:
-            description = 'Epoch {} / {}'.format(epoch, gpc.config.NUM_EPOCHS)
+            description = "Epoch {} / {}".format(epoch, gpc.config.NUM_EPOCHS)
             progress = tqdm(range(len(train_dataloader)), desc=description)
         else:
             progress = range(len(train_dataloader))
@@ -133,5 +136,5 @@ def main():
     gpc.destroy()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

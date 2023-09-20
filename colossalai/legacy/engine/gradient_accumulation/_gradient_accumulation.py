@@ -272,8 +272,9 @@ class GradAccumGradientHandler:
     """
 
     def __init__(self, grad_handler: BaseGradientHandler, accumulate_size: int) -> None:
-        assert isinstance(grad_handler, BaseGradientHandler), \
-            f'expected grad_handler to be type BaseGradientHandler, but got {type(grad_handler)}'
+        assert isinstance(
+            grad_handler, BaseGradientHandler
+        ), f"expected grad_handler to be type BaseGradientHandler, but got {type(grad_handler)}"
         self.grad_handler = grad_handler
         self.accumulate_size = accumulate_size
         self.accumulate_step = 0

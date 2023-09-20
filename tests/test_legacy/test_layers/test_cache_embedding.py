@@ -38,10 +38,19 @@ def synthesize_1d_sparse_feature(
 ):
     indices_in_batch = batch_size * 2
     indices = torch.randint(low=0, high=num_embed, size=(indices_in_batch,), device=device, dtype=torch.long)
-    offsets = torch.from_numpy(
-        np.array([
-            0, *np.sort(np.random.randint(low=0, high=indices_in_batch, size=(indices_in_batch - 1,))), indices_in_batch
-        ])).to(device).long()
+    offsets = (
+        torch.from_numpy(
+            np.array(
+                [
+                    0,
+                    *np.sort(np.random.randint(low=0, high=indices_in_batch, size=(indices_in_batch - 1,))),
+                    indices_in_batch,
+                ]
+            )
+        )
+        .to(device)
+        .long()
+    )
     return indices, offsets
 
 
@@ -89,7 +98,7 @@ def test_reorder_with_freq():
         chunkid.append(idx // chunk_size)
         offset_in_chunk.append(idx % chunk_size)
 
-    dev = torch.device('cuda')
+    dev = torch.device("cuda")
     chunkid = torch.tensor(chunkid, dtype=torch.long, device=dev)
     offset_in_chunk = torch.tensor(offset_in_chunk, dtype=torch.long, device=dev)
 
@@ -99,31 +108,31 @@ def test_reorder_with_freq():
     mgr.reorder(idx_map)
 
     indices = mgr.idx_map.index_select(0, torch.arange(num_embed, dtype=torch.long, device=dev))
-    mgr_chunk_id = torch.div(indices, chunk_size, rounding_mode='floor')
+    mgr_chunk_id = torch.div(indices, chunk_size, rounding_mode="floor")
     mgr_offsets = torch.remainder(indices, chunk_size)
     assert torch.allclose(chunkid, mgr_chunk_id), f"chunk id: {chunkid}, mgr: {mgr_chunk_id}"
-    assert torch.allclose(offset_in_chunk, mgr_offsets), \
-        f"offset in chunk: {offset_in_chunk}, mgr: {mgr_offsets}"
+    assert torch.allclose(offset_in_chunk, mgr_offsets), f"offset in chunk: {offset_in_chunk}, mgr: {mgr_offsets}"
 
 
 @clear_cache_before_run()
-@parameterize('use_LFU', [True, False])
+@parameterize("use_LFU", [True, False])
 def test_freq_aware_embed(use_LFU: bool):
-    device = torch.device('cuda', 0)
+    device = torch.device("cuda", 0)
     evict_strategy = EvictionStrategy.LFU if use_LFU else EvictionStrategy.DATASET
-    model = CachedEmbeddingBag(NUM_EMBED,
-                               EMBED_DIM,
-                               mode='mean',
-                               include_last_offset=True,
-                               cache_ratio=min(BATCH_SIZE * 2 / NUM_EMBED, 1.0),
-                               ids_freq_mapping=None,
-                               evict_strategy=evict_strategy).to(device)
+    model = CachedEmbeddingBag(
+        NUM_EMBED,
+        EMBED_DIM,
+        mode="mean",
+        include_last_offset=True,
+        cache_ratio=min(BATCH_SIZE * 2 / NUM_EMBED, 1.0),
+        ids_freq_mapping=None,
+        evict_strategy=evict_strategy,
+    ).to(device)
 
     assert model.weight.shape[0] == NUM_EMBED
-    ref_model = torch.nn.EmbeddingBag.from_pretrained(model.weight.detach().to(device),
-                                                      mode='mean',
-                                                      include_last_offset=True,
-                                                      freeze=False)
+    ref_model = torch.nn.EmbeddingBag.from_pretrained(
+        model.weight.detach().to(device), mode="mean", include_last_offset=True, freeze=False
+    )
 
     assert torch.allclose(ref_model.weight.detach(), model.weight.detach().to(device))
 
@@ -149,22 +158,25 @@ def test_freq_aware_embed(use_LFU: bool):
     model.cache_weight_mgr.flush()
     model_weight = model.weight.detach().to(device)
     ref_weight = ref_model.weight.detach()
-    assert torch.allclose(model_weight, ref_weight), \
-        f"model weight: {model_weight[10:18, :8]}, reference: {ref_weight[10:18, :8]}"
+    assert torch.allclose(
+        model_weight, ref_weight
+    ), f"model weight: {model_weight[10:18, :8]}, reference: {ref_weight[10:18, :8]}"
 
 
 @clear_cache_before_run()
-@parameterize('init_freq', [True, False])
+@parameterize("init_freq", [True, False])
 def test_lfu_strategy(init_freq: bool):
     # minimal test to check behavior
-    Bag = CachedEmbeddingBag(5,
-                             5,
-                             cache_ratio=3 / 5,
-                             buffer_size=0,
-                             pin_weight=True,
-                             ids_freq_mapping=[4, 2, 1, 3, 1] if init_freq else None,
-                             warmup_ratio=1.0,
-                             evict_strategy=EvictionStrategy.LFU)
+    Bag = CachedEmbeddingBag(
+        5,
+        5,
+        cache_ratio=3 / 5,
+        buffer_size=0,
+        pin_weight=True,
+        ids_freq_mapping=[4, 2, 1, 3, 1] if init_freq else None,
+        warmup_ratio=1.0,
+        evict_strategy=EvictionStrategy.LFU,
+    )
 
     # print('cached_idx_map: ', Bag.cache_weight_mgr.cached_idx_map)
     offsets = torch.tensor([0], device="cuda:0")
@@ -189,14 +201,15 @@ def test_lfu_strategy(init_freq: bool):
     # check strategy
     Bag.forward(torch.tensor([0, 1, 2], device="cuda:0"), offsets)
     Bag.forward(torch.tensor([0, 1, 2], device="cuda:0"), offsets)
-    Bag.forward(torch.tensor([3], device="cuda:0"), offsets)    # miss, evict 1
-    Bag.forward(torch.tensor([2], device="cuda:0"), offsets)    # hit
-    Bag.forward(torch.tensor([4], device="cuda:0"), offsets)    # miss, evict 3
-    Bag.forward(torch.tensor([2], device="cuda:0"), offsets)    # hit
-    Bag.forward(torch.tensor([0], device="cuda:0"), offsets)    # hit
+    Bag.forward(torch.tensor([3], device="cuda:0"), offsets)  # miss, evict 1
+    Bag.forward(torch.tensor([2], device="cuda:0"), offsets)  # hit
+    Bag.forward(torch.tensor([4], device="cuda:0"), offsets)  # miss, evict 3
+    Bag.forward(torch.tensor([2], device="cuda:0"), offsets)  # hit
+    Bag.forward(torch.tensor([0], device="cuda:0"), offsets)  # hit
 
-    assert torch.allclose(torch.Tensor(Bag.cache_weight_mgr.num_hits_history[-6:]), torch.Tensor([3, 0, 1, 0, 1, 1])), \
-        "LFU strategy behavior failed"
+    assert torch.allclose(
+        torch.Tensor(Bag.cache_weight_mgr.num_hits_history[-6:]), torch.Tensor([3, 0, 1, 0, 1, 1])
+    ), "LFU strategy behavior failed"
 
 
 def gather_tensor(tensor, rank, world_size):
@@ -211,7 +224,7 @@ def gather_tensor(tensor, rank, world_size):
 def run_parallel_freq_aware_embed_tablewise(rank, world_size):
     if world_size != 2:
         return
-    device = torch.device('cuda', torch.cuda.current_device())
+    device = torch.device("cuda", torch.cuda.current_device())
 
     # initialize weight
     # 3 feature tables. idx: 0~5, 6~10, 11~17
@@ -221,20 +234,20 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
     weight_table3 = weight_tables[11:18]
     embedding_bag_config_list: List[TablewiseEmbeddingBagConfig] = []
     embedding_bag_config_list.append(
-        TablewiseEmbeddingBagConfig(num_embeddings=6,
-                                    cuda_row_num=4,
-                                    assigned_rank=0,
-                                    initial_weight=weight_table1.clone().detach().cpu()))
+        TablewiseEmbeddingBagConfig(
+            num_embeddings=6, cuda_row_num=4, assigned_rank=0, initial_weight=weight_table1.clone().detach().cpu()
+        )
+    )
     embedding_bag_config_list.append(
-        TablewiseEmbeddingBagConfig(num_embeddings=5,
-                                    cuda_row_num=4,
-                                    assigned_rank=0,
-                                    initial_weight=weight_table2.clone().detach().cpu()))
+        TablewiseEmbeddingBagConfig(
+            num_embeddings=5, cuda_row_num=4, assigned_rank=0, initial_weight=weight_table2.clone().detach().cpu()
+        )
+    )
     embedding_bag_config_list.append(
-        TablewiseEmbeddingBagConfig(num_embeddings=7,
-                                    cuda_row_num=4,
-                                    assigned_rank=1,
-                                    initial_weight=weight_table3.clone().detach().cpu()))
+        TablewiseEmbeddingBagConfig(
+            num_embeddings=7, cuda_row_num=4, assigned_rank=1, initial_weight=weight_table3.clone().detach().cpu()
+        )
+    )
     if rank == 0:
         _weight = torch.cat([weight_table1, weight_table2], 0)
     else:
@@ -249,7 +262,7 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
         evict_strategy=EvictionStrategy.LFU,
     )
     # explain
-    '''
+    """
     batch       feature 1       feature 2       feature 3
     input0      [1,2,3]         [6,7]           []
     input1      []              [9]             [13,15]
@@ -257,10 +270,12 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
                   ↑               ↑               ↑
                 rank 0          rank 0          rank 1
     in KJT format
-    '''
-    res = model(torch.tensor([1, 2, 3, 1, 5, 6, 7, 9, 6, 8, 13, 15, 11], device=device),
-                torch.tensor([0, 3, 3, 5, 7, 8, 10, 10, 12, 13], device=device),
-                already_split_along_rank=False)
+    """
+    res = model(
+        torch.tensor([1, 2, 3, 1, 5, 6, 7, 9, 6, 8, 13, 15, 11], device=device),
+        torch.tensor([0, 3, 3, 5, 7, 8, 10, 10, 12, 13], device=device),
+        already_split_along_rank=False,
+    )
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-2)
     rand_grad = torch.rand(3, 5 * 3, dtype=res.dtype, device=res.device)
     if rank == 0:
@@ -273,13 +288,15 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
 
     # check correctness
     if rank == 0:
-        ref_model = torch.nn.EmbeddingBag.from_pretrained(weight_tables.detach().clone(),
-                                                          include_last_offset=True,
-                                                          freeze=False).to(device)
+        ref_model = torch.nn.EmbeddingBag.from_pretrained(
+            weight_tables.detach().clone(), include_last_offset=True, freeze=False
+        ).to(device)
         ref_optimizer = torch.optim.SGD(ref_model.parameters(), lr=1e-2)
         ref_fake_grad = torch.cat(rand_grad.split(5, 1), 0)
-        ref_res = ref_model(torch.tensor([1, 2, 3, 1, 5, 6, 7, 9, 6, 8, 13, 15, 11], device=device),
-                            torch.tensor([0, 3, 3, 5, 7, 8, 10, 10, 12, 13], device=device))
+        ref_res = ref_model(
+            torch.tensor([1, 2, 3, 1, 5, 6, 7, 9, 6, 8, 13, 15, 11], device=device),
+            torch.tensor([0, 3, 3, 5, 7, 8, 10, 10, 12, 13], device=device),
+        )
         ref_res.backward(ref_fake_grad)
         ref_optimizer.step()
         ref_optimizer.zero_grad()
@@ -291,7 +308,7 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
 
 
 def run_parallel_freq_aware_embed_columnwise(rank, world_size):
-    device = torch.device('cuda', torch.cuda.current_device())
+    device = torch.device("cuda", torch.cuda.current_device())
 
     num_embed = 100
     embed_dim = 16
@@ -313,19 +330,20 @@ def run_parallel_freq_aware_embed_columnwise(rank, world_size):
         cache_ratio=batch_size * 2 / num_embed,
     )
 
-    assert model.cache_weight_mgr.weight.device.type == 'cpu'
+    assert model.cache_weight_mgr.weight.device.type == "cpu"
     assert model.cache_weight_mgr.cuda_cached_weight.requires_grad
     weight_in_rank = torch.tensor_split(weight, world_size, -1)[rank]
     print(f"model weight: {model.cache_weight_mgr.weight.shape}, ref weight: {weight_in_rank.shape}")
-    assert torch.allclose(weight_in_rank,
-                          model.cache_weight_mgr.weight.detach()), f"{weight_in_rank - model.cache_weight_mgr.weight}"
+    assert torch.allclose(
+        weight_in_rank, model.cache_weight_mgr.weight.detach()
+    ), f"{weight_in_rank - model.cache_weight_mgr.weight}"
 
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
 
     if rank == 0:
-        ref_model = torch.nn.EmbeddingBag.from_pretrained(weight.detach().clone(),
-                                                          include_last_offset=True,
-                                                          freeze=False).to(device)
+        ref_model = torch.nn.EmbeddingBag.from_pretrained(
+            weight.detach().clone(), include_last_offset=True, freeze=False
+        ).to(device)
         ref_optimizer = torch.optim.SGD(ref_model.parameters(), lr=1e-3)
 
     set_seed(4321)
@@ -360,19 +378,19 @@ def run_parallel_freq_aware_embed_columnwise(rank, world_size):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.legacy.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.legacy.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     # run_parallel_freq_aware_embed_columnwise(rank, world_size)
     run_parallel_freq_aware_embed_tablewise(rank, world_size)
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [1, 4])
+@pytest.mark.parametrize("world_size", [1, 4])
 @rerun_if_address_is_in_use()
 def test_parallel_freq_aware_embed(world_size):
     spawn(run_dist, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # test_freq_aware_embed(True)
     test_parallel_freq_aware_embed(2)
     # test_lfu_strategy(False)

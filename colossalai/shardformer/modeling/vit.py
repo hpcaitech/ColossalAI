@@ -1,5 +1,5 @@
 import math
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 from transformers.models.vit.modeling_vit import BaseModelOutput, ViTEncoder
@@ -17,7 +17,6 @@ def _encoder_forward(
     return_dict: bool = True,
     stage_manager: PipelineStageManager = None,
 ) -> Union[tuple, BaseModelOutput]:
-
     for i in range(start_idx, end_idx):
         layer_module = encoder.layer[i]
 
@@ -26,7 +25,6 @@ def _encoder_forward(
         if encoder.gradient_checkpointing and encoder.training:
 
             def create_custom_forward(module):
-
                 def custom_forward(*inputs):
                     return module(*inputs, False)
 
@@ -54,7 +52,6 @@ def _encoder_forward(
 
 
 def ViTModel_pipeline_forward(stage_manager: PipelineStageManager, stage_index: List[int]):
-
     from transformers.models.vit.modeling_vit import BaseModelOutputWithPooling
 
     def pp_forward(
@@ -69,19 +66,19 @@ def ViTModel_pipeline_forward(stage_manager: PipelineStageManager, stage_index: 
         hidden_states: Optional[torch.FloatTensor] = None,
     ) -> Union[Tuple, BaseModelOutputWithPooling]:
         r"""
-            bool_masked_pos (`torch.BoolTensor` of shape `(batch_size, num_patches)`, *optional*):
-                Boolean masked positions. Indicates which patches are masked (1) and which aren't (0).
-            """
+        bool_masked_pos (`torch.BoolTensor` of shape `(batch_size, num_patches)`, *optional*):
+            Boolean masked positions. Indicates which patches are masked (1) and which aren't (0).
+        """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         logger = logging.get_logger(__name__)
 
         # Preprocess passed in arguments
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
         # Prepare head mask if needed
@@ -100,11 +97,13 @@ def ViTModel_pipeline_forward(stage_manager: PipelineStageManager, stage_index: 
             if pixel_values.dtype != expected_dtype:
                 pixel_values = pixel_values.to(expected_dtype)
 
-            embedding_output = self.embeddings(pixel_values,
-                                               bool_masked_pos=bool_masked_pos,
-                                               interpolate_pos_encoding=interpolate_pos_encoding)
+            embedding_output = self.embeddings(
+                pixel_values, bool_masked_pos=bool_masked_pos, interpolate_pos_encoding=interpolate_pos_encoding
+            )
         else:
-            assert hidden_states is not None, f"Current stage is {stage_manager.stage}, hidden_states should not be None"
+            assert (
+                hidden_states is not None
+            ), f"Current stage is {stage_manager.stage}, hidden_states should not be None"
 
         # Go through encoder
         if not stage_manager.is_last_stage():
@@ -117,7 +116,7 @@ def ViTModel_pipeline_forward(stage_manager: PipelineStageManager, stage_index: 
                 return_dict=return_dict,
                 stage_manager=stage_manager,
             )
-            return {'hidden_states': hidden_states}
+            return {"hidden_states": hidden_states}
         else:
             encoder_outputs = _encoder_forward(
                 encoder=self.encoder,
@@ -149,7 +148,6 @@ def ViTModel_pipeline_forward(stage_manager: PipelineStageManager, stage_index: 
 
 
 def ViTForImageClassification_pipeline_forward(stage_manager: PipelineStageManager, stage_index: List[int]):
-
     from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
     from transformers.models.vit.modeling_vit import ImageClassifierOutput
 
@@ -173,7 +171,9 @@ def ViTForImageClassification_pipeline_forward(stage_manager: PipelineStageManag
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if not stage_manager.is_first_stage():
-            assert hidden_states is not None, f"Current stage is {stage_manager.stage}, hidden_states should not be None"
+            assert (
+                hidden_states is not None
+            ), f"Current stage is {stage_manager.stage}, hidden_states should not be None"
 
         outputs = self.vit(
             pixel_values,
@@ -234,7 +234,6 @@ def ViTForImageClassification_pipeline_forward(stage_manager: PipelineStageManag
 
 
 def ViTForMaskedImageModeling_pipeline_forward(stage_manager: PipelineStageManager, stage_index: List[int]):
-
     import math
 
     import torch.nn as nn
@@ -286,19 +285,24 @@ def ViTForMaskedImageModeling_pipeline_forward(stage_manager: PipelineStageManag
             raise ValueError(
                 "When `bool_masked_pos` is provided, `patch_size` must be equal to `encoder_stride` to ensure that "
                 "the reconstructed image has the same dimensions as the input."
-                f"Got `patch_size` = {self.config.patch_size} and `encoder_stride` = {self.config.encoder_stride}.")
+                f"Got `patch_size` = {self.config.patch_size} and `encoder_stride` = {self.config.encoder_stride}."
+            )
 
         if not stage_manager.is_first_stage():
-            assert hidden_states is not None, f"Current stage is {stage_manager.stage}, hidden_states should not be None"
+            assert (
+                hidden_states is not None
+            ), f"Current stage is {stage_manager.stage}, hidden_states should not be None"
 
-        outputs = self.vit(pixel_values,
-                           bool_masked_pos=bool_masked_pos,
-                           head_mask=head_mask,
-                           output_attentions=output_attentions,
-                           output_hidden_states=output_hidden_states,
-                           interpolate_pos_encoding=interpolate_pos_encoding,
-                           return_dict=return_dict,
-                           hidden_states=hidden_states)
+        outputs = self.vit(
+            pixel_values,
+            bool_masked_pos=bool_masked_pos,
+            head_mask=head_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            interpolate_pos_encoding=interpolate_pos_encoding,
+            return_dict=return_dict,
+            hidden_states=hidden_states,
+        )
         if not stage_manager.is_last_stage():
             return outputs
         else:
@@ -317,9 +321,12 @@ def ViTForMaskedImageModeling_pipeline_forward(stage_manager: PipelineStageManag
         if bool_masked_pos is not None:
             size = self.config.image_size // self.config.patch_size
             bool_masked_pos = bool_masked_pos.reshape(-1, size, size)
-            mask = (bool_masked_pos.repeat_interleave(self.config.patch_size,
-                                                      1).repeat_interleave(self.config.patch_size,
-                                                                           2).unsqueeze(1).contiguous())
+            mask = (
+                bool_masked_pos.repeat_interleave(self.config.patch_size, 1)
+                .repeat_interleave(self.config.patch_size, 2)
+                .unsqueeze(1)
+                .contiguous()
+            )
             reconstruction_loss = nn.functional.l1_loss(pixel_values, reconstructed_pixel_values, reduction="none")
             masked_im_loss = (reconstruction_loss * mask).sum() / (mask.sum() + 1e-5) / self.config.num_channels
 
@@ -338,7 +345,6 @@ def ViTForMaskedImageModeling_pipeline_forward(stage_manager: PipelineStageManag
 
 
 def get_vit_flash_self_attention_forward():
-
     from transformers.models.vit.modeling_vit import ViTSelfAttention
 
     from colossalai.kernel.cuda_native import ColoAttention
@@ -348,22 +354,24 @@ def get_vit_flash_self_attention_forward():
         x = x.view(new_x_shape)
         return x
 
-    def forward(self: ViTSelfAttention,
-                hidden_states: torch.Tensor,
-                head_mask: Optional[torch.Tensor] = None,
-                output_attentions: bool = False) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
+    def forward(
+        self: ViTSelfAttention,
+        hidden_states: torch.Tensor,
+        head_mask: Optional[torch.Tensor] = None,
+        output_attentions: bool = False,
+    ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
         mixed_query_layer = self.query(hidden_states)
 
         key_layer = transpose_for_scores(self.key(hidden_states), self.num_attention_heads, self.attention_head_size)
-        value_layer = transpose_for_scores(self.value(hidden_states), self.num_attention_heads,
-                                           self.attention_head_size)
+        value_layer = transpose_for_scores(
+            self.value(hidden_states), self.num_attention_heads, self.attention_head_size
+        )
         query_layer = transpose_for_scores(mixed_query_layer, self.num_attention_heads, self.attention_head_size)
 
         scale = 1.0 / math.sqrt(self.attention_head_size)
-        attention = ColoAttention(embed_dim=self.all_head_size,
-                                  num_heads=self.num_attention_heads,
-                                  dropout=self.dropout.p,
-                                  scale=scale)
+        attention = ColoAttention(
+            embed_dim=self.all_head_size, num_heads=self.num_attention_heads, dropout=self.dropout.p, scale=scale
+        )
         context_layer = attention(query_layer, key_layer, value_layer)
 
         outputs = (context_layer,)
@@ -374,7 +382,6 @@ def get_vit_flash_self_attention_forward():
 
 
 def get_jit_fused_vit_output_forward():
-
     from transformers.models.vit.modeling_vit import ViTOutput
 
     def forward(self: ViTOutput, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:

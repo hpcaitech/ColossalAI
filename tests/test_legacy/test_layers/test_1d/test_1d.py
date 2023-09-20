@@ -10,12 +10,14 @@ from colossalai.legacy.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
-CONFIG = dict(parallel=dict(pipeline=dict(size=1), tensor=dict(size=4, mode='1d')),)
+CONFIG = dict(
+    parallel=dict(pipeline=dict(size=1), tensor=dict(size=4, mode="1d")),
+)
 
 
 def check_layer(rank, world_size, port):
     disable_existing_loggers()
-    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     check_linear_col()
     check_linear_row()
@@ -39,5 +41,5 @@ def test_1d():
     spawn(check_layer, 4)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_1d()

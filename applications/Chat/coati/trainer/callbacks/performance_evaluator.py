@@ -21,9 +21,9 @@ def print_rank_0(*args, **kwargs) -> None:
 
 def divide(x: float, y: float) -> float:
     if y == 0:
-        return float('inf')
-    elif y == float('inf'):
-        return float('nan')
+        return float("inf")
+    elif y == float("inf"):
+        return float("nan")
     return x / y
 
 
@@ -38,10 +38,9 @@ def all_reduce_mean(x: float, world_size: int) -> float:
 
 
 class Timer:
-
     def __init__(self) -> None:
         self.start_time: Optional[float] = None
-        self.duration: float = 0.
+        self.duration: float = 0.0
 
     def start(self) -> None:
         self.start_time = time()
@@ -52,7 +51,7 @@ class Timer:
         self.start_time = None
 
     def reset(self) -> None:
-        self.duration = 0.
+        self.duration = 0.0
 
 
 class PerformanceEvaluator(Callback):
@@ -67,13 +66,15 @@ class PerformanceEvaluator(Callback):
         ignore_episodes: The number of episodes to ignore when calculating the performance.
     """
 
-    def __init__(self,
-                 actor_num_params: int,
-                 critic_num_params: int,
-                 initial_model_num_params: int,
-                 reward_model_num_params: int,
-                 enable_grad_checkpoint: bool = False,
-                 ignore_episodes: int = 0) -> None:
+    def __init__(
+        self,
+        actor_num_params: int,
+        critic_num_params: int,
+        initial_model_num_params: int,
+        reward_model_num_params: int,
+        enable_grad_checkpoint: bool = False,
+        ignore_episodes: int = 0,
+    ) -> None:
         super().__init__()
         self.world_size = get_world_size()
         self.actor_num_params = actor_num_params
@@ -155,8 +156,9 @@ class PerformanceEvaluator(Callback):
         avg_learn_duration = all_reduce_mean(self.learn_timer.duration, self.world_size)
         avg_overall_duration = all_reduce_mean(self.overall_timer.duration, self.world_size)
 
-        avg_make_experience_throughput = self.make_experience_num_samples * \
-            self.world_size / (avg_make_experience_duration + 1e-12)
+        avg_make_experience_throughput = (
+            self.make_experience_num_samples * self.world_size / (avg_make_experience_duration + 1e-12)
+        )
         avg_make_experience_tflops = self.make_experience_flop / 1e12 / (avg_make_experience_duration + 1e-12)
 
         avg_learn_throughput = self.learn_num_samples * self.world_size / (avg_learn_duration + 1e-12)
@@ -171,13 +173,11 @@ class PerformanceEvaluator(Callback):
         learn_time_per_sample = divide(avg_learn_duration, num_effective_samples)
 
         print_rank_0(
-            f'Performance summary:\n'
-            + f'Generate {self.make_experience_num_samples * self.world_size} samples, throughput: {avg_make_experience_throughput:.2f} samples/s, TFLOPS per GPU: {avg_make_experience_tflops:.2f}\n'
-
-            + f'Train {self.learn_num_samples * self.world_size} samples, throughput: {avg_learn_throughput:.2f} samples/s, TFLOPS per GPU: {avg_learn_tflops:.2f}\n'
-            + f'Overall throughput: {avg_overall_throughput:.2f} samples/s\n'
-            + f'Overall time per sample: {overall_time_per_sample:.2f} s\n'
-            + f'Make experience time per sample: {make_experience_time_per_sample:.2f} s, {make_experience_time_per_sample/overall_time_per_sample*100:.2f}%\n'
-
-            + f'Learn time per sample: {learn_time_per_sample:.2f} s, {learn_time_per_sample/overall_time_per_sample*100:.2f}%'
+            f"Performance summary:\n"
+            + f"Generate {self.make_experience_num_samples * self.world_size} samples, throughput: {avg_make_experience_throughput:.2f} samples/s, TFLOPS per GPU: {avg_make_experience_tflops:.2f}\n"
+            + f"Train {self.learn_num_samples * self.world_size} samples, throughput: {avg_learn_throughput:.2f} samples/s, TFLOPS per GPU: {avg_learn_tflops:.2f}\n"
+            + f"Overall throughput: {avg_overall_throughput:.2f} samples/s\n"
+            + f"Overall time per sample: {overall_time_per_sample:.2f} s\n"
+            + f"Make experience time per sample: {make_experience_time_per_sample:.2f} s, {make_experience_time_per_sample/overall_time_per_sample*100:.2f}%\n"
+            + f"Learn time per sample: {learn_time_per_sample:.2f} s, {learn_time_per_sample/overall_time_per_sample*100:.2f}%"
         )

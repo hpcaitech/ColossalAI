@@ -42,7 +42,7 @@ class SeedManager:
         Raises:
             AssertionError: Raises an AssertionError if `parallel_mode` is not found in the seed manager.
         """
-        assert parallel_mode in self._seed_states, f'Parallel mode {parallel_mode} is not found in the seed manager'
+        assert parallel_mode in self._seed_states, f"Parallel mode {parallel_mode} is not found in the seed manager"
         self._seed_states[parallel_mode] = state
 
     def set_mode(self, parallel_mode: ParallelMode):
@@ -71,9 +71,9 @@ class SeedManager:
             AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of :class:`colossalai.legacy.context.ParallelMode`
                 or the seed for `parallel_mode` has been added.
         """
-        assert isinstance(parallel_mode, ParallelMode), 'A valid ParallelMode must be provided'
+        assert isinstance(parallel_mode, ParallelMode), "A valid ParallelMode must be provided"
         if overwrite is False:
-            assert parallel_mode not in self._seed_states, f'The seed for {parallel_mode} has been added'
+            assert parallel_mode not in self._seed_states, f"The seed for {parallel_mode} has been added"
         elif parallel_mode in self._seed_states:
             print(f"Warning: {parallel_mode} seed has been overwritten.", flush=True)
 

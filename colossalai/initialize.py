@@ -14,15 +14,17 @@ from colossalai.logging import get_dist_logger
 from colossalai.utils import set_device, set_seed
 
 
-def launch(config: Union[str, Path, Config, Dict],
-           rank: int,
-           world_size: int,
-           host: str,
-           port: int,
-           backend: str = 'nccl',
-           local_rank: int = None,
-           seed: int = 1024,
-           verbose: bool = True):
+def launch(
+    config: Union[str, Path, Config, Dict],
+    rank: int,
+    world_size: int,
+    host: str,
+    port: int,
+    backend: str = "nccl",
+    local_rank: int = None,
+    seed: int = 1024,
+    verbose: bool = True,
+):
     """This function first parses the configuration arguments, using :func:`parse_args()` in case one of the input
     arguments are not given. Then initialize and set distributed environment by calling global_context's functions.
 
@@ -46,7 +48,7 @@ def launch(config: Union[str, Path, Config, Dict],
         warnings.warn("`config` is deprecated and will be removed soon.")
 
     # init default process group
-    init_method = f'tcp://[{host}]:{port}'
+    init_method = f"tcp://[{host}]:{port}"
     dist.init_process_group(rank=rank, world_size=world_size, backend=backend, init_method=init_method)
 
     # set cuda device
@@ -58,15 +60,17 @@ def launch(config: Union[str, Path, Config, Dict],
 
     if verbose:
         logger = get_dist_logger()
-        logger.info(f'Distributed environment is initialized, world size: {dist.get_world_size()}', ranks=[0])
+        logger.info(f"Distributed environment is initialized, world size: {dist.get_world_size()}", ranks=[0])
 
 
-def launch_from_slurm(config: Union[str, Path, Config, Dict],
-                      host: str,
-                      port: int,
-                      backend: str = 'nccl',
-                      seed: int = 1024,
-                      verbose: bool = True):
+def launch_from_slurm(
+    config: Union[str, Path, Config, Dict],
+    host: str,
+    port: int,
+    backend: str = "nccl",
+    seed: int = 1024,
+    verbose: bool = True,
+):
     """A wrapper for colossalai.launch for SLURM launcher by reading rank and world size from the environment variables
     set by SLURM
 
@@ -79,29 +83,33 @@ def launch_from_slurm(config: Union[str, Path, Config, Dict],
         verbose (bool, optional): Whether to print logs. Defaults to True.
     """
     try:
-        rank = int(os.environ['SLURM_PROCID'])
-        world_size = int(os.environ['SLURM_NPROCS'])
+        rank = int(os.environ["SLURM_PROCID"])
+        world_size = int(os.environ["SLURM_NPROCS"])
     except KeyError as e:
         raise RuntimeError(
             f"Could not find {e} in the SLURM environment, visit https://www.colossalai.org/ for more information on launching with SLURM"
         )
 
-    launch(config=config,
-           rank=rank,
-           world_size=world_size,
-           host=host,
-           port=port,
-           backend=backend,
-           seed=seed,
-           verbose=verbose)
+    launch(
+        config=config,
+        rank=rank,
+        world_size=world_size,
+        host=host,
+        port=port,
+        backend=backend,
+        seed=seed,
+        verbose=verbose,
+    )
 
 
-def launch_from_openmpi(config: Union[str, Path, Config, Dict],
-                        host: str,
-                        port: int,
-                        backend: str = 'nccl',
-                        seed: int = 1024,
-                        verbose: bool = True):
+def launch_from_openmpi(
+    config: Union[str, Path, Config, Dict],
+    host: str,
+    port: int,
+    backend: str = "nccl",
+    seed: int = 1024,
+    verbose: bool = True,
+):
     """A wrapper for colossalai.launch for OpenMPI launcher by reading rank and world size from the environment variables
     set by OpenMPI
 
@@ -114,29 +122,30 @@ def launch_from_openmpi(config: Union[str, Path, Config, Dict],
         verbose (bool, optional): Whether to print logs. Defaults to True.
     """
     try:
-        rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
-        local_rank = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
-        world_size = int(os.environ['OMPI_COMM_WORLD_SIZE'])
+        rank = int(os.environ["OMPI_COMM_WORLD_RANK"])
+        local_rank = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
+        world_size = int(os.environ["OMPI_COMM_WORLD_SIZE"])
     except KeyError as e:
         raise RuntimeError(
             f"Could not find {e} in the OpenMPI environment, visit https://www.colossalai.org/ for more information on launching with OpenMPI"
         )
 
-    launch(config=config,
-           local_rank=local_rank,
-           rank=rank,
-           world_size=world_size,
-           host=host,
-           port=port,
-           backend=backend,
-           seed=seed,
-           verbose=verbose)
+    launch(
+        config=config,
+        local_rank=local_rank,
+        rank=rank,
+        world_size=world_size,
+        host=host,
+        port=port,
+        backend=backend,
+        seed=seed,
+        verbose=verbose,
+    )
 
 
-def launch_from_torch(config: Union[str, Path, Config, Dict],
-                      backend: str = 'nccl',
-                      seed: int = 1024,
-                      verbose: bool = True):
+def launch_from_torch(
+    config: Union[str, Path, Config, Dict], backend: str = "nccl", seed: int = 1024, verbose: bool = True
+):
     """A wrapper for colossalai.launch for torchrun or torch.distributed.launch by reading rank and world size
     from the environment variables set by PyTorch
 
@@ -147,22 +156,24 @@ def launch_from_torch(config: Union[str, Path, Config, Dict],
         verbose (bool, optional): Whether to print logs. Defaults to True.
     """
     try:
-        rank = int(os.environ['RANK'])
-        local_rank = int(os.environ['LOCAL_RANK'])
-        world_size = int(os.environ['WORLD_SIZE'])
-        host = os.environ['MASTER_ADDR']
-        port = int(os.environ['MASTER_PORT'])
+        rank = int(os.environ["RANK"])
+        local_rank = int(os.environ["LOCAL_RANK"])
+        world_size = int(os.environ["WORLD_SIZE"])
+        host = os.environ["MASTER_ADDR"]
+        port = int(os.environ["MASTER_PORT"])
     except KeyError as e:
         raise RuntimeError(
             f"Could not find {e} in the torch environment, visit https://www.colossalai.org/ for more information on launching with torch"
         )
 
-    launch(config=config,
-           local_rank=local_rank,
-           rank=rank,
-           world_size=world_size,
-           host=host,
-           port=port,
-           backend=backend,
-           seed=seed,
-           verbose=verbose)
+    launch(
+        config=config,
+        local_rank=local_rank,
+        rank=rank,
+        world_size=world_size,
+        host=host,
+        port=port,
+        backend=backend,
+        seed=seed,
+        verbose=verbose,
+    )

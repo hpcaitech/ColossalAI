@@ -27,14 +27,13 @@ from colossalai.zero.gemini.memory_tracer import MemStats
 
 from .dp_plugin_base import DPPluginBase
 
-__all__ = ['GeminiPlugin']
+__all__ = ["GeminiPlugin"]
 
-SUPPORTED_PRECISION = ['fp16', 'bf16']
-PRECISION_STR_TO_DTYPE = {'fp16': torch.half, 'bf16': torch.bfloat16}
+SUPPORTED_PRECISION = ["fp16", "bf16"]
+PRECISION_STR_TO_DTYPE = {"fp16": torch.half, "bf16": torch.bfloat16}
 
 
 class GeminiCheckpointIO(GeneralCheckpointIO):
-
     def __init__(self) -> None:
         super().__init__()
         self.coordinator = DistCoordinator()
@@ -74,13 +73,15 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         """
         super().load_unsharded_optimizer(optimizer, checkpoint)
 
-    def save_sharded_model(self,
-                           model: GeminiDDP,
-                           checkpoint_path: str,
-                           gather_dtensor: bool = False,
-                           prefix: Optional[str] = None,
-                           max_shard_size: int = 1024,
-                           use_safetensors: bool = False):
+    def save_sharded_model(
+        self,
+        model: GeminiDDP,
+        checkpoint_path: str,
+        gather_dtensor: bool = False,
+        prefix: Optional[str] = None,
+        max_shard_size: int = 1024,
+        use_safetensors: bool = False,
+    ):
         """
         Save sharded model.
         As there is communication when getting state dict, model.state_dict() must be called on all processes.
@@ -97,34 +98,37 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
 
         # Save shards of optimizer states.
         is_master = self.coordinator.is_master()
-        total_size = save_state_dict_shards(sharded_state_dict=state_dict_shard,
-                                            checkpoint=checkpoint_path,
-                                            index_file=index_file,
-                                            base_filename=weights_name,
-                                            is_master=is_master,
-                                            use_safetensors=use_safetensors)
+        total_size = save_state_dict_shards(
+            sharded_state_dict=state_dict_shard,
+            checkpoint=checkpoint_path,
+            index_file=index_file,
+            base_filename=weights_name,
+            is_master=is_master,
+            use_safetensors=use_safetensors,
+        )
 
         # only save the index file on the master rank
         if self.coordinator.is_master():
             index_file.append_meta_data("total_size", total_size)
             index_file.write_index_file(save_index_file)
             save_config_file(model.module, checkpoint_path)
-            logging.info(f"The model is split into checkpoint shards. "
-                         f"You can find where each parameters has been saved in the "
-                         f"index located at {save_index_file}.")
+            logging.info(
+                f"The model is split into checkpoint shards. "
+                f"You can find where each parameters has been saved in the "
+                f"index located at {save_index_file}."
+            )
 
-    def load_sharded_model(self,
-                           model: GeminiDDP,
-                           checkpoint_index_file: Path,
-                           strict: bool = False,
-                           use_safetensors: bool = False):
+    def load_sharded_model(
+        self, model: GeminiDDP, checkpoint_index_file: Path, strict: bool = False, use_safetensors: bool = False
+    ):
         """
         Load shard model, load model from multiple files.
         """
         return super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors, load_sub_module=False)
 
-    def save_sharded_optimizer(self, optimizer: Optimizer, checkpoint: Path, gather_dtensor: bool, prefix: str,
-                               size_per_shard: int):
+    def save_sharded_optimizer(
+        self, optimizer: Optimizer, checkpoint: Path, gather_dtensor: bool, prefix: str, size_per_shard: int
+    ):
         """
         Save sharded optimizer state dict to checkpoint folder.
         As there is communication when getting state dict, this must be called on all processes.
@@ -153,20 +157,24 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
 
         # Save shards of optimizer states.
         is_master = self.coordinator.is_master()
-        total_size = save_state_dict_shards(sharded_state_dict=state_dict_shard,
-                                            checkpoint=checkpoint,
-                                            index_file=index_file,
-                                            base_filename=states_name,
-                                            is_master=is_master,
-                                            use_safetensors=False)
+        total_size = save_state_dict_shards(
+            sharded_state_dict=state_dict_shard,
+            checkpoint=checkpoint,
+            index_file=index_file,
+            base_filename=states_name,
+            is_master=is_master,
+            use_safetensors=False,
+        )
 
         # Wrap up index file. Only save it on master rank.
         if self.coordinator.is_master():
             index_file.append_meta_data("total_size", total_size)
             index_file.write_index_file(save_index_file)
-            logging.info(f"The optimizer is going to be split to checkpoint shards. "
-                         f"You can find where each parameters has been saved in the "
-                         f"index located at {save_index_file}.")
+            logging.info(
+                f"The optimizer is going to be split to checkpoint shards. "
+                f"You can find where each parameters has been saved in the "
+                f"index located at {save_index_file}."
+            )
 
     def load_sharded_optimizer(self, optimizer: Optimizer, checkpoint_index_file: Path, prefix: str):
         """
@@ -185,8 +193,10 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         # Load param_groups.
         param_group_path = ckpt_index_file.get_param_group_filename()
         if param_group_path is None:
-            raise RuntimeError(f'Invalid index file path {checkpoint_index_file} for an optimizer. \
-                               Lacking param group file under current directory.')
+            raise RuntimeError(
+                f"Invalid index file path {checkpoint_index_file} for an optimizer. \
+                               Lacking param group file under current directory."
+            )
         saved_param_groups = torch.load(param_group_path)
         optimizer.load_param_groups(saved_param_groups)
 
@@ -274,11 +284,11 @@ class GeminiPlugin(DPPluginBase):
         chunk_config_dict: Optional[dict] = None,
         chunk_init_device: Optional[torch.device] = None,
         placement_policy: str = "static",
-        shard_param_frac: float = 1.0,    # only for static placement
-        offload_optim_frac: float = 0.0,    # only for static placement
-        offload_param_frac: float = 0.0,    # only for static placement
-        warmup_non_model_data_ratio: float = 0.8,    # only for auto placement
-        steady_cuda_cap_ratio: float = 0.9,    # only for auto placement
+        shard_param_frac: float = 1.0,  # only for static placement
+        offload_optim_frac: float = 0.0,  # only for static placement
+        offload_param_frac: float = 0.0,  # only for static placement
+        warmup_non_model_data_ratio: float = 0.8,  # only for auto placement
+        steady_cuda_cap_ratio: float = 0.9,  # only for auto placement
         precision: str = "fp16",
         pin_memory: bool = False,
         force_outputs_fp32: bool = False,
@@ -300,7 +310,7 @@ class GeminiPlugin(DPPluginBase):
         verbose: bool = False,
     ) -> None:
         super().__init__()
-        assert precision in SUPPORTED_PRECISION, f'precision {precision} is not supported'
+        assert precision in SUPPORTED_PRECISION, f"precision {precision} is not supported"
         self.gemini_config = dict(
             chunk_config_dict=chunk_config_dict,
             chunk_init_device=(chunk_init_device or get_current_device()),
@@ -319,16 +329,20 @@ class GeminiPlugin(DPPluginBase):
             memstats=memstats,
             mixed_precision=PRECISION_STR_TO_DTYPE[precision],
         )
-        self.zero_optim_config = dict(gpu_margin_mem_ratio=gpu_margin_mem_ratio,)
-        self.optim_kwargs = dict(initial_scale=initial_scale,
-                                 growth_factor=growth_factor,
-                                 backoff_factor=backoff_factor,
-                                 growth_interval=growth_interval,
-                                 hysteresis=hysteresis,
-                                 min_scale=min_scale,
-                                 max_scale=max_scale,
-                                 max_norm=max_norm,
-                                 norm_type=norm_type)
+        self.zero_optim_config = dict(
+            gpu_margin_mem_ratio=gpu_margin_mem_ratio,
+        )
+        self.optim_kwargs = dict(
+            initial_scale=initial_scale,
+            growth_factor=growth_factor,
+            backoff_factor=backoff_factor,
+            growth_interval=growth_interval,
+            hysteresis=hysteresis,
+            min_scale=min_scale,
+            max_scale=max_scale,
+            max_norm=max_norm,
+            norm_type=norm_type,
+        )
         self.verbose = verbose
 
     def support_no_sync(self) -> bool:
@@ -344,7 +358,7 @@ class GeminiPlugin(DPPluginBase):
         return True
 
     def supported_devices(self) -> List[str]:
-        return ['cuda']
+        return ["cuda"]
 
     def configure(
         self,
@@ -354,7 +368,6 @@ class GeminiPlugin(DPPluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
-
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
             # FIXME(ver217): gemini does not support sync bn
@@ -368,13 +381,10 @@ class GeminiPlugin(DPPluginBase):
             # wrap the model with Gemini
             model = GeminiDDP(model, **self.gemini_config, verbose=self.verbose)
 
-        if optimizer is not None and \
-                not isinstance(optimizer, OptimizerWrapper):
-            optimizer = GeminiOptimizer(optimizer,
-                                        model.unwrap(),
-                                        **self.zero_optim_config,
-                                        **self.optim_kwargs,
-                                        verbose=self.verbose)
+        if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
+            optimizer = GeminiOptimizer(
+                optimizer, model.unwrap(), **self.zero_optim_config, **self.optim_kwargs, verbose=self.verbose
+            )
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 

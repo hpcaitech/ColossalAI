@@ -12,8 +12,8 @@ from colossalai.interface import OptimizerWrapper
 from colossalai.testing import check_state_dict_equal, parameterize, rerun_if_address_is_in_use, spawn
 
 
-@parameterize('shard', [True, False])
-@parameterize('size_per_shard', [16, 128])
+@parameterize("shard", [True, False])
+@parameterize("size_per_shard", [16, 128])
 def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int):
     plugin = TorchDDPPlugin()
     booster = Booster(plugin=plugin)
@@ -27,7 +27,7 @@ def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int):
     assert isinstance(optimizer, OptimizerWrapper)
 
     x = torch.randn(4, 3, 224, 224)
-    x = x.to('cuda')
+    x = x.to("cuda")
     output = model(x)
     loss = criterion(output)
     booster.backward(loss, optimizer)
@@ -47,9 +47,9 @@ def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int):
         new_model = resnet18()
         new_optimizer = SGD((new_model.parameters()), lr=0.001)
         new_scheduler = torch.optim.lr_scheduler.StepLR(new_optimizer, step_size=1, gamma=0.1)
-        new_model, new_optimizer, _, _, new_scheduler = booster.boost(new_model,
-                                                                      new_optimizer,
-                                                                      lr_scheduler=new_scheduler)
+        new_model, new_optimizer, _, _, new_scheduler = booster.boost(
+            new_model, new_optimizer, lr_scheduler=new_scheduler
+        )
 
         booster.load_model(new_model, model_ckpt_path)
         check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
@@ -61,7 +61,7 @@ def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=(dict()), rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.launch(config=(dict()), rank=rank, world_size=world_size, port=port, host="localhost")
     check_torch_ddp_checkpointIO()
 
 

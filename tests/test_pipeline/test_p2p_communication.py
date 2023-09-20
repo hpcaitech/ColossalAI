@@ -22,30 +22,30 @@ def check_p2p_communication():
     if rank == 0:
         p2p.send_forward(tensor)
         p2p.send_forward([tensor])
-        p2p.send_forward({'tensor': tensor})
+        p2p.send_forward({"tensor": tensor})
     else:
         obj = p2p.recv_forward()
         assert torch.equal(obj, tensor)
         obj = p2p.recv_forward()
         assert type(obj) == list and len(obj) == 1 and torch.equal(obj[0], tensor)
         obj = p2p.recv_forward()
-        assert type(obj) == dict and 'tensor' in obj and torch.equal(obj['tensor'], tensor)
+        assert type(obj) == dict and "tensor" in obj and torch.equal(obj["tensor"], tensor)
 
     if rank == 1:
         p2p.send_backward(tensor)
         p2p.send_backward([tensor])
-        p2p.send_backward({'tensor': tensor})
+        p2p.send_backward({"tensor": tensor})
     else:
         obj = p2p.recv_backward()
         assert torch.equal(obj, tensor)
         obj = p2p.recv_backward()
         assert type(obj) == list and len(obj) == 1 and torch.equal(obj[0], tensor)
         obj = p2p.recv_backward()
-        assert type(obj) == dict and 'tensor' in obj and torch.equal(obj['tensor'], tensor)
+        assert type(obj) == dict and "tensor" in obj and torch.equal(obj["tensor"], tensor)
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, port=port, host="localhost")
     check_p2p_communication()
 
 
@@ -55,5 +55,5 @@ def test_pipeline_p2p():
     spawn(run_dist, 2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_pipeline_p2p()

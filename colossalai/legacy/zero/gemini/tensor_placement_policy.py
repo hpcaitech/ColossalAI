@@ -10,11 +10,10 @@ from colossalai.utils import get_current_device
 from colossalai.zero.gemini.memory_tracer import MemStatsCollector
 
 from .stateful_tensor import StatefulTensor
-from .tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
+from .tensor_utils import colo_model_data_tensor_move_inline
 
 
 class TensorPlacementPolicy(ABC):
-
     def __init__(self, device: Optional[torch.device], mem_stats_collector: Optional[MemStatsCollector] = None) -> None:
         self.device: Optional[torch.device] = device
         self.mem_stats_collector: Optional[MemStatsCollector] = mem_stats_collector
@@ -25,9 +24,8 @@ class TensorPlacementPolicy(ABC):
 
 
 class CPUTensorPlacementPolicy(TensorPlacementPolicy):
-
     def __init__(self, mem_stats_collector: Optional[MemStatsCollector] = None) -> None:
-        super().__init__(torch.device('cpu'), mem_stats_collector=mem_stats_collector)
+        super().__init__(torch.device("cpu"), mem_stats_collector=mem_stats_collector)
 
     def evict_tensors(self, hold_cuda_tensor_list: List[StatefulTensor], **kwargs) -> int:
         volume = 0
@@ -38,9 +36,8 @@ class CPUTensorPlacementPolicy(TensorPlacementPolicy):
 
 
 class CUDATensorPlacementPolicy(TensorPlacementPolicy):
-
     def __init__(self, mem_stats_collector: Optional[MemStatsCollector] = None) -> None:
-        assert torch.cuda.is_available(), 'Cannot use CUDATensorPlacementPolicy when CUDA is not available'
+        assert torch.cuda.is_available(), "Cannot use CUDATensorPlacementPolicy when CUDA is not available"
         super().__init__(get_current_device(), mem_stats_collector=mem_stats_collector)
 
     def evict_tensors(self, hold_cuda_tensor_list: List[StatefulTensor], **kwargs) -> int:
@@ -48,7 +45,6 @@ class CUDATensorPlacementPolicy(TensorPlacementPolicy):
 
 
 class AutoTensorPlacementPolicy(TensorPlacementPolicy):
-
     def __init__(self, mem_stats_collector: Optional[MemStatsCollector] = None) -> None:
         super().__init__(None, mem_stats_collector=mem_stats_collector)
         # model data will use 1-self._warmup_non_model_data_ratio CUDA memory in warmup phase
@@ -56,13 +52,15 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
         self._warmup_non_model_data_ratio: float = 0.8
         self._steady_cuda_cap_ratio: float = 0.9
 
-    def evict_tensors(self,
-                      hold_cuda_tensor_list: List[StatefulTensor],
-                      cuda_demand: int = 0,
-                      warmup: bool = True,
-                      compute_list: List[StatefulTensor] = [],
-                      compute_idx: int = 0,
-                      **kwargs) -> int:
+    def evict_tensors(
+        self,
+        hold_cuda_tensor_list: List[StatefulTensor],
+        cuda_demand: int = 0,
+        warmup: bool = True,
+        compute_list: List[StatefulTensor] = [],
+        compute_idx: int = 0,
+        **kwargs,
+    ) -> int:
         """
         Evict tensors from CUDA device.
 
@@ -81,13 +79,13 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
         """
         start = time()
         cuda_capacity = colo_device_memory_capacity(get_current_device())
-        used_cuda_model_data = StatefulTensor.GST_MGR.total_mem['cuda']
+        used_cuda_model_data = StatefulTensor.GST_MGR.total_mem["cuda"]
         if warmup:
             # We designate a part of CUDA memory for model data in warmup iterations.
             max_cuda_non_model_data_per_period = cuda_capacity * self._warmup_non_model_data_ratio
         else:
             # max non-model-data cuda memory consumption of this sampling moment and the next sampling moment.
-            max_cuda_non_model_data_per_period = self.mem_stats_collector.next_period_non_model_data_usage('cuda')
+            max_cuda_non_model_data_per_period = self.mem_stats_collector.next_period_non_model_data_usage("cuda")
             cuda_capacity *= self._steady_cuda_cap_ratio
         total_cuda_model_data = cuda_capacity - max_cuda_non_model_data_per_period
         avail_cuda_model_data = total_cuda_model_data - used_cuda_model_data
@@ -99,15 +97,16 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
             to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
             to_free_tensor_list = hold_cuda_tensor_list
             if not warmup:
-                to_free_tensor_list = self._sort_hold_cuda_tensors(tuple(hold_cuda_tensor_list), compute_idx,
-                                                                   tuple(compute_list))
+                to_free_tensor_list = self._sort_hold_cuda_tensors(
+                    tuple(hold_cuda_tensor_list), compute_idx, tuple(compute_list)
+                )
                 # print(self._sort_hold_cuda_tensors.cache_info())
             end = time()
             for t in to_free_tensor_list:
                 if freed_cuda_model_data >= to_free_cuda_model_data:
                     break
                 freed_cuda_model_data += t.payload_size
-                colo_model_data_tensor_move_inline(t, torch.device('cpu'))
+                colo_model_data_tensor_move_inline(t, torch.device("cpu"))
             if freed_cuda_model_data < to_free_cuda_model_data:
                 raise RuntimeError(
                     f"Adjust layout failed! No enough CUDA memory! Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}"
@@ -126,14 +125,13 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
 
 
 class TensorPlacementPolicyFactory:
-
     @staticmethod
     def create(policy_name: str) -> Type[TensorPlacementPolicy]:
-        if policy_name == 'cpu':
+        if policy_name == "cpu":
             return CPUTensorPlacementPolicy
-        elif policy_name == 'cuda':
+        elif policy_name == "cuda":
             return CUDATensorPlacementPolicy
-        elif policy_name == 'auto':
+        elif policy_name == "auto":
             return AutoTensorPlacementPolicy
         else:
             raise TypeError(f"Unknown tensor placement policy {policy_name}")

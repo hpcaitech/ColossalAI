@@ -30,10 +30,9 @@ def all_reduce_mean(x: float, world_size: int) -> float:
 
 
 class Timer:
-
     def __init__(self) -> None:
         self.start_time: Optional[float] = None
-        self.duration: float = 0.
+        self.duration: float = 0.0
 
     def start(self) -> None:
         self.start_time = time()
@@ -42,13 +41,13 @@ class Timer:
         self.duration += time() - self.start_time
 
     def reset(self) -> None:
-        self.duration = 0.
+        self.duration = 0.0
 
 
 class ExperienceMakerPerformanceEvaluator(MakerCallback):
-
-    def __init__(self, actor_num_params: int, critic_num_params: int, initial_model_num_params: int,
-                 reward_model_num_params: int) -> None:
+    def __init__(
+        self, actor_num_params: int, critic_num_params: int, initial_model_num_params: int, reward_model_num_params: int
+    ) -> None:
         super().__init__()
         self.world_size = get_world_size()
         self.actor_num_params = actor_num_params
@@ -63,7 +62,7 @@ class ExperienceMakerPerformanceEvaluator(MakerCallback):
         self.make_experience_flop: int = 0
 
         print_rank_0(
-            f'ExperienceMaker actor: {actor_num_params/1024**3:.2f}B, critic: {critic_num_params/1024**3:.2f}B, initial model: {initial_model_num_params/1024**3:.2f}B, reward model: {reward_model_num_params/1024**3:.2f}B, world size: {self.world_size}'
+            f"ExperienceMaker actor: {actor_num_params/1024**3:.2f}B, critic: {critic_num_params/1024**3:.2f}B, initial model: {initial_model_num_params/1024**3:.2f}B, reward model: {reward_model_num_params/1024**3:.2f}B, world size: {self.world_size}"
         )
 
     def on_make_experience_start(self) -> None:
@@ -110,27 +109,29 @@ class ExperienceMakerPerformanceEvaluator(MakerCallback):
         avg_throughput = self.total_samples * self.world_size / (avg_overall_duration + 1e-12)
         avg_make_experience_tflops = self.make_experience_flop / 1e12 / (avg_make_experience_duration + 1e-12)
         avg_time_per_sample = (avg_overall_duration + 1e-12) / (self.total_samples * self.world_size)
-        avg_make_experience_time_per_sample = (avg_make_experience_duration + 1e-12) / \
-            (self.total_samples * self.world_size)
+        avg_make_experience_time_per_sample = (avg_make_experience_duration + 1e-12) / (
+            self.total_samples * self.world_size
+        )
         avg_send_time_per_sample = (avg_send_duration + 1e-12) / (self.total_samples * self.world_size)
 
         print_rank_0(
-            'Making Experience Performance Summary:\n' + f'Throughput: {avg_throughput:.3f} samples/sec\n'
-            + f'TFLOPS per GPU: {avg_make_experience_tflops:.3f}\n'
-            + f'Sample time (overall): {avg_time_per_sample:.3f} s\n'
-            + f'Sample time (make experience): {avg_make_experience_time_per_sample:.3f} s, {avg_make_experience_time_per_sample/avg_time_per_sample*100:.2f}%\n'
-
-            + f'Sample time (send): {avg_send_time_per_sample:.3f} s, {avg_send_time_per_sample/avg_time_per_sample*100:.2f}%\n'
+            "Making Experience Performance Summary:\n"
+            + f"Throughput: {avg_throughput:.3f} samples/sec\n"
+            + f"TFLOPS per GPU: {avg_make_experience_tflops:.3f}\n"
+            + f"Sample time (overall): {avg_time_per_sample:.3f} s\n"
+            + f"Sample time (make experience): {avg_make_experience_time_per_sample:.3f} s, {avg_make_experience_time_per_sample/avg_time_per_sample*100:.2f}%\n"
+            + f"Sample time (send): {avg_send_time_per_sample:.3f} s, {avg_send_time_per_sample/avg_time_per_sample*100:.2f}%\n"
         )
 
 
 class TrainerPerformanceEvaluator(TrainerCallback):
-
-    def __init__(self,
-                 actor_num_params: int,
-                 critic_num_params: int,
-                 enable_grad_checkpoint: bool = False,
-                 ignore_first_episodes: int = 1) -> None:
+    def __init__(
+        self,
+        actor_num_params: int,
+        critic_num_params: int,
+        enable_grad_checkpoint: bool = False,
+        ignore_first_episodes: int = 1,
+    ) -> None:
         super().__init__()
         self.world_size = get_world_size()
         self.actor_num_params = actor_num_params
@@ -146,7 +147,7 @@ class TrainerPerformanceEvaluator(TrainerCallback):
         self.learn_flop: int = 0
 
         print_rank_0(
-            f'Trainer actor: {self.actor_num_params/1024**3:.2f}B, critic: {self.critic_num_params/1024**3:.2f}B, world size: {self.world_size}'
+            f"Trainer actor: {self.actor_num_params/1024**3:.2f}B, critic: {self.critic_num_params/1024**3:.2f}B, world size: {self.world_size}"
         )
 
     def on_episode_start(self, episodes: int) -> None:
@@ -191,7 +192,7 @@ class TrainerPerformanceEvaluator(TrainerCallback):
 
     def on_fit_end(self) -> None:
         if self.total_samples == 0:
-            print_rank_0('No samples are collected, skip trainer performance evaluation')
+            print_rank_0("No samples are collected, skip trainer performance evaluation")
             return
         avg_train_duration = all_reduce_mean(self.batch_timer.duration, self.world_size)
         avg_update_duration = all_reduce_mean(self.update_timer.duration, self.world_size)
@@ -204,9 +205,10 @@ class TrainerPerformanceEvaluator(TrainerCallback):
         avg_update_time_per_sample = (avg_update_duration + 1e-12) / (self.total_samples * self.world_size)
 
         print_rank_0(
-            'Learning Performance Summary:\n' + f'Throughput: {avg_throughput:.3f} samples/sec\n'
-            + f'TFLOPS per GPU: {avg_learn_tflops:.3f}\n' + f'Sample time (overall): {avg_time_per_sample:.3f} s\n'
-            + f'Sample time (train): {avg_train_time_per_sample:.3f} s, {avg_train_time_per_sample/avg_time_per_sample*100:.2f}%\n'
-
-            + f'Sample time (update): {avg_update_time_per_sample:.3f} s, {avg_update_time_per_sample/avg_time_per_sample*100:.2f}%\n'
+            "Learning Performance Summary:\n"
+            + f"Throughput: {avg_throughput:.3f} samples/sec\n"
+            + f"TFLOPS per GPU: {avg_learn_tflops:.3f}\n"
+            + f"Sample time (overall): {avg_time_per_sample:.3f} s\n"
+            + f"Sample time (train): {avg_train_time_per_sample:.3f} s, {avg_train_time_per_sample/avg_time_per_sample*100:.2f}%\n"
+            + f"Sample time (update): {avg_update_time_per_sample:.3f} s, {avg_update_time_per_sample/avg_time_per_sample*100:.2f}%\n"
         )

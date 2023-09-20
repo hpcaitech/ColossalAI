@@ -42,8 +42,7 @@ class TorchAMPOptimizer(OptimizerWrapper):
         self.scaler.scale(loss).backward()
 
     def step(self):
-        """Update the parameters of the model
-        """
+        """Update the parameters of the model"""
         self.scaler.step(self.optim)
         self.scaler.update()
 

@@ -35,8 +35,7 @@ class Metric(ABC):
 
     @property
     def epoch_only(self):
-        """Returns :attr:`epoch_only`.
-        """
+        """Returns :attr:`epoch_only`."""
         return self._epoch_only
 
     @abstractmethod
@@ -44,20 +43,16 @@ class Metric(ABC):
         """Resets the metric to it's initial state.
         By default, this is called at the start of each epoch.
         """
-        pass
 
     @abstractmethod
     def update(self, *args, **kwargs) -> None:
         """Updates the metric's state using the passed batch output.
         By default, this is called once for each batch.
         """
-        pass
 
     @abstractmethod
     def get_last_step_value(self) -> float:
-        """Returns the metric value in the last iteration.
-        """
-        pass
+        """Returns the metric value in the last iteration."""
 
     @abstractmethod
     def get_accumulated_value(self):
@@ -67,7 +62,6 @@ class Metric(ABC):
         :return: the actual quantity of interest
         :rtype: Any
         """
-        pass
 
     @staticmethod
     @abstractmethod
@@ -77,7 +71,6 @@ class Metric(ABC):
         :return: The result of comparison
         :rtype: bool
         """
-        pass
 
 
 class LossMetric(Metric):
@@ -94,8 +87,7 @@ class LossMetric(Metric):
         self.count = 0
 
     def reset(self) -> None:
-        """Sets :attr:`last_step_loss` and :attr:`accum_loss` to zero.
-        """
+        """Sets :attr:`last_step_loss` and :attr:`accum_loss` to zero."""
         self.last_step_loss.zero_()
         self.accum_loss.zero_()
         self.count = 0
@@ -114,8 +106,7 @@ class LossMetric(Metric):
         self.count += 1
 
     def get_accumulated_value(self):
-        """Returns accumulated loss.
-        """
+        """Returns accumulated loss."""
         if gpc.is_initialized(ParallelMode.DATA):
             dist.all_reduce(self.accum_loss, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.DATA))
             self.accum_loss.div_(gpc.get_world_size(ParallelMode.DATA))
@@ -124,8 +115,7 @@ class LossMetric(Metric):
         return self.accum_loss.item()
 
     def get_last_step_value(self) -> float:
-        """Returns :attr:`last_step_loss`.
-        """
+        """Returns :attr:`last_step_loss`."""
         return self.last_step_loss.cpu().item()
 
     @staticmethod
@@ -141,7 +131,7 @@ class LearningRateMetric(Metric):
         initial_lr (float, optional): Initial learning rate, defaults to 0.0.
     """
 
-    def __init__(self, epoch_only: bool, initial_lr: float = 0.):
+    def __init__(self, epoch_only: bool, initial_lr: float = 0.0):
         super().__init__(epoch_only=epoch_only)
         self.lr = initial_lr
 
@@ -241,8 +231,8 @@ class MetricHook(BaseHook):
         self._is_stage_to_compute = is_no_pp_or_last_stage()
 
     def _check_metric_states_initialization(self, trainer):
-        if 'metrics' not in trainer.states:
-            self.init_runner_states(trainer, 'metrics', dict(train={}, test={}))
+        if "metrics" not in trainer.states:
+            self.init_runner_states(trainer, "metrics", dict(train={}, test={}))
 
 
 @HOOKS.register_module
@@ -266,8 +256,8 @@ class LossHook(MetricHook):
             self.test_loss = LossMetric(epoch_only=True)
 
             # register the metric calculator
-            trainer.states['metrics']['train']['Loss'] = self.train_loss
-            trainer.states['metrics']['test']['Loss'] = self.test_loss
+            trainer.states["metrics"]["train"]["Loss"] = self.train_loss
+            trainer.states["metrics"]["test"]["Loss"] = self.test_loss
 
     def before_train_epoch(self, trainer):
         if self._is_stage_to_compute:
@@ -307,7 +297,7 @@ class AccuracyHook(MetricHook):
             self.metric = AccuracyMetric(epoch_only=True, accuracy_func=self.accuracy_func)
 
             # register the metric
-            trainer.states['metrics']['test']['Accuracy'] = self.metric
+            trainer.states["metrics"]["test"]["Accuracy"] = self.metric
 
     def before_test(self, trainer):
         if self._is_stage_to_compute:
@@ -356,8 +346,9 @@ class ThroughputMetric(Metric):
         if self._use_local:
             self.last_step_num_samples *= gpc.get_world_size(ParallelMode.DATA)
         else:
-            self.last_step_used_time = all_reduce(self.last_step_used_time, ParallelMode.DATA) / \
-                gpc.get_world_size(ParallelMode.DATA)
+            self.last_step_used_time = all_reduce(self.last_step_used_time, ParallelMode.DATA) / gpc.get_world_size(
+                ParallelMode.DATA
+            )
             self.last_step_num_samples = all_reduce(self.last_step_num_samples, ParallelMode.DATA)
 
         sample_per_sec = _format_number(self.last_step_num_samples / (self.last_step_used_time + 1e-12).item())
@@ -367,8 +358,9 @@ class ThroughputMetric(Metric):
         if self._use_local:
             self.last_step_num_samples *= gpc.get_world_size(ParallelMode.DATA)
         else:
-            self.last_step_used_time = all_reduce(self.last_step_used_time, ParallelMode.DATA) / \
-                gpc.get_world_size(ParallelMode.DATA)
+            self.last_step_used_time = all_reduce(self.last_step_used_time, ParallelMode.DATA) / gpc.get_world_size(
+                ParallelMode.DATA
+            )
             self.last_step_num_samples = all_reduce(self.last_step_num_samples, ParallelMode.DATA)
 
         sample_per_sec = _format_number(self.last_step_num_samples / (self.last_step_used_time + 1e-12).item())
@@ -379,8 +371,9 @@ class ThroughputMetric(Metric):
             return f"{sample_per_sec} sample_per_sec"
 
     def get_accumulated_value(self) -> float:
-        self.accumulated_used_time = all_reduce(self.accumulated_used_time, ParallelMode.DATA) / \
-            gpc.get_world_size(ParallelMode.DATA)
+        self.accumulated_used_time = all_reduce(self.accumulated_used_time, ParallelMode.DATA) / gpc.get_world_size(
+            ParallelMode.DATA
+        )
         self.accumulated_num_samples = all_reduce(self.accumulated_num_samples, ParallelMode.DATA)
         return (self.accumulated_num_samples / (self.accumulated_used_time + 1e-12)).item()
 
@@ -411,14 +404,16 @@ class ThroughputHook(MetricHook):
     def after_hook_is_attached(self, trainer):
         self._check_metric_states_initialization(trainer)
         if self._is_stage_to_compute:
-            self.metric = ThroughputMetric(epoch_only=True,
-                                           ignored_steps=self.ignored_steps,
-                                           tflop_per_step=self._tflop_per_step,
-                                           use_local=self._use_local)
+            self.metric = ThroughputMetric(
+                epoch_only=True,
+                ignored_steps=self.ignored_steps,
+                tflop_per_step=self._tflop_per_step,
+                use_local=self._use_local,
+            )
 
             # register the metric
-            trainer.states['metrics']['train']['Throughput'] = self.metric
-            trainer.states['metrics']['test']['Throughput'] = self.metric
+            trainer.states["metrics"]["train"]["Throughput"] = self.metric
+            trainer.states["metrics"]["test"]["Throughput"] = self.metric
 
     def before_train_epoch(self, trainer):
         if self._is_stage_to_compute:
@@ -426,8 +421,9 @@ class ThroughputHook(MetricHook):
 
     def after_train_iter(self, trainer, *args):
         if self._is_stage_to_compute:
-            self.metric.update(trainer.engine.schedule.batch_size,
-                               trainer._timer.get_timer('Train-step').get_elapsed_time())
+            self.metric.update(
+                trainer.engine.schedule.batch_size, trainer._timer.get_timer("Train-step").get_elapsed_time()
+            )
 
     def before_test(self, trainer):
         if self._is_stage_to_compute:
@@ -435,5 +431,6 @@ class ThroughputHook(MetricHook):
 
     def after_test_iter(self, trainer, *args):
         if self._is_stage_to_compute:
-            self.metric.update(trainer.engine.schedule.batch_size,
-                               trainer._timer.get_timer('Test-step').get_elapsed_time())
+            self.metric.update(
+                trainer.engine.schedule.batch_size, trainer._timer.get_timer("Test-step").get_elapsed_time()
+            )

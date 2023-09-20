@@ -1,6 +1,5 @@
-import os
 import threading
-from typing import Dict, List, Tuple
+from typing import List
 
 import torch.distributed as dist
 from torch.distributed import rpc
@@ -14,14 +13,15 @@ class PipelineProcessGroup:
     def __init__(self) -> None:
         self.is_initialize = False
 
-    def set_global_info(self,
-                        rank: int,
-                        world_size: int,
-                        dp_degree: int = 1,
-                        tp_degree: int = 1,
-                        num_worker_threads: int = 1,
-                        device: str = "cuda") -> None:
-
+    def set_global_info(
+        self,
+        rank: int,
+        world_size: int,
+        dp_degree: int = 1,
+        tp_degree: int = 1,
+        num_worker_threads: int = 1,
+        device: str = "cuda",
+    ) -> None:
         device_mesh_size = dp_degree * tp_degree
         assert world_size % device_mesh_size == 0, "world_size must be the multiple of dp_degree * tp_degree !!!"
         self._num_worker_threads = num_worker_threads
@@ -60,8 +60,8 @@ class PipelineProcessGroup:
         device = self.device
         world_size = self.get_world_size()
         rank = self.get_global_rank()
-        backend = 'nccl' if device == 'cuda' else 'gloo'
-        dist.init_process_group(backend, world_size=world_size, rank=rank, group_name='main_group')
+        backend = "nccl" if device == "cuda" else "gloo"
+        dist.init_process_group(backend, world_size=world_size, rank=rank, group_name="main_group")
 
     def _initialize_pp_process_group(self) -> None:
         rank = self.get_global_rank()
@@ -71,9 +71,9 @@ class PipelineProcessGroup:
         options = rpc.TensorPipeRpcBackendOptions(num_worker_threads=self._num_worker_threads)
 
         for pp_rank in self._pp_ranks:
-            options.set_device_map(f'work{pp_rank}', {rank: pp_rank})
+            options.set_device_map(f"work{pp_rank}", {rank: pp_rank})
 
-        rpc.init_rpc(name=f'work{rank}', rank=rank, world_size=world_size, rpc_backend_options=options)
+        rpc.init_rpc(name=f"work{rank}", rank=rank, world_size=world_size, rpc_backend_options=options)
 
     def _initialize_tp_dp_process_group(self) -> None:
         rank = self.get_global_rank()
@@ -147,10 +147,10 @@ class PipelineProcessGroup:
 
     def get_chimera_all_reduce_group(self, pp_rank: int):
         with self.chimera_lock:
-            if not hasattr(self, 'chimera_groups'):
+            if not hasattr(self, "chimera_groups"):
                 world_size = self.get_world_size()
                 stage_num = self.get_stage_num()
-                assert world_size % 2 == 0, 'world_size must be even in chimera!'
+                assert world_size % 2 == 0, "world_size must be even in chimera!"
                 self.chimera_groups = {}
                 for rank in range(world_size // 2):
                     pair = [rank, world_size - 1 - rank]

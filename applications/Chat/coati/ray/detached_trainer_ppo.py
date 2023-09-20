@@ -1,12 +1,11 @@
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import ray
 import torch
-from coati.experience_maker import Experience, NaiveExperienceMaker
+from coati.experience_maker import Experience
 from coati.models.base import Actor, Critic
 from coati.models.loss import PolicyLoss, ValueLoss
-from coati.trainer.callbacks import Callback
-from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy, Strategy
+from coati.trainer.strategies import GeminiStrategy, LowLevelZeroStrategy, Strategy
 from torch.optim import Adam
 
 from colossalai.nn.optimizer import HybridAdam
@@ -14,27 +13,14 @@ from colossalai.nn.optimizer import HybridAdam
 from .callbacks import TrainerCallback, TrainerPerformanceEvaluator
 from .detached_trainer_base import DetachedTrainer
 from .lora_constructor import LoRAConstructor
-from .utils import (
-    get_actor_from_args,
-    get_critic_from_args,
-    get_model_numel,
-    get_rank,
-    get_strategy_from_args,
-    is_rank_0,
-    set_dist_env,
-    state_dict_to,
+from .utils import get_model_numel, get_rank, set_dist_env, state_dict_to
+
+
+@ray.remote(
+    concurrency_groups={"buffer_length": 1, "buffer_append": 1, "buffer_sample": 1, "model_io": 1, "compute": 1}
 )
-
-
-@ray.remote(concurrency_groups={
-    "buffer_length": 1,
-    "buffer_append": 1,
-    "buffer_sample": 1,
-    "model_io": 1,
-    "compute": 1
-})
 class DetachedPPOTrainer(DetachedTrainer):
-    '''
+    """
         Detached Trainer for PPO algorithm
     Args:
         strategy (Strategy): the strategy to use for training
@@ -52,7 +38,7 @@ class DetachedPPOTrainer(DetachedTrainer):
         dataloader_pin_memory (bool, defaults to True): whether to pin memory for data loader
         callbacks (List[Callback], defaults to []): the callbacks to call during training process
         generate_kwargs (dict, optional): the kwargs to use while model generating
-    '''
+    """
 
     def __init__(
         self,
@@ -92,21 +78,24 @@ class DetachedPPOTrainer(DetachedTrainer):
             self.actor_optim = Adam(self.actor.parameters(), lr=1e-7)
             self.critic_optim = Adam(self.critic.parameters(), lr=1e-7)
 
-        (self.actor, self.actor_optim), (self.critic, self.critic_optim) = \
-            self.strategy.prepare((self.actor, self.actor_optim), (self.critic, self.critic_optim))
+        (self.actor, self.actor_optim), (self.critic, self.critic_optim) = self.strategy.prepare(
+            (self.actor, self.actor_optim), (self.critic, self.critic_optim)
+        )
 
         # configure trainer
         self.actor_loss_fn = PolicyLoss(eps_clip)
         self.critic_loss_fn = ValueLoss(value_clip)
 
-        super().__init__(experience_maker_holder_name_list,
-                         train_batch_size=train_batch_size,
-                         buffer_limit=buffer_limit,
-                         dataloader_pin_memory=dataloader_pin_memory,
-                         callbacks=callbacks,
-                         debug=debug)
+        super().__init__(
+            experience_maker_holder_name_list,
+            train_batch_size=train_batch_size,
+            buffer_limit=buffer_limit,
+            dataloader_pin_memory=dataloader_pin_memory,
+            callbacks=callbacks,
+            debug=debug,
+        )
         if self._debug:
-            print(f'[trainer{get_rank()}] will send state dict to {experience_maker_holder_name_list}')
+            print(f"[trainer{get_rank()}] will send state dict to {experience_maker_holder_name_list}")
 
         self._update_lora_weights = update_lora_weights
 
@@ -115,7 +104,7 @@ class DetachedPPOTrainer(DetachedTrainer):
     def _update_remote_makers(self, fully_update: bool = False, **config):
         # TODO: balance duties
         if not fully_update:
-            config['requires_grad_only'] = True
+            config["requires_grad_only"] = True
         self.update_target_holder_list()
         # mark start, ensure order
         tasks = []
@@ -131,7 +120,9 @@ class DetachedPPOTrainer(DetachedTrainer):
                     target_holder.update_experience_maker.remote(
                         new_actor_state_dict=state_dict_shard,
                         new_actor_lora_config_dict=self._get_model_lora_config_dict(self.actor),
-                        fully_update=fully_update))
+                        fully_update=fully_update,
+                    )
+                )
         # sending loop
         for state_dict_shard in self._get_model_state_dict_shard(self.critic, fully_update=fully_update, **config):
             for target_holder in self.target_holder_list:
@@ -139,7 +130,9 @@ class DetachedPPOTrainer(DetachedTrainer):
                     target_holder.update_experience_maker.remote(
                         new_critic_state_dict=state_dict_shard,
                         new_critic_lora_config_dict=self._get_model_lora_config_dict(self.critic),
-                        fully_update=fully_update))
+                        fully_update=fully_update,
+                    )
+                )
         ray.get(tasks)
         # mark end
         for target_holder in self.target_holder_list:
@@ -152,26 +145,24 @@ class DetachedPPOTrainer(DetachedTrainer):
 
         num_actions = experience.action_mask.size(1)
         action_log_probs = self.actor(experience.sequences, num_actions, attention_mask=experience.attention_mask)
-        actor_loss = self.actor_loss_fn(action_log_probs,
-                                        experience.action_log_probs,
-                                        experience.advantages,
-                                        action_mask=experience.action_mask)
+        actor_loss = self.actor_loss_fn(
+            action_log_probs, experience.action_log_probs, experience.advantages, action_mask=experience.action_mask
+        )
         self.strategy.backward(actor_loss, self.actor, self.actor_optim)
         self.strategy.optimizer_step(self.actor_optim)
         self.actor_optim.zero_grad()
 
-        values = self.critic(experience.sequences,
-                             action_mask=experience.action_mask,
-                             attention_mask=experience.attention_mask)
-        critic_loss = self.critic_loss_fn(values,
-                                          experience.values,
-                                          experience.reward,
-                                          action_mask=experience.action_mask)
+        values = self.critic(
+            experience.sequences, action_mask=experience.action_mask, attention_mask=experience.attention_mask
+        )
+        critic_loss = self.critic_loss_fn(
+            values, experience.values, experience.reward, action_mask=experience.action_mask
+        )
 
         self.strategy.backward(critic_loss, self.critic, self.critic_optim)
         self.strategy.optimizer_step(self.critic_optim)
         self.critic_optim.zero_grad()
-        return {'actor_loss': actor_loss.item(), 'critic_loss': critic_loss.item()}
+        return {"actor_loss": actor_loss.item(), "critic_loss": critic_loss.item()}
 
     def strategy_save_actor(self, path: str, only_rank0: bool = False) -> None:
         self.strategy.save_model(self.actor, path, only_rank0)

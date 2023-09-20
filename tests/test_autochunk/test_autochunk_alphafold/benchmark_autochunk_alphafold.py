@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 import torch
 import torch.fx
@@ -111,13 +111,14 @@ def _benchmark_speed(model, inputs, loop=5):
 
 def benchmark_evoformer_stack(data_args):
     from test_autochunk_evoformer_stack import get_data, get_model
+
     print("\nmsa len: %d, pair len: %d" % (data_args[0], data_args[1]))
     max_mem = _benchmark_evoformer_stack_origin(data_args, get_model, get_data)
     for ratio in [0.5, 0.4, 0.3, 0.2, 0.1]:
         try:
             _benchmark_evoformer_stack_gm(data_args, max_mem * ratio, get_model, get_data)
         except RuntimeError as e:
-            if e.args[0] == 'Search failed. Try a larger memory threshold.':
+            if e.args[0] == "Search failed. Try a larger memory threshold.":
                 break
         except Exception as e:
             raise e

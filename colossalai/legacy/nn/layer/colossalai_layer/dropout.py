@@ -24,7 +24,7 @@ class Dropout(ColossalaiModule):
         super().__init__(drop, tensor_parallel=tensor_parallel)
 
     def forward(self, *args):
-        if self.tensor_parallel in [None, '1d']:
+        if self.tensor_parallel in [None, "1d"]:
             return super().forward(*args)
         else:
             with seed(ParallelMode.TENSOR):

@@ -4,7 +4,6 @@ import torch
 
 
 class ParamGenerator(ABC):
-
     def append(self, param: torch.nn.Parameter):
         pass
 

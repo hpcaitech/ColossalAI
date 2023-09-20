@@ -20,14 +20,12 @@ def divide(numerator, denominator):
     Returns:
         int: the result of exact division.
     """
-    assert denominator != 0, 'denominator can not be zero'
-    assert numerator % denominator == 0, \
-        '{} is not divisible by {}'.format(numerator, denominator)
+    assert denominator != 0, "denominator can not be zero"
+    assert numerator % denominator == 0, "{} is not divisible by {}".format(numerator, denominator)
     return numerator // denominator
 
 
 class TransformDistSpec(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, tensor, old_dist_spec, dist_spec, pg, forward_trans_func, backward_trans_func):
         ctx.old_dist_spec = old_dist_spec
@@ -38,12 +36,17 @@ class TransformDistSpec(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_outputs):
-        return ctx.backward_trans_func(grad_outputs, ctx.dist_spec, ctx.old_dist_spec,
-                                       ctx.pg), None, None, None, None, None
+        return (
+            ctx.backward_trans_func(grad_outputs, ctx.dist_spec, ctx.old_dist_spec, ctx.pg),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
 
 
 class DistSpecManager:
-
     _use_autograd_function: bool = True
 
     @staticmethod
@@ -51,8 +54,9 @@ class DistSpecManager:
         pass
 
     @staticmethod
-    def _shard_as(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec,
-                  pg: ProcessGroup) -> torch.Tensor:
+    def _shard_as(
+        tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec, pg: ProcessGroup
+    ) -> torch.Tensor:
         """_shard_as: shard the tensor w.r.t a distributed specification.
         Assuming the tensor passed in is a global (replicated) tensor.
         Args:
@@ -62,7 +66,9 @@ class DistSpecManager:
         Returns:
             torch.Tensor: a torch tensor after sharded.
         """
-        assert old_dist_spec.placement.value == 'r', f"The old_dist_spec of DistSpecManager._shard_as must be REPLICATE!"
+        assert (
+            old_dist_spec.placement.value == "r"
+        ), f"The old_dist_spec of DistSpecManager._shard_as must be REPLICATE!"
         DistSpecManager._sanity_check(old_dist_spec, dist_spec)
 
         chunk = tensor
@@ -86,9 +92,9 @@ class DistSpecManager:
         Returns:
             torch.Tensor: a replicated tensor.
         """
-        assert old_dist_spec.placement.value == 's', f"The old_dist_spec of DistSpecManager._gather must be SHARD!"
+        assert old_dist_spec.placement.value == "s", f"The old_dist_spec of DistSpecManager._gather must be SHARD!"
         is_cpu_tensor = False
-        if tensor.device.type == 'cpu':
+        if tensor.device.type == "cpu":
             # pytorch lower than 1.11 dose not support gather a cpu tensor.
             # Therefore, we transfer tensor to GPU before gather.
             saved_dev = tensor.device
@@ -96,14 +102,14 @@ class DistSpecManager:
             is_cpu_tensor = True
 
         buffer = [torch.empty_like(tensor) for _ in range(pg.tp_world_size())]
-        assert tensor.device.type == 'cuda'
+        assert tensor.device.type == "cuda"
         dist.all_gather(buffer, tensor, group=pg.tp_process_group())
         for i in range(len(old_dist_spec.dims) - 1, -1, -1):
             new_buffer = []
             dim = old_dist_spec.dims[i]
             num_parts = old_dist_spec.num_partitions[i]
             for start in range(0, len(buffer), num_parts):
-                new_buffer.append(torch.cat(buffer[start:start + num_parts], dim))
+                new_buffer.append(torch.cat(buffer[start : start + num_parts], dim))
             buffer = new_buffer
         assert len(buffer) == 1
 
@@ -112,15 +118,17 @@ class DistSpecManager:
         return buffer[0]
 
     @staticmethod
-    def _all_to_all(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec,
-                    pg: ProcessGroup) -> torch.Tensor:
+    def _all_to_all(
+        tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec, pg: ProcessGroup
+    ) -> torch.Tensor:
         world_size = pg.tp_world_size()
         if world_size == 1:
             return tensor
 
-        assert tensor.device.type == "cuda", \
-            "Currently, only CUDA Tensor with NCCL backend is supported for the requested AlltoAll " \
+        assert tensor.device.type == "cuda", (
+            "Currently, only CUDA Tensor with NCCL backend is supported for the requested AlltoAll "
             f"collective function, however, we got {tensor.device.type} device"
+        )
 
         gather_dim = old_dist_spec.dims[0]
         scatter_dim = dist_spec.dims[0]
@@ -164,8 +172,9 @@ class DistSpecManager:
         return DistSpecManager._shard_as(tensor, old_dist_spec, dist_spec, pg)
 
     @staticmethod
-    def handle_trans_spec(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec,
-                          pg: ProcessGroup) -> torch.Tensor:
+    def handle_trans_spec(
+        tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec, pg: ProcessGroup
+    ) -> torch.Tensor:
         assert isinstance(old_dist_spec, _DistSpec), f"{type(old_dist_spec)} should be _DistSpec"
         assert isinstance(dist_spec, _DistSpec), f"{type(dist_spec)} should be _DistSpec"
 
@@ -174,7 +183,7 @@ class DistSpecManager:
             (DistPlacementPattern.REPLICATE, DistPlacementPattern.REPLICATE): DistSpecManager._r2r,
             (DistPlacementPattern.REPLICATE, DistPlacementPattern.SHARD): DistSpecManager._r2s,
             (DistPlacementPattern.SHARD, DistPlacementPattern.REPLICATE): DistSpecManager._s2r,
-            (DistPlacementPattern.SHARD, DistPlacementPattern.SHARD): DistSpecManager._s2s
+            (DistPlacementPattern.SHARD, DistPlacementPattern.SHARD): DistSpecManager._s2s,
         }
 
         forward_trans_handle = trans_funcs[trans_func_key]
@@ -183,8 +192,9 @@ class DistSpecManager:
 
         backward_trans_handle = trans_funcs[(dist_spec.placement, old_dist_spec.placement)]
 
-        return TransformDistSpec.apply(tensor, old_dist_spec, dist_spec, pg, forward_trans_handle,
-                                       backward_trans_handle)
+        return TransformDistSpec.apply(
+            tensor, old_dist_spec, dist_spec, pg, forward_trans_handle, backward_trans_handle
+        )
 
     @staticmethod
     @contextmanager

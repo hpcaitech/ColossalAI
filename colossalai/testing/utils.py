@@ -55,7 +55,6 @@ def parameterize(argument: str, values: List[Any]) -> Callable:
     """
 
     def _wrapper(func):
-
         def _execute_function_by_param(**kwargs):
             for val in values:
                 arg_map = {argument: val}
@@ -120,11 +119,11 @@ def rerun_on_exception(exception_type: Exception = Exception, pattern: str = Non
         return False
 
     def _wrapper(func):
-
         def _run_until_success(*args, **kwargs):
             try_count = 0
-            assert max_try is None or isinstance(max_try, int), \
-                f'Expected max_try to be None or int, but got {type(max_try)}'
+            assert max_try is None or isinstance(
+                max_try, int
+            ), f"Expected max_try to be None or int, but got {type(max_try)}"
 
             while max_try is None or try_count < max_try:
                 try:
@@ -132,14 +131,14 @@ def rerun_on_exception(exception_type: Exception = Exception, pattern: str = Non
                     ret = func(*args, **kwargs)
                     return ret
                 except exception_type as e:
-                    error_lines = str(e).split('\n')
+                    error_lines = str(e).split("\n")
                     if try_count < max_try and (pattern is None or _match_lines(error_lines, pattern)):
-                        print('Exception is caught, retrying...')
+                        print("Exception is caught, retrying...")
                         # when pattern is not specified, we always skip the exception
                         # when pattern is specified, we only skip when pattern is matched
                         continue
                     else:
-                        print('Maximum number of attempts is reached or pattern is not matched, no more retrying...')
+                        print("Maximum number of attempts is reached or pattern is not matched, no more retrying...")
                         raise e
 
         # Override signature
@@ -198,7 +197,6 @@ def skip_if_not_enough_gpus(min_gpus: int):
     """
 
     def _wrap_func(f):
-
         def _execute_by_gpu_num(*args, **kwargs):
             num_avail_gpu = torch.cuda.device_count()
             if num_avail_gpu >= min_gpus:
@@ -263,7 +261,6 @@ def clear_cache_before_run():
     """
 
     def _wrap_func(f):
-
         def _clear_cache(*args, **kwargs):
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()

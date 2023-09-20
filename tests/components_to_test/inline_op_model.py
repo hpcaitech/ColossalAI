@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from colossalai.legacy.nn import CheckpointModule
 
@@ -19,7 +18,6 @@ class InlineOpModule(CheckpointModule):
         self.proj2 = nn.Linear(8, 8)
 
     def forward(self, x):
-
         x = self.proj1(x)
         # inline add_
         x.add_(10)
@@ -31,16 +29,14 @@ class InlineOpModule(CheckpointModule):
 
 
 class DummyDataLoader(DummyDataGenerator):
-
     def generate(self):
         data = torch.rand(16, 4)
         label = torch.randint(low=0, high=2, size=(16,))
         return data, label
 
 
-@non_distributed_component_funcs.register(name='inline_op_model')
+@non_distributed_component_funcs.register(name="inline_op_model")
 def get_training_components():
-
     def model_builder(checkpoint=False):
         return InlineOpModule(checkpoint)
 
@@ -49,4 +45,5 @@ def get_training_components():
 
     criterion = torch.nn.CrossEntropyLoss()
     from colossalai.nn.optimizer import HybridAdam
+
     return model_builder, trainloader, testloader, HybridAdam, criterion

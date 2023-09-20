@@ -68,12 +68,14 @@ class OnPolicyTrainer(ABC):
         callbacks (List[Callback], defaults to []): the callbacks to call during training process
     """
 
-    def __init__(self,
-                 strategy: Strategy,
-                 data_buffer: NaiveExperienceBuffer,
-                 sample_buffer: bool,
-                 dataloader_pin_memory: bool,
-                 callbacks: List[Callback] = []) -> None:
+    def __init__(
+        self,
+        strategy: Strategy,
+        data_buffer: NaiveExperienceBuffer,
+        sample_buffer: bool,
+        dataloader_pin_memory: bool,
+        callbacks: List[Callback] = [],
+    ) -> None:
         super().__init__()
         self.strategy = strategy
         self.data_buffer = data_buffer

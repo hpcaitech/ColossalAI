@@ -43,31 +43,33 @@ def _run_step(model, optimizer, data, label, criterion, grad_handler):
 
 
 @parameterize("cpu_offload", [True])
-@parameterize("use_cpuadam", [True])    # We do not use Hybrid Adam right now, since it has a little bug
+@parameterize("use_cpuadam", [True])  # We do not use Hybrid Adam right now, since it has a little bug
 @parameterize("reuse_fp16_shard", [True, False])
 @parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
-def _run_test_sharded_optim_v2(cpu_offload,
-                               shard_strategy_class,
-                               use_cpuadam,
-                               reuse_fp16_shard,
-                               gpu_margin_mem_ratio=0.0):
+def _run_test_sharded_optim_v2(
+    cpu_offload, shard_strategy_class, use_cpuadam, reuse_fp16_shard, gpu_margin_mem_ratio=0.0
+):
     shard_strategy = shard_strategy_class()
     if use_cpuadam and cpu_offload is False:
         return
     MOE_CONTEXT.reset_loss()
-    get_components_func = non_distributed_component_funcs.get_callable('hanging_param_model')
+    get_components_func = non_distributed_component_funcs.get_callable("hanging_param_model")
     _, train_dataloader, _, optimizer_class, _ = get_components_func()
     criterion = MoeLoss(aux_weight=0.01, loss_fn=torch.nn.CrossEntropyLoss)
 
-    with ZeroInitContext(target_device=torch.device('cpu') if cpu_offload else get_current_device(),
-                         shard_strategy=shard_strategy,
-                         shard_param=True):
+    with ZeroInitContext(
+        target_device=torch.device("cpu") if cpu_offload else get_current_device(),
+        shard_strategy=shard_strategy,
+        shard_param=True,
+    ):
         zero_model = MoeModel(checkpoint=True)
 
-    zero_model = ShardedModelV2(zero_model,
-                                shard_strategy,
-                                tensor_placement_policy='cpu' if cpu_offload else 'cuda',
-                                reuse_fp16_shard=reuse_fp16_shard)
+    zero_model = ShardedModelV2(
+        zero_model,
+        shard_strategy,
+        tensor_placement_policy="cpu" if cpu_offload else "cuda",
+        reuse_fp16_shard=reuse_fp16_shard,
+    )
 
     # check whether parameters are identical in ddp
     for name, p in zero_model.named_parameters():
@@ -82,12 +84,11 @@ def _run_test_sharded_optim_v2(cpu_offload,
         optimizer_class = CPUAdam
     optim = optimizer_class(model.parameters(), lr=1e-3)
     sharded_optim = optimizer_class(zero_model.parameters(), lr=1e-3)
-    sharded_optim = ShardedOptimizerV2(zero_model,
-                                       sharded_optim,
-                                       initial_scale=2**5,
-                                       gpu_margin_mem_ratio=gpu_margin_mem_ratio)
+    sharded_optim = ShardedOptimizerV2(
+        zero_model, sharded_optim, initial_scale=2**5, gpu_margin_mem_ratio=gpu_margin_mem_ratio
+    )
 
-    amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False)
+    amp_config = dict(opt_level="O2", keep_batchnorm_fp32=False)
     apex_model, apex_optimizer = convert_to_apex_amp(model, optim, amp_config)
     apex_grad_handler = MoeGradientHandler(model)
 
@@ -103,7 +104,7 @@ def _run_test_sharded_optim_v2(cpu_offload,
 
 
 def _run_dist(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     MOE_CONTEXT.setup(seed=42)
     _run_test_sharded_optim_v2()
 
@@ -116,5 +117,5 @@ def test_moe_zero_optim(world_size):
     spawn(_run_dist, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_moe_zero_optim(world_size=4)
