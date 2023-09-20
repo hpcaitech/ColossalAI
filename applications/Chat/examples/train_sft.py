@@ -29,12 +29,12 @@ def train(args):
     # configure strategy
     if args.strategy == "ddp":
         strategy = DDPStrategy()
-    elif args.strategy == 'colossalai_gemini':
-        strategy = GeminiStrategy(placement_policy='auto')
-    elif args.strategy == 'colossalai_zero2':
-        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
-    elif args.strategy == 'colossalai_zero2_cpu':
-        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cpu')
+    elif args.strategy == "colossalai_gemini":
+        strategy = GeminiStrategy(placement_policy="auto")
+    elif args.strategy == "colossalai_zero2":
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy="cuda")
+    elif args.strategy == "colossalai_zero2_cpu":
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy="cpu")
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
@@ -179,9 +179,6 @@ def train(args):
     )
 
     # save model checkpoint after fitting on only rank0
-    # model.eval()
-    # print(type(model))
-    # print("eval eval")
     strategy.save_pretrained(model, path=args.save_path, only_rank0=True, tokenizer=tokenizer)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:

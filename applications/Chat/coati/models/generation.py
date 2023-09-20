@@ -69,7 +69,6 @@ def _sample(
         next_token_logits = logits_processor(input_ids, next_token_logits)
         # sample
         probs = torch.softmax(next_token_logits, dim=-1, dtype=torch.float)
-        print(probs)
         next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
 
         # finished sentences should have their next token be a padding token

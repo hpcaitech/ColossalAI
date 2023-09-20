@@ -70,9 +70,7 @@ class LoraLinear(lora.LoRALayer, nn.Module):
         def T(w):
             return w.T if self.fan_in_fan_out else w
 
-        print("self.merge_weights and not self.merged" + str(self.merge_weights) + str(not self.merged))
         nn.Module.eval(self)
-        self.merge_weights = True
         if self.merge_weights and not self.merged:
             # Merge the weights and mark it
             if self.r > 0:
@@ -102,12 +100,12 @@ def _lora_linear_wrapper(linear: nn.Linear, lora_rank: int) -> LoraLinear:
     return lora_linear
 
 
-def _convert_to_lora_recursively(module: nn.Module, lora_rank: int, merge_weights: bool = False) -> None:
+def _convert_to_lora_recursively(module: nn.Module, lora_rank: int) -> None:
     for name, child in module.named_children():
         if isinstance(child, nn.Linear):
-            setattr(module, name, _lora_linear_wrapper(child, lora_rank, merge_weights))
+            setattr(module, name, _lora_linear_wrapper(child, lora_rank))
         else:
-            _convert_to_lora_recursively(child, lora_rank, merge_weights)
+            _convert_to_lora_recursively(child, lora_rank)
 
 
 def convert_to_lora_module(module: nn.Module, lora_rank: int, lora_train_bias: str = "none") -> nn.Module:
@@ -122,7 +120,7 @@ def convert_to_lora_module(module: nn.Module, lora_rank: int, lora_train_bias: s
     """
     if lora_rank <= 0:
         return module
-    _convert_to_lora_recursively(module, lora_rank, merge_weights)
+    _convert_to_lora_recursively(module, lora_rank)
     lora.mark_only_lora_as_trainable(module, lora_train_bias)
     return module
 
@@ -143,5 +141,5 @@ class LoRAModule(nn.Module):
         self.lora_rank = lora_rank
         self.lora_train_bias = lora_train_bias
 
-    def convert_to_lora(self, merge_weights: bool = False) -> None:
-        convert_to_lora_module(self, self.lora_rank, self.lora_train_bias, merge_weights)
+    def convert_to_lora(self) -> None:
+        convert_to_lora_module(self, self.lora_rank, self.lora_train_bias)

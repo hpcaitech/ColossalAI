@@ -1,6 +1,5 @@
 import argparse
 import warnings
-from random import randint
 
 import torch
 import torch.distributed as dist
@@ -27,10 +26,10 @@ def train(args):
     # configure strategy
     if args.strategy == "ddp":
         strategy = DDPStrategy()
-    elif args.strategy == 'colossalai_gemini':
-        strategy = GeminiStrategy(placement_policy='auto')
-    elif args.strategy == 'colossalai_zero2':
-        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
+    elif args.strategy == "colossalai_gemini":
+        strategy = GeminiStrategy(placement_policy="auto")
+    elif args.strategy == "colossalai_zero2":
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy="cuda")
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
@@ -164,8 +163,6 @@ def train(args):
         use_wandb=args.use_wandb,
     )
     # save model checkpoint after fitting on only rank0
-    strategy.eval(model)
-    print(args.save_path)
     strategy.save_model(model, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:

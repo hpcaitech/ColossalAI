@@ -23,10 +23,10 @@ def train(args):
     # configure strategy
     if args.strategy == "ddp":
         strategy = DDPStrategy()
-    elif args.strategy == 'colossalai_gemini':
-        strategy = GeminiStrategy(placement_policy='auto')
-    elif args.strategy == 'colossalai_zero2':
-        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cuda')
+    elif args.strategy == "colossalai_gemini":
+        strategy = GeminiStrategy(placement_policy="auto")
+    elif args.strategy == "colossalai_zero2":
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy="cuda")
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 

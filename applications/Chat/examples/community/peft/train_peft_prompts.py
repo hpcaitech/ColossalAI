@@ -23,10 +23,10 @@ def main(args):
     # configure strategy
     if args.strategy == "ddp":
         strategy = DDPStrategy()
-    elif args.strategy == 'colossalai_gemini':
-        strategy = GeminiStrategy(placement_policy='auto', initial_scale=2**5)
-    elif args.strategy == 'colossalai_zero2':
-        strategy = LowLevelZeroStrategy(stage=2, placement_policy='cpu')
+    elif args.strategy == "colossalai_gemini":
+        strategy = GeminiStrategy(placement_policy="auto", initial_scale=2**5)
+    elif args.strategy == "colossalai_zero2":
+        strategy = LowLevelZeroStrategy(stage=2, placement_policy="cpu")
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 

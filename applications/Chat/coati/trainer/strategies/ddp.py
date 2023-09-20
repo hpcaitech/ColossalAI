@@ -16,7 +16,6 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from colossalai.booster.plugin import TorchDDPPlugin
 from colossalai.booster.plugin.torch_ddp_plugin import TorchDDPModel
 
-from ...models.lora import LoraLinear
 from .base import Strategy
 from .sampler import DistributedSampler
 
@@ -111,9 +110,6 @@ class DDPStrategy(Strategy):
         # HACK: rename keys of pytorch_model.bin
         if dist.get_rank() == 0:
             _replace_keys(model_path, lambda k: k.replace("model.", "", 1))
-
-    def load_pretrained(self, model, path):
-        self.load_model(model, path, strict=False)
 
     def get_model_state_dict_shard(self, model: nn.Module, **config):
         # TODO: implement sharding on naive strategy
