@@ -260,8 +260,8 @@ class LazyTensor(torch.Tensor):
         packed = None
 
         for func, args, kwargs in self._op_buffer:
-            if func.__name__ == "requires_grad_":
-                packed = (func, args, kwargs)
+            if func == torch.Tensor.requires_grad_:
+                packed = func, args, kwargs  # requires grad should be set at last
             else:
                 self._pre_op_fn()
                 o = func(*tree_map(replace, args), **tree_map(replace, kwargs))
