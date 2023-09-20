@@ -25,7 +25,7 @@ try:
     HAS_AUTO_GPTQ = True
 except:
     HAS_AUTO_GPTQ = False
-    print("please install triton from https://github.com/PanQiWei/AutoGPTQ")
+    print("please install AutoGPTQ from https://github.com/PanQiWei/AutoGPTQ")
 
 import warnings
 

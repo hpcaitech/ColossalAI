@@ -1,6 +1,6 @@
 import torch
 
-from .gptq_triton import gptq_fused_linear_triton
+from colossalai.kernel.triton.gptq_triton import gptq_fused_linear_triton
 
 
 class CaiGPTQLinearOp(torch.nn.Module):

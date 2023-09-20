@@ -11,4 +11,3 @@ except ImportError:
 if HAS_AUTO_GPTQ:
     from .cai_quant_linear import CaiQuantLinear, ColCaiQuantLinear, RowCaiQuantLinear
     from .gptq_op import CaiGPTQLinearOp
-    from .gptq_triton import gptq_fused_linear_triton

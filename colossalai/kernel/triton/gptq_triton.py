@@ -1,16 +1,9 @@
+# Adapted from AutoGPTQ auto_gptq: https://github.com/PanQiWei/AutoGPTQ
+
 import torch
 import triton
 import triton.language as tl
 from auto_gptq.nn_modules.triton_utils import custom_autotune
-
-# from ..ops.triton.kernels.activations_kernels import relu,  gelu, silu
-# code based https://github.com/fpgaminer/GPTQ-triton
-# triton.Config({
-#     'BLOCK_SIZE_M': 32,
-#     'BLOCK_SIZE_N': 32,
-#     'BLOCK_SIZE_K': 128,
-#     'GROUP_SIZE_M': 8
-# }, num_stages=2, num_warps=4),
 
 
 @triton.jit
