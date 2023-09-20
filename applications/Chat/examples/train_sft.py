@@ -156,22 +156,26 @@ def train(args):
         "cosine", optim, num_warmup_steps=math.ceil(max_steps * 0.03), num_training_steps=max_steps
     )
     strategy_dict = strategy.prepare(dict(model=model, optimizer=optim, lr_scheduler=lr_scheduler))
-    model = strategy_dict['model']
-    optim = strategy_dict['optimizer']
-    lr_scheduler = strategy_dict['lr_scheduler']
-    trainer = SFTTrainer(model=model,
-                         strategy=strategy,
-                         optim=optim,
-                         lr_scheduler=lr_scheduler,
-                         max_epochs=args.max_epochs,
-                         accumulation_steps=args.accumulation_steps)
+    model = strategy_dict["model"]
+    optim = strategy_dict["optimizer"]
+    lr_scheduler = strategy_dict["lr_scheduler"]
+    trainer = SFTTrainer(
+        model=model,
+        strategy=strategy,
+        optim=optim,
+        lr_scheduler=lr_scheduler,
+        max_epochs=args.max_epochs,
+        accumulation_steps=args.accumulation_steps,
+    )
 
     logger = get_dist_logger()
-    trainer.fit(train_dataloader=train_dataloader,
-                eval_dataloader=eval_dataloader,
-                logger=logger,
-                log_dir=args.log_dir,
-                use_wandb=args.use_wandb)
+    trainer.fit(
+        train_dataloader=train_dataloader,
+        eval_dataloader=eval_dataloader,
+        logger=logger,
+        log_dir=args.log_dir,
+        use_wandb=args.use_wandb,
+    )
 
     # save model checkpoint after fitting on only rank0
     strategy.save_pretrained(model, path=args.save_path, only_rank0=True, tokenizer=tokenizer)
@@ -184,24 +188,26 @@ def train(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--strategy',
-                        choices=['ddp', 'colossalai_gemini', 'colossalai_zero2', 'colossalai_zero2_cpu'],
-                        default='colossalai_zero2')
-    parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'llama', 'chatglm'], default='bloom')
-    parser.add_argument('--tokenizer', type=str, default=None)
-    parser.add_argument('--pretrain', type=str, default=None)
-    parser.add_argument('--dataset', type=str, default=None)
-    parser.add_argument('--max_datasets_size', type=int, default=None)
-    parser.add_argument('--save_path', type=str, default='output')
-    parser.add_argument('--need_optim_ckpt', type=bool, default=False)
-    parser.add_argument('--max_epochs', type=int, default=3)
-    parser.add_argument('--batch_size', type=int, default=4)
-    parser.add_argument('--max_len', type=int, default=512)
-    parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
-    parser.add_argument('--lr', type=float, default=5e-6)
-    parser.add_argument('--accumulation_steps', type=int, default=8)
-    parser.add_argument('--log_dir', default='logs', type=str)
-    parser.add_argument('--use_wandb', default=False, action='store_true')
-    parser.add_argument('--grad_checkpoint', default=False, action='store_true')
+    parser.add_argument(
+        "--strategy",
+        choices=["ddp", "colossalai_gemini", "colossalai_zero2", "colossalai_zero2_cpu"],
+        default="colossalai_zero2",
+    )
+    parser.add_argument("--model", choices=["gpt2", "bloom", "opt", "llama", "chatglm"], default="bloom")
+    parser.add_argument("--tokenizer", type=str, default=None)
+    parser.add_argument("--pretrain", type=str, default=None)
+    parser.add_argument("--dataset", type=str, default=None)
+    parser.add_argument("--max_datasets_size", type=int, default=None)
+    parser.add_argument("--save_path", type=str, default="output")
+    parser.add_argument("--need_optim_ckpt", type=bool, default=False)
+    parser.add_argument("--max_epochs", type=int, default=3)
+    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--max_len", type=int, default=512)
+    parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
+    parser.add_argument("--lr", type=float, default=5e-6)
+    parser.add_argument("--accumulation_steps", type=int, default=8)
+    parser.add_argument("--log_dir", default="logs", type=str)
+    parser.add_argument("--use_wandb", default=False, action="store_true")
+    parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     args = parser.parse_args()
     train(args)

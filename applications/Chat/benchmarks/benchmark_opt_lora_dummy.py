@@ -143,39 +143,42 @@ def main(args):
     (actor, actor_optim), (critic, critic_optim) = strategy.prepare((actor, actor_optim), (critic, critic_optim))
 
     random_prompts = torch.randint(tokenizer.vocab_size, (1000, 256), device=torch.cuda.current_device())
-    dataloader = DataLoader(random_prompts,
-                            batch_size=args.experience_batch_size,
-                            shuffle=True,
-                            collate_fn=preprocess_batch)
+    dataloader = DataLoader(
+        random_prompts, batch_size=args.experience_batch_size, shuffle=True, collate_fn=preprocess_batch
+    )
 
-    trainer = PPOTrainer(strategy,
-                         actor,
-                         critic,
-                         reward_model,
-                         initial_model,
-                         actor_optim,
-                         critic_optim,
-                         tokenizer=tokenizer,
-                         ptx_coef=0,
-                         train_batch_size=args.train_batch_size,
-                         offload_inference_models=args.offload_inference_models,
-                         max_length=512,
-                         do_sample=True,
-                         temperature=1.0,
-                         top_k=50,
-                         use_cache=True,
-                         callbacks=[performance_evaluator])
+    trainer = PPOTrainer(
+        strategy,
+        actor,
+        critic,
+        reward_model,
+        initial_model,
+        actor_optim,
+        critic_optim,
+        tokenizer=tokenizer,
+        ptx_coef=0,
+        train_batch_size=args.train_batch_size,
+        offload_inference_models=args.offload_inference_models,
+        max_length=512,
+        do_sample=True,
+        temperature=1.0,
+        top_k=50,
+        use_cache=True,
+        callbacks=[performance_evaluator],
+    )
 
-    trainer.fit(prompt_dataloader=dataloader,
-                pretrain_dataloader=None,
-                num_episodes=args.num_episodes,
-                num_update_steps=args.num_update_steps,
-                num_collect_steps=args.num_collect_steps)
+    trainer.fit(
+        prompt_dataloader=dataloader,
+        pretrain_dataloader=None,
+        num_episodes=args.num_episodes,
+        num_update_steps=args.num_update_steps,
+        num_collect_steps=args.num_collect_steps,
+    )
 
-    print_rank_0(f'Peak CUDA mem: {torch.cuda.max_memory_allocated()/1024**3:.2f} GB')
+    print_rank_0(f"Peak CUDA mem: {torch.cuda.max_memory_allocated()/1024**3:.2f} GB")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="125m")
     parser.add_argument("--critic_model", default="125m")

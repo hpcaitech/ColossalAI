@@ -58,12 +58,7 @@ class Experience:
 
 
 class ExperienceMaker(ABC):
-
-    def __init__(self,
-                 actor: Actor,
-                 critic: Critic,
-                 reward_model: RewardModel,
-                 initial_model: Actor) -> None:
+    def __init__(self, actor: Actor, critic: Critic, reward_model: RewardModel, initial_model: Actor) -> None:
         super().__init__()
         self.actor = actor
         self.critic = critic
@@ -71,9 +66,5 @@ class ExperienceMaker(ABC):
         self.initial_model = initial_model
 
     @abstractmethod
-    def make_experience(self,
-                        input_ids: torch.Tensor,
-                        attention_mask: torch.Tensor,
-                        **generate_kwargs
-                        ) -> Experience:
+    def make_experience(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **generate_kwargs) -> Experience:
         pass

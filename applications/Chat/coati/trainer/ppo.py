@@ -1,7 +1,5 @@
 from typing import Dict, List, Optional
 
-import torch
-import torch.nn.functional as F
 from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import Experience, NaiveExperienceMaker
 from coati.models.base import Actor, Critic, RewardModel, get_base_model
@@ -61,29 +59,30 @@ class PPOTrainer(OnPolicyTrainer):
         generate_kwargs (dict, optional): the kwargs to use while model generating
     """
 
-    def __init__(self,
-                 strategy: Strategy,
-                 actor: Actor,
-                 critic: Critic,
-                 reward_model: RewardModel,
-                 initial_model: Actor,
-                 actor_optim: Optimizer,
-                 critic_optim: Optimizer,
-                 tokenizer: PreTrainedTokenizerBase,
-                 kl_coef: float = 0.1,
-                 ptx_coef: float = 0.9,
-                 train_batch_size: int = 8,
-                 buffer_limit: int = 0,
-                 buffer_cpu_offload: bool = True,
-                 eps_clip: float = 0.2,
-                 vf_coef: float = 1.0,
-                 value_clip: float = 0.4,
-                 sample_buffer: bool = False,
-                 dataloader_pin_memory: bool = True,
-                 offload_inference_models: bool = True,
-                 callbacks: List[Callback] = [],
-                 **generate_kwargs
-                 ) -> None:
+    def __init__(
+        self,
+        strategy: Strategy,
+        actor: Actor,
+        critic: Critic,
+        reward_model: RewardModel,
+        initial_model: Actor,
+        actor_optim: Optimizer,
+        critic_optim: Optimizer,
+        tokenizer: PreTrainedTokenizerBase,
+        kl_coef: float = 0.1,
+        ptx_coef: float = 0.9,
+        train_batch_size: int = 8,
+        buffer_limit: int = 0,
+        buffer_cpu_offload: bool = True,
+        eps_clip: float = 0.2,
+        vf_coef: float = 1.0,
+        value_clip: float = 0.4,
+        sample_buffer: bool = False,
+        dataloader_pin_memory: bool = True,
+        offload_inference_models: bool = True,
+        callbacks: List[Callback] = [],
+        **generate_kwargs,
+    ) -> None:
         if isinstance(strategy, GeminiStrategy):
             assert not offload_inference_models, "GeminiPlugin is not compatible with manual model.to('cpu')"
 
@@ -108,11 +107,13 @@ class PPOTrainer(OnPolicyTrainer):
         self.offload_inference_models = offload_inference_models
         self.device = get_current_device()
 
-    def _before_fit(self,
-                    prompt_dataloader: DataLoader,
-                    pretrain_dataloader: DataLoader,
-                    log_dir: Optional[str] = None,
-                    use_wandb: bool = False):
+    def _before_fit(
+        self,
+        prompt_dataloader: DataLoader,
+        pretrain_dataloader: DataLoader,
+        log_dir: Optional[str] = None,
+        use_wandb: bool = False,
+    ):
         """
         Args:
             prompt_dataloader (DataLoader): the dataloader to use for prompt data
@@ -125,11 +126,14 @@ class PPOTrainer(OnPolicyTrainer):
         if use_wandb and is_rank_0():
             assert log_dir is not None, "log_dir must be provided when use_wandb is True"
             import wandb
+
             wandb.init(project="Coati-ppo", sync_tensorboard=True)
         if log_dir is not None and is_rank_0():
             import os
             import time
+
             from torch.utils.tensorboard import SummaryWriter
+
             log_dir = os.path.join(log_dir, "ppo")
             log_dir = os.path.join(log_dir, time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime()))
             self.writer = SummaryWriter(log_dir=log_dir)
@@ -150,10 +154,9 @@ class PPOTrainer(OnPolicyTrainer):
         num_actions = experience.action_log_probs.size(1)
         actor_logits = self.actor(experience.sequences, experience.attention_mask)["logits"]
         action_log_probs = calc_action_log_probs(actor_logits, experience.sequences, num_actions)
-        actor_loss = self.actor_loss_fn(action_log_probs,
-                                        experience.action_log_probs,
-                                        experience.advantages,
-                                        action_mask=experience.action_mask)
+        actor_loss = self.actor_loss_fn(
+            action_log_probs, experience.action_log_probs, experience.advantages, action_mask=experience.action_mask
+        )
         actor_loss = (1 - self.ptx_coef) * actor_loss
         self.strategy.backward(actor_loss, self.actor, self.actor_optim)
 
@@ -161,19 +164,16 @@ class PPOTrainer(OnPolicyTrainer):
         if self.ptx_coef != 0:
             batch = self.pretrain_dataloader.next()
             batch = to_device(batch, self.device)
-            ptx_log_probs = self.actor(batch['input_ids'], batch['attention_mask'])['logits']
-            ptx_loss = self.ptx_coef * self.ptx_loss_fn(ptx_log_probs, batch['labels'])
+            ptx_log_probs = self.actor(batch["input_ids"], batch["attention_mask"])["logits"]
+            ptx_loss = self.ptx_coef * self.ptx_loss_fn(ptx_log_probs, batch["labels"])
             self.strategy.backward(ptx_loss, self.actor, self.actor_optim)
 
         self.strategy.optimizer_step(self.actor_optim)
         self.actor_optim.zero_grad()
 
         # value loss
-        values = self.critic(experience.sequences,
-                             attention_mask=experience.attention_mask)
-        critic_loss = self.critic_loss_fn(values,
-                                          experience.values,
-                                          experience.reward)
+        values = self.critic(experience.sequences, attention_mask=experience.attention_mask)
+        critic_loss = self.critic_loss_fn(values, experience.values, experience.reward)
         critic_loss = critic_loss * self.vf_coef
         self.strategy.backward(critic_loss, self.critic, self.critic_optim)
         self.strategy.optimizer_step(self.critic_optim)

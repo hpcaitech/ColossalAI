@@ -59,15 +59,13 @@ class RewardModelTrainer(SLTrainer):
                 self.acc = num_correct / num_samples
 
             if self.writer:
-                self.writer.add_scalar('eval/dist', self.dist, epoch)
-                self.writer.add_scalar('eval/acc', self.acc, epoch)
+                self.writer.add_scalar("eval/dist", self.dist, epoch)
+                self.writer.add_scalar("eval/acc", self.acc, epoch)
 
     def _train(self, epoch):
         self.model.train()
         step_bar = tqdm.trange(
-            len(self.train_dataloader),
-            desc=f'Epoch {epoch + 1}/{self.max_epochs}',
-            disable=not is_rank_0()
+            len(self.train_dataloader), desc=f"Epoch {epoch + 1}/{self.max_epochs}", disable=not is_rank_0()
         )
         for chosen_ids, c_mask, reject_ids, r_mask in self.train_dataloader:
             chosen_ids = chosen_ids.squeeze(1).to(torch.cuda.current_device())
@@ -81,21 +79,25 @@ class RewardModelTrainer(SLTrainer):
             self.strategy.optimizer_step(self.optimizer)
             self.optimizer.zero_grad()
             if self.writer:
-                self.writer.add_scalar('train/loss', loss.item(), self.num_train_step)
-                self.writer.add_scalar('train/lr', self.optimizer.param_groups[0]['lr'], self.num_train_step)
-                self.writer.add_scalar('train/dist', (chosen_reward - reject_reward).mean().item(), self.num_train_step)
-                self.writer.add_scalar('train/acc', (chosen_reward > reject_reward).float().mean().item(), self.num_train_step)
+                self.writer.add_scalar("train/loss", loss.item(), self.num_train_step)
+                self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
+                self.writer.add_scalar("train/dist", (chosen_reward - reject_reward).mean().item(), self.num_train_step)
+                self.writer.add_scalar(
+                    "train/acc", (chosen_reward > reject_reward).float().mean().item(), self.num_train_step
+                )
             self.num_train_step += 1
             if self.num_train_step % 100 == 0:
                 self.scheduler.step()
             step_bar.update()
         step_bar.close()
 
-    def _before_fit(self,
-                    train_dataloader: DataLoader,
-                    eval_dataloader: DataLoader,
-                    log_dir: Optional[str] = None,
-                    use_wandb: bool = False):
+    def _before_fit(
+        self,
+        train_dataloader: DataLoader,
+        eval_dataloader: DataLoader,
+        log_dir: Optional[str] = None,
+        use_wandb: bool = False,
+    ):
         """
         Args:
             train_dataloader (DataLoader): the dataloader to use for training
@@ -108,11 +110,14 @@ class RewardModelTrainer(SLTrainer):
         if use_wandb and is_rank_0():
             assert log_dir is not None, "log_dir must be provided when use_wandb is True"
             import wandb
+
             wandb.init(project="Coati-rm", sync_tensorboard=True)
         if log_dir is not None and is_rank_0():
             import os
             import time
+
             from torch.utils.tensorboard import SummaryWriter
+
             log_dir = os.path.join(log_dir, "rm")
             log_dir = os.path.join(log_dir, time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime()))
             self.writer = SummaryWriter(log_dir=log_dir)

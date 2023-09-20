@@ -65,7 +65,7 @@ def _sample(
         outputs = model(**model_inputs)
 
         # NOTE: this is correct only in left padding mode
-        next_token_logits = outputs['logits'][:, -1, :]
+        next_token_logits = outputs["logits"][:, -1, :]
         next_token_logits = logits_processor(input_ids, next_token_logits)
         # sample
         probs = torch.softmax(next_token_logits, dim=-1, dtype=torch.float)
@@ -73,8 +73,7 @@ def _sample(
 
         # finished sentences should have their next token be a padding token
         if eos_token_id is not None:
-            assert pad_token_id is not None, \
-                "If `eos_token_id` is defined, make sure that `pad_token_id` is defined."
+            assert pad_token_id is not None, "If `eos_token_id` is defined, make sure that `pad_token_id` is defined."
             next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
         # update generated ids, model inputs for next step
@@ -94,19 +93,21 @@ def _sample(
 
 
 @torch.no_grad()
-def generate(model: Actor,
-             input_ids: torch.Tensor,
-             tokenizer: PreTrainedTokenizer,
-             max_length: int,
-             num_beams: int = 1,
-             do_sample: bool = True,
-             early_stopping: bool = False,
-             top_k: Optional[int] = None,
-             top_p: Optional[float] = None,
-             temperature: Optional[float] = None,
-             prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
-             update_model_kwargs_fn: Optional[Callable[[dict, Any], dict]] = None,
-             **model_kwargs) -> torch.Tensor:
+def generate(
+    model: Actor,
+    input_ids: torch.Tensor,
+    tokenizer: PreTrainedTokenizer,
+    max_length: int,
+    num_beams: int = 1,
+    do_sample: bool = True,
+    early_stopping: bool = False,
+    top_k: Optional[int] = None,
+    top_p: Optional[float] = None,
+    temperature: Optional[float] = None,
+    prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
+    update_model_kwargs_fn: Optional[Callable[[dict, Any], dict]] = None,
+    **model_kwargs,
+) -> torch.Tensor:
     """Generate token sequence. The returned sequence is input_ids + generated_tokens.
 
     Args:
@@ -123,26 +124,28 @@ def generate(model: Actor,
         update_model_kwargs_fn (Optional[Callable[[dict, Any], dict]], optional): Function to update model_kwargs based on outputs. Arguments of this function should be outputs and model_kwargs. Defaults to None.
     """
     assert tokenizer.padding_side == "left", "Current generation only supports left padding."
-    is_greedy_gen_mode = ((num_beams == 1) and do_sample is False)
-    is_sample_gen_mode = ((num_beams == 1) and do_sample is True)
-    is_beam_gen_mode = ((num_beams > 1) and do_sample is False)
+    is_greedy_gen_mode = (num_beams == 1) and do_sample is False
+    is_sample_gen_mode = (num_beams == 1) and do_sample is True
+    is_beam_gen_mode = (num_beams > 1) and do_sample is False
     if is_greedy_gen_mode:
         # run greedy search
         raise NotImplementedError
     elif is_sample_gen_mode:
         # run sample
-        return _sample(model,
-                       input_ids,
-                       max_length,
-                       early_stopping=early_stopping,
-                       eos_token_id=tokenizer.eos_token_id,
-                       pad_token_id=tokenizer.pad_token_id,
-                       top_k=top_k,
-                       top_p=top_p,
-                       temperature=temperature,
-                       prepare_inputs_fn=prepare_inputs_fn,
-                       update_model_kwargs_fn=update_model_kwargs_fn,
-                       **model_kwargs)
+        return _sample(
+            model,
+            input_ids,
+            max_length,
+            early_stopping=early_stopping,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
+            top_k=top_k,
+            top_p=top_p,
+            temperature=temperature,
+            prepare_inputs_fn=prepare_inputs_fn,
+            update_model_kwargs_fn=update_model_kwargs_fn,
+            **model_kwargs,
+        )
     elif is_beam_gen_mode:
         raise NotImplementedError
     else:

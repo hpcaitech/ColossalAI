@@ -16,11 +16,7 @@ class Critic(LoRAModule):
     """
 
     def __init__(
-        self,
-        model: nn.Module,
-        value_head: nn.Module,
-        lora_rank: int = 0,
-        lora_train_bias: str = 'none'
+        self, model: nn.Module, value_head: nn.Module, lora_rank: int = 0, lora_train_bias: str = "none"
     ) -> None:
         super().__init__(lora_rank=lora_rank, lora_train_bias=lora_train_bias)
         self.model = model
@@ -29,9 +25,10 @@ class Critic(LoRAModule):
 
     def forward(self, sequences: torch.LongTensor, attention_mask: torch.Tensor) -> torch.Tensor:
         outputs = self.model(sequences, attention_mask=attention_mask)
-        last_hidden_states = outputs['last_hidden_state']
-        sequence_lengths = torch.max(attention_mask * torch.arange(sequences.size(1),
-                                                                   device=sequences.device), dim=1)[0]
+        last_hidden_states = outputs["last_hidden_state"]
+        sequence_lengths = torch.max(attention_mask * torch.arange(sequences.size(1), device=sequences.device), dim=1)[
+            0
+        ]
         sequence_hidden_states = last_hidden_states[torch.arange(last_hidden_states.size(0)), sequence_lengths]
         values = self.value_head(sequence_hidden_states).squeeze(1)  # ensure shape is (B, )
         return values

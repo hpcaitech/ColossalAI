@@ -73,7 +73,7 @@ def train(args):
         raise ValueError(f'Unsupported model "{args.model}"')
 
     # configure optimizer
-    if args.strategy.startswith('colossalai'):
+    if args.strategy.startswith("colossalai"):
         optim = HybridAdam(model.parameters(), lr=args.lr)
     else:
         optim = Adam(model.parameters(), lr=args.lr)
@@ -92,8 +92,8 @@ def train(args):
     else:
         data = load_dataset(args.dataset)
 
-    train_data = data['train'].select(range(min(args.max_datasets_size, len(data['train']))))
-    eval_data = data['test'].select(range(min(args.max_datasets_size, len(data['test']))))
+    train_data = data["train"].select(range(min(args.max_datasets_size, len(data["train"]))))
+    eval_data = data["test"].select(range(min(args.max_datasets_size, len(data["test"]))))
 
     if args.dataset == "Dahoas/rm-static":
         train_dataset = RmStaticDataset(train_data, tokenizer, args.max_len)
@@ -105,33 +105,37 @@ def train(args):
         raise ValueError(f'Unsupported dataset "{args.dataset}"')
 
     if dist.is_initialized() and dist.get_world_size() > 1:
-        train_sampler = DistributedSampler(train_dataset,
-                                           shuffle=True,
-                                           seed=42,
-                                           drop_last=True,
-                                           rank=dist.get_rank(),
-                                           num_replicas=dist.get_world_size())
-        eval_sampler = DistributedSampler(eval_dataset,
-                                          shuffle=True,
-                                          seed=42,
-                                          drop_last=True,
-                                          rank=dist.get_rank(),
-                                          num_replicas=dist.get_world_size())
+        train_sampler = DistributedSampler(
+            train_dataset,
+            shuffle=True,
+            seed=42,
+            drop_last=True,
+            rank=dist.get_rank(),
+            num_replicas=dist.get_world_size(),
+        )
+        eval_sampler = DistributedSampler(
+            eval_dataset,
+            shuffle=True,
+            seed=42,
+            drop_last=True,
+            rank=dist.get_rank(),
+            num_replicas=dist.get_world_size(),
+        )
     else:
         train_sampler = None
         eval_sampler = None
 
-    train_dataloader = DataLoader(train_dataset,
-                                  shuffle=(train_sampler is None),
-                                  sampler=train_sampler,
-                                  batch_size=args.batch_size,
-                                  pin_memory=True)
+    train_dataloader = DataLoader(
+        train_dataset,
+        shuffle=(train_sampler is None),
+        sampler=train_sampler,
+        batch_size=args.batch_size,
+        pin_memory=True,
+    )
 
-    eval_dataloader = DataLoader(eval_dataset,
-                                 shuffle=(eval_sampler is None),
-                                 sampler=eval_sampler,
-                                 batch_size=args.batch_size,
-                                 pin_memory=True)
+    eval_dataloader = DataLoader(
+        eval_dataset, shuffle=(eval_sampler is None), sampler=eval_sampler, batch_size=args.batch_size, pin_memory=True
+    )
 
     lr_scheduler = CosineAnnealingLR(optim, train_dataloader.__len__() // 100)
     strategy_dict = strategy.prepare(dict(model=model, optimizer=optim, lr_scheduler=lr_scheduler))
@@ -147,10 +151,12 @@ def train(args):
         max_epochs=args.max_epochs,
     )
 
-    trainer.fit(train_dataloader=train_dataloader,
-                eval_dataloader=eval_dataloader,
-                log_dir=args.log_dir,
-                use_wandb=args.use_wandb)
+    trainer.fit(
+        train_dataloader=train_dataloader,
+        eval_dataloader=eval_dataloader,
+        log_dir=args.log_dir,
+        use_wandb=args.use_wandb,
+    )
     # save model checkpoint after fitting on only rank0
     strategy.save_model(model, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
@@ -162,28 +168,27 @@ def train(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--strategy',
-                        choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'],
-                        default='colossalai_zero2')
-    parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom')
-    parser.add_argument('--tokenizer', type=str, default=None)
-    parser.add_argument('--pretrain', type=str, default=None)
-    parser.add_argument('--model_path', type=str, default=None)
-    parser.add_argument('--need_optim_ckpt', type=bool, default=False)
-    parser.add_argument('--dataset',
-                        type=str,
-                        choices=['Anthropic/hh-rlhf', 'Dahoas/rm-static'],
-                        default='Dahoas/rm-static')
-    parser.add_argument('--subset', type=lambda x: None if x == 'None' else x, default=None)
-    parser.add_argument('--max_datasets_size', type=int, default=1000000)
-    parser.add_argument('--save_path', type=str, default='rm_ckpt')
-    parser.add_argument('--max_epochs', type=int, default=1)
-    parser.add_argument('--batch_size', type=int, default=1)
-    parser.add_argument('--max_len', type=int, default=512)
-    parser.add_argument('--lora_rank', type=int, default=0, help="low-rank adaptation matrices rank")
-    parser.add_argument('--lr', type=float, default=9e-6)
-    parser.add_argument('--loss_fn', type=str, default='log_sig', choices=['log_sig', 'log_exp'])
-    parser.add_argument('--log_dir', default='logs', type=str)
-    parser.add_argument('--use_wandb', default=False, action='store_true')
+    parser.add_argument(
+        "--strategy", choices=["ddp", "colossalai_gemini", "colossalai_zero2"], default="colossalai_zero2"
+    )
+    parser.add_argument("--model", choices=["gpt2", "bloom", "opt", "llama"], default="bloom")
+    parser.add_argument("--tokenizer", type=str, default=None)
+    parser.add_argument("--pretrain", type=str, default=None)
+    parser.add_argument("--model_path", type=str, default=None)
+    parser.add_argument("--need_optim_ckpt", type=bool, default=False)
+    parser.add_argument(
+        "--dataset", type=str, choices=["Anthropic/hh-rlhf", "Dahoas/rm-static"], default="Dahoas/rm-static"
+    )
+    parser.add_argument("--subset", type=lambda x: None if x == "None" else x, default=None)
+    parser.add_argument("--max_datasets_size", type=int, default=1000000)
+    parser.add_argument("--save_path", type=str, default="rm_ckpt")
+    parser.add_argument("--max_epochs", type=int, default=1)
+    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--max_len", type=int, default=512)
+    parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
+    parser.add_argument("--lr", type=float, default=9e-6)
+    parser.add_argument("--loss_fn", type=str, default="log_sig", choices=["log_sig", "log_exp"])
+    parser.add_argument("--log_dir", default="logs", type=str)
+    parser.add_argument("--use_wandb", default=False, action="store_true")
     args = parser.parse_args()
     train(args)

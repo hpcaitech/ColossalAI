@@ -53,14 +53,12 @@ class SFTTrainer(SLTrainer):
         self.model.train()
         step_bar = tqdm.trange(
             len(self.train_dataloader) // self.accumulation_steps,
-            desc=f'Epoch {epoch + 1}/{self.max_epochs}',
-            disable=not is_rank_0()
+            desc=f"Epoch {epoch + 1}/{self.max_epochs}",
+            disable=not is_rank_0(),
         )
         for i, batch in enumerate(self.train_dataloader):
             batch = to_device(batch, torch.cuda.current_device())
-            outputs = self.model(batch["input_ids"],
-                                 attention_mask=batch["attention_mask"],
-                                 labels=batch["labels"])
+            outputs = self.model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
             loss = outputs.loss / self.accumulation_steps
             self.total_loss += loss.item()
             self.strategy.backward(loss, self.model, self.optimizer)
@@ -70,8 +68,8 @@ class SFTTrainer(SLTrainer):
                 self.optimizer.zero_grad()
                 self.scheduler.step()
                 if self.writer:
-                    self.writer.add_scalar('train/loss', self.total_loss, self.num_train_step)
-                    self.writer.add_scalar('train/lr', self.scheduler.get_last_lr()[0], self.num_train_step)
+                    self.writer.add_scalar("train/loss", self.total_loss, self.num_train_step)
+                    self.writer.add_scalar("train/lr", self.scheduler.get_last_lr()[0], self.num_train_step)
                     self.num_train_step += 1
                 self.total_loss = 0
                 step_bar.update()
@@ -84,24 +82,26 @@ class SFTTrainer(SLTrainer):
                 loss_sum, num_seen = 0, 0
                 for batch in self.eval_dataloader:
                     batch = to_device(batch, torch.cuda.current_device())
-                    outputs = self.model(batch["input_ids"],
-                                         attention_mask=batch["attention_mask"],
-                                         labels=batch["labels"])
+                    outputs = self.model(
+                        batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"]
+                    )
                     loss_sum += outputs.loss.item()
                     num_seen += batch["input_ids"].size(0)
                 loss_mean = loss_sum / num_seen
                 if dist.get_rank() == 0:
-                    self.logger.info(f'Eval Epoch {epoch}/{self.max_epochs} loss {loss_mean}')
+                    self.logger.info(f"Eval Epoch {epoch}/{self.max_epochs} loss {loss_mean}")
                 if self.writer:
-                    self.writer.add_scalar('eval/loss', loss_mean, self.num_eval_step)
+                    self.writer.add_scalar("eval/loss", loss_mean, self.num_eval_step)
                     self.num_eval_step += 1
 
-    def _before_fit(self,
-                    train_dataloader: DataLoader,
-                    eval_dataloader: Optional[DataLoader] = None,
-                    logger: Optional[DistributedLogger] = None,
-                    log_dir: Optional[str] = None,
-                    use_wandb: bool = False):
+    def _before_fit(
+        self,
+        train_dataloader: DataLoader,
+        eval_dataloader: Optional[DataLoader] = None,
+        logger: Optional[DistributedLogger] = None,
+        log_dir: Optional[str] = None,
+        use_wandb: bool = False,
+    ):
         """
         Args:
             train_dataloader: the dataloader to use for training
@@ -115,11 +115,14 @@ class SFTTrainer(SLTrainer):
         if use_wandb and is_rank_0():
             assert log_dir is not None, "log_dir must be provided when use_wandb is True"
             import wandb
+
             wandb.init(project="Coati-sft", sync_tensorboard=True)
         if log_dir is not None and is_rank_0():
             import os
             import time
+
             from torch.utils.tensorboard import SummaryWriter
+
             log_dir = os.path.join(log_dir, "sft")
             log_dir = os.path.join(log_dir, time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime()))
             self.writer = SummaryWriter(log_dir=log_dir)

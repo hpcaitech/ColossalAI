@@ -13,14 +13,15 @@ class NaiveExperienceMaker(ExperienceMaker):
     Naive experience maker.
     """
 
-    def __init__(self,
-                 actor: Actor,
-                 critic: Critic,
-                 reward_model: RewardModel,
-                 initial_model: Actor,
-                 tokenizer: PreTrainedTokenizer,
-                 kl_coef: float = 0.1,
-                 ) -> None:
+    def __init__(
+        self,
+        actor: Actor,
+        critic: Critic,
+        reward_model: RewardModel,
+        initial_model: Actor,
+        tokenizer: PreTrainedTokenizer,
+        kl_coef: float = 0.1,
+    ) -> None:
         super().__init__(actor, critic, reward_model, initial_model)
         self.tokenizer = tokenizer
         self.kl_coef = kl_coef
@@ -33,17 +34,13 @@ class NaiveExperienceMaker(ExperienceMaker):
         self.reward_model.eval()
 
         # generate sequences
-        sequences = generate(self.actor,
-                             input_ids,
-                             self.tokenizer,
-                             **generate_kwargs)
+        sequences = generate(self.actor, input_ids, self.tokenizer, **generate_kwargs)
 
         # calculate auxiliary tensors
         attention_mask = None
         pad_token_id = self.tokenizer.pad_token_id
         if pad_token_id is not None:
-            attention_mask = sequences.not_equal(pad_token_id)\
-                .to(dtype=torch.long, device=sequences.device)
+            attention_mask = sequences.not_equal(pad_token_id).to(dtype=torch.long, device=sequences.device)
 
         input_len = input_ids.size(1)
         eos_token_id = self.tokenizer.eos_token_id
@@ -52,7 +49,7 @@ class NaiveExperienceMaker(ExperienceMaker):
         else:
             # left padding may be applied, only mask action
             action_mask = (sequences[:, input_len:] == eos_token_id).cumsum(dim=-1) == 0
-            action_mask = F.pad(action_mask, (1 + input_len, -1), value=True)    # include eos token and input
+            action_mask = F.pad(action_mask, (1 + input_len, -1), value=True)  # include eos token and input
         action_mask[:, :input_len] = False
         action_mask = action_mask[:, 1:]
         action_mask = action_mask[:, -(sequences.size(1) - input_len) :]
