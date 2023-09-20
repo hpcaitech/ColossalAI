@@ -41,8 +41,9 @@ def train(args):
 
     # configure model
     if args.lora_rank > 0:
-        warnings.warn("Gradient checkpoint is disabled when using LoRA")
-        args.grad_checkpoint = False
+        warnings.warn("Lora is not supported yet.")
+        args.lora_rank = 0
+
     with strategy.model_init_context():
         if args.model == 'bloom':
             model = BLOOMActor(pretrained=args.pretrain, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
@@ -168,6 +169,9 @@ def train(args):
                 use_wandb=args.use_wandb)
 
     # save model checkpoint after fitting on only rank0
+    # model.eval()
+    # print(type(model))
+    # print("eval eval")
     strategy.save_pretrained(model, path=args.save_path, only_rank0=True, tokenizer=tokenizer)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:

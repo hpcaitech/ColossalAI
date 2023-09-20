@@ -1,4 +1,5 @@
 import argparse
+import warnings
 from random import randint
 
 import torch
@@ -34,6 +35,10 @@ def train(args):
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
     # configure model
+    if args.lora_rank > 0:
+        warnings.warn("Lora is not supported yet.")
+        args.lora_rank = 0
+
     with strategy.model_init_context():
         if args.model == 'bloom':
             model = BLOOMRM(pretrained=args.pretrain, lora_rank=args.lora_rank)
@@ -166,6 +171,8 @@ def train(args):
 
     trainer.fit(train_dataloader=train_dataloader, valid_dataloader=valid_dataloader, eval_dataloader=eval_dataloader)
     # save model checkpoint after fitting on only rank0
+    strategy.eval(model)
+    print(args.save_path)
     strategy.save_model(model, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:

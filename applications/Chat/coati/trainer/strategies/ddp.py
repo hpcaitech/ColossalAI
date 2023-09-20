@@ -16,6 +16,7 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from colossalai.booster.plugin import TorchDDPPlugin
 from colossalai.booster.plugin.torch_ddp_plugin import TorchDDPModel
 
+from ...models.lora import LoraLinear
 from .base import Strategy
 from .sampler import DistributedSampler
 
@@ -34,10 +35,7 @@ class DDPStrategy(Strategy):
         Strategy for distributed training using torch.distributed.
     """
 
-    def __init__(self,
-                 seed: int = 42,
-                 plugin_initializer: Callable = TorchDDPPlugin
-                 ) -> None:
+    def __init__(self, seed: int = 42, plugin_initializer: Callable = TorchDDPPlugin) -> None:
         self.seed = seed
         super().__init__(plugin_initializer)
 
@@ -88,6 +86,13 @@ class DDPStrategy(Strategy):
         assert isinstance(model, TorchDDPModel), "model is not wrapped by TorchDDPModel."
         return model.unwrap()
 
+    def eval(self, model):
+        for module in model.children():
+            if isinstance(module, LoraLinear):
+                module.merge()
+            else:
+                self.eval(module)
+
     def save_pretrained(self,
                         model: nn.Module,
                         path: str,
@@ -103,23 +108,24 @@ class DDPStrategy(Strategy):
             if tokenizer is not None:
                 tokenizer.save_pretrained(path)
         model_path = os.path.join(path, "pytorch_model.bin")
-        self.save_model(model,
-                        model_path,
-                        only_rank0=only_rank0)
+        # print(model)
+        self.eval(model)
+        # print(model)
+        # print([module for module in model.named_children()])
+        self.save_model(model, model_path, only_rank0=only_rank0)
 
-        def _replace_keys(model_path: str,
-                          replace_fn: Callable):
+        def _replace_keys(model_path: str, replace_fn: Callable):
             state_dict = torch.load(model_path, map_location="cpu")
-            state_dict = {
-                replace_fn(k): v
-                for k, v in state_dict.items()
-            }
+            state_dict = {replace_fn(k): v for k, v in state_dict.items()}
             torch.save(state_dict, model_path)
 
         # FIXME: save_model would add "model." prefix to keys of pytorch_model.bin
         # HACK: rename keys of pytorch_model.bin
         if dist.get_rank() == 0:
             _replace_keys(model_path, lambda k: k.replace("model.", "", 1))
+
+    def load_pretrained(self, model, path):
+        self.load_model(model, path, strict=False)
 
     def get_model_state_dict_shard(self, model: nn.Module, **config):
         # TODO: implement sharding on naive strategy

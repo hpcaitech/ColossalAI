@@ -49,7 +49,7 @@ class Strategy(ABC):
         pass
 
     def model_init_context(self):
-        print("aaaaaaa nullcontext")
+        # print("aaaaaaa nullcontext")
         return nullcontext()
 
     def prepare(self, *boost_args: _BoostArgSpec) -> Union[List[_BoostArgSpec], _BoostArgSpec]:
@@ -110,7 +110,7 @@ class Strategy(ABC):
         return model
 
     def save_model(self, model: nn.Module, path: str, only_rank0: bool = True, **kwargs) -> None:
-        self.booster.save_model(model, path, shard=not only_rank0, **kwargs)
+        self.booster.save_model(model, path, shard=False, **kwargs)
 
     def load_model(self, model: nn.Module, path: str, strict: bool = True) -> None:
         self.booster.load_model(model, path, strict)

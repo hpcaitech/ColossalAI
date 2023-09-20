@@ -3,6 +3,8 @@ from typing import Optional
 import torch
 from transformers import BloomConfig, BloomForCausalLM, BloomModel
 
+from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin
+
 from ..base import Actor
 
 
@@ -25,6 +27,7 @@ class BLOOMActor(Actor):
                  lora_rank: int = 0,
                  lora_train_bias: str = 'none') -> None:
         if pretrained is not None:
+            # model = BloomForCausalLM(BloomConfig())
             model = BloomForCausalLM.from_pretrained(pretrained)
         elif config is not None:
             model = BloomForCausalLM(config)

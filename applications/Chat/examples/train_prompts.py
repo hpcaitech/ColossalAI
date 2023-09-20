@@ -33,12 +33,18 @@ def main(args):
         warnings.warn('LoRA weights should be merged with the model weights')
         state_dict = torch.load(args.rm_path, map_location='cpu')
 
+    if args.lora_rank > 0:
+        warnings.warn("Lora is not supported yet.")
+        args.lora_rank = 0
+
     with strategy.model_init_context():
         # configure model
         if args.model == 'gpt2':
             initial_model = GPTActor(pretrained=args.pretrain)
         elif args.model == 'bloom':
             initial_model = BLOOMActor(pretrained=args.pretrain)
+            # strategy.load_pretrained(initial_model, args.pretrain+"/pytorch_model.bin")
+            # print(initial_model.named_parameters())
         elif args.model == 'opt':
             initial_model = OPTActor(pretrained=args.pretrain)
         elif args.model == 'llama':
