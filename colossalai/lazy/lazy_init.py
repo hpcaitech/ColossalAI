@@ -1,17 +1,14 @@
 from types import MethodType
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Optional, Union
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 from packaging import version
 from torch import Tensor
 from torch.nn import Parameter
 from torch.utils._pytree import tree_map
 
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.d_tensor import distribute_tensor
-from colossalai.tensor.d_tensor.sharding_spec import ShardingSpec
+from colossalai.logging import get_dist_logger
 
 from .construction import ConstructorManager
 
@@ -46,7 +43,7 @@ _EARLY_MATERIALIZED_OPS = ["__getitem__", "split"]
 _CHANGE_META_OPS = ["_cudnn_rnn_flatten_weight", "requires_grad_", "__get__", "__set__", "numel", "size", "dim"]
 
 # These ops is not related to tensor value and should not be rerun
-_NO_RERUN_OPS = ["requires_grad_", "__get__", "numel", "size", "dim"]
+_NO_RERUN_OPS = ["__get__", "numel", "size", "dim"]
 
 _LEGACY_TENSOR_CONSTRUCTOR = {
     "FloatTensor": torch.float,
@@ -106,7 +103,7 @@ def _data_tolist(tensor: torch.Tensor) -> list:
     return tensor.data.tolist()
 
 
-def _convert_cls(tensor: "LazyTensor", target: torch.Tensor, requires_grad: bool) -> torch.Tensor:
+def _convert_cls(tensor: "LazyTensor", target: torch.Tensor) -> torch.Tensor:
     """Convert a lazy tensor's class to target's class, with target's data.
 
     The reason why we change the class of a lazy tensor in-place is that this can easily handle shared modules/parameters, which is common in huggingface models.
@@ -125,7 +122,7 @@ def _convert_cls(tensor: "LazyTensor", target: torch.Tensor, requires_grad: bool
         # to fit UninitializedParameter
         delattr(tensor, "_is_param")
     tensor.data = target
-    tensor.requires_grad = requires_grad
+    tensor.requires_grad = target.requires_grad
     # subclass of torch.Tensor does not have tolist() method
     # overwrite this method after materialization or distribution
     tensor.tolist = MethodType(_data_tolist, tensor)
@@ -190,9 +187,7 @@ class LazyTensor(torch.Tensor):
         # As a meta tensor cannot be modified __class__ to torch.Tensor, we should use an empty real tensor here
         r = torch.Tensor._make_subclass(cls, _EMPTY_DATA, require_grad=elem.requires_grad)
         r._meta_data = meta_data
-        # TODO: test this
-        # if isinstance(r, nn.Parameter):
-        #     r = nn.Parameter(r)
+
         return r
 
     def __init__(self, func, *args, meta_data=None, concrete_data=None, **kwargs):
@@ -216,25 +211,9 @@ class LazyTensor(torch.Tensor):
         Returns:
             torch.Tensor: The materialized tensor (self).
         """
-        # requires_grad attr is mounted on meta tensor, it should be copied back
-        requires_grad = self.requires_grad
         target = self._materialize_data()
         self.clean()
-        return _convert_cls(self, target, requires_grad)
-
-    def distribute(self, device_mesh: DeviceMesh, sharding_spec: ShardingSpec) -> torch.Tensor:
-        """Distribute the ``LazyTensor`` to ``torch.Tensor`` by modifying __class__ (inplace), according to the layout.
-
-        Args:
-            layout (Layout): Distribution layout.
-
-        Returns:
-            torch.Tensor: The distributed tensor (self).
-        """
-        target = self._materialize_data()
-        self.clean()
-        local_tensor = distribute_tensor(target, device_mesh, sharding_spec)
-        return _convert_cls(self, local_tensor)
+        return _convert_cls(self, target)
 
     def clean(self) -> None:
         """Clean all stored operations, meta data and materialized data, which prevents memory leaking. This should be called after all tensors are materialized."""
@@ -281,9 +260,12 @@ class LazyTensor(torch.Tensor):
         packed = None
 
         for func, args, kwargs in self._op_buffer:
-            self._pre_op_fn()
-            o = func(*tree_map(replace, args), **tree_map(replace, kwargs))
-            target = o if isinstance(o, torch.Tensor) else target  # if func returns non-Tensor, discard the value
+            if func.__name__ == "requires_grad_":
+                packed = (func, args, kwargs)
+            else:
+                self._pre_op_fn()
+                o = func(*tree_map(replace, args), **tree_map(replace, kwargs))
+                target = o if isinstance(o, torch.Tensor) else target  # if func returns non-Tensor, discard the value
 
         # super-dainiu: set requires_grad after all inplace-ops are done
         if packed is not None:
@@ -633,23 +615,6 @@ class LazyInitContext:
 
         return _apply_to_lazy_module(module, apply_fn, verbose)
 
-    @staticmethod
-    def distribute(
-        module: nn.Module, device_mesh: DeviceMesh, sharding_spec_dict: Dict[str, ShardingSpec], verbose: bool = False
-    ) -> nn.Module:
-        """Distribute all ``Parameter`` from ``LazyTensor``. This function will modify the module in-place.
-
-        Args:
-            module (nn.Module): Target ``nn.Module``
-            layout_dict (dict): Dict of layout for each parameter/buffer. The key is the parameter/buffer name, and the value is the layout.
-            verbose (bool, optional): Whether to print lazy initialization rate. Defaults to False.
-        """
-
-        def apply_fn(name: str, p: LazyTensor):
-            p.distribute(device_mesh, sharding_spec_dict[name])
-
-        return _apply_to_lazy_module(module, apply_fn, verbose)
-
 
 def _apply_to_lazy_module(
     module: nn.Module, apply_fn: Callable[[str, torch.Tensor], None], verbose: bool = False
@@ -689,18 +654,15 @@ def _apply_to_lazy_module(
 
     if verbose:
         non_lazy_numel_ratio = non_lazy_numel / total_numel * 100 if non_lazy_numel != 0 else 0
-        _print_rank_0(f"Param lazy rate: {param_lazy_cnt}/{param_cnt}")
-        _print_rank_0(f"Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}")
-        _print_rank_0(
-            f"Non lazy numel: {non_lazy_numel} ({non_lazy_numel/1024**2:.3f} M), ratio: {non_lazy_numel_ratio}%"
+        logger = get_dist_logger()
+        logger.info(f"Param lazy rate: {param_lazy_cnt}/{param_cnt}", ranks=[0])
+        logger.info(f"Buffer lazy rate: {buf_lazy_cnt}/{buf_cnt}", ranks=[0])
+        logger.info(
+            f"Non lazy numel: {non_lazy_numel} ({non_lazy_numel/1024**2:.3f} M), ratio: {non_lazy_numel_ratio}%",
+            ranks=[0],
         )
 
     return module
-
-
-def _print_rank_0(*args, **kwargs):
-    if not dist.is_initialized() or dist.get_rank() == 0:
-        print(*args, **kwargs)
 
 
 def _is_int_tuple(args) -> bool:
