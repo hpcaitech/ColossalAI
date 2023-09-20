@@ -73,9 +73,12 @@ class ConstructorManager:
     @staticmethod
     @contextmanager
     def disable():
-        ConstructorManager.undo()
+        enabled = ConstructorManager.changed
+        if enabled:
+            ConstructorManager.undo()
         yield
-        ConstructorManager.redo()
+        if enabled:
+            ConstructorManager.redo()
 
     @staticmethod
     def clear():

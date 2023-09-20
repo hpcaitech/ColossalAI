@@ -72,7 +72,7 @@ _EXPAND_SCALAR_OPS = [
 ]
 _old_tensor_factory = torch.tensor
 
-_EMPTY_DATA = torch.empty(1)
+_EMPTY_DATA = torch.empty(0)
 
 
 class _MyTensor(Tensor):
@@ -181,6 +181,7 @@ class LazyTensor(torch.Tensor):
         else:
             if meta_data is None:
                 with ConstructorManager.disable():
+                    # to disable create lazy tensor in inner ops, this is a hack for torch 2.0
                     meta_data = func(*args, **{**kwargs, "device": "meta"})
             elem = meta_data
         # As a meta tensor cannot be modified __class__ to torch.Tensor, we should use an empty real tensor here
@@ -336,7 +337,11 @@ class LazyTensor(torch.Tensor):
                     meta = x._meta_data if is_change_meta_op else x._meta_data.data
                     meta_to_lazy[meta] = t
                     return meta
-                elif version.parse(torch.__version__) >= version.parse("2.0.0") and func.__name__ in _EXPAND_SCALAR_OPS:
+                elif (
+                    version.parse(torch.__version__) >= version.parse("2.0.0")
+                    and func.__name__ in _EXPAND_SCALAR_OPS
+                    and not isinstance(x, torch.Tensor)
+                ):
                     return _old_tensor_factory(x, device="meta")
                 return x
 
@@ -358,7 +363,9 @@ class LazyTensor(torch.Tensor):
                 return y
 
             cls._pre_op_fn()
-            o = func(*tree_map(unwrap, args), **tree_map(unwrap, kwargs))
+            with ConstructorManager.disable():
+                # to disable create lazy tensor in inner ops, this is a hack for torch 2.0
+                o = func(*tree_map(unwrap, args), **tree_map(unwrap, kwargs))
             if isinstance(o, (tuple, list)):
                 return type(o)(wrap(y, i=i) for i, y in enumerate(o))
             return wrap(o)
