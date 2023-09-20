@@ -38,7 +38,6 @@ def replace_model(model, kv_cache_stream):
             attn = PagedAttentionWithRoPE(layer.self_attn.num_heads,
                                           layer.self_attn.head_dim,
                                           layer.self_attn.scaling,
-                                          base=layer.self_attn.rope_theta,
                                           rotary_dim=layer.self_attn.head_dim,
                                           num_kv_heads=layer.self_attn.num_kv_heads,
                                           kv_cache_stream=kv_cache_stream)
