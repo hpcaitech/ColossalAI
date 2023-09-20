@@ -1,6 +1,7 @@
 # Booster 插件
 
-作者: [Hongxin Liu](https://github.com/ver217), [Baizhou Zhang](https://github.com/Fridge003)
+作者: [Hongxin Liu](https://github.com/ver217), [Baizhou Zhang](https://github.com/Fridge003), [Pengtai Xu](https://github.com/ppt0011)
+
 
 **前置教程:**
 - [Booster API](./booster_api.md)
@@ -19,26 +20,13 @@
 
 更多插件即将推出。
 
+## 插件选择
+- [Torch DDP 插件](#torch-ddp-插件): 适用于参数少于 20 亿的模型（例如 Bert-3m、GPT2-1.5b）。
+- [Torch FSDP 插件](#torch-fsdp-插件) / [Low Level Zero 插件](#low-level-zero-插件): 适用于参数少于 100 亿的模型（例如 GPTJ-6b、MegatronLM-8b）。
+- [Gemini 插件](#gemini-插件): 适合参数超过 100 亿的模型（例如 TuringNLG-17b），且**跨节点带宽高、中小规模集群（千卡以下）**的场景（例如 Llama2-70b）。
+- [Hybrid Pararllel 插件](#hybrid-parallel-插件): 适合参数超过 600 亿的模型、超长序列、超大词表等特殊模型，且**跨节点带宽低、大规模集群（千卡以上）**的场景（例如 GPT3-175b、Bloom-176b）。
+
 ## 插件
-
-### Torch DDP 插件
-
-更多详细信息，请参阅 [Pytorch 文档](https://pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel).
-
-{{ autodoc:colossalai.booster.plugin.TorchDDPPlugin }}
-
-### Torch FSDP 插件
-
-> ⚠ 如果 torch 版本低于 1.12.0，此插件将不可用。
-
-> ⚠ 该插件现在还不支持保存/加载分片的模型 checkpoint。
-
-> ⚠ 该插件现在还不支持使用了multi params group的optimizer。
-
-更多详细信息，请参阅 [Pytorch 文档](https://pytorch.org/docs/main/fsdp.html).
-
-{{ autodoc:colossalai.booster.plugin.TorchFSDPPlugin }}
-
 
 ### Low Level Zero 插件
 
@@ -87,10 +75,22 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 
 {{ autodoc:colossalai.booster.plugin.HybridParallelPlugin }}
 
-## 插件选择
-- [Torch DDP 插件](#torch-ddp-插件): 适用于参数少于 20 亿的模型（例如 Bert-3m、GPT2-1.5b）。
-- [Torch FSDP 插件](#torch-fsdp-插件) / [Low Level Zero 插件](#low-level-zero-插件): 适用于参数少于 100 亿的模型（例如 GPTJ-6b、MegatronLM-8b）。
-- [Gemini 插件](#gemini-插件): 适合参数超过 100 亿的模型（例如 TuringNLG-17b），且**跨节点带宽高、中小规模集群（千卡以下）**的场景（例如 Llama2-70b）。
-- [Hybrid Pararllel 插件](#hybrid-parallel-插件): 适合参数超过 600 亿的模型、超长序列、超大词表等特殊模型，且**跨节点带宽低、大规模集群（千卡以上）**的场景（例如 GPT3-175b、Bloom-176b）。
+### Torch DDP 插件
+
+更多详细信息，请参阅 [Pytorch 文档](https://pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel).
+
+{{ autodoc:colossalai.booster.plugin.TorchDDPPlugin }}
+
+### Torch FSDP 插件
+
+> ⚠ 如果 torch 版本低于 1.12.0，此插件将不可用。
+
+> ⚠ 该插件现在还不支持保存/加载分片的模型 checkpoint。
+
+> ⚠ 该插件现在还不支持使用了multi params group的optimizer。
+
+更多详细信息，请参阅 [Pytorch 文档](https://pytorch.org/docs/main/fsdp.html).
+
+{{ autodoc:colossalai.booster.plugin.TorchFSDPPlugin }}
 
 <!-- doc-test-command: echo  -->

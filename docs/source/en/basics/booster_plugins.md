@@ -19,25 +19,16 @@ We currently provide the following plugins:
 
 More plugins are coming soon.
 
+## Choosing Your Plugin
+
+Generally only one plugin is used to train a model. Our recommended use case for each plugin is as follows.
+
+- [Torch DDP Plugin](#torch-ddp-plugin): It is suitable for models with less than 2 billion parameters (e.g. Bert-3m, GPT2-1.5b).
+- [Torch FSDP Plugin](#torch-fsdp-plugin) / [Low Level Zero Plugin](#low-level-zero-plugin): It is suitable for models with less than 10 billion parameters (e.g. GPTJ-6b, MegatronLM-8b).
+- [Gemini Plugin](#gemini-plugin): It is suitable for models with more than 10 billion parameters (e.g. TuringNLG-17b) and is ideal for scenarios with **high cross-node bandwidth and medium to small-scale clusters (below a thousand cards)** (e.g. Llama2-70b).
+- [Hybrid Pararllel Plugin](#hybrid-parallel-plugin): It is suitable for models with more than 60 billion parameters, or special models such as those with exceptionally long sequences, very large vocabularies, and is best suited for scenarios with **low cross-node bandwidth and large-scale clusters (a thousand cards or more)** (e.g. GPT3-175b, Bloom-176b).
+
 ## Plugins
-
-### Torch DDP Plugin
-
-More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel).
-
-{{ autodoc:colossalai.booster.plugin.TorchDDPPlugin }}
-
-### Torch FSDP Plugin
-
-> ⚠ This plugin is not available when torch version is lower than 1.12.0.
-
-> ⚠ This plugin does not support save/load sharded model checkpoint now.
-
-> ⚠ This plugin does not support optimizer that use multi params group.
-
-More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/fsdp.html).
-
-{{ autodoc:colossalai.booster.plugin.TorchFSDPPlugin }}
 
 ### Low Level Zero Plugin
 
@@ -87,13 +78,22 @@ This plugin implements the combination of various parallel training strategies a
 
 {{ autodoc:colossalai.booster.plugin.HybridParallelPlugin }}
 
-## Choosing Your Plugin
+### Torch DDP Plugin
 
-Generally only one plugin is used to train a model. Our recommended use case for each plugin is as follows.
+More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel).
 
-- [Torch DDP Plugin](#torch-ddp-plugin): It is suitable for models with less than 2 billion parameters (e.g. Bert-3m, GPT2-1.5b).
-- [Torch FSDP Plugin](#torch-fsdp-plugin) / [Low Level Zero Plugin](#low-level-zero-plugin): It is suitable for models with less than 10 billion parameters (e.g. GPTJ-6b, MegatronLM-8b).
-- [Gemini Plugin](#gemini-plugin): It is suitable for models with more than 10 billion parameters (e.g. TuringNLG-17b) and is ideal for scenarios with **high cross-node bandwidth and medium to small-scale clusters (below a thousand cards)** (e.g. Llama2-70b).
-- [Hybrid Pararllel Plugin](#hybrid-parallel-plugin): It is suitable for models with more than 60 billion parameters, or special models such as those with exceptionally long sequences, very large vocabularies, and is best suited for scenarios with **low cross-node bandwidth and large-scale clusters (a thousand cards or more)** (e.g. GPT3-175b, Bloom-176b).
+{{ autodoc:colossalai.booster.plugin.TorchDDPPlugin }}
+
+### Torch FSDP Plugin
+
+> ⚠ This plugin is not available when torch version is lower than 1.12.0.
+
+> ⚠ This plugin does not support save/load sharded model checkpoint now.
+
+> ⚠ This plugin does not support optimizer that use multi params group.
+
+More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/fsdp.html).
+
+{{ autodoc:colossalai.booster.plugin.TorchFSDPPlugin }}
 
 <!-- doc-test-command: echo  -->
