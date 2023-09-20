@@ -1,10 +1,7 @@
-from typing import Optional
-
 import torch
 import torch.nn as nn
 
 from ..lora import LoRAModule
-from ..utils import masked_mean
 
 
 class Critic(LoRAModule):
@@ -19,37 +16,19 @@ class Critic(LoRAModule):
     """
 
     def __init__(
-        self,
-        model: nn.Module,
-        value_head: nn.Module,
-        lora_rank: int = 0,
-        lora_train_bias: str = "none",
-        use_action_mask: bool = False,
+        self, model: nn.Module, value_head: nn.Module, lora_rank: int = 0, lora_train_bias: str = "none"
     ) -> None:
         super().__init__(lora_rank=lora_rank, lora_train_bias=lora_train_bias)
         self.model = model
         self.value_head = value_head
-        self.use_action_mask = use_action_mask
         self.convert_to_lora()
 
-    def forward(
-        self,
-        sequences: torch.LongTensor,
-        action_mask: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+    def forward(self, sequences: torch.LongTensor, attention_mask: torch.Tensor) -> torch.Tensor:
         outputs = self.model(sequences, attention_mask=attention_mask)
         last_hidden_states = outputs["last_hidden_state"]
-
-        values = self.value_head(last_hidden_states).squeeze(-1)
-
-        if action_mask is not None and self.use_action_mask:
-            num_actions = action_mask.size(1)
-            prompt_mask = attention_mask[:, :-num_actions]
-            values = values[:, :-num_actions]
-            value = masked_mean(values, prompt_mask, dim=1)
-            return value
-
-        values = values[:, :-1]
-        value = values.mean(dim=1)
-        return value
+        sequence_lengths = torch.max(attention_mask * torch.arange(sequences.size(1), device=sequences.device), dim=1)[
+            0
+        ]
+        sequence_hidden_states = last_hidden_states[torch.arange(last_hidden_states.size(0)), sequence_lengths]
+        values = self.value_head(sequence_hidden_states).squeeze(1)  # ensure shape is (B, )
+        return values

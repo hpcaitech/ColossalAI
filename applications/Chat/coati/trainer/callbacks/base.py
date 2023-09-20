@@ -35,5 +35,5 @@ class Callback(ABC):
     def on_learn_batch_start(self) -> None:
         pass
 
-    def on_learn_batch_end(self, metrics: dict, experience: Experience) -> None:
+    def on_learn_batch_end(self, experience: Experience) -> None:
         pass

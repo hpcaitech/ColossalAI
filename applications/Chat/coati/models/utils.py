@@ -46,18 +46,17 @@ def _log_probs_from_logits(logits: torch.Tensor, labels: torch.Tensor) -> torch.
     return log_probs_labels.squeeze(-1)
 
 
-def calc_action_log_probs(output: torch.Tensor, sequences: torch.LongTensor, num_actions: int) -> torch.Tensor:
+def calc_action_log_probs(logits: torch.Tensor, sequences: torch.LongTensor, num_actions: int) -> torch.Tensor:
     """Calculate action log probs.
 
     Args:
-        output (torch.Tensor): Output tensor of Actor.forward.
+        output (torch.Tensor): Output tensor of Actor.forward.logits.
         sequences (torch.LongTensor): Input sequences.
         num_actions (int): Number of actions.
 
     Returns:
         torch.Tensor: Action log probs.
     """
-    logits = output["logits"]
     log_probs = _log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
     return log_probs[:, -num_actions:]
 

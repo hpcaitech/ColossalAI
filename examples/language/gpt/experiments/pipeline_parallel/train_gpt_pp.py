@@ -3,6 +3,7 @@ import time
 from functools import partial
 
 import torch
+from model_zoo import model_builder
 from torch import nn
 
 from colossalai.fx import ColoTracer
@@ -12,7 +13,6 @@ from colossalai.legacy.pipeline.middleware.adaptor import get_fx_topology
 from colossalai.legacy.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine
 from colossalai.legacy.pipeline.rpc.utils import rpc_run
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from model_zoo import model_builder
 
 
 def parse_args():

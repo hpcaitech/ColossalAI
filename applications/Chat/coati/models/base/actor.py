@@ -25,7 +25,7 @@ class Actor(LoRAModule):
         self,
         input_ids: torch.LongTensor,
         attention_mask: Optional[torch.Tensor] = None,
-        **model_kwargs,  # HACK: `generate` method may pass more kwargs
+        **model_kwargs,
     ) -> torch.Tensor:
         """Returns model output."""
         output = self.model(input_ids, attention_mask=attention_mask, **model_kwargs)

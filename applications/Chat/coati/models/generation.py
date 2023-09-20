@@ -2,6 +2,7 @@ from typing import Any, Callable, Optional
 
 import torch
 import torch.distributed as dist
+from transformers import PreTrainedTokenizer
 
 from .base import Actor
 
@@ -63,8 +64,8 @@ def _sample(
         )
         outputs = model(**model_inputs)
 
+        # NOTE: this is correct only in left padding mode
         next_token_logits = outputs["logits"][:, -1, :]
-        # pre-process distribution
         next_token_logits = logits_processor(input_ids, next_token_logits)
         # sample
         probs = torch.softmax(next_token_logits, dim=-1, dtype=torch.float)
@@ -72,8 +73,7 @@ def _sample(
 
         # finished sentences should have their next token be a padding token
         if eos_token_id is not None:
-            if pad_token_id is None:
-                raise ValueError("If `eos_token_id` is defined, make sure that `pad_token_id` is defined.")
+            assert pad_token_id is not None, "If `eos_token_id` is defined, make sure that `pad_token_id` is defined."
             next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
         # update generated ids, model inputs for next step
@@ -96,12 +96,11 @@ def _sample(
 def generate(
     model: Actor,
     input_ids: torch.Tensor,
+    tokenizer: PreTrainedTokenizer,
     max_length: int,
     num_beams: int = 1,
     do_sample: bool = True,
     early_stopping: bool = False,
-    eos_token_id: Optional[int] = None,
-    pad_token_id: Optional[int] = None,
     top_k: Optional[int] = None,
     top_p: Optional[float] = None,
     temperature: Optional[float] = None,
@@ -118,14 +117,13 @@ def generate(
         num_beams (int, optional): number of beams. Defaults to 1.
         do_sample (bool, optional): whether to do sample. Defaults to True.
         early_stopping (bool, optional): if True, the sequence length may be smaller than max_length due to finding eos. Defaults to False.
-        eos_token_id (Optional[int], optional): end of sequence token id. Defaults to None.
-        pad_token_id (Optional[int], optional): pad token id. Defaults to None.
         top_k (Optional[int], optional): the number of highest probability vocabulary tokens to keep for top-k-filtering. Defaults to None.
         top_p (Optional[float], optional): If set to float < 1, only the smallest set of most probable tokens with probabilities that add up to top_p or higher are kept for generation. Defaults to None.
         temperature (Optional[float], optional): The value used to module the next token probabilities. Defaults to None.
         prepare_inputs_fn (Optional[Callable[[torch.Tensor, Any], dict]], optional): Function to preprocess model inputs. Arguments of this function should be input_ids and model_kwargs. Defaults to None.
         update_model_kwargs_fn (Optional[Callable[[dict, Any], dict]], optional): Function to update model_kwargs based on outputs. Arguments of this function should be outputs and model_kwargs. Defaults to None.
     """
+    assert tokenizer.padding_side == "left", "Current generation only supports left padding."
     is_greedy_gen_mode = (num_beams == 1) and do_sample is False
     is_sample_gen_mode = (num_beams == 1) and do_sample is True
     is_beam_gen_mode = (num_beams > 1) and do_sample is False
@@ -139,8 +137,8 @@ def generate(
             input_ids,
             max_length,
             early_stopping=early_stopping,
-            eos_token_id=eos_token_id,
-            pad_token_id=pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
             top_k=top_k,
             top_p=top_p,
             temperature=temperature,

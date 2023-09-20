@@ -7,11 +7,10 @@ import tqdm
 from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import Experience
 from torch.optim import Optimizer
-from torch.utils.data import DataLoader
 
 from .callbacks import Callback
 from .strategies import Strategy
-from .utils import CycledDataLoader, is_rank_0
+from .utils import is_rank_0
 
 
 class SLTrainer(ABC):
@@ -47,11 +46,11 @@ class SLTrainer(ABC):
         raise NotImplementedError()
 
     def _before_fit(self):
-        self.no_epoch_bar = False
+        raise NotImplementedError()
 
     def fit(self, *args, **kwargs):
         self._before_fit(*args, **kwargs)
-        for epoch in tqdm.trange(self.max_epochs, desc="Epochs", disable=not is_rank_0() or self.no_epoch_bar):
+        for epoch in tqdm.trange(self.max_epochs, desc="Epochs", disable=not is_rank_0()):
             self._train(epoch)
             self._eval(epoch)
 
@@ -123,9 +122,9 @@ class OnPolicyTrainer(ABC):
         for callback in self.callbacks:
             callback.on_learn_batch_start()
 
-    def _on_learn_batch_end(self, metrics: dict, experience: Experience) -> None:
+    def _on_learn_batch_end(self, experience: Experience) -> None:
         for callback in self.callbacks:
-            callback.on_learn_batch_end(metrics, experience)
+            callback.on_learn_batch_end(experience)
 
     @abstractmethod
     def _make_experience(self, collect_step: int):
@@ -153,27 +152,26 @@ class OnPolicyTrainer(ABC):
         self._learn(update_step)
         self._on_learn_epoch_end(update_step)
 
+    def _before_fit(self, *args, **kwargs):
+        raise NotImplementedError()
+
     def fit(
         self,
-        prompt_dataloader: DataLoader,
-        pretrain_dataloader: DataLoader,
         num_episodes: int,
         num_collect_steps: int,
         num_update_steps: int,
+        *args,
+        **kwargs,
     ):
         """
         The main training loop of on-policy rl trainers.
 
         Args:
-            prompt_dataloader (DataLoader): the dataloader to use for prompt data
-            pretrain_dataloader (DataLoader): the dataloader to use for pretrain data
             num_episodes (int): the number of episodes to train
             num_collect_steps (int): the number of collect steps per episode
             num_update_steps (int): the number of update steps per episode
         """
-        self.prompt_dataloader = CycledDataLoader(prompt_dataloader)
-        self.pretrain_dataloader = CycledDataLoader(pretrain_dataloader)
-
+        self._before_fit(*args, **kwargs)
         with self._fit_ctx():
             for episode in tqdm.trange(num_episodes, desc="Episodes", disable=not is_rank_0()):
                 with self._episode_ctx(episode):

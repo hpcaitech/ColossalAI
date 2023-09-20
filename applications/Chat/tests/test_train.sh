@@ -24,8 +24,8 @@ if [ -z "$SFT_DATASET" ]; then
     exit 1
 fi
 
-if [ -z "$PROMPT_PATH" ]; then
-    echo "Please set \$PROMPT_PATH to the path to prompts csv."
+if [ -z "$PROMPT_DATASET" ]; then
+    echo "Please set \$PROMPT_DATASET to the path to prompts csv."
     exit 1
 fi
 
@@ -74,11 +74,15 @@ echo "[Test]: testing sft ..."
 # FIXME: This is a hack to skip tests that are not working
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: These tests can be passed locally, skipped for long execution time
+#  - *-gemini: Gemini plugin does not support `from_pretrained` yet
 SKIPPED_TESTS=(
     "gpt2-ddp"
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
+    "gpt2-colossalai_gemini"
+    "opt-colossalai_gemini"
+    "bloom-colossalai_gemini"
 )
 
 GRAD_CKPTS=('' '--grad_checkpoint')
@@ -105,7 +109,7 @@ for lora_rank in '0' '4'; do
                     $pretrain_model --tokenizer $MODELS_DIR/$model \
                     --model $model --strategy $strategy --lora_rank $lora_rank $grad_ckpt \
                     --dataset $SFT_DATASET --max_datasets_size 8 \
-                    --max_epochs 1 --batch_size 1 --accumulation_steps 1 \
+                    --max_epochs 1 --batch_size 1 --accumulation_steps 1 --lr 1e-8 \
                     --save_path $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank}
                 passed=$?
                 if [ $passed -eq 0 ]; then
@@ -125,11 +129,15 @@ echo "[Test]: testing reward model ..."
 # FIXME: This is a hack to skip tests that are not working
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: These tests can be passed locally, skipped for long execution time
+#  - *-gemini: Gemini plugin does not support `from_pretrained` yet
 SKIPPED_TESTS=(
     "gpt2-ddp"
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
+    "gpt2-colossalai_gemini"
+    "opt-colossalai_gemini"
+    "bloom-colossalai_gemini"
 )
 
 LOSS_FNS=('log_sig' 'log_exp')
@@ -157,8 +165,9 @@ for lora_rank in '0' '4'; do
                 echo "[Test]: $model-$strategy-$lora_rank, attempt $i"
                 torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_reward_model.py \
                     $pretrain_model --tokenizer $MODELS_DIR/$model \
-                    --model $model --strategy $strategy --lora_rank $lora_rank --loss_fn $loss_fn \
-                    --dataset $dataset --subset $subset --test True --batch_size 1 \
+                    --dataset $dataset --subset $subset --max_datasets_size 8 \
+                    --model $model --strategy $strategy --lora_rank $lora_rank \
+                    --loss_fn $loss_fn --batch_size 1 --lr 1e-8 \
                     --save_path $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt
                 passed=$?
                 if [ $passed -eq 0 ]; then
@@ -178,11 +187,15 @@ echo "[Test]: testing RLHF ..."
 # FIXME: This is a hack to skip tests that are not working
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: These tests can be passed locally, skipped for long execution time
+#  - *-gemini: Gemini plugin does not support `from_pretrained` yet
 SKIPPED_TESTS=(
     "gpt2-ddp"
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
+    "gpt2-colossalai_gemini"
+    "opt-colossalai_gemini"
+    "bloom-colossalai_gemini"
 )
 
 for model in ${MODELS[@]}; do
@@ -204,9 +217,9 @@ for model in ${MODELS[@]}; do
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$strategy-$lora_rank, attempt $i"
                 torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_prompts.py \
-                    --prompt_dataset $PROMPT_PATH --pretrain_dataset $PRETRAIN_DATASET \
+                    --prompt_dataset $PROMPT_DATASET --pretrain_dataset $PRETRAIN_DATASET --max_datasets_size 32 \
                     --strategy $strategy --model $model --tokenizer $MODELS_DIR/$model \
-                    --num_episodes 1 --num_collect_steps 1 --num_update_steps 1 \
+                    --num_episodes 1 --num_collect_steps 1 --num_update_steps 1 --lr 1e-8 \
                     --experience_batch_size 2 --train_batch_size 1 --lora_rank $lora_rank \
                     --pretrain $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank} \
                     $rm_pretrain_model --rm_path $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt \

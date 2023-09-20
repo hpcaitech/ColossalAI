@@ -23,7 +23,6 @@ from transformers.trainer import get_scheduler
 
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.tensor import ColoParameter
 
 
 def train(args):
@@ -31,7 +30,7 @@ def train(args):
     if args.strategy == "ddp":
         strategy = DDPStrategy()
     elif args.strategy == "colossalai_gemini":
-        strategy = GeminiStrategy(placement_policy="cuda")
+        strategy = GeminiStrategy(placement_policy="auto")
     elif args.strategy == "colossalai_zero2":
         strategy = LowLevelZeroStrategy(stage=2, placement_policy="cuda")
     elif args.strategy == "colossalai_zero2_cpu":
@@ -57,7 +56,7 @@ def train(args):
         else:
             raise ValueError(f'Unsupported model "{args.model}"')
 
-        model.to(torch.float16).to(torch.cuda.current_device())
+        model.to(torch.bfloat16).to(torch.cuda.current_device())
 
     # configure tokenizer
     if args.model == "gpt2":
@@ -84,27 +83,20 @@ def train(args):
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
 
-    if args.model == "llama" and args.strategy == "colossalai_gemini":
-        # this is a hack to deal with the resized embedding
-        # to make sure all parameters are ColoParameter for Colossal-AI Gemini Compatibility
-        for name, param in model.named_parameters():
-            if not isinstance(param, ColoParameter):
-                sub_module_name = ".".join(name.split(".")[:-1])
-                weight_name = name.split(".")[-1]
-                sub_module = model.get_submodule(sub_module_name)
-                setattr(sub_module, weight_name, ColoParameter(param))
-
     # configure optimizer
     if args.strategy.startswith("colossalai"):
         optim = HybridAdam(model.parameters(), lr=args.lr, clipping_norm=1.0)
     else:
         optim = Adam(model.parameters(), lr=args.lr)
-    logger = get_dist_logger()
 
     # configure dataset
     if args.dataset == "yizhongw/self_instruct":
         train_data = load_dataset(args.dataset, "super_natural_instructions", split="train")
         eval_data = load_dataset(args.dataset, "super_natural_instructions", split="test")
+
+        if args.max_datasets_size is not None:
+            train_data = train_data.select(range(min(args.max_datasets_size, len(train_data))))
+            eval_data = eval_data.select(range(min(args.max_datasets_size, len(eval_data))))
 
         train_dataset = SFTDataset(train_data, tokenizer, args.max_len)
         eval_dataset = SFTDataset(eval_data, tokenizer, args.max_len)
@@ -176,8 +168,13 @@ def train(args):
         accumulation_steps=args.accumulation_steps,
     )
 
+    logger = get_dist_logger()
     trainer.fit(
-        train_dataloader=train_dataloader, eval_dataloader=eval_dataloader, logger=logger, use_wandb=args.use_wandb
+        train_dataloader=train_dataloader,
+        eval_dataloader=eval_dataloader,
+        logger=logger,
+        log_dir=args.log_dir,
+        use_wandb=args.use_wandb,
     )
 
     # save model checkpoint after fitting on only rank0
@@ -207,9 +204,9 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--max_len", type=int, default=512)
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
-    parser.add_argument("--log_interval", type=int, default=100, help="how many steps to log")
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--accumulation_steps", type=int, default=8)
+    parser.add_argument("--log_dir", default="logs", type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     args = parser.parse_args()

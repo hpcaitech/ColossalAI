@@ -45,9 +45,17 @@ def eval(args):
         raise ValueError(f'Unsupported model "{args.model}"')
 
     actor.eval()
+    tokenizer.padding_side = "left"
     input_ids = tokenizer.encode(args.input, return_tensors="pt").to(torch.cuda.current_device())
     outputs = generate(
-        actor, input_ids, max_length=args.max_length, do_sample=True, top_k=50, top_p=0.95, num_return_sequences=1
+        actor,
+        input_ids,
+        tokenizer=tokenizer,
+        max_length=args.max_length,
+        do_sample=True,
+        top_k=50,
+        top_p=0.95,
+        num_return_sequences=1,
     )
     output = tokenizer.batch_decode(outputs[0], skip_special_tokens=True)
     print(f"[Output]: {''.join(output)}")
