@@ -87,9 +87,6 @@ class CheckpointIO(ABC):
         # return the origin model instead of the unwrapped model
         origin_model = model
 
-        if isinstance(model, ModelWrapper):
-            model = model.unwrap()
-
         if index_file_exists:
             self.load_sharded_model(model, index_file_path, strict)
         else:
@@ -133,9 +130,6 @@ class CheckpointIO(ABC):
             size_per_shard (int): size per shard in MB. Default: 1024. This value is only used when shard = True.
             use_safetensors (bool): whether to use safe tensors. Default: False. If set to True, the checkpoint will be saved
         """
-
-        if isinstance(model, ModelWrapper):
-            model = model.unwrap()
 
         if shard:
             self.save_sharded_model(model, checkpoint, gather_dtensor, prefix, size_per_shard, use_safetensors)

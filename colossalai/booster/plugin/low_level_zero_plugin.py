@@ -22,7 +22,6 @@ from colossalai.checkpoint_io.utils import (
     save_param_groups,
     save_state_dict,
     sharded_optimizer_loading_epilogue,
-    unwrap_optimizer,
 )
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.utils import get_current_device
@@ -158,7 +157,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         """
         # If optimizer is wrapped, unwrap it.
         if isinstance(optimizer, OptimizerWrapper):
-            optimizer = unwrap_optimizer(optimizer)
+            optimizer = optimizer.unwrap()
 
         # Read checkpoint index file.
         ckpt_index_file = CheckpointIndexFile.from_file(index_file_path)
@@ -196,12 +195,14 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         super().load_unsharded_model(model, checkpoint, strict)
         model.update_master_params()
 
-    def load_sharded_model(self,
-                           model: nn.Module,
-                           checkpoint_index_file: Path,
-                           strict: bool = False,
-                           use_safetensors: bool = False,
-                           load_sub_module: bool = True):
+    def load_sharded_model(
+        self,
+        model: nn.Module,
+        checkpoint_index_file: Path,
+        strict: bool = False,
+        use_safetensors: bool = False,
+        load_sub_module: bool = True,
+    ):
         super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors, load_sub_module)
         model.update_master_params()
 

@@ -3,7 +3,7 @@ import logging
 import os
 from pathlib import Path
 from shutil import rmtree
-from typing import Dict, Iterator, Optional, OrderedDict, Tuple, Union
+from typing import Dict, Iterator, Optional, OrderedDict, Tuple
 
 import torch
 import torch.distributed as dist
@@ -345,7 +345,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             _load(extra_state_key)
 
         # Update master params if mixed-precision training is enabled.
-        model.update_master_params()
+        if hasattr(model, "update_master_params") and callable(model.update_master_params):
+            model.update_master_params()
 
         if self.verbose:
             logging.info(f"The model has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
@@ -393,7 +394,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             dp_group=self.dp_group,
             tp_group=self.tp_group,
             master_to_working_map=optimizer.get_master_to_working_map(),
-            size_per_shard=size_per_shard)
+            size_per_shard=size_per_shard,
+        )
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
         index_file = CheckpointIndexFile(checkpoint)
         control_saving = self.dp_rank == 0 and self.tp_rank == 0
@@ -508,7 +510,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         id_map = {}
         master_to_working_map = optimizer.get_master_to_working_map()
         for pg in optimizer.optim.param_groups:
-            for param in pg['params']:
+            for param in pg["params"]:
                 param_id = _get_param_id_from_optimizer_param(param, master_to_working_map)
                 id_map[param_id] = param
 
