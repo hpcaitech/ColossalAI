@@ -8,7 +8,7 @@ from coati.models.base import Actor, Critic, RewardModel, get_base_model
 from coati.models.loss import GPTLMLoss, PolicyLoss, ValueLoss
 from coati.models.utils import calc_action_log_probs
 from torch.optim import Optimizer
-from torch.utils.data import DistributedSampler
+from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 

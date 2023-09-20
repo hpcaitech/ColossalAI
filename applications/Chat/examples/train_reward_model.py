@@ -26,7 +26,7 @@ def train(args):
     if args.strategy == "ddp":
         strategy = DDPStrategy()
     elif args.strategy == "colossalai_gemini":
-        strategy = GeminiStrategy(placement_policy="cuda")
+        strategy = GeminiStrategy(placement_policy="auto")
     elif args.strategy == "colossalai_zero2":
         strategy = LowLevelZeroStrategy(stage=2, placement_policy="cuda")
     else:
