@@ -24,25 +24,22 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         """
         Load model from checkpoint.
         """
-        assert isinstance(model, TorchDDPModel), "Please boost the model before loading!"
-        model = model.unwrap()
-        super().load_unsharded_model(model, checkpoint, strict=strict)
+        assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
+        super().load_unsharded_model(model.unwrap(), checkpoint, strict=strict)
 
     def save_unsharded_model(self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
         """
         Save model to checkpoint but only on master process.
         """
-        assert isinstance(model, TorchDDPModel), "Please boost the model before saving!"
-        model = model.unwrap()
+        assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
         if self.coordinator.is_master():
-            super().save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors)
+            super().save_unsharded_model(model.unwrap(), checkpoint, gather_dtensor, use_safetensors)
 
     def load_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str):
         """
         Load optimizer from checkpoint.
         """
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
-        optimizer = optimizer.unwrap()
         super().load_unsharded_optimizer(optimizer, checkpoint)
 
     def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
@@ -50,7 +47,6 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         Save optimizer to checkpoint but only on master process.
         """
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
-        optimizer = optimizer.unwrap()
         if self.coordinator.is_master():
             super().save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor)
 
@@ -73,10 +69,11 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         """
         Save model to checkpoint but only on master process.
         """
-        assert isinstance(model, TorchDDPModel), "Please boost the model before saving!"
-        model = model.unwrap()
+        assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
         if self.coordinator.is_master():
-            super().save_sharded_model(model, checkpoint_path, gather_dtensor, prefix, max_shard_size, use_safetensors)
+            super().save_sharded_model(
+                model.unwrap(), checkpoint_path, gather_dtensor, prefix, max_shard_size, use_safetensors
+            )
 
     def load_sharded_model(
         self,
@@ -89,9 +86,8 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         """
         Load model from sharded checkpoint.
         """
-        assert isinstance(model, TorchDDPModel), "Please boost the model before loading!"
-        model = model.unwrap()
-        super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors, load_sub_module)
+        assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
+        super().load_sharded_model(model.unwrap(), checkpoint_index_file, strict, use_safetensors, load_sub_module)
 
     def save_sharded_optimizer(
         self,
@@ -105,9 +101,8 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         Save optimizer to sharded checkpoint but only on master process.
         """
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
-        optimizer = optimizer.unwrap()
         if self.coordinator.is_master():
-            super().save_sharded_optimizer(optimizer, checkpoint, gather_dtensor, prefix, size_per_shard)
+            super().save_sharded_optimizer(optimizer.unwrap(), checkpoint, gather_dtensor, prefix, size_per_shard)
 
     def load_sharded_optimizer(
         self,
@@ -119,8 +114,7 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         Load optimizer from sharded checkpoint.
         """
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
-        optimizer = optimizer.unwrap()
-        super().load_sharded_optimizer(optimizer, index_file_path, prefix)
+        super().load_sharded_optimizer(optimizer.unwrap(), index_file_path, prefix)
 
 
 class TorchDDPModel(ModelWrapper):

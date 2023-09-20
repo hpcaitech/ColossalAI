@@ -74,7 +74,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
             checkpoint (str): Path to save checkpoint
             gather_dtensor (bool): Whether to gather_dtensor, not used
         """
-
+        assert isinstance(optimizer, LowLevelZeroOptimizer), "Please boost the optimizer before saving!"
         # the `state_dict` in LowLevelZeroOptimizer has communication
         # if only the master rank collect state_dict and save,
         # the communication on each rank would not match
@@ -104,6 +104,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
             prefix (str): Perfix of file to save
             size_per_shard (int): Max file size of each file that store state tensors
         """
+        assert isinstance(optimizer, LowLevelZeroOptimizer), "Please boost the optimizer before saving!"
         if os.path.isfile(checkpoint):
             logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
             return
@@ -155,9 +156,8 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
             index_file_path (str): Path to the index file
             prefix (str): Not used.
         """
-        # If optimizer is wrapped, unwrap it.
-        if isinstance(optimizer, OptimizerWrapper):
-            optimizer = optimizer.unwrap()
+        assert isinstance(optimizer, LowLevelZeroOptimizer), "Please boost the optimizer before Loading!"
+        optimizer = optimizer.unwrap()
 
         # Read checkpoint index file.
         ckpt_index_file = CheckpointIndexFile.from_file(index_file_path)
@@ -191,18 +191,20 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
             load_states_into_optimizer(optimizer, state_dict, id_map)
         sharded_optimizer_loading_epilogue(optimizer)
 
-    def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool = True):
+    def load_unsharded_model(self, model: ModelWrapper, checkpoint: str, strict: bool = True):
+        assert isinstance(model, LowLevelZeroModel), "Please boost the model before loading!"
         super().load_unsharded_model(model, checkpoint, strict)
         model.update_master_params()
 
     def load_sharded_model(
         self,
-        model: nn.Module,
+        model: ModelWrapper,
         checkpoint_index_file: Path,
         strict: bool = False,
         use_safetensors: bool = False,
         load_sub_module: bool = True,
     ):
+        assert isinstance(model, LowLevelZeroModel), "Please boost the model before loading!"
         super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors, load_sub_module)
         model.update_master_params()
 
@@ -318,7 +320,7 @@ class LowLevelZeroPlugin(DPPluginBase):
                 optimizer, **self.zero_optim_kwargs, verbose=self.verbose
             )
             # inject update_master_params
-            model.module.update_master_params = MethodType(optimizer.update_master_params, model)
+            model.update_master_params = MethodType(optimizer.update_master_params, model)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 
