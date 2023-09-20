@@ -4,7 +4,6 @@
 
 **前置教程**
 
-- [定义配置文件](../basics/define_your_config.md)
 - [booster 使用](../basics/booster_api.md)
 
 **相关论文**

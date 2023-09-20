@@ -3,7 +3,6 @@
 作者: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **前置教程**
-- [定义配置文件](../basics/define_your_config.md)
 - [booster使用](../basics/booster_api.md)
 
 **相关论文**

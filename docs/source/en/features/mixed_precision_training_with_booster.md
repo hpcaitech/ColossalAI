@@ -4,7 +4,6 @@ Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **Prerequisite**
 
-- [Define Your Configuration](../basics/define_your_config.md)
 - [Training Booster](../basics/booster_api.md)
 
 **Related Paper**
