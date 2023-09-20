@@ -56,7 +56,7 @@ AMP 代表自动混合精度训练。
 
 ## Colossal-AI 中的 AMP
 
-我们支持三种 AMP 训练方法，并允许用户在没有改变代码的情况下使用 AMP 进行训练。booster 支持 amp 特性注入，如果您要使用混合精度训练，则在创建 booster 实例时指定`mixed_precision`参数，我们现已支持 torch amp，apex amp, naive amp（现已移植 torch amp 至 booster，apex amp, naive amp 仍由`colossalai.initialize`方式启动，如您需使用，请[参考](./mixed_precision_training.md);后续将会拓展`bf16`,`pf8`的混合精度训练.
+我们支持三种 AMP 训练方法，并允许用户在没有改变代码的情况下使用 AMP 进行训练。booster 支持 amp 特性注入，如果您要使用混合精度训练，则在创建 booster 实例时指定`mixed_precision`参数;后续将会拓展`bf16`,`pf8`的混合精度训练.
 
 #### booster 启动方式
 
