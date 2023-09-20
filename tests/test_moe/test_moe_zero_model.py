@@ -21,13 +21,13 @@ from tests.test_zero.test_legacy.common import CONFIG, check_grads_padding, run_
 def run_model_test(enable_autocast, shard_strategy_class):
     shard_strategy = shard_strategy_class()
 
-    get_components_func = non_distributed_component_funcs.get_callable('hanging_param_model')
+    get_components_func = non_distributed_component_funcs.get_callable("hanging_param_model")
     _, train_dataloader, _, optimizer_class, _ = get_components_func()
     criterion = MoeLoss(aux_weight=0.01, loss_fn=torch.nn.CrossEntropyLoss)
 
-    with ZeroInitContext(target_device=torch.device('cuda', torch.cuda.current_device()),
-                         shard_strategy=shard_strategy,
-                         shard_param=True):
+    with ZeroInitContext(
+        target_device=torch.device("cuda", torch.cuda.current_device()), shard_strategy=shard_strategy, shard_param=True
+    ):
         zero_model = MoeModel(checkpoint=True)
     zero_model = ShardedModelV2(zero_model, shard_strategy)
 
@@ -54,7 +54,7 @@ def run_model_test(enable_autocast, shard_strategy_class):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     MOE_CONTEXT.setup(seed=42)
     run_model_test()
 
@@ -66,5 +66,5 @@ def test_moe_zero_model(world_size):
     spawn(run_dist, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_moe_zero_model(world_size=2)

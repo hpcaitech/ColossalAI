@@ -16,10 +16,11 @@ import copy
 from typing import Dict, Sequence, Tuple
 
 import torch
+from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
-from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer 
+
 from colossalai.logging import get_dist_logger
 
 from .utils import is_rank_0, jload
@@ -28,32 +29,33 @@ logger = get_dist_logger()
 
 IGNORE_INDEX = -100
 PROMPT_DICT = {
-    "prompt_input": ("Below is an instruction that describes a task, paired with an input that provides further context. "
-                     "Write a response that appropriately completes the request.\n\n"
-                     "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"),
-    "prompt_no_input": ("Below is an instruction that describes a task. "
-                        "Write a response that appropriately completes the request.\n\n"
-                        "### Instruction:\n{instruction}\n\n### Response:"),
+    "prompt_input": (
+        "Below is an instruction that describes a task, paired with an input that provides further context. "
+        "Write a response that appropriately completes the request.\n\n"
+        "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"
+    ),
+    "prompt_no_input": (
+        "Below is an instruction that describes a task. "
+        "Write a response that appropriately completes the request.\n\n"
+        "### Instruction:\n{instruction}\n\n### Response:"
+    ),
 }
 
 
-def _preprocess(sources: Sequence[str],
-                targets: Sequence[str],
-                tokenizer: PreTrainedTokenizer,
-                max_length: int,
-                ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _preprocess(
+    sources: Sequence[str],
+    targets: Sequence[str],
+    tokenizer: PreTrainedTokenizer,
+    max_length: int,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Preprocess the data by tokenizing."""
     sequences = [s + t for s, t in zip(sources, targets)]
-    sequences_token = tokenizer(sequences,
-                                max_length=max_length,
-                                padding="max_length",
-                                truncation=True,
-                                return_tensors="pt")
-    sources_token = tokenizer(sources,
-                              max_length=max_length,
-                              padding="max_length",
-                              truncation=True,
-                              return_tensors="pt")
+    sequences_token = tokenizer(
+        sequences, max_length=max_length, padding="max_length", truncation=True, return_tensors="pt"
+    )
+    sources_token = tokenizer(
+        sources, max_length=max_length, padding="max_length", truncation=True, return_tensors="pt"
+    )
 
     labels = copy.deepcopy(sequences_token["input_ids"])
     for i in range(labels.shape[0]):
@@ -64,23 +66,24 @@ def _preprocess(sources: Sequence[str],
             labels[i][:source_len] = IGNORE_INDEX
         elif tokenizer.padding_side == "left":
             # |pad|prompt|completion|eos|
-            labels[i][pad_len:pad_len + source_len] = IGNORE_INDEX
+            labels[i][pad_len : pad_len + source_len] = IGNORE_INDEX
         else:
             raise RuntimeError()
 
     return sequences_token["input_ids"], labels, sequences_token["attention_mask"]
 
 
-def _preprocess_chatglm(sources: Sequence[str],
-                targets: Sequence[str],
-                tokenizer: PreTrainedTokenizer,
-                max_length: int,
-                ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _preprocess_chatglm(
+    sources: Sequence[str],
+    targets: Sequence[str],
+    tokenizer: PreTrainedTokenizer,
+    max_length: int,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Preprocess the data by tokenizing.
     None for attention mask, ChatGLM will calculate attention mask according to input ids
     """
-  
+
     labels = []
     input_ids = []
     for source, target in zip(sources, targets):
@@ -90,16 +93,16 @@ def _preprocess_chatglm(sources: Sequence[str],
         # truncate
         sp_token_list = [tokenizer.gmask_token_id, tokenizer.bos_token_id]
         truncate_length = max(0, len(input_id) - max_length)
-        input_id = input_id[truncate_length: ]
+        input_id = input_id[truncate_length:]
         if truncate_length == len(source_id) + 1:
-            input_id = sp_token_list + input_id[1: ]
+            input_id = sp_token_list + input_id[1:]
         elif truncate_length > len(source_id) + 1:
-            input_id = sp_token_list + input_id[2: ]
-        
+            input_id = sp_token_list + input_id[2:]
+
         context_length = input_id.index(tokenizer.bos_token_id)
         mask_position = context_length - 1
-        label = [IGNORE_INDEX] * context_length + input_id[mask_position+1:]
-        
+        label = [IGNORE_INDEX] * context_length + input_id[mask_position + 1 :]
+
         pad_len = max_length - len(input_id)
         input_id = input_id + [tokenizer.pad_token_id] * pad_len
         input_ids.append(input_id)
@@ -117,25 +120,18 @@ class SFTDataset(Dataset):
         max_length: max length of input
     """
 
-    def __init__(self,
-                 dataset: Dict,
-                 tokenizer: PreTrainedTokenizer,
-                 max_length: int = 512
-                 ) -> None:
+    def __init__(self, dataset: Dict, tokenizer: PreTrainedTokenizer, max_length: int = 512) -> None:
         super().__init__()
         self.input_ids = []
 
         sources = [data["prompt"] for data in dataset]
-        targets = [
-            data["completion"] + tokenizer.eos_token
-            for data in tqdm(dataset, disable=not is_rank_0())
-        ]
+        targets = [data["completion"] + tokenizer.eos_token for data in tqdm(dataset, disable=not is_rank_0())]
         if isinstance(tokenizer, ChatGLMTokenizer):
-            self.input_ids, self.labels, self.attention_mask = \
-                _preprocess_chatglm(sources, targets, tokenizer, max_length)
+            self.input_ids, self.labels, self.attention_mask = _preprocess_chatglm(
+                sources, targets, tokenizer, max_length
+            )
         else:
-            self.input_ids, self.labels, self.attention_mask = \
-                _preprocess(sources, targets, tokenizer, max_length)
+            self.input_ids, self.labels, self.attention_mask = _preprocess(sources, targets, tokenizer, max_length)
 
     def __len__(self):
         length = self.input_ids.shape[0]
@@ -143,22 +139,17 @@ class SFTDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.attention_mask is not None:
-            return dict(input_ids=self.input_ids[idx],
-                        labels=self.labels[idx],
-                        attention_mask=self.attention_mask[idx])
+            return dict(input_ids=self.input_ids[idx], labels=self.labels[idx], attention_mask=self.attention_mask[idx])
         else:
-            return dict(input_ids=self.input_ids[idx],
-                        labels=self.labels[idx])
+            return dict(input_ids=self.input_ids[idx], labels=self.labels[idx])
 
 
 class SupervisedDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
-    def __init__(self,
-                 data_path: str,
-                 tokenizer: PreTrainedTokenizer,
-                 max_datasets_size: int = None,
-                 max_length: int = 512):
+    def __init__(
+        self, data_path: str, tokenizer: PreTrainedTokenizer, max_datasets_size: int = None, max_length: int = 512
+    ):
         super().__init__()
         logger.info("Loading data...")
         list_data_dict = jload(data_path)
@@ -174,18 +165,15 @@ class SupervisedDataset(Dataset):
             prompt_input.format_map(example) if "input" in example else prompt_no_input.format_map(example)
             for example in list_data_dict
         ]
-        targets = [
-            example['output'] + tokenizer.eos_token
-            for example in list_data_dict
-        ]
+        targets = [example["output"] + tokenizer.eos_token for example in list_data_dict]
 
         logger.info("Tokenizing inputs... This may take some time...")
         if isinstance(tokenizer, ChatGLMTokenizer):
-            self.input_ids, self.labels, self.attention_mask = \
-                _preprocess_chatglm(sources, targets, tokenizer, max_length)
+            self.input_ids, self.labels, self.attention_mask = _preprocess_chatglm(
+                sources, targets, tokenizer, max_length
+            )
         else:
-            self.input_ids, self.labels, self.attention_mask = \
-                _preprocess(sources, targets, tokenizer, max_length)
+            self.input_ids, self.labels, self.attention_mask = _preprocess(sources, targets, tokenizer, max_length)
 
     def __len__(self):
         length = self.input_ids.shape[0]
@@ -193,9 +181,6 @@ class SupervisedDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.attention_mask is not None:
-            return dict(input_ids=self.input_ids[idx],
-                        labels=self.labels[idx],
-                        attention_mask=self.attention_mask[idx])
+            return dict(input_ids=self.input_ids[idx], labels=self.labels[idx], attention_mask=self.attention_mask[idx])
         else:
-            return dict(input_ids=self.input_ids[idx],
-                        labels=self.labels[idx])
+            return dict(input_ids=self.input_ids[idx], labels=self.labels[idx])

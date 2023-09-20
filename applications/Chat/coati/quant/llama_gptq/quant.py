@@ -13,14 +13,13 @@ def quantize(x, scale, zero, maxq):
 
 
 class Quantizer(nn.Module):
-
     def __init__(self, shape=1):
         super(Quantizer, self).__init__()
-        self.register_buffer('maxq', torch.tensor(0))
-        self.register_buffer('scale', torch.zeros(shape))
-        self.register_buffer('zero', torch.zeros(shape))
+        self.register_buffer("maxq", torch.tensor(0))
+        self.register_buffer("scale", torch.zeros(shape))
+        self.register_buffer("zero", torch.zeros(shape))
 
-    def configure(self, bits, perchannel=False, sym=True, mse=False, norm=2.4, grid=100, maxshrink=.8):
+    def configure(self, bits, perchannel=False, sym=True, mse=False, norm=2.4, grid=100, maxshrink=0.8):
         self.maxq = torch.tensor(2**bits - 1)
         self.perchannel = perchannel
         self.sym = sym
@@ -68,7 +67,7 @@ class Quantizer(nn.Module):
             self.zero = torch.round(-xmin / self.scale)
 
         if self.mse:
-            best = torch.full([x.shape[0]], float('inf'), device=dev)
+            best = torch.full([x.shape[0]], float("inf"), device=dev)
             for i in range(int(self.maxshrink * self.grid)):
                 p = 1 - i / self.grid
                 xmin1 = p * xmin
@@ -123,13 +122,12 @@ class Quantizer(nn.Module):
 try:
     import quant_cuda
 except:
-    print('CUDA extension not installed.')
+    print("CUDA extension not installed.")
 
 # Assumes layer is perfectly divisible into 256 * 256 blocks
 
 
 class QuantLinear(nn.Module):
-
     def __init__(self, bits, groupsize, infeatures, outfeatures):
         super().__init__()
         if bits not in [2, 3, 4, 8]:
@@ -142,11 +140,11 @@ class QuantLinear(nn.Module):
         groupsize = groupsize if groupsize != -1 else infeatures
         self.groupsize = groupsize
         self.register_buffer(
-            'qzeros', torch.zeros((math.ceil(infeatures / groupsize), outfeatures // 256 * (bits * 8)),
-                                  dtype=torch.int))
-        self.register_buffer('scales', torch.zeros((math.ceil(infeatures / groupsize), outfeatures)))
-        self.register_buffer('bias', torch.zeros(outfeatures))
-        self.register_buffer('qweight', torch.zeros((infeatures // 256 * (bits * 8), outfeatures), dtype=torch.int))
+            "qzeros", torch.zeros((math.ceil(infeatures / groupsize), outfeatures // 256 * (bits * 8)), dtype=torch.int)
+        )
+        self.register_buffer("scales", torch.zeros((math.ceil(infeatures / groupsize), outfeatures)))
+        self.register_buffer("bias", torch.zeros(outfeatures))
+        self.register_buffer("qweight", torch.zeros((infeatures // 256 * (bits * 8), outfeatures), dtype=torch.int))
         self._initialized_quant_state = False
 
     def pack(self, linear, scales, zeros):
@@ -161,8 +159,10 @@ class QuantLinear(nn.Module):
         for idx in range(self.infeatures):
             g_idx = idx // self.groupsize
             intweight.append(
-                torch.round((linear.weight.data[:, idx] + scale_zeros[g_idx]) / self.scales[g_idx]).to(torch.int)[:,
-                                                                                                                  None])
+                torch.round((linear.weight.data[:, idx] + scale_zeros[g_idx]) / self.scales[g_idx]).to(torch.int)[
+                    :, None
+                ]
+            )
         intweight = torch.cat(intweight, dim=1)
         intweight = intweight.t().contiguous()
         intweight = intweight.numpy().astype(np.uint32)
@@ -271,13 +271,13 @@ class QuantLinear(nn.Module):
         return y.reshape(outshape)
 
 
-def make_quant(module, names, bits, groupsize, name=''):
+def make_quant(module, names, bits, groupsize, name=""):
     if isinstance(module, QuantLinear):
         return
     for attr in dir(module):
         tmp = getattr(module, attr)
-        name1 = name + '.' + attr if name != '' else attr
+        name1 = name + "." + attr if name != "" else attr
         if name1 in names:
             setattr(module, attr, QuantLinear(bits, groupsize, tmp.in_features, tmp.out_features))
     for name1, child in module.named_children():
-        make_quant(child, names, bits, groupsize, name + '.' + name1 if name != '' else name1)
+        make_quant(child, names, bits, groupsize, name + "." + name1 if name != "" else name1)

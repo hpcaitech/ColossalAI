@@ -1,10 +1,8 @@
-from colossalai.context.parallel_mode import ParallelMode
 import torch
 from torch.cuda.amp import custom_bwd, custom_fwd
 
 
 class _VocabCrossEntropy(torch.autograd.Function):
-
     @staticmethod
     @custom_fwd
     def forward(ctx, vocab_parallel_logits, target):
@@ -24,8 +22,7 @@ class _VocabCrossEntropy(torch.autograd.Function):
         # [*, partition-vocab-size] and target to a 1-D tensor of size [*].
         logits_2d = vocab_parallel_logits.view(-1, vocab_parallel_logits.size(-1))
         masked_target_1d = masked_target.view(-1)
-        arange_1d = torch.arange(start=0, end=logits_2d.size()[0],
-                                 device=logits_2d.device)
+        arange_1d = torch.arange(start=0, end=logits_2d.size()[0], device=logits_2d.device)
         predicted_logits_1d = logits_2d[arange_1d, masked_target_1d]
         predicted_logits_1d = predicted_logits_1d.clone().contiguous()
         predicted_logits = predicted_logits_1d.view_as(target)
@@ -58,10 +55,8 @@ class _VocabCrossEntropy(torch.autograd.Function):
         grad_2d = grad_input.view(-1, partition_vocab_size)
 
         # Add the gradient from matching classes.
-        arange_1d = torch.arange(start=0, end=grad_2d.size()[0],
-                                 device=grad_2d.device)
-        grad_2d[arange_1d, masked_target_1d] -= (
-            1.0 - target_mask.view(-1).float())
+        arange_1d = torch.arange(start=0, end=grad_2d.size()[0], device=grad_2d.device)
+        grad_2d[arange_1d, masked_target_1d] -= 1.0 - target_mask.view(-1).float()
 
         # Finally elementwise multiplication with the output gradients.
         grad_input.mul_(grad_output.unsqueeze(dim=-1))

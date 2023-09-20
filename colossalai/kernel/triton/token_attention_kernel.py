@@ -1,12 +1,12 @@
 # Adapted from ModelTC https://github.com/ModelTC/lightllm
 
-import math
 
 import torch
 
 try:
     import triton
     import triton.language as tl
+
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
@@ -15,10 +15,28 @@ except ImportError:
 if HAS_TRITON:
 
     @triton.jit
-    def _token_attn_1_kernel(Q, K, sm_scale, kv_cache_loc, kv_cache_start_loc, kv_cache_seqlen, max_kv_cache_len,
-                             attn_out, kv_cache_loc_b_stride, kv_cache_loc_s_stride, q_batch_stride, q_head_stride,
-                             q_head_dim_stride, k_batch_stride, k_head_stride, k_head_dim_stride, attn_head_stride,
-                             attn_batch_stride, HEAD_DIM: tl.constexpr, BLOCK_N: tl.constexpr):
+    def _token_attn_1_kernel(
+        Q,
+        K,
+        sm_scale,
+        kv_cache_loc,
+        kv_cache_start_loc,
+        kv_cache_seqlen,
+        max_kv_cache_len,
+        attn_out,
+        kv_cache_loc_b_stride,
+        kv_cache_loc_s_stride,
+        q_batch_stride,
+        q_head_stride,
+        q_head_dim_stride,
+        k_batch_stride,
+        k_head_stride,
+        k_head_dim_stride,
+        attn_head_stride,
+        attn_batch_stride,
+        HEAD_DIM: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+    ):
         current_batch = tl.program_id(0)
         current_head = tl.program_id(1)
         start_n = tl.program_id(2)
@@ -40,9 +58,11 @@ if HAS_TRITON:
         for start_mark in range(0, block_mask, 1):
             q = tl.load(Q + off_q + start_mark)
             offs_n_new = current_batch_start_index + offs_n
-            k_loc = tl.load(kv_cache_loc + kv_cache_loc_b_stride * current_batch + kv_cache_loc_s_stride * offs_n_new,
-                            mask=offs_n_new < current_batch_end_index,
-                            other=0)
+            k_loc = tl.load(
+                kv_cache_loc + kv_cache_loc_b_stride * current_batch + kv_cache_loc_s_stride * offs_n_new,
+                mask=offs_n_new < current_batch_end_index,
+                other=0,
+            )
             off_k = k_loc[:, None] * k_batch_stride + current_head * k_head_stride + offs_d[None, :] * k_head_dim_stride
             k = tl.load(K + off_k, mask=offs_n_new[:, None] < current_batch_end_index, other=0.0)
             att_value = tl.sum(q[None, :] * k, 1)
@@ -52,11 +72,29 @@ if HAS_TRITON:
         return
 
     @triton.jit
-    def _token_attn_1_alibi_kernel(Q, K, sm_scale, alibi, kv_cache_loc, kv_cache_start_loc, kv_cache_seqlen,
-                                   max_kv_cache_len, attn_out, kv_cache_loc_b_stride, kv_cache_loc_s_stride,
-                                   q_batch_stride, q_head_stride, q_head_dim_stride, k_batch_stride, k_head_stride,
-                                   k_head_dim_stride, attn_head_stride, attn_batch_stride, HEAD_DIM: tl.constexpr,
-                                   BLOCK_N: tl.constexpr):
+    def _token_attn_1_alibi_kernel(
+        Q,
+        K,
+        sm_scale,
+        alibi,
+        kv_cache_loc,
+        kv_cache_start_loc,
+        kv_cache_seqlen,
+        max_kv_cache_len,
+        attn_out,
+        kv_cache_loc_b_stride,
+        kv_cache_loc_s_stride,
+        q_batch_stride,
+        q_head_stride,
+        q_head_dim_stride,
+        k_batch_stride,
+        k_head_stride,
+        k_head_dim_stride,
+        attn_head_stride,
+        attn_batch_stride,
+        HEAD_DIM: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+    ):
         current_batch = tl.program_id(0)
         current_head = tl.program_id(1)
         start_n = tl.program_id(2)
@@ -79,9 +117,11 @@ if HAS_TRITON:
             alibi_m = tl.load(alibi + current_head)
             q = tl.load(Q + off_q + start_mark)
             offs_n_new = current_batch_start_index + offs_n
-            k_loc = tl.load(kv_cache_loc + kv_cache_loc_b_stride * current_batch + kv_cache_loc_s_stride * offs_n_new,
-                            mask=offs_n_new < current_batch_end_index,
-                            other=0)
+            k_loc = tl.load(
+                kv_cache_loc + kv_cache_loc_b_stride * current_batch + kv_cache_loc_s_stride * offs_n_new,
+                mask=offs_n_new < current_batch_end_index,
+                other=0,
+            )
             off_k = k_loc[:, None] * k_batch_stride + current_head * k_head_stride + offs_d[None, :] * k_head_dim_stride
             k = tl.load(K + off_k, mask=offs_n_new[:, None] < current_batch_end_index, other=0.0)
             att_value = tl.sum(q[None, :] * k, 1)
@@ -92,14 +132,9 @@ if HAS_TRITON:
         return
 
     @torch.no_grad()
-    def token_attn_fwd_1(q,
-                         k,
-                         attn_out,
-                         kv_cache_loc,
-                         kv_cache_start_loc,
-                         kv_cache_seqlen,
-                         max_kv_cache_len,
-                         alibi=None):
+    def token_attn_fwd_1(
+        q, k, attn_out, kv_cache_loc, kv_cache_start_loc, kv_cache_seqlen, max_kv_cache_len, alibi=None
+    ):
         BLOCK = 32
         # shape constraints
         q_head_dim, k_head_dim = q.shape[-1], k.shape[-1]
@@ -168,9 +203,17 @@ if HAS_TRITON:
         return
 
     @triton.jit
-    def _token_attn_softmax_fwd(softmax_logics, kv_cache_start_loc, kv_cache_seqlen, softmax_prob_out,
-                                logics_head_dim_stride, logics_batch_stride, prob_head_dim_stride, prob_batch_stride,
-                                BLOCK_SIZE: tl.constexpr):
+    def _token_attn_softmax_fwd(
+        softmax_logics,
+        kv_cache_start_loc,
+        kv_cache_seqlen,
+        softmax_prob_out,
+        logics_head_dim_stride,
+        logics_batch_stride,
+        prob_head_dim_stride,
+        prob_batch_stride,
+        BLOCK_SIZE: tl.constexpr,
+    ):
         current_batch = tl.program_id(0)
         current_head = tl.program_id(1)
 
@@ -178,20 +221,26 @@ if HAS_TRITON:
         current_batch_seq_len = tl.load(kv_cache_seqlen + current_batch)
         current_batch_in_all_start_index = tl.load(kv_cache_start_loc + current_batch)
 
-        row = tl.load(softmax_logics + current_head * logics_head_dim_stride +
-                      (current_batch_in_all_start_index + col_offsets) * logics_batch_stride,
-                      mask=col_offsets < current_batch_seq_len,
-                      other=-float('inf')).to(tl.float32)
+        row = tl.load(
+            softmax_logics
+            + current_head * logics_head_dim_stride
+            + (current_batch_in_all_start_index + col_offsets) * logics_batch_stride,
+            mask=col_offsets < current_batch_seq_len,
+            other=-float("inf"),
+        ).to(tl.float32)
 
         row_minus_max = row - tl.max(row, axis=0)
         numerator = tl.exp(row_minus_max)
         denominator = tl.sum(numerator, axis=0)
         softmax_output = numerator / denominator
 
-        tl.store(softmax_prob_out + current_head * prob_head_dim_stride +
-                 (current_batch_in_all_start_index + col_offsets) * prob_batch_stride,
-                 softmax_output,
-                 mask=col_offsets < current_batch_seq_len)
+        tl.store(
+            softmax_prob_out
+            + current_head * prob_head_dim_stride
+            + (current_batch_in_all_start_index + col_offsets) * prob_batch_stride,
+            softmax_output,
+            mask=col_offsets < current_batch_seq_len,
+        )
         return
 
     @torch.no_grad()
@@ -220,11 +269,27 @@ if HAS_TRITON:
         return
 
     @triton.jit
-    def _token_attn_2_kernel(Prob, V, attn_out, kv_cache_loc, kv_cache_start_loc, kv_cache_seqlen, max_kv_cache_len,
-                             kv_cache_loc_b_stride, kv_cache_loc_s_stride, prob_head_dim_stride, prob_batch_stride,
-                             v_batch_stride, v_head_stride, v_head_dim_stride, attn_out_batch_stride,
-                             attn_out_head_stride, attn_out_head_dim_stride, HEAD_DIM: tl.constexpr,
-                             BLOCK_N: tl.constexpr):
+    def _token_attn_2_kernel(
+        Prob,
+        V,
+        attn_out,
+        kv_cache_loc,
+        kv_cache_start_loc,
+        kv_cache_seqlen,
+        max_kv_cache_len,
+        kv_cache_loc_b_stride,
+        kv_cache_loc_s_stride,
+        prob_head_dim_stride,
+        prob_batch_stride,
+        v_batch_stride,
+        v_head_stride,
+        v_head_dim_stride,
+        attn_out_batch_stride,
+        attn_out_head_stride,
+        attn_out_head_dim_stride,
+        HEAD_DIM: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+    ):
         current_batch = tl.program_id(0)
         current_head = tl.program_id(1)
 
@@ -232,7 +297,6 @@ if HAS_TRITON:
         offs_d = tl.arange(0, HEAD_DIM)
         current_batch_seq_len = tl.load(kv_cache_seqlen + current_batch)
         current_batch_start_index = max_kv_cache_len - current_batch_seq_len
-        current_batch_end_index = current_batch_seq_len
         current_batch_in_all_start_index = tl.load(kv_cache_start_loc + current_batch)
 
         v_loc_off = current_batch * kv_cache_loc_b_stride + (current_batch_start_index + offs_n) * kv_cache_loc_s_stride
@@ -242,19 +306,29 @@ if HAS_TRITON:
         acc = tl.zeros([HEAD_DIM], dtype=tl.float32)
         for start_n in range(0, current_batch_seq_len, BLOCK_N):
             start_n = tl.multiple_of(start_n, BLOCK_N)
-            p_value = tl.load(Prob + p_offs + start_n * kv_cache_loc_s_stride,
-                              mask=(start_n + offs_n) < current_batch_seq_len,
-                              other=0.0)
-            v_loc = tl.load(kv_cache_loc + v_loc_off + start_n * kv_cache_loc_s_stride,
-                            mask=(start_n + offs_n) < current_batch_seq_len,
-                            other=0.0)
-            v_value = tl.load(V + v_offs + v_loc[:, None] * v_batch_stride,
-                              mask=(start_n + offs_n[:, None]) < current_batch_seq_len,
-                              other=0.0)
+            p_value = tl.load(
+                Prob + p_offs + start_n * kv_cache_loc_s_stride,
+                mask=(start_n + offs_n) < current_batch_seq_len,
+                other=0.0,
+            )
+            v_loc = tl.load(
+                kv_cache_loc + v_loc_off + start_n * kv_cache_loc_s_stride,
+                mask=(start_n + offs_n) < current_batch_seq_len,
+                other=0.0,
+            )
+            v_value = tl.load(
+                V + v_offs + v_loc[:, None] * v_batch_stride,
+                mask=(start_n + offs_n[:, None]) < current_batch_seq_len,
+                other=0.0,
+            )
             acc += tl.sum(p_value[:, None] * v_value, 0)
 
         acc = acc.to(tl.float16)
-        off_o = current_batch * attn_out_batch_stride + current_head * attn_out_head_stride + offs_d * attn_out_head_dim_stride
+        off_o = (
+            current_batch * attn_out_batch_stride
+            + current_head * attn_out_head_stride
+            + offs_d * attn_out_head_dim_stride
+        )
         out_ptrs = attn_out + off_o
         tl.store(out_ptrs, acc)
         return
@@ -296,15 +370,9 @@ if HAS_TRITON:
         return
 
     @torch.no_grad()
-    def token_attention_fwd(q,
-                            k,
-                            v,
-                            attn_out,
-                            kv_cache_loc,
-                            kv_cache_start_loc,
-                            kv_cache_seq_len,
-                            max_len_in_batch,
-                            alibi=None):
+    def token_attention_fwd(
+        q, k, v, attn_out, kv_cache_loc, kv_cache_start_loc, kv_cache_seq_len, max_len_in_batch, alibi=None
+    ):
         head_num = k.shape[1]
         batch_size = kv_cache_seq_len.shape[0]
         calcu_shape1 = (batch_size, head_num, k.shape[2])
@@ -312,21 +380,24 @@ if HAS_TRITON:
 
         att_m_tensor = torch.empty((head_num, total_token_num), dtype=q.dtype, device="cuda")
 
-        token_attn_fwd_1(q.view(calcu_shape1),
-                         k,
-                         att_m_tensor,
-                         kv_cache_loc,
-                         kv_cache_start_loc,
-                         kv_cache_seq_len,
-                         max_len_in_batch,
-                         alibi=alibi)
+        token_attn_fwd_1(
+            q.view(calcu_shape1),
+            k,
+            att_m_tensor,
+            kv_cache_loc,
+            kv_cache_start_loc,
+            kv_cache_seq_len,
+            max_len_in_batch,
+            alibi=alibi,
+        )
 
         prob = torch.empty_like(att_m_tensor)
 
         token_attn_softmax_fwd(att_m_tensor, kv_cache_start_loc, kv_cache_seq_len, prob, max_len_in_batch)
         att_m_tensor = None
-        token_attn_fwd_2(prob, v, attn_out.view(calcu_shape1), kv_cache_loc, kv_cache_start_loc, kv_cache_seq_len,
-                         max_len_in_batch)
+        token_attn_fwd_2(
+            prob, v, attn_out.view(calcu_shape1), kv_cache_loc, kv_cache_start_loc, kv_cache_seq_len, max_len_in_batch
+        )
 
         prob = None
 
@@ -334,7 +405,6 @@ if HAS_TRITON:
 
 
 class Llama2TokenAttentionForwards:
-
     @staticmethod
     @triton.jit
     def _fwd_kernel(
@@ -355,7 +425,7 @@ class Llama2TokenAttentionForwards:
         stride_od,
         stride_b_loc_b,
         stride_b_loc_s,
-        other_kv_index,    # 避免读取到nan的数据
+        other_kv_index,  # 避免读取到nan的数据
         kv_group_num,
         BLOCK_DMODEL: tl.constexpr,
         BLOCK_N: tl.constexpr,
@@ -382,14 +452,17 @@ class Llama2TokenAttentionForwards:
 
         for start_n in range(0, cur_batch_seq_len, BLOCK_N):
             start_n = tl.multiple_of(start_n, BLOCK_N)
-            v_index = tl.load(B_Loc + off_b_loc + (start_n + offs_n) * stride_b_loc_s,
-                              mask=(start_n + offs_n) < cur_batch_seq_len,
-                              other=other_kv_index)
+            v_index = tl.load(
+                B_Loc + off_b_loc + (start_n + offs_n) * stride_b_loc_s,
+                mask=(start_n + offs_n) < cur_batch_seq_len,
+                other=other_kv_index,
+            )
 
-            qk = tl.load(Logics + cur_head * stride_logic_h +
-                         (cur_batch_start_loc + start_n + offs_n) * stride_logic_bs,
-                         mask=start_n + offs_n < cur_batch_seq_len,
-                         other=float("-inf"))
+            qk = tl.load(
+                Logics + cur_head * stride_logic_h + (cur_batch_start_loc + start_n + offs_n) * stride_logic_bs,
+                mask=start_n + offs_n < cur_batch_seq_len,
+                other=float("-inf"),
+            )
 
             n_e_max = tl.maximum(tl.max(qk, 0), e_max)
             old_scale = tl.exp(e_max - n_e_max)
@@ -414,35 +487,46 @@ class Llama2TokenAttentionForwards:
         kv_group_num = logics.shape[0] // v.shape[1]
 
         num_warps = 1
-        Llama2TokenAttentionForwards._fwd_kernel[grid](logics,
-                                                       v,
-                                                       o,
-                                                       b_loc,
-                                                       b_start_loc,
-                                                       b_seq_len,
-                                                       max_input_len,
-                                                       logics.stride(0),
-                                                       logics.stride(1),
-                                                       v.stride(0),
-                                                       v.stride(1),
-                                                       v.stride(2),
-                                                       o.stride(0),
-                                                       o.stride(1),
-                                                       o.stride(2),
-                                                       b_loc.stride(0),
-                                                       b_loc.stride(1),
-                                                       other_kv_index,
-                                                       kv_group_num,
-                                                       BLOCK_DMODEL=v.shape[-1],
-                                                       BLOCK_N=BLOCK,
-                                                       num_warps=num_warps,
-                                                       num_stages=3)
+        Llama2TokenAttentionForwards._fwd_kernel[grid](
+            logics,
+            v,
+            o,
+            b_loc,
+            b_start_loc,
+            b_seq_len,
+            max_input_len,
+            logics.stride(0),
+            logics.stride(1),
+            v.stride(0),
+            v.stride(1),
+            v.stride(2),
+            o.stride(0),
+            o.stride(1),
+            o.stride(2),
+            b_loc.stride(0),
+            b_loc.stride(1),
+            other_kv_index,
+            kv_group_num,
+            BLOCK_DMODEL=v.shape[-1],
+            BLOCK_N=BLOCK,
+            num_warps=num_warps,
+            num_stages=3,
+        )
         return
 
     @staticmethod
     @triton.jit
-    def _fwd_kernel_token_softmax(Logics, B_Start_Loc, B_Seqlen, Prob_Out, stride_logic_h, stride_logic_bs,
-                                  stride_prob_h, stride_prob_bs, BLOCK_SIZE: tl.constexpr):
+    def _fwd_kernel_token_softmax(
+        Logics,
+        B_Start_Loc,
+        B_Seqlen,
+        Prob_Out,
+        stride_logic_h,
+        stride_logic_bs,
+        stride_prob_h,
+        stride_prob_bs,
+        BLOCK_SIZE: tl.constexpr,
+    ):
         cur_batch = tl.program_id(0)
         cur_head = tl.program_id(1)
 
@@ -450,19 +534,22 @@ class Llama2TokenAttentionForwards:
         cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
         cur_batch_in_all_start_index = tl.load(B_Start_Loc + cur_batch)
 
-        row = tl.load(Logics + cur_head * stride_logic_h +
-                      (cur_batch_in_all_start_index + col_offsets) * stride_logic_bs,
-                      mask=col_offsets < cur_batch_seq_len,
-                      other=-float('inf')).to(tl.float32)
+        row = tl.load(
+            Logics + cur_head * stride_logic_h + (cur_batch_in_all_start_index + col_offsets) * stride_logic_bs,
+            mask=col_offsets < cur_batch_seq_len,
+            other=-float("inf"),
+        ).to(tl.float32)
 
         row_minus_max = row - tl.max(row, axis=0)
         numerator = tl.exp(row_minus_max)
         denominator = tl.sum(numerator, axis=0)
         softmax_output = numerator / denominator
 
-        tl.store(Prob_Out + cur_head * stride_prob_h + (cur_batch_in_all_start_index + col_offsets) * stride_prob_bs,
-                 softmax_output,
-                 mask=col_offsets < cur_batch_seq_len)
+        tl.store(
+            Prob_Out + cur_head * stride_prob_h + (cur_batch_in_all_start_index + col_offsets) * stride_prob_bs,
+            softmax_output,
+            mask=col_offsets < cur_batch_seq_len,
+        )
         return
 
     @staticmethod
@@ -493,10 +580,29 @@ class Llama2TokenAttentionForwards:
 
     @staticmethod
     @triton.jit
-    def _fwd_kernel_token_att1(Q, K, sm_scale, B_Loc, B_Start_Loc, B_Seqlen, max_input_len, Att_Out, stride_b_loc_b,
-                               stride_b_loc_s, stride_qbs, stride_qh, stride_qd, stride_kbs, stride_kh, stride_kd,
-                               att_stride_h, att_stride_bs, kv_group_num, BLOCK_DMODEL: tl.constexpr,
-                               BLOCK_N: tl.constexpr):
+    def _fwd_kernel_token_att1(
+        Q,
+        K,
+        sm_scale,
+        B_Loc,
+        B_Start_Loc,
+        B_Seqlen,
+        max_input_len,
+        Att_Out,
+        stride_b_loc_b,
+        stride_b_loc_s,
+        stride_qbs,
+        stride_qh,
+        stride_qd,
+        stride_kbs,
+        stride_kh,
+        stride_kd,
+        att_stride_h,
+        att_stride_bs,
+        kv_group_num,
+        BLOCK_DMODEL: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+    ):
         cur_batch = tl.program_id(0)
         cur_head = tl.program_id(1)
         start_n = tl.program_id(2)
@@ -520,9 +626,11 @@ class Llama2TokenAttentionForwards:
         for start_mark in range(0, block_mask, 1):
             q = tl.load(Q + off_q + start_mark)
             offs_n_new = cur_batch_start_index + offs_n
-            k_loc = tl.load(B_Loc + stride_b_loc_b * cur_batch + stride_b_loc_s * offs_n_new,
-                            mask=offs_n_new < cur_batch_end_index,
-                            other=0)
+            k_loc = tl.load(
+                B_Loc + stride_b_loc_b * cur_batch + stride_b_loc_s * offs_n_new,
+                mask=offs_n_new < cur_batch_end_index,
+                other=0,
+            )
             off_k = k_loc[:, None] * stride_kbs + cur_kv_head * stride_kh + offs_d[None, :] * stride_kd
             k = tl.load(K + off_k, mask=offs_n_new[:, None] < cur_batch_end_index, other=0.0)
             att_value = tl.sum(q[None, :] * k, 1)
@@ -579,26 +687,27 @@ class Llama2TokenAttentionForwards:
     @staticmethod
     @triton.jit
     def _fwd_kernel_token_att2(
-            Prob,
-            V,
-            Out,
-            B_Loc,
-            B_Start_Loc,
-            B_Seqlen,
-            max_input_len,    # B_Start_Loc 保存的是如果连续存储时候的累加输入和
-            stride_b_loc_b,
-            stride_b_loc_s,
-            stride_ph,
-            stride_pbs,
-            stride_vbs,
-            stride_vh,
-            stride_vd,
-            stride_obs,
-            stride_oh,
-            stride_od,
-            kv_group_num,
-            BLOCK_DMODEL: tl.constexpr,
-            BLOCK_N: tl.constexpr):
+        Prob,
+        V,
+        Out,
+        B_Loc,
+        B_Start_Loc,
+        B_Seqlen,
+        max_input_len,  # B_Start_Loc 保存的是如果连续存储时候的累加输入和
+        stride_b_loc_b,
+        stride_b_loc_s,
+        stride_ph,
+        stride_pbs,
+        stride_vbs,
+        stride_vh,
+        stride_vd,
+        stride_obs,
+        stride_oh,
+        stride_od,
+        kv_group_num,
+        BLOCK_DMODEL: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+    ):
         cur_batch = tl.program_id(0)
         cur_head = tl.program_id(1)
 
@@ -608,7 +717,6 @@ class Llama2TokenAttentionForwards:
         offs_d = tl.arange(0, BLOCK_DMODEL)
         cur_batch_seq_len = tl.load(B_Seqlen + cur_batch)
         cur_batch_start_index = max_input_len - cur_batch_seq_len
-        cur_batch_end_index = cur_batch_seq_len
         cur_batch_in_all_start_index = tl.load(B_Start_Loc + cur_batch)
 
         v_loc_off = cur_batch * stride_b_loc_b + (cur_batch_start_index + offs_n) * stride_b_loc_s
@@ -618,15 +726,17 @@ class Llama2TokenAttentionForwards:
         acc = tl.zeros([BLOCK_DMODEL], dtype=tl.float32)
         for start_n in range(0, cur_batch_seq_len, BLOCK_N):
             start_n = tl.multiple_of(start_n, BLOCK_N)
-            p_value = tl.load(Prob + p_offs + start_n * stride_b_loc_s,
-                              mask=(start_n + offs_n) < cur_batch_seq_len,
-                              other=0.0)
-            v_loc = tl.load(B_Loc + v_loc_off + start_n * stride_b_loc_s,
-                            mask=(start_n + offs_n) < cur_batch_seq_len,
-                            other=0.0)
-            v_value = tl.load(V + v_offs + v_loc[:, None] * stride_vbs,
-                              mask=(start_n + offs_n[:, None]) < cur_batch_seq_len,
-                              other=0.0)
+            p_value = tl.load(
+                Prob + p_offs + start_n * stride_b_loc_s, mask=(start_n + offs_n) < cur_batch_seq_len, other=0.0
+            )
+            v_loc = tl.load(
+                B_Loc + v_loc_off + start_n * stride_b_loc_s, mask=(start_n + offs_n) < cur_batch_seq_len, other=0.0
+            )
+            v_value = tl.load(
+                V + v_offs + v_loc[:, None] * stride_vbs,
+                mask=(start_n + offs_n[:, None]) < cur_batch_seq_len,
+                other=0.0,
+            )
             acc += tl.sum(p_value[:, None] * v_value, 0)
 
         acc = acc.to(tl.float16)
@@ -678,8 +788,9 @@ class Llama2TokenAttentionForwards:
     # this is the interface of llama2 attn forward
     @staticmethod
     @torch.no_grad()
-    def token_attn(q, k, v, attn_out, kv_cache_loc, kv_cache_start_loc, kv_cache_seq_len, max_len_in_batch,
-                   other_kv_index):
+    def token_attn(
+        q, k, v, attn_out, kv_cache_loc, kv_cache_start_loc, kv_cache_seq_len, max_len_in_batch, other_kv_index
+    ):
         total_token_num = k.shape[0]
         batch_size, head_num, head_dim = q.shape
         calcu_shape1 = (batch_size, head_num, head_dim)
@@ -697,20 +808,34 @@ class Llama2TokenAttentionForwards:
 
         if triton.__version__ == "2.0.0":
             prob = torch.empty_like(att_m_tensor)
-            Llama2TokenAttentionForwards.token_softmax_fwd(att_m_tensor, kv_cache_start_loc, kv_cache_seq_len, prob,
-                                                           max_len_in_batch)
+            Llama2TokenAttentionForwards.token_softmax_fwd(
+                att_m_tensor, kv_cache_start_loc, kv_cache_seq_len, prob, max_len_in_batch
+            )
             att_m_tensor = None
 
-            Llama2TokenAttentionForwards.token_att_fwd2(prob, v, attn_out.view(calcu_shape1), kv_cache_loc,
-                                                        kv_cache_start_loc, kv_cache_seq_len, max_len_in_batch)
+            Llama2TokenAttentionForwards.token_att_fwd2(
+                prob,
+                v,
+                attn_out.view(calcu_shape1),
+                kv_cache_loc,
+                kv_cache_start_loc,
+                kv_cache_seq_len,
+                max_len_in_batch,
+            )
 
             prob = None
             return
 
         elif triton.__version__ >= "2.1.0":
-
-            Llama2TokenAttentionForwards.token_softmax_reducev_fwd(att_m_tensor, v, attn_out.view(calcu_shape1),
-                                                                   kv_cache_loc, kv_cache_start_loc, kv_cache_seq_len,
-                                                                   max_len_in_batch, other_kv_index)
+            Llama2TokenAttentionForwards.token_softmax_reducev_fwd(
+                att_m_tensor,
+                v,
+                attn_out.view(calcu_shape1),
+                kv_cache_loc,
+                kv_cache_start_loc,
+                kv_cache_seq_len,
+                max_len_in_batch,
+                other_kv_index,
+            )
         else:
             raise Exception("not support triton version")

@@ -224,7 +224,7 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 </p>
 
 - 70 billion parameter LLaMA2 model training accelerated by 195%
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/example/llama/examples/language/llama)
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama2)
 [[blog]](https://www.hpc-ai.tech/blog/70b-llama2-training)
 
 ### LLaMA1
@@ -472,7 +472,7 @@ To cite this project, you can use the following BibTeX citation.
 }
 ```
 
-Colossal-AI has been accepted as official tutorial by top conferences [NeurIPS](https://nips.cc/), [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), 
+Colossal-AI has been accepted as official tutorial by top conferences [NeurIPS](https://nips.cc/), [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/),
 [PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/), [ISC](https://www.isc-hpc.com/), [NVIDIA GTC](https://www.nvidia.com/en-us/on-demand/session/gtcspring23-S51482/) ,etc.
 
 <p align="right">(<a href="#top">back to top</a>)</p>

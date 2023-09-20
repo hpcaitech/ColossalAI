@@ -55,13 +55,13 @@ class Region:
         Map the parameters in the region to a contiguous memory space.
         """
 
-        self.fp16_data = torch.zeros(self.param_num, dtype=torch.half, device='cuda')
+        self.fp16_data = torch.zeros(self.param_num, dtype=torch.half, device="cuda")
         offset = 0
         for param in self.fp16_params:
             param.data = param.data.cuda()
             p_num = param.data.numel()
-            self.fp16_data[offset:offset + p_num].copy_(param.data.flatten())
-            param.data = self.fp16_data[offset:offset + p_num].view(param.data.shape)
+            self.fp16_data[offset : offset + p_num].copy_(param.data.flatten())
+            param.data = self.fp16_data[offset : offset + p_num].view(param.data.shape)
             self.param_to_range[param] = (offset, offset + p_num)
             offset += p_num
 
@@ -83,7 +83,7 @@ class Region:
         self.temp_fp32_data.record_stream(torch.cuda.current_stream())
         if not self.in_mem_pool_flag:
             alloc_storage(self.fp16_data)
-        self.fp16_data[:self.param_num].copy_(self.temp_fp32_data)
+        self.fp16_data[: self.param_num].copy_(self.temp_fp32_data)
         self.fp16_data.record_stream(torch.cuda.current_stream())
 
         self.__update_params_ptr()
@@ -94,7 +94,7 @@ class Region:
         """
 
         self.cpu_grad = torch.empty(self.param_num, dtype=torch.half, pin_memory=True)
-        self.cpu_grad.copy_(self.fp16_data[:self.param_num], non_blocking=True)
+        self.cpu_grad.copy_(self.fp16_data[: self.param_num], non_blocking=True)
         self.fp16_data.record_stream(torch.cuda.current_stream())
         if not self.in_mem_pool_flag:
             self.free_cuda_data()

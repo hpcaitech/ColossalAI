@@ -1,4 +1,4 @@
-colossalai>=0.3.0
+colossalai>=0.3.2
 datasets
 numpy
 torch>=1.12.0,<=2.0.0

@@ -4,8 +4,8 @@
 import torch
 import torch.distributed as dist
 
-from colossalai.core import global_context as gpc
-from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.global_variables import tensor_parallel_env as env
 
 from ..utils import divide
 
@@ -47,9 +47,10 @@ def _split(input_, parallel_mode, dim=-1):
 
     # Split along last dimension.
     dim_size = input_.size(dim)
-    assert dim_size % world_size == 0, \
-        f'The dimension to split ({dim_size}) is not a multiple of world size ({world_size}), ' \
-        f'cannot split tensor evenly'
+    assert dim_size % world_size == 0, (
+        f"The dimension to split ({dim_size}) is not a multiple of world size ({world_size}), "
+        f"cannot split tensor evenly"
+    )
 
     tensor_list = torch.split(input_, dim_size // world_size, dim=dim)
     rank = gpc.get_local_rank(parallel_mode)

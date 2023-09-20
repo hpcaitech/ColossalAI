@@ -24,13 +24,14 @@ class Builder(ABC):
     def __init__(self, name: str, prebuilt_import_path: str):
         self.name = name
         self.prebuilt_import_path = prebuilt_import_path
-        self.version_dependent_macros = ['-DVERSION_GE_1_1', '-DVERSION_GE_1_3', '-DVERSION_GE_1_5']
+        self.version_dependent_macros = ["-DVERSION_GE_1_1", "-DVERSION_GE_1_3", "-DVERSION_GE_1_5"]
 
         # we store the op as an attribute to avoid repeated building and loading
         self.cached_op_module = None
 
-        assert prebuilt_import_path.startswith('colossalai._C'), \
-            f'The prebuilt_import_path should start with colossalai._C, but got {self.prebuilt_import_path}'
+        assert prebuilt_import_path.startswith(
+            "colossalai._C"
+        ), f"The prebuilt_import_path should start with colossalai._C, but got {self.prebuilt_import_path}"
 
     def relative_to_abs_path(self, code_path: str) -> str:
         """
@@ -46,10 +47,10 @@ class Builder(ABC):
         # this symlink will be replaced with actual files if we install via pypi
         # thus we cannot tell the colossalai root directory by checking whether the op_builder
         # is a symlink, we can only tell whether it is inside or outside colossalai
-        if str(op_builder_module_path).endswith('colossalai/kernel/op_builder'):
+        if str(op_builder_module_path).endswith("colossalai/kernel/op_builder"):
             root_path = op_builder_module_path.parent.parent
         else:
-            root_path = op_builder_module_path.parent.joinpath('colossalai')
+            root_path = op_builder_module_path.parent.joinpath("colossalai")
 
         code_abs_path = root_path.joinpath(code_path)
         return str(code_abs_path)
@@ -59,13 +60,14 @@ class Builder(ABC):
         return include path inside the cuda home.
         """
         from torch.utils.cpp_extension import CUDA_HOME
+
         if CUDA_HOME is None:
             raise RuntimeError("CUDA_HOME is None, please set CUDA_HOME to compile C++/CUDA kernels in ColossalAI.")
         cuda_include = os.path.join(CUDA_HOME, "include")
         return cuda_include
 
     def csrc_abs_path(self, path):
-        return os.path.join(self.relative_to_abs_path('kernel/cuda_native/csrc'), path)
+        return os.path.join(self.relative_to_abs_path("kernel/cuda_native/csrc"), path)
 
     # functions must be overrided begin
     @abstractmethod
@@ -80,27 +82,24 @@ class Builder(ABC):
         """
         This function should return a list of include files for extensions.
         """
-        pass
 
     @abstractmethod
     def cxx_flags(self) -> List[str]:
         """
         This function should return a list of cxx compilation flags for extensions.
         """
-        pass
 
     @abstractmethod
     def nvcc_flags(self) -> List[str]:
         """
         This function should return a list of nvcc compilation flags for extensions.
         """
-        pass
 
     # functions must be overrided over
     def strip_empty_entries(self, args):
-        '''
+        """
         Drop any empty strings from the list of compile and link flags
-        '''
+        """
         return [x for x in args if len(x) > 0]
 
     def import_op(self):
@@ -114,8 +113,8 @@ class Builder(ABC):
         Check whether the system environment is ready for extension compilation.
         """
         try:
-            import torch
             from torch.utils.cpp_extension import CUDA_HOME
+
             TORCH_AVAILABLE = True
         except ImportError:
             TORCH_AVAILABLE = False
@@ -123,7 +122,8 @@ class Builder(ABC):
 
         if not TORCH_AVAILABLE:
             raise ModuleNotFoundError(
-                "PyTorch is not found. You need to install PyTorch first in order to build CUDA extensions")
+                "PyTorch is not found. You need to install PyTorch first in order to build CUDA extensions"
+            )
 
         if CUDA_HOME is None:
             raise RuntimeError(
@@ -150,7 +150,7 @@ class Builder(ABC):
             verbose (bool, optional): show detailed info. Defaults to True.
         """
         if verbose is None:
-            verbose = os.environ.get('CAI_KERNEL_VERBOSE', '0') == '1'
+            verbose = os.environ.get("CAI_KERNEL_VERBOSE", "0") == "1"
         # if the kernel has be compiled and cached, we directly use it
         if self.cached_op_module is not None:
             return self.cached_op_module
@@ -161,7 +161,8 @@ class Builder(ABC):
             op_module = self.import_op()
             if verbose:
                 print_rank_0(
-                    f"[extension] OP {self.prebuilt_import_path} has been compiled ahead of time, skip building.")
+                    f"[extension] OP {self.prebuilt_import_path} has been compiled ahead of time, skip building."
+                )
         except ImportError:
             # check environment
             self.check_runtime_build_environment()
@@ -172,10 +173,11 @@ class Builder(ABC):
             # construct the build directory
             import torch
             from torch.utils.cpp_extension import load
-            torch_version_major = torch.__version__.split('.')[0]
-            torch_version_minor = torch.__version__.split('.')[1]
+
+            torch_version_major = torch.__version__.split(".")[0]
+            torch_version_minor = torch.__version__.split(".")[1]
             torch_cuda_version = torch.version.cuda
-            home_directory = os.path.expanduser('~')
+            home_directory = os.path.expanduser("~")
             extension_directory = f".cache/colossalai/torch_extensions/torch{torch_version_major}.{torch_version_minor}_cu{torch_cuda_version}"
             build_directory = os.path.join(home_directory, extension_directory)
             Path(build_directory).mkdir(parents=True, exist_ok=True)
@@ -184,14 +186,16 @@ class Builder(ABC):
                 print_rank_0(f"[extension] Compiling or loading the JIT-built {self.name} kernel during runtime now")
 
             # load the kernel
-            op_module = load(name=self.name,
-                             sources=self.strip_empty_entries(self.sources_files()),
-                             extra_include_paths=self.strip_empty_entries(self.include_dirs()),
-                             extra_cflags=self.cxx_flags(),
-                             extra_cuda_cflags=self.nvcc_flags(),
-                             extra_ldflags=[],
-                             build_directory=build_directory,
-                             verbose=verbose)
+            op_module = load(
+                name=self.name,
+                sources=self.strip_empty_entries(self.sources_files()),
+                extra_include_paths=self.strip_empty_entries(self.include_dirs()),
+                extra_cflags=self.cxx_flags(),
+                extra_cuda_cflags=self.nvcc_flags(),
+                extra_ldflags=[],
+                build_directory=build_directory,
+                verbose=verbose,
+            )
 
             build_duration = time.time() - start_build
 
@@ -204,16 +208,18 @@ class Builder(ABC):
 
         return op_module
 
-    def builder(self) -> 'CUDAExtension':
+    def builder(self) -> "CUDAExtension":
         """
         get a CUDAExtension instance used for setup.py
         """
         from torch.utils.cpp_extension import CUDAExtension
 
-        return CUDAExtension(name=self.prebuilt_import_path,
-                             sources=self.strip_empty_entries(self.sources_files()),
-                             include_dirs=self.strip_empty_entries(self.include_dirs()),
-                             extra_compile_args={
-                                 'cxx': self.strip_empty_entries(self.cxx_flags()),
-                                 'nvcc': self.strip_empty_entries(self.nvcc_flags())
-                             })
+        return CUDAExtension(
+            name=self.prebuilt_import_path,
+            sources=self.strip_empty_entries(self.sources_files()),
+            include_dirs=self.strip_empty_entries(self.include_dirs()),
+            extra_compile_args={
+                "cxx": self.strip_empty_entries(self.cxx_flags()),
+                "nvcc": self.strip_empty_entries(self.nvcc_flags()),
+            },
+        )

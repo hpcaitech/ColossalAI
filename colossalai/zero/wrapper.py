@@ -7,10 +7,9 @@ import torch.nn as nn
 from .gemini import GeminiDDP
 
 
-def zero_model_wrapper(model: nn.Module,
-                       zero_stage: int = 1,
-                       gemini_config: Optional[Dict] = None,
-                       verbose: bool = False):
+def zero_model_wrapper(
+    model: nn.Module, zero_stage: int = 1, gemini_config: Optional[Dict] = None, verbose: bool = False
+):
     """This wrapper function is used to wrap your training model for ZeRO DDP.
 
     Example:
@@ -50,19 +49,21 @@ def zero_model_wrapper(model: nn.Module,
     return wrapped_model
 
 
-def zero_optim_wrapper(model: nn.Module,
-                       optimizer: torch.optim.Optimizer,
-                       initial_scale: float = 2**16,
-                       growth_factor: float = 2,
-                       backoff_factor: float = 0.5,
-                       growth_interval: int = 1000,
-                       hysteresis: int = 2,
-                       min_scale: float = 1,
-                       max_scale: float = 2**32,
-                       max_norm: float = 0.0,
-                       norm_type: float = 2.0,
-                       optim_config: Optional[Dict] = None,
-                       verbose: bool = False):
+def zero_optim_wrapper(
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    initial_scale: float = 2**16,
+    growth_factor: float = 2,
+    backoff_factor: float = 0.5,
+    growth_interval: int = 1000,
+    hysteresis: int = 2,
+    min_scale: float = 1,
+    max_scale: float = 2**32,
+    max_norm: float = 0.0,
+    norm_type: float = 2.0,
+    optim_config: Optional[Dict] = None,
+    verbose: bool = False,
+):
     """This wrapper function is used to wrap your training optimizer for ZeRO DDP.
 
     Args:
@@ -95,20 +96,22 @@ def zero_optim_wrapper(model: nn.Module,
     else:
         config_dict = copy(optim_config)
 
-    config_dict['initial_scale'] = initial_scale
-    config_dict['growth_factor'] = growth_factor
-    config_dict['backoff_factor'] = backoff_factor
-    config_dict['growth_interval'] = growth_interval
-    config_dict['hysteresis'] = hysteresis
-    config_dict['min_scale'] = min_scale
-    config_dict['max_scale'] = max_scale
+    config_dict["initial_scale"] = initial_scale
+    config_dict["growth_factor"] = growth_factor
+    config_dict["backoff_factor"] = backoff_factor
+    config_dict["growth_interval"] = growth_interval
+    config_dict["hysteresis"] = hysteresis
+    config_dict["min_scale"] = min_scale
+    config_dict["max_scale"] = max_scale
 
     if zero_stage in [1, 2]:
         from colossalai.zero.low_level import LowLevelZeroOptimizer
-        config_dict['partition_grad'] = zero_stage == 2
-        config_dict['clip_grad_norm'] = max_norm
+
+        config_dict["partition_grad"] = zero_stage == 2
+        config_dict["clip_grad_norm"] = max_norm
         return LowLevelZeroOptimizer(optimizer, **config_dict, verbose=verbose)
     else:
         from colossalai.zero.gemini.gemini_optimizer import GeminiOptimizer
-        config_dict['clipping_norm'] = max_norm
+
+        config_dict["clipping_norm"] = max_norm
         return GeminiOptimizer(optimizer, model, **config_dict, verbose=verbose)

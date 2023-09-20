@@ -1,10 +1,10 @@
 import torch.distributed as dist
 
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 
 
-class barrier_context():
+class barrier_context:
     """
     This context manager is used to allow one process to execute while blocking all
     other processes in the same process group. This is often useful when downloading is required

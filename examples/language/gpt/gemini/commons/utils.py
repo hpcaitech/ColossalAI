@@ -6,7 +6,6 @@ from torch.profiler import ProfilerActivity, profile, schedule, tensorboard_trac
 
 
 class DummyProfiler:
-
     def __init__(self):
         self.step_number = 0
 
@@ -27,11 +26,13 @@ def get_tflops(model_numel, batch_size, seq_len, step_time):
 
 def get_profile_context(enable_flag, warmup_steps, active_steps, save_dir):
     if enable_flag:
-        return profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-                       schedule=schedule(wait=0, warmup=warmup_steps, active=active_steps),
-                       on_trace_ready=tensorboard_trace_handler(save_dir),
-                       record_shapes=True,
-                       profile_memory=True)
+        return profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            schedule=schedule(wait=0, warmup=warmup_steps, active=active_steps),
+            on_trace_ready=tensorboard_trace_handler(save_dir),
+            record_shapes=True,
+            profile_memory=True,
+        )
     else:
         return nullcontext(DummyProfiler())
 

@@ -62,18 +62,15 @@ class RewardModelTrainer(SLTrainer):
 
             if is_rank_0():
                 log = pd.DataFrame(
-                    [[(epoch + 1) * len(self.train_dataloader),
-                      self.loss.item(), self.dist, self.acc]],
-                    columns=['step', 'loss', 'dist', 'acc']
+                    [[(epoch + 1) * len(self.train_dataloader), self.loss.item(), self.dist, self.acc]],
+                    columns=["step", "loss", "dist", "acc"],
                 )
-                log.to_csv('log.csv', mode='a', header=False, index=False)
+                log.to_csv("log.csv", mode="a", header=False, index=False)
 
     def _train(self, epoch):
         self.model.train()
         step_bar = tqdm.trange(
-            len(self.train_dataloader),
-            desc='Train step of epoch %d' % epoch,
-            disable=not is_rank_0()
+            len(self.train_dataloader), desc="Train step of epoch %d" % epoch, disable=not is_rank_0()
         )
         cnt = 0
         for chosen_ids, c_mask, reject_ids, r_mask in self.train_dataloader:
@@ -93,10 +90,7 @@ class RewardModelTrainer(SLTrainer):
             step_bar.update()
         step_bar.close()
 
-    def _before_fit(self,
-                    train_dataloader: DataLoader,
-                    valid_dataloader: DataLoader,
-                    eval_dataloader: DataLoader):
+    def _before_fit(self, train_dataloader: DataLoader, valid_dataloader: DataLoader, eval_dataloader: DataLoader):
         """
         Args:
             train_dataloader (DataLoader): the dataloader to use for training
@@ -104,7 +98,7 @@ class RewardModelTrainer(SLTrainer):
             eval_dataloader (DataLoader): the dataloader to use for evaluation
         """
         super()._before_fit()
-        self.datetime = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        self.datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
         self.train_dataloader = train_dataloader
         self.valid_dataloader = valid_dataloader

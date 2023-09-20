@@ -8,7 +8,6 @@ def divide(numerator, denominator):
     Returns:
         int: the result of exact division.
     """
-    assert denominator != 0, 'denominator can not be zero'
-    assert numerator % denominator == 0, \
-        '{} is not divisible by {}'.format(numerator, denominator)
+    assert denominator != 0, "denominator can not be zero"
+    assert numerator % denominator == 0, "{} is not divisible by {}".format(numerator, denominator)
     return numerator // denominator

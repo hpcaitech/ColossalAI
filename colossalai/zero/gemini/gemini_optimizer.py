@@ -10,34 +10,35 @@ from torch.nn import Parameter
 from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.mixed_precision_mixin import BF16MixedPrecisionMixin, FP16MixedPrecisionMixin
-from colossalai.checkpoint_io.utils import calculate_tensor_size, StateDictSharder
+from colossalai.checkpoint_io.utils import StateDictSharder
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import CPUAdam, FusedAdam, HybridAdam
-from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.utils import disposable, get_current_device, is_ddp_ignored
 
 from .chunk import Chunk, ChunkManager
 from .gemini_ddp import GeminiDDP
 
-__all__ = ['GeminiOptimizer', 'GeminiAdamOptimizer']
+__all__ = ["GeminiOptimizer", "GeminiAdamOptimizer"]
 
 _AVAIL_OPTIM_LIST = {FusedAdam, CPUAdam, HybridAdam}
 
 
 class GeminiFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
-
-    def __init__(self,
-                 module: GeminiDDP,
-                 initial_scale: float = 2**16,
-                 min_scale: float = 1,
-                 growth_factor: float = 2,
-                 backoff_factor: float = 0.5,
-                 growth_interval: int = 1000,
-                 hysteresis: int = 2,
-                 max_scale: float = 2**32) -> None:
-        super().__init__(initial_scale, min_scale, growth_factor, backoff_factor, growth_interval, hysteresis,
-                         max_scale)
+    def __init__(
+        self,
+        module: GeminiDDP,
+        initial_scale: float = 2**16,
+        min_scale: float = 1,
+        growth_factor: float = 2,
+        backoff_factor: float = 0.5,
+        growth_interval: int = 1000,
+        hysteresis: int = 2,
+        max_scale: float = 2**32,
+    ) -> None:
+        super().__init__(
+            initial_scale, min_scale, growth_factor, backoff_factor, growth_interval, hysteresis, max_scale
+        )
         self.module = module
 
     def check_local_overflow(self) -> bool:
@@ -77,25 +78,28 @@ class GeminiOptimizer(OptimizerWrapper):
         verbose (bool, optional): Whether to print verbose information, including grad overflow info. Defaults to False.
     """
 
-    def __init__(self,
-                 optim: Optimizer,
-                 module: GeminiDDP,
-                 gpu_margin_mem_ratio: float = 0.0,
-                 initial_scale: float = 2**32,
-                 min_scale: float = 1,
-                 growth_factor: float = 2,
-                 backoff_factor: float = 0.5,
-                 growth_interval: int = 1000,
-                 hysteresis: int = 2,
-                 max_scale: float = 2**32,
-                 max_norm: float = 0.0,
-                 norm_type: float = 2.0,
-                 verbose: bool = False,
-                 **defaults: Any):
+    def __init__(
+        self,
+        optim: Optimizer,
+        module: GeminiDDP,
+        gpu_margin_mem_ratio: float = 0.0,
+        initial_scale: float = 2**32,
+        min_scale: float = 1,
+        growth_factor: float = 2,
+        backoff_factor: float = 0.5,
+        growth_interval: int = 1000,
+        hysteresis: int = 2,
+        max_scale: float = 2**32,
+        max_norm: float = 0.0,
+        norm_type: float = 2.0,
+        verbose: bool = False,
+        **defaults: Any,
+    ):
         super().__init__(optim)
         assert isinstance(module, GeminiDDP)
-        assert type(optim) in _AVAIL_OPTIM_LIST, "You should use an optimizer in the available list:\n" \
-            f"{_AVAIL_OPTIM_LIST}"
+        assert type(optim) in _AVAIL_OPTIM_LIST, (
+            "You should use an optimizer in the available list:\n" f"{_AVAIL_OPTIM_LIST}"
+        )
         self.module = module
         self.gemini_manager = module.gemini_manager
         self.chunk_manager: ChunkManager = self.gemini_manager.chunk_manager
@@ -118,8 +122,10 @@ class GeminiOptimizer(OptimizerWrapper):
         for name, param in module.named_parameters():
             if is_ddp_ignored(param):
                 if param.requires_grad:
-                    warnings.warn(f"Parameter `{name}` is ignored by DDP but requires gradient! "
-                                  "You should handle its optimizer update by yourself!")
+                    warnings.warn(
+                        f"Parameter `{name}` is ignored by DDP but requires gradient! "
+                        "You should handle its optimizer update by yourself!"
+                    )
             else:
                 ddp_param_list.append(param)
 
@@ -132,14 +138,16 @@ class GeminiOptimizer(OptimizerWrapper):
         self.__init__optimizer()
 
         if module.mixed_precision is torch.float16:
-            self.mix_precision_mixin = GeminiFP16MixedPrecisionMixin(module,
-                                                                     initial_scale=initial_scale,
-                                                                     min_scale=min_scale,
-                                                                     growth_factor=growth_factor,
-                                                                     backoff_factor=backoff_factor,
-                                                                     growth_interval=growth_interval,
-                                                                     hysteresis=hysteresis,
-                                                                     max_scale=max_scale)
+            self.mix_precision_mixin = GeminiFP16MixedPrecisionMixin(
+                module,
+                initial_scale=initial_scale,
+                min_scale=min_scale,
+                growth_factor=growth_factor,
+                backoff_factor=backoff_factor,
+                growth_interval=growth_interval,
+                hysteresis=hysteresis,
+                max_scale=max_scale,
+            )
         elif module.mixed_precision is torch.bfloat16:
             self.mix_precision_mixin = BF16MixedPrecisionMixin()
         else:
@@ -148,12 +156,15 @@ class GeminiOptimizer(OptimizerWrapper):
         self._logger = get_dist_logger()
 
         self.gpu_margin_mem_ratio: float = float(gpu_margin_mem_ratio)
-        assert 0.0 <= self.gpu_margin_mem_ratio <= 1.0, f'gpu_margin_mem_ratio must >=0.0 and <=1.0'
+        assert 0.0 <= self.gpu_margin_mem_ratio <= 1.0, f"gpu_margin_mem_ratio must >=0.0 and <=1.0"
         # Only move fp32 shards from CPU to GPU when user allows and inner optimizer is valid
         # Inner optimizer must support optimizing hybrid (CPU and CUDA) tensors,
         # and it must set `num_fp32_shards_per_param` correctly
-        self._should_move_fp32_params_h2d: bool = self.gemini_manager.is_cuda_margin_mem_avail and self.gpu_margin_mem_ratio > 0.0 and getattr(
-            optim, 'num_fp32_shards_per_param', 0) >= 2
+        self._should_move_fp32_params_h2d: bool = (
+            self.gemini_manager.is_cuda_margin_mem_avail
+            and self.gpu_margin_mem_ratio > 0.0
+            and getattr(optim, "num_fp32_shards_per_param", 0) >= 2
+        )
         if self.gpu_margin_mem_ratio > 0.0 and not self.gemini_manager.is_cuda_margin_mem_avail:
             self._logger.warning(f'gpu_margin_mem_ratio is meaningless when placement_policy is not "auto"', ranks=[0])
 
@@ -161,7 +172,7 @@ class GeminiOptimizer(OptimizerWrapper):
 
     def _set_grad_ptr(self):
         for group in self.param_groups:
-            for fake_param in group['params']:
+            for fake_param in group["params"]:
                 chunk32 = self.param_to_chunk32[fake_param]
                 begin, end = self.param_to_range[fake_param]
                 chunk16 = chunk32.paired_chunk
@@ -173,7 +184,7 @@ class GeminiOptimizer(OptimizerWrapper):
     def _update_fp16_params(self):
         none_tensor = torch.empty([0])
         for group in self.param_groups:
-            for fake_param in group['params']:
+            for fake_param in group["params"]:
                 assert fake_param.grad is None
                 fake_param.data = none_tensor.to(fake_param.device)
 
@@ -198,7 +209,7 @@ class GeminiOptimizer(OptimizerWrapper):
                     group_to_norm[c16.torch_pg] = 0.0
                 group_to_norm[c16.torch_pg] += c16.l2_norm
 
-            c16.l2_norm = None    # clear l2 norm
+            c16.l2_norm = None  # clear l2 norm
 
         comm_buffer = torch.zeros(1, dtype=torch.float, device=get_current_device())
         for group, part_norm in group_to_norm.items():
@@ -230,9 +241,9 @@ class GeminiOptimizer(OptimizerWrapper):
 
         if self.mix_precision_mixin.should_skip_step():
             if self.verbose:
-                self._logger.info(f'Found overflow. Skip step')
-            self._clear_global_norm()    # clear recorded norm
-            self.zero_grad()    # reset all gradients
+                self._logger.info(f"Found overflow. Skip step")
+            self._clear_global_norm()  # clear recorded norm
+            self.zero_grad()  # reset all gradients
             self._update_fp16_params()
             return
 
@@ -269,11 +280,11 @@ class GeminiOptimizer(OptimizerWrapper):
             fp32_params_used_cuda_margin_mem = 0
 
             for group in self.param_groups:
-                for fake_param in group['params']:
+                for fake_param in group["params"]:
                     chunk32 = self.param_to_chunk32[fake_param]
                     chunk16 = chunk32.paired_chunk
 
-                    if chunk32.device_type == 'cuda':
+                    if chunk32.device_type == "cuda":
                         continue
 
                     if fp32_params_used_cuda_margin_mem + chunk32.payload_mem < fp32_params_available_cuda_margin_mem:
@@ -284,9 +295,9 @@ class GeminiOptimizer(OptimizerWrapper):
                         fp32_params_used_cuda_margin_mem += chunk32.payload_mem
 
             for group in self.param_groups:
-                for fake_param in group['params']:
+                for fake_param in group["params"]:
                     chunk32 = self.param_to_chunk32[fake_param]
-                    if chunk32.device_type == 'cuda':
+                    if chunk32.device_type == "cuda":
                         state = self.optim.state[fake_param]
                         for k, v in state.items():
                             if isinstance(v, torch.Tensor):
@@ -294,14 +305,13 @@ class GeminiOptimizer(OptimizerWrapper):
 
     def _register_states_(self):
         for group in self.optim.param_groups:
-            for p in group['params']:
+            for p in group["params"]:
                 state = self.optim.state[p]
                 for val in state.values():
                     if isinstance(val, torch.Tensor):
                         self.chunk_manager.add_extern_static_tensor(val)
 
     def __init__optimizer(self):
-
         def get_range_pair(local_chunk: Chunk, local_param: Parameter):
             param_info = local_chunk.tensors_info[local_param]
             if local_chunk.keep_gathered:
@@ -313,10 +323,9 @@ class GeminiOptimizer(OptimizerWrapper):
         param_id = -1
         for group in self.optim.param_groups:
             fake_params_list = list()
-            group_backup = {k: v for k, v in group.items() if k != 'params'}
+            group_backup = {k: v for k, v in group.items() if k != "params"}
             group_ids = []
-            for param in group['params']:
-
+            for param in group["params"]:
                 # Record the mapping of id to current param.
                 param_id += 1
                 self.id_to_real_params[param_id] = param
@@ -337,12 +346,12 @@ class GeminiOptimizer(OptimizerWrapper):
                 fake_params_list.append(fake_param)
 
             # Update self.optim.param_groups as well as backup group.
-            group['params'] = fake_params_list
-            group_backup['params'] = group_ids
+            group["params"] = fake_params_list
+            group_backup["params"] = group_ids
             self.param_groups_backup.append(group_backup)
 
     def get_offsets(self, param_id: int) -> tuple:
-        '''
+        """
         Args:
             param_id(int): The id of parameter.
 
@@ -351,7 +360,7 @@ class GeminiOptimizer(OptimizerWrapper):
             shard_offset(int): Offset of its optimizer state shard
                                 relative to the whole optimizer state.
             shard_size(int): Length of parameter shard owned by current process.
-        '''
+        """
 
         if param_id not in self.id_to_fake_params:
             return -1, -1, -1
@@ -425,11 +434,11 @@ class GeminiOptimizer(OptimizerWrapper):
             if is_collector:
                 states = self.optim.state[fake_param]
                 for state_name in state_names:
-                    if state_name == 'step':
+                    if state_name == "step":
                         # To keep aligned with pytorch, state 'step' is stored as a pytorch tensor with type float32.
-                        collected_states[state_name] = torch.tensor(states['step'],
-                                                                    dtype=torch.float32,
-                                                                    requires_grad=False).cpu()
+                        collected_states[state_name] = torch.tensor(
+                            states["step"], dtype=torch.float32, requires_grad=False
+                        ).cpu()
                     else:
                         state_tensor = states[state_name].detach().clone().to(torch.float32).cpu()
                         collected_states[state_name] = torch.reshape(state_tensor, param.shape)
@@ -441,12 +450,13 @@ class GeminiOptimizer(OptimizerWrapper):
         # Collector gets prepared for state collecting.
         if is_collector:
             for state_name in state_names:
-                if state_name == 'step':
+                if state_name == "step":
                     # To keep aligned with pytorch, state 'step' is stored as a pytorch tensor with type float32.
                     collected_states[state_name] = torch.tensor(0.0, dtype=torch.float32, requires_grad=False).cpu()
                 else:
-                    collected_states[state_name] = torch.zeros(param.numel(), dtype=torch.float32,
-                                                               requires_grad=False).cpu()
+                    collected_states[state_name] = torch.zeros(
+                        param.numel(), dtype=torch.float32, requires_grad=False
+                    ).cpu()
 
         # Materials for gathering, including compacted state tensors, and the offset of shard inside each state.
         compacted_states = self.pack_optimizer_states_to_tensor(param_id, state_names) if own_param else None
@@ -465,8 +475,9 @@ class GeminiOptimizer(OptimizerWrapper):
                 shard_size = state_shard[2]
                 if compacted_states is None:
                     continue
-                self.load_from_compacted_states(compacted_states, collected_states, state_names, shard_offset,
-                                                shard_size)
+                self.load_from_compacted_states(
+                    compacted_states, collected_states, state_names, shard_offset, shard_size
+                )
 
         # Reshape tensors
         if is_collector:
@@ -476,14 +487,16 @@ class GeminiOptimizer(OptimizerWrapper):
 
         return collected_states
 
-    def pack_optimizer_states_to_tensor(self,
-                                        param_id: int,
-                                        state_names: list,
-                                        device: torch.device = torch.device('cuda'),
-                                        dtype: torch.dtype = torch.float32) -> torch.Tensor:
-        '''
+    def pack_optimizer_states_to_tensor(
+        self,
+        param_id: int,
+        state_names: list,
+        device: torch.device = torch.device("cuda"),
+        dtype: torch.dtype = torch.float32,
+    ) -> torch.Tensor:
+        """
         With param id given, pack its optimizer states into a compact tensor and return.
-        '''
+        """
         if param_id not in self.id_to_fake_params:
             return None
 
@@ -493,7 +506,7 @@ class GeminiOptimizer(OptimizerWrapper):
         shard_size = param_range[1] - param_range[0]
         compacted_size = 0
         for name in state_names:
-            if name == 'step':
+            if name == "step":
                 compacted_size += 1
             else:
                 compacted_size += shard_size
@@ -502,7 +515,7 @@ class GeminiOptimizer(OptimizerWrapper):
         next_state_offset = 0
         for state_name, state_tensor in states.items():
             # State 'step' needs special operation.
-            if state_name == 'step':
+            if state_name == "step":
                 if isinstance(state_tensor, torch.Tensor):
                     compacted_states[next_state_offset] = state_tensor[0].item()
                 else:
@@ -511,47 +524,53 @@ class GeminiOptimizer(OptimizerWrapper):
                 next_state_offset += 1
             else:
                 assert state_tensor.numel() == shard_size
-                compacted_states[next_state_offset:next_state_offset + shard_size].copy_(state_tensor)
+                compacted_states[next_state_offset : next_state_offset + shard_size].copy_(state_tensor)
                 next_state_offset += shard_size
 
         return compacted_states
 
-    def load_from_compacted_states(self, compacted_states: torch.Tensor, collected_states: dict, state_names: list,
-                                   shard_start: int, shard_size: int):
-        '''
+    def load_from_compacted_states(
+        self,
+        compacted_states: torch.Tensor,
+        collected_states: dict,
+        state_names: list,
+        shard_start: int,
+        shard_size: int,
+    ):
+        """
         Given a tensor carrying compacted optimizer states,
         update these states to collected_states.
-        '''
+        """
         shard_end = shard_start + shard_size
         next_state_offset = 0
 
         for state_name in state_names:
-            if state_name == 'step':
-                collected_states['step'].data = torch.tensor(compacted_states[next_state_offset].item(),
-                                                             dtype=torch.float32,
-                                                             requires_grad=False).cpu()
+            if state_name == "step":
+                collected_states["step"].data = torch.tensor(
+                    compacted_states[next_state_offset].item(), dtype=torch.float32, requires_grad=False
+                ).cpu()
                 next_state_offset += 1
             else:
                 target_segment = collected_states[state_name][shard_start:shard_end]
-                target_segment.copy_(compacted_states[next_state_offset:next_state_offset + shard_size])
+                target_segment.copy_(compacted_states[next_state_offset : next_state_offset + shard_size])
                 next_state_offset += shard_size
 
     def get_param_groups_for_saving(self) -> list:
-        '''
+        """
         Return the param_groups in Pytorch format when saving to checkpoint.
-        '''
+        """
 
         param_groups = copy.deepcopy(self.param_groups_backup)
 
         # To be compatible with pytorch checkpointing,
         # store extra hyperparameters used by pytorch Adam optimizer.
         torch_special_hyperparameters = {
-            'amsgrad': False,
-            'maximize': False,
-            'foreach': None,
-            'capturable': False,
-            'differentiable': False,
-            'fused': False
+            "amsgrad": False,
+            "maximize": False,
+            "foreach": None,
+            "capturable": False,
+            "differentiable": False,
+            "fused": False,
         }
 
         for group in param_groups:
@@ -580,13 +599,13 @@ class GeminiOptimizer(OptimizerWrapper):
                  so it should be called only when memory resources are abundant.
         """
         state_dict = {}
-        state_dict['param_groups'] = self.get_param_groups_for_saving()
+        state_dict["param_groups"] = self.get_param_groups_for_saving()
 
         # Collect optimizer states.
-        state_dict['state'] = dict()
+        state_dict["state"] = dict()
         for param_id in self.id_to_real_params.keys():
             dist.barrier()
-            state_dict['state'][param_id] = self.collect_states(param_id=param_id, only_rank_0=only_rank_0)
+            state_dict["state"][param_id] = self.collect_states(param_id=param_id, only_rank_0=only_rank_0)
         return state_dict
 
     def load_param_groups(self, saved_param_groups: list):
@@ -601,13 +620,13 @@ class GeminiOptimizer(OptimizerWrapper):
 
         for group in saved_param_groups:
             fake_params_list = list()
-            updated_group = {k: v for k, v in group.items() if k != 'params'}
-            for param_id in group['params']:
+            updated_group = {k: v for k, v in group.items() if k != "params"}
+            for param_id in group["params"]:
                 if param_id not in self.id_to_fake_params:
                     continue
                 fake_param = self.id_to_fake_params[param_id]
                 fake_params_list.append(fake_param)
-            updated_group['params'] = fake_params_list
+            updated_group["params"] = fake_params_list
             self.optim.param_groups.append(updated_group)
 
     def load_single_param_states(self, param_id: int, saved_states: dict):
@@ -621,15 +640,14 @@ class GeminiOptimizer(OptimizerWrapper):
             """
             assert isinstance(value, torch.Tensor)
             ret_val = value
-            if (key == "step"):
+            if key == "step":
                 assert value.numel() == 1
                 ret_val = int(value.item())
             else:
                 state_start, state_end = state_range
-                ret_val = torch.zeros(state_end - state_start,
-                                      dtype=torch.float32,
-                                      device=param.device,
-                                      requires_grad=False)
+                ret_val = torch.zeros(
+                    state_end - state_start, dtype=torch.float32, device=param.device, requires_grad=False
+                )
                 ret_val.copy_(value.flatten()[state_start:state_end])
             return ret_val
 
@@ -642,7 +660,7 @@ class GeminiOptimizer(OptimizerWrapper):
         updated_states = dict()
         for k, v in saved_states.items():
             updated_states[k] = cast(fake_param, state_range, v, k)
-            del v    # clean loaded states
+            del v  # clean loaded states
         self.optim.state[fake_param].update(updated_states)
 
     def load_param_states(self, param_states: dict):
@@ -658,8 +676,8 @@ class GeminiOptimizer(OptimizerWrapper):
 
     def optimizer_loading_epilogue(self):
         # Epilogue when loading state_dict to pytorch optimizer.
-        self.optim._hook_for_profile()    # To support multiprocessing pickle/unpickle.
-        self.optim.defaults.setdefault('differentiable', False)
+        self.optim._hook_for_profile()  # To support multiprocessing pickle/unpickle.
+        self.optim.defaults.setdefault("differentiable", False)
 
     def load_state_dict(self, state_dict: dict):
         """Loads optimizer state from complete optimizer state_dict.
@@ -669,16 +687,15 @@ class GeminiOptimizer(OptimizerWrapper):
             state_dict (dict): optimizer state. Should be an object returned
                 from a call to :meth:`state_dict`.
         """
-        assert 'param_groups' in state_dict
-        assert 'state' in state_dict
-        self.load_param_groups(state_dict['param_groups'])
-        self.load_param_states(state_dict['state'])
+        assert "param_groups" in state_dict
+        assert "state" in state_dict
+        self.load_param_groups(state_dict["param_groups"])
+        self.load_param_states(state_dict["state"])
         self.optimizer_loading_epilogue()
 
-    def state_shard(self,
-                    prefix: str = '',
-                    max_shard_size: int = 1024,
-                    only_rank_0: bool = True) -> Iterator[Tuple[OrderedDict, int]]:
+    def state_shard(
+        self, prefix: str = "", max_shard_size: int = 1024, only_rank_0: bool = True
+    ) -> Iterator[Tuple[OrderedDict, int]]:
         """Returns dictionaries containing shards of optimizer states one by one.
            The max size of each dictionary shard is specified by ``max_shard_size``.
 
@@ -694,7 +711,6 @@ class GeminiOptimizer(OptimizerWrapper):
 
         sharder = StateDictSharder(max_shard_size)
         for param_id in self.id_to_real_params.keys():
-
             dist.barrier()
             state = self.collect_states(param_id=param_id, only_rank_0=only_rank_0)
 
@@ -705,19 +721,20 @@ class GeminiOptimizer(OptimizerWrapper):
         yield sharder.current_block, sharder.current_block_size
 
     def clip_grad_by_value(self, clip_value: float, *args, **kwargs) -> None:
-        raise NotImplementedError('Gemini does not support clip_grad_by_value')
+        raise NotImplementedError("Gemini does not support clip_grad_by_value")
 
-    def clip_grad_by_norm(self,
-                          max_norm: Union[float, int],
-                          norm_type: Union[float, int] = 2,
-                          error_if_nonfinite: bool = False,
-                          *args,
-                          **kwargs) -> torch.Tensor:
-        warnings.warn(f'Gemini controls grad clipping by itself, so you should not use clip_grad_by_norm')
+    def clip_grad_by_norm(
+        self,
+        max_norm: Union[float, int],
+        norm_type: Union[float, int] = 2,
+        error_if_nonfinite: bool = False,
+        *args,
+        **kwargs,
+    ) -> torch.Tensor:
+        warnings.warn(f"Gemini controls grad clipping by itself, so you should not use clip_grad_by_norm")
 
 
 class GeminiAdamOptimizer(GeminiOptimizer):
-
     def __init__(self, model: torch.nn.Module, **defaults: Any) -> None:
         optimizer = HybridAdam(model.parameters(), **defaults)
         super().__init__(optimizer, model, **defaults)

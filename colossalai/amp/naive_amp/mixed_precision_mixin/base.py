@@ -39,6 +39,7 @@ class MixedPrecisionMixin(ABC):
                 return self.optim.zero_grad()
         ```
     """
+
     dtype: torch.dtype
 
     @abstractmethod
@@ -51,7 +52,6 @@ class MixedPrecisionMixin(ABC):
         Returns:
             Tensor: Loss value (possibly scaled).
         """
-        pass
 
     @abstractmethod
     def pre_backward_by_grad(self, tensor: Tensor, grad: Tensor) -> Tensor:
@@ -64,7 +64,6 @@ class MixedPrecisionMixin(ABC):
         Returns:
             Tensor: Gradient of the tensor (possibly scaled).
         """
-        pass
 
     @abstractmethod
     def should_skip_step(self) -> bool:
@@ -73,13 +72,10 @@ class MixedPrecisionMixin(ABC):
         Returns:
             bool: Whether to skip the step.
         """
-        pass
 
     @abstractmethod
     def pre_zero_grad(self) -> None:
-        """Called before zero_grad.
-        """
-        pass
+        """Called before zero_grad."""
 
     @abstractmethod
     def get_grad_div_scale(self) -> float:
@@ -88,4 +84,3 @@ class MixedPrecisionMixin(ABC):
         Returns:
             float: A divisor for gradient clipping or step.
         """
-        pass

@@ -70,7 +70,7 @@
         "BLEU",
         "ROUGE",
         "BERTScore"
-      ]   
+      ]
     },
     "logical_reasoning": {
       "GPT": [
@@ -83,7 +83,7 @@
         "ROUGE",
         "BERTScore",
         "CHRF"
-      ]   
+      ]
     },
     "open_qa": {
       "GPT": [
@@ -126,7 +126,7 @@
         "conciseness"
       ],
       "Metrics": [
-      ]   
+      ]
     },
     "Finance": {
       "GPT": [
@@ -134,7 +134,7 @@
         "correctness"
       ],
       "Metrics": [
-      ] 
+      ]
     },
     "Law": {
       "GPT": [
@@ -142,7 +142,7 @@
         "correctness"
       ],
       "Metrics": [
-      ]   
+      ]
     },
     "Education": {
       "GPT": [
@@ -150,7 +150,7 @@
         "correctness"
       ],
       "Metrics": [
-      ]   
+      ]
     },
     "Medical": {
       "GPT": [
@@ -158,7 +158,7 @@
         "correctness"
       ],
       "Metrics": [
-      ]   
+      ]
     },
     "STEM": {
       "GPT": [
@@ -166,7 +166,7 @@
         "correctness"
       ],
       "Metrics": [
-      ]   
+      ]
     },
     "SocialScience": {
       "GPT": [
@@ -174,7 +174,7 @@
         "correctness"
       ],
       "Metrics": [
-      ]   
+      ]
     },
     "Humanity": {
       "GPT": [
@@ -182,7 +182,7 @@
         "correctness"
       ],
       "Metrics": [
-      ]   
+      ]
     },
     "Other": {
       "GPT": [
@@ -190,7 +190,7 @@
         "correctness"
       ],
       "Metrics": [
-      ]   
+      ]
     },
     "ethics": {
       "GPT": [
@@ -198,7 +198,7 @@
         "correctness"
       ],
       "Metrics": [
-      ]   
+      ]
     }
   }
 }

@@ -7,7 +7,7 @@ import torch
 import torch.distributed as dist
 from data import GLUEDataBuilder
 from torch import nn
-from torch.optim import Adam, AdamW, Optimizer
+from torch.optim import Adam, Optimizer
 from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -15,12 +15,10 @@ from transformers import BertConfig, BertForSequenceClassification, get_linear_s
 
 import colossalai
 from colossalai.cluster import DistCoordinator
-from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer import ShardConfig, ShardFormer
 
 
 def to_device(x: Any, device: torch.device) -> Any:
-
     def _to(t: Any):
         if isinstance(t, torch.Tensor):
             return t.to(device)
@@ -34,10 +32,12 @@ def train(args):
     coordinator = DistCoordinator()
 
     # prepare for data and dataset
-    data_builder = GLUEDataBuilder(model_name_or_path=args.pretrain,
-                                   task_name=args.task,
-                                   train_batch_size=args.batch_size,
-                                   eval_batch_size=args.batch_size)
+    data_builder = GLUEDataBuilder(
+        model_name_or_path=args.pretrain,
+        task_name=args.task,
+        train_batch_size=args.batch_size,
+        eval_batch_size=args.batch_size,
+    )
     train_dataloader = data_builder.train_dataloader()
     test_dataloader = data_builder.test_dataloader()
 
@@ -49,10 +49,10 @@ def train(args):
 
     # if multiple GPUs, shard the model
     if dist.get_world_size() > 1:
-        tp_group = dist.new_group(backend='nccl')
-        shard_config = ShardConfig(tensor_parallel_process_group=tp_group,
-                                   enable_tensor_parallelism=True,
-                                   enable_all_optimization=True)
+        tp_group = dist.new_group(backend="nccl")
+        shard_config = ShardConfig(
+            tensor_parallel_process_group=tp_group, enable_tensor_parallelism=True, enable_all_optimization=True
+        )
         shard_former = ShardFormer(shard_config=shard_config)
         model, _ = shard_former.optimize(model)
 
@@ -64,21 +64,40 @@ def train(args):
         num_warmup_steps=math.ceil(max_steps * args.warmup_fraction),
         num_training_steps=max_steps,
     )
-    fit(model, optim, lr_scheduler, train_dataloader, args.max_epochs, args.accumulation_steps, args.batch_size,
-        coordinator)
-    results = evaluate_model(model, test_dataloader, data_builder.num_labels, args.task, data_builder.eval_splits,
-                             coordinator)
+    fit(
+        model,
+        optim,
+        lr_scheduler,
+        train_dataloader,
+        args.max_epochs,
+        args.accumulation_steps,
+        args.batch_size,
+        coordinator,
+    )
+    results = evaluate_model(
+        model, test_dataloader, data_builder.num_labels, args.task, data_builder.eval_splits, coordinator
+    )
     if coordinator.is_master():
         print(results)
-        if args.target_f1 is not None and 'f1' in results:
-            assert results['f1'] >= args.target_f1, f'f1 score {results["f1"]} is lower than target {args.target_f1}'
+        if args.target_f1 is not None and "f1" in results:
+            assert results["f1"] >= args.target_f1, f'f1 score {results["f1"]} is lower than target {args.target_f1}'
 
 
-def fit(model: nn.Module, optimizer: Optimizer, scheduler, train_dataloader, max_epochs, accumulation_steps, batch_size,
-        coordinator):
-    step_bar = tqdm(range(len(train_dataloader) // accumulation_steps * max_epochs),
-                    desc=f'steps',
-                    disable=not coordinator.is_master())
+def fit(
+    model: nn.Module,
+    optimizer: Optimizer,
+    scheduler,
+    train_dataloader,
+    max_epochs,
+    accumulation_steps,
+    batch_size,
+    coordinator,
+):
+    step_bar = tqdm(
+        range(len(train_dataloader) // accumulation_steps * max_epochs),
+        desc=f"steps",
+        disable=not coordinator.is_master(),
+    )
     total_loss = 0
     for epoch in range(max_epochs):
         model.train()
@@ -93,19 +112,23 @@ def fit(model: nn.Module, optimizer: Optimizer, scheduler, train_dataloader, max
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
-                step_bar.set_postfix({
-                    'epoch': epoch,
-                    'loss': total_loss / batch_size,
-                    'lr': scheduler.get_last_lr()[0]
-                })
+                step_bar.set_postfix(
+                    {"epoch": epoch, "loss": total_loss / batch_size, "lr": scheduler.get_last_lr()[0]}
+                )
                 total_loss = 0
                 step_bar.update()
 
 
 # evaluate
 @torch.no_grad()
-def evaluate_model(model: nn.Module, test_dataloader: Union[DataLoader, List[DataLoader]], num_labels: int,
-                   task_name: str, eval_splits: List[str], coordinator: DistCoordinator):
+def evaluate_model(
+    model: nn.Module,
+    test_dataloader: Union[DataLoader, List[DataLoader]],
+    num_labels: int,
+    task_name: str,
+    eval_splits: List[str],
+    coordinator: DistCoordinator,
+):
     metric = evaluate.load("glue", task_name, process_id=coordinator.rank, num_process=coordinator.world_size)
     model.eval()
 
@@ -127,7 +150,7 @@ def evaluate_model(model: nn.Module, test_dataloader: Union[DataLoader, List[Dat
 
         results = metric.compute()
         if coordinator.is_master():
-            results['loss'] = accum_loss.item() / (len(dataloader) * dataloader.batch_size)
+            results["loss"] = accum_loss.item() / (len(dataloader) * dataloader.batch_size)
         return results
 
     if isinstance(test_dataloader, DataLoader):
@@ -137,21 +160,21 @@ def evaluate_model(model: nn.Module, test_dataloader: Union[DataLoader, List[Dat
         final_results = {}
         for split, sub_loader in zip(eval_splits, test_dataloader):
             results = evaluate_subset(sub_loader)
-            final_results.update({f'{k}_{split}': v for k, v in results.items()})
+            final_results.update({f"{k}_{split}": v for k, v in results.items()})
         return final_results
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-t', '--task', default='mrpc', help="GLUE task to run")
-    parser.add_argument('--model', type=str, default="bert")
-    parser.add_argument('--pretrain', type=str, default="bert-base-uncased")
-    parser.add_argument('--max_epochs', type=int, default=1)
-    parser.add_argument('--batch_size', type=int, default=4)
-    parser.add_argument('--lr', type=float, default=2.4e-5)
-    parser.add_argument('--fused_layernorm', type=bool, default=False)
-    parser.add_argument('--accumulation_steps', type=int, default=8)
-    parser.add_argument('--warmup_fraction', type=float, default=0.03)
-    parser.add_argument('--target_f1', type=float, default=None)
+    parser.add_argument("-t", "--task", default="mrpc", help="GLUE task to run")
+    parser.add_argument("--model", type=str, default="bert")
+    parser.add_argument("--pretrain", type=str, default="bert-base-uncased")
+    parser.add_argument("--max_epochs", type=int, default=1)
+    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--lr", type=float, default=2.4e-5)
+    parser.add_argument("--fused_layernorm", type=bool, default=False)
+    parser.add_argument("--accumulation_steps", type=int, default=8)
+    parser.add_argument("--warmup_fraction", type=float, default=0.03)
+    parser.add_argument("--target_f1", type=float, default=None)
     args = parser.parse_args()
     train(args)

@@ -5,7 +5,6 @@ from colossalai.booster.plugin.dp_plugin_base import DPPluginBase
 
 
 class GLUEDataBuilder:
-
     task_text_field_map = {
         "cola": ["sentence"],
         "sst2": ["sentence"],
@@ -84,10 +83,9 @@ class GLUEDataBuilder:
         AutoTokenizer.from_pretrained(self.model_name_or_path, use_fast=True)
 
     def train_dataloader(self):
-        return self.plugin.prepare_dataloader(self.dataset["train"],
-                                              batch_size=self.train_batch_size,
-                                              shuffle=True,
-                                              drop_last=True)
+        return self.plugin.prepare_dataloader(
+            self.dataset["train"], batch_size=self.train_batch_size, shuffle=True, drop_last=True
+        )
 
     def val_dataloader(self):
         if len(self.eval_splits) == 1:
@@ -108,7 +106,6 @@ class GLUEDataBuilder:
             ]
 
     def convert_to_features(self, example_batch):
-
         # Either encode single sentence or sentence pairs
         if len(self.text_fields) > 1:
             texts_or_text_pairs = list(zip(example_batch[self.text_fields[0]], example_batch[self.text_fields[1]]))
@@ -116,10 +113,9 @@ class GLUEDataBuilder:
             texts_or_text_pairs = example_batch[self.text_fields[0]]
 
         # Tokenize the text/text pairs
-        features = self.tokenizer.batch_encode_plus(texts_or_text_pairs,
-                                                    max_length=self.max_seq_length,
-                                                    padding='max_length',
-                                                    truncation=True)
+        features = self.tokenizer.batch_encode_plus(
+            texts_or_text_pairs, max_length=self.max_seq_length, padding="max_length", truncation=True
+        )
 
         # Rename label to labels to make it easier to pass to model forward
         features["labels"] = example_batch["label"]
