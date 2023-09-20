@@ -1,10 +1,10 @@
-import colossalai
+import argparse
 
 __all__ = ["parse_args"]
 
 
 def parse_args():
-    parser = colossalai.get_default_parser()
+    parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "--distplan",
