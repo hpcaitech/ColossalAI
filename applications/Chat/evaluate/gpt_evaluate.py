@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 import matplotlib.pyplot as plt
 import numpy as np
 import openai
+import litellm
 import pandas as pd
 import seaborn as sns
 import tqdm
@@ -46,7 +47,7 @@ def get_battle_result(sys_prompt: str, user_prompt: str, id: int, max_tokens: in
     MAX_API_RETRY = 3
     for _ in range(MAX_API_RETRY):
         try:
-            response = openai.ChatCompletion.create(
+            response = litellm.completion(
                 model="gpt-4",
                 messages=[
                     {"role": "system", "content": sys_prompt},
@@ -336,7 +337,7 @@ def multiturn_chat_completion(user_messages: List[str], model: str, max_tokens: 
         # Because we always expect the api to response
         messages_to_send.append(fill_in_message("user", user_messages[i]))
 
-        response = openai.ChatCompletion.create(
+        response = litellm.completion(
             model=model,
             messages=messages_to_send,
             temperature=0,

@@ -4,6 +4,7 @@ rouge_chinese
 scikit-metrics
 nltk
 openai
+litellm
 seaborn
 pandas
 matplotlib
