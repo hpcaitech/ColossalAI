@@ -167,7 +167,7 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
         super().__init__(optim)
 
     def update_master_params(self, model: Module):
-        return None
+        pass
 
     def get_working_to_master_map(self):
         return None

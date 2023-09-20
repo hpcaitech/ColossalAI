@@ -55,7 +55,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         The model should be unwrapped in self.load_model via ModelWrapper.unwrap.
         """
         assert isinstance(model, GeminiDDP), "Please boost the model before loading!"
-        super().load_unsharded_model(model.unwrap(), checkpoint, strict=strict)
+        super().load_unsharded_model(model, checkpoint, strict=strict)
 
     def save_unsharded_optimizer(self, optimizer: GeminiOptimizer, checkpoint: str, gather_dtensor: bool):
         """
@@ -388,7 +388,7 @@ class GeminiPlugin(DPPluginBase):
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer = GeminiOptimizer(
-                optimizer, model.unwrap(), **self.zero_optim_config, **self.optim_kwargs, verbose=self.verbose
+                optimizer, model, **self.zero_optim_config, **self.optim_kwargs, verbose=self.verbose
             )
 
         return model, optimizer, criterion, dataloader, lr_scheduler
