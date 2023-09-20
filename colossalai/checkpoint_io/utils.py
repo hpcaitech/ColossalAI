@@ -11,7 +11,6 @@ import torch
 import torch.nn as nn
 from torch.optim import Optimizer
 
-from colossalai.interface import OptimizerWrapper
 from colossalai.tensor.d_tensor import (
     is_customized_distributed_tensor,
     is_distributed_tensor,
@@ -122,14 +121,6 @@ def search_tp_partition_dim(current_shape: torch.Size, original_shape: torch.Siz
 # ======================================
 # Helper classes and functions for saving shard file
 # ======================================
-def unwrap_optimizer(optimizer: OptimizerWrapper):
-    """
-    Unwrap a wrapped optimizer.
-    This method should be used before saving/loading it to/from sharded checkpoints.
-    """
-
-    unwrapped_optim = optimizer.optim
-    return unwrapped_optim
 
 
 class StateDictSharder:
