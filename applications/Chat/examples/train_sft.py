@@ -187,7 +187,7 @@ if __name__ == "__main__":
     parser.add_argument('--strategy',
                         choices=['ddp', 'colossalai_gemini', 'colossalai_zero2', 'colossalai_zero2_cpu'],
                         default='colossalai_zero2')
-    parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom')
+    parser.add_argument('--model', choices=['gpt2', 'bloom', 'opt', 'llama', 'chatglm'], default='bloom')
     parser.add_argument('--tokenizer', type=str, default=None)
     parser.add_argument('--pretrain', type=str, default=None)
     parser.add_argument('--dataset', type=str, default=None)
