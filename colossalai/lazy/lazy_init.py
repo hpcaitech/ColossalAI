@@ -45,6 +45,9 @@ _EARLY_MATERIALIZED_OPS = ["__getitem__", "split"]
 # These ops cannot be unwrapped using .data
 _CHANGE_META_OPS = ["_cudnn_rnn_flatten_weight", "requires_grad_", "__get__", "__set__", "numel", "size", "dim"]
 
+# These ops is not related to tensor value and should not be rerun
+_NO_RERUN_OPS = ["requires_grad_", "__get__", "numel", "size", "dim"]
+
 _LEGACY_TENSOR_CONSTRUCTOR = {
     "FloatTensor": torch.float,
     "DoubleTensor": torch.double,
@@ -103,7 +106,7 @@ def _data_tolist(tensor: torch.Tensor) -> list:
     return tensor.data.tolist()
 
 
-def _convert_cls(tensor: "LazyTensor", target: torch.Tensor) -> torch.Tensor:
+def _convert_cls(tensor: "LazyTensor", target: torch.Tensor, requires_grad: bool) -> torch.Tensor:
     """Convert a lazy tensor's class to target's class, with target's data.
 
     The reason why we change the class of a lazy tensor in-place is that this can easily handle shared modules/parameters, which is common in huggingface models.
@@ -122,7 +125,7 @@ def _convert_cls(tensor: "LazyTensor", target: torch.Tensor) -> torch.Tensor:
         # to fit UninitializedParameter
         delattr(tensor, "_is_param")
     tensor.data = target
-    tensor.requires_grad = target.requires_grad
+    tensor.requires_grad = requires_grad
     # subclass of torch.Tensor does not have tolist() method
     # overwrite this method after materialization or distribution
     tensor.tolist = MethodType(_data_tolist, tensor)
@@ -213,9 +216,11 @@ class LazyTensor(torch.Tensor):
         Returns:
             torch.Tensor: The materialized tensor (self).
         """
+        # requires_grad attr is mounted on meta tensor, it should be copied back
+        requires_grad = self.requires_grad
         target = self._materialize_data()
         self.clean()
-        return _convert_cls(self, target)
+        return _convert_cls(self, target, requires_grad)
 
     def distribute(self, device_mesh: DeviceMesh, sharding_spec: ShardingSpec) -> torch.Tensor:
         """Distribute the ``LazyTensor`` to ``torch.Tensor`` by modifying __class__ (inplace), according to the layout.
@@ -276,12 +281,9 @@ class LazyTensor(torch.Tensor):
         packed = None
 
         for func, args, kwargs in self._op_buffer:
-            if func == torch.Tensor.requires_grad_:
-                packed = func, args, kwargs  # requires grad should be set at last
-            else:
-                self._pre_op_fn()
-                o = func(*tree_map(replace, args), **tree_map(replace, kwargs))
-                target = o if isinstance(o, torch.Tensor) else target  # if func returns non-Tensor, discard the value
+            self._pre_op_fn()
+            o = func(*tree_map(replace, args), **tree_map(replace, kwargs))
+            target = o if isinstance(o, torch.Tensor) else target  # if func returns non-Tensor, discard the value
 
         # super-dainiu: set requires_grad after all inplace-ops are done
         if packed is not None:
@@ -333,7 +335,8 @@ class LazyTensor(torch.Tensor):
                         # for early materialized tensor, use its materialized data directly
                         return x._materialized_data if is_change_meta_op else x._materialized_data.data
                     t = x if is_inplace else x.clone()
-                    t._op_buffer.append((func, args, kwargs))
+                    if func.__name__ not in _NO_RERUN_OPS:
+                        t._op_buffer.append((func, args, kwargs))
                     meta = x._meta_data if is_change_meta_op else x._meta_data.data
                     meta_to_lazy[meta] = t
                     return meta
@@ -385,29 +388,27 @@ class LazyTensor(torch.Tensor):
 
         meta_data = self._meta_data.to(*tree_map(replace, args), **tree_map(replace, kwargs))
 
-        def factory_fn(*a, **kw):
-            new_tensor = self.materialize() if type(self) is LazyTensor else self
-            return new_tensor.to(*args, **kwargs)
+        if meta_data is self._meta_data and device == self.device:
+            return self
 
-        return LazyTensor(factory_fn, meta_data=meta_data, device=device)
+        def factory_fn(t: torch.Tensor, **kw):
+            return t.to(*args, **kwargs)
 
-    def cpu(self, *args, **kwargs):
-        if self.device.type == "cpu":
-            return self.to(*args, **kwargs)
-        return self.to(*args, device="cpu", **kwargs)
+        return LazyTensor(factory_fn, self, meta_data=meta_data, device=device)
 
-    def cuda(self, device=None, non_blocking=False):
-        if device is not None:
-            return self.to(device=device, non_blocking=non_blocking)
-        return self.to(device="cuda:0", non_blocking=non_blocking)
+    def cpu(self, memory_format: torch.memory_format = torch.preserve_format):
+        return self.to(device=torch.device("cpu"), memory_format=memory_format)
+
+    def cuda(self, device=None, non_blocking=False, memory_format: torch.memory_format = torch.preserve_format):
+        device = torch.device(device or "cuda")
+        return self.to(device=device, non_blocking=non_blocking, memory_format=memory_format)
 
     def clone(self) -> "LazyTensor":
-        def factory_fn():
+        def factory_fn(t: torch.Tensor, **kw):
             # if self is materialized, return self
-            new_tensor = self.materialize() if type(self) is LazyTensor else self
-            return new_tensor.clone()
+            return t.clone()
 
-        target = LazyTensor(factory_fn, meta_data=self._meta_data)
+        target = LazyTensor(factory_fn, self, meta_data=self._meta_data)
 
         return target
 
@@ -423,17 +424,16 @@ class LazyTensor(torch.Tensor):
         if id(self) in memo:
             return memo[id(self)]
 
-        def factory_fn():
+        def factory_fn(t: torch.Tensor, **kw):
             # if self is materialized, return self
-            new_tensor = self.materialize() if type(self) is LazyTensor else self
-            return _copy_tensor(new_tensor, new_tensor.requires_grad)
+            return _copy_tensor(t, t.requires_grad)
 
         if self._materialized_data is not None:
             # self is early materialized
             copied = _copy_tensor(self._materialized_data, self.requires_grad)
             target = LazyTensor(lambda: None, concrete_data=copied)
         else:
-            target = LazyTensor(factory_fn, meta_data=self._meta_data)
+            target = LazyTensor(factory_fn, self, meta_data=self._meta_data)
 
         if isinstance(self, Parameter):
             # hack isinstance check of parameter
@@ -464,14 +464,12 @@ class LazyTensor(torch.Tensor):
         if other is self:
             return
 
-        self._op_buffer.append(other._factory_method)
-
         def replace(x):
             if x is other:
                 return self
             return x
 
-        for func, args, kwargs in other._op_buffer:
+        for func, args, kwargs in [other._factory_method, *other._op_buffer]:
             self._op_buffer.append((func, tree_map(replace, args), tree_map(replace, kwargs)))
 
     def tolist(self) -> list:
