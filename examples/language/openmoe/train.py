@@ -67,6 +67,7 @@ def parse_args():
         "--model_name",
         type=str,
         default="base",
+        choices=["base", "8b"],
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -88,7 +89,7 @@ def parse_args():
         type=str,
         default="hybrid",
         help="parallel plugin",
-        choices=["zero1", "zero2", "hybrid"],
+        choices=["zero1", "zero2", "hybrid", "fsdp"],
     )
     # hybrid plugin
     parser.add_argument("--pp_size", type=int, default=2, help="pp size")
@@ -132,26 +133,6 @@ def main():
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
 
-    # Set up moe
-    if args.plugin in ["zero1", "zero2"]:
-        MOE_MANAGER.setup(
-            seed=42,
-            parallel="EP",
-            use_kernel_optim=False if args.model_name == "test" else args.use_kernel,
-        )
-    elif args.plugin == "hybrid":
-        assert (args.dp_size * args.ep_size *
-                args.pp_size == coordinator.world_size), "dp_size * ep_size * pp_size must equal to world_size"
-        MOE_MANAGER.setup(
-            seed=42,
-            parallel="EP",
-            mode="fixed",
-            fixed_dp_size=args.dp_size,
-            fixed_ep_size=args.ep_size,
-            fixed_pp_size=args.pp_size,
-            use_kernel_optim=False if args.model_name == "test" else args.use_kernel,
-        )
-
     # Manage loggers
     disable_existing_loggers()
     logger = get_dist_logger()
@@ -162,32 +143,22 @@ def main():
         datasets.utils.logging.set_verbosity_error()
         transformers.utils.logging.set_verbosity_error()
 
-    # Build OpenMoe model
-    repo_name = "hpcaitech/openmoe-" + args.model_name
-    if args.model_name == "test":
-        config = LlamaConfig.from_pretrained("hpcaitech/openmoe-base")
-        config.vocab_size = 32000
-    else:
-        config = LlamaConfig.from_pretrained(repo_name)
-    setattr(config, "router_aux_loss_factor", args.router_aux_loss_factor)
-    setattr(config, "router_z_loss_factor", args.router_z_loss_factor)
-    setattr(config, "label_smoothing", args.label_smoothing)
-    setattr(config, "z_loss_factor", args.z_loss_factor)
-    with skip_init():
-        model = OpenMoeForCausalLM(config)
-    if args.model_name != "test":
-        load_ckpt(repo_name, model)
-    logger.info(f"Finish init model with config:\n{config}", ranks=[0])
-
-    # Enable gradient checkpointing
-    model.gradient_checkpointing_enable()
-
     # Set plugin
     booster_kwargs = {}
     if args.plugin == "zero1":
         plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=1)
+        MOE_MANAGER.setup(
+            seed=42,
+            parallel="EP",
+            use_kernel_optim=args.use_kernel,
+        )
     elif args.plugin == "zero2":
         plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
+        MOE_MANAGER.setup(
+            seed=42,
+            parallel="EP",
+            use_kernel_optim=args.use_kernel,
+        )
     elif args.plugin == "hybrid":
         plugin = MoeHybridParallelPlugin(
             tp_size=1,
@@ -198,13 +169,37 @@ def main():
             enable_fused_normalization=args.use_kernel,
             enable_jit_fused=args.use_kernel,
         )
+        MOE_MANAGER.setup(
+            seed=42,
+            parallel="EP",
+            mode="fixed",
+            fixed_dp_size=args.dp_size,
+            fixed_ep_size=args.ep_size,
+            fixed_pp_size=args.pp_size,
+            use_kernel_optim=args.use_kernel,
+        )
     else:
         raise ValueError(f"Invalid plugin {args.plugin}")
     logger.info(f"Set plugin as {plugin}", ranks=[0])
 
+    # Build OpenMoe model
+    repo_name = "hpcaitech/openmoe-" + args.model_name
+    config = LlamaConfig.from_pretrained(repo_name)
+    setattr(config, "router_aux_loss_factor", args.router_aux_loss_factor)
+    setattr(config, "router_z_loss_factor", args.router_z_loss_factor)
+    setattr(config, "label_smoothing", args.label_smoothing)
+    setattr(config, "z_loss_factor", args.z_loss_factor)
+    with skip_init():
+        model = OpenMoeForCausalLM(config)
+    load_ckpt(repo_name, model)
+    logger.info(f"Finish init model with config:\n{config}", ranks=[0])
+
+    # Enable gradient checkpointing
+    model.gradient_checkpointing_enable()
+
     # Prepare tokenizer and dataloader
     tokenizer = T5Tokenizer.from_pretrained("google/umt5-small")
-    dataset = RandomDataset(num_samples=1000 if args.model_name != "test" else 50)
+    dataset = RandomDataset(num_samples=1000)
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     # Set optimizer
@@ -228,9 +223,9 @@ def main():
                 desc=f"Epoch [{epoch + 1}/{args.num_epoch}]",
                 disable=not coordinator.is_master(),
         ) as pbar:
-            # Forward pass
             for _ in pbar:
                 if use_pipeline:
+                    # Forward pass
                     outputs = booster.execute_pipeline(
                         train_dataloader_iter,
                         model,
@@ -244,6 +239,7 @@ def main():
                         loss = outputs["loss"]
                         pbar.set_postfix({"loss": loss.item()})
                 else:
+                    # Forward pass
                     data = next(train_dataloader_iter)
                     data = move_to_cuda(data, torch.cuda.current_device())
                     outputs = model(**data)

@@ -27,8 +27,7 @@ import torch.utils.checkpoint
 from torch import nn
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
-from transformers.models.llama import LlamaConfig
-from transformers.models.t5.modeling_t5 import T5LayerNorm
+from transformers.models.llama.modeling_llama import LlamaConfig, LlamaRMSNorm
 from transformers.utils import (
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
@@ -346,8 +345,8 @@ class OpenMoeDecoderLayer(nn.Module):
         self.hidden_size = config.hidden_size
         self.moe = moe
         self.self_attn = OpenMoeAttention(config=config)
-        self.input_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         if self.moe:
             self.mlp = SparseMLP(
                 num_experts=config.num_experts,
@@ -362,7 +361,7 @@ class OpenMoeDecoderLayer(nn.Module):
                 intermediate_size=config.intermediate_size,
                 activation=config.hidden_act,
                 gated=config.gated)
-            self.pre_extra_mlp_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.pre_extra_mlp_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.extra_mlp = OpenMoeMLP(config)
         else:
             self.mlp = OpenMoeMLP(config)
@@ -558,7 +557,7 @@ class OpenMoeModel(OpenMoePreTrainedModel):
             OpenMoeDecoderLayer(config, moe=True if (i + 1) % config.moe_layer_interval == 0 else False)
             for i in range(config.num_hidden_layers)
         ])
-        self.norm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
