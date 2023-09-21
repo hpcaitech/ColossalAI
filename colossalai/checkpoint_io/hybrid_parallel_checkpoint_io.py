@@ -120,13 +120,13 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         use_zero: bool,
         dp_group: ProcessGroup,
         tp_group: ProcessGroup,
-        master_to_working_map: Optional[Dict[int, torch.Tensor]] = None,
         size_per_shard: int = 1024,
     ):
         # An internel method that breaks state_dict of optimizer into shards within limited size.
 
         state_dict_sharder = StateDictSharder(size_per_shard)
         param_info = optimizer.param_info
+        master_to_working_map = optimizer.get_master_to_working_map()
 
         for param, state in optimizer.optim.state.items():
             if param is None:
@@ -400,7 +400,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             use_zero=self.use_zero,
             dp_group=self.dp_group,
             tp_group=self.tp_group,
-            master_to_working_map=optimizer.get_master_to_working_map(),
             size_per_shard=size_per_shard,
         )
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
@@ -651,13 +650,68 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         model_before_wrapping.update_master_params()
 
     def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
-        # TODO(Baizhou): support this feature after implementing complete state_dict collection
-        logging.warning("Please avoid using unsharded checkpointing methods when dealing with large models!")
-        raise NotImplementedError
+        """
+        Save optimizer state dict to a checkpoint file with given path.
+
+        Args:
+            optimizer (OptimizerWrapper): Optimizer to save sharded state_dict.
+            checkpoint (str): Path to save optimizer state_dict.
+            gather_dtensor (bool): Whether to gather_dtensor, not used.
+        """
+        if self.coordinator.is_master():
+            logging.warning("Please avoid using unsharded checkpointing methods when dealing with large models!")
+
+        assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
+
+        local_states = dict()
+
+        for param, state in optimizer.optim.state.items():
+            if param is None:
+                continue
+
+            # working param is needed for obtaining correct param_id
+            master_to_working_map = optimizer.get_master_to_working_map()
+            if master_to_working_map is not None:
+                working_param = master_to_working_map[id(param)]
+            else:
+                working_param = param
+
+            # gather complete state from tp shards & dp shards
+            param_id = optimizer.param_info["param2id"][id(working_param)]
+            original_shape = optimizer.param_info["param2shape"][id(working_param)]
+            local_states[param_id] = HybridParallelCheckpointIO.gather_from_sharded_optimizer_state(
+                state,
+                working_param,
+                original_shape=original_shape,
+                dp_group=self.dp_group,
+                tp_group=self.tp_group,
+                use_zero=self.use_zero,
+                inplace=False,
+                device=torch.device("cuda"),
+            )
+
+        if self.pp_size == 1:
+            # When pipeline is not used, let master rank directly save the collected state_dict.
+            state_dict = {"param_groups": optimizer.param_info["param_groups"], "state": local_states}
+            if self.coordinator.is_master():
+                save_state_dict(state_dict, checkpoint, use_safetensors=False)
+        else:
+            # When pipeline is used, first collect state_dict from every pipeline stage, then save the complete state_dict.
+            states_list = [None for _ in range(self.pp_size)]
+            dist.barrier(self.pp_group)
+            dist.all_gather_object(states_list, local_states, self.pp_group)
+
+            # Only the master rank do the saving.
+            if self.coordinator.is_master():
+                state_dict = {"param_groups": optimizer.param_info["param_groups"], "state": dict()}
+                for _states in states_list:
+                    state_dict["state"].update(_states)
+                save_state_dict(state_dict, checkpoint, use_safetensors=False)
 
     def load_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
         # TODO(Baizhou): support this feature after implementing complete state_dict collection
-        logging.warning("Please avoid using unsharded checkpointing methods when dealing with large models!")
+        if self.coordinator.is_master():
+            logging.warning("Please avoid using unsharded checkpointing methods when dealing with large models!")
         raise NotImplementedError
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
@@ -676,6 +730,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         tp_group: ProcessGroup,
         use_zero: bool,
         inplace: bool,
+        device: torch.device = torch.device("cpu"),
     ) -> OrderedDict:
         """
         With given parameter and its optimizer states, gather the complete optimizer state for saving.
@@ -688,6 +743,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             tp_group (ProcessGroup): The process group of tensor parallel.
             use_zero (bool): Whether Zero is used.
             inplace (bool): If set to True, will update the values of argument 'state' in place. Else will make a copy of state.
+            device (torch.device): The destination device of loaded optimizer states. Defaults to torch.device('cpu').
 
         Returns:
             OrderedDict: The complete optimizer state of given parameter.
@@ -713,7 +769,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     dist.all_gather(gather_tensor, v, group=tp_group)
                     v = torch.cat(gather_tensor, dim=partition_dim)
 
-                state_[k] = v.detach().clone().cpu()
+                state_[k] = v.detach().clone().to(device)
 
         return state_
 
