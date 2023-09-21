@@ -1,5 +1,7 @@
 from typing import Dict, List, Optional
 
+import torch
+import torch.nn.functional as F
 from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import ChunkedExperienceMaker, Experience
 from coati.models.base import Actor, Critic, RewardModel, get_base_model
