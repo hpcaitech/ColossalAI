@@ -23,7 +23,7 @@ from colossalai.shardformer.policies.auto_policy import get_autopolicy
 
 from .batch_infer_state import BatchInferState
 from .kvcache_manager import MemoryManager
-from .utils import init_to_get_rotary, replace_model
+from .utils import init_to_get_rotary, replace_page_attention
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
@@ -57,16 +57,15 @@ class TPInferEngine:
         >>> generate_kwargs = ...
         >>> shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
         >>> infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-        >>> infer_engine.optimize_model()
         >>> outputs = infer_engine.generate(input_ids, **generate_kwargs)
     """
 
     def __init__(self,
                  model: Union[str, nn.Module],
                  shard_config: ShardConfig = None,
-                 max_batch_size: int = 1,
-                 max_input_len: int = 1,
-                 max_output_len: int = 1,
+                 max_batch_size: int = 8,
+                 max_input_len: int = 16,
+                 max_output_len: int = 8,
                  trust_remote_code: bool = False,
                  use_continous_batching: bool = False,
                  tokenizer: Optional[Union[str, PreTrainedTokenizer, PreTrainedTokenizerFast]] = None,
@@ -91,8 +90,10 @@ class TPInferEngine:
                                   tokenizer=tokenizer,
                                   trust_remote_code=trust_remote_code,
                                   tensor_parallel_size=self.tp_size)
-            kv_cache_stream = torch.cuda.Stream()
-            self.model = replace_model(self.llm_engine.llm_engine.workers[0].model, kv_cache_stream)
+            #TODO We will replace multiple models' attention forward with shardformer in vllm to achieve multi-stream optimization later.
+            # kv_cache_stream = torch.cuda.Stream()
+            # self.model = replace_page_attention(self.llm_engine.llm_engine.workers[0].model, kv_cache_stream)
+            self.model = self.llm_engine.llm_engine.workers[0].model
         else:
             self.model, self.tokenizer = self._get_model_and_tokenizer(model, tokenizer, trust_remote_code)
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -100,7 +101,6 @@ class TPInferEngine:
         self.model = self.model.half()
         self.model = self.model.to(device)
         self.shard_config = shard_config
-        self.sharded_model = None
         self.use_continous_batching = use_continous_batching
 
         self.max_batch_size = max_batch_size
@@ -120,6 +120,8 @@ class TPInferEngine:
         self.layer_num = self.model.config.num_hidden_layers
 
         self.cache_manager = None
+        
+        self._optimize_model(model=self.model.to(device))
 
     def _get_model_and_tokenizer(self, model: str, tokenizer: str, trust_remote_code: bool) -> nn.Module:
 
@@ -153,7 +155,7 @@ class TPInferEngine:
 
                 return supported_model, tokenizer
         raise ValueError(f"Model architectures {architectures} are not supported for now. "
-                         f"Supported architectures: {list(_supported_models.keys())}")
+                         f"Supported architectures: {self.supported_models}")
 
     def _init_manager(self) -> None:
         assert self.tp_size >= 1, "TP size not initialized without providing a valid ShardConfig"
@@ -162,7 +164,7 @@ class TPInferEngine:
         self.cache_manager = MemoryManager(self.max_total_token_num, self.dtype, self.head_num, self.head_dim,
                                            self.layer_num)
 
-    def optimize_model(self) -> None:
+    def _optimize_model(self, model: nn.Module) -> None:
         """
         Optimize the original model by sharding with ShardFormer.
         In further generation, use the sharded model instead of original model.
@@ -200,7 +202,7 @@ class TPInferEngine:
 
         return shard_config
 
-    def _shard_model_by(self, shardformer: ShardFormer) -> None:
+    def _shard_model_by(self, shardformer: ShardFormer, model: nn.Module) -> None:
         """ Shard original model by the given ShardFormer and store the sharded model. """
         assert self.tp_size == shardformer.shard_config.tensor_parallel_size, \
             "Discrepancy between the tp size of TPInferEngine and the tp size of shard config"
@@ -209,8 +211,8 @@ class TPInferEngine:
         if model_name == "LlamaForCausalLM":
             init_to_get_rotary(self.model.model, base=10000)
         policy = get_autopolicy(self.model, inference_only=True)
-        self.sharded_model, _ = shardformer.optimize(self.model, policy)
-        self.sharded_model = self.sharded_model.cuda()
+        self.model, _ = shardformer.optimize(self.model, policy)
+        self.model = self.model.cuda()
 
     @property
     def supported_models(self) -> List[str]:
@@ -251,6 +253,9 @@ class TPInferEngine:
             input_tokens = self.tokenizer.batch_encode_plus(prompts, return_tensors="pt", padding=True)
         else:
             input_tokens = prompt_token_ids
+            
+        if isinstance(input_tokens, list):
+            input_tokens = torch.Tensor(input_tokens).cuda()
 
         if isinstance(input_tokens, torch.Tensor):
             input_tokens = dict(input_ids=input_tokens, attention_mask=torch.ones_like(input_tokens, dtype=torch.bool))
@@ -259,10 +264,6 @@ class TPInferEngine:
                 input_tokens[t] = input_tokens[t].cuda()
         if 'max_new_tokens' not in generate_kwargs:
             generate_kwargs.update(max_new_tokens=self.max_output_len)
-
-        if self.sharded_model is not None:
-            outputs = self._generate_by_set_infer_state(input_tokens, **generate_kwargs)
-            return outputs
 
         return self.model.generate(**input_tokens, **generate_kwargs)
 
@@ -348,7 +349,7 @@ class TPInferEngine:
         """
 
         # for testing, always use sharded model
-        assert self.sharded_model is not None, "sharded model does not exist"
+        assert self.model is not None, "sharded model does not exist"
 
         batch_infer_state = self.prepare_batch_state(input_tokens)
         assert batch_infer_state.max_len_in_batch <= self.max_input_len, "max length in batch exceeds limit"
@@ -357,14 +358,14 @@ class TPInferEngine:
         # NOTE this is not a preferable way to pass BatchInferState during inference
         #   we might want to rewrite generate function (e.g. _generate_by_pass_infer_state)
         #   and pass BatchInferState via model forward
-        model = self.sharded_model
+        model = self.model
         if isinstance(model, LlamaForCausalLM):
-            model = self.sharded_model.model
+            model = self.model.model
         elif isinstance(model, BloomForCausalLM):
-            model = self.sharded_model.transformer
+            model = self.model.transformer
         setattr(model, 'infer_state', batch_infer_state)
 
-        outputs = self.sharded_model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
+        outputs = self.model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 
         # NOTE In future development, we're going to let the scheduler to handle the cache,
         #      instead of freeing space explicitly at the end of generation

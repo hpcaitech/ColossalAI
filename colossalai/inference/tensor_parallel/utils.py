@@ -30,7 +30,7 @@ def init_to_get_rotary(self, base=10000):
     return
 
 
-def replace_model(model, kv_cache_stream):
+def replace_page_attention(model, kv_cache_stream):
     layers = model.model.layers
     for i in range(len(layers)):
         layer = layers[i]

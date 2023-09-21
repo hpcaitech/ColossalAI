@@ -45,8 +45,6 @@ def run(test_config):
                                      MAX_OUTPUT_LEN,
                                      tokenizer=tokenizer)
 
-        infer_engine.optimize_model()
-
         generate_kwargs = dict(do_sample=False)
         outputs = infer_engine.generate(prompt_token_ids=data, **generate_kwargs)
 

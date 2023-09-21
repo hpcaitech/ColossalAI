@@ -21,7 +21,7 @@ CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
     'tp_size': TPSIZE,
 }])
 def run_llama_test(test_config):
-    model = 'decapoda-research/llama-7b-hf'
+    model = '/data/scratch/llama-7b-hf'
     tokenizer = 'hf-internal-testing/llama-tokenizer'
 
     test_prompts = [
@@ -38,7 +38,6 @@ def run_llama_test(test_config):
         use_continous_batching=True,
         tokenizer=tokenizer,
     )
-    infer_engine.optimize_model()
     generate_kwargs = dict(do_sample=False)
     outputs = infer_engine.generate(test_prompts, **generate_kwargs)
 

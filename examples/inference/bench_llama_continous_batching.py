@@ -88,7 +88,6 @@ def run_llama_test(args):
                 use_continous_batching=test_continous_batching,
                 tokenizer=tokenizer,
             )
-            infer_engine.optimize_model()
     elif test_mode == "vllm":
         infer_engine = LLM(model=llama_model_path, tokenizer=tokenizer)
 

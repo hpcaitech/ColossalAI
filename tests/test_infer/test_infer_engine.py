@@ -45,7 +45,6 @@ def run(test_config):
                                  MAX_INPUT_LEN,
                                  MAX_OUTPUT_LEN,
                                  tokenizer=tokenizer)
-    infer_engine.optimize_model()
 
     assert infer_engine.cache_manager is not None
     assert infer_engine.tp_size == TP_SIZE
