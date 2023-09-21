@@ -1,15 +1,14 @@
-import os
-
 import datasets
 import torch
+import torch.distributed as dist
 import transformers
-from huggingface_hub import snapshot_download
 from model.modeling_openmoe import OpenMoeForCausalLM
 from model.openmoe_policy import OpenMoeForCausalLMPolicy
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from transformers import Adafactor, T5Tokenizer
+from transformers import Adafactor
 from transformers.models.llama import LlamaConfig
+from utils import PerformanceEvaluator, get_model_numel
 
 import colossalai
 from colossalai import get_default_parser
@@ -18,27 +17,12 @@ from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.moe import MoeCheckpintIO
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.moe.utils import skip_init
 from colossalai.utils import get_current_device
 
 
 def move_to_cuda(batch, device):
     return {k: v.to(device) for k, v in batch.items()}
-
-
-def load_ckpt(repo_name: str, model: OpenMoeForCausalLM):
-    ckpt_path = snapshot_download(repo_name)
-    # single ckpt
-    if os.path.exists(os.path.join(ckpt_path, "pytorch_model.bin")):
-        ckpt_path = os.path.join(ckpt_path, "pytorch_model.bin")
-    # shard ckpt
-    elif os.path.exists(os.path.join(ckpt_path, "pytorch_model.bin.index.json")):
-        ckpt_path = os.path.join(ckpt_path, "pytorch_model.bin.index.json")
-    else:
-        raise ValueError(f"Invalid checkpoint path: {ckpt_path}")
-    MoeCheckpintIO().load_model(model, ckpt_path)
 
 
 class RandomDataset(Dataset):
@@ -71,17 +55,16 @@ def parse_args():
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
-        "--output_path",
-        type=str,
-        default="./output_model.bin",
-        help="The path of your saved model after finetuning.",
-    )
-    parser.add_argument("--num_epoch", type=int, default=10, help="Number of epochs.")
-    parser.add_argument(
         "--batch_size",
         type=int,
         default=4,
         help="Batch size (per dp group) for the training dataloader.",
+    )
+    parser.add_argument(
+        "--seq_length",
+        type=int,
+        default=2048,
+        help="sequence length for the training dataloader.",
     )
     parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
     parser.add_argument(
@@ -103,25 +86,9 @@ def parse_args():
         action="store_true",
         help="Use kernel optim. Need to install flash attention, apex, triton to enable all kernel optimizations.",
     )
-    # loss
-    parser.add_argument(
-        "--router_aux_loss_factor",
-        type=float,
-        default=0.01,
-        help="router_aux_loss_factor.",
-    )
-    parser.add_argument(
-        "--router_z_loss_factor",
-        type=float,
-        default=0.0001,
-        help="router_z_loss_factor.",
-    )
-    parser.add_argument("--label_smoothing", type=float, default=0.0, help="label_smoothing.")
-    parser.add_argument("--z_loss_factor", type=float, default=0.0001, help="z_loss_factor.")
-    # optim
-    parser.add_argument("--decay_rate", type=float, default=-0.8, help="adafactor optim decay rate.")
-    parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay to use.")
-
+    # bench
+    parser.add_argument("--warmup", type=int, default=20)
+    parser.add_argument("--active", type=int, default=20)
     args = parser.parse_args()
     return args
 
@@ -146,6 +113,7 @@ def main():
     # Set plugin
     booster_kwargs = {}
     if args.plugin == "zero1":
+        dp_size = dist.get_world_size()
         plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=1)
         MOE_MANAGER.setup(
             seed=42,
@@ -153,6 +121,7 @@ def main():
             use_kernel_optim=args.use_kernel,
         )
     elif args.plugin == "zero2":
+        dp_size = dist.get_world_size()
         plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
         MOE_MANAGER.setup(
             seed=42,
@@ -160,6 +129,7 @@ def main():
             use_kernel_optim=args.use_kernel,
         )
     elif args.plugin == "hybrid":
+        dp_size = dist.get_world_size() // args.pp_size
         plugin = MoeHybridParallelPlugin(
             tp_size=1,
             pp_size=args.pp_size,
@@ -185,25 +155,33 @@ def main():
     # Build OpenMoe model
     repo_name = "hpcaitech/openmoe-" + args.model_name
     config = LlamaConfig.from_pretrained(repo_name)
-    setattr(config, "router_aux_loss_factor", args.router_aux_loss_factor)
-    setattr(config, "router_z_loss_factor", args.router_z_loss_factor)
-    setattr(config, "label_smoothing", args.label_smoothing)
-    setattr(config, "z_loss_factor", args.z_loss_factor)
-    with skip_init():
-        model = OpenMoeForCausalLM(config)
-    load_ckpt(repo_name, model)
+    setattr(config, "router_aux_loss_factor", 0.1)
+    setattr(config, "router_z_loss_factor", 0.1)
+    setattr(config, "label_smoothing", 0.1)
+    setattr(config, "z_loss_factor", 0.1)
+    model = OpenMoeForCausalLM(config)
     logger.info(f"Finish init model with config:\n{config}", ranks=[0])
 
     # Enable gradient checkpointing
     model.gradient_checkpointing_enable()
 
     # Prepare tokenizer and dataloader
-    tokenizer = T5Tokenizer.from_pretrained("google/umt5-small")
-    dataset = RandomDataset(num_samples=1000)
-    dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
+    dataset = RandomDataset(
+        num_samples=args.batch_size * (args.warmup + args.active + 1) * dp_size,
+        max_length=args.seq_length,
+    )
+    dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size)
 
     # Set optimizer
-    optimizer = Adafactor(model.parameters(), decay_rate=args.decay_rate, weight_decay=args.weight_decay)
+    optimizer = Adafactor(model.parameters(), weight_decay=0.01)
+
+    model_numel = get_model_numel(model)
+    performance_evaluator = PerformanceEvaluator(
+        model_numel,
+        enable_grad_checkpoint=True,
+        ignore_steps=args.warmup,
+        dp_world_size=dp_size,
+    )
 
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
@@ -214,47 +192,40 @@ def main():
 
     # Start finetuning
     logger.info(f"Start finetuning", ranks=[0])
-    for epoch in range(args.num_epoch):
-        model.train()
-        train_dataloader_iter = iter(dataloader)
-        total_len = len(train_dataloader_iter)
-        with tqdm(
-                range(total_len),
-                desc=f"Epoch [{epoch + 1}/{args.num_epoch}]",
-                disable=not coordinator.is_master(),
-        ) as pbar:
-            for _ in pbar:
-                if use_pipeline:
-                    # Forward pass
-                    outputs = booster.execute_pipeline(
-                        train_dataloader_iter,
-                        model,
-                        lambda x, y: x.loss,
-                        optimizer,
-                        return_loss=True,
-                        return_outputs=True,
-                    )
-                    # Backward and optimize
-                    if is_pp_last_stage:
-                        loss = outputs["loss"]
-                        pbar.set_postfix({"loss": loss.item()})
-                else:
-                    # Forward pass
-                    data = next(train_dataloader_iter)
-                    data = move_to_cuda(data, torch.cuda.current_device())
-                    outputs = model(**data)
+    model.train()
+    train_dataloader_iter = iter(dataloader)
+    total_len = len(train_dataloader_iter) - 1
+    exmaple_data = next(train_dataloader_iter)
+    with tqdm(range(total_len), disable=not coordinator.is_master()) as pbar:
+        for step in pbar:
+            performance_evaluator.on_step_start(step)
+            if use_pipeline:
+                # Forward pass
+                outputs = booster.execute_pipeline(
+                    train_dataloader_iter,
+                    model,
+                    lambda x, y: x.loss,
+                    optimizer,
+                    return_loss=True,
+                    return_outputs=True,
+                )
+                # Backward and optimize
+                if is_pp_last_stage:
                     loss = outputs["loss"]
-                    # Backward
-                    booster.backward(loss, optimizer)
                     pbar.set_postfix({"loss": loss.item()})
+            else:
+                # Forward pass
+                data = move_to_cuda(data, torch.cuda.current_device())
+                outputs = model(**data)
+                loss = outputs["loss"]
+                # Backward
+                booster.backward(loss, optimizer)
+                pbar.set_postfix({"loss": loss.item()})
 
-                optimizer.step()
-                optimizer.zero_grad()
-
-    # Finish training and evaluate
-    logger.info(f"Finish finetuning", ranks=[0])
-    booster.save_model(model, args.output_path)
-    logger.info(f"Saving model checkpoint to {args.output_path}", ranks=[0])
+            optimizer.step()
+            optimizer.zero_grad()
+            performance_evaluator.on_step_end(exmaple_data["input_ids"])
+    performance_evaluator.on_fit_end()
 
 
 if __name__ == "__main__":

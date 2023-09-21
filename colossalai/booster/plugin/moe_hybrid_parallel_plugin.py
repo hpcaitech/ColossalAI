@@ -103,7 +103,10 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                  overlap_communication: bool = True,
                  custom_policy: Policy = None) -> None:
 
-        super().__init__()
+        super().__init__(tp_size=tp_size,
+                         pp_size=pp_size,
+                         num_microbatches=num_microbatches,
+                         microbatch_size=microbatch_size)
         assert dist.get_world_size() % (
             tp_size * pp_size
         ) == 0, f'world size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}'

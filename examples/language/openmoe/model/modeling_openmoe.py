@@ -24,23 +24,24 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
+from torch import nn
+from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.modeling_utils import PreTrainedModel
+from transformers.models.llama.modeling_llama import LlamaConfig, LlamaRMSNorm
+from transformers.utils import (
+    add_start_docstrings,
+    add_start_docstrings_to_model_forward,
+    logging,
+    replace_return_docstrings,
+)
+
 from colossalai.kernel.cuda_native.mha.flash_attn_2 import HAS_FLASH_ATTN
 from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.moe.layers import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
-from torch import nn
-from transformers.modeling_outputs import (BaseModelOutputWithPast,
-                                           CausalLMOutputWithPast)
-from transformers.modeling_utils import PreTrainedModel
-from transformers.models.llama import LlamaConfig
-from transformers.models.t5.modeling_t5 import T5LayerNorm
-from transformers.utils import (add_start_docstrings,
-                                add_start_docstrings_to_model_forward, logging,
-                                replace_return_docstrings)
 
 if HAS_TRITON:
-    from colossalai.kernel.triton.llama_act_combine_kernel import \
-        LlamaActCombine
+    from colossalai.kernel.triton.llama_act_combine_kernel import LlamaActCombine
 
 logger = logging.get_logger(__name__)
 
@@ -305,23 +306,21 @@ class OpenMoeAttention(nn.Module):
             query_states = query_states.transpose(1, 2)
             key_states = key_states.transpose(1, 2)
             value_states = value_states.transpose(1, 2)
-            attn_output = flash_attn_func(query_states,
-                                          key_states,
-                                          value_states,
-                                          softmax_scale=1.0,
-                                          causal=True)
+            attn_output = flash_attn_func(query_states, key_states, value_states, softmax_scale=1.0, causal=True)
             attn_output = attn_output.transpose(1, 2).contiguous()
         else:
             attn_weights = torch.matmul(query_states, key_states.transpose(2, 3))
 
             if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-                raise ValueError(f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-                                 f" {attn_weights.size()}")
+                raise ValueError(
+                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+                    f" {attn_weights.size()}")
 
             if attention_mask is not None:
                 if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                     raise ValueError(
-                        f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}")
+                        f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
+                    )
                 if self.training:
                     attention_mask = attention_mask.clone().detach()
                 attention_mask[:, :, :, 0] = 0
@@ -358,8 +357,8 @@ class OpenMoeDecoderLayer(nn.Module):
         self.hidden_size = config.hidden_size
         self.moe = moe
         self.self_attn = OpenMoeAttention(config=config)
-        self.input_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         if self.moe:
             self.mlp = SparseMLP(
                 num_experts=config.num_experts,
@@ -374,7 +373,7 @@ class OpenMoeDecoderLayer(nn.Module):
                 intermediate_size=config.intermediate_size,
                 activation=config.hidden_act,
                 gated=config.gated)
-            self.pre_extra_mlp_layernorm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.pre_extra_mlp_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.extra_mlp = OpenMoeMLP(config)
         else:
             self.mlp = OpenMoeMLP(config)
@@ -570,7 +569,7 @@ class OpenMoeModel(OpenMoePreTrainedModel):
             OpenMoeDecoderLayer(config, moe=True if (i + 1) % config.moe_layer_interval == 0 else False)
             for i in range(config.num_hidden_layers)
         ])
-        self.norm = T5LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
