@@ -1,3 +1,4 @@
+import argparse
 import gzip
 from contextlib import nullcontext
 from functools import partial
@@ -33,7 +34,7 @@ SEQ_LEN = 1024
 
 
 def parse_args():
-    parser = colossalai.get_default_parser()
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--distplan",
         type=str,

@@ -11,9 +11,9 @@ for PLUGIN in "torch_ddp" "torch_ddp_fp16" "low_level_zero" "gemini" "hybrid_par
 do
 
 MODEL_PATH="google/vit-base-patch16-224"
-torchrun \
-  --standalone \
-  --nproc_per_node 4 \
+colossalai run \
+  --nproc_per_node ${GPUNUM} \
+  --master_port 29505 \
   vit_benchmark.py \
   --model_name_or_path ${MODEL_PATH} \
   --mem_cap ${MEMCAP} \
