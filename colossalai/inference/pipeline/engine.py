@@ -60,6 +60,7 @@ class PPInferEngine:
         new_length: int = 32,
         micro_batch_size: int = 1,
         micro_batch_buffer_size: int = None,
+        verbose: bool = False,
     # TODO: implement early_stopping, and various gerneration options
         early_stopping: bool = False,
         do_sample: bool = False,
@@ -71,7 +72,7 @@ class PPInferEngine:
         self.stage_manager = PipelineStageManager(self.pg_mesh, 0, True)
         self.mb_manager = MicroBatchManager(self.stage_manager.stage, new_length, micro_batch_size,
                                             micro_batch_buffer_size or pp_size)
-        self.schedule = GenerateSchedule(self.stage_manager, self.mb_manager)
+        self.schedule = GenerateSchedule(self.stage_manager, self.mb_manager, verbose)
         self.model = pp_model or self._shardformer(model, model_policy)
 
     def inference(self, input_list):

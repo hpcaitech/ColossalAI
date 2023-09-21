@@ -1,5 +1,6 @@
+import time
 from functools import partial
-from typing import Any, Dict, Iterable, Optional, Union
+from typing import Any, Iterable, List, Optional, Union
 
 import torch
 import torch.cuda
@@ -15,6 +16,17 @@ from ._utils import get_batch_size, get_micro_batch, model_forward, to_device
 from .base import PipelineSchedule
 
 
+class ActionIntervalBuffer():
+
+    def __int__(self):
+        self.hidden_states = None
+        self.new_token = None
+
+    def clear(self):
+        self.hidden_states = None
+        self.new_token = None
+
+
 class GenerateSchedule(PipelineSchedule):
     '''
     GenerateSchedule is a class that handles the pipeline parallel inference.
@@ -22,11 +34,12 @@ class GenerateSchedule(PipelineSchedule):
     this schedule, the out for each encoding progress is on rank0.
 
     Args:
-        stage_manager (PipelineStageManager): Pipeline stage manager.
-        mb_manager (MicroBatchManager): Micro batch manager.
+        stage_manager (`PipelineStageManager`): Pipeline stage manager.
+        mb_manager (`MicroBatchManager`): Micro batch manager.
+        verbose (bool): Whether to verbose the information of the pipeline.
     '''
 
-    def __init__(self, stage_manager: PipelineStageManager, mb_manager: MicroBatchManager) -> None:
+    def __init__(self, stage_manager: PipelineStageManager, mb_manager: MicroBatchManager, verbose: bool) -> None:
         super().__init__(stage_manager)
         self.comm = PipelineP2PCommunication(stage_manager)
         self.mb_manager = mb_manager
@@ -35,6 +48,8 @@ class GenerateSchedule(PipelineSchedule):
         self.batch_size: Optional[int] = None
         self.microbatch_offset: Optional[int] = None
         self.num_microbatches: Optional[int] = None
+        self.verbose = verbose
+        self.action_interval_buffer = ActionIntervalBuffer()
 
     def load_batch(self, data_iter: Iterable, device: Optional[torch.device] = None) -> None:
         """Load a batch from data iterator.
@@ -95,9 +110,129 @@ class GenerateSchedule(PipelineSchedule):
         input_ids = torch.argmax(last_hidden_state, dim=-1).unsqueeze(1)
         return input_ids
 
-    @torch.no_grad()
+    def _recv_pre_stage(self) -> Any:
+        '''
+        Receive the output from previous stage
+
+        Returns:
+            Any: The output from previous stage
+        '''
+        if self.stage_manager.num_stages == 2:
+            return self.comm.p2p_recv()
+        return self.comm.recv_forward()
+
+    def LoadStageAction(self, model: Module) -> None:
+        """
+        In this action, 1.load micro_batch 2.do the forward 3.step to update
+        """
+        inputs_dict = self.load_micro_batch()
+        output_dict = model_forward(model, inputs_dict, None)
+
+        self.mb_manager.step(inputs_dict, output_dict, None)
+        self.action_interval_buffer.hidden_states = output_dict['hidden_states']
+
+    def GenTokenAction(self, model: Module):
+        """
+        In this action, 1.do the forward with hidden_states to generate new tokens 2.step to update
+        """
+        hidden_states = self.action_interval_buffer.hidden_states
+        assert hidden_states is not None, "When first stage in GENERATE phase, the hidden states should not be None"
+        hidden_states = {'hidden_states': hidden_states}
+        logits = model_forward(model, None, hidden_states)
+        assert 'logits' in logits, f"When first stage in GENERATE phase, the ouput should have attribute `logits`, but has {logits.keys()}"
+        new_token = self._get_token_id(logits['logits'])
+
+        self.mb_manager.step(None, None, new_token)
+        self.action_interval_buffer.new_token = new_token
+        self.action_interval_buffer.hidden_states = None
+
+    def HeadEncodingAction(self, model: Module):
+        """
+        In this action, 1.prepare inputs for encoding for first stage. 2.do the forward to get hidden states 3.step to update
+        """
+        new_token = self.action_interval_buffer.new_token
+        assert new_token is not None, "When first stage in GENERATE phase, the new token should not be None"
+        inputs_dict = self._prepare_inputs_for_new_token(new_token)
+        output_dict = model_forward(model, inputs_dict, None)
+
+        self.mb_manager.step(inputs_dict, output_dict, None)
+        self.action_interval_buffer.hidden_states = output_dict['hidden_states']
+
+    def BodyEncodingAction(self, model: Module):
+        hidden_states = self.action_interval_buffer.hidden_states
+        assert hidden_states is not None, "When not first stage, the hidden states should not be None"
+        inputs_dict = self._prepare_inputs_for_interval_stage()
+        hidden_states = {'hidden_states': hidden_states}
+        output_dict = model_forward(model, inputs_dict, hidden_states)
+
+        self.mb_manager.step(inputs_dict, output_dict, None)
+        self.action_interval_buffer.hidden_states = output_dict['hidden_states']
+
+    def CommAction(self, recv_pre: bool) -> torch.Tensor:
+        """
+        In this action, 1.receive the hidden_states from previous stage 2.send the hidden_states to next stage
+        """
+        hidden_states = self.action_interval_buffer.hidden_states
+        ret = self.comm.p2p_communicate(hidden_states, recv_pre)
+
+        self.action_interval_buffer.hidden_states = ret
+
+    def genAction(self, model: Module):
+        """
+        In p2p step method, we use `P2POp` asynchronous communication method, so the communication need to be done
+        at the begin of each microbatch, it's a more clear way to use an action list to do so. In this function, it will
+        generate a sequence action for current state, and do the action one by one.
+
+        Args:
+            model (Module): Model to be run.
+
+        Returns:
+            List[Callable]: A list of action, each action is a callable function, and it will be called in order.
+        """
+        actions = []
+        if self.stage_manager.is_first_stage():
+            if self.mb_manager.cur_state is Status.PREFILL:
+                actions.append(partial(self.CommAction, False))
+                actions.append(partial(self.LoadStageAction, model))
+            elif self.stage_manager.is_first_stage() and self.mb_manager.cur_state is Status.GENERATE:
+                actions.append(partial(self.CommAction, True))
+                actions.append(partial(self.GenTokenAction, model))
+                actions.append(partial(self.HeadEncodingAction, model))
+            elif self.stage_manager.is_first_stage() and self.mb_manager.cur_state is Status.COOLDOWN:
+                actions.append(partial(self.CommAction, True))
+                actions.append(partial(self.GenTokenAction, model))
+        # other stage
+        else:
+            actions.append(partial(self.CommAction, True))
+            actions.append(partial(self.BodyEncodingAction, model))
+
+        return actions
+
+    def verbose_info(self, timestamps: List):
+        prefill = []
+        encoder = []
+        end2end = []
+        for timestamp in timestamps:
+            prefill.append(timestamp[1] - timestamp[0])
+            encoder.append(
+                sum(timestamp[i + 1] - timestamp[i] for i in range(1,
+                                                                   len(timestamp) - 1)) / (len(timestamp) - 2))
+            end2end.append(timestamp[-1] - timestamp[0])
+        print(f"Average prefill time: {sum(prefill)/len(prefill)}")
+        print(f"Average encode time: {sum(encoder)/len(encoder)}")
+        print(f"Average end2end time: {sum(end2end)/len(end2end)}")
+
     def generate_step(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
-        """Forward one step of the pipeline
+        if self.stage_manager.num_stages == 2:
+            return self.generate_step_p2p(model, data_iter)
+        else:
+            return self.generate_step_broadcast(model, data_iter)
+
+    @torch.no_grad()
+    def generate_step_p2p(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
+        """
+        Forward one step of the pipeline, when pipeline size is 2, the schedule is a circle, broadcast communication will be
+        blocked, so we use `P2POp` asynchronous communication method.
 
         Args:
             model (Module): Model to be run.
@@ -110,8 +245,46 @@ class GenerateSchedule(PipelineSchedule):
         self.load_batch(data_iter)
         model.eval()
 
+        whole_timestamp = []
+
+        #run by round
+        for _ in range(self.round):
+            self.action_interval_buffer.clear()
+            while self.mb_manager.is_micro_batch_done() is False:
+                actions = self.genAction(model)
+                for action in actions:
+                    action()
+                self.mb_manager.next()
+            # All microbatch in current round is DONE
+            if self.stage_manager.is_first_stage():
+                output_sequence.extend(self.mb_manager.export_new_tokens())
+            else:
+                self.CommAction(False)
+            self.mb_manager.clear()
+
+        return output_sequence
+
+    @torch.no_grad()
+    def generate_step_broadcast(self, model: Module, data_iter: Iterable) -> Union[torch.Tensor, dict]:
+        """
+        Forward one step of the pipeline
+
+        Args:
+            model (Module): Model to be run.
+            data_iter (Iterable): Data iterator.
+
+        Returns:
+            Union[torch.Tensor, dict]: The intermediate output (dict) of the current stage. If it is the last stage, the output is the loss (Tensor).
+        """
+        output_sequence = []
+        self.load_batch(data_iter)
+        model.eval()
+
+        whole_timestamp = []
         # run by round
         for _ in range(self.round):
+            timestampes = [[] for _ in range(self.stage_manager.num_stages)
+                          ] if self.verbose and self.stage_manager.is_first_stage() else None
             while self.mb_manager.is_micro_batch_done() is False:
                 inputs_dict = None
                 new_token = None
@@ -120,6 +293,8 @@ class GenerateSchedule(PipelineSchedule):
                 # First stage and in PREFILL phase, just load the inputs
                 if self.stage_manager.is_first_stage() and self.mb_manager.cur_state is Status.PREFILL:
                     inputs_dict = self.load_micro_batch()
+                    if self.verbose and self.stage_manager.is_first_stage():
+                        timestampes[self.mb_manager.idx].append(time.time())
                     output_dict = model_forward(model, inputs_dict, None)
                     self.mb_manager.step(inputs_dict, output_dict, None)
                 # In GENERATE phase
@@ -130,7 +305,9 @@ class GenerateSchedule(PipelineSchedule):
                         # First just generate a new token
                         assert hidden_states is not None, "When first stage in GENERATE phase, the hidden states should not be None"
                         logits = model_forward(model, None, hidden_states)
-                        assert 'logits' in logits, f"When first stage in GENERATE phase, the ouput should have attribute `logits`, but has {output.keys()}"
+                        if self.verbose and self.stage_manager.is_first_stage():
+                            timestampes[self.mb_manager.idx].append(time.time())
+                        assert 'logits' in logits, f"When first stage in GENERATE phase, the ouput should have attribute `logits`, but has {logits.keys()}"
                         new_token = self._get_token_id(logits['logits'])
                         self.mb_manager.step(None, None, new_token)
                         # If the current micro batch is not DONE, go through blocks
@@ -154,4 +331,10 @@ class GenerateSchedule(PipelineSchedule):
             if self.stage_manager.is_first_stage():
                 output_sequence.extend(self.mb_manager.export_new_tokens())
             self.mb_manager.clear()
+            if self.verbose and self.stage_manager.is_first_stage():
+                whole_timestamp.extend(timestampes)
+
+        if self.verbose and self.stage_manager.is_first_stage():
+            self.verbose_info(whole_timestamp)
+
         return output_sequence

@@ -10,6 +10,7 @@ class Status(Enum):
     PREFILL = 1
     GENERATE = 2
     DONE = 3
+    COOLDOWN = 4
 
 
 class MicroBatchDescription():
@@ -52,6 +53,8 @@ class MicroBatchDescription():
         # TODO: add the condition for early stopping
         if self.cur_length == self.target_length:
             return Status.DONE
+        elif self.cur_length == self.target_length - 1:
+            return Status.COOLDOWN
         else:
             return Status.GENERATE
 
@@ -184,7 +187,9 @@ class MicroBatchManager():
         return self.cur_state
 
     def export_new_tokens(self):
-        new_tokens_list = [i.new_tokens[0].tolist() for i in self.mb_descrption_buffer.values()]
+        new_tokens_list = []
+        for i in self.mb_descrption_buffer.values():
+            new_tokens_list.extend(i.new_tokens.tolist())
         return new_tokens_list
 
     def is_micro_batch_done(self):
