@@ -157,6 +157,13 @@ def train(args):
         log_dir=args.log_dir,
         use_wandb=args.use_wandb,
     )
+
+    if args.lora_rank > 0 and args.merge_lora_weights:
+        from coati.models.lora import LORA_MANAGER
+
+        # NOTE: set model to eval to merge LoRA weights
+        LORA_MANAGER.merge_weights = True
+        model.eval()
     # save model checkpoint after fitting on only rank0
     strategy.save_model(model, args.save_path, only_rank0=True)
     # save optimizer checkpoint on all ranks
@@ -186,6 +193,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--max_len", type=int, default=512)
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
+    parser.add_argument("--merge_lora_weights", type=bool, default=True)
     parser.add_argument("--lr", type=float, default=9e-6)
     parser.add_argument("--loss_fn", type=str, default="log_sig", choices=["log_sig", "log_exp"])
     parser.add_argument("--log_dir", default="logs", type=str)
