@@ -12,10 +12,9 @@ from torch.utils.data import Dataset
 from torch.utils.data.distributed import DistributedSampler
 from transformers import Adafactor
 from transformers.models.llama import LlamaConfig
+from utils import PerformanceEvaluator, get_model_numel
 
 from colossalai.moe.manager import MOE_MANAGER
-
-from .utils import PerformanceEvaluator, get_model_numel
 
 
 class RandomDataset(Dataset):
@@ -39,13 +38,15 @@ class RandomDataset(Dataset):
 
 def fsdp_main(rank, world_size, args):
     os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "14523"
+    os.environ["MASTER_PORT"] = "14501"
     # initialize the process group
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
     MOE_MANAGER.setup(seed=42, parallel=None, use_kernel_optim=False)
 
-    dataset = RandomDataset(max_length=args.seq_length)
+    dp_size = dist.get_world_size()
+    dataset = RandomDataset(max_length=args.seq_length,
+                            num_samples=args.batch_size * (args.warmup + args.active) * dp_size)
     sampler = DistributedSampler(dataset, rank=rank, num_replicas=world_size, shuffle=False)
     train_kwargs = {"batch_size": args.batch_size, "sampler": sampler}
     train_loader = torch.utils.data.DataLoader(dataset, **train_kwargs)
@@ -73,14 +74,11 @@ def fsdp_main(rank, world_size, args):
     performance_evaluator = PerformanceEvaluator(
         model_numel,
         enable_grad_checkpoint=True,
-        ignore_steps=args.warm_up,
+        ignore_steps=args.warmup,
         dp_world_size=dist.get_world_size(),
     )
 
-    for step, data in tqdm.tqdm(enumerate(train_loader), total=args.warm_up + args.active):
-        if step == args.warm_up + args.active:
-            break
-
+    for step, data in tqdm.tqdm(enumerate(train_loader), total=len(train_loader)):
         performance_evaluator.on_step_start(step)
         input_ids, attention_mask, labels = (
             data["input_ids"].cuda(),
@@ -116,7 +114,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--seq_length", type=int, default=2048)
-    parser.add_argument("--warm_up", type=int, default=20)
+    parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--active", type=int, default=20)
     args = parser.parse_args()
 
