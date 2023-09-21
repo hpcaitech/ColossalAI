@@ -19,8 +19,12 @@ try:
     from vllm import LLM
     from vllm.outputs import RequestOutput
     from vllm.sampling_params import SamplingParams
+    
+    USE_CONTINOUS_BATCHING = True
+    
 except ImportError:
     warnings.warn("vllm is not installed, continuous batching will not be supported.")
+    USE_CONTINOUS_BATCHING = False
 
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.auto_policy import get_autopolicy
@@ -83,11 +87,12 @@ class TPInferEngine:
             tokenizer = model
 
         self.tp_size = 1
+        self.use_continous_batching = use_continous_batching and USE_CONTINOUS_BATCHING
 
         if shard_config != None and shard_config.enable_tensor_parallelism:
             self.tp_size = shard_config.tensor_parallel_size
 
-        if use_continous_batching:
+        if self.use_continous_batching:
             assert isinstance(model, str) and isinstance(tokenizer, str), \
                 "when using continous_batching, model and tokenizer must be string."
             self.llm_engine = LLM(model=model,
@@ -105,7 +110,6 @@ class TPInferEngine:
         self.model = self.model.half()
         self.model = self.model.to(device)
         self.shard_config = shard_config
-        self.use_continous_batching = use_continous_batching
 
         self.max_batch_size = max_batch_size
         self.max_input_len = max_input_len
