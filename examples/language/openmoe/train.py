@@ -89,7 +89,7 @@ def parse_args():
         type=str,
         default="hybrid",
         help="parallel plugin",
-        choices=["zero1", "zero2", "hybrid", "fsdp"],
+        choices=["zero1", "zero2", "hybrid"],
     )
     # hybrid plugin
     parser.add_argument("--pp_size", type=int, default=2, help="pp size")
