@@ -1,36 +1,19 @@
-import random
-from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
+from typing import Optional
 
-import numpy as np
 import torch
 import torch.distributed as dist
-from torch.nn import Module
-from torch.optim import Optimizer
-from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
-from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
 
-from colossalai.booster.plugin.hybrid_parallel_plugin import (
-    HybridParallelAMPOptimizer,
-    HybridParallelModule,
-    HybridParallelNaiveOptimizer,
-    HybridParallelZeroOptimizer,
-    get_param_info,
-)
-from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
+from colossalai.booster.plugin.hybrid_parallel_plugin import HybridParallelPlugin
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.policies.base_policy import Policy
 
-from .pp_plugin_base import PipelinePluginBase
-
 PP_AXIS, DP_AXIS, TP_AXIS = 0, 1, 2
 
 
-class MoeHybridParallelPlugin(PipelinePluginBase):
+class MoeHybridParallelPlugin(HybridParallelPlugin):
     """
     Plugin for Moe Hybrid Parallel Training.
     Tensor parallel, pipeline parallel and data parallel(DDP/ZeRO) can be picked and combined in this plugin.
@@ -139,6 +122,7 @@ class MoeHybridParallelPlugin(PipelinePluginBase):
         self.enable_flash_attention = enable_flash_attention
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
+        # we change pg mesh to (pp, dp, tp) for better moe performance
         self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size)
         self.stage_manager = None
         self.schedule = None
@@ -187,153 +171,3 @@ class MoeHybridParallelPlugin(PipelinePluginBase):
                                 partition_grad=(self.zero_stage == 2))
 
         self.max_norm = max_norm
-
-    @property
-    def enable_pipeline_parallelism(self) -> bool:
-        return self.pp_size > 1
-
-    def supported_devices(self) -> List[str]:
-        return ['cuda']
-
-    def supported_precisions(self) -> List[str]:
-        return ['fp16', 'bf16', 'fp32']
-
-    def control_device(self) -> bool:
-        return True
-
-    def control_precision(self) -> bool:
-        return True
-
-    def support_no_sync(self) -> bool:
-        return False
-
-    def control_checkpoint_io(self) -> bool:
-        return True
-
-    def configure(
-        self,
-        model: Module,
-        optimizer: Optional[Optimizer] = None,
-        criterion: Optional[Callable] = None,
-        dataloader: Optional[DataLoader] = None,
-        lr_scheduler: Optional[LRScheduler] = None,
-    ) -> Tuple[Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
-        param_info = get_param_info(optimizer)
-        if not isinstance(model, ModelWrapper):
-            use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
-            model = HybridParallelModule(model, self.precision, self.shard_config, self.dp_group, use_ddp,
-                                         self.ddp_config, self.custom_policy)
-        if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
-            if self.zero_stage == 0:
-                if self.precision in ['fp16', 'bf16']:
-                    optimizer = HybridParallelAMPOptimizer(optimizer,
-                                                           model,
-                                                           use_pipeline=self.enable_pipeline_parallelism,
-                                                           param_info=param_info,
-                                                           precision=self.precision,
-                                                           max_norm=self.max_norm,
-                                                           **self.amp_config)
-                    self.checkpoint_io.link_master_and_working_param(optimizer.working_to_master_map,
-                                                                     optimizer.master_to_working_map)
-                else:
-                    optimizer = HybridParallelNaiveOptimizer(optimizer,
-                                                             model,
-                                                             use_pipeline=self.enable_pipeline_parallelism,
-                                                             param_info=param_info)
-            else:
-                assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
-                assert self.precision != 'fp32', "Please set precision to 'fp16' or 'bf16' when using ZeRO."
-                optimizer = HybridParallelZeroOptimizer(optimizer,
-                                                        model,
-                                                        use_pipeline=self.enable_pipeline_parallelism,
-                                                        param_info=param_info,
-                                                        dp_process_group=self.dp_group,
-                                                        tp_process_group=self.tp_group,
-                                                        verbose=True,
-                                                        clip_grad_norm=self.max_norm,
-                                                        **self.zero_config,
-                                                        **self.amp_config)
-                self.checkpoint_io.link_master_and_working_param(optimizer._param_store.working_to_master_param,
-                                                                 optimizer._param_store.master_to_working_param)
-
-        return model, optimizer, criterion, dataloader, lr_scheduler
-
-    def execute_pipeline(self,
-                         data_iter: Iterator,
-                         model: HybridParallelModule,
-                         criterion: Callable[[Any, Any], torch.Tensor],
-                         optimizer: Optional[Union[HybridParallelNaiveOptimizer, HybridParallelAMPOptimizer,
-                                                   HybridParallelZeroOptimizer]] = None,
-                         return_loss: bool = True,
-                         return_outputs: bool = False) -> dict:
-        assert self.enable_pipeline_parallelism, 'pipeline parallelism is not enabled'
-        # return loss or outputs if needed
-        ctx = optimizer.no_sync() if isinstance(optimizer, HybridParallelZeroOptimizer) else model.no_sync()
-        with ctx:
-            outputs = self.schedule.forward_backward_step(model, data_iter, criterion, optimizer, return_loss,
-                                                          return_outputs)
-        model.sync_shared_params()
-        if isinstance(optimizer, HybridParallelZeroOptimizer):
-            optimizer.sync_grad()
-        else:
-            model.sync_grads()
-        return outputs
-
-    def prepare_dataloader(self,
-                           dataset,
-                           batch_size,
-                           shuffle=False,
-                           seed=1024,
-                           drop_last=False,
-                           pin_memory=False,
-                           num_workers=0,
-                           **kwargs):
-        r"""
-        Prepare a dataloader for distributed training. The dataloader will be wrapped by
-        `torch.utils.data.DataLoader` and `torch.utils.data.DistributedSampler`.
-
-
-        Args:
-            dataset (`torch.utils.data.Dataset`): The dataset to be loaded.
-            shuffle (bool, optional): Whether to shuffle the dataset. Defaults to False.
-            seed (int, optional): Random worker seed for sampling, defaults to 1024.
-            add_sampler: Whether to add ``DistributedDataParallelSampler`` to the dataset. Defaults to True.
-            drop_last (bool, optional): Set to True to drop the last incomplete batch, if the dataset size
-                is not divisible by the batch size. If False and the size of dataset is not divisible by
-                the batch size, then the last batch will be smaller, defaults to False.
-            pin_memory (bool, optional): Whether to pin memory address in CPU memory. Defaults to False.
-            num_workers (int, optional): Number of worker threads for this dataloader. Defaults to 0.
-            kwargs (dict): optional parameters for ``torch.utils.data.DataLoader``, more details could be found in
-                    `DataLoader <https://pytorch.org/docs/stable/_modules/torch/utils/data/dataloader.html#DataLoader>`_.
-
-        Returns:
-            :class:`torch.utils.data.DataLoader`: A DataLoader used for training or testing.
-        """
-        _kwargs = kwargs.copy()
-        sampler = DistributedSampler(dataset,
-                                     num_replicas=self.pg_mesh.size(DP_AXIS),
-                                     rank=self.pg_mesh.coordinate(DP_AXIS),
-                                     shuffle=shuffle)
-
-        # Deterministic dataloader
-        def seed_worker(worker_id):
-            worker_seed = seed
-            np.random.seed(worker_seed)
-            torch.manual_seed(worker_seed)
-            random.seed(worker_seed)
-
-        return DataLoader(dataset,
-                          batch_size=batch_size,
-                          sampler=sampler,
-                          worker_init_fn=seed_worker,
-                          drop_last=drop_last,
-                          pin_memory=pin_memory,
-                          num_workers=num_workers,
-                          **_kwargs)
-
-    def get_checkpoint_io(self) -> CheckpointIO:
-        self.checkpoint_io = HybridParallelCheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
-        return self.checkpoint_io
-
-    def no_sync(self, model: Module) -> Iterator[None]:
-        raise NotImplementedError
