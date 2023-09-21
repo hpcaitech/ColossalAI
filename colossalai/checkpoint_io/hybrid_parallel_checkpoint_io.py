@@ -9,7 +9,6 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.distributed import ProcessGroup
-from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
 from colossalai.cluster import DistCoordinator
@@ -24,10 +23,12 @@ from .utils import (
     get_optimizer_base_filenames,
     is_safetensors_available,
     load_shard_state_dict,
+    load_state_dict,
     load_state_dict_into_model,
     load_states_into_optimizer,
     save_config_file,
     save_param_groups,
+    save_state_dict,
     save_state_dict_shards,
     search_tp_partition_dim,
     sharded_optimizer_loading_epilogue,
@@ -217,7 +218,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 index_file.append_meta_data("total_size", total_size)
                 index_file.write_index_file(save_index_file)
                 save_config_file(model, checkpoint)
-                if self.verbose:
+                if self.verbose and self.coordinator.is_master():
                     logging.info(
                         f"The model is split into checkpoint shards. "
                         f"You can find where each parameters has been saved in the "
@@ -273,7 +274,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 final_index_file.write_index_file(final_index_file_path)
                 save_config_file(model, checkpoint)
                 rmtree(tmp_index_file_folder)
-                if self.verbose:
+                if self.verbose and self.coordinator.is_master():
                     logging.info(
                         f"The model is split into checkpoint shards. "
                         f"You can find where each parameters has been saved in the "
@@ -353,7 +354,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         # Update master params if mixed-precision training is enabled.
         model_before_wrapping.update_master_params()
 
-        if self.verbose:
+        if self.verbose and self.coordinator.is_master():
             logging.info(f"The model has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
 
     def save_sharded_optimizer(
@@ -424,7 +425,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 # Store index file.
                 index_file.append_meta_data("total_size", total_size)
                 index_file.write_index_file(save_index_file)
-                if self.verbose:
+                if self.verbose and self.coordinator.is_master():
                     logging.info(
                         f"The optimizer is going to be split to checkpoint shards. "
                         f"You can find where each parameters has been saved in the "
@@ -484,7 +485,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 final_index_file.write_index_file(final_index_file_path)
                 rmtree(tmp_index_file_folder)
 
-                if self.verbose:
+                if self.verbose and self.coordinator.is_master():
                     logging.info(
                         f"The model is split into checkpoint shards. "
                         f"You can find where each parameters has been saved in the "
@@ -579,23 +580,84 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             optimizer.optim.state[param] = sharded_state
 
         sharded_optimizer_loading_epilogue(optimizer.optim)
-        if self.verbose:
+        if self.verbose and self.coordinator.is_master():
             logging.info(f"The optimizer has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
 
-    def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool = True):
+    def save_unsharded_model(self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+        """
+        Save model state dict to a single file with given checkpointing path.
+
+        Args:
+            model (nn.Module): Model on local device to be saved.
+            checkpoint (str): Checkpointing path which should be a file path. Can be absolute or relative path.
+            gather_dtensor (bool, optional): Whether to gather dtensor, currently not used. Defaults to True.
+            use_safetensors (bool, optional): Whether to use safe tensors. Defaults to False.
+        """
+        if self.coordinator.is_master():
+            logging.warning("Please avoid using unsharded checkpointing methods when dealing with large models!")
+
+        assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
+        model = model.unwrap()
+
+        if self.dp_rank != 0:
+            return
+
+        # The logic of collecting parameter shards along tp degree
+        # has been implemented by _save_to_state_dict method of ParallelModule in Shardformer.
+        state_dict = model.state_dict()
+
+        if self.pp_size == 1:
+            # When pipeline is not used, let master rank directly save the collected state_dict.
+            if self.tp_rank == 0:
+                save_state_dict(state_dict, checkpoint, use_safetensors)
+        else:
+            # When pipeline is used, first collect state_dict from every pipeline stage, then save the complete state_dict.
+            state_dict_list = [None for _ in range(self.pp_size)]
+            dist.barrier(self.pp_group)
+            dist.all_gather_object(state_dict_list, state_dict, self.pp_group)
+
+            # Only the master rank do the saving.
+            if self.coordinator.is_master():
+                complete_state_dict = dict()
+                for _state_dict in state_dict_list:
+                    complete_state_dict.update(_state_dict)
+                save_state_dict(complete_state_dict, checkpoint, use_safetensors)
+
+    def load_unsharded_model(self, model: ModelWrapper, checkpoint: str, strict: bool = False):
+        """
+        Load model from a single file with the given path of checkpoint.
+
+        Args:
+            model (nn.Module): The model to be loaded.
+            checkpoint_index_file (str): Path to the checkpoint file.
+            strict (bool, optional): For name matching during loading state_dict. Defaults to False.
+                                     This argument should be manually set to False since not all params in checkpoint are needed for each device when pipeline is enabled.
+        """
+        if self.coordinator.is_master():
+            logging.warning("Please avoid using unsharded checkpointing methods when dealing with large models!")
+
+        assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
+        strict = False
+        model_before_wrapping = model
+        model = model.unwrap()
+
+        # Load from checkpoint. Since the logic of breaking parameter shards along tp degree
+        # has been implemented by _load_from_state_dict method of ParallelModule in Shardformer,
+        # model.load_state_dict can be directly called.
+        state_dict = load_state_dict(checkpoint)
+        model.load_state_dict(state_dict, strict=strict)
+
+        # Update master params if mixed-precision training is enabled.
+        model_before_wrapping.update_master_params()
+
+    def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
         # TODO(Baizhou): support this feature after implementing complete state_dict collection
+        logging.warning("Please avoid using unsharded checkpointing methods when dealing with large models!")
         raise NotImplementedError
 
-    def save_unsharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+    def load_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
         # TODO(Baizhou): support this feature after implementing complete state_dict collection
-        raise NotImplementedError
-
-    def save_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: str, gather_dtensor: bool):
-        # TODO(Baizhou): support this feature after implementing complete state_dict collection
-        raise NotImplementedError
-
-    def load_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: str, gather_dtensor: bool):
-        # TODO(Baizhou): support this feature after implementing complete state_dict collection
+        logging.warning("Please avoid using unsharded checkpointing methods when dealing with large models!")
         raise NotImplementedError
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
