@@ -1,16 +1,12 @@
 import warnings
 from typing import Optional
 
-import torch
-import torch.distributed as dist
 import torch.nn as nn
 
 import colossalai
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin
 from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroModel
-from colossalai.tensor import ProcessGroup, ShardSpec
 from colossalai.utils import get_current_device
-from colossalai.zero import ColoInitContext
 from colossalai.zero.gemini.gemini_ddp import GeminiDDP
 
 from .ddp import DDPStrategy
@@ -191,13 +187,13 @@ class GeminiStrategy(DDPStrategy):
         colossalai.launch_from_torch({}, seed=self.seed)
 
     def model_init_context(self):
-        world_size = dist.get_world_size()
-        shard_pg = ProcessGroup(tp_degree=world_size) if self.shard_init else None
-        default_dist_spec = ShardSpec([-1], [world_size]) if self.shard_init else None
-        return ColoInitContext(
-            device=get_current_device(), dtype=torch.half, default_pg=shard_pg, default_dist_spec=default_dist_spec
-        )
-        # return super().model_init_context()
+        # world_size = dist.get_world_size()
+        # shard_pg = ProcessGroup(tp_degree=world_size) if self.shard_init else None
+        # default_dist_spec = ShardSpec([-1], [world_size]) if self.shard_init else None
+        # return ColoInitContext(
+        #     device=get_current_device(), dtype=torch.half, default_pg=shard_pg, default_dist_spec=default_dist_spec
+        # )
+        return super().model_init_context()
 
     def unwrap_model(self, model: nn.Module) -> nn.Module:
         ddp_model = model.unwrap()
