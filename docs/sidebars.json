@@ -37,6 +37,7 @@
       "label": "Features",
       "collapsed": true,
       "items": [
+        "features/shardformer",
         "features/mixed_precision_training_with_booster",
         "features/gradient_accumulation_with_booster",
         "features/gradient_clipping_with_booster",
