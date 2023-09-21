@@ -7,14 +7,14 @@ from torch.distributed import ProcessGroup
 
 from colossalai.moe.manager import MOE_MANAGER
 
-moe = None
+MOE_KERNEL = None
 
 
 def load_moe():
-    global moe
+    global MOE_KERNEL
     from colossalai.kernel.op_builder import MOEBuilder
 
-    moe = MOEBuilder().load()
+    MOE_KERNEL = MOEBuilder().load()
 
 
 class AllGather(torch.autograd.Function):
@@ -93,10 +93,10 @@ class MoeDispatch(torch.autograd.Function):
         s = tokens.size(0)
         h = tokens.size(1)
 
-        if moe is None:
+        if MOE_KERNEL is None:
             load_moe()
 
-        expert_input = moe.dispatch_forward(s, ec, h, tokens, mask, dest_idx)
+        expert_input = MOE_KERNEL.dispatch_forward(s, ec, h, tokens, mask, dest_idx)
 
         ctx.save_for_backward(mask, dest_idx)
         ctx.s = s
@@ -108,7 +108,7 @@ class MoeDispatch(torch.autograd.Function):
     @staticmethod
     def backward(ctx, output_grad):
         mask, dest_idx = ctx.saved_tensors
-        d_tokens = moe.dispatch_backward(ctx.s, ctx.ec, ctx.h, output_grad, mask, dest_idx)
+        d_tokens = MOE_KERNEL.dispatch_backward(ctx.s, ctx.ec, ctx.h, output_grad, mask, dest_idx)
         return d_tokens, None, None, None
 
 
@@ -125,9 +125,9 @@ class MoeCombine(torch.autograd.Function):
 
         fp16_flag = expert_tokens.dtype == torch.float16
         cb_input = expert_tokens.to(torch.float32) if fp16_flag else expert_tokens
-        if moe is None:
+        if MOE_KERNEL is None:
             load_moe()
-        ctokens = moe.combine_forward(s, e, c, h, cb_input, logits, mask, dest_idx)
+        ctokens = MOE_KERNEL.combine_forward(s, e, c, h, cb_input, logits, mask, dest_idx)
         output = ctokens.to(torch.float16) if fp16_flag else ctokens
 
         ctx.save_for_backward(expert_tokens, logits, mask, dest_idx)
@@ -145,7 +145,8 @@ class MoeCombine(torch.autograd.Function):
 
         cb_grad = (tokens_grad.to(torch.float32) if tokens_grad.dtype is torch.float16 else tokens_grad)
         cb_input = expert_tokens.to(torch.float32) if ctx.fp16_flag else expert_tokens
-        d_expert, d_logits = moe.combine_backward(ctx.s, ctx.e, ctx.c, ctx.h, cb_grad, cb_input, logits, mask, dest_idx)
+        d_expert, d_logits = MOE_KERNEL.combine_backward(ctx.s, ctx.e, ctx.c, ctx.h, cb_grad, cb_input, logits, mask,
+                                                         dest_idx)
         d_expert = d_expert.to(torch.float16) if ctx.fp16_flag else d_expert
 
         return d_expert, d_logits, None, None, None
@@ -155,9 +156,9 @@ def moe_cumsum(inputs: Tensor):
     dim0 = inputs.size(0)
     flag = (dim0 <= 1024) or (dim0 <= 2048 and dim0 % 2 == 0) or (dim0 % 4 == 0)
     if flag and MOE_MANAGER.use_kernel_optim:
-        if moe is None:
+        if MOE_KERNEL is None:
             load_moe()
-        return moe.cumsum_sub_one(inputs)
+        return MOE_KERNEL.cumsum_sub_one(inputs)
     else:
         return torch.cumsum(inputs, dim=0) - 1
 
