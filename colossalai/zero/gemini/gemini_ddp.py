@@ -232,9 +232,6 @@ class GeminiDDP(ModelWrapper):
     def forward(self, *args, **kwargs):
         # check whether we are in a inference mode
         grad_flag = torch.is_grad_enabled()
-        if not grad_flag:
-            assert not self.gemini_manager.need_warmup or not self.gemini_manager.is_warmup(
-            ), "You should run a completed iteration as your warmup iter"
 
         args, kwargs = _cast_float(args, self.mixed_precision), _cast_float(kwargs, self.mixed_precision)
         self.module.zero_grad(set_to_none=True)
