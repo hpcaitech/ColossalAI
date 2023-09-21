@@ -24,7 +24,9 @@ class MoeManager(metaclass=SingletonMeta):
         self.router_z_loss = []
         self.parallel = None
         self.seed = None
-        self.use_kernel_optim = True
+        self.mode = None
+        self.use_kernel_optim = False
+        self.use_ep_inside = None
 
         self.has_setup = False
         self._parallel_info_dict = dict()
@@ -37,15 +39,53 @@ class MoeManager(metaclass=SingletonMeta):
     def is_initialized(self):
         return self.has_setup
 
-    def setup(self, seed: int, use_kernel_optim: bool = True, max_ep_size: int = 8, parallel: bool = None):
+    def setup(self,
+              seed: int,
+              use_kernel_optim: bool = True,
+              parallel: bool = None,
+              mode: str = "dynamic",
+              max_ep_size: int = 8,
+              fixed_dp_size: int = 0,
+              fixed_ep_size: int = 0,
+              fixed_pp_size: int = 0,
+              use_ep_inside: bool = True) -> None:
+        """
+        Setup MoE distributed context.
+
+        Args:
+            seed (int): Random seed. Defaults to 42.
+            use_kernel_optim (bool, optional): Use cuda kernel. Defaults to True.
+            parallel (bool, optional): Parallel mode, should be EP, TP or None. Defaults to None.
+            mode (str, optional): Should be "fixed" or "dynamic". Defaults to "dynamic".
+                In fixed mode, the ep size and dp size is fixed.
+                In dynamic mode, the ep size and dp size will be changed according to num experts.
+            max_ep_size (int, optional): Max ep size in dynamic mode. Defaults to 8.
+            fixed_dp_size (int, optional): Fixed dp size in fixed mode. Defaults to 0.
+            fixed_ep_size (int, optional): Fixed ep size in fixed mode. Defaults to 0.
+            fixed_pp_size (int, optional): Fixed pp size in fixed mode. Defaults to 0.
+            use_ep_inside (bool, optional): Use ep inside dp if True, dp inside ep if Fasle. Defaults to True.
+        """
         assert not self.is_initialized, "MoE distributed context shouldn't be set up again"
         assert torch.cuda.is_available(), "MoE requires to enable CUDA first"
 
         self.world_size = dist.get_world_size()
         self.seed = seed + dist.get_rank()
-        self.max_ep_size = min(max_ep_size, dist.get_world_size())
-        self.min_dp_size = self.world_size // self.max_ep_size
         self.parallel = parallel
+        self.use_ep_inside = use_ep_inside
+
+        # init by mode
+        self.mode = mode
+        assert self.mode in ["fixed", "dynamic"], "mode should be fixed or dynamic"
+        if self.mode == "dynamic":
+            self.max_ep_size = min(max_ep_size, dist.get_world_size())
+            self.min_dp_size = self.world_size // self.max_ep_size
+        else:
+            assert fixed_dp_size > 0 and fixed_ep_size > 0 and fixed_pp_size > 0, "dp_size, ep_size and pp_size should be greater than 0"
+            assert isinstance(fixed_dp_size, int) and isinstance(fixed_ep_size, int) and isinstance(
+                fixed_pp_size, int), "dp_size, ep_size and pp_size should be int"
+            self.ep_size = fixed_ep_size
+            self.dp_size = fixed_dp_size
+            self.pp_size = fixed_pp_size
 
         # Enabling kernel optimization may raise error in some cases
         # Users can close kernel optimization manually
@@ -67,30 +107,39 @@ class MoeManager(metaclass=SingletonMeta):
             number of local experts, the MoeParallelInfo of the current ep_size
         """
 
-        gt_flag = num_experts % self.max_ep_size == 0    # check whether num_experts is greater
-        lt_flag = self.max_ep_size % num_experts == 0    # check whether num_experts is less
+        if self.mode == "dynamic":
+            gt_flag = num_experts % self.max_ep_size == 0    # check whether num_experts is greater
+            lt_flag = self.max_ep_size % num_experts == 0    # check whether num_experts is less
 
-        assert gt_flag or lt_flag, "Automatic experts placement dose not not support expert number" \
-                                   " is not a multiple of ep size or vice versa."
+            assert gt_flag or lt_flag, "Automatic experts placement dose not not support expert number" \
+                                    " is not a multiple of ep size or vice versa."
 
-        # If the number of experts is greater than maximum expert parallel size. a.k.a ep_size,
-        # there are multiple experts in each GPU and each GPU has different experts
-        # So it's data parallel size is 1
-        # Otherwise, there is only one expert in each GPU
-        # The data parallel size should be calculated
-        dp_size = 1 if gt_flag else self.max_ep_size // num_experts
-        ep_size = self.max_ep_size // dp_size
+            # If the number of experts is greater than maximum expert parallel size. a.k.a ep_size,
+            # there are multiple experts in each GPU and each GPU has different experts
+            # So it's data parallel size is 1
+            # Otherwise, there is only one expert in each GPU
+            # The data parallel size should be calculated
+            dp_size = 1 if gt_flag else self.max_ep_size // num_experts
+            ep_size = self.max_ep_size // dp_size
+            # Don't forget to multiply minimum data parallel size
+            dp_size *= self.min_dp_size
+            pp_size = 1
+        else:
+            dp_size = self.dp_size
+            ep_size = self.ep_size
+            pp_size = self.pp_size
 
         # Calculate the number of experts for each GPU
         if use_tp:
             num_local_experts = num_experts
         else:
-            num_local_experts = 1 if lt_flag else num_experts // self.max_ep_size
+            if self.mode == "dynamic":
+                num_local_experts = 1 if lt_flag else num_experts // self.max_ep_size
+            else:
+                num_local_experts = num_experts // ep_size
 
-        # Don't forget to multiply minimum data parallel size
-        dp_size *= self.min_dp_size
         if not (ep_size in self.parallel_info_dict):
-            self.parallel_info_dict[ep_size] = get_moe_info(ep_size, dp_size)
+            self.parallel_info_dict[ep_size] = get_moe_info(ep_size, dp_size, pp_size, ep_inside=self.use_ep_inside)
 
         return num_local_experts, self.parallel_info_dict[ep_size]
 

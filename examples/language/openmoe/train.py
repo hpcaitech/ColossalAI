@@ -5,6 +5,7 @@ import torch
 import transformers
 from huggingface_hub import snapshot_download
 from model.modeling_openmoe import OpenMoeForCausalLM
+from model.openmoe_policy import OpenMoeForCausalLMPolicy
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import Adafactor, T5Tokenizer
@@ -14,6 +15,7 @@ import colossalai
 from colossalai import get_default_parser
 from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
+from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.moe import MoeCheckpintIO
@@ -52,31 +54,67 @@ class RandomDataset(Dataset):
 
     def __getitem__(self, idx):
         return {
-            'input_ids': self.input_ids[idx],
-            'attention_mask': self.attention_mask[idx],
-            'labels': self.input_ids[idx]
+            "input_ids": self.input_ids[idx],
+            "attention_mask": self.attention_mask[idx],
+            "labels": self.input_ids[idx],
         }
 
 
 def parse_args():
+    # basic settings
     parser = get_default_parser()
-    parser.add_argument("--model_name",
-                        type=str,
-                        default="base",
-                        help="Path to pretrained model or model identifier from huggingface.co/models.")
-    parser.add_argument("--output_path",
-                        type=str,
-                        default="./output_model.bin",
-                        help="The path of your saved model after finetuning.")
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="base",
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        default="./output_model.bin",
+        help="The path of your saved model after finetuning.",
+    )
     parser.add_argument("--num_epoch", type=int, default=10, help="Number of epochs.")
-    parser.add_argument("--batch_size",
-                        type=int,
-                        default=4,
-                        help="Batch size (per dp group) for the training dataloader.")
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=4,
+        help="Batch size (per dp group) for the training dataloader.",
+    )
     parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
+    parser.add_argument(
+        "--plugin",
+        type=str,
+        default="hybrid",
+        help="parallel plugin",
+        choices=["zero1", "zero2", "hybrid"],
+    )
+    # hybrid plugin
+    parser.add_argument("--pp_size", type=int, default=2, help="pp size")
+    parser.add_argument("--dp_size", type=int, default=1, help="dp size")
+    parser.add_argument("--ep_size", type=int, default=2, help="ep size")
+    parser.add_argument("--zero_stage", type=int, default=1, help="zero stage in hybrid plugin")
+    parser.add_argument("--microbatch_size", type=int, default=1, help="microbatch size")
+    # kernel
+    parser.add_argument(
+        "--use_kernel",
+        action="store_true",
+        help="Use kernel optim. Need to install flash attention, apex, triton to enable all kernel optimizations.",
+    )
     # loss
-    parser.add_argument("--router_aux_loss_factor", type=float, default=0.01, help="router_aux_loss_factor.")
-    parser.add_argument("--router_z_loss_factor", type=float, default=0.0001, help="router_z_loss_factor.")
+    parser.add_argument(
+        "--router_aux_loss_factor",
+        type=float,
+        default=0.01,
+        help="router_aux_loss_factor.",
+    )
+    parser.add_argument(
+        "--router_z_loss_factor",
+        type=float,
+        default=0.0001,
+        help="router_z_loss_factor.",
+    )
     parser.add_argument("--label_smoothing", type=float, default=0.0, help="label_smoothing.")
     parser.add_argument("--z_loss_factor", type=float, default=0.0001, help="z_loss_factor.")
     # optim
@@ -95,7 +133,24 @@ def main():
     coordinator = DistCoordinator()
 
     # Set up moe
-    MOE_MANAGER.setup(seed=42, parallel="EP")
+    if args.plugin in ["zero1", "zero2"]:
+        MOE_MANAGER.setup(
+            seed=42,
+            parallel="EP",
+            use_kernel_optim=False if args.model_name == "test" else args.use_kernel,
+        )
+    elif args.plugin == "hybrid":
+        assert (args.dp_size * args.ep_size *
+                args.pp_size == coordinator.world_size), "dp_size * ep_size * pp_size must equal to world_size"
+        MOE_MANAGER.setup(
+            seed=42,
+            parallel="EP",
+            mode="fixed",
+            fixed_dp_size=args.dp_size,
+            fixed_ep_size=args.ep_size,
+            fixed_pp_size=args.pp_size,
+            use_kernel_optim=False if args.model_name == "test" else args.use_kernel,
+        )
 
     # Manage loggers
     disable_existing_loggers()
@@ -129,12 +184,27 @@ def main():
 
     # Set plugin
     booster_kwargs = {}
-    plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
+    if args.plugin == "zero1":
+        plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=1)
+    elif args.plugin == "zero2":
+        plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
+    elif args.plugin == "hybrid":
+        plugin = MoeHybridParallelPlugin(
+            tp_size=1,
+            pp_size=args.pp_size,
+            zero_stage=args.zero_stage,
+            microbatch_size=args.microbatch_size,
+            custom_policy=OpenMoeForCausalLMPolicy(),
+            enable_fused_normalization=args.use_kernel,
+            enable_jit_fused=args.use_kernel,
+        )
+    else:
+        raise ValueError(f"Invalid plugin {args.plugin}")
     logger.info(f"Set plugin as {plugin}", ranks=[0])
 
     # Prepare tokenizer and dataloader
     tokenizer = T5Tokenizer.from_pretrained("google/umt5-small")
-    dataset = RandomDataset(num_samples=1000 if args.model_name != "test" else 1)
+    dataset = RandomDataset(num_samples=1000 if args.model_name != "test" else 50)
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     # Set optimizer
@@ -143,27 +213,47 @@ def main():
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
+    use_pipeline = (isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1)
+    is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     logger.info(f"Finish init booster", ranks=[0])
 
     # Start finetuning
     logger.info(f"Start finetuning", ranks=[0])
     for epoch in range(args.num_epoch):
         model.train()
-        with tqdm(dataloader, desc=f'Epoch [{epoch + 1}]', disable=not coordinator.is_master()) as pbar:
-            for batch in pbar:
-                # Forward
-                optimizer.zero_grad()
-                batch = move_to_cuda(batch, torch.cuda.current_device())
+        train_dataloader_iter = iter(dataloader)
+        total_len = len(train_dataloader_iter)
+        with tqdm(
+                range(total_len),
+                desc=f"Epoch [{epoch + 1}/{args.num_epoch}]",
+                disable=not coordinator.is_master(),
+        ) as pbar:
+            # Forward pass
+            for _ in pbar:
+                if use_pipeline:
+                    outputs = booster.execute_pipeline(
+                        train_dataloader_iter,
+                        model,
+                        lambda x, y: x.loss,
+                        optimizer,
+                        return_loss=True,
+                        return_outputs=True,
+                    )
+                    # Backward and optimize
+                    if is_pp_last_stage:
+                        loss = outputs["loss"]
+                        pbar.set_postfix({"loss": loss.item()})
+                else:
+                    data = next(train_dataloader_iter)
+                    data = move_to_cuda(data, torch.cuda.current_device())
+                    outputs = model(**data)
+                    loss = outputs["loss"]
+                    # Backward
+                    booster.backward(loss, optimizer)
+                    pbar.set_postfix({"loss": loss.item()})
 
-                outputs = model(use_cache=False, chunk_head=True, **batch)
-                loss = outputs['loss']
-
-                # Backward
-                booster.backward(loss, optimizer)
                 optimizer.step()
-
-                # Print batch loss
-                pbar.set_postfix({'loss': loss.item()})
+                optimizer.zero_grad()
 
     # Finish training and evaluate
     logger.info(f"Finish finetuning", ranks=[0])
