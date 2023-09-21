@@ -19,27 +19,30 @@ from coati.models.utils import calc_action_log_probs, masked_mean
 
 @pytest.mark.parametrize("batch_size", [4])
 @pytest.mark.parametrize("seq_len", [32])
-@pytest.mark.parametrize("actor_maker", [
-    lambda: BLOOMActor(),
-    lambda: GPTActor(),
-    # HACK: skip llama due to long execution time
-    # lambda: LlamaActor(),
-    lambda: OPTActor()
-])
-@pytest.mark.parametrize("generate_kwargs", [{
-    "max_length": 64,
-    "use_cache": True,
-    "do_sample": True,
-    "temperature": 1.0,
-    "top_k": 50,
-}])
-def test_generation(actor_maker: Callable[[], Actor],
-                    batch_size: int,
-                    seq_len: int,
-                    generate_kwargs: Dict[str, Any]
-                    ):
-
-    class MockTokenizer():
+@pytest.mark.parametrize(
+    "actor_maker",
+    [
+        lambda: BLOOMActor(),
+        lambda: GPTActor(),
+        # HACK: skip llama due to long execution time
+        # lambda: LlamaActor(),
+        lambda: OPTActor(),
+    ],
+)
+@pytest.mark.parametrize(
+    "generate_kwargs",
+    [
+        {
+            "max_length": 64,
+            "use_cache": True,
+            "do_sample": True,
+            "temperature": 1.0,
+            "top_k": 50,
+        }
+    ],
+)
+def test_generation(actor_maker: Callable[[], Actor], batch_size: int, seq_len: int, generate_kwargs: Dict[str, Any]):
+    class MockTokenizer:
         def __init__(self):
             self.padding_side = "left"
             self.eos_token_id = 0
@@ -172,11 +175,7 @@ def test_models(models_maker: Callable[[], Tuple[Actor, Critic, RewardModel]], b
 @pytest.mark.parametrize("num_labels", [100])
 @pytest.mark.parametrize("num_actions", [10])
 @pytest.mark.parametrize("chunk_size", [4])
-def test_loss(batch_size: int,
-              seq_len: int,
-              num_labels: int,
-              num_actions: int,
-              chunk_size: int):
+def test_loss(batch_size: int, seq_len: int, num_labels: int, num_actions: int, chunk_size: int):
     num_steps = (num_actions + chunk_size - 1) // chunk_size
 
     loss = GPTLMLoss()
@@ -192,7 +191,7 @@ def test_loss(batch_size: int,
         "old_log_probs": torch.randn(batch_size, num_actions),
         "advantages": torch.randn(batch_size, num_steps),
         "action_mask": torch.randint(0, 2, (batch_size, num_actions)),
-        "chunk_size": chunk_size
+        "chunk_size": chunk_size,
     }
     loss_output = loss(**loss_input)
     assert loss_output.shape == (batch_size, num_steps)

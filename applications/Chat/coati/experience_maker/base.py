@@ -16,7 +16,7 @@ class Experience:
     "C" is the chunk size.
     "N" is the number of MDP steps.
     NOTE: N = A / C, each Experience contains N MDP steps ([s0, a0], [s1, a1], ...),
-        sequences = |pad|prompt|a0|a1|a2|...|pad|, 
+        sequences = |pad|prompt|a0|a1|a2|...|pad|,
         s0 = prompt, s1 = prompt + a0, s2 = prompt + a0 + a1, ...
     FIXME(cwher): store N steps in a Experience can be computationally efficient,
         but may be different from uniform sampling (shuffle all steps and sample).
@@ -31,7 +31,7 @@ class Experience:
         returns: (B, N), result of GAE
         advantages: (B, N), result of GAE
 
-    e.g., 
+    e.g.,
         sequences = |pad|prompt|response|pad|
         attention_mask = |0|1|1|0|
         action_mask = |1|0| (for response)

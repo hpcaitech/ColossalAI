@@ -2,9 +2,10 @@ import torch
 import torch.nn.functional as F
 
 
-def compute_approx_kl(log_probs: torch.Tensor,
-                      log_probs_base: torch.Tensor,
-                      ) -> torch.Tensor:
+def compute_approx_kl(
+    log_probs: torch.Tensor,
+    log_probs_base: torch.Tensor,
+) -> torch.Tensor:
     """
     Compute the approximate KL divergence between two distributions.
     Schulman blog: http://joschu.net/blog/kl-approx.html

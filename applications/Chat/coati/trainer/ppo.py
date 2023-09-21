@@ -60,30 +60,31 @@ class PPOTrainer(OnPolicyTrainer):
         generate_kwargs (dict, optional): the kwargs to use while model generating
     """
 
-    def __init__(self,
-                 strategy: Strategy,
-                 actor: Actor,
-                 critic: Critic,
-                 reward_model: RewardModel,
-                 initial_model: Actor,
-                 actor_optim: Optimizer,
-                 critic_optim: Optimizer,
-                 tokenizer: PreTrainedTokenizerBase,
-                 kl_coef: float = 0.1,
-                 chunk_size: int = 8,
-                 ptx_coef: float = 0.9,
-                 train_batch_size: int = 8,
-                 buffer_limit: int = 0,
-                 buffer_cpu_offload: bool = True,
-                 eps_clip: float = 0.2,
-                 vf_coef: float = 1.0,
-                 value_clip: float = 0.4,
-                 sample_buffer: bool = False,
-                 dataloader_pin_memory: bool = True,
-                 offload_inference_models: bool = True,
-                 callbacks: List[Callback] = [],
-                 **generate_kwargs
-                 ) -> None:
+    def __init__(
+        self,
+        strategy: Strategy,
+        actor: Actor,
+        critic: Critic,
+        reward_model: RewardModel,
+        initial_model: Actor,
+        actor_optim: Optimizer,
+        critic_optim: Optimizer,
+        tokenizer: PreTrainedTokenizerBase,
+        kl_coef: float = 0.1,
+        chunk_size: int = 8,
+        ptx_coef: float = 0.9,
+        train_batch_size: int = 8,
+        buffer_limit: int = 0,
+        buffer_cpu_offload: bool = True,
+        eps_clip: float = 0.2,
+        vf_coef: float = 1.0,
+        value_clip: float = 0.4,
+        sample_buffer: bool = False,
+        dataloader_pin_memory: bool = True,
+        offload_inference_models: bool = True,
+        callbacks: List[Callback] = [],
+        **generate_kwargs,
+    ) -> None:
         if isinstance(strategy, GeminiStrategy):
             assert not offload_inference_models, "GeminiPlugin is not compatible with manual model.to('cpu')"
 
@@ -92,8 +93,7 @@ class PPOTrainer(OnPolicyTrainer):
 
         self.generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
         self.experience_maker = ChunkedExperienceMaker(
-            actor, critic, reward_model, initial_model,
-            tokenizer, chunk_size, kl_coef
+            actor, critic, reward_model, initial_model, tokenizer, chunk_size, kl_coef
         )
 
         self.actor = actor
@@ -115,11 +115,13 @@ class PPOTrainer(OnPolicyTrainer):
         self.num_collect_step = 0
         self.num_update_step = 0
 
-    def _before_fit(self,
-                    prompt_dataloader: DataLoader,
-                    pretrain_dataloader: DataLoader,
-                    log_dir: Optional[str] = None,
-                    use_wandb: bool = False):
+    def _before_fit(
+        self,
+        prompt_dataloader: DataLoader,
+        pretrain_dataloader: DataLoader,
+        log_dir: Optional[str] = None,
+        use_wandb: bool = False,
+    ):
         """
         Args:
             prompt_dataloader (DataLoader): the dataloader to use for prompt data
@@ -154,7 +156,7 @@ class PPOTrainer(OnPolicyTrainer):
         experience, metrics = self.experience_maker.make_experience(**prompts, **self.generate_kwargs)
         if self.writer:
             for k, v in metrics.items():
-                self.writer.add_scalar(f'collect/{k}', v, self.num_collect_step)
+                self.writer.add_scalar(f"collect/{k}", v, self.num_collect_step)
         self.num_collect_step += 1
         return experience
 
@@ -164,18 +166,21 @@ class PPOTrainer(OnPolicyTrainer):
 
         step_mask = experience.step_mask
         num_samples = torch.sum(step_mask)
-        assert self.chunk_size == self.experience_maker.chunk_size, \
-            "chunk_size of trainer and experience_maker must be the same"
+        assert (
+            self.chunk_size == self.experience_maker.chunk_size
+        ), "chunk_size of trainer and experience_maker must be the same"
 
         # policy loss
         num_actions = experience.action_log_probs.size(1)
         actor_logits = self.actor(experience.sequences, experience.attention_mask)["logits"]
         action_log_probs = calc_action_log_probs(actor_logits, experience.sequences, num_actions)
-        actor_loss = self.actor_loss_fn(action_log_probs,
-                                        experience.action_log_probs,
-                                        experience.advantages,
-                                        action_mask=experience.action_mask,
-                                        chunk_size=self.experience_maker.chunk_size)
+        actor_loss = self.actor_loss_fn(
+            action_log_probs,
+            experience.action_log_probs,
+            experience.advantages,
+            action_mask=experience.action_mask,
+            chunk_size=self.experience_maker.chunk_size,
+        )
         actor_loss = (1 - self.ptx_coef) * torch.sum(actor_loss * step_mask / num_samples)
         self.strategy.backward(actor_loss, self.actor, self.actor_optim)
 
@@ -200,7 +205,7 @@ class PPOTrainer(OnPolicyTrainer):
             # NOTE: sequences[:, :seq_len] must contain <eos> if sequences[:, seq_len - 1] is {<eos>, padding token}
             sequence_with_eos_mask[:, -1] = torch.logical_and(
                 experience.sequences[:, seq_len - 1] != self.tokenizer.pad_token_id,
-                experience.sequences[:, seq_len - 1] != self.tokenizer.eos_token_id
+                experience.sequences[:, seq_len - 1] != self.tokenizer.eos_token_id,
             )
             values = self.critic(sequence_with_eos, sequence_with_eos_mask)
             critic_loss = self.critic_loss_fn(values, experience.values[:, i], experience.returns[:, i])
@@ -211,10 +216,10 @@ class PPOTrainer(OnPolicyTrainer):
         self.critic_optim.zero_grad()
 
         if self.writer:
-            self.writer.add_scalar('update/actor_loss', actor_loss.item(), self.num_update_step)
-            self.writer.add_scalar('update/critic_loss', critic_loss.item(), self.num_update_step)
+            self.writer.add_scalar("update/actor_loss", actor_loss.item(), self.num_update_step)
+            self.writer.add_scalar("update/critic_loss", critic_loss.item(), self.num_update_step)
             if self.ptx_coef != 0:
-                self.writer.add_scalar('update/ptx_loss', ptx_loss.item(), self.num_update_step)
+                self.writer.add_scalar("update/ptx_loss", ptx_loss.item(), self.num_update_step)
         self.num_update_step += 1
 
     def _learn(self, update_step: int):

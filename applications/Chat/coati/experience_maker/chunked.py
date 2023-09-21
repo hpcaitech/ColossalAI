@@ -18,17 +18,18 @@ class ChunkedExperienceMaker(ExperienceMaker):
         chunk_size = seq_len: all the tokens constitute a giant step
     """
 
-    def __init__(self,
-                 actor: Actor,
-                 critic: Critic,
-                 reward_model: RewardModel,
-                 initial_model: Actor,
-                 tokenizer: PreTrainedTokenizer,
-                 chunk_size: int = 8,
-                 kl_coef: float = 0.1,
-                 gamma: float = 0.99,
-                 gae_lambda: float = 0.95,
-                 ) -> None:
+    def __init__(
+        self,
+        actor: Actor,
+        critic: Critic,
+        reward_model: RewardModel,
+        initial_model: Actor,
+        tokenizer: PreTrainedTokenizer,
+        chunk_size: int = 8,
+        kl_coef: float = 0.1,
+        gamma: float = 0.99,
+        gae_lambda: float = 0.95,
+    ) -> None:
         super().__init__(actor, critic, reward_model, initial_model)
         self.tokenizer = tokenizer
         self.chunk_size = chunk_size
@@ -89,28 +90,25 @@ class ChunkedExperienceMaker(ExperienceMaker):
         return advantages, returns
 
     @torch.no_grad()
-    def make_experience(self,
-                        input_ids: torch.Tensor,
-                        attention_mask: torch.Tensor,
-                        **generate_kwargs
-                        ) -> Tuple[Experience, Dict]:
+    def make_experience(
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **generate_kwargs
+    ) -> Tuple[Experience, Dict]:
         self.actor.eval()
         self.critic.eval()
         self.initial_model.eval()
         self.reward_model.eval()
 
         # generate sequences
-        sequences = generate(self.actor,
-                             input_ids,
-                             tokenizer=self.tokenizer,
-                             attention_mask=attention_mask,
-                             **generate_kwargs)
+        sequences = generate(
+            self.actor, input_ids, tokenizer=self.tokenizer, attention_mask=attention_mask, **generate_kwargs
+        )
 
         # calculate auxiliary tensors
         eos_token_id = self.tokenizer.eos_token_id
         pad_token_id = self.tokenizer.pad_token_id
-        assert eos_token_id is not None and pad_token_id is not None, \
-            "eos_token_id and pad_token_id must be specified in generate_kwargs"
+        assert (
+            eos_token_id is not None and pad_token_id is not None
+        ), "eos_token_id and pad_token_id must be specified in generate_kwargs"
         input_len = input_ids.size(1)
         num_actions = sequences.size(1) - input_len
         num_steps = (num_actions + self.chunk_size - 1) // self.chunk_size
@@ -118,8 +116,9 @@ class ChunkedExperienceMaker(ExperienceMaker):
         # if action is |action|eos|pad|, then action_mask is |1|1|0|
         action_mask = (sequences[:, input_len:] == eos_token_id).cumsum(dim=-1) == 0
         action_mask = F.pad(action_mask, (1, -1), value=True)  # shift right by 1 to include eos token
-        step_mask = F.pad(action_mask, (0, (self.chunk_size - num_actions) %
-                          self.chunk_size), value=False).view(-1, self.chunk_size)
+        step_mask = F.pad(action_mask, (0, (self.chunk_size - num_actions) % self.chunk_size), value=False).view(
+            -1, self.chunk_size
+        )
         step_mask = (step_mask.sum(dim=-1) > 0).view(-1, num_steps)
         attention_mask = torch.cat([attention_mask, action_mask], dim=-1)
 
@@ -130,10 +129,12 @@ class ChunkedExperienceMaker(ExperienceMaker):
         base_log_probs = calc_action_log_probs(base_model_logits, sequences, num_actions)
 
         log_ratio = action_log_probs - base_log_probs
-        log_ratio = F.pad(log_ratio, (0, (self.chunk_size - num_actions) %
-                          self.chunk_size), value=0).view(-1, self.chunk_size)
-        log_ratio_mask = F.pad(action_mask, (0, (self.chunk_size - num_actions) %
-                               self.chunk_size), value=False).view(-1, self.chunk_size)
+        log_ratio = F.pad(log_ratio, (0, (self.chunk_size - num_actions) % self.chunk_size), value=0).view(
+            -1, self.chunk_size
+        )
+        log_ratio_mask = F.pad(action_mask, (0, (self.chunk_size - num_actions) % self.chunk_size), value=False).view(
+            -1, self.chunk_size
+        )
         chunk_log_ratio = torch.sum(log_ratio * log_ratio_mask, dim=-1).view(-1, num_steps)
 
         # compute V(s_i)
@@ -146,8 +147,7 @@ class ChunkedExperienceMaker(ExperienceMaker):
             sequence_with_eos_mask = F.pad(attention_mask[:, :seq_len], (0, 1), value=False)
             # NOTE: sequences[:, :seq_len] must contain <eos> if sequences[:, seq_len - 1] is {<eos>, padding token}
             sequence_with_eos_mask[:, -1] = torch.logical_and(
-                sequences[:, seq_len - 1] != pad_token_id,
-                sequences[:, seq_len - 1] != eos_token_id
+                sequences[:, seq_len - 1] != pad_token_id, sequences[:, seq_len - 1] != eos_token_id
             )
             values[:, i] = self.critic(sequence_with_eos, sequence_with_eos_mask)
         final_rewards = self.reward_model(sequence_with_eos, sequence_with_eos_mask)
@@ -165,16 +165,12 @@ class ChunkedExperienceMaker(ExperienceMaker):
         end_flags[torch.arange(rewards.size(0)), num_valid_steps - 1] = True
 
         advantages, returns = self.compute_advantages_and_returns(
-            values, rewards, end_flags, num_steps, self.gamma, self.gae_lambda)
+            values, rewards, end_flags, num_steps, self.gamma, self.gae_lambda
+        )
 
-        experience = Experience(sequences,
-                                attention_mask,
-                                action_mask,
-                                step_mask,
-                                action_log_probs,
-                                values[:, :-1],
-                                returns,
-                                advantages)
+        experience = Experience(
+            sequences, attention_mask, action_mask, step_mask, action_log_probs, values[:, :-1], returns, advantages
+        )
 
         metrics = {
             "episode_rewards": rewards.sum(dim=-1).mean().item(),

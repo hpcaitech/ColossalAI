@@ -56,7 +56,7 @@ def make_and_consume_experience(strategy):
 
     actor, critic, initial_model, reward_model = strategy.prepare(actor, critic, initial_model, reward_model)
 
-    class MockTokenizer():
+    class MockTokenizer:
         def __init__(self):
             self.padding_side = "left"
             self.eos_token_id = 0
@@ -72,8 +72,8 @@ def make_and_consume_experience(strategy):
     # experience of all ranks should be the same
     for _ in range(2):
         data = get_data(EXPERIENCE_BATCH_SIZE)
-        assert gather_and_equal(data['input_ids'])
-        assert gather_and_equal(data['attention_mask'])
+        assert gather_and_equal(data["input_ids"])
+        assert gather_and_equal(data["attention_mask"])
         experience, _ = experience_maker.make_experience(**data, **generate_kwargs)
         num_actions = experience.action_log_probs.size(1)
         chunk_size = experience_maker.chunk_size

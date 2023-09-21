@@ -29,13 +29,14 @@ class PolicyLoss(nn.Module):
         super().__init__()
         self.clip_eps = clip_eps
 
-    def forward(self,
-                log_probs: torch.Tensor,
-                old_log_probs: torch.Tensor,
-                advantages: torch.Tensor,
-                action_mask: torch.Tensor,
-                chunk_size: int
-                ) -> torch.Tensor:
+    def forward(
+        self,
+        log_probs: torch.Tensor,
+        old_log_probs: torch.Tensor,
+        advantages: torch.Tensor,
+        action_mask: torch.Tensor,
+        chunk_size: int,
+    ) -> torch.Tensor:
         log_ratio = log_probs - old_log_probs
         num_steps = (log_ratio.size(1) + chunk_size - 1) // chunk_size
         log_ratio = F.pad(log_ratio, (0, (chunk_size - log_ratio.size(1)) % chunk_size)).view(-1, chunk_size)
@@ -58,11 +59,12 @@ class ValueLoss(nn.Module):
         super().__init__()
         self.clip_eps = clip_eps
 
-    def forward(self,
-                values: torch.Tensor,
-                old_values: torch.Tensor,
-                returns: torch.Tensor,
-                ) -> torch.Tensor:
+    def forward(
+        self,
+        values: torch.Tensor,
+        old_values: torch.Tensor,
+        returns: torch.Tensor,
+    ) -> torch.Tensor:
         values_clipped = old_values + (values - old_values).clamp(-self.clip_eps, self.clip_eps)
         surr1 = (values_clipped - returns) ** 2
         surr2 = (values - returns) ** 2

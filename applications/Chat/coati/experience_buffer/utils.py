@@ -34,8 +34,16 @@ class BufferItem:
 def split_experience_batch(experience: Experience) -> List[BufferItem]:
     batch_size = experience.sequences.size(0)
     batch_kwargs = [{} for _ in range(batch_size)]
-    keys = ('sequences', 'attention_mask', 'action_mask', 'step_mask',
-            'action_log_probs', 'values', 'returns', 'advantages')
+    keys = (
+        "sequences",
+        "attention_mask",
+        "action_mask",
+        "step_mask",
+        "action_log_probs",
+        "values",
+        "returns",
+        "advantages",
+    )
     for key in keys:
         value = getattr(experience, key)
         assert isinstance(value, torch.Tensor)
@@ -49,8 +57,16 @@ def split_experience_batch(experience: Experience) -> List[BufferItem]:
 
 def make_experience_batch(items: List[BufferItem]) -> Experience:
     kwargs = {}
-    keys = ('sequences', 'attention_mask', 'action_mask', 'step_mask',
-            'action_log_probs', 'values', 'returns', 'advantages')
+    keys = (
+        "sequences",
+        "attention_mask",
+        "action_mask",
+        "step_mask",
+        "action_log_probs",
+        "values",
+        "returns",
+        "advantages",
+    )
     for key in keys:
         vals = [getattr(item, key) for item in items]
         batch_data = torch.stack(vals, dim=0)
