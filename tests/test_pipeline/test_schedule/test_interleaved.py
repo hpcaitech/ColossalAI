@@ -16,7 +16,6 @@ from colossalai.testing.random import seed_all
 
 
 class MlpModel(nn.Module):
-
     def __init__(self):
         super(MlpModel, self).__init__()
         self.linear1 = nn.Linear(4, 8)
@@ -40,19 +39,20 @@ class MlpModel(nn.Module):
         return x
 
 
-def pp_linear_fwd(forward,
-                  data: torch.Tensor = None,
-                  input_obj: torch.Tensor = None,
-                  stage_mgr: PipelineStageManager = None,
-                  num_chunks: int = None,
-                  model_chunk_id: int = None):
-
+def pp_linear_fwd(
+    forward,
+    data: torch.Tensor = None,
+    input_obj: torch.Tensor = None,
+    stage_mgr: PipelineStageManager = None,
+    num_chunks: int = None,
+    model_chunk_id: int = None,
+):
     if stage_mgr.is_first_stage() and model_chunk_id == 0:
-        return {'input_obj': forward(data)}
+        return {"input_obj": forward(data)}
     elif stage_mgr.is_last_stage() and model_chunk_id == num_chunks - 1:
         return forward(input_obj)
     else:
-        return {'input_obj': forward(input_obj)}
+        return {"input_obj": forward(input_obj)}
 
 
 @parameterize("num_micro_batches", [4, 8, 12])
@@ -84,10 +84,11 @@ def examine_pp(num_micro_batches):
         if idx % (world_size) == local_rank:
             sub_model._forward = sub_model.forward
             sub_model.forward = MethodType(
-                partial(pp_linear_fwd,
-                        stage_mgr=stage_manager,
-                        num_chunks=NUM_CHUNKS,
-                        model_chunk_id=len(sharded_model)), sub_model._forward)
+                partial(
+                    pp_linear_fwd, stage_mgr=stage_manager, num_chunks=NUM_CHUNKS, model_chunk_id=len(sharded_model)
+                ),
+                sub_model._forward,
+            )
             sharded_model.append(sub_model.cuda())
 
     # create optimizer
@@ -109,16 +110,13 @@ def examine_pp(num_micro_batches):
     torch_loss = criterion(torch_output, _)
     torch_loss.backward()
 
-    pp_ret = schedule.forward_backward_step(sharded_model,
-                                            iter(input_list),
-                                            criterion,
-                                            pp_optimizer,
-                                            return_loss=True,
-                                            return_outputs=True)
+    pp_ret = schedule.forward_backward_step(
+        sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True, return_outputs=True
+    )
 
     # check loss
     if stage_manager.is_last_stage():
-        assert torch.allclose(torch_loss, pp_ret['loss'])
+        assert torch.allclose(torch_loss, pp_ret["loss"])
 
     # check gradients
     torch_grad = []
@@ -147,7 +145,7 @@ def examine_pp(num_micro_batches):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
     examine_pp()
 
 
@@ -157,5 +155,5 @@ def test_pp():
     spawn(run_dist, 4)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_pp()

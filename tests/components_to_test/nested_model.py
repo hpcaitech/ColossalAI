@@ -9,7 +9,6 @@ from .utils import DummyDataGenerator
 
 
 class SubNet(nn.Module):
-
     def __init__(self, out_features) -> None:
         super().__init__()
         self.bias = nn.Parameter(torch.zeros(out_features))
@@ -19,7 +18,6 @@ class SubNet(nn.Module):
 
 
 class NestedNet(CheckpointModule):
-
     def __init__(self, checkpoint=False) -> None:
         super().__init__(checkpoint)
         self.fc1 = nn.Linear(5, 5)
@@ -35,16 +33,14 @@ class NestedNet(CheckpointModule):
 
 
 class DummyDataLoader(DummyDataGenerator):
-
     def generate(self):
         data = torch.rand(16, 5)
         label = torch.randint(low=0, high=2, size=(16,))
         return data, label
 
 
-@non_distributed_component_funcs.register(name='nested_model')
+@non_distributed_component_funcs.register(name="nested_model")
 def get_training_components():
-
     def model_builder(checkpoint=False):
         return NestedNet(checkpoint)
 

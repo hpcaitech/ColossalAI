@@ -42,7 +42,6 @@ def is_rank_0() -> bool:
 
 
 def to_device(x: Any, device: torch.device) -> Any:
-
     def _to(t: Any):
         if isinstance(t, torch.Tensor):
             return t.to(device)

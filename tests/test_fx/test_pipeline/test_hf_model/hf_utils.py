@@ -1,11 +1,12 @@
-import torch
-from torch.fx import symbolic_trace
-from torch.fx import GraphModule
-from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, balanced_split_pass
-from colossalai.fx import ColoTracer
 import inspect
 import random
+
 import numpy as np
+import torch
+from torch.fx import GraphModule
+
+from colossalai.fx import ColoTracer
+from colossalai.fx.passes.adding_split_node_pass import balanced_split_pass, split_with_split_nodes_pass
 
 MANUAL_SEED = 0
 random.seed(MANUAL_SEED)
@@ -26,7 +27,7 @@ def split_model_and_compare_output(model, data_gen):
     # tracing model
     tracer = ColoTracer()
     try:
-        meta_args = {k: v.to('meta') for k, v in kwargs.items()}
+        meta_args = {k: v.to("meta") for k, v in kwargs.items()}
         graph = tracer.trace(root=model, meta_args=meta_args)
     except Exception as e:
         raise RuntimeError(f"Failed to trace {model.__class__.__name__}, error: {e}")
@@ -49,16 +50,16 @@ def split_model_and_compare_output(model, data_gen):
         output_part1 = model_part1(output_part0)
     else:
         if len(output_part0) > len(sig.parameters):
-            output_part0 = output_part0[:len(sig.parameters)]
+            output_part0 = output_part0[: len(sig.parameters)]
         output_part1 = model_part1(*output_part0)
 
     # get output tensor from HFOutput datastructure
-    if 'logits' in output:
-        output_to_compare = output['logits']
-    elif 'prediction_logits' in output:
-        output_to_compare = output['prediction_logits']
+    if "logits" in output:
+        output_to_compare = output["logits"]
+    elif "prediction_logits" in output:
+        output_to_compare = output["prediction_logits"]
     else:
-        output_to_compare = output['last_hidden_state']
+        output_to_compare = output["last_hidden_state"]
 
     # compare output
     if isinstance(output_part1, torch.Tensor):

@@ -21,7 +21,7 @@ def _adaptiveavgpool_module_mem_test(rank, world_size, port):
         port: port for initializing process group
     """
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = nn.Sequential(nn.AdaptiveAvgPool2d((16, 16))).cuda()
     input = torch.rand(4, 128, 64, 64).cuda()
     input.requires_grad = True
@@ -33,16 +33,18 @@ def _adaptiveavgpool_module_mem_test(rank, world_size, port):
     node_index = 1
     # total number of target strategies
     strategy_number = 1
-    mem_test_for_node_strategy(rank=rank,
-                               model=model,
-                               device_mesh=device_mesh,
-                               node_index=node_index,
-                               strategy_number=strategy_number,
-                               input_args=[input],
-                               meta_arg_names=['input'])
+    mem_test_for_node_strategy(
+        rank=rank,
+        model=model,
+        device_mesh=device_mesh,
+        node_index=node_index,
+        strategy_number=strategy_number,
+        input_args=[input],
+        meta_arg_names=["input"],
+    )
 
 
-@run_on_environment_flag(name='AUTO_PARALLEL')
+@run_on_environment_flag(name="AUTO_PARALLEL")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_adaptiveavgpool_meta_concrete_info_match():
@@ -60,7 +62,7 @@ def _maxpool_module_mem_test(rank, world_size, port):
         port: port for initializing process group
     """
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = nn.Sequential(nn.MaxPool2d((16, 16))).cuda()
     input = torch.rand(4, 128, 64, 64).cuda()
     input.requires_grad = True
@@ -72,22 +74,24 @@ def _maxpool_module_mem_test(rank, world_size, port):
     node_index = 1
     # total number of target node strategies
     strategy_number = 9
-    mem_test_for_node_strategy(rank=rank,
-                               model=model,
-                               device_mesh=device_mesh,
-                               node_index=node_index,
-                               strategy_number=strategy_number,
-                               input_args=[input],
-                               meta_arg_names=['input'])
+    mem_test_for_node_strategy(
+        rank=rank,
+        model=model,
+        device_mesh=device_mesh,
+        node_index=node_index,
+        strategy_number=strategy_number,
+        input_args=[input],
+        meta_arg_names=["input"],
+    )
 
 
-@run_on_environment_flag(name='AUTO_PARALLEL')
+@run_on_environment_flag(name="AUTO_PARALLEL")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_maxpool_meta_concrete_info_match():
     spawn(_maxpool_module_mem_test, 4)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_adaptiveavgpool_meta_concrete_info_match()
     test_maxpool_meta_concrete_info_match()

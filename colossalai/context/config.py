@@ -5,6 +5,7 @@ import inspect
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+
 from colossalai.logging import get_dist_logger
 
 
@@ -41,7 +42,7 @@ class Config(dict):
             self.__setattr__(key, value)
 
     def update(self, config):
-        assert isinstance(config, (Config, dict)), 'can only update dictionary or Config objects.'
+        assert isinstance(config, (Config, dict)), "can only update dictionary or Config objects."
         for k, v in config.items():
             self._add_item(k, v)
         return self
@@ -66,11 +67,11 @@ class Config(dict):
         elif isinstance(filename, Path):
             filepath = filename.absolute()
 
-        assert filepath.exists(), f'{filename} is not found, please check your configuration path'
+        assert filepath.exists(), f"{filename} is not found, please check your configuration path"
 
         # check extension
         extension = filepath.suffix
-        assert extension == '.py', 'only .py files are supported'
+        assert extension == ".py", "only .py files are supported"
 
         # import the config as module
         remove_path = False
@@ -86,13 +87,13 @@ class Config(dict):
         config = Config()
 
         for k, v in module.__dict__.items():
-            if k.startswith('__') or inspect.ismodule(v) or inspect.isclass(v):
+            if k.startswith("__") or inspect.ismodule(v) or inspect.isclass(v):
                 continue
             else:
                 config._add_item(k, v)
 
         logger = get_dist_logger()
-        logger.debug('variables which starts with __, is a module or class declaration are omitted in config file')
+        logger.debug("variables which starts with __, is a module or class declaration are omitted in config file")
 
         # remove module
         del sys.modules[module_name]

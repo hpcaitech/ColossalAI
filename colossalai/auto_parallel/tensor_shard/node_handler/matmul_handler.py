@@ -16,7 +16,7 @@ from colossalai.tensor.sharding_spec import ShardingSpecException
 
 from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy
 from ..utils import recover_sharding_spec_for_broadcast_shape
-from .node_handler import MetaInfoNodeHandler, NodeHandler
+from .node_handler import MetaInfoNodeHandler
 from .registry import operator_registry
 from .strategy import (
     BatchedMatMulStrategyGenerator,
@@ -37,6 +37,7 @@ class MatMulType(Enum):
     MV: matrix-vector product: the 1st tensor is 2D and the 2nd tensor is 1D
     BMM: batched matrix-matrix multiplication, one tensor is at least 1D and the other is at least 3D
     """
+
     DOT = 0
     MM = 1
     MV = 2
@@ -92,26 +93,26 @@ class Padder(BmmTransform):
 
     def apply(self, shape_mapping: Dict[str, List[int]]):
         mapping_copy = deepcopy(shape_mapping)
-        input_shape = mapping_copy['input']
-        other_shape = mapping_copy['other']
+        input_shape = mapping_copy["input"]
+        other_shape = mapping_copy["other"]
 
         if len(input_shape) == 1:
             # if the input is a 1D tensor, 1 is prepended to its shape
             # and it will be removed afterwards
             input_shape.insert(0, 1)
-            self.padded_dim_mapping['input'] = -2
-            self.padded_dim_mapping['output'] = -2
+            self.padded_dim_mapping["input"] = -2
+            self.padded_dim_mapping["output"] = -2
         elif len(other_shape) == 1:
             # if the other is a 1D tensor, 1 is appended to its shape
             # and it will be removed afterwards
             other_shape = other_shape.append(1)
-            self.padded_dim_mapping['other'] = -1
-            self.padded_dim_mapping['output'] = -1
+            self.padded_dim_mapping["other"] = -1
+            self.padded_dim_mapping["output"] = -1
         return mapping_copy
 
     def recover(self, op_data_mapping: Dict[str, OperationData], strategy: ShardingStrategy):
-        input_op_data = op_data_mapping['input']
-        other_op_data = op_data_mapping['other']
+        op_data_mapping["input"]
+        op_data_mapping["other"]
 
         def _remove_padded_dim(key, strategy):
             op_data = op_data_mapping[key]
@@ -131,7 +132,7 @@ class Padder(BmmTransform):
             # compute unpadded tensor shape
             tensor_shape.pop(padded_dim)
 
-            assert tensor_shape == list(op_data.data.shape), f'{tensor_shape} vs {list(op_data.data.shape)}'
+            assert tensor_shape == list(op_data.data.shape), f"{tensor_shape} vs {list(op_data.data.shape)}"
 
             # update sharding spec
             sharding_spec.__init__(sharding_spec.device_mesh, tensor_shape, unpadded_dim_partition_list)
@@ -142,15 +143,15 @@ class Padder(BmmTransform):
             strategy_copy = strategy.clone()
 
             # only one of input and other will be padded
-            if 'input' in self.padded_dim_mapping:
-                _remove_padded_dim('input', strategy_copy)
-                _remove_padded_dim('output', strategy_copy)
-            elif 'other' in self.padded_dim_mapping:
-                _remove_padded_dim('other', strategy_copy)
-                _remove_padded_dim('output', strategy_copy)
+            if "input" in self.padded_dim_mapping:
+                _remove_padded_dim("input", strategy_copy)
+                _remove_padded_dim("output", strategy_copy)
+            elif "other" in self.padded_dim_mapping:
+                _remove_padded_dim("other", strategy_copy)
+                _remove_padded_dim("output", strategy_copy)
 
             strategies.append(strategy_copy)
-        except ShardingSpecException as e:
+        except ShardingSpecException:
             pass
         return strategies
 
@@ -167,8 +168,8 @@ class Broadcaster(BmmTransform):
         mapping_copy = shape_mapping.copy()
 
         # get shapes
-        input_shape = mapping_copy['input']
-        other_shape = mapping_copy['other']
+        input_shape = mapping_copy["input"]
+        other_shape = mapping_copy["other"]
 
         # sanity check
         assert len(input_shape) > 1 and len(other_shape) > 1
@@ -179,16 +180,16 @@ class Broadcaster(BmmTransform):
         # store the broadcast dim info
         input_broadcast_dim_info = get_broadcast_dim_info(bcast_non_matrix_dims, input_shape[:-2])
         other_broadcast_dim_info = get_broadcast_dim_info(bcast_non_matrix_dims, other_shape[:-2])
-        self.broadcast_dim_info['input'] = input_broadcast_dim_info
-        self.broadcast_dim_info['other'] = other_broadcast_dim_info
+        self.broadcast_dim_info["input"] = input_broadcast_dim_info
+        self.broadcast_dim_info["other"] = other_broadcast_dim_info
 
         # create the full logical shape
         input_shape = bcast_non_matrix_dims + input_shape[-2:]
         other_shape = bcast_non_matrix_dims + other_shape[-2:]
         assert len(input_shape) == len(other_shape)
 
-        mapping_copy['input'] = input_shape
-        mapping_copy['other'] = other_shape
+        mapping_copy["input"] = input_shape
+        mapping_copy["other"] = other_shape
 
         return mapping_copy
 
@@ -216,17 +217,18 @@ class Broadcaster(BmmTransform):
             physical_sharding_spec, removed_dims = recover_sharding_spec_for_broadcast_shape(
                 logical_sharding_spec=sharding_spec,
                 logical_shape=sharding_spec.entire_shape,
-                physical_shape=tensor_shape_before_broadcast)
+                physical_shape=tensor_shape_before_broadcast,
+            )
             strategy.sharding_specs[op_data] = physical_sharding_spec
 
         # enumerate all sharding strategies
         strategies = []
         try:
             strategy_copy = strategy.clone()
-            _remove_sharding_on_broadcast_dim('input', strategy_copy)
-            _remove_sharding_on_broadcast_dim('other', strategy_copy)
+            _remove_sharding_on_broadcast_dim("input", strategy_copy)
+            _remove_sharding_on_broadcast_dim("other", strategy_copy)
             strategies.append(strategy_copy)
-        except ShardingSpecException as e:
+        except ShardingSpecException:
             pass
         return strategies
 
@@ -241,20 +243,20 @@ class Viewer(BmmTransform):
 
     def apply(self, shape_mapping: Dict[str, List[int]]):
         mapping_copy = shape_mapping.copy()
-        self.batch_dims_before_view = list(mapping_copy['input'][:-2])
+        self.batch_dims_before_view = list(mapping_copy["input"][:-2])
 
         # get shapes
-        input_shape = shape_mapping['input']
-        other_shape = shape_mapping['other']
+        input_shape = shape_mapping["input"]
+        other_shape = shape_mapping["other"]
 
         # view to 3d tensor
         assert len(input_shape) >= 3 and len(other_shape) >= 3
         input_shape = [reduce(operator.mul, input_shape[:-2])] + input_shape[-2:]
         other_shape = [reduce(operator.mul, other_shape[:-2])] + other_shape[-2:]
         output_shape = input_shape[:2] + other_shape[2:]
-        mapping_copy['input'] = input_shape
-        mapping_copy['other'] = other_shape
-        mapping_copy['output'] = output_shape
+        mapping_copy["input"] = input_shape
+        mapping_copy["other"] = other_shape
+        mapping_copy["output"] = output_shape
         return mapping_copy
 
     def recover(self, op_data_mapping: Dict[str, OperationData], strategy: ShardingStrategy):
@@ -291,11 +293,11 @@ class Viewer(BmmTransform):
             # create a new strategy
             strategy_copy = strategy.clone()
             try:
-                _update_sharding_spec('input', strategy_copy, i)
-                _update_sharding_spec('other', strategy_copy, i)
-                _update_sharding_spec('output', strategy_copy, i)
+                _update_sharding_spec("input", strategy_copy, i)
+                _update_sharding_spec("other", strategy_copy, i)
+                _update_sharding_spec("output", strategy_copy, i)
                 strategies.append(strategy_copy)
-            except ShardingSpecException as e:
+            except ShardingSpecException:
                 continue
         return strategies
 
@@ -312,14 +314,14 @@ def _get_bmm_logical_shape(input_shape, other_shape, transforms):
         3. reshape to 3 dimensions
 
     """
-    shape_mapping = {'input': input_shape, 'other': other_shape}
+    shape_mapping = {"input": input_shape, "other": other_shape}
 
     for transform in transforms:
         shape_mapping = transform.apply(shape_mapping)
 
-    input_shape = shape_mapping.get('input', None)
-    other_shape = shape_mapping.get('other', None)
-    output_shape = shape_mapping.get('output', None)
+    input_shape = shape_mapping.get("input", None)
+    other_shape = shape_mapping.get("other", None)
+    output_shape = shape_mapping.get("output", None)
 
     return input_shape, other_shape, output_shape
 
@@ -364,7 +366,8 @@ class MatMulHandler(MetaInfoNodeHandler):
             generators.append(MatVecStrategyGenerator(op_data_mapping, self.device_mesh))
         elif self.matmul_type == MatMulType.MM:
             generators.append(
-                LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh, linear_projection_type='linear'))
+                LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh, linear_projection_type="linear")
+            )
         return generators
 
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
@@ -372,7 +375,7 @@ class MatMulHandler(MetaInfoNodeHandler):
             MatMulType.DOT: self._get_logical_shape_for_dot,
             MatMulType.MM: self._get_logical_shape_for_mm,
             MatMulType.MV: self._get_logical_shape_for_mv,
-            MatMulType.BMM: self._get_logical_shape_for_bmm
+            MatMulType.BMM: self._get_logical_shape_for_bmm,
         }
         logical_shapes = logical_shape_func[self.matmul_type]()
         op_data_mapping = self._get_op_data_mapping(*logical_shapes)
@@ -390,20 +393,26 @@ class MatMulHandler(MetaInfoNodeHandler):
             output_logical_shape = torch.Size(output_logical_shape)
 
         # create op data
-        input_op_data = OperationData(name=str(self.node.args[0]),
-                                      type=OperationDataType.ARG,
-                                      data=self.input_meta_data,
-                                      logical_shape=input_logical_shape)
-        other_op_data = OperationData(name=str(self.node.args[1]),
-                                      type=OperationDataType.ARG,
-                                      data=self.other_meta_data,
-                                      logical_shape=other_logical_shape)
-        output_op_data = OperationData(name=str(self.node),
-                                       type=OperationDataType.OUTPUT,
-                                       data=self.output_meta_data,
-                                       logical_shape=output_logical_shape)
+        input_op_data = OperationData(
+            name=str(self.node.args[0]),
+            type=OperationDataType.ARG,
+            data=self.input_meta_data,
+            logical_shape=input_logical_shape,
+        )
+        other_op_data = OperationData(
+            name=str(self.node.args[1]),
+            type=OperationDataType.ARG,
+            data=self.other_meta_data,
+            logical_shape=other_logical_shape,
+        )
+        output_op_data = OperationData(
+            name=str(self.node),
+            type=OperationDataType.OUTPUT,
+            data=self.output_meta_data,
+            logical_shape=output_logical_shape,
+        )
 
-        mapping = {'input': input_op_data, 'other': other_op_data, 'output': output_op_data}
+        mapping = {"input": input_op_data, "other": other_op_data, "output": output_op_data}
         return mapping
 
     def _get_logical_shape_for_dot(self):
@@ -460,9 +469,11 @@ class MatMulHandler(MetaInfoNodeHandler):
                     dim_partition_dict[0] = shard
 
                 # re-init the sharding spec
-                input_sharding_spec.__init__(input_sharding_spec.device_mesh,
-                                             entire_shape=input_physical_shape,
-                                             dim_partition_dict=dim_partition_dict)
+                input_sharding_spec.__init__(
+                    input_sharding_spec.device_mesh,
+                    entire_shape=input_physical_shape,
+                    dim_partition_dict=dim_partition_dict,
+                )
                 return strategy
             else:
                 return strategy
@@ -481,7 +492,8 @@ class MatMulHandler(MetaInfoNodeHandler):
                         recovered_stragies.extend(output)
                     else:
                         raise TypeError(
-                            f"Found unexpected output type {type(output)} from the recover method of BmmTransform")
+                            f"Found unexpected output type {type(output)} from the recover method of BmmTransform"
+                        )
                 strategies = recovered_stragies
             for index, strategies in enumerate(strategies):
                 strategies.name = f"{strategies.name}_{index}"

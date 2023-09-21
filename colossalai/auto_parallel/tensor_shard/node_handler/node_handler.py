@@ -8,7 +8,6 @@ from colossalai.auto_parallel.meta_profiler.shard_metainfo import ShardMetaInfo,
 from colossalai.auto_parallel.tensor_shard.options import ShardOption, SolverPerference
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     OperationData,
-    OperationDataType,
     ShardingSpec,
     ShardingStrategy,
     StrategiesVector,
@@ -23,21 +22,23 @@ from .strategy import StrategyGenerator
 
 
 class NodeHandler(ABC):
-    '''
+    """
     The NodeHandler is an abstract class used to generate every possible strategies for an operator node.
 
     Args:
         node (Node): the input node in node argument list.
         device_mesh (DeviceMesh): A logical view of a physical mesh.
         strategies_vector (StrategiesVector): all the strategies generated in this handler will be recorded into the strategies_vector.
-    '''
+    """
 
-    def __init__(self,
-                 node: Node,
-                 device_mesh: DeviceMesh,
-                 strategies_vector: StrategiesVector,
-                 shard_option: ShardOption = ShardOption.STANDARD,
-                 solver_perference: SolverPerference = SolverPerference.STANDARD) -> None:
+    def __init__(
+        self,
+        node: Node,
+        device_mesh: DeviceMesh,
+        strategies_vector: StrategiesVector,
+        shard_option: ShardOption = ShardOption.STANDARD,
+        solver_perference: SolverPerference = SolverPerference.STANDARD,
+    ) -> None:
         self.node = node
         self.predecessor_node = list(node._input_nodes.keys())
         self.successor_node = list(node.users.keys())
@@ -68,8 +69,9 @@ class NodeHandler(ABC):
             current_sharding_spec = strategy.sharding_specs[op_data]
             # get the sharding specs for this node generated
             # in its own node handler
-            assert hasattr(node, 'strategies_vector'), \
-                f'The predecessor node {node_name} has no strategy vector to compute the resharding cost.'
+            assert hasattr(
+                node, "strategies_vector"
+            ), f"The predecessor node {node_name} has no strategy vector to compute the resharding cost."
             prev_strategy_vector = node.strategies_vector
             prev_sharding_specs = [
                 prev_strategy.get_sharding_spec_by_name(node_name) for prev_strategy in prev_strategy_vector
@@ -80,10 +82,10 @@ class NodeHandler(ABC):
                 resharding_costs[node] = []
 
             def _compute_resharding_cost(
-                    prev_sharding_spec: Union[ShardingSpec,
-                                              List[ShardingSpec]], current_sharding_spec: Union[ShardingSpec,
-                                                                                                List[ShardingSpec]],
-                    data: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]) -> TrainCycleItem:
+                prev_sharding_spec: Union[ShardingSpec, List[ShardingSpec]],
+                current_sharding_spec: Union[ShardingSpec, List[ShardingSpec]],
+                data: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]],
+            ) -> TrainCycleItem:
                 """
                 This is a helper function to compute the resharding cost for a specific strategy of a node.
                 """
@@ -94,30 +96,35 @@ class NodeHandler(ABC):
                         dtype = data.dtype
                         size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
                         _, _, consistency_cost = shape_consistency_manager.shape_consistency(
-                            prev_sharding_spec, current_sharding_spec)
+                            prev_sharding_spec, current_sharding_spec
+                        )
 
-                        resharding_cost = TrainCycleItem(fwd=consistency_cost["forward"] * size_per_elem_bytes,
-                                                         bwd=consistency_cost["backward"] * size_per_elem_bytes,
-                                                         total=consistency_cost["total"] * size_per_elem_bytes)
+                        resharding_cost = TrainCycleItem(
+                            fwd=consistency_cost["forward"] * size_per_elem_bytes,
+                            bwd=consistency_cost["backward"] * size_per_elem_bytes,
+                            total=consistency_cost["total"] * size_per_elem_bytes,
+                        )
                         return resharding_cost
                     else:
                         # This raise is used to check if we have missed any type of data.
                         # It could be merged into Parameter branch, which means we won't handle
                         # non-tensor arguments.
-                        raise ValueError(f'Unsupported data type {type(data)}')
+                        raise ValueError(f"Unsupported data type {type(data)}")
                 else:
-                    assert isinstance(prev_sharding_spec, (tuple, list)), \
-                        f'prev_sharding_spec should be in type of ShardingSpec, List[ShardingSpec], \
-                            or Tuple[ShardingSpec], but got {type(prev_sharding_spec)}'
+                    assert isinstance(
+                        prev_sharding_spec, (tuple, list)
+                    ), f"prev_sharding_spec should be in type of ShardingSpec, List[ShardingSpec], \
+                            or Tuple[ShardingSpec], but got {type(prev_sharding_spec)}"
 
                     fwd_cost = 0
                     bwd_cost = 0
                     total_cost = 0
-                    for index, (prev_sharding_spec_item,
-                                current_sharding_spec_item) in enumerate(zip(prev_sharding_spec,
-                                                                             current_sharding_spec)):
-                        item_cost = _compute_resharding_cost(prev_sharding_spec_item, current_sharding_spec_item,
-                                                             data[index])
+                    for index, (prev_sharding_spec_item, current_sharding_spec_item) in enumerate(
+                        zip(prev_sharding_spec, current_sharding_spec)
+                    ):
+                        item_cost = _compute_resharding_cost(
+                            prev_sharding_spec_item, current_sharding_spec_item, data[index]
+                        )
                         fwd_cost += item_cost.fwd
                         bwd_cost += item_cost.bwd
                         total_cost += item_cost.total
@@ -138,17 +145,17 @@ class NodeHandler(ABC):
         This function is used to get the target function for the node handler.
         The target function is used to analyze the costs of strategies.
         """
-        if self.node.op in ('placeholder', 'get_attr', 'output'):
+        if self.node.op in ("placeholder", "get_attr", "output"):
             return None
 
-        if self.node.op == 'call_module':
+        if self.node.op == "call_module":
             target = self.node.graph.owning_module.get_submodule(self.node.target)
-        elif self.node.op == 'call_function':
+        elif self.node.op == "call_function":
             target = self.node.target
-        elif self.node.op == 'call_method':
+        elif self.node.op == "call_method":
             target = getattr(self.node.args[0]._meta_data.__class__, self.node.target)
         else:
-            raise ValueError(f'Unsupported node type: {self.node.op}')
+            raise ValueError(f"Unsupported node type: {self.node.op}")
 
         return target
 
@@ -221,7 +228,6 @@ class NodeHandler(ABC):
         """
         Define which generators should be used by this NodeHandler object.
         """
-        pass
 
     @abstractmethod
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
@@ -244,7 +250,6 @@ class NodeHandler(ABC):
                 "output": Operand(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data),
             }
         """
-        pass
 
 
 class MetaInfoNodeHandler(NodeHandler):
@@ -278,19 +283,19 @@ class MetaInfoNodeHandler(NodeHandler):
 
         else:
             logger = get_dist_logger()
-            logger.warning(f'The target function {target} is not patched yet, ')
+            logger.warning(f"The target function {target} is not patched yet, ")
 
         return self.strategies_vector
 
 
 class ModuleHandler(NodeHandler):
-
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         # set attributes to access module parameters for convenience
-        assert self.node.graph.owning_module is not None, \
-            f'The graph is not associated with a module, please make sure it can be used to instantiate a GraphModule object.'
+        assert (
+            self.node.graph.owning_module is not None
+        ), f"The graph is not associated with a module, please make sure it can be used to instantiate a GraphModule object."
         module = self.node.graph.owning_module.get_submodule(self.node.target)
         named_parameters = list(module.named_parameters(recurse=False))
         named_buffers = list(module.named_buffers(recurse=False))
@@ -333,6 +338,6 @@ class MetaInfoModuleHandler(ModuleHandler):
 
         else:
             logger = get_dist_logger()
-            logger.warning(f'The target function {target} is not patched yet')
+            logger.warning(f"The target function {target} is not patched yet")
 
         return self.strategies_vector

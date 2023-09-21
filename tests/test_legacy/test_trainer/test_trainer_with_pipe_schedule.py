@@ -10,12 +10,13 @@ from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
 import colossalai
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.trainer import Trainer
+from colossalai.legacy.utils import get_dataloader
 from colossalai.logging import get_dist_logger
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from colossalai.utils import MultiTimer, get_dataloader
+from colossalai.utils import MultiTimer
 
 BATCH_SIZE = 4
 IMG_SIZE = 32
@@ -28,7 +29,9 @@ CONFIG = dict(
 
 
 def run_trainer_with_pipeline(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.legacy.launch(
+        config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl"
+    )
 
     # build model
     model = resnet18(num_classes=10)
@@ -38,35 +41,35 @@ def run_trainer_with_pipeline(rank, world_size, port):
     elif gpc.get_local_rank(ParallelMode.PIPELINE) == 1:
 
         class Flatten(nn.Module):
-
             def forward(self, x):
                 return torch.flatten(x, 1)
 
         model = nn.Sequential(model.layer3, model.layer4, model.avgpool, Flatten(), model.fc)
 
     # build dataloaders
-    train_dataset = CIFAR10(root=Path(os.environ['DATA']),
-                            download=True,
-                            transform=transforms.Compose([
-                                transforms.Resize(size=(IMG_SIZE, IMG_SIZE)),
-                                transforms.ToTensor(),
-                                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-                            ]))
+    train_dataset = CIFAR10(
+        root=Path(os.environ["DATA"]),
+        download=True,
+        transform=transforms.Compose(
+            [
+                transforms.Resize(size=(IMG_SIZE, IMG_SIZE)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
+            ]
+        ),
+    )
 
-    train_dataloader = get_dataloader(dataset=train_dataset,
-                                      shuffle=True,
-                                      batch_size=BATCH_SIZE,
-                                      pin_memory=True,
-                                      drop_last=True)
+    train_dataloader = get_dataloader(
+        dataset=train_dataset, shuffle=True, batch_size=BATCH_SIZE, pin_memory=True, drop_last=True
+    )
 
     # build optimizer
     optimizer = Adam(model.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
 
-    engine, train_dataloader, *args = colossalai.initialize(model=model,
-                                                            optimizer=optimizer,
-                                                            criterion=criterion,
-                                                            train_dataloader=train_dataloader)
+    engine, train_dataloader, *args = colossalai.legacy.initialize(
+        model=model, optimizer=optimizer, criterion=criterion, train_dataloader=train_dataloader
+    )
 
     logger = get_dist_logger()
     logger.info("engine is built", ranks=[0])
@@ -76,11 +79,9 @@ def run_trainer_with_pipeline(rank, world_size, port):
 
     logger.info("start training", ranks=[0])
 
-    trainer.fit(train_dataloader=train_dataloader,
-                epochs=NUM_EPOCHS,
-                max_steps=3,
-                display_progress=True,
-                test_interval=5)
+    trainer.fit(
+        train_dataloader=train_dataloader, epochs=NUM_EPOCHS, max_steps=3, display_progress=True, test_interval=5
+    )
     gpc.destroy()
     torch.cuda.empty_cache()
 
@@ -92,5 +93,5 @@ def test_trainer_with_pipeline():
     spawn(run_trainer_with_pipeline, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_trainer_with_pipeline()

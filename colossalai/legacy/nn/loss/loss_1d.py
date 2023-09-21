@@ -3,13 +3,12 @@ import torch.distributed as dist
 from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.nn.modules.loss import _Loss
 
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.registry import LOSSES
 
 
 class _VocabParallelCrossEntropy1D(torch.autograd.Function):
-
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, vocab_parallel_logits, targets, process_group):
@@ -61,7 +60,6 @@ class _VocabParallelCrossEntropy1D(torch.autograd.Function):
     @staticmethod
     @custom_bwd
     def backward(ctx, grad_output):
-
         # Retrieve tensors from the forward path.
         softmax, target_mask, masked_target_1d = ctx.saved_tensors
 
@@ -73,7 +71,7 @@ class _VocabParallelCrossEntropy1D(torch.autograd.Function):
 
         # Add the gradient from matching classes.
         arange_1d = torch.arange(start=0, end=grad_2d.size()[0], device=grad_2d.device)
-        grad_2d[arange_1d, masked_target_1d] -= (1.0 - target_mask.view(-1).float())
+        grad_2d[arange_1d, masked_target_1d] -= 1.0 - target_mask.view(-1).float()
 
         # Finally elementwise multiplication with the output gradients.
         grad_input.mul_(grad_output.unsqueeze(dim=-1))

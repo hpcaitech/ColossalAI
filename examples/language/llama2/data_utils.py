@@ -12,21 +12,22 @@ from colossalai.utils import get_current_device
 
 
 class StatefulDistributedSampler(DistributedSampler):
-
-    def __init__(self,
-                 dataset: Dataset,
-                 num_replicas: Optional[int] = None,
-                 rank: Optional[int] = None,
-                 shuffle: bool = True,
-                 seed: int = 0,
-                 drop_last: bool = False) -> None:
+    def __init__(
+        self,
+        dataset: Dataset,
+        num_replicas: Optional[int] = None,
+        rank: Optional[int] = None,
+        shuffle: bool = True,
+        seed: int = 0,
+        drop_last: bool = False,
+    ) -> None:
         super().__init__(dataset, num_replicas, rank, shuffle, seed, drop_last)
         self.start_index: int = 0
 
     def __iter__(self) -> Iterator:
         iterator = super().__iter__()
         indices = list(iterator)
-        indices = indices[self.start_index:]
+        indices = indices[self.start_index :]
         return iter(indices)
 
     def __len__(self) -> int:
@@ -36,15 +37,17 @@ class StatefulDistributedSampler(DistributedSampler):
         self.start_index = start_index
 
 
-def prepare_dataloader(dataset,
-                       batch_size,
-                       shuffle=False,
-                       seed=1024,
-                       drop_last=False,
-                       pin_memory=False,
-                       num_workers=0,
-                       process_group: Optional[ProcessGroup] = None,
-                       **kwargs):
+def prepare_dataloader(
+    dataset,
+    batch_size,
+    shuffle=False,
+    seed=1024,
+    drop_last=False,
+    pin_memory=False,
+    num_workers=0,
+    process_group: Optional[ProcessGroup] = None,
+    **kwargs,
+):
     r"""
     Prepare a dataloader for distributed training. The dataloader will be wrapped by
     `torch.utils.data.DataLoader` and `StatefulDistributedSampler`.
@@ -68,10 +71,9 @@ def prepare_dataloader(dataset,
     """
     _kwargs = kwargs.copy()
     process_group = process_group or _get_default_group()
-    sampler = StatefulDistributedSampler(dataset,
-                                         num_replicas=process_group.size(),
-                                         rank=process_group.rank(),
-                                         shuffle=shuffle)
+    sampler = StatefulDistributedSampler(
+        dataset, num_replicas=process_group.size(), rank=process_group.rank(), shuffle=shuffle
+    )
 
     # Deterministic dataloader
     def seed_worker(worker_id):
@@ -80,28 +82,29 @@ def prepare_dataloader(dataset,
         torch.manual_seed(worker_seed)
         random.seed(worker_seed)
 
-    return DataLoader(dataset,
-                      batch_size=batch_size,
-                      sampler=sampler,
-                      worker_init_fn=seed_worker,
-                      drop_last=drop_last,
-                      pin_memory=pin_memory,
-                      num_workers=num_workers,
-                      **_kwargs)
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        sampler=sampler,
+        worker_init_fn=seed_worker,
+        drop_last=drop_last,
+        pin_memory=pin_memory,
+        num_workers=num_workers,
+        **_kwargs,
+    )
 
 
 def load_json(file_path: str):
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         return json.load(f)
 
 
 def save_json(data, file_path: str):
-    with open(file_path, 'w') as f:
+    with open(file_path, "w") as f:
         json.dump(data, f, indent=4)
 
 
 class RandomDataset(Dataset):
-
     def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000):
         self.num_samples = num_samples
         self.max_length = max_length
@@ -113,7 +116,7 @@ class RandomDataset(Dataset):
 
     def __getitem__(self, idx):
         return {
-            'input_ids': self.input_ids[idx],
-            'attention_mask': self.attention_mask[idx],
-            'labels': self.input_ids[idx]
+            "input_ids": self.input_ids[idx],
+            "attention_mask": self.attention_mask[idx],
+            "labels": self.input_ids[idx],
         }

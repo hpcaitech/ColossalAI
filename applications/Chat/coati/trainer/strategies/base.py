@@ -19,7 +19,7 @@ _BoostArgSpec = Union[nn.Module, Tuple[nn.Module, Optimizer], Dict]
 
 class Strategy(ABC):
     """
-        Base class for training strategies.
+    Base class for training strategies.
     """
 
     def __init__(self, plugin_initializer: Callable[..., Optional[Plugin]] = lambda: None) -> None:
@@ -83,16 +83,18 @@ class Strategy(ABC):
                 rets.append((model, optimizer))
             elif isinstance(arg, Dict):
                 model, optimizer, criterion, dataloader, lr_scheduler = self.booster.boost(**arg)
-                boost_result = dict(model=model,
-                                    optimizer=optimizer,
-                                    criterion=criterion,
-                                    dataloader=dataloader,
-                                    lr_scheduler=lr_scheduler)
+                boost_result = dict(
+                    model=model,
+                    optimizer=optimizer,
+                    criterion=criterion,
+                    dataloader=dataloader,
+                    lr_scheduler=lr_scheduler,
+                )
                 # remove None values
                 boost_result = {key: value for key, value in boost_result.items() if value is not None}
                 rets.append(boost_result)
             else:
-                raise RuntimeError(f'Type {type(arg)} is not supported')
+                raise RuntimeError(f"Type {type(arg)} is not supported")
 
         return rets[0] if len(rets) == 1 else rets
 
@@ -125,11 +127,9 @@ class Strategy(ABC):
         return DistributedSampler(dataset, 1, 0)
 
     @abstractmethod
-    def save_pretrained(self,
-                        model: nn.Module,
-                        path: str,
-                        only_rank0: bool = True,
-                        tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+    def save_pretrained(
+        self, model: nn.Module, path: str, only_rank0: bool = True, tokenizer: Optional[PreTrainedTokenizerBase] = None
+    ) -> None:
         pass
 
     @abstractmethod

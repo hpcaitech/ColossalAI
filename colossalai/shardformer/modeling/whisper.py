@@ -1,6 +1,6 @@
 import logging
 import random
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -24,7 +24,6 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 
 
 def get_whisper_flash_attention_forward():
-
     from transformers.models.whisper.modeling_whisper import WhisperAttention
 
     from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
@@ -53,8 +52,11 @@ def get_whisper_flash_attention_forward():
         # `past_key_value[0].shape[2] == key_value_states.shape[1]`
         # is checking that the `sequence_length` of the `past_key_value` is the same as
         # the provided `key_value_states` to support prefix tuning
-        if (is_cross_attention and past_key_value is not None
-                and past_key_value[0].shape[1] == key_value_states.shape[1]):
+        if (
+            is_cross_attention
+            and past_key_value is not None
+            and past_key_value[0].shape[1] == key_value_states.shape[1]
+        ):
             # reuse k,v, cross_attentions
             key_states = past_key_value[0]
             value_states = past_key_value[1]
@@ -89,8 +91,10 @@ def get_whisper_flash_attention_forward():
         src_len = key_states.size(1)
         if layer_head_mask is not None:
             if layer_head_mask.size() != (self.num_heads,):
-                raise ValueError(f"Head mask for a single layer should be of size {(self.num_heads,)}, but is"
-                                 f" {layer_head_mask.size()}")
+                raise ValueError(
+                    f"Head mask for a single layer should be of size {(self.num_heads,)}, but is"
+                    f" {layer_head_mask.size()}"
+                )
 
         attn_type = None
         flash_attention_mask = None
@@ -104,15 +108,12 @@ def get_whisper_flash_attention_forward():
                 flash_attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool).contiguous())
                 attn_type = AttnMaskType.paddedcausal
 
-        attention = ColoAttention(embed_dim=self.embed_dim,
-                                  num_heads=self.num_heads,
-                                  dropout=self.dropout,
-                                  scale=self.scaling)
-        attn_output = attention(query_states,
-                                key_states,
-                                value_states,
-                                attn_mask=flash_attention_mask,
-                                attn_mask_type=attn_type)
+        attention = ColoAttention(
+            embed_dim=self.embed_dim, num_heads=self.num_heads, dropout=self.dropout, scale=self.scaling
+        )
+        attn_output = attention(
+            query_states, key_states, value_states, attn_mask=flash_attention_mask, attn_mask_type=attn_type
+        )
 
         attn_output = self.out_proj(attn_output)
 
@@ -122,7 +123,6 @@ def get_whisper_flash_attention_forward():
 
 
 def get_jit_fused_whisper_encoder_layer_forward():
-
     from transformers.models.whisper.modeling_whisper import WhisperEncoderLayer
 
     def forward(
@@ -160,8 +160,9 @@ def get_jit_fused_whisper_encoder_layer_forward():
         hidden_states = self.fc2(hidden_states)
         hidden_states = self.dropout_add(hidden_states, residual, self.dropout, self.training)
 
-        if hidden_states.dtype == torch.float16 and (torch.isinf(hidden_states).any()
-                                                     or torch.isnan(hidden_states).any()):
+        if hidden_states.dtype == torch.float16 and (
+            torch.isinf(hidden_states).any() or torch.isnan(hidden_states).any()
+        ):
             clamp_value = torch.finfo(hidden_states.dtype).max - 1000
             hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
 
@@ -176,7 +177,6 @@ def get_jit_fused_whisper_encoder_layer_forward():
 
 
 def get_jit_fused_whisper_decoder_layer_forward():
-
     from transformers.models.whisper.modeling_whisper import WhisperDecoderLayer
 
     def forward(
@@ -269,10 +269,10 @@ def get_jit_fused_whisper_decoder_layer_forward():
 
 
 class WhisperPipelineForwards:
-    '''
+    """
     This class serves as a micro library for forward function substitution of Llama models
     under pipeline setting.
-    '''
+    """
 
     @staticmethod
     def whisper_encoder_forward(
@@ -315,15 +315,16 @@ class WhisperPipelineForwards:
             return_dict (`bool`, *optional*):
                 Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
         """
-        logger = logging.get_logger(__name__)
+        logging.get_logger(__name__)
 
         stage = stage_manager.stage
-        at_first_stage = (stage == 0)
-        at_last_stage = (stage == decoder_starting_stage - 1)
+        at_first_stage = stage == 0
+        at_last_stage = stage == decoder_starting_stage - 1
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (output_hidden_states
-                                if output_hidden_states is not None else self.config.output_hidden_states)
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # Process inputs if at the first stage of encoder.
@@ -349,7 +350,8 @@ class WhisperPipelineForwards:
         else:
             if hidden_states is None:
                 raise ValueError(
-                    "hidden_states shouldn't be None for stages other than the first stage of encoder/decoder.")
+                    "hidden_states shouldn't be None for stages other than the first stage of encoder/decoder."
+                )
 
         start_idx, end_idx = stage_index[0], stage_index[1]
 
@@ -360,13 +362,12 @@ class WhisperPipelineForwards:
                 encoder_states = encoder_states + (hidden_states,)
             # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
             dropout_probability = random.uniform(0, 1)
-            if self.training and (dropout_probability < self.layerdrop):    # skip the layer
+            if self.training and (dropout_probability < self.layerdrop):  # skip the layer
                 layer_outputs = (None, None)
             else:
                 if self.gradient_checkpointing and self.training:
 
                     def create_custom_forward(module):
-
                         def custom_forward(*inputs):
                             return module(*inputs, output_attentions)
 
@@ -398,12 +399,12 @@ class WhisperPipelineForwards:
 
             if not return_dict:
                 return tuple(v for v in [hidden_states, encoder_states, all_attentions] if v is not None)
-            return BaseModelOutput(last_hidden_state=hidden_states,
-                                   hidden_states=encoder_states,
-                                   attentions=all_attentions)
+            return BaseModelOutput(
+                last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions
+            )
 
         else:
-            return {'hidden_states': hidden_states, 'head_mask': head_mask}
+            return {"hidden_states": hidden_states, "head_mask": head_mask}
 
     @staticmethod
     def whisper_decoder_forward(
@@ -483,12 +484,13 @@ class WhisperPipelineForwards:
         """
         logger = logging.get_logger(__name__)
         stage = stage_manager.stage
-        at_first_stage = (stage == decoder_starting_stage)
-        at_last_stage = (stage == stage_manager.num_stages - 1)
+        at_first_stage = stage == decoder_starting_stage
+        at_last_stage = stage == stage_manager.num_stages - 1
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (output_hidden_states
-                                if output_hidden_states is not None else self.config.output_hidden_states)
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -503,7 +505,8 @@ class WhisperPipelineForwards:
             if attn_mask is not None:
                 assert attn_mask.size()[0] == (len(self.layers)), (
                     f"The `{mask_name}` should be specified for {len(self.layers)} layers, but it is for"
-                    f" {head_mask.size()[0]}.")
+                    f" {head_mask.size()[0]}."
+                )
 
         # past_key_values_length
         past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
@@ -529,8 +532,9 @@ class WhisperPipelineForwards:
             else:
                 positions = self.embed_positions(inputs_embeds, past_key_values_length=past_key_values_length)
 
-            attention_mask = self._prepare_decoder_attention_mask(attention_mask, input_shape, inputs_embeds,
-                                                                  past_key_values_length)
+            attention_mask = self._prepare_decoder_attention_mask(
+                attention_mask, input_shape, inputs_embeds, past_key_values_length
+            )
 
             hidden_states = inputs_embeds + positions
             hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
@@ -543,14 +547,15 @@ class WhisperPipelineForwards:
                     use_cache = False
 
         else:
-
             if hidden_states is None:
                 raise ValueError(
-                    "hidden_states shouldn't be None for stages other than the first stage of encoder/decoder.")
+                    "hidden_states shouldn't be None for stages other than the first stage of encoder/decoder."
+                )
             input_shape = hidden_states.size()[:-1]
 
-            attention_mask = self._prepare_decoder_attention_mask(attention_mask, input_shape, hidden_states,
-                                                                  past_key_values_length)
+            attention_mask = self._prepare_decoder_attention_mask(
+                attention_mask, input_shape, hidden_states, past_key_values_length
+            )
 
         start_idx, end_idx = stage_index[0], stage_index[1]
 
@@ -569,7 +574,6 @@ class WhisperPipelineForwards:
             if self.gradient_checkpointing and self.training:
 
                 def create_custom_forward(module):
-
                     def custom_forward(*inputs):
                         # None for past_key_value
                         return module(*inputs, output_attentions, use_cache)
@@ -581,10 +585,10 @@ class WhisperPipelineForwards:
                     hidden_states,
                     attention_mask,
                     encoder_hidden_states,
-                    None,    # encoder attention mask
+                    None,  # encoder attention mask
                     head_mask[idx] if head_mask is not None else None,
                     cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None,
-                    None,    # past_key_value
+                    None,  # past_key_value
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -592,8 +596,9 @@ class WhisperPipelineForwards:
                     attention_mask=attention_mask,
                     encoder_hidden_states=encoder_hidden_states,
                     layer_head_mask=(head_mask[idx] if head_mask is not None else None),
-                    cross_attn_layer_head_mask=(cross_attn_head_mask[idx]
-                                                if cross_attn_head_mask is not None else None),
+                    cross_attn_layer_head_mask=(
+                        cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None
+                    ),
                     past_key_value=past_key_value,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
@@ -617,8 +622,10 @@ class WhisperPipelineForwards:
             next_cache = next_decoder_cache if use_cache else None
             if not return_dict:
                 return tuple(
-                    v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns, all_cross_attentions]
-                    if v is not None)
+                    v
+                    for v in [hidden_states, next_cache, all_hidden_states, all_self_attns, all_cross_attentions]
+                    if v is not None
+                )
             return BaseModelOutputWithPastAndCrossAttentions(
                 last_hidden_state=hidden_states,
                 past_key_values=next_cache,
@@ -629,9 +636,9 @@ class WhisperPipelineForwards:
 
         else:
             return {
-                'head_mask': head_mask,
-                'cross_attn_head_mask': cross_attn_head_mask,
-                'hidden_states': hidden_states,
+                "head_mask": head_mask,
+                "cross_attn_head_mask": cross_attn_head_mask,
+                "hidden_states": hidden_states,
             }
 
     @staticmethod
@@ -678,23 +685,24 @@ class WhisperPipelineForwards:
          ```"""
         # TODO: left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if past_key_values:
-            logger.warning_once('Non-empty past_key_values is not supported for pipeline models at the moment.')
+            logger.warning_once("Non-empty past_key_values is not supported for pipeline models at the moment.")
             past_key_values = None
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
         if use_cache:
-            logger.warning_once('use_cache=True is not supported for pipeline models at the moment.')
+            logger.warning_once("use_cache=True is not supported for pipeline models at the moment.")
             use_cache = False
 
-        logger = logging.get_logger(__name__)
+        logging.get_logger(__name__)
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (output_hidden_states
-                                if output_hidden_states is not None else self.config.output_hidden_states)
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         in_decoder = stage_manager.stage >= decoder_starting_stage
@@ -712,14 +720,15 @@ class WhisperPipelineForwards:
                     stage_manager=stage_manager,
                     hidden_states=hidden_states,
                     stage_index=stage_index,
-                    decoder_starting_stage=decoder_starting_stage)
+                    decoder_starting_stage=decoder_starting_stage,
+                )
 
                 if stage_manager.stage == decoder_starting_stage - 1:
                     # last stage of encoder
-                    return {'encoder_hidden_states': encoder_outputs[0]}
+                    return {"encoder_hidden_states": encoder_outputs[0]}
                 else:
                     return encoder_outputs
-        # If the user passed a tuple for encoder_outputs, we wrap it in a BaseModelOutput when return_dict=True
+            # If the user passed a tuple for encoder_outputs, we wrap it in a BaseModelOutput when return_dict=True
             elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
                 encoder_outputs = BaseModelOutput(
                     last_hidden_state=encoder_outputs[0],
@@ -738,27 +747,29 @@ class WhisperPipelineForwards:
             raise ValueError("If not at the first layer of decoder, non-empty hidden_states must be provided.")
 
         # decoder outputs consists of (dec_features, past_key_value, dec_hidden, dec_attn)
-        decoder_outputs = WhisperPipelineForwards.whisper_decoder_forward(self.decoder,
-                                                                          input_ids=decoder_input_ids,
-                                                                          attention_mask=decoder_attention_mask,
-                                                                          encoder_hidden_states=encoder_hidden_states,
-                                                                          head_mask=decoder_head_mask,
-                                                                          cross_attn_head_mask=cross_attn_head_mask,
-                                                                          past_key_values=past_key_values,
-                                                                          inputs_embeds=decoder_inputs_embeds,
-                                                                          use_cache=use_cache,
-                                                                          output_attentions=output_attentions,
-                                                                          output_hidden_states=output_hidden_states,
-                                                                          return_dict=return_dict,
-                                                                          stage_manager=stage_manager,
-                                                                          hidden_states=hidden_states,
-                                                                          stage_index=stage_index,
-                                                                          decoder_starting_stage=decoder_starting_stage)
+        decoder_outputs = WhisperPipelineForwards.whisper_decoder_forward(
+            self.decoder,
+            input_ids=decoder_input_ids,
+            attention_mask=decoder_attention_mask,
+            encoder_hidden_states=encoder_hidden_states,
+            head_mask=decoder_head_mask,
+            cross_attn_head_mask=cross_attn_head_mask,
+            past_key_values=past_key_values,
+            inputs_embeds=decoder_inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            stage_manager=stage_manager,
+            hidden_states=hidden_states,
+            stage_index=stage_index,
+            decoder_starting_stage=decoder_starting_stage,
+        )
 
         # Directly return outputs of overloaded Whisper forward if not at last stage.
         if not at_last_decoder_stage:
             # encoder_hidden_states should be passed to the next stage
-            decoder_outputs['encoder_hidden_states'] = encoder_hidden_states
+            decoder_outputs["encoder_hidden_states"] = encoder_hidden_states
             return decoder_outputs
 
         if not return_dict:
@@ -830,36 +841,39 @@ class WhisperPipelineForwards:
 
         if labels is not None:
             if decoder_input_ids is None and decoder_inputs_embeds is None:
-                decoder_input_ids = shift_tokens_right(labels, self.config.pad_token_id,
-                                                       self.config.decoder_start_token_id)
+                decoder_input_ids = shift_tokens_right(
+                    labels, self.config.pad_token_id, self.config.decoder_start_token_id
+                )
         in_decoder = stage_manager.stage >= decoder_starting_stage
         at_last_decoder_stage = stage_manager.is_last_stage()
-        outputs = WhisperPipelineForwards.whisper_model_forward(self.model,
-                                                                input_features,
-                                                                attention_mask=attention_mask,
-                                                                decoder_input_ids=decoder_input_ids,
-                                                                encoder_outputs=encoder_outputs,
-                                                                decoder_attention_mask=decoder_attention_mask,
-                                                                head_mask=head_mask,
-                                                                decoder_head_mask=decoder_head_mask,
-                                                                cross_attn_head_mask=cross_attn_head_mask,
-                                                                past_key_values=past_key_values,
-                                                                decoder_inputs_embeds=decoder_inputs_embeds,
-                                                                use_cache=use_cache,
-                                                                output_attentions=output_attentions,
-                                                                output_hidden_states=output_hidden_states,
-                                                                return_dict=return_dict,
-                                                                stage_manager=stage_manager,
-                                                                hidden_states=hidden_states,
-                                                                encoder_hidden_states=encoder_hidden_states,
-                                                                stage_index=stage_index,
-                                                                decoder_starting_stage=decoder_starting_stage)
+        outputs = WhisperPipelineForwards.whisper_model_forward(
+            self.model,
+            input_features,
+            attention_mask=attention_mask,
+            decoder_input_ids=decoder_input_ids,
+            encoder_outputs=encoder_outputs,
+            decoder_attention_mask=decoder_attention_mask,
+            head_mask=head_mask,
+            decoder_head_mask=decoder_head_mask,
+            cross_attn_head_mask=cross_attn_head_mask,
+            past_key_values=past_key_values,
+            decoder_inputs_embeds=decoder_inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            stage_manager=stage_manager,
+            hidden_states=hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            stage_index=stage_index,
+            decoder_starting_stage=decoder_starting_stage,
+        )
         if not in_decoder:
             return outputs
 
         if not at_last_decoder_stage:
             # encoder_hidden_states should be passed to the next stage
-            outputs['encoder_hidden_states'] = encoder_hidden_states
+            outputs["encoder_hidden_states"] = encoder_hidden_states
             return outputs
 
         lm_logits = self.proj_out(outputs[0])
@@ -909,8 +923,9 @@ class WhisperPipelineForwards:
         Please refer to original code of transformers for more details.
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (output_hidden_states
-                                if output_hidden_states is not None else self.config.output_hidden_states)
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # audio_classification only holds encoder

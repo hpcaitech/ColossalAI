@@ -34,15 +34,16 @@ class LRSchedulerHook(MetricHook):
 
     def after_hook_is_attached(self, trainer):
         self._check_metric_states_initialization(trainer)
-        trainer.states['metrics']['train']['LR'] = LearningRateMetric(epoch_only=self.by_epoch,
-                                                                      initial_lr=self.lr_scheduler.get_last_lr()[0])
+        trainer.states["metrics"]["train"]["LR"] = LearningRateMetric(
+            epoch_only=self.by_epoch, initial_lr=self.lr_scheduler.get_last_lr()[0]
+        )
 
     def after_train_epoch(self, trainer):
         if self.by_epoch:
             self.lr_scheduler.step()
-            trainer.states['metrics']['train']['LR'].update(self.lr_scheduler.get_last_lr()[0])
+            trainer.states["metrics"]["train"]["LR"].update(self.lr_scheduler.get_last_lr()[0])
 
     def after_train_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
         if not self.by_epoch:
             self.lr_scheduler.step()
-            trainer.states['metrics']['train']['LR'].update(self.lr_scheduler.get_last_lr()[0])
+            trainer.states["metrics"]["train"]["LR"].update(self.lr_scheduler.get_last_lr()[0])

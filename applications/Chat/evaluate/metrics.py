@@ -21,13 +21,17 @@ def bleu_score(preds: List[str], targets: List[str], language: str) -> Dict[str,
     """
     bleu_scores = {"bleu1": 0, "bleu2": 0, "bleu3": 0, "bleu4": 0}
     cumulative_bleu = [0] * 4
-    weights = [(1. / 1., 0., 0., 0.), (1. / 2., 1. / 2., 0., 0.), (1. / 3., 1. / 3., 1. / 3., 0.),
-               (1. / 4., 1. / 4., 1. / 4., 1. / 4.)]
+    weights = [
+        (1.0 / 1.0, 0.0, 0.0, 0.0),
+        (1.0 / 2.0, 1.0 / 2.0, 0.0, 0.0),
+        (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0),
+        (1.0 / 4.0, 1.0 / 4.0, 1.0 / 4.0, 1.0 / 4.0),
+    ]
 
     for pred, target in zip(preds, targets):
         if language == "cn":
-            pred_list = ' '.join(jieba.cut(preprocessing_text(pred))).split()
-            target_list = [(' '.join(jieba.cut(preprocessing_text(target)))).split()]
+            pred_list = " ".join(jieba.cut(preprocessing_text(pred))).split()
+            target_list = [(" ".join(jieba.cut(preprocessing_text(target)))).split()]
         elif language == "en":
             pred_list = preprocessing_text(pred).split()
             target_list = [preprocessing_text(target).split()]
@@ -42,15 +46,14 @@ def bleu_score(preds: List[str], targets: List[str], language: str) -> Dict[str,
 
 
 def chrf_score(preds: List[str], targets: List[str], language: str) -> Dict[str, float]:
-    """Calculate CHRF Score Metric in sentence level.
-    """
+    """Calculate CHRF Score Metric in sentence level."""
     chrf_score = {"chrf": 0}
     cumulative_chrf = []
 
     for pred, target in zip(preds, targets):
         if language == "cn":
-            pred_list = ' '.join(jieba.cut(preprocessing_text(pred))).split()
-            target_list = ' '.join(jieba.cut(preprocessing_text(target))).split()
+            pred_list = " ".join(jieba.cut(preprocessing_text(pred))).split()
+            target_list = " ".join(jieba.cut(preprocessing_text(target))).split()
         elif language == "en":
             pred_list = preprocessing_text(pred).split()
             target_list = preprocessing_text(target).split()
@@ -75,8 +78,8 @@ def rouge_cn_score(preds: List[str], targets: List[str]) -> Dict[str, float]:
     all_targets = []
 
     for pred, target in zip(preds, targets):
-        pred_list = remove_redundant_space(' '.join(jieba.cut(preprocessing_text(pred))))
-        target_list = remove_redundant_space(' '.join(jieba.cut(preprocessing_text(target))))
+        pred_list = remove_redundant_space(" ".join(jieba.cut(preprocessing_text(pred))))
+        target_list = remove_redundant_space(" ".join(jieba.cut(preprocessing_text(target))))
         all_preds.append(pred_list)
         all_targets.append(target_list)
 
@@ -99,16 +102,14 @@ def rouge_en_score(preds: List[str], targets: List[str]) -> Dict[str, float]:
     longest common subsequence (LCS) between preds and targets.
     """
     rouge_scores = {"rouge1": 0, "rouge2": 0, "rougeL": 0}
-    all_preds = []
-    all_targets = []
 
     rouge_en = Rouge_en.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=False)
 
     for pred, target in zip(preds, targets):
         score = rouge_en.score(preprocessing_text(pred), preprocessing_text(target))
-        rouge_scores["rouge1"] += score['rouge1'].fmeasure
-        rouge_scores["rouge2"] += score['rouge2'].fmeasure
-        rouge_scores["rougeL"] += score['rougeL'].fmeasure
+        rouge_scores["rouge1"] += score["rouge1"].fmeasure
+        rouge_scores["rouge2"] += score["rouge2"].fmeasure
+        rouge_scores["rougeL"] += score["rougeL"].fmeasure
 
     rouge_scores["rouge1"] = rouge_scores["rouge1"] / len(preds)
     rouge_scores["rouge2"] = rouge_scores["rouge2"] / len(preds)
@@ -137,7 +138,7 @@ def distinct_score(preds: List[str], language: str) -> Dict[str, float]:
 
     for pred in preds:
         if language == "cn":
-            pred_seg_list = ' '.join(jieba.cut(pred)).split()
+            pred_seg_list = " ".join(jieba.cut(pred)).split()
             count_segs = len(pred_seg_list)
             unique_segs = set(pred_seg_list)
             count_unique_chars = len(unique_segs)
@@ -151,7 +152,7 @@ def distinct_score(preds: List[str], language: str) -> Dict[str, float]:
             split_pred = preprocessing_text(pred).split()
             for n in range(0, 3):
                 for i in range(0, len(split_pred) - n):
-                    ngram = ' '.join(split_pred[i:i + n + 1])
+                    ngram = " ".join(split_pred[i : i + n + 1])
                     unique_ngram[n].add(ngram)
                     all_ngram_count[n] += 1
 
@@ -203,8 +204,8 @@ def calculate_precision_recall_f1(preds: List[str], targets: List[str], language
 
     for pred, target in zip(preds, targets):
         if language == "cn":
-            pred_list = [char for char in ' '.join(jieba.cut(preprocessing_text(pred))).split()]
-            target_list = [char for char in ' '.join(jieba.cut(preprocessing_text(target))).split()]
+            pred_list = [char for char in " ".join(jieba.cut(preprocessing_text(pred))).split()]
+            target_list = [char for char in " ".join(jieba.cut(preprocessing_text(target))).split()]
         elif language == "en":
             pred_list = [char for char in preprocessing_text(pred).split()]
             target_list = [char for char in preprocessing_text(target).split()]

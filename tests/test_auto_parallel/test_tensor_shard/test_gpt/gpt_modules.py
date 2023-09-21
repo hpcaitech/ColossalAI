@@ -8,7 +8,6 @@ from transformers.pytorch_utils import Conv1D
 
 
 class GPT2MLP(nn.Module):
-
     def __init__(self, intermediate_size, config):
         super().__init__()
         embed_dim = config.hidden_size
@@ -34,15 +33,15 @@ class GPT2MLP(nn.Module):
 # 2. The order of split and view op has been changed in the customized GPT2Attention class, the new
 # order is same as megatron-lm gpt model.
 class GPT2Attention(nn.Module):
-
     def __init__(self, config, layer_idx=None):
         super().__init__()
 
         max_positions = config.max_position_embeddings
         self.register_buffer(
             "bias",
-            torch.tril(torch.ones((max_positions, max_positions),
-                                  dtype=torch.uint8)).view(1, 1, max_positions, max_positions),
+            torch.tril(torch.ones((max_positions, max_positions), dtype=torch.uint8)).view(
+                1, 1, max_positions, max_positions
+            ),
         )
         self.register_buffer("masked_bias", torch.tensor(-1e4))
 
@@ -68,7 +67,7 @@ class GPT2Attention(nn.Module):
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
 
         if self.scale_attn_weights:
-            attn_weights = attn_weights / (value.size(-1)**0.5)
+            attn_weights = attn_weights / (value.size(-1) ** 0.5)
 
         # Layer-wise attention scaling
         if self.scale_attn_by_inverse_layer_idx:
@@ -76,7 +75,7 @@ class GPT2Attention(nn.Module):
 
         # if only "normal" attention layer implements causal mask
         query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = self.bias[:, :, key_length - query_length:key_length, :key_length].to(torch.bool)
+        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(torch.bool)
         attn_weights = torch.where(causal_mask, attn_weights, self.masked_bias.to(attn_weights.dtype))
 
         if attention_mask is not None:
@@ -100,7 +99,7 @@ class GPT2Attention(nn.Module):
     def _split_heads(self, tensor, num_heads, attn_head_size):
         new_shape = tensor.size()[:-1] + (num_heads, attn_head_size)
         tensor = tensor.view(new_shape)
-        return tensor.permute(0, 2, 1, 3)    # (batch, head, seq_length, head_features)
+        return tensor.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
 
     def _merge_heads(self, tensor, num_heads, attn_head_size):
         tensor = tensor.permute(0, 2, 1, 3).contiguous()
@@ -113,7 +112,6 @@ class GPT2Attention(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
     ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor]], ...]:
-
         # query, key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
         qkv = self.c_attn(hidden_states)
 
@@ -121,7 +119,7 @@ class GPT2Attention(nn.Module):
         # key = self._split_heads(key, self.num_heads, self.head_dim)
         # value = self._split_heads(value, self.num_heads, self.head_dim)
         query, key, value = self._split_heads(qkv, self.num_heads, 3 * self.head_dim).split(self.head_dim, dim=3)
-        present = (key, value)
+        (key, value)
 
         attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
         attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
@@ -131,7 +129,6 @@ class GPT2Attention(nn.Module):
 
 
 class GPT2Block(nn.Module):
-
     def __init__(self, config, layer_idx=None):
         super().__init__()
         hidden_size = config.hidden_size
@@ -205,10 +202,8 @@ class GPT2Model(GPT2PreTrainedModel):
         # GPT2Attention mask.
         attention_mask = attention_mask.view(batch_size, -1)
         attention_mask = attention_mask[:, None, None, :]
-        attention_mask = attention_mask.to(dtype=self.dtype)    # fp16 compatibility
+        attention_mask = attention_mask.to(dtype=self.dtype)  # fp16 compatibility
         attention_mask = (1.0 - attention_mask) * -10000.0
-
-        encoder_attention_mask = None
 
         # Prepare head mask if needed
         # 1.0 in head_mask indicate we keep the head
@@ -267,7 +262,6 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
 
 
 class GPTLMLoss(nn.Module):
-
     def __init__(self):
         super().__init__()
         self.loss_fn = nn.CrossEntropyLoss()

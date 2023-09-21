@@ -1,7 +1,7 @@
 from typing import Optional
 
 import torch.nn as nn
-from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel
+from transformers import LlamaConfig, LlamaModel
 
 from ..base import RewardModel
 
@@ -17,12 +17,13 @@ class LlamaRM(RewardModel):
         lora_train_bias (str): LoRA bias training mode.
     """
 
-    def __init__(self,
-                 pretrained: Optional[str] = None,
-                 config: Optional[LlamaConfig] = None,
-                 lora_rank: int = 0,
-                 lora_train_bias: str = 'none') -> None:
-
+    def __init__(
+        self,
+        pretrained: Optional[str] = None,
+        config: Optional[LlamaConfig] = None,
+        lora_rank: int = 0,
+        lora_train_bias: str = "none",
+    ) -> None:
         if pretrained is not None:
             model = LlamaModel.from_pretrained(pretrained)
         elif config is not None:

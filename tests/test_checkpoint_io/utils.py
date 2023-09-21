@@ -15,7 +15,7 @@ def shared_tempdir() -> Iterator[str]:
         try:
             obj = [tempdir]
             dist.broadcast_object_list(obj, src=0)
-            tempdir = obj[0]    # use the same directory on all ranks
+            tempdir = obj[0]  # use the same directory on all ranks
             yield tempdir
         finally:
             dist.barrier()

@@ -112,8 +112,9 @@ def benchmark(
     start_time = time()
 
     for epoch in range(epoch_num):
-        with tqdm(dataloader, desc=f'Epoch [{epoch + 1}/{epoch_num}]',
-                  disable=not DistCoordinator().is_master()) as pbar:
+        with tqdm(
+            dataloader, desc=f"Epoch [{epoch + 1}/{epoch_num}]", disable=not DistCoordinator().is_master()
+        ) as pbar:
             for data in pbar:
                 inputs, labels = data[0].cuda(), data[1].cuda()
                 outputs = model(inputs, labels=labels)
@@ -137,7 +138,9 @@ def benchmark(
     }
     logger.info(fmt({f"Memory results (batch_size={batch_size})": memory[f"batch_size_{batch_size}"]}))
 
-    throughput[f"batch_size_{batch_size}"] = {"throughput:": "{:.1f}".format(all_sample * DistCoordinator().world_size / (end_time - start_time))}
+    throughput[f"batch_size_{batch_size}"] = {
+        "throughput:": "{:.1f}".format(all_sample * DistCoordinator().world_size / (end_time - start_time))
+    }
     logger.info(fmt({f"Throughput results (batch_size={batch_size})": throughput[f"batch_size_{batch_size}"]}))
 
     results["throughput"] = throughput

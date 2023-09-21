@@ -14,11 +14,12 @@ from colossalai.tensor.sharding_spec import ShardingSpec
 
 from ..constants import INFINITY_COST
 
-__all__ = ['generate_sharding_spec', 'generate_resharding_costs']
+__all__ = ["generate_sharding_spec", "generate_resharding_costs"]
 
 
-def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: DeviceMesh,
-                           dim_partition_dict: Dict[int, List[int]]) -> ShardingSpec:
+def generate_sharding_spec(
+    input_: Union[Node, torch.Tensor], device_mesh: DeviceMesh, dim_partition_dict: Dict[int, List[int]]
+) -> ShardingSpec:
     """
     Generate the sharding spec of the tensor based on the given dim_partition_dict.
 
@@ -30,7 +31,7 @@ def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: Devic
     """
 
     if isinstance(input_, Node):
-        assert hasattr(input_, '_meta_data'), f'The given node has no attribute _meta_data'
+        assert hasattr(input_, "_meta_data"), f"The given node has no attribute _meta_data"
         meta_tensor = input_._meta_data
         assert meta_tensor is not None, "The given node's _meta_data attribute is None"
         shape = meta_tensor.shape
@@ -38,24 +39,27 @@ def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: Devic
         shape = input_.shape
     else:
         raise TypeError(
-            f'We cannot generate sharding spec for {type(input_)} type, only torch.fx.Node or torch.Tensor is expected.'
+            f"We cannot generate sharding spec for {type(input_)} type, only torch.fx.Node or torch.Tensor is expected."
         )
     for dim_index, sharding_index_list in dim_partition_dict.items():
         sharding_list = [device_mesh.mesh_shape[sharding_index] for sharding_index in sharding_index_list]
         sharding_size = reduce(operator.mul, sharding_list, 1)
-        assert shape[
-            dim_index] % sharding_size == 0, f'we cannot shard the {dim_index} dimension of tensor into {sharding_size} partitions.'
+        assert (
+            shape[dim_index] % sharding_size == 0
+        ), f"we cannot shard the {dim_index} dimension of tensor into {sharding_size} partitions."
 
     sharding_spec = ShardingSpec(device_mesh=device_mesh, entire_shape=shape, dim_partition_dict=dim_partition_dict)
     return sharding_spec
 
 
-def generate_resharding_costs(nodes: List[Node],
-                              sharding_specs: List[ShardingSpec],
-                              count_backward: Optional[bool] = True,
-                              dtype: Optional[torch.dtype] = None,
-                              index=None):
-    '''
+def generate_resharding_costs(
+    nodes: List[Node],
+    sharding_specs: List[ShardingSpec],
+    count_backward: Optional[bool] = True,
+    dtype: Optional[torch.dtype] = None,
+    index=None,
+):
+    """
     Compute the resharding costs with this specific strategy.
 
     Argument:
@@ -63,7 +67,7 @@ def generate_resharding_costs(nodes: List[Node],
         sharding_spec_for_input(ShardingSpec): a list of ShardingSpec for the nodes.
         count_backward (Optional[bool]): whether to include the cost of resharding in the backward pass, default is True. False can be used for inference.
         dtype (Optional[torch.dtype]): the data type for cost calculation, default is None.
-    '''
+    """
     # The resharding_cost of weight is counted due to sharing weight cases.
     resharding_costs = {}
     size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
@@ -76,38 +80,39 @@ def generate_resharding_costs(nodes: List[Node],
         for strategy in input_node.strategies_vector:
             input_sharding_spec = strategy.output_sharding_spec
             if not isinstance(input_sharding_spec, ShardingSpec):
-                assert isinstance(input_sharding_spec, list), 'only ShardingSpec or List[ShardingSpec] is expected.'
+                assert isinstance(input_sharding_spec, list), "only ShardingSpec or List[ShardingSpec] is expected."
                 input_sharding_spec = input_sharding_spec[index]
-            assert isinstance(input_sharding_spec, ShardingSpec), f'The input node should NOT be a tuple of tensor.'
+            assert isinstance(input_sharding_spec, ShardingSpec), f"The input node should NOT be a tuple of tensor."
             try:
                 # compute the resharding cost
                 _, _, total_resharding_cost = shape_consistency_manager.shape_consistency(
-                    input_sharding_spec, input_spec)
+                    input_sharding_spec, input_spec
+                )
 
                 # we need multiply the size of elem dtype to get correct communication cost
                 resharding_cost = total_resharding_cost["total"] * size_per_elem_bytes
             except AssertionError as e:
-                warnings.warn(f'{e}')
+                warnings.warn(f"{e}")
                 resharding_cost = INFINITY_COST
             resharding_costs[input_node].append(resharding_cost)
     return resharding_costs
 
 
 def find_repeat_blocks(node_list: List[torch.fx.Node], root_module, common_length_threshold: int = 20):
-    '''
+    """
     Find the largest repeat blocks in the graph, whose length is larger than the threshold.
 
     Args:
         gm (GraphModule): the graph module to be analyzed.
         common_length_threshold (int): the threshold of the repeat block length.
-    '''
+    """
 
     # graph = gm.graph
 
     def _process_args(args):
         new_args = []
         for arg in args:
-            if hasattr(arg, '_meta_data'):
+            if hasattr(arg, "_meta_data"):
                 meta_data = arg._meta_data
             else:
                 meta_data = arg
@@ -145,7 +150,7 @@ def find_repeat_blocks(node_list: List[torch.fx.Node], root_module, common_lengt
         return False
 
     for index, node in enumerate(node_list):
-        if node.op == 'call_module':
+        if node.op == "call_module":
             target = node.target
             submod = root_module.get_submodule(target)
             submod_type = type(submod)
@@ -155,12 +160,12 @@ def find_repeat_blocks(node_list: List[torch.fx.Node], root_module, common_lengt
 
         new_args = _process_args(node.args)
 
-        if node.op != 'get_attr':
+        if node.op != "get_attr":
             hash_key = (node.op, target, *new_args)
         else:
             hash_key = (node.op,)
 
-        setattr(node, 'hash_key', hash_key)
+        setattr(node, "hash_key", hash_key)
 
     hash_value_to_node_dict = {}
 
@@ -179,7 +184,7 @@ def find_repeat_blocks(node_list: List[torch.fx.Node], root_module, common_lengt
         # the comparison will be triggered if a common node appears
         if len(hash_value_to_node_dict[hash(node.hash_key)]) >= 2:
             start_index_list = hash_value_to_node_dict[hash(node.hash_key)]
-            check_block_list = [node_list[start:start + max_common_length] for start in start_index_list]
+            check_block_list = [node_list[start : start + max_common_length] for start in start_index_list]
 
             common_label = True
             if not _all_equal(check_block_list, _check_node_list_equal):
@@ -201,6 +206,6 @@ def find_repeat_blocks(node_list: List[torch.fx.Node], root_module, common_lengt
     # recover common subgraph from the index
     common_blocks = []
     for start in common_blocks_index:
-        common_blocks.append(node_list[start:start + max_common_length])
+        common_blocks.append(node_list[start : start + max_common_length])
 
     return common_blocks
