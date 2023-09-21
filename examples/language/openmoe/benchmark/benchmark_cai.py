@@ -1,7 +1,14 @@
-import colossalai
 import datasets
 import torch
 import transformers
+from model.modeling_openmoe import OpenMoeForCausalLM
+from torch.utils.data import Dataset
+from tqdm import tqdm
+from transformers import Adafactor
+from transformers.models.llama import LlamaConfig
+from utils import SimpleTimer, print_model_numel
+
+import colossalai
 from colossalai import get_default_parser
 from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
@@ -10,27 +17,15 @@ from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import skip_init
 from colossalai.utils import get_current_device
-from model.modeling_openmoe import OpenMoeForCausalLM
-from torch.utils.data import Dataset
-from tqdm import tqdm
-from transformers import Adafactor
-from transformers.models.llama import LlamaConfig
-from utils import SimpleTimer, print_model_numel
 
 
 class RandomDataset(Dataset):
 
-    def __init__(self,
-                 num_samples: int = 1000,
-                 max_length: int = 2048,
-                 vocab_size: int = 32000):
+    def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000):
         self.num_samples = num_samples
         self.max_length = max_length
-        self.input_ids = torch.randint(0, vocab_size,
-                                       (num_samples, max_length),
-                                       device=get_current_device())
-        self.attention_mask = torch.ones_like(self.input_ids,
-                                              device=get_current_device())
+        self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device())
+        self.attention_mask = torch.ones_like(self.input_ids, device=get_current_device())
 
     def __len__(self):
         return self.num_samples
@@ -49,7 +44,10 @@ def parse_args():
     # parser.add_argument("--model_name", type=str, default="base", choices=["base", "8b"],
     #                     help="Path to pretrained model or model identifier from huggingface.co/models.")
     parser.add_argument("--num_epoch", type=int, default=1, help="Number of epochs.")
-    parser.add_argument("--batch_size", type=int, default=4, help="Batch size (per dp group) for the training dataloader.")
+    parser.add_argument("--batch_size",
+                        type=int,
+                        default=4,
+                        help="Batch size (per dp group) for the training dataloader.")
     parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
     parser.add_argument("--num_samples", type=int, default=1000, help="Number of samples in the dataset.")
 
@@ -61,9 +59,7 @@ def main():
     args = parse_args()
 
     MDOEL_CONFIG = {
-        "architectures": [
-            "OpenMoeForCausalLM"
-        ],
+        "architectures": ["OpenMoeForCausalLM"],
         "capacity_factor_eval": 2.0,
         "capacity_factor_train": 1.25,
         "drop_tks": True,
@@ -140,10 +136,7 @@ def main():
 
     # Prepare tokenizer and dataloader
     dataset = RandomDataset(num_samples=args.num_samples)
-    dataloader = plugin.prepare_dataloader(dataset,
-                                           batch_size=args.batch_size,
-                                           shuffle=True,
-                                           drop_last=True)
+    dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     # Set optimizer
     optimizer = Adafactor(model.parameters(),
@@ -152,9 +145,7 @@ def main():
 
     # Set booster
     booster = Booster(plugin=plugin)
-    model, optimizer, _, dataloader, _ = booster.boost(model=model,
-                                                       optimizer=optimizer,
-                                                       dataloader=dataloader)
+    model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
 
     # Start benchmark
     model.train()
@@ -162,9 +153,7 @@ def main():
 
     timer = SimpleTimer()
     for epoch in range(args.num_epoch):
-        for batch in tqdm(dataloader,
-                          desc=f'Epoch [{epoch + 1}]',
-                          disable=not coordinator.is_master()):
+        for batch in tqdm(dataloader, desc=f'Epoch [{epoch + 1}]', disable=not coordinator.is_master()):
             timer.start("train_step")
 
             # Forward
