@@ -1,9 +1,8 @@
-# 梯度裁剪 (新版本)
+# 梯度裁剪
 
 作者: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **前置教程**
-- [定义配置文件](../basics/define_your_config.md)
 - [booster使用](../basics/booster_api.md)
 
 **相关论文**

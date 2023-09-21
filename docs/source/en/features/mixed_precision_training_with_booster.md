@@ -1,10 +1,9 @@
-# Auto Mixed Precision Training (Latest)
+# Auto Mixed Precision Training
 
 Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **Prerequisite**
 
-- [Define Your Configuration](../basics/define_your_config.md)
 - [Training Booster](../basics/booster_api.md)
 
 **Related Paper**
@@ -61,7 +60,7 @@ However, there are other operations, like reductions, which require the dynamic 
 
 ## AMP in Colossal-AI
 
-We supported three AMP training methods and allowed the user to train with AMP with no code. If you want to train with amp, just assign `mixed_precision` with `fp16` when you instantiate the `Booster`. Now booster support torch amp, the other two(apex amp, naive amp) are still started by `colossalai.initialize`, if needed, please refer to [this](./mixed_precision_training.md). Next we will support `bf16`, `fp8`.
+We supported three AMP training methods and allowed the user to train with AMP with no code. If you want to train with amp, just assign `mixed_precision` with `fp16` when you instantiate the `Booster`. Next we will support `bf16`, `fp8`.
 
 ### Start with Booster
 
