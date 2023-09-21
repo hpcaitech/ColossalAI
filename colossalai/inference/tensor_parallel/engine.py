@@ -2,6 +2,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
+import warnings
 from transformers import (
     AutoConfig,
     AutoTokenizer,
@@ -14,9 +15,12 @@ from transformers import (
 from transformers.generation import GenerationConfig
 from transformers.generation.stopping_criteria import StoppingCriteriaList
 from transformers.tokenization_utils_base import BatchEncoding
-from vllm import LLM
-from vllm.outputs import RequestOutput
-from vllm.sampling_params import SamplingParams
+try:
+    from vllm import LLM
+    from vllm.outputs import RequestOutput
+    from vllm.sampling_params import SamplingParams
+except ImportError:
+    warnings.warn("vllm is not installed, continuous batching will not be supported.")
 
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.auto_policy import get_autopolicy
@@ -121,7 +125,7 @@ class TPInferEngine:
 
         self.cache_manager = None
         
-        self._optimize_model(model=self.model.to(device))
+        self._optimize_model()
 
     def _get_model_and_tokenizer(self, model: str, tokenizer: str, trust_remote_code: bool) -> nn.Module:
 
@@ -164,7 +168,7 @@ class TPInferEngine:
         self.cache_manager = MemoryManager(self.max_total_token_num, self.dtype, self.head_num, self.head_dim,
                                            self.layer_num)
 
-    def _optimize_model(self, model: nn.Module) -> None:
+    def _optimize_model(self) -> None:
         """
         Optimize the original model by sharding with ShardFormer.
         In further generation, use the sharded model instead of original model.
@@ -175,7 +179,6 @@ class TPInferEngine:
             shardformer = ShardFormer(shard_config=self.shard_config)
             self._prepare_with_shard_config(shard_config=self.shard_config)
             self._shard_model_by(shardformer)
-            self.model = None
 
     def _prepare_with_shard_config(self, shard_config: Optional[ShardConfig] = None) -> ShardConfig:
         """ Prepare the engine with a given ShardConfig.
@@ -202,7 +205,7 @@ class TPInferEngine:
 
         return shard_config
 
-    def _shard_model_by(self, shardformer: ShardFormer, model: nn.Module) -> None:
+    def _shard_model_by(self, shardformer: ShardFormer) -> None:
         """ Shard original model by the given ShardFormer and store the sharded model. """
         assert self.tp_size == shardformer.shard_config.tensor_parallel_size, \
             "Discrepancy between the tp size of TPInferEngine and the tp size of shard config"
@@ -265,7 +268,7 @@ class TPInferEngine:
         if 'max_new_tokens' not in generate_kwargs:
             generate_kwargs.update(max_new_tokens=self.max_output_len)
 
-        return self.model.generate(**input_tokens, **generate_kwargs)
+        return self._generate_by_set_infer_state(input_tokens, **generate_kwargs)
 
     def prepare_batch_state(self, inputs) -> BatchInferState:
         """
