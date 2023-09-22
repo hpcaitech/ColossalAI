@@ -4,6 +4,7 @@ import warnings
 import pytest
 import torch
 from packaging import version
+from transformers import PreTrainedTokenizer
 
 import colossalai
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
@@ -44,6 +45,10 @@ def init_to_get_rotary(self, base=10000):
     return
 
 
+class DummyTokenizer(PreTrainedTokenizer):
+    pass
+
+
 @parameterize('test_config', [{
     'tp_size': TPSIZE,
 }])
@@ -52,16 +57,22 @@ def run_llama_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry('transformers_llama_for_casual_lm')
     for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
         orig_model = model_fn()
+        tokenizer = DummyTokenizer()
         init_to_get_rotary(orig_model.model, base=10000)
         orig_model = orig_model.half()
         data = data_gen_fn()
 
         shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
                                    inference_only=True)
-        infer_engine = TPInferEngine(orig_model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+        infer_engine = TPInferEngine(orig_model,
+                                     shard_config,
+                                     BATCH_SIZE,
+                                     MAX_INPUT_LEN,
+                                     MAX_OUTPUT_LEN,
+                                     tokenizer=tokenizer)
 
         generate_kwargs = dict(do_sample=False)
-        outputs = infer_engine.generate(data, **generate_kwargs)
+        outputs = infer_engine.generate(prompt_token_ids=data, **generate_kwargs)
 
         assert outputs is not None
 
