@@ -186,8 +186,9 @@ def main():
     # Build OpenMoe model
     if test_mode:
         config = LlamaConfig.from_pretrained("hpcaitech/openmoe-base")
-        config.hidden_size = 128
-        config.intermediate_size = 256
+        config.hidden_size = 64
+        config.intermediate_size = 128
+        config.vocab_size = 32000
     else:
         repo_name = "hpcaitech/openmoe-" + args.model_name
         config = LlamaConfig.from_pretrained(repo_name)
