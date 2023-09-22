@@ -14,7 +14,7 @@ from coati.models.llama import LlamaActor
 from coati.models.lora import LoraLinear, convert_to_lora_module
 from coati.models.loss import GPTLMLoss, LogExpLoss, LogSigLoss, PolicyLoss, ValueLoss
 from coati.models.opt import OPTRM, OPTActor, OPTCritic
-from coati.models.utils import calc_action_log_probs, compute_reward, masked_mean
+from coati.models.utils import calc_action_log_probs, masked_mean
 
 
 @pytest.mark.parametrize("batch_size", [4])
@@ -27,7 +27,6 @@ from coati.models.utils import calc_action_log_probs, compute_reward, masked_mea
         # HACK: skip llama due to long execution time
         # lambda: LlamaActor(),
         lambda: OPTActor(),
-        # lambda: ChatGLMActor(),
     ],
 )
 @pytest.mark.parametrize(
@@ -43,9 +42,16 @@ from coati.models.utils import calc_action_log_probs, compute_reward, masked_mea
     ],
 )
 def test_generation(actor_maker: Callable[[], Actor], batch_size: int, seq_len: int, generate_kwargs: Dict[str, Any]):
+    class MockTokenizer:
+        def __init__(self):
+            self.padding_side = "left"
+            self.eos_token_id = 0
+            self.pad_token_id = 0
+
     actor = actor_maker()
     input_ids = torch.randint(0, 100, (batch_size, seq_len)).cuda()
-    sequences = generate(actor.cuda(), input_ids, **generate_kwargs)
+    tokenizer = MockTokenizer()
+    sequences = generate(actor.cuda(), input_ids, tokenizer, **generate_kwargs)
     assert sequences.shape == (batch_size, generate_kwargs["max_length"])
 
 
@@ -56,23 +62,11 @@ def test_utils():
     assert torch.allclose(fn_output, torch.tensor(1.0))
 
     batch_size = 4
-    num_labels = 10
-    fn_input = {
-        "r": torch.ones((batch_size,)),
-        "kl_coef": 1.0,
-        "log_probs": torch.randn((batch_size, num_labels)),
-        "log_probs_base": torch.randn((batch_size, num_labels)),
-        "action_mask": torch.randint(0, 2, (batch_size, num_labels)),
-    }
-    fn_output = compute_reward(**fn_input)
-    assert fn_output.shape == (batch_size,)
-
-    batch_size = 4
     seq_len = 32
     num_labels = 10
     num_actions = 2
     fn_input = {
-        "output": {"logits": torch.randn((batch_size, seq_len, num_labels))},
+        "logits": torch.randn((batch_size, seq_len, num_labels)),
         "sequences": torch.randint(0, num_labels, (batch_size, seq_len)),
         "num_actions": num_actions,
     }
@@ -135,7 +129,6 @@ def test_models(models_maker: Callable[[], Tuple[Actor, Critic, RewardModel]], b
     }
     critic_input = {
         "sequences": torch.randint(0, 100, (batch_size, seq_len)),
-        "action_mask": torch.randint(0, 2, (batch_size, seq_len)),
         "attention_mask": torch.randint(0, 2, (batch_size, seq_len)),
     }
     rm_input = {

@@ -16,7 +16,10 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
 torchrun --standalone --nproc_per_node=2 train_reward_model.py \
-    --model 'bloom' \
+    --pretrain 'gpt2' \
+    --model 'gpt2' \
     --strategy colossalai_zero2 \
-    --loss_fn 'log_sig' \
-    --dataset 'Anthropic/hh-rlhf'
+    --loss_fn 'log_exp' \
+    --dataset 'Anthropic/hh-rlhf' \
+    --batch_size 16 \
+    --max_epochs 10

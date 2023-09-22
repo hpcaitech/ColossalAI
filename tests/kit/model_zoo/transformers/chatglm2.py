@@ -39,6 +39,21 @@ config = ChatGLMConfig(
     padded_vocab_size=65024,
     hidden_size=64,
     num_attention_heads=8,
+    kv_channels=16,
+    rmsnorm=True,
+    original_rope=True,
+    use_cache=True,
+    torch_dtype=torch.float32,
+)
+
+infer_config = ChatGLMConfig(
+    num_layers=2,
+    padded_vocab_size=65024,
+    hidden_size=128,
+    num_attention_heads=8,
+    multi_query_attention=True,
+    multi_query_group_num=2,
+    kv_channels=16,
     rmsnorm=True,
     original_rope=True,
     use_cache=True,

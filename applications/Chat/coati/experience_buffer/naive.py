@@ -1,4 +1,5 @@
 import random
+import warnings
 from typing import List
 
 import torch
@@ -30,9 +31,11 @@ class NaiveExperienceBuffer(ExperienceBuffer):
             experience.to_device(torch.device("cpu"))
         items = split_experience_batch(experience)
         self.items.extend(items)
+
         if self.limit > 0:
             samples_to_remove = len(self.items) - self.limit
             if samples_to_remove > 0:
+                warnings.warn(f"Experience buffer is full. Removing {samples_to_remove} samples.")
                 self.items = self.items[samples_to_remove:]
 
     def clear(self) -> None:

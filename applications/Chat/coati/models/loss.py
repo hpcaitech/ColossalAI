@@ -13,6 +13,7 @@ class GPTLMLoss(nn.Module):
 
     def __init__(self):
         super().__init__()
+        # NOTE: default ignore_index is -100, which is equal to IGNORE_INDEX in sft_dataset.py
         self.loss = nn.CrossEntropyLoss()
 
     def forward(self, logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:

@@ -1,17 +1,13 @@
 import warnings
 from typing import Optional
 
-import torch
-import torch.distributed as dist
 import torch.nn as nn
 
 import colossalai
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin
-from colossalai.booster.plugin.gemini_plugin import GeminiModel
 from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroModel
-from colossalai.tensor import ProcessGroup, ShardSpec
+from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.utils import get_current_device
-from colossalai.zero import ColoInitContext
 from colossalai.zero.gemini.gemini_ddp import GeminiDDP
 
 from .ddp import DDPStrategy
@@ -65,14 +61,11 @@ class LowLevelZeroStrategy(DDPStrategy):
         assert precision in ("fp32", "fp16"), f'Unsupported precision "{precision}"'
 
         plugin_initializer = lambda: LowLevelZeroPlugin(
-            # zero_config
             stage=stage,
             precision=precision,
-            # zero_optim_config
             reduce_bucket_size_in_m=reduce_bucket_size,
             overlap_communication=overlap_communication,
             cpu_offload=(placement_policy == "cpu"),
-            # optim_config
             initial_scale=initial_scale,
             growth_factor=growth_factor,
             backoff_factor=backoff_factor,
@@ -136,7 +129,7 @@ class GeminiStrategy(DDPStrategy):
         self,
         seed: int = 42,
         shard_init: bool = False,  # only for stage 3
-        placement_policy: str = "cuda",
+        placement_policy: str = "auto",
         pin_memory: bool = True,  # only for stage 3
         force_outputs_fp32: bool = False,  # only for stage 3
         search_range_m: int = 32,  # only for stage 3
@@ -153,8 +146,6 @@ class GeminiStrategy(DDPStrategy):
         max_norm: float = 0.0,
         norm_type: float = 2.0,
     ) -> None:
-        assert placement_policy in ("cpu", "cuda"), f'Unsupported placement policy "{placement_policy}"'
-
         # TODO(ver217): support shard_init when using from_pretrained()
         if shard_init:
             warnings.warn(
@@ -167,8 +158,7 @@ class GeminiStrategy(DDPStrategy):
 
         # NOTE: dist should be initialized before calling get_current_device()
         plugin_initializer = lambda: GeminiPlugin(
-            # gemini_config
-            device=get_current_device(),
+            chunk_init_device=get_current_device(),
             placement_policy=placement_policy,
             precision="fp16",
             pin_memory=pin_memory,
@@ -177,9 +167,7 @@ class GeminiStrategy(DDPStrategy):
             search_range_m=search_range_m,
             hidden_dim=hidden_dim,
             min_chunk_size_m=min_chunk_size_m,
-            # zero_optim_config
             gpu_margin_mem_ratio=gpu_margin_mem_ratio,
-            # optim_config
             initial_scale=initial_scale,
             growth_factor=growth_factor,
             backoff_factor=backoff_factor,
@@ -200,15 +188,8 @@ class GeminiStrategy(DDPStrategy):
         colossalai.launch_from_torch({}, seed=self.seed)
 
     def model_init_context(self):
-        world_size = dist.get_world_size()
-        shard_pg = ProcessGroup(tp_degree=world_size) if self.shard_init else None
-        default_dist_spec = ShardSpec([-1], [world_size]) if self.shard_init else None
-        return ColoInitContext(
-            device=get_current_device(), dtype=torch.half, default_pg=shard_pg, default_dist_spec=default_dist_spec
-        )
+        return LazyInitContext(default_device=get_current_device())
 
     def unwrap_model(self, model: nn.Module) -> nn.Module:
-        assert isinstance(model, GeminiModel)
-        ddp_model = model.unwrap()
-        assert isinstance(ddp_model, GeminiDDP)
-        return ddp_model.module
+        assert isinstance(model, GeminiDDP)
+        return model.module

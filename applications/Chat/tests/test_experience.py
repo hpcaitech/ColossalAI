@@ -1,5 +1,5 @@
+import copy
 import os
-from copy import deepcopy
 
 import pytest
 import torch
@@ -8,6 +8,7 @@ from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import NaiveExperienceMaker
 from coati.models.base import RewardModel
 from coati.models.gpt import GPTActor, GPTCritic
+from coati.trainer.ppo import _set_default_generate_kwargs
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy
 from coati.trainer.strategies.colossalai import LowLevelZeroStrategy
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
@@ -42,27 +43,38 @@ def make_and_consume_experience(strategy):
     elif strategy == "colossalai-zero2":
         strategy = LowLevelZeroStrategy()
     elif strategy == "colossalai-gemini":
-        strategy = GeminiStrategy(placement_policy="cuda")
+        strategy = GeminiStrategy(placement_policy="static")
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
 
-    actor = GPTActor(config=GPT_CONFIG).cuda()
-    critic = GPTCritic(config=GPT_CONFIG).cuda()
+    with strategy.model_init_context():
+        actor = GPTActor(config=GPT_CONFIG).cuda()
+        critic = GPTCritic(config=GPT_CONFIG).cuda()
 
-    initial_model = deepcopy(actor)
-    reward_model = RewardModel(deepcopy(critic.model)).cuda()
+        initial_model = GPTActor(config=GPT_CONFIG).cuda()
+        reward_model = RewardModel(model=copy.deepcopy(critic.model)).cuda()
 
-    experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model)
+    actor, critic, initial_model, reward_model = strategy.prepare(actor, critic, initial_model, reward_model)
+
+    class MockTokenizer:
+        def __init__(self):
+            self.padding_side = "left"
+            self.eos_token_id = 0
+            self.pad_token_id = 0
+
+    tokenizer = MockTokenizer()
+    experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, tokenizer)
     data_buffer = NaiveExperienceBuffer(SAMPLE_BATCH_SIZE, cpu_offload=False)
+
+    generate_kwargs = dict(do_sample=True, max_length=16)
+    generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
 
     # experience of all ranks should be the same
     for _ in range(2):
         data = get_data(EXPERIENCE_BATCH_SIZE)
         assert gather_and_equal(data["input_ids"])
         assert gather_and_equal(data["attention_mask"])
-        experience = experience_maker.make_experience(
-            **data, do_sample=True, max_length=16, eos_token_id=50256, pad_token_id=50256
-        )
+        experience = experience_maker.make_experience(**data, do_sample=True, max_length=16)
         assert gather_and_equal(experience.sequences)
         assert gather_and_equal(experience.action_log_probs)
         assert gather_and_equal(experience.values)
@@ -115,4 +127,4 @@ def test_experience(world_size, strategy):
 
 
 if __name__ == "__main__":
-    test_experience(2, "colossalai")
+    test_experience(2, "colossalai-zero2")

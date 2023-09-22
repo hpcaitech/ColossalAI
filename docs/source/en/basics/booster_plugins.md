@@ -1,6 +1,6 @@
 # Booster Plugins
 
-Author: [Hongxin Liu](https://github.com/ver217), [Baizhou Zhang](https://github.com/Fridge003)
+Author: [Hongxin Liu](https://github.com/ver217), [Baizhou Zhang](https://github.com/Fridge003), [Pengtai Xu](https://github.com/ppt0011)
 
 **Prerequisite:**
 - [Booster API](./booster_api.md)
@@ -11,13 +11,22 @@ As mentioned in [Booster API](./booster_api.md), we can use booster plugins to c
 
 We currently provide the following plugins:
 
-- [Low Level Zero Plugin](#low-level-zero-plugin): It wraps the `colossalai.zero.low_level.LowLevelZeroOptimizer` and can be used to train models with zero-dp. It only supports zero stage-1 and stage-2.
-- [Gemini Plugin](#gemini-plugin): It wraps the [Gemini](../features/zero_with_chunk.md) which implements Zero-3 with chunk-based and heterogeneous memory management.
 - [Torch DDP Plugin](#torch-ddp-plugin): It is a wrapper of `torch.nn.parallel.DistributedDataParallel` and can be used to train models with data parallelism.
 - [Torch FSDP Plugin](#torch-fsdp-plugin): It is a wrapper of `torch.distributed.fsdp.FullyShardedDataParallel` and can be used to train models with zero-dp.
+- [Low Level Zero Plugin](#low-level-zero-plugin): It wraps the `colossalai.zero.low_level.LowLevelZeroOptimizer` and can be used to train models with zero-dp. It only supports zero stage-1 and stage-2.
+- [Gemini Plugin](#gemini-plugin): It wraps the [Gemini](../features/zero_with_chunk.md) which implements Zero-3 with chunk-based and heterogeneous memory management.
 - [Hybrid Pararllel Plugin](#hybrid-parallel-plugin): It provides a tidy interface that integrates the power of Shardformer, pipeline manager, mixied precision training, TorchDDP and Zero stage 1/2 feature.  With this plugin, transformer models can be easily trained with any combination of tensor parallel, pipeline parallel and data parallel (DDP/Zero) efficiently, along with various kinds of optimization tools for acceleration and memory saving. Detailed information about supported parallel strategies and optimization tools is explained in the section below.
 
 More plugins are coming soon.
+
+## Choosing Your Plugin
+
+Generally only one plugin is used to train a model. Our recommended use case for each plugin is as follows.
+
+- [Torch DDP Plugin](#torch-ddp-plugin): It is suitable for models with less than 2 billion parameters (e.g. Bert-3m, GPT2-1.5b).
+- [Torch FSDP Plugin](#torch-fsdp-plugin) / [Low Level Zero Plugin](#low-level-zero-plugin): It is suitable for models with less than 10 billion parameters (e.g. GPTJ-6b, MegatronLM-8b).
+- [Gemini Plugin](#gemini-plugin): It is suitable for models with more than 10 billion parameters (e.g. TuringNLG-17b) and is ideal for scenarios with **high cross-node bandwidth and medium to small-scale clusters (below a thousand cards)** (e.g. Llama2-70b).
+- [Hybrid Pararllel Plugin](#hybrid-parallel-plugin): It is suitable for models with more than 60 billion parameters, or special models such as those with exceptionally long sequences, very large vocabularies, and is best suited for scenarios with **low cross-node bandwidth and large-scale clusters (a thousand cards or more)** (e.g. GPT3-175b, Bloom-176b).
 
 ## Plugins
 
@@ -50,24 +59,6 @@ This plugin implements Zero-3 with chunk-based and heterogeneous memory manageme
 
 {{ autodoc:colossalai.booster.plugin.GeminiPlugin }}
 
-### Torch DDP Plugin
-
-More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel).
-
-{{ autodoc:colossalai.booster.plugin.TorchDDPPlugin }}
-
-### Torch FSDP Plugin
-
-> ⚠ This plugin is not available when torch version is lower than 1.12.0.
-
-> ⚠ This plugin does not support save/load sharded model checkpoint now.
-
-> ⚠ This plugin does not support optimizer that use multi params group.
-
-More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/fsdp.html).
-
-{{ autodoc:colossalai.booster.plugin.TorchFSDPPlugin }}
-
 
 ### Hybrid Parallel Plugin
 
@@ -87,5 +78,22 @@ This plugin implements the combination of various parallel training strategies a
 
 {{ autodoc:colossalai.booster.plugin.HybridParallelPlugin }}
 
+### Torch DDP Plugin
+
+More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel).
+
+{{ autodoc:colossalai.booster.plugin.TorchDDPPlugin }}
+
+### Torch FSDP Plugin
+
+> ⚠ This plugin is not available when torch version is lower than 1.12.0.
+
+> ⚠ This plugin does not support save/load sharded model checkpoint now.
+
+> ⚠ This plugin does not support optimizer that use multi params group.
+
+More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/fsdp.html).
+
+{{ autodoc:colossalai.booster.plugin.TorchFSDPPlugin }}
 
 <!-- doc-test-command: echo  -->

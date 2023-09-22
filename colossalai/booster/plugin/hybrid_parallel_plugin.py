@@ -1,6 +1,7 @@
 import random
 from contextlib import nullcontext
 from functools import partial
+from types import MethodType
 from typing import Any, Callable, Iterator, List, Optional, OrderedDict, Tuple, Union
 
 import numpy as np
@@ -164,6 +165,15 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
         if use_pipeline:
             init_pipeline_optimizer(optim, model)
         super().__init__(optim)
+
+    def update_master_params(self, model: Module):
+        pass
+
+    def get_working_to_master_map(self):
+        return None
+
+    def get_master_to_working_map(self):
+        return None
 
 
 class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
@@ -466,9 +476,6 @@ class HybridParallelPlugin(PipelinePluginBase):
                         max_norm=self.max_norm,
                         **self.amp_config,
                     )
-                    self.checkpoint_io.link_master_and_working_param(
-                        optimizer.working_to_master_map, optimizer.master_to_working_map
-                    )
                 else:
                     optimizer = HybridParallelNaiveOptimizer(
                         optimizer, model, use_pipeline=self.enable_pipeline_parallelism, param_info=param_info
@@ -488,10 +495,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                     **self.zero_config,
                     **self.amp_config,
                 )
-                self.checkpoint_io.link_master_and_working_param(
-                    optimizer._param_store.working_to_master_param, optimizer._param_store.master_to_working_param
-                )
-
+            # inject update_master_params
+            model.update_master_params = MethodType(optimizer.update_master_params, model)
         return model, optimizer, criterion, dataloader, lr_scheduler
 
     def execute_pipeline(
@@ -567,8 +572,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         )
 
     def get_checkpoint_io(self) -> CheckpointIO:
-        self.checkpoint_io = HybridParallelCheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
-        return self.checkpoint_io
+        return HybridParallelCheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
 
     def no_sync(self, model: Module) -> Iterator[None]:
         raise NotImplementedError

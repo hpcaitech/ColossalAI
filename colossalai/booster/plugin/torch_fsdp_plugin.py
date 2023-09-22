@@ -39,31 +39,35 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         super().__init__()
         self.coordinator = DistCoordinator()
 
-    def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool):
+    def load_unsharded_model(self, model: ModelWrapper, checkpoint: str, strict: bool):
+        assert isinstance(model, TorchFSDPModel), "Please boost the model before loading!"
+        model = model.unwrap()
         checkpoint = utils.load_state_dict(checkpoint)
         model.load_state_dict(checkpoint)
 
-    def load_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: Path):
+    def load_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: Path):
+        assert isinstance(optimizer, FSDPOptimizerWrapper), "Please boost the optimizer before loading!"
         checkpoint = utils.load_state_dict(checkpoint)
         fsdp_model = optimizer.unwrap_model()
         sharded_osd = FSDP.scatter_full_optim_state_dict(checkpoint, fsdp_model)
         optimizer.load_state_dict(sharded_osd)
 
-    def save_unsharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+    def save_unsharded_model(self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
         """
         Save model to checkpoint but only on master process.
         """
-        # the model should be unwrapped in self.load_model via ModelWrapper.unwrap
+        assert isinstance(model, TorchFSDPModel), "Please boost the model before saving!"
+        model = model.unwrap()
         cfg = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
         with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, cfg):
             full_model_state = model.state_dict()
         utils.save_state_dict(full_model_state, checkpoint_file_path=checkpoint, use_safetensors=use_safetensors)
 
-    def save_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: str, gather_dtensor: bool):
+    def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
         """
         Save optimizer to checkpoint but only on master process.
         """
-        assert isinstance(optimizer, FSDPOptimizerWrapper)
+        assert isinstance(optimizer, FSDPOptimizerWrapper), "Please boost the optimizer before saving!"
         fsdp_model = optimizer.unwrap_model()
         full_optimizer_state = FSDP.full_optim_state_dict(fsdp_model, optim=optimizer, rank0_only=True)
         utils.save_state_dict(full_optimizer_state, checkpoint_file_path=checkpoint, use_safetensors=False)

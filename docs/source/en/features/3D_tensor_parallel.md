@@ -3,8 +3,6 @@
 Author: Zhengda Bian, Yongbin Li
 
 **Prerequisite**
-- [Define Your Configuration](../basics/define_your_config.md)
-- [Configure Parallelization](../basics/configure_parallelization.md)
 - [1D Tensor Parallelism](./1D_tensor_parallel.md)
 - [2D Tensor Parallelism](./2D_tensor_parallel.md)
 

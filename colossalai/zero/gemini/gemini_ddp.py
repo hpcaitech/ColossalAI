@@ -186,10 +186,6 @@ class GeminiDDP(ModelWrapper):
         for p in params_to_ignore:
             p._ddp_to_ignore = True
 
-    def unwrap(self):
-        # as save/load state dict is overwrited, only return self
-        return self
-
     def _get_non_persistent_buffers_set(
         self, module, memo: Optional[Set[nn.Module]] = None, prefix: str = "", remove_duplicate: bool = True
     ):

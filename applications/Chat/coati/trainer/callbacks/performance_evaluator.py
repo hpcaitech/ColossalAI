@@ -137,7 +137,7 @@ class PerformanceEvaluator(Callback):
             return
         self.learn_timer.start()
 
-    def on_learn_batch_end(self, metrics: dict, experience: Experience) -> None:
+    def on_learn_batch_end(self, experience: Experience) -> None:
         if self.disable:
             return
         self.learn_timer.end()

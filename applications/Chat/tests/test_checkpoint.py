@@ -25,8 +25,8 @@ def get_data(batch_size: int, seq_len: int = 10) -> dict:
 def train_step(strategy: Strategy, actor: GPTActor, actor_optim: HybridAdam, batch_size: int = 8):
     data = get_data(batch_size)
     action_mask = torch.ones_like(data["attention_mask"], dtype=torch.bool)
-    actor_output = actor(data["input_ids"], data["attention_mask"])
-    action_log_probs = calc_action_log_probs(actor_output, data["input_ids"], action_mask.size(1))
+    actor_logits = actor(data["input_ids"], data["attention_mask"])["logits"]
+    action_log_probs = calc_action_log_probs(actor_logits, data["input_ids"], action_mask.size(1))
     loss = action_log_probs.sum()
     strategy.backward(loss, actor, actor_optim)
     strategy.optimizer_step(actor_optim)
@@ -36,7 +36,7 @@ def run_test_checkpoint(strategy_name: str, shard: bool):
     if strategy_name == "ddp":
         strategy = DDPStrategy()
     elif strategy_name == "colossalai_gemini":
-        strategy = GeminiStrategy(placement_policy="cuda", initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy="auto", initial_scale=2**5)
     elif strategy_name == "colossalai_zero2":
         strategy = LowLevelZeroStrategy(stage=2, placement_policy="cuda")
     else:

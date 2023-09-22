@@ -13,7 +13,7 @@
 #    limitations under the License.
 
 import copy
-from typing import Dict, Sequence, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 import torch
 from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
@@ -57,6 +57,7 @@ def _preprocess(
         sources, max_length=max_length, padding="max_length", truncation=True, return_tensors="pt"
     )
 
+    assert sequences_token["attention_mask"].dim() == 2, "seq2seq model should be preprocessed differently"
     labels = copy.deepcopy(sequences_token["input_ids"])
     for i in range(labels.shape[0]):
         source_len = sources_token["attention_mask"][i].sum().item()
@@ -64,9 +65,10 @@ def _preprocess(
         if tokenizer.padding_side == "right":
             # |prompt|completion|eos|pad|
             labels[i][:source_len] = IGNORE_INDEX
+            labels[i][-pad_len:] = IGNORE_INDEX
         elif tokenizer.padding_side == "left":
             # |pad|prompt|completion|eos|
-            labels[i][pad_len : pad_len + source_len] = IGNORE_INDEX
+            labels[i][: pad_len + source_len] = IGNORE_INDEX
         else:
             raise RuntimeError()
 
@@ -126,12 +128,16 @@ class SFTDataset(Dataset):
 
         sources = [data["prompt"] for data in dataset]
         targets = [data["completion"] + tokenizer.eos_token for data in tqdm(dataset, disable=not is_rank_0())]
+
+        logger.info("Tokenizing inputs... This may take some time...")
         if isinstance(tokenizer, ChatGLMTokenizer):
             self.input_ids, self.labels, self.attention_mask = _preprocess_chatglm(
                 sources, targets, tokenizer, max_length
             )
         else:
             self.input_ids, self.labels, self.attention_mask = _preprocess(sources, targets, tokenizer, max_length)
+
+        logger.info("Loaded dataset.")
 
     def __len__(self):
         length = self.input_ids.shape[0]
@@ -148,7 +154,11 @@ class SupervisedDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
     def __init__(
-        self, data_path: str, tokenizer: PreTrainedTokenizer, max_datasets_size: int = None, max_length: int = 512
+        self,
+        data_path: str,
+        tokenizer: PreTrainedTokenizer,
+        max_datasets_size: Optional[int] = None,
+        max_length: int = 512,
     ):
         super().__init__()
         logger.info("Loading data...")
@@ -174,6 +184,8 @@ class SupervisedDataset(Dataset):
             )
         else:
             self.input_ids, self.labels, self.attention_mask = _preprocess(sources, targets, tokenizer, max_length)
+
+        logger.info("Loaded dataset.")
 
     def __len__(self):
         length = self.input_ids.shape[0]

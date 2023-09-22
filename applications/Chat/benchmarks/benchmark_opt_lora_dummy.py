@@ -138,6 +138,7 @@ def main(args):
 
     tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m")
     tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
 
     (actor, actor_optim), (critic, critic_optim) = strategy.prepare((actor, actor_optim), (critic, critic_optim))
 
@@ -154,6 +155,7 @@ def main(args):
         initial_model,
         actor_optim,
         critic_optim,
+        tokenizer=tokenizer,
         ptx_coef=0,
         train_batch_size=args.train_batch_size,
         offload_inference_models=args.offload_inference_models,
@@ -162,8 +164,6 @@ def main(args):
         temperature=1.0,
         top_k=50,
         use_cache=True,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id,
         callbacks=[performance_evaluator],
     )
 

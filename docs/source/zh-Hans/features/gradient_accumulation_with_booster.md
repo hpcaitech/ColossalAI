@@ -1,9 +1,8 @@
-# 梯度累积 (新版本)
+# 梯度累积
 
 作者: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **前置教程**
-- [定义配置文件](../basics/define_your_config.md)
 - [训练中使用Booster](../basics/booster_api.md)
 
 ## 引言

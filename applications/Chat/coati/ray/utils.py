@@ -41,13 +41,13 @@ def get_actor_from_args(model: str, pretrained: str = None, config=None, lora_ra
 
 def get_critic_from_args(model: str, pretrained: str = None, config=None, lora_rank=0):
     if model == "gpt2":
-        critic = GPTCritic(pretrained=pretrained, lora_rank=lora_rank, config=config, use_action_mask=True)
+        critic = GPTCritic(pretrained=pretrained, lora_rank=lora_rank, config=config)
     elif model == "bloom":
-        critic = BLOOMCritic(pretrained=pretrained, lora_rank=lora_rank, config=config, use_action_mask=True)
+        critic = BLOOMCritic(pretrained=pretrained, lora_rank=lora_rank, config=config)
     elif model == "opt":
-        critic = OPTCritic(pretrained=pretrained, lora_rank=lora_rank, config=config, use_action_mask=True)
+        critic = OPTCritic(pretrained=pretrained, lora_rank=lora_rank, config=config)
     elif model == "llama":
-        critic = LlamaCritic(pretrained=pretrained, lora_rank=lora_rank, config=config, use_action_mask=True)
+        critic = LlamaCritic(pretrained=pretrained, lora_rank=lora_rank, config=config)
     else:
         raise ValueError(f'Unsupported reward model "{model}"')
     return critic

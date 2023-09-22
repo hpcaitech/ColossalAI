@@ -1,8 +1,8 @@
-from colossalai import get_default_parser
+import argparse
 
 
 def parse_demo_args():
-    parser = get_default_parser()
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model_name_or_path",
         type=str,
@@ -39,7 +39,7 @@ def parse_demo_args():
 
 
 def parse_benchmark_args():
-    parser = get_default_parser()
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model_name_or_path",
         type=str,

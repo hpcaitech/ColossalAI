@@ -139,7 +139,7 @@ class Booster:
 
         if self.plugin and not self.plugin.control_device():
             # transform model for accelerator
-            model = self.accelerator.configure(model)
+            model = self.accelerator.configure_model(model)
 
         if self.mixed_precision and (self.plugin is None or self.plugin and not self.plugin.control_precision()):
             # transform model for mixed precision
