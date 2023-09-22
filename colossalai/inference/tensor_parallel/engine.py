@@ -227,14 +227,17 @@ class TPInferEngine:
 
     def generate(self,
                  prompts: Optional[Union[str, List[str]]] = None,
-                 prompt_token_ids: Optional[List[List[int]]] = None,
+                 prompt_token_ids: Optional[Union[BatchEncoding, dict, list, torch.Tensor]] = None,
                  **generate_kwargs) -> Union[List[RequestOutput], torch.Tensor]:
         """Generate token sequence.
 
         Args:
             prompts: A list of prompts to generate completions for.
-            prompt_token_ids: A list of token IDs for the prompts. If None, we
-                use the tokenizer to convert the prompts to token IDs.
+            prompt_token_ids: could be one of the following types
+                1. BatchEncoding or dict (e.g. tokenizer batch_encode)
+                2. list of input token ids (e.g. appended result of tokenizer encode)
+                3. torch.Tensor (e.g. tokenizer encode with return_tensors='pt')
+                If None, we use the tokenizer to convert the prompts to token IDs.
         Returns:
             torch.Tensor: The returned sequence is given inputs + generated_tokens.
         """
@@ -246,7 +249,8 @@ class TPInferEngine:
             # Convert a single prompt to a list.
             prompts = [prompts]
         if prompts is not None and prompt_token_ids is not None:
-            if len(prompts) != len(prompt_token_ids):
+            prompt_token_len = len(prompt_token_ids['input_ids']) if isinstance(prompt_token_ids, (BatchEncoding, dict)) else len(prompt_token_ids)
+            if len(prompts) != prompt_token_len:
                 raise ValueError("The lengths of prompts and prompt_token_ids "
                                  "must be the same.")
 
