@@ -58,7 +58,7 @@ class SparseMLP(nn.Module):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_experts = num_experts
-        self.use_kernel = True if MOE_MANAGER.use_kernel_optim else False
+        self.use_kernel = MOE_MANAGER.use_kernel_optim
         self.expert_parallel = expert_parallel
         assert expert_parallel in ["EP", "TP", None], f"Unsupported expert parallel type {expert_parallel}"
 
