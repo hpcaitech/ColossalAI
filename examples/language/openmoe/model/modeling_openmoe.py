@@ -776,7 +776,7 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        chunk_head: Optional[bool] = None,
+        chunk_head: Optional[bool] = True,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         Args:
