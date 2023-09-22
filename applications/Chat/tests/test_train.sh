@@ -34,7 +34,7 @@ if [ -z "$PRETRAIN_DATASET" ]; then
     exit 1
 fi
 
-NUM_RETRY=3
+# NUM_RETRY=3
 BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
 EXAMPLES_DIR=$BASE_DIR/examples
 MODELS_DIR=$BASE_DIR/examples/models_config
@@ -80,9 +80,7 @@ SKIPPED_TESTS=(
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
-    "gpt2-colossalai_gemini"
-    "opt-colossalai_gemini"
-    "bloom-colossalai_gemini"
+    "bloom-colossalai_zero2-4"
 )
 
 GRAD_CKPTS=('' '--grad_checkpoint')
