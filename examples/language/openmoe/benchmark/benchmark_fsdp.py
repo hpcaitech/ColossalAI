@@ -58,7 +58,6 @@ def fsdp_main(rank, world_size, args):
     setattr(config, "label_smoothing", 0.1)
     setattr(config, "z_loss_factor", 0.1)
     model = OpenMoeForCausalLM(config).to(rank)
-    # 使用FSDP将model warp起来
     model = FSDP(
         model,
         mixed_precision=MixedPrecision(

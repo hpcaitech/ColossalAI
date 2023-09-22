@@ -67,7 +67,7 @@ def parse_args():
         "--model_name",
         type=str,
         default="base",
-        choices=["base", "8b"],
+        choices=["base", "8b", "test"],
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -132,6 +132,7 @@ def main():
     # Launch ColossalAI
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
+    test_mode = args.model_name == "test"
 
     # Manage loggers
     disable_existing_loggers()
@@ -150,14 +151,14 @@ def main():
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",
-            use_kernel_optim=args.use_kernel,
+            use_kernel_optim=args.use_kernel if not test_mode else False,
         )
     elif args.plugin == "zero2":
         plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",
-            use_kernel_optim=args.use_kernel,
+            use_kernel_optim=args.use_kernel if not test_mode else False,
         )
     elif args.plugin == "hybrid":
         plugin = MoeHybridParallelPlugin(
@@ -166,8 +167,8 @@ def main():
             zero_stage=args.zero_stage,
             microbatch_size=args.microbatch_size,
             custom_policy=OpenMoeForCausalLMPolicy(),
-            enable_fused_normalization=args.use_kernel,
-            enable_jit_fused=args.use_kernel,
+            enable_fused_normalization=args.use_kernel if not test_mode else False,
+            enable_jit_fused=args.use_kernel if not test_mode else False,
         )
         MOE_MANAGER.setup(
             seed=42,
@@ -183,15 +184,22 @@ def main():
     logger.info(f"Set plugin as {plugin}", ranks=[0])
 
     # Build OpenMoe model
-    repo_name = "hpcaitech/openmoe-" + args.model_name
-    config = LlamaConfig.from_pretrained(repo_name)
+    if test_mode:
+        config = LlamaConfig.from_pretrained("hpcaitech/openmoe-base")
+        config.hidden_size = 64
+        config.intermediate_size = 128
+        config.vocab_size = 32000
+    else:
+        repo_name = "hpcaitech/openmoe-" + args.model_name
+        config = LlamaConfig.from_pretrained(repo_name)
     setattr(config, "router_aux_loss_factor", args.router_aux_loss_factor)
     setattr(config, "router_z_loss_factor", args.router_z_loss_factor)
     setattr(config, "label_smoothing", args.label_smoothing)
     setattr(config, "z_loss_factor", args.z_loss_factor)
     with skip_init():
         model = OpenMoeForCausalLM(config)
-    load_ckpt(repo_name, model)
+    if not test_mode:
+        load_ckpt(repo_name, model)
     logger.info(f"Finish init model with config:\n{config}", ranks=[0])
 
     # Enable gradient checkpointing
@@ -199,7 +207,7 @@ def main():
 
     # Prepare tokenizer and dataloader
     tokenizer = T5Tokenizer.from_pretrained("google/umt5-small")
-    dataset = RandomDataset(num_samples=1000)
+    dataset = RandomDataset(num_samples=1000 if not test_mode else 20)
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     # Set optimizer
