@@ -62,7 +62,7 @@ class CosineAnnealingWarmupLR(WarmupScheduler):
         base_scheduler = _CosineAnnealingLR(
             optimizer, total_steps - warmup_steps, eta_min=eta_min, last_epoch=last_epoch
         )
-        super().__init__(optimizer, warmup_steps, base_scheduler)
+        super().__init__(optimizer, warmup_steps, base_scheduler, last_epoch=last_epoch)
 
 
 class FlatAnnealingLR(DelayerScheduler):
