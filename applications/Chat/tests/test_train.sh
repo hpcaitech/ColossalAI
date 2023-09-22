@@ -34,7 +34,7 @@ if [ -z "$PRETRAIN_DATASET" ]; then
     exit 1
 fi
 
-# NUM_RETRY=3
+NUM_RETRY=3
 BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
 EXAMPLES_DIR=$BASE_DIR/examples
 MODELS_DIR=$BASE_DIR/examples/models_config
