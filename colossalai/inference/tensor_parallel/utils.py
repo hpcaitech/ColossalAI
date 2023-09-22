@@ -1,8 +1,13 @@
 import types
+import warnings
 
 import torch
-from vllm.model_executor.input_metadata import InputMetadata
-from vllm.model_executor.models.llama import LlamaAttention, LlamaForCausalLM, LlamaModel
+try:
+    from vllm.model_executor.models.llama import LlamaAttention
+    VLLM_INSTALLED = True
+except ImportError:
+    warnings.warn("vllm is not installed, PageAttention will not be replaced.")
+    VLLM_INSTALLED = False
 
 from colossalai.inference.continous_batching.layers.attention import PagedAttentionWithRoPE
 
@@ -31,16 +36,17 @@ def init_to_get_rotary(self, base=10000):
 
 
 def replace_page_attention(model, kv_cache_stream):
-    layers = model.model.layers
-    for i in range(len(layers)):
-        layer = layers[i]
-        if isinstance(layer.self_attn, LlamaAttention) is True:
-            attn = PagedAttentionWithRoPE(layer.self_attn.num_heads,
-                                          layer.self_attn.head_dim,
-                                          layer.self_attn.scaling,
-                                          rotary_dim=layer.self_attn.head_dim,
-                                          num_kv_heads=layer.self_attn.num_kv_heads,
-                                          kv_cache_stream=kv_cache_stream)
-            setattr(layer.self_attn, 'attn', attn)
+    if VLLM_INSTALLED:
+        layers = model.model.layers
+        for i in range(len(layers)):
+            layer = layers[i]
+            if isinstance(layer.self_attn, LlamaAttention) is True:
+                attn = PagedAttentionWithRoPE(layer.self_attn.num_heads,
+                                            layer.self_attn.head_dim,
+                                            layer.self_attn.scaling,
+                                            rotary_dim=layer.self_attn.head_dim,
+                                            num_kv_heads=layer.self_attn.num_kv_heads,
+                                            kv_cache_stream=kv_cache_stream)
+                setattr(layer.self_attn, 'attn', attn)
 
     return model
