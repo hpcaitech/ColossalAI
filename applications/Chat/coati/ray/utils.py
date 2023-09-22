@@ -76,6 +76,8 @@ def get_strategy_from_args(strategy: str):
         strategy_ = LowLevelZeroStrategy(stage=2, placement_policy="cuda")
     elif strategy == "colossalai_zero2_cpu":
         strategy_ = LowLevelZeroStrategy(stage=2, placement_policy="cpu")
+    elif strategy == "colossalai_gemini_cpu":
+        strategy_ = GeminiStrategy(placement_policy="static", initial_scale=2**5)
     else:
         raise ValueError(f'Unsupported strategy "{strategy}"')
     return strategy_
