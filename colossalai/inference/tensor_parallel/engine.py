@@ -239,7 +239,7 @@ class TPInferEngine:
                 3. torch.Tensor (e.g. tokenizer encode with return_tensors='pt')
                 If None, we use the tokenizer to convert the prompts to token IDs.
         Returns:
-            torch.Tensor: The returned sequence is given inputs + generated_tokens.
+            Union[List[RequestOutput], torch.Tensor]: The returned sequence is given inputs + generated_tokens.
         """
 
         if prompts is None and prompt_token_ids is None:
@@ -249,12 +249,19 @@ class TPInferEngine:
             # Convert a single prompt to a list.
             prompts = [prompts]
         if prompts is not None and prompt_token_ids is not None:
-            prompt_token_len = len(prompt_token_ids['input_ids']) if isinstance(prompt_token_ids, (BatchEncoding, dict)) else len(prompt_token_ids)
+            if isinstance(prompt_token_ids, (BatchEncoding, dict)):
+                prompt_token_len = len(prompt_token_ids['input_ids'])
+            elif isinstance(prompt_token_ids, torch.Tensor):
+                prompt_token_len = prompt_token_ids.shape[0]
+            else:
+                prompt_token_len = len(prompt_token_ids)
             if len(prompts) != prompt_token_len:
                 raise ValueError("The lengths of prompts and prompt_token_ids "
                                  "must be the same.")
 
         if self.use_continous_batching:
+            if not isinstance(prompt_token_ids, list):
+                raise TypeError(f"prompt_token_ids type must be list, when using continous batching.")
             sampling_params = SamplingParams(temperature=0.0, max_tokens=self.max_output_len)
             return self.llm_engine.generate(prompts=prompts,
                                             prompt_token_ids=prompt_token_ids,
