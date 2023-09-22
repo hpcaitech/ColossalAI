@@ -26,7 +26,6 @@ except ImportError:
 
 
 class CaiQuantLinear(nn.Module):
-
     def __init__(self, bits, groupsize, infeatures, outfeatures, bias, tp_size=1, tp_rank=0, row_split=False):
         super().__init__()
         if bits not in [2, 4, 8]:
@@ -165,7 +164,6 @@ class CaiQuantLinear(nn.Module):
         outshape = x.shape[:-1] + (self.outfeatures,)
 
         if HAS_GPTQ_CUDA and self.bits == 4:
-
             if self.q4 is None:
                 self.init_q4()
 
@@ -191,7 +189,6 @@ class CaiQuantLinear(nn.Module):
 
 
 def split_column_copy(gptq_linear, cai_linear, tp_size=1, tp_rank=0, split_num=1):
-
     qweights = gptq_linear.qweight.split(gptq_linear.out_features // split_num, dim=-1)
     qzeros = gptq_linear.qzeros.split(gptq_linear.out_features // (32 // cai_linear.bits) // split_num, dim=-1)
     scales = gptq_linear.scales.split(gptq_linear.out_features // split_num, dim=-1)
@@ -220,7 +217,6 @@ def split_column_copy(gptq_linear, cai_linear, tp_size=1, tp_rank=0, split_num=1
 
 
 def split_row_copy(gptq_linear, cai_linear, tp_rank=0, split_num=1):
-
     qweights = gptq_linear.qweight.split(gptq_linear.in_features // split_num, dim=0)
     qzeros = gptq_linear.qzeros.split(gptq_linear.in_features // split_num, dim=0)
     scales = gptq_linear.scales.split(gptq_linear.in_features // split_num, dim=0)
