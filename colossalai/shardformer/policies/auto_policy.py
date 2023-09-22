@@ -164,6 +164,13 @@ _INFER_POLICY_LIST = {
     "transformers.models.bloom.modeling_bloom.BloomForCausalLM": PolicyLocation(
         file_name="bloom", class_name="BloomModelInferPolicy"
     ),
+    # ChatGLM2
+    "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMModel": PolicyLocation(
+        file_name="chatglm2", class_name="ChatGLM2InferPolicy"
+    ),
+    "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
+        file_name="chatglm2", class_name="ChatGLM2ForConditionalGenerationInferPolicy"
+    ),
 }
 
 
@@ -208,7 +215,7 @@ def get_autopolicy(model: nn.Module, inference_only: Optional[bool] = False) -> 
 
     if policy_location is None:
         raise NotImplementedError(
-            f"Auto policy for {model.__class__.__qualname__} is not implemented\n. Supported models are {list(_POLICY_LIST.keys())}"
+            f"Auto policy for {model.__class__.__qualname__} is not implemented\n. Supported models are {list(_POLICY_LIST.keys())} and {list(_INFER_POLICY_LIST.keys())}"
         )
     else:
         policy = import_policy(policy_location, inference_only)

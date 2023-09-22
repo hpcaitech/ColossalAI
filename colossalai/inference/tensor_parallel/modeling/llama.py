@@ -100,7 +100,7 @@ class LlamaInferenceForwards:
         # NOTE: differentiate with prefill stage
         #       block_loc require different value-assigning method for two different stage
         if use_cache and seq_length != 1:
-            # NOTE assuem prefill stage
+            # NOTE assume prefill stage
             # allocate memory block
             infer_state.is_context_stage = True  # set prefill stage, notify attention layer
             infer_state.context_mem_index = infer_state.cache_manager.alloc(infer_state.total_token_num)
