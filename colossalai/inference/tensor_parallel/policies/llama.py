@@ -3,6 +3,8 @@ from functools import partial
 import torch
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
 
+from colossalai.shardformer.layer import VocabParallelEmbedding1D
+from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 # import colossalai
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
 
@@ -34,6 +36,55 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
 
     def module_policy(self):
         policy = super().module_policy()
+
+        if self.shard_config.inference_gptq:
+            from colossalai.inference.quant.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
+
+            decoder_attribute_replacement = {
+                "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+            }
+            policy[LlamaDecoderLayer] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.q_proj",
+                        target_module=ColCaiQuantLinear,
+                        kwargs={'split_num': 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.k_proj",
+                        target_module=ColCaiQuantLinear,
+                        kwargs={'split_num': 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.v_proj",
+                        target_module=ColCaiQuantLinear,
+                        kwargs={'split_num': 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.o_proj",
+                        target_module=RowCaiQuantLinear,
+                        kwargs={'split_num': 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.gate_proj",
+                        target_module=ColCaiQuantLinear,
+                        kwargs={'split_num': 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.up_proj",
+                        target_module=ColCaiQuantLinear,
+                        kwargs={'split_num': 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.down_proj",
+                        target_module=RowCaiQuantLinear,
+                        kwargs={'split_num': 1},
+                    )
+                ],
+            )
+
         self.shard_config._infer()
 
         infer_forward = LlamaInferenceForwards.llama_model_forward

@@ -1,6 +1,7 @@
 from typing import Any, Callable, List, Optional, Union
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from transformers import BloomForCausalLM, LlamaForCausalLM
 from transformers.generation import GenerationConfig
@@ -68,6 +69,13 @@ class TPInferEngine:
         self.tp_size = -1  # to be set with given shard config in self.prepare_shard_config
         self.cache_manager = None
 
+        self.max_dq_buffer_size = 1
+        self.max_inner_outer_dim = 1
+        self.gptq_temp_state_buffer = None
+        self.gptq_temp_dq_buffer = None
+        self.bits = -1
+        self.use_act_order = False
+
         self.shard_config = shard_config
         self.model = None
         # optimize the original model by sharding with ShardFormer
@@ -80,6 +88,50 @@ class TPInferEngine:
         self.cache_manager = MemoryManager(
             self.max_total_token_num, self.dtype, self.head_num, self.head_dim, self.layer_num
         )
+
+    def _post_init_gptq_buffer(self, model: nn.Module) -> None:
+        from colossalai.inference.quant.gptq.cai_gptq import CaiQuantLinear
+        HAS_GPTQ_CUDA = False
+        try:
+            from colossalai.kernel.op_builder.gptq import GPTQBuilder
+            gptq_cuda = GPTQBuilder().load()
+            HAS_GPTQ_CUDA = True
+        except ImportError:
+            warnings.warn('CUDA gptq is not installed')
+            HAS_GPTQ_CUDA = False
+
+        for name, submodule in model.named_modules():
+            if isinstance(submodule, CaiQuantLinear):
+                self.max_dq_buffer_size = max(self.max_dq_buffer_size, submodule.qweight.numel() * 8)
+
+                if self.use_act_order:
+                    self.max_inner_outer_dim = max(self.max_inner_outer_dim, submodule.infeatures,
+                                                   submodule.outfeatures)
+                self.bits = submodule.bits
+        if not (HAS_GPTQ_CUDA and self.bits == 4):
+            return
+
+        max_input_len = 1
+        if self.use_act_order:
+            max_input_len = self.max_input_len
+        # The temp_state buffer is required to reorder X in the act-order case.
+        # The temp_dq buffer is required to dequantize weights when using cuBLAS, typically for the prefill.
+        self.gptq_temp_state_buffer = torch.zeros((max_input_len, self.max_inner_outer_dim),
+                                                  dtype=torch.float16,
+                                                  device=torch.cuda.current_device())
+        self.gptq_temp_dq_buffer = torch.zeros((1, self.max_dq_buffer_size),
+                                               dtype=torch.float16,
+                                               device=torch.cuda.current_device())
+
+        gptq_cuda.prepare_buffers(torch.device(torch.cuda.current_device()), self.gptq_temp_state_buffer,
+                                  self.gptq_temp_dq_buffer)
+        # Using the default from exllama repo here.
+        matmul_recons_thd = 8
+        matmul_fused_remap = False
+        matmul_no_half2 = False
+        gptq_cuda.set_tuning_params(matmul_recons_thd, matmul_fused_remap, matmul_no_half2)
+
+        torch.cuda.empty_cache()
 
     def _optimize_model(self, model: nn.Module) -> None:
         """
@@ -129,6 +181,10 @@ class TPInferEngine:
         assert model_name in self.supported_models, f"Unsupported model cls {model_name} for TP inference."
         policy = get_autopolicy(model, inference_only=True)
         self.model, _ = shardformer.optimize(model, policy)
+
+        if self.shard_config.inference_gptq:
+            self._post_init_gptq_buffer(model)
+
         self.model = self.model.cuda()
 
     @property

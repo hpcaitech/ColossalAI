@@ -6,6 +6,7 @@ try:
     from .context_attention import bloom_context_attn_fwd, llama_context_attn_fwd
     from .copy_kv_cache_dest import copy_kv_cache_to_dest
     from .fused_layernorm import layer_norm
+    from .gptq_triton import gptq_fused_linear_triton
     from .rms_norm import rmsnorm_forward
     from .rotary_embedding_kernel import rotary_embedding_fwd
     from .softmax import softmax
@@ -20,6 +21,7 @@ try:
         "copy_kv_cache_to_dest",
         "rotary_embedding_fwd",
         "token_attention_fwd",
+        "gptq_fused_linear_triton",
     ]
 
 except ImportError:
