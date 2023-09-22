@@ -267,15 +267,18 @@ class HybridParallelPlugin(PipelinePluginBase):
     The size of tp and pp should be passed in by user, then the size of dp is automatically calculated from dp_size = world_size / (tp_size * pp_size).
 
     Example:
-        >>> from colossalai.booster import Booster
-        >>> from colossalai.booster.plugin import HybridParallelPlugin
 
-        >>> model, train_dataset, optimizer, criterion = ...
-        >>> plugin =  HybridParallelPlugin(tp_size=2, pp_size=2)
+    ```python
+    from colossalai.booster import Booster
+    from colossalai.booster.plugin import HybridParallelPlugin
 
-        >>> train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=8)
-        >>> booster = Booster(plugin=plugin)
-        >>> model, optimizer, criterion, train_dataloader, _ = booster.boost(model, optimizer, criterion, train_dataloader)
+    model, train_dataset, optimizer, criterion = ...
+    plugin =  HybridParallelPlugin(tp_size=2, pp_size=2)
+
+    train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=8)
+    booster = Booster(plugin=plugin)
+    model, optimizer, criterion, train_dataloader, _ = booster.boost(model, optimizer, criterion, train_dataloader)
+    ```
 
     Args:
         tp_size (int): The size of tensor parallelism. Tensor parallelism will not be used when tp_size is set to 1.
