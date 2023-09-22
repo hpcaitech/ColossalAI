@@ -7,15 +7,6 @@ from colossalai.inference.tensor_parallel import MemoryManager
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
-import warnings
-
-try:
-    import vllm
-    VLLM_INSTALLED = True
-except ImportError:
-    warnings.warn("vllm is not installed, some functions will not be supported in TPInferEngine.")
-    VLLM_INSTALLED = False
-
 BATCH_SIZE = 4
 INPUT_LEN = 16
 OUTPUT_LEN = 8
@@ -53,7 +44,6 @@ def create_cache_manager(rank, world_size, port, batch_size, input_len, output_l
     assert torch.all(kvcache_manager.mem_state[:total_token_prefill + batch_size] == False)
 
 @pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
-@pytest.mark.skipif(not VLLM_INSTALLED, reason="vllm isn't installed")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_cache_manager_dist():

@@ -25,6 +25,7 @@ try:
 except ImportError:
     warnings.warn("vllm is not installed, continuous batching will not be supported.")
     USE_CONTINOUS_BATCHING = False
+    RequestOutput = None
 
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.auto_policy import get_autopolicy
