@@ -1,0 +1,12 @@
+transformers>=4.32.0
+colossalai>=0.3.1
+peft
+tabulate
+jieba
+fuzzywuzzy
+rouge
+openai
+matplotlib
+pandas
+seaborn
+scikit-learn

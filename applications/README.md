@@ -4,6 +4,7 @@ This directory contains the applications that are powered by Colossal-AI.
 
 The list of applications include:
 
+- [X] [ColossalEval](./ColossalEval): Evaluation Pipeline for LLMs.
 - [X] [Chatbot](./Chat/README.md)
 - [X] [FastFold](https://github.com/hpcaitech/FastFold): Optimizing AlphaFold (Biomedicine) Training and Inference on GPU Clusters
 
