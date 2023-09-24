@@ -1,0 +1,58 @@
+{
+  "model": [
+    {
+      "name": "model1"
+    },
+    {
+      "name": "model2"
+    }
+  ],
+  "dataset": [
+    {
+      "name": "mmlu",
+      "metrics": [
+        "first_token_accuracy",
+        "single_choice_accuracy",
+        "perplexity",
+        "ppl_score",
+        "ppl_score_over_choices"
+      ]
+    },
+    {
+      "name": "cmmlu",
+      "metrics": [
+        "first_token_accuracy",
+        "single_choice_accuracy",
+        "perplexity",
+        "ppl_score",
+        "ppl_score_over_choices"
+      ]
+    },
+    {
+      "name": "agieval",
+      "metrics": [
+        "first_token_accuracy",
+        "single_choice_accuracy",
+        "multi_choice_accuracy",
+        "math_equivalence",
+        "perplexity",
+        "ppl_score_over_choices",
+        "ppl_score"
+      ]
+    },
+    {
+      "name": "gaokaobench",
+      "metrics": [
+        "first_token_accuracy",
+        "single_choice_accuracy",
+        "multi_choice_accuracy",
+        "math_equivalence",
+        "rouge_score",
+        "rouge_zh_score",
+        "perplexity",
+        "ppl_score_over_choices",
+        "ppl_score"
+      ]
+    }
+  ]
+}
