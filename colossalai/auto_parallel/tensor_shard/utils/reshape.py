@@ -6,12 +6,13 @@ import torch
 
 class PreviousStatus(Enum):
     """
-    This class shows the status of previous comparision.
+    This class shows the status of previous comparison.
     """
+
     RESET = 0
-    # ORIGIN means the dimension size of original tensor is larger in the previous comparision.
+    # ORIGIN means the dimension size of original tensor is larger in the previous comparison.
     ORIGIN = 1
-    # TGT means the dimension size of target tensor is larger in the previous comparision.
+    # TGT means the dimension size of target tensor is larger in the previous comparison.
     TGT = 2
 
 
@@ -91,7 +92,7 @@ def detect_reshape_mapping(origin_shape: torch.Size, tgt_shape: torch.Size) -> D
             tgt_index += 1
 
             if previous_label == PreviousStatus.TGT:
-                # if the target dimension size is larger in the previous comparision, which means
+                # if the target dimension size is larger in the previous comparison, which means
                 # the origin dimension size has already accumulated larger than target dimension size, so
                 # we need to offload the origin dims and tgt dims into the reshape_mapping_dict.
                 reshape_mapping_dict[tuple(origin_dims)] = tuple(tgt_dims)
@@ -111,7 +112,7 @@ def detect_reshape_mapping(origin_shape: torch.Size, tgt_shape: torch.Size) -> D
             origin_index += 1
 
             if previous_label == PreviousStatus.ORIGIN:
-                # if the origin element is larger in the previous comparision, which means
+                # if the origin element is larger in the previous comparison, which means
                 # the target element has already accumulated larger than origin element, so
                 # we need to offload the origin dims and tgt dims into the reshape_mapping_dict.
                 reshape_mapping_dict[tuple(origin_dims)] = tuple(tgt_dims)
@@ -130,8 +131,9 @@ def detect_reshape_mapping(origin_shape: torch.Size, tgt_shape: torch.Size) -> D
     return reshape_mapping_dict
 
 
-def check_keep_sharding_status(input_dim_partition_dict: Dict[int, List[int]],
-                               reshape_mapping_dict: Dict[Tuple[int], Tuple[int]]) -> bool:
+def check_keep_sharding_status(
+    input_dim_partition_dict: Dict[int, List[int]], reshape_mapping_dict: Dict[Tuple[int], Tuple[int]]
+) -> bool:
     """
     This method is used to check whether the reshape operation could implement without converting
     the input to fully replicated status.
@@ -139,7 +141,7 @@ def check_keep_sharding_status(input_dim_partition_dict: Dict[int, List[int]],
     Rule:
         For a sharded dimension of input tensor, if it is not the minimum element of the input tuple,
         the function will return false.
-        To illustrate this issue, there are two cases to analyse:
+        To illustrate this issue, there are two cases to analyze:
         1. no sharded dims in the input tuple: we could do the reshape operation safely just as the normal
         operation without distributed tensor.
         2. sharded dims in the input tuple: the sharded dim must be the minimum element, then during shape
@@ -172,14 +174,16 @@ def check_keep_sharding_status(input_dim_partition_dict: Dict[int, List[int]],
     return True
 
 
-def infer_output_dim_partition_dict(input_dim_partition_dict: Dict[int, List[int]],
-                                    reshape_mapping_dict: Dict[Tuple[int], Tuple[int]]) -> Dict[Tuple[int], Tuple[int]]:
+def infer_output_dim_partition_dict(
+    input_dim_partition_dict: Dict[int, List[int]], reshape_mapping_dict: Dict[Tuple[int], Tuple[int]]
+) -> Dict[Tuple[int], Tuple[int]]:
     """
     This method is used to infer the output dim partition dict for a reshape operation,
     given the input dim partition dict and reshape mapping dict.
     """
-    assert check_keep_sharding_status(input_dim_partition_dict, reshape_mapping_dict), \
-        'we only infer output dim partition dict for the reshape operation could keep sharding spec.'
+    assert check_keep_sharding_status(
+        input_dim_partition_dict, reshape_mapping_dict
+    ), "we only infer output dim partition dict for the reshape operation could keep sharding spec."
     sharded_dims = list(input_dim_partition_dict.keys())
     output_dim_partition_dict = {}
     for input_dims, output_dims in reshape_mapping_dict.items():

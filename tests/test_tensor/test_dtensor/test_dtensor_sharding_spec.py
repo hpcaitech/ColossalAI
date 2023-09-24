@@ -26,9 +26,10 @@ def test_dtensor_sharding_spec():
     assert dim_spec_list_0[2].dim_diff(dim_spec_list_1[2]) == 0
     assert dim_spec_list_0[3].dim_diff(dim_spec_list_1[3]) == 0
 
-    assert sharding_spec_0.spec_diff(sharding_spec_1) == \
-        reduce(operator.add, [dim_spec_list_0[i].dim_diff(dim_spec_list_1[i]) for i in range(dims)], 0)
+    assert sharding_spec_0.spec_diff(sharding_spec_1) == reduce(
+        operator.add, [dim_spec_list_0[i].dim_diff(dim_spec_list_1[i]) for i in range(dims)], 0
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_dtensor_sharding_spec()

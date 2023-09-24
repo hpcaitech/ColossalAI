@@ -1,10 +1,9 @@
 """
 This file will not be automatically imported by `colossalai.testing`
-as this file has a dependency on `pytest`. Therefore, you need to 
+as this file has a dependency on `pytest`. Therefore, you need to
 explicitly import this file `from colossalai.testing.pytest_wrapper import <func>`.from
 """
 
-import pytest
 import os
 
 
@@ -30,11 +29,18 @@ def run_on_environment_flag(name: str):
         pytest test_for_something.py
 
     """
-    assert isinstance(name, str)
-    flag = os.environ.get(name.upper(), '0')
+    try:
+        import pytest
+    except ImportError:
+        raise ImportError(
+            "This function requires `pytest` to be installed, please do `pip install pytest` and try again."
+        )
 
-    reason = f'Environment variable {name} is {flag}'
-    if flag == '1':
+    assert isinstance(name, str)
+    flag = os.environ.get(name.upper(), "0")
+
+    reason = f"Environment variable {name} is {flag}"
+    if flag == "1":
         return pytest.mark.skipif(False, reason=reason)
     else:
         return pytest.mark.skipif(True, reason=reason)

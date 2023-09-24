@@ -1,5 +1,5 @@
 import copy
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 from torch.fx.node import Node
 
@@ -397,7 +397,7 @@ class TraceIndice(object):
         input_node = node.args[0]
         assert len(get_node_shape(input_node)) == 4
 
-        # assgin index
+        # assign index
         self._assign_indice_as_input(node, node_idx, input_node)
         self._del_dim(node_idx, 1)
         self._add_dim(node_idx, 1)
@@ -412,10 +412,10 @@ class TraceIndice(object):
             node_idx (int)
         """
         # get conv input
-        assert node.kwargs['size'] is None
+        assert node.kwargs["size"] is None
         assert len(get_node_shape(node)) == 4
 
-        # assgin index
+        # assign index
         self._assign_indice_as_input(node, node_idx)
         self._mark_computation(node, node_idx, [-1, -2])
 
@@ -826,7 +826,7 @@ class TraceIndice(object):
         # clear compute
         for dim_compute in trace["compute"]:
             for i in range(len(dim_compute) - 1, -1, -1):
-                if (dim_compute[i] < trace_barrier and dim_compute[i] not in active_nodes):
+                if dim_compute[i] < trace_barrier and dim_compute[i] not in active_nodes:
                     dim_compute.pop(i)
             continue
         # clear source
@@ -876,10 +876,24 @@ class TraceIndice(object):
                     self._assign_matmul_indice(node, idx)
                 elif "softmax" == node_name:
                     self._assign_softmax_indice(node, idx)
-                elif any(n == node_name for n in [
-                        "mul", "add", "sigmoid", "relu", "sub", "truediv", "pow", "dropout", "where", "tanh", "exp",
-                        "sin", "cos"
-                ]):
+                elif any(
+                    n == node_name
+                    for n in [
+                        "mul",
+                        "add",
+                        "sigmoid",
+                        "relu",
+                        "sub",
+                        "truediv",
+                        "pow",
+                        "dropout",
+                        "where",
+                        "tanh",
+                        "exp",
+                        "sin",
+                        "cos",
+                    ]
+                ):
                     self._assign_elementwise_indice(node, idx)
                 elif "einsum" == node_name:
                     self._assign_einsum_indice(node, idx)
@@ -920,7 +934,7 @@ class TraceIndice(object):
                 else:
                     raise NotImplementedError(node_name, "module not implemented yet!")
             elif node.op == "get_attr":
-                self._assign_all_indice(node, idx)    # get param
+                self._assign_all_indice(node, idx)  # get param
             elif node.op == "output":
                 continue
             else:

@@ -2,10 +2,12 @@ import argparse
 import hashlib
 import math
 import os
+import shutil
 from pathlib import Path
 from typing import Optional
 
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
@@ -18,12 +20,11 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import colossalai
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.booster import Booster
+from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.logging import disable_existing_loggers, get_dist_logger
+from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
-from colossalai.zero import ColoInitContext, GeminiAdamOptimizer
-from colossalai.zero.gemini import get_static_torch_model
 
 disable_existing_loggers()
 logger = get_dist_logger()
@@ -57,6 +58,13 @@ def parse_args(input_args=None):
         default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--externel_unet_path",
+        type=str,
+        default=None,
+        required=False,
+        help="Path to the externel unet model.",
     )
     parser.add_argument(
         "--revision",
@@ -109,8 +117,10 @@ def parse_args(input_args=None):
         "--num_class_images",
         type=int,
         default=100,
-        help=("Minimal class images for prior preservation loss. If there are not enough images already present in"
-              " class_data_dir, additional images will be sampled with class_prompt."),
+        help=(
+            "Minimal class images for prior preservation loss. If there are not enough images already present in"
+            " class_data_dir, additional images will be sampled with class_prompt."
+        ),
     )
     parser.add_argument(
         "--output_dir",
@@ -123,26 +133,29 @@ def parse_args(input_args=None):
         "--resolution",
         type=int,
         default=512,
-        help=("The resolution for input images, all the images in the train/validation dataset will be resized to this"
-              " resolution"),
+        help=(
+            "The resolution for input images, all the images in the train/validation dataset will be resized to this"
+            " resolution"
+        ),
     )
     parser.add_argument(
-        "--placement",
-        type=str,
-        default="cpu",
-        help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
+        "--offload_optim_frac",
+        type=float,
+        default=1.0,
+        help="Fraction of optimizer states to be offloaded. Valid when using colossalai as dist plan.",
     )
     parser.add_argument(
         "--center_crop",
         default=False,
         action="store_true",
-        help=("Whether to center crop the input images to the resolution. If not set, the images will be randomly"
-              " cropped. The images will be resized to the resolution first before cropping."),
+        help=(
+            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+            " cropped. The images will be resized to the resolution first before cropping."
+        ),
     )
-    parser.add_argument("--train_batch_size",
-                        type=int,
-                        default=4,
-                        help="Batch size (per device) for the training dataloader.")
+    parser.add_argument(
+        "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
+    )
     parser.add_argument("--sample_batch_size", type=int, default=4, help="Batch size (per device) for sampling images.")
     parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument(
@@ -173,20 +186,22 @@ def parse_args(input_args=None):
         "--lr_scheduler",
         type=str,
         default="constant",
-        help=('The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
-              ' "constant", "constant_with_warmup"]'),
+        help=(
+            'The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
+            ' "constant", "constant_with_warmup"]'
+        ),
     )
-    parser.add_argument("--lr_warmup_steps",
-                        type=int,
-                        default=500,
-                        help="Number of steps for the warmup in the lr scheduler.")
-    parser.add_argument("--use_8bit_adam",
-                        action="store_true",
-                        help="Whether or not to use 8-bit Adam from bitsandbytes.")
+    parser.add_argument(
+        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+    )
+    parser.add_argument(
+        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+    )
 
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument("--test_run", default=False, help="Whether to use a smaller dataset for test run.")
     parser.add_argument(
         "--hub_model_id",
         type=str,
@@ -194,11 +209,21 @@ def parse_args(input_args=None):
         help="The name of the repository to keep in sync with the local `output_dir`.",
     )
     parser.add_argument(
+        "-p",
+        "--plugin",
+        type=str,
+        default="torch_ddp",
+        choices=["torch_ddp", "torch_ddp_fp16", "gemini", "low_level_zero"],
+        help="plugin to use",
+    )
+    parser.add_argument(
         "--logging_dir",
         type=str,
         default="logs",
-        help=("[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
-              " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."),
+        help=(
+            "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
+            " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
+        ),
     )
     parser.add_argument(
         "--mixed_precision",
@@ -208,7 +233,8 @@ def parse_args(input_args=None):
         help=(
             "Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
             " 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the"
-            " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."),
+            " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
+        ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
@@ -250,6 +276,7 @@ class DreamBoothDataset(Dataset):
         class_prompt=None,
         size=512,
         center_crop=False,
+        test=False,
     ):
         self.size = size
         self.center_crop = center_crop
@@ -260,6 +287,8 @@ class DreamBoothDataset(Dataset):
             raise ValueError("Instance images root doesn't exists.")
 
         self.instance_images_path = list(Path(instance_data_root).iterdir())
+        if test:
+            self.instance_images_path = self.instance_images_path[:10]
         self.num_instance_images = len(self.instance_images_path)
         self.instance_prompt = instance_prompt
         self._length = self.num_instance_images
@@ -274,12 +303,14 @@ class DreamBoothDataset(Dataset):
         else:
             self.class_data_root = None
 
-        self.image_transforms = transforms.Compose([
-            transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ])
+        self.image_transforms = transforms.Compose(
+            [
+                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
 
     def __len__(self):
         return self._length
@@ -339,26 +370,14 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
         return f"{organization}/{model_id}"
 
 
-# Gemini + ZeRO DDP
-def gemini_zero_dpp(model: torch.nn.Module, placememt_policy: str = "auto"):
-    from colossalai.nn.parallel import GeminiDDP
-
-    model = GeminiDDP(model,
-                      device=get_current_device(),
-                      placement_policy=placememt_policy,
-                      pin_memory=True,
-                      search_range_mb=64)
-    return model
-
-
 def main(args):
     if args.seed is None:
         colossalai.launch_from_torch(config={})
     else:
         colossalai.launch_from_torch(config={}, seed=args.seed)
 
-    local_rank = gpc.get_local_rank(ParallelMode.DATA)
-    world_size = gpc.get_world_size(ParallelMode.DATA)
+    local_rank = dist.get_rank()
+    world_size = dist.get_world_size()
 
     if args.with_prior_preservation:
         class_images_dir = Path(args.class_data_dir)
@@ -385,14 +404,14 @@ def main(args):
             pipeline.to(get_current_device())
 
             for example in tqdm(
-                    sample_dataloader,
-                    desc="Generating class images",
-                    disable=not local_rank == 0,
+                sample_dataloader,
+                desc="Generating class images",
+                disable=not local_rank == 0,
             ):
                 images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
-                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                    hash_image = hashlib.sha256(image.tobytes()).hexdigest()
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 
@@ -452,12 +471,16 @@ def main(args):
         revision=args.revision,
     )
 
-    logger.info(f"Loading UNet2DConditionModel from {args.pretrained_model_name_or_path}", ranks=[0])
-    with ColoInitContext(device=get_current_device()):
-        unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path,
-                                                    subfolder="unet",
-                                                    revision=args.revision,
-                                                    low_cpu_mem_usage=False)
+    if args.externel_unet_path is None:
+        logger.info(f"Loading UNet2DConditionModel from {args.pretrained_model_name_or_path}", ranks=[0])
+        unet = UNet2DConditionModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, low_cpu_mem_usage=False
+        )
+    else:
+        logger.info(f"Loading UNet2DConditionModel from {args.externel_unet_path}", ranks=[0])
+        unet = UNet2DConditionModel.from_pretrained(
+            args.externel_unet_path, revision=args.revision, low_cpu_mem_usage=False
+        )
 
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
@@ -468,10 +491,24 @@ def main(args):
     if args.scale_lr:
         args.learning_rate = args.learning_rate * args.train_batch_size * world_size
 
-    unet = gemini_zero_dpp(unet, args.placement)
+    # Use Booster API to use Gemini/Zero with ColossalAI
+
+    booster_kwargs = {}
+    if args.plugin == "torch_ddp_fp16":
+        booster_kwargs["mixed_precision"] = "fp16"
+    if args.plugin.startswith("torch_ddp"):
+        plugin = TorchDDPPlugin()
+    elif args.plugin == "gemini":
+        plugin = GeminiPlugin(offload_optim_frac=args.offload_optim_frac, strict_ddp_mode=True, initial_scale=2**5)
+    elif args.plugin == "low_level_zero":
+        plugin = LowLevelZeroPlugin(initial_scale=2**5)
+
+    booster = Booster(plugin=plugin, **booster_kwargs)
 
     # config optimizer for colossalai zero
-    optimizer = GeminiAdamOptimizer(unet, lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm)
+    optimizer = HybridAdam(
+        unet.parameters(), lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm
+    )
 
     # load noise_scheduler
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
@@ -486,6 +523,7 @@ def main(args):
         tokenizer=tokenizer,
         size=args.resolution,
         center_crop=args.center_crop,
+        test=args.test_run,
     )
 
     def collate_fn(examples):
@@ -502,9 +540,7 @@ def main(args):
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
         input_ids = tokenizer.pad(
-            {
-                "input_ids": input_ids
-            },
+            {"input_ids": input_ids},
             padding="max_length",
             max_length=tokenizer.model_max_length,
             return_tensors="pt",
@@ -516,11 +552,9 @@ def main(args):
         }
         return batch
 
-    train_dataloader = torch.utils.data.DataLoader(train_dataset,
-                                                   batch_size=args.train_batch_size,
-                                                   shuffle=True,
-                                                   collate_fn=collate_fn,
-                                                   num_workers=1)
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn, num_workers=1
+    )
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -553,6 +587,8 @@ def main(args):
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+
+    unet, optimizer, _, _, lr_scheduler = booster.boost(unet, optimizer, lr_scheduler=lr_scheduler)
 
     # Train!
     total_batch_size = args.train_batch_size * world_size
@@ -637,37 +673,26 @@ def main(args):
             logs = {
                 "loss": loss.detach().item(),
                 "lr": optimizer.param_groups[0]["lr"],
-            }    # lr_scheduler.get_last_lr()[0]}
+            }  # lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
             if global_step % args.save_steps == 0:
                 torch.cuda.synchronize()
-                torch_unet = get_static_torch_model(unet)
+                save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                booster.save_model(unet, os.path.join(save_path, "diffusion_pytorch_model.bin"))
                 if local_rank == 0:
-                    pipeline = DiffusionPipeline.from_pretrained(
-                        args.pretrained_model_name_or_path,
-                        unet=torch_unet,
-                        revision=args.revision,
-                    )
-                    save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                    pipeline.save_pretrained(save_path)
+                    if not os.path.exists(os.path.join(save_path, "config.json")):
+                        shutil.copy(os.path.join(args.pretrained_model_name_or_path, "unet/config.json"), save_path)
                     logger.info(f"Saving model checkpoint to {save_path}", ranks=[0])
             if global_step >= args.max_train_steps:
                 break
-
     torch.cuda.synchronize()
-    unet = get_static_torch_model(unet)
 
+    booster.save_model(unet, os.path.join(args.output_dir, "diffusion_pytorch_model.bin"))
+    logger.info(f"Saving model checkpoint to {args.output_dir} on rank {local_rank}")
     if local_rank == 0:
-        pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            unet=unet,
-            revision=args.revision,
-        )
-
-        pipeline.save_pretrained(args.output_dir)
-        logger.info(f"Saving model checkpoint to {args.output_dir}", ranks=[0])
-
+        if not os.path.exists(os.path.join(args.output_dir, "config.json")):
+            shutil.copy(os.path.join(args.pretrained_model_name_or_path, "unet/config.json"), args.output_dir)
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 

@@ -1,21 +1,19 @@
 import gc
 import inspect
+from collections import defaultdict
+from typing import Optional
+
 import torch
 import torch.nn as nn
-from typing import Optional
-from collections import defaultdict
 
 LINE_WIDTH = 108
-LINE = '-' * LINE_WIDTH + '\n'
+LINE = "-" * LINE_WIDTH + "\n"
 
 
-class TensorDetector():
-
-    def __init__(self,
-                 show_info: bool = True,
-                 log: str = None,
-                 include_cpu: bool = False,
-                 module: Optional[nn.Module] = None):
+class TensorDetector:
+    def __init__(
+        self, show_info: bool = True, log: str = None, include_cpu: bool = False, module: Optional[nn.Module] = None
+    ):
         """This class is a detector to detect tensor on different devices.
 
         Args:
@@ -55,42 +53,41 @@ class TensorDetector():
         return self.mem_format(memory_size)
 
     def mem_format(self, real_memory_size):
-        # format the tensor memory into a reasonal magnitude
+        # format the tensor memory into a reasonable magnitude
         if real_memory_size >= 2**30:
-            return str(real_memory_size / (2**30)) + ' GB'
+            return str(real_memory_size / (2**30)) + " GB"
         if real_memory_size >= 2**20:
-            return str(real_memory_size / (2**20)) + ' MB'
+            return str(real_memory_size / (2**20)) + " MB"
         if real_memory_size >= 2**10:
-            return str(real_memory_size / (2**10)) + ' KB'
-        return str(real_memory_size) + ' B'
+            return str(real_memory_size / (2**10)) + " KB"
+        return str(real_memory_size) + " B"
 
     def collect_tensors_state(self):
         for obj in gc.get_objects():
             if torch.is_tensor(obj):
                 # skip cpu tensor when include_cpu is false and the tensor we have collected before
-                if (not self.include_cpu) and obj.device == torch.device('cpu'):
+                if (not self.include_cpu) and obj.device == torch.device("cpu"):
                     continue
                 self.detected.append(id(obj))
-                # skip paramters we had added in __init__ when module is an instance of nn.Module for the first epoch
+                # skip parameters we had added in __init__ when module is an instance of nn.Module for the first epoch
                 if id(obj) not in self.tensor_info:
-
                     name = type(obj).__name__
                     # after backward, we want to update the records, to show you the change
-                    if isinstance(self.module, nn.Module) and name == 'Parameter':
+                    if isinstance(self.module, nn.Module) and name == "Parameter":
                         if obj.grad is not None:
                             # with grad attached
                             for par_name, param in self.module.named_parameters():
                                 if param.requires_grad and param.grad.equal(obj.grad):
-                                    name = par_name + ' (with grad)'
+                                    name = par_name + " (with grad)"
                         else:
                             # with no grad attached
-                            # there will be no new paramters created during running
+                            # there will be no new parameters created during running
                             # so it must be in saved_tensor_info
                             continue
                     # we can also marked common tensors as tensor(with grad)
-                    if name == 'Tensor' and (obj.is_leaf or obj.retains_grad):
+                    if name == "Tensor" and (obj.is_leaf or obj.retains_grad):
                         if obj.grad is not None:
-                            name = name + ' (with grad)'
+                            name = name + " (with grad)"
                     # in fact, common tensor have no grad
                     # unless you set retain_grad()
                     if id(obj) in self.saved_tensor_info.keys() and name == self.saved_tensor_info[id(obj)][0]:
@@ -111,10 +108,10 @@ class TensorDetector():
                     self.devices.append(obj.device)
 
     def print_tensors_state(self):
-        template_format = '{:3s}{:<30s}{:>10s}{:>20s}{:>10s}{:>20s}{:>15s}'
+        template_format = "{:3s}{:<30s}{:>10s}{:>20s}{:>10s}{:>20s}{:>15s}"
         self.info += LINE
-        self.info += template_format.format('  ', 'Tensor', 'device', 'shape', 'grad', 'dtype', 'Mem')
-        self.info += '\n'
+        self.info += template_format.format("  ", "Tensor", "device", "shape", "grad", "dtype", "Mem")
+        self.info += "\n"
         self.info += LINE
 
         # if a tensor updates this turn, and was recorded before
@@ -124,24 +121,30 @@ class TensorDetector():
         minus = outdated + minus
         if len(self.order) > 0:
             for tensor_id in self.order:
-                self.info += template_format.format('+', str(self.tensor_info[tensor_id][0]),
-                                                    str(self.tensor_info[tensor_id][1]),
-                                                    str(tuple(self.tensor_info[tensor_id][2])),
-                                                    str(self.tensor_info[tensor_id][3]),
-                                                    str(self.tensor_info[tensor_id][4]),
-                                                    str(self.tensor_info[tensor_id][5]))
-                self.info += '\n'
+                self.info += template_format.format(
+                    "+",
+                    str(self.tensor_info[tensor_id][0]),
+                    str(self.tensor_info[tensor_id][1]),
+                    str(tuple(self.tensor_info[tensor_id][2])),
+                    str(self.tensor_info[tensor_id][3]),
+                    str(self.tensor_info[tensor_id][4]),
+                    str(self.tensor_info[tensor_id][5]),
+                )
+                self.info += "\n"
         if len(self.order) > 0 and len(minus) > 0:
-            self.info += '\n'
+            self.info += "\n"
         if len(minus) > 0:
             for tensor_id in minus:
-                self.info += template_format.format('-', str(self.saved_tensor_info[tensor_id][0]),
-                                                    str(self.saved_tensor_info[tensor_id][1]),
-                                                    str(tuple(self.saved_tensor_info[tensor_id][2])),
-                                                    str(self.saved_tensor_info[tensor_id][3]),
-                                                    str(self.saved_tensor_info[tensor_id][4]),
-                                                    str(self.saved_tensor_info[tensor_id][5]))
-                self.info += '\n'
+                self.info += template_format.format(
+                    "-",
+                    str(self.saved_tensor_info[tensor_id][0]),
+                    str(self.saved_tensor_info[tensor_id][1]),
+                    str(tuple(self.saved_tensor_info[tensor_id][2])),
+                    str(self.saved_tensor_info[tensor_id][3]),
+                    str(self.saved_tensor_info[tensor_id][4]),
+                    str(self.saved_tensor_info[tensor_id][5]),
+                )
+                self.info += "\n"
                 # deleted the updated tensor
                 self.saved_tensor_info.pop(tensor_id)
 
@@ -152,16 +155,16 @@ class TensorDetector():
         self.info += LINE
         self.info += f"Detect Location: {locate_msg}\n"
         for device in self.devices:
-            if device == torch.device('cpu'):
+            if device == torch.device("cpu"):
                 continue
             gpu_mem_alloc = self.mem_format(torch.cuda.memory_allocated(device))
-            self.info += f"Totle GPU Memery Allocated on {device} is {gpu_mem_alloc}\n"
+            self.info += f"Total GPU Memory Allocated on {device} is {gpu_mem_alloc}\n"
         self.info += LINE
-        self.info += '\n\n'
+        self.info += "\n\n"
         if self.show_info:
             print(self.info)
         if self.log is not None:
-            with open(self.log + '.log', 'a') as f:
+            with open(self.log + ".log", "a") as f:
                 f.write(self.info)
 
     def detect(self, include_cpu=False):

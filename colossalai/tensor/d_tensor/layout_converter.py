@@ -3,10 +3,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
-import numpy as np
 import torch
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, TrainCycleItem
 from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.tensor.d_tensor.comm_spec import *
 from colossalai.tensor.d_tensor.layout import Layout
@@ -16,7 +14,7 @@ from colossalai.tensor.utils import all_gather_simulator, all_to_all_simulator, 
 from .sharding_spec import ShardingSpec
 from .utils import get_comm_cost
 
-__all__ = ['LayoutConverter', 'LayoutConverterOptions', 'set_layout_converting_options']
+__all__ = ["LayoutConverter", "LayoutConverterOptions", "set_layout_converting_options"]
 
 
 @dataclass
@@ -24,20 +22,8 @@ class LayoutConverterOptions:
     """
     LayoutConverterOptions is a dataclass which specifies the preferences for layout converting.
     """
+
     # TODO: layout converter option is not implemented yet
-    pass
-
-
-def to_global(distributed_tensor: torch.Tensor, layout: Layout) -> torch.Tensor:
-    layout_converter = LayoutConverter()
-    global_sharding_spec = ShardingSpec(distributed_tensor.dim(), {})
-    global_layout = Layout(device_mesh=layout.device_mesh,
-                           device_type=layout.device_type,
-                           sharding_spec=global_sharding_spec,
-                           entire_shape=layout.entire_shape)
-    with torch.no_grad():
-        global_tensor = layout_converter.apply(distributed_tensor, layout, global_layout)
-    return global_tensor
 
 
 def set_layout_converting_options(options: LayoutConverterOptions):
@@ -49,6 +35,9 @@ def set_layout_converting_options(options: LayoutConverterOptions):
 
 
 class LayoutConverter(metaclass=SingletonMeta):
+    """
+    LayoutConverter is a singleton class which converts the layout of a distributed tensor.
+    """
 
     def __init__(self):
         self._options = None
@@ -74,7 +63,7 @@ class LayoutConverter(metaclass=SingletonMeta):
         self._forward_only = value
 
     def all_gather_transform_layouts(self, source_layout: Layout) -> Dict[Layout, CommSpec]:
-        '''
+        """
         Get all valid layouts from source_layout with single all-gather operation.
         For the all-gather operation, we just care about the S dimension.
 
@@ -91,15 +80,14 @@ class LayoutConverter(metaclass=SingletonMeta):
             # [[0, 1,
             #  [2, 3]]
             device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
-            entire_shape = (4, 4, 4)
+            global_shape = (4, 4, 4)
             dim_partition_dict = {0: [0], 1: [1]}
 
             # [S0,S1,R]
             sharding_spec = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_dict)
             layout = Layout(device_mesh=device_mesh,
-                            device_type=torch.device('cuda'),
                             sharding_spec=sharding_spec,
-                            entire_shape=entire_shape)
+                            global_shape=global_shape)
 
             rst_dict = layout_converter.all_gather_transform_layouts(layout)
             for layout, comm_spec in rst_dict.items():
@@ -108,11 +96,16 @@ class LayoutConverter(metaclass=SingletonMeta):
         Output:
             [R, S1, R]: CommSpec:(comm_pattern:GATHER_FWD_SPLIT_BWD, gather_dim:0, shard_dim:0, logical_process_axis:0)
             [S0, R, R]: CommSpec:(comm_pattern:GATHER_FWD_SPLIT_BWD, gather_dim:1, shard_dim:1, logical_process_axis:1)
-        '''
+        """
         valid_spec_dict = {}
         comm_pattern = CollectiveCommPattern.GATHER_FWD_SPLIT_BWD
         source_spec = source_layout.sharding_spec
-        process_groups_dict = source_layout.device_mesh.process_groups_dict
+
+        # the key of the dict is the axis
+        # the value is the process group
+        current_rank = source_layout.device_mesh._global_rank_of_current_process
+        process_group_dict = source_layout.device_mesh._process_group_dict[current_rank]
+
         for target_pair in source_spec.dim_partition_dict.items():
             shard_list = all_gather_simulator(target_pair)
             index = target_pair[0]
@@ -130,19 +123,21 @@ class LayoutConverter(metaclass=SingletonMeta):
             logical_process_axis = target_pair[1][-1]
             comm_spec = CommSpec(
                 comm_pattern,
-                process_groups_dict=process_groups_dict,
+                process_group_dict=process_group_dict,
                 gather_dim=gather_dim,
-            # shard_dim will be used during backward
+                # shard_dim will be used during backward
                 shard_dim=gather_dim,
-                logical_process_axis=logical_process_axis)
+                logical_process_axis=logical_process_axis,
+            )
 
             # generate new sharding spec
             try:
                 new_sharding_spec = ShardingSpec(source_spec.dims, dim_partition_dict=new_dim_partition_dict)
-                new_layout = Layout(device_mesh=source_layout.device_mesh,
-                                    sharding_spec=new_sharding_spec,
-                                    device_type=source_layout.device_type,
-                                    entire_shape=source_layout.entire_shape)
+                new_layout = Layout(
+                    device_mesh=source_layout.device_mesh,
+                    sharding_spec=new_sharding_spec,
+                    global_shape=source_layout.global_shape,
+                )
 
                 valid_spec_dict[new_layout] = comm_spec
             except LayoutException:
@@ -150,7 +145,7 @@ class LayoutConverter(metaclass=SingletonMeta):
         return valid_spec_dict
 
     def all_to_all_transform_layout(self, source_layout: Layout) -> Dict[Layout, CommSpec]:
-        '''
+        """
         Get all valid layouts from source_layout with single all-to-all operation.
         For the all-to-all operation, we just care about the pairs containing S dimension.
 
@@ -167,15 +162,14 @@ class LayoutConverter(metaclass=SingletonMeta):
             # [[0, 1,
             #  [2, 3]]
             device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
-            entire_shape = (4, 4, 4)
+            global_shape = (4, 4, 4)
             dim_partition_dict = {0: [0], 1: [1]}
 
             # [S0,S1,R]
             sharding_spec = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_dict)
             layout = Layout(device_mesh=device_mesh,
-                                    device_type=torch.device('cuda'),
                                     sharding_spec=sharding_spec,
-                                    entire_shape=entire_shape)
+                                    global_shape=global_shape)
             rst_dict = layout_converter.all_to_all_transform_layout(layout)
 
             for layout, comm_spec in rst_dict.items():
@@ -185,10 +179,15 @@ class LayoutConverter(metaclass=SingletonMeta):
             [S01, R, R]: CommSpec:(comm_pattern:ALL2ALL_FWD_ALL2ALL_BWD, gather_dim:1, shard_dim:0, logical_process_axis: 1)
             [R, S1, S0]: CommSpec:(comm_pattern:ALL2ALL_FWD_ALL2ALL_BWD, gather_dim:0, shard_dim:2, logical_process_axis: 0)
             [S0, R, S1]: CommSpec:(comm_pattern:ALL2ALL_FWD_ALL2ALL_BWD, gather_dim:1, shard_dim:2, logical_process_axis: 1)
-        '''
+        """
         valid_spec_dict = {}
         comm_pattern = CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD
-        process_groups_dict = source_layout.device_mesh.process_groups_dict
+
+        # the key of the dict is the axis
+        # the value is the process group
+        current_rank = source_layout.device_mesh._global_rank_of_current_process
+        process_group_dict = source_layout.device_mesh._process_group_dict[current_rank]
+
         source_spec = source_layout.sharding_spec
         tensor_dims = source_spec.dims
         for f_index in range(tensor_dims - 1):
@@ -228,11 +227,13 @@ class LayoutConverter(metaclass=SingletonMeta):
                     gather_dim = b_index
                     shard_dim = f_index
                     logical_process_axis = b_target_pair[1][-1]
-                comm_spec = CommSpec(comm_pattern,
-                                     process_groups_dict,
-                                     gather_dim=gather_dim,
-                                     shard_dim=shard_dim,
-                                     logical_process_axis=logical_process_axis)
+                comm_spec = CommSpec(
+                    comm_pattern,
+                    process_group_dict=process_group_dict,
+                    gather_dim=gather_dim,
+                    shard_dim=shard_dim,
+                    logical_process_axis=logical_process_axis,
+                )
 
                 new_dim_partition_dict = deepcopy(source_spec.dim_partition_dict)
 
@@ -250,10 +251,11 @@ class LayoutConverter(metaclass=SingletonMeta):
                 # generate new sharding spec
                 try:
                     new_sharding_spec = ShardingSpec(source_spec.dims, dim_partition_dict=new_dim_partition_dict)
-                    new_layout = Layout(device_mesh=source_layout.device_mesh,
-                                        sharding_spec=new_sharding_spec,
-                                        device_type=source_layout.device_type,
-                                        entire_shape=source_layout.entire_shape)
+                    new_layout = Layout(
+                        device_mesh=source_layout.device_mesh,
+                        sharding_spec=new_sharding_spec,
+                        global_shape=source_layout.global_shape,
+                    )
                     valid_spec_dict[new_layout] = comm_spec
                 except LayoutException:
                     pass
@@ -261,7 +263,7 @@ class LayoutConverter(metaclass=SingletonMeta):
         return valid_spec_dict
 
     def shard_transform_layout(self, source_layout: Layout) -> Dict[Layout, CommSpec]:
-        '''
+        """
         Get all valid layouts from source_layout with single shard operation.
         For the sharding operation, we just care about legal sharding dimensions.
 
@@ -278,16 +280,15 @@ class LayoutConverter(metaclass=SingletonMeta):
             # [[0, 1,
             #  [2, 3]]
             device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
-            entire_shape = (4, 4, 4)
+            global_shape = (4, 4, 4)
 
             dim_partition_dict = {0: [0]}
 
             # [S0,R,R]
             sharding_spec = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_dict)
             layout = Layout(device_mesh=device_mesh,
-                          device_type=torch.device('cuda'),
                           sharding_spec=sharding_spec,
-                          entire_shape=entire_shape)
+                          global_shape=global_shape)
             rst_dict = layout_converter.shard_transform_layout(layout)
 
             for layout, comm_spec in rst_dict.items():
@@ -297,14 +298,18 @@ class LayoutConverter(metaclass=SingletonMeta):
             [S01, R, R]: CommSpec:(comm_pattern:SPLIT_FWD_GATHER_BWD, gather_dim:0, shard_dim:0, logical_process_axis:1)
             [S0, S1, R]: CommSpec:(comm_pattern:SPLIT_FWD_GATHER_BWD, gather_dim:1, shard_dim:1, logical_process_axis:1)
             [S0, R, S1]: CommSpec:(comm_pattern:SPLIT_FWD_GATHER_BWD, gather_dim:2, shard_dim:2, logical_process_axis:1)
-        '''
+        """
         valid_spec_dict = {}
         comm_pattern = CollectiveCommPattern.SPLIT_FWD_GATHER_BWD
         source_spec = source_layout.sharding_spec
-        process_groups_dict = source_layout.device_mesh.process_groups_dict
+
+        # the key of the dict is the axis
+        # the value is the process group
+        current_rank = source_layout.device_mesh._global_rank_of_current_process
+        process_group_dict = source_layout.device_mesh._process_group_dict[current_rank]
 
         # legal sharding dims means the mesh_id is still available to use.
-        legal_sharding_dims = [i for i in range(len(source_layout.device_mesh.mesh_shape))]
+        legal_sharding_dims = [i for i in range(len(source_layout.device_mesh.shape))]
         for dim, shard_list in source_spec.dim_partition_dict.items():
             for element in shard_list:
                 legal_sharding_dims.remove(element)
@@ -328,27 +333,31 @@ class LayoutConverter(metaclass=SingletonMeta):
                 # generate the CommSpec to record the action of source_sharding_spec->new_sharding_spec
                 shard_dim = index
                 logical_process_axis = shard_list[-1]
-                comm_spec = CommSpec(comm_pattern,
-                                     process_groups_dict,
-                                     gather_dim=shard_dim,
-                                     shard_dim=shard_dim,
-                                     logical_process_axis=logical_process_axis)
+                comm_spec = CommSpec(
+                    comm_pattern,
+                    process_group_dict=process_group_dict,
+                    gather_dim=shard_dim,
+                    shard_dim=shard_dim,
+                    logical_process_axis=logical_process_axis,
+                )
 
                 # generate new sharding spec
                 try:
-                    new_sharding_spec = ShardingSpec(dim_size=source_spec.dims,
-                                                     dim_partition_dict=new_dim_partition_dict)
-                    new_layout = Layout(device_mesh=source_layout.device_mesh,
-                                        sharding_spec=new_sharding_spec,
-                                        device_type=source_layout.device_type,
-                                        entire_shape=source_layout.entire_shape)
+                    new_sharding_spec = ShardingSpec(
+                        dim_size=source_spec.dims, dim_partition_dict=new_dim_partition_dict
+                    )
+                    new_layout = Layout(
+                        device_mesh=source_layout.device_mesh,
+                        sharding_spec=new_sharding_spec,
+                        global_shape=source_layout.global_shape,
+                    )
                     valid_spec_dict[new_layout] = comm_spec
                 except LayoutException:
                     pass
         return valid_spec_dict
 
     def get_all_one_step_transform_spec(self, source_layout: Layout) -> Dict[Layout, CommSpec]:
-        '''
+        """
         Get all valid layouts from source_layout with one step transform.
 
         Note:
@@ -361,16 +370,17 @@ class LayoutConverter(metaclass=SingletonMeta):
 
         Return:
             valid_spec_dict(Dict[Layout, CommSpec]): all valid layouts from source_layout with one step transform.
-        '''
+        """
         valid_spec_dict = {}
         valid_spec_dict.update(self.all_gather_transform_layouts(source_layout))
         valid_spec_dict.update(self.all_to_all_transform_layout(source_layout))
         valid_spec_dict.update(self.shard_transform_layout(source_layout))
         return valid_spec_dict
 
-    def layout_converting(self, source_layout: Layout,
-                          target_layout: Layout) -> Tuple[List[Layout], List[CommSpec], float]:
-        '''
+    def layout_converting(
+        self, source_layout: Layout, target_layout: Layout
+    ) -> Tuple[List[Layout], List[CommSpec], float]:
+        """
         This method will find a path to transform source_layout to target_layout with
         a greedy algorithm.
         The basic idea is:
@@ -399,7 +409,7 @@ class LayoutConverter(metaclass=SingletonMeta):
             # [[0, 1,
             #  [2, 3]]
             device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
-            entire_shape = (4, 4, 4)
+            global_shape = (4, 4, 4)
 
             dim_partition_source = {1: [0, 1]}
             dim_partition_target = {0: [0, 1]}
@@ -407,16 +417,14 @@ class LayoutConverter(metaclass=SingletonMeta):
             # [R,S01,R]
             sharding_spec_source = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_source)
             source_layout = Layout(device_mesh=device_mesh,
-                                device_type=torch.device('cuda'),
                                 sharding_spec=sharding_spec_source,
-                                entire_shape=entire_shape)
+                                global_shape=global_shape)
 
             # [S01,R,R]
             sharding_spec_target = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_target)
             target_layout = Layout(device_mesh=device_mesh,
-                                device_type=torch.device('cuda'),
                                 sharding_spec=sharding_spec_target,
-                                entire_shape=entire_shape)
+                                global_shape=global_shape)
 
             transform_path, comm_action_sequence = layout_converter.layout_converting(source_layout, target_layout)
             transform_path_str = '->'.join([str(layout.sharding_spec.sharding_sequence) for layout in transform_path])
@@ -424,7 +432,7 @@ class LayoutConverter(metaclass=SingletonMeta):
 
         output:
             [R, S01, R]->[R, S0, R]->[S0, R, R]->[S01, R, R]
-        '''
+        """
         source_spec = source_layout.sharding_spec
         target_spec = target_layout.sharding_spec
         MAX_TRANSFORM_STEPS = 20
@@ -475,11 +483,11 @@ class LayoutConverter(metaclass=SingletonMeta):
         raise RuntimeError(f"Could not find a valid transform path with in {MAX_TRANSFORM_STEPS} steps.")
 
     def get_total_comm_cost(self, source_layout: Layout, target_layout: Layout) -> Dict[str, float]:
-        '''
+        """
         Get the total communication cost of the layout converting process.
-        '''
+        """
         transform_path, comm_action_sequence = self.layout_converting(source_layout, target_layout)
-        total_cost = {'forward': 0.0, 'backward': 0.0, 'total': 0.0}
+        total_cost = {"forward": 0.0, "backward": 0.0, "total": 0.0}
         for layout, comm_spec in zip(transform_path, comm_action_sequence):
             cost_dict = get_comm_cost(layout, comm_spec, self.forward_only)
             for key in total_cost:
@@ -487,7 +495,7 @@ class LayoutConverter(metaclass=SingletonMeta):
         return total_cost
 
     def apply(self, tensor: torch.Tensor, source_layout: Layout, target_layout: Layout) -> torch.Tensor:
-        '''
+        """
         Apply target_layout to tensor with source layout, the transform path is generated by the
         layout_converting method.
 
@@ -505,21 +513,19 @@ class LayoutConverter(metaclass=SingletonMeta):
             # [[0, 1,
             #  [2, 3]]
             device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
-            entire_shape = (4, 4, 4)
+            global_shape = (4, 4, 4)
 
             # [S0,R,R]
             sharding_spec_source = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_source)
             source_layout = Layout(device_mesh=device_mesh,
-                                device_type=torch.device('cuda'),
                                 sharding_spec=sharding_spec_source,
-                                entire_shape=entire_shape)
+                                global_shape=global_shape)
 
             # [R,S0,R]
             sharding_spec_target = ShardingSpec(dim_size=3, dim_partition_dict=dim_partition_target)
             target_layout = Layout(device_mesh=device_mesh,
-                                device_type=torch.device('cuda'),
                                 sharding_spec=sharding_spec_target,
-                                entire_shape=entire_shape)
+                                global_shape=global_shape)
 
             if rank in (0, 1):
                 sharded_tensor_0 = torch.zeros(2, 1)
@@ -549,8 +555,9 @@ class LayoutConverter(metaclass=SingletonMeta):
                     [1.],
                     [3.],
                     [3.]])
-        '''
+        """
         _, comm_action_sequence = self.layout_converting(source_layout, target_layout)
         for comm_spec in comm_action_sequence:
             tensor = comm_spec.covert_spec_to_action(tensor)
+        tensor.dist_layout = target_layout
         return tensor

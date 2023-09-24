@@ -1,5 +1,6 @@
 from typing import Union
 
+import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.optim import Optimizer
@@ -21,7 +22,7 @@ class OptimizerWrapper:
         params = []
 
         for group in self.param_groups:
-            params += group['params']
+            params += group["params"]
         return params
 
     @property
@@ -53,6 +54,9 @@ class OptimizerWrapper:
         """
         loss.backward(*args, **kwargs)
 
+    def backward_by_grad(self, tensor: Tensor, grad: Tensor):
+        torch.autograd.backward(tensor, grad)
+
     def state_dict(self):
         """
         Returns the optimizer state.
@@ -78,12 +82,14 @@ class OptimizerWrapper:
         """
         nn.utils.clip_grad_value_(self.parameters, clip_value, *args, **kwargs)
 
-    def clip_grad_by_norm(self,
-                          max_norm: Union[float, int],
-                          norm_type: Union[float, int] = 2.0,
-                          error_if_nonfinite: bool = False,
-                          *args,
-                          **kwargs) -> Tensor:
+    def clip_grad_by_norm(
+        self,
+        max_norm: Union[float, int],
+        norm_type: Union[float, int] = 2.0,
+        error_if_nonfinite: bool = False,
+        *args,
+        **kwargs,
+    ) -> Tensor:
         """
         Clips gradient norm of an iterable of parameters.
 
@@ -109,7 +115,8 @@ class OptimizerWrapper:
             loss (Tensor): The loss to be scaled.
         """
         raise NotImplementedError(
-            "The method scale_loss is only available for optimizers with mixed precision training")
+            "The method scale_loss is only available for optimizers with mixed precision training"
+        )
 
     def unscale_grad(self):
         """
@@ -118,4 +125,11 @@ class OptimizerWrapper:
         Note: Only available for optimizers with mixed precision training.
         """
         raise NotImplementedError(
-            "The method unscale_grad is only available for optimizers with mixed precision training")
+            "The method unscale_grad is only available for optimizers with mixed precision training"
+        )
+
+    def unwrap(self):
+        """
+        Unwrap the optimizer for checkpoint saving/loading.
+        """
+        return self.optim

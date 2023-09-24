@@ -14,7 +14,7 @@ class MLP(nn.Module):
         super().__init__()
         self.mlp = nn.Sequential(nn.Linear(64, 8),
                                  nn.ReLU(),
-                                 nn.Linear(8, 32))   
+                                 nn.Linear(8, 32))
     def forward(self, x):
         return self.mlp(x)
 ```
@@ -46,7 +46,7 @@ detector.detect()
 
 I have made some comments on the right of the output for your understanding.
 
-Note that the total `Mem` of all the tensors and parameters is not equal to `Total GPU Memery Allocated`.  PyTorch's memory management is really complicated, and for models of a large scale, it's impossible to figure out clearly.
+Note that the total `Mem` of all the tensors and parameters is not equal to `Total GPU Memory Allocated`.  PyTorch's memory management is really complicated, and for models of a large scale, it's impossible to figure out clearly.
 
 **The order of print is not equal to the order the tensor creates, but they are really close.**
 
@@ -61,7 +61,7 @@ Note that the total `Mem` of all the tensors and parameters is not equal to `Tot
 +  mlp.2.bias                        cuda:0               (32,)      True       torch.float32          128 B
 ------------------------------------------------------------------------------------------------------------
 Detect Location: "test_tensor_detector.py" line 27
-Totle GPU Memery Allocated on cuda:0 is 4.5 KB
+Total GPU Memory Allocated on cuda:0 is 4.5 KB
 ------------------------------------------------------------------------------------------------------------
 
 
@@ -72,7 +72,7 @@ Totle GPU Memery Allocated on cuda:0 is 4.5 KB
 +  Tensor                            cuda:0               (32,)      True       torch.float32          128 B    # output
 ------------------------------------------------------------------------------------------------------------
 Detect Location: "test_tensor_detector.py" line 30
-Totle GPU Memery Allocated on cuda:0 is 5.5 KB
+Total GPU Memory Allocated on cuda:0 is 5.5 KB
 ------------------------------------------------------------------------------------------------------------
 
 
@@ -82,7 +82,7 @@ Totle GPU Memery Allocated on cuda:0 is 5.5 KB
 +  Tensor                            cuda:0                  ()      True       torch.float32            4 B    # loss
 ------------------------------------------------------------------------------------------------------------
 Detect Location: "test_tensor_detector.py" line 32
-Totle GPU Memery Allocated on cuda:0 is 6.0 KB
+Total GPU Memory Allocated on cuda:0 is 6.0 KB
 ------------------------------------------------------------------------------------------------------------
 
 
@@ -103,7 +103,7 @@ Totle GPU Memery Allocated on cuda:0 is 6.0 KB
 -  Tensor                            cuda:0                (8,)      True       torch.float32           32 B    # deleted activation
 ------------------------------------------------------------------------------------------------------------
 Detect Location: "test_tensor_detector.py" line 34
-Totle GPU Memery Allocated on cuda:0 is 10.0 KB
+Total GPU Memory Allocated on cuda:0 is 10.0 KB
 ------------------------------------------------------------------------------------------------------------
 
 
@@ -117,7 +117,7 @@ Totle GPU Memery Allocated on cuda:0 is 10.0 KB
 +  Tensor                            cuda:0               (32,)     False       torch.float32          128 B
 ------------------------------------------------------------------------------------------------------------
 Detect Location: "test_tensor_detector.py" line 36
-Totle GPU Memery Allocated on cuda:0 is 14.0 KB
+Total GPU Memory Allocated on cuda:0 is 14.0 KB
 ------------------------------------------------------------------------------------------------------------
 ```
 
@@ -125,4 +125,3 @@ Totle GPU Memery Allocated on cuda:0 is 14.0 KB
 
  This tool was inspired by https://github.com/Stonesjtu/pytorch_memlab/blob/master/pytorch_memlab/mem_reporter.py
  and https://github.com/Oldpan/Pytorch-Memory-Utils
-

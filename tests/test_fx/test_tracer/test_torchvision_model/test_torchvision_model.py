@@ -8,9 +8,9 @@ from tests.kit.model_zoo import model_zoo
 @clear_cache_before_run()
 def test_torchvision_models():
     torch.backends.cudnn.deterministic = True
-    tv_sub_registry = model_zoo.get_sub_registry('torchvision')
+    tv_sub_registry = model_zoo.get_sub_registry("torchvision")
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, model_attribute) in tv_sub_registry.items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, model_attribute) in tv_sub_registry.items():
         data = data_gen_fn()
 
         if model_attribute is not None and model_attribute.has_stochastic_depth_prob:
@@ -36,11 +36,11 @@ def test_torchvision_models():
                 fx_val = transformed_out[key]
                 non_fx_val = transformed_non_fx_out[key]
                 assert torch.allclose(
-                    fx_val,
-                    non_fx_val), f'{model.__class__.__name__} has inconsistent outputs, {fx_val} vs {non_fx_val}'
+                    fx_val, non_fx_val
+                ), f"{model.__class__.__name__} has inconsistent outputs, {fx_val} vs {non_fx_val}"
         except Exception as e:
             print(name, e)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_torchvision_models()

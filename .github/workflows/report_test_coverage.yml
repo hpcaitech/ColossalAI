@@ -9,8 +9,9 @@ on:
 jobs:
   report-test-coverage:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - name: 'Download artifact'
+      - name: "Download artifact"
         uses: actions/github-script@v6
         with:
           script: |
@@ -31,7 +32,7 @@ jobs:
             let fs = require('fs');
             fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/report.zip`, Buffer.from(download.data));
 
-      - name: 'Unzip artifact'
+      - name: "Unzip artifact"
         id: unzip
         run: |
           unzip report.zip
@@ -58,7 +59,7 @@ jobs:
           echo "</details>" >> coverage_report.txt
           mv coverage_report.txt coverage.txt
 
-      - name: 'Comment on PR'
+      - name: "Comment on PR"
         if: steps.unzip.outputs.hasReport == 'true'
         uses: actions/github-script@v6
         with:

@@ -104,8 +104,10 @@ def parse_args(input_args=None):
         "--num_class_images",
         type=int,
         default=100,
-        help=("Minimal class images for prior preservation loss. If there are not enough images already present in"
-              " class_data_dir, additional images will be sampled with class_prompt."),
+        help=(
+            "Minimal class images for prior preservation loss. If there are not enough images already present in"
+            " class_data_dir, additional images will be sampled with class_prompt."
+        ),
     )
     parser.add_argument(
         "--output_dir",
@@ -118,17 +120,18 @@ def parse_args(input_args=None):
         "--resolution",
         type=int,
         default=512,
-        help=("The resolution for input images, all the images in the train/validation dataset will be resized to this"
-              " resolution"),
+        help=(
+            "The resolution for input images, all the images in the train/validation dataset will be resized to this"
+            " resolution"
+        ),
     )
-    parser.add_argument("--center_crop",
-                        action="store_true",
-                        help="Whether to center crop images before resizing to resolution")
+    parser.add_argument(
+        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+    )
     parser.add_argument("--train_text_encoder", action="store_true", help="Whether to train the text encoder")
-    parser.add_argument("--train_batch_size",
-                        type=int,
-                        default=4,
-                        help="Batch size (per device) for the training dataloader.")
+    parser.add_argument(
+        "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
+    )
     parser.add_argument("--sample_batch_size", type=int, default=4, help="Batch size (per device) for sampling images.")
     parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument(
@@ -165,16 +168,17 @@ def parse_args(input_args=None):
         "--lr_scheduler",
         type=str,
         default="constant",
-        help=('The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
-              ' "constant", "constant_with_warmup"]'),
+        help=(
+            'The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
+            ' "constant", "constant_with_warmup"]'
+        ),
     )
-    parser.add_argument("--lr_warmup_steps",
-                        type=int,
-                        default=500,
-                        help="Number of steps for the warmup in the lr scheduler.")
-    parser.add_argument("--use_8bit_adam",
-                        action="store_true",
-                        help="Whether or not to use 8-bit Adam from bitsandbytes.")
+    parser.add_argument(
+        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+    )
+    parser.add_argument(
+        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+    )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
@@ -192,8 +196,10 @@ def parse_args(input_args=None):
         "--logging_dir",
         type=str,
         default="logs",
-        help=("[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
-              " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."),
+        help=(
+            "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
+            " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
+        ),
     )
     parser.add_argument(
         "--mixed_precision",
@@ -203,7 +209,8 @@ def parse_args(input_args=None):
         help=(
             "Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
             " 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the"
-            " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."),
+            " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
+        ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
@@ -269,12 +276,14 @@ class DreamBoothDataset(Dataset):
         else:
             self.class_data_root = None
 
-        self.image_transforms = transforms.Compose([
-            transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ])
+        self.image_transforms = transforms.Compose(
+            [
+                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
 
     def __len__(self):
         return self._length
@@ -350,7 +359,8 @@ def main(args):
     if args.train_text_encoder and args.gradient_accumulation_steps > 1 and accelerator.num_processes > 1:
         raise ValueError(
             "Gradient accumulation is not supported when training the text encoder in distributed training. "
-            "Please set gradient_accumulation_steps to 1. This feature will be supported in the future.")
+            "Please set gradient_accumulation_steps to 1. This feature will be supported in the future."
+        )
 
     if args.seed is not None:
         set_seed(args.seed)
@@ -380,9 +390,9 @@ def main(args):
             sample_dataloader = accelerator.prepare(sample_dataloader)
             pipeline.to(accelerator.device)
 
-            for example in tqdm(sample_dataloader,
-                                desc="Generating class images",
-                                disable=not accelerator.is_local_main_process):
+            for example in tqdm(
+                sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+            ):
                 images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
@@ -456,8 +466,9 @@ def main(args):
             text_encoder.gradient_checkpointing_enable()
 
     if args.scale_lr:
-        args.learning_rate = (args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size *
-                              accelerator.num_processes)
+        args.learning_rate = (
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+        )
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
     if args.use_8bit_adam:
@@ -470,8 +481,9 @@ def main(args):
     else:
         optimizer_class = torch.optim.AdamW
 
-    params_to_optimize = (itertools.chain(unet.parameters(), text_encoder.parameters())
-                          if args.train_text_encoder else unet.parameters())
+    params_to_optimize = (
+        itertools.chain(unet.parameters(), text_encoder.parameters()) if args.train_text_encoder else unet.parameters()
+    )
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
@@ -506,9 +518,7 @@ def main(args):
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
         input_ids = tokenizer.pad(
-            {
-                "input_ids": input_ids
-            },
+            {"input_ids": input_ids},
             padding="max_length",
             max_length=tokenizer.model_max_length,
             return_tensors="pt",
@@ -520,11 +530,9 @@ def main(args):
         }
         return batch
 
-    train_dataloader = torch.utils.data.DataLoader(train_dataset,
-                                                   batch_size=args.train_batch_size,
-                                                   shuffle=True,
-                                                   collate_fn=collate_fn,
-                                                   num_workers=1)
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn, num_workers=1
+    )
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -542,10 +550,12 @@ def main(args):
 
     if args.train_text_encoder:
         unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, text_encoder, optimizer, train_dataloader, lr_scheduler)
+            unet, text_encoder, optimizer, train_dataloader, lr_scheduler
+        )
     else:
-        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(unet, optimizer, train_dataloader,
-                                                                              lr_scheduler)
+        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet, optimizer, train_dataloader, lr_scheduler
+        )
 
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
@@ -641,8 +651,11 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = (itertools.chain(unet.parameters(), text_encoder.parameters())
-                                      if args.train_text_encoder else unet.parameters())
+                    params_to_clip = (
+                        itertools.chain(unet.parameters(), text_encoder.parameters())
+                        if args.train_text_encoder
+                        else unet.parameters()
+                    )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()

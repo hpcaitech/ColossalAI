@@ -16,14 +16,14 @@ In this example for ViT model, Colossal-AI provides three different parallelism 
 We will show you how to train ViT on CIFAR-10 dataset with these parallelism techniques. To run this example, you will need 2-4 GPUs.
 
 
-## Tabel of Contents
+## Table of Contents
 1. Colossal-AI installation
 2. Steps to train ViT with data parallelism
 3. Steps to train ViT with pipeline parallelism
 4. Steps to train ViT with tensor parallelism or hybrid parallelism
 
 ## Colossal-AI Installation
-You can install Colossal-AI pacakage and its dependencies with PyPI.
+You can install Colossal-AI package and its dependencies with PyPI.
 ```bash
 pip install colossalai
 ```
@@ -31,7 +31,7 @@ pip install colossalai
 
 
 ## Data Parallelism
-Data parallism is one basic way to accelerate model training process. You can apply data parallelism to training by only two steps:
+Data parallelism is one basic way to accelerate model training process. You can apply data parallelism to training by only two steps:
 1. Define a configuration file
 2. Change a few lines of code in train script
 
@@ -78,8 +78,8 @@ from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.lr_scheduler import LinearWarmupLR
-from colossalai.nn.metric import Accuracy
-from colossalai.trainer import Trainer, hooks
+from colossalai.legacy.nn.metric import Accuracy
+from colossalai.legacy.trainer import Trainer, hooks
 ```
 
 - Other modules
@@ -94,7 +94,7 @@ from torchvision import transforms
 from torchvision.datasets import CIFAR10
 ```
 
-#### Lauch Colossal-AI
+#### Launch Colossal-AI
 
 In train script,  you need to initialize the distributed environment for Colossal-AI after your config file is prepared. We call this process `launch`. In Colossal-AI, we provided several launch methods to initialize the distributed backend. In most cases, you can use `colossalai.launch` and `colossalai.get_default_parser` to pass the parameters via command line. Besides, Colossal-AI can utilize the existing launch tool provided by PyTorch as many users are familiar with by using `colossalai.launch_from_torch`. For more details, you can view the related [documents](https://www.colossalai.org/docs/basics/launch_colossalai).
 
@@ -273,8 +273,8 @@ SEQ_LENGTH = (IMG_SIZE // PATCH_SIZE) ** 2 + 1  # add 1 for cls token
 
 ### Build pipeline model (`/hybrid_parallel/model/vit.py`)
 Colossal-AI provides two methods to build a pipeline model from the existing model.
-- `colossalai.builder.build_pipeline_model_from_cfg`
-- `colossalai.builder.build_pipeline_model`
+- `colossalai.legacy.builder.build_pipeline_model_from_cfg`
+- `colossalai.legacy.builder.build_pipeline_model`
 
 Besides, you can also build a pipeline model from scratch with Colossal-AI.
 ```python
@@ -284,11 +284,11 @@ from typing import Callable
 import inspect
 import torch
 from colossalai import nn as col_nn
-from colossalai.registry import LAYERS, MODELS
+from colossalai.legacy.registry import LAYERS, MODELS
 from colossalai.logging import get_dist_logger
 from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
-from colossalai.builder.pipeline import partition_uniform
+from colossalai.legacy.builder.pipeline import partition_uniform
 from torch import dtype, nn
 from model_zoo.vit.vit import ViTBlock, ViTEmbedding, ViTHead
 
@@ -415,7 +415,7 @@ def build_pipeline_vit(num_layers, num_chunks, device=torch.device('cuda'), **kw
 
 #### Import modules
 ```python
-from colossalai.engine.schedule import (InterleavedPipelineSchedule,
+from colossalai.legacy.engine.schedule import (InterleavedPipelineSchedule,
                                         PipelineSchedule)
 from colossalai.utils import MultiTimer
 import os
@@ -613,7 +613,7 @@ NUM_MICRO_BATCHES = parallel['pipeline']
 TENSOR_SHAPE = (BATCH_SIZE // NUM_MICRO_BATCHES, SEQ_LENGTH, HIDDEN_SIZE)
 ```
 
-Ohter configs:
+Other configs:
 ```python
 # hyper parameters
 # BATCH_SIZE is as per GPU
@@ -644,3 +644,4 @@ torchrun --standalone --nproc_per_node <NUM_GPUs>  train_hybrid.py --config ./co
 # If your torch >= 1.9.0
 # python -m torch.distributed.run --standalone --nproc_per_node= <NUM_GPUs> train_hybrid.py --config ./configs/config_hybrid_parallel.py
 ```
+<!-- doc-test-command: echo  -->

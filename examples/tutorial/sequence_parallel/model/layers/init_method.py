@@ -1,5 +1,7 @@
-import torch
 import math
+
+import torch
+
 
 def init_normal(tensor, sigma):
     """Init method based on N(0, sigma)."""

@@ -1,17 +1,14 @@
-import time
-from typing import List, Dict
+import atexit
 import json
 import os
-import time
 import shutil
-import atexit
+import time
+from typing import Dict, List
 
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import torch
 import torch.distributed as dist
-
-import json
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 
 cmap = list(mcolors.TABLEAU_COLORS.values())
 
@@ -20,7 +17,6 @@ MAX_WAIT_TIME = 20
 
 
 class Event:
-
     def __init__(self, start: int, end: int, name: str, rank: int) -> None:
         self.start = start
         self.end = end
@@ -29,16 +25,15 @@ class Event:
 
 
 class Recorder:
-
     def __init__(self) -> None:
         self.rank_to_history: Dict[int, List[Event]] = {}
         self.base_time = time.time()
         self.temp_event = None
 
-        self.export_format = 'png'
-        self.export_name = 'test'
+        self.export_format = "png"
+        self.export_name = "test"
         self.dpi = 500
-        self.theme = 'dark_background'
+        self.theme = "dark_background"
         self.figure_width = 30
         self.figure_height = 10
         self.legend_fontsize = 16
@@ -84,18 +79,18 @@ class Recorder:
     def dump_record(self):
         rank = dist.get_rank()
         rank_to_history = self.rank_to_history
-        records = {'base_time': self.base_time, 'content': {}}
+        records = {"base_time": self.base_time, "content": {}}
         for record_rank in rank_to_history:
             history = rank_to_history[record_rank]
             recs = []
             for event in history:
-                rec = {'start': event.start, 'end': event.end, 'name': event.name}
+                rec = {"start": event.start, "end": event.end, "name": event.name}
                 recs.append(rec)
-            records['content'][record_rank] = recs
+            records["content"][record_rank] = recs
 
-        dump_name = f'{rank}.json'
+        dump_name = f"{rank}.json"
         dump_path = os.path.join(LOG_FOLDER, dump_name)
-        with open(dump_path, 'w', encoding='utf-8') as f:
+        with open(dump_path, "w", encoding="utf-8") as f:
             json.dump(records, f, ensure_ascii=False)
 
     def merge_recode(self):
@@ -117,24 +112,22 @@ class Recorder:
         logs_path = [os.path.join(LOG_FOLDER, file) for file in os.listdir(LOG_FOLDER)]
         recoders = {}
         for path in logs_path:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, "r", encoding="utf-8") as f:
                 recs = json.load(f)
-            for record_rank in recs['content']:
-                history = recs['content'][record_rank]
+            for record_rank in recs["content"]:
+                history = recs["content"][record_rank]
                 recoders[record_rank] = []
                 for rec in history:
-                    recoders[record_rank].append({
-                        'start': rec['start'] - base_time,
-                        'end': rec['end'] - base_time,
-                        'name': rec['name']
-                    })
+                    recoders[record_rank].append(
+                        {"start": rec["start"] - base_time, "end": rec["end"] - base_time, "name": rec["name"]}
+                    )
 
         shutil.rmtree(LOG_FOLDER)
-        with open(self.export_name + '.json', 'w', encoding='utf-8') as f:
+        with open(self.export_name + ".json", "w", encoding="utf-8") as f:
             json.dump(recoders, f, ensure_ascii=False)
 
-    def visualise_record(self):
-        with open(self.export_name + '.json', 'r', encoding='utf-8') as f:
+    def visualize_record(self):
+        with open(self.export_name + ".json", "r", encoding="utf-8") as f:
             records = json.load(f)
         records = dict(records)
         ranks = list(sorted(records.keys()))
@@ -147,9 +140,9 @@ class Recorder:
         for rank in ranks:
             rank_records = records[rank]
             for rec in rank_records:
-                s = rec['start']
-                e = rec['end']
-                name = rec['name']
+                s = rec["start"]
+                e = rec["end"]
+                name = rec["name"]
                 if name not in name_list:
                     name_list[name] = len(name_list)
                 bar = plt.barh(rank, width=e - s, height=self.bar_height, left=s, color=cmap[name_list[name]])
@@ -157,8 +150,8 @@ class Recorder:
                     plots[name] = bar
 
         plt.legend(list(plots.values()), list(plots.keys()), loc="upper left", fontsize=self.legend_fontsize)
-        plt.yticks(ticks=ranks, labels=[f'Device:{rank}' for rank in ranks], fontsize=self.device_fontsize)
-        plt.grid(axis='x')
+        plt.yticks(ticks=ranks, labels=[f"Device:{rank}" for rank in ranks], fontsize=self.device_fontsize)
+        plt.grid(axis="x")
         plt.savefig("{}.{}".format(self.export_name, self.export_format))
 
     def exit_worker(self):
@@ -171,7 +164,7 @@ class Recorder:
         if rank == 1:
             # take the base time of rank 0 as standard
             self.merge_recode()
-            self.visualise_record()
+            self.visualize_record()
 
 
 recorder = Recorder()

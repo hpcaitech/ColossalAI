@@ -4,7 +4,7 @@
 
 **前置教程:**
 
-- [定义配置文件](../basics/define_your_config.md)
+- [booster使用](../basics/booster_api.md)
 
 **示例代码**
 
@@ -53,32 +53,37 @@
 
 我们将运用`GeminiDDP`的方式来使用基于Chunk内存管理的ZeRO。这是我们新包装的torch.Module ，它使用 ZeRO-DP 和 Gemini，其中ZeRO 用于并行，Gemini 用于内存管理。
 
-同样需要确保你的模型是在 `ColoInitContext` 的上下文中初始化的。
+Gemini支持惰性初始化, 它可以节省多卡初始化大模型时的显存使用.
 
+如果你的模型有 `N` billion 个参数，你的 GPU 内存为 `M` GB, 当 `4N >= M` 时，我们推荐使用 LazyInitContext。否则，LazyInitContext 是可选的。
+
+<!--- doc-test-ignore-start -->
 ```python
-with ColoInitContext(device='cpu', default_dist_spec=default_dist_spec, default_pg=default_pg):
+with LazyInitContext(default_device=torch.device('cuda')):
   model = gpt2_medium(checkpoint=True)
 ```
+<!--- doc-test-ignore-end -->
 
-定义模型参数如下:
+我们提供了 `Booster` API，它用户友好。我们推荐你使用 `Booster` API。如果您仍然想使用底层 API，您可以继续阅读本节其他内容。
 
+使用 `GeminiDDP` 包装模型。
+
+<!--- doc-test-ignore-start -->
 ```python
-chunk_manager = init_chunk_manager(model=module,
-                                   init_device=device,
-                                   hidden_dim=hidden_dim,
-                                   search_range_mb=search_range_mb,
-                                   min_chunk_size_mb=min_chunk_size_mb)
-gemini_manager = GeminiManager(placement_policy, chunk_manager)
-model = ZeroDDP(model, gemini_manager)
+model = GeminiDDP(model, hidden_dim=hidden_dim, min_chunk_size_m=min_chunk_size_m)
 ```
+<!--- doc-test-ignore-end -->
 
-`hidden dim`是DNN的隐藏维度。用户可以提供这个参数来加快搜索速度。如果用户在训练前不知道这个参数也可以。 我们将使用默认值 1024。`min_chunk_size_mb`是以兆字节为单位的最小块大小。如果参数的总大小仍然小于最小块大小，则所有参数将被压缩为一个小块。
+`hidden dim`是DNN的隐藏维度。用户可以提供这个参数来加快搜索速度。如果用户在训练前不知道这个参数也可以。 我们将使用默认值 1024。`min_chunk_size_m`是以兆（2^20）为单位的最小块大小。如果参数的总大小仍然小于最小块大小，则所有参数将被压缩为一个小块。
 
 初始化优化器。
+<!--- doc-test-ignore-start -->
 ```python
 optimizer = GeminiAdamOptimizer(model, lr=1e-3, initial_scale=2**5)
 ```
+<!--- doc-test-ignore-end -->
 
+<!--- doc-test-ignore-start -->
 训练
 ```python
 optimizer.zero_grad()
@@ -87,6 +92,7 @@ loss = criterion(outputs, input_ids)
 optimizer.backward(loss)
 optimizer.step()
 ```
+<!--- doc-test-ignore-end -->
 > ⚠️ 注意：请不要使用`loss.backward()`，规范写法是`optimizer.backward(loss)`。
 
 ### 训练GPT
@@ -96,6 +102,8 @@ optimizer.step()
 为了简单起见，我们在这里只使用随机生成的数据。
 
 首先我们只需要引入`Huggingface transformers` 的 `GPT2LMHeadModel`来定义我们的模型，不需要用户进行模型的定义与修改，方便用户使用。
+
+定义GPT模型：
 
 ```python
 class GPTLMModel(nn.Module):
@@ -141,75 +149,6 @@ class GPTLMLoss(nn.Module):
         return self.loss_fn(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 ```
 
-定义张量并行和参数分片策略：
-
-```python
-def tensor_parallelize(model: torch.nn.Module, pg: ProcessGroup):
-    for mn, module in model.named_modules():
-        for pn, param in module.named_parameters(recurse=False):
-            if hasattr(param, 'visited'):
-                continue
-            param.set_dist_spec(ReplicaSpec())
-            if 'mlp.c_fc' in mn:
-                if 'weight' in pn or 'bias' in pn:
-                    split_param_col_tp1d(param, pg)
-                    param.compute_spec.set_output_replicate(False)
-                else:
-                    param.set_dist_spec(ReplicaSpec())
-            elif 'mlp.c_proj' in mn:
-                if 'weight' in pn:
-                    split_param_row_tp1d(param, pg)
-                else:
-                    param.set_dist_spec(ReplicaSpec())
-            elif 'wte' in mn or 'wpe' in mn:
-                split_param_col_tp1d(param, pg)
-            elif 'c_attn' in mn or 'c_proj' in mn:
-                split_param_col_tp1d(param, pg)
-            else:
-                param.set_dist_spec(ReplicaSpec())
-
-            param.visited = True
-def split_param_single_dim_tp1d(dim: int, param: ColoParameter, pg: ProcessGroup):
-    spec = (ShardSpec([dim], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    param.set_tensor_spec(*spec)
-
-
-def split_param_row_tp1d(param: ColoParameter, pg: ProcessGroup):
-    split_param_single_dim_tp1d(0, param, pg)
-
-
-def split_param_col_tp1d(param: ColoParameter, pg: ProcessGroup):
-    split_param_single_dim_tp1d(-1, param, pg)
-```
-
-定义一个使用 Gemini + ZeRO DDP 的模型：
-
-```python
-def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: str = "auto"):
-    cai_version = colossalai.__version__
-    if version.parse(cai_version) > version.parse("0.1.10"):
-        from colossalai.nn.parallel import GeminiDDP
-        model = GeminiDDP(model,
-                          device=get_current_device(),
-                          placement_policy=placememt_policy,
-                          pin_memory=True,
-                          search_range_mb=32)
-    elif version.parse(cai_version) <= version.parse("0.1.10") and version.parse(cai_version) >= version.parse("0.1.9"):
-        from colossalai.gemini import ChunkManager, GeminiManager
-        chunk_size = ChunkManager.search_chunk_size(model, 64 * 1024**2, 32)
-        gemini_manager = GeminiManager(placememt_policy, chunk_manager)
-        chunk_manager = ChunkManager(chunk_size,
-                                     pg,
-                                     enable_distributed_storage=True,
-                                 			init_device=GeminiManager.get_default_device(placememt_policy))
-        model = ZeroDDP(model, gemini_manager)
-    else:
-        raise NotImplemented(f"CAI version {cai_version} is not supported")
-    return model
-```
-
-由于我们在这个例子中对GPT进行预训练，因此只使用了一个简单的语言模型损失函数。
-
 写一个获得随机输入的函数:
 
 ```python
@@ -219,9 +158,16 @@ def get_data(batch_size, seq_len, vocab_size):
     return input_ids, attention_mask
 ```
 
-最后，我们可以定义我们的训练循环:
+
+最后，使用booster注入 Gemini + ZeRO DDP 特性, 并定义训练循环。由于我们在这个例子中对GPT进行预训练，因此只使用了一个简单的语言模型损失函数：
 
 ```python
+from colossalai.nn.optimizer import HybridAdam
+
+from colossalai.booster import Booster
+from colossalai.lazy import LazyInitContext
+from colossalai.booster.plugin import GeminiPlugin
+
 def main():
     args = parse_args()
     BATCH_SIZE = 8
@@ -232,22 +178,19 @@ def main():
 
     # build criterion
     criterion = GPTLMLoss()
+    optimizer = HybridAdam(model.parameters(), lr=0.001)
 
     torch.manual_seed(123)
-    default_pg = ProcessGroup(tp_degree=args.tp_degree)
-    default_dist_spec = ShardSpec([-1], [args.tp_degree]) if args.shardinit else None
     # build GPT model
-    with ColoInitContext(device='cpu', default_dist_spec=default_dist_spec, default_pg=default_pg):
+    with ColoInitContext(default_device=torch.device('cuda')):
       model = gpt2_medium(checkpoint=True)
-    pg = default_pg
-    # Tensor Parallelism (TP)
-    tensor_parallelize(model, pg)
-    # Gemini + ZeRO DP, Note it must be used after TP
-    model = gemini_zero_dpp(model, pg, args.placement)
-    # build optimizer
-    optimizer = GeminiAdamOptimizer(model, lr=1e-3, initial_scale=2**5)
-    numel = sum([p.numel() for p in model.parameters()])
-    get_tflops_func = partial(get_tflops, numel, BATCH_SIZE, SEQ_LEN)
+
+
+    # Gemini + ZeRO DP
+    plugin = GeminiPlugin(max_norm=1.0, initial_scale=2**5)
+    booster = Booster(plugin=plugin)
+    model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
+
     torch.cuda.synchronize()
     model.train()
     for n in range(NUM_STEPS):
@@ -256,10 +199,12 @@ def main():
         optimizer.zero_grad()
         outputs = model(input_ids, attn_mask)
         loss = criterion(outputs, input_ids)
-        optimizer.backward(loss)
+        booster.backward(loss, optimizer)
         optimizer.step()
 
     torch.cuda.synchronize()
 ```
-> ⚠️ 注意：如果你使用Gemini模块的话，请不要使用我们之前提到过的[梯度累加](../features/gradient_accumulation.md)。
+> ⚠️ 注意：如果你使用Gemini模块的话，请不要使用我们之前提到过的[梯度累加](../features/gradient_accumulation_with_booster.md)。
 完整的例子代码可以在 [Train GPT with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt). 获得。
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 zero_with_chunk.py  -->

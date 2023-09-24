@@ -1,8 +1,6 @@
 colossalai >= 0.1.12
 torch >= 1.8.1
 numpy>=1.24.1
-timm>=0.6.12
-titans>=0.0.7
 tqdm>=4.61.2
-transformers>=4.25.1
-nvidia-dali-cuda110>=1.8.0 --extra-index-url https://developer.download.nvidia.com/compute/redist
+transformers>=4.20.0
+datasets

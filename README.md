@@ -25,6 +25,9 @@
 </div>
 
 ## Latest News
+* [2023/09] [70 Billion Parameter LLaMA2 Model Training Accelerated by 195%](https://www.hpc-ai.tech/blog/70b-llama2-training)
+* [2023/07] [HPC-AI Tech Raises 22 Million USD in Series A Funding](https://www.hpc-ai.tech/blog/hpc-ai-tech-raises-22-million-usd-in-series-a-funding-to-fuel-team-expansion-and-business-growth)
+* [2023/07] [65B Model Pretraining Accelerated by 38%, Best Practices for Building LLaMA-Like Base Models Open-Source](https://www.hpc-ai.tech/blog/large-model-pretraining)
 * [2023/03] [ColossalChat: An Open-Source Solution for Cloning ChatGPT With a Complete RLHF Pipeline](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b)
 * [2023/03] [Intel and Colossal-AI Partner to Deliver Cost-Efficient Open-Source Solution for Protein Folding Structure Prediction](https://www.hpc-ai.tech/blog/intel-habana)
 * [2023/03] [AWS and Google Fund Colossal-AI with Startup Cloud Programs](https://www.hpc-ai.tech/blog/aws-and-google-fund-colossal-ai-with-startup-cloud-programs)
@@ -32,7 +35,6 @@
 * [2023/01] [Hardware Savings Up to 46 Times for AIGC and  Automatic Parallelism](https://medium.com/pytorch/latest-colossal-ai-boasts-novel-automatic-parallelism-and-offers-savings-up-to-46x-for-stable-1453b48f3f02)
 * [2022/11] [Diffusion Pretraining and Hardware Fine-Tuning Can Be Almost 7X Cheaper](https://www.hpc-ai.tech/blog/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper)
 * [2022/10] [Use a Laptop to Analyze 90% of Proteins, With a Single-GPU Inference Sequence Exceeding 10,000](https://www.hpc-ai.tech/blog/use-a-laptop-to-analyze-90-of-proteins-with-a-single-gpu-inference-sequence-exceeding)
-* [2022/09] [HPC-AI Tech Completes $6 Million Seed and Angel Round Fundraising](https://www.hpc-ai.tech/blog/hpc-ai-tech-completes-6-million-seed-and-angel-round-fundraising-led-by-bluerun-ventures-in-the)
 
 ## Table of Contents
 <ul>
@@ -49,6 +51,7 @@
  <li>
    <a href="#Parallel-Training-Demo">Parallel Training Demo</a>
    <ul>
+     <li><a href="#LLaMA2">LLaMA 1/2</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
      <li><a href="#BERT">BERT</a></li>
@@ -132,9 +135,9 @@ distributed training and inference in a few lines.
    </a>
 </div>
 
-[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat): An open-source solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline. 
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) 
-[[blog]](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b) 
+[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat): An open-source solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline.
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat)
+[[blog]](https://medium.com/@yangyou_berkeley/colossalchat-an-open-source-solution-for-cloning-chatgpt-with-a-complete-rlhf-pipeline-5edf08fb538b)
 [[demo]](https://www.youtube.com/watch?v=HcTiHzApHm0)
 [[tutorial]](https://www.youtube.com/watch?v=-qFBZFmOJfg)
 
@@ -215,6 +218,23 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Parallel Training Demo
+### LLaMA2
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/llama2_pretraining.png" width=600/>
+</p>
+
+- 70 billion parameter LLaMA2 model training accelerated by 195%
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama2)
+[[blog]](https://www.hpc-ai.tech/blog/70b-llama2-training)
+
+### LLaMA1
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/images/LLaMA_pretraining.png" width=600/>
+</p>
+
+- 65-billion-parameter large model pretraining accelerated by 38%
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/example/llama/examples/language/llama)
+[[blog]](https://www.hpc-ai.tech/blog/large-model-pretraining)
 
 ### GPT-3
 <p align="center">
@@ -362,6 +382,22 @@ If you want to install and enable CUDA kernel fusion (compulsory installation wh
 CUDA_EXT=1 pip install .
 ```
 
+For Users with CUDA 10.2, you can still build ColossalAI from source. However, you need to manually download the cub library and copy it to the corresponding directory.
+
+```bash
+# clone the repository
+git clone https://github.com/hpcaitech/ColossalAI.git
+cd ColossalAI
+
+# download the cub library
+wget https://github.com/NVIDIA/cub/archive/refs/tags/1.8.0.zip
+unzip 1.8.0.zip
+cp -r cub-1.8.0/cub/ colossalai/kernel/cuda_native/csrc/kernels/include/
+
+# install
+CUDA_EXT=1 pip install .
+```
+
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Use Docker
@@ -436,6 +472,7 @@ To cite this project, you can use the following BibTeX citation.
 }
 ```
 
-Colossal-AI has been accepted as official tutorial by top conferences [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), [PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/), [ISC](https://www.isc-hpc.com/), etc.
+Colossal-AI has been accepted as official tutorial by top conferences [NeurIPS](https://nips.cc/), [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/),
+[PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/), [ISC](https://www.isc-hpc.com/), [NVIDIA GTC](https://www.nvidia.com/en-us/on-demand/session/gtcspring23-S51482/) ,etc.
 
 <p align="right">(<a href="#top">back to top</a>)</p>

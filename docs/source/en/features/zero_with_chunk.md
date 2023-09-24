@@ -3,7 +3,7 @@
 Author: [Hongxiu Liu](https://github.com/ver217), [Jiarui Fang](https://github.com/feifeibear), [Zijian Ye](https://github.com/ZijianYY)
 
 **Prerequisite:**
-- [Define Your Configuration](../basics/define_your_config.md)
+- [Train with booster](../basics/booster_api.md)
 
 **Example Code**
 
@@ -54,32 +54,38 @@ We also provide a lightweight chunk search mechanism to help users automatically
 
 We will use `GeminiDDP` to use ZeRO with chunk-based memory management. This is our new torch.Module wrapper which uses ZeRO-DP and Gemini. ZeRO is for parallelism and Gemini is for memory management.
 
-Also Make sure that your model is initialized under the context of ColoInitContext.
+Gemini allows LazyInitContext, which can save memory when initializing large models with multi-GPUs.
 
+If your model has `N` billion parameters and your GPU memory is `M` GB, we recommend you use LazyInitContext when `4N >= M`. Otherwise, LazyInitContext is optional.
+
+<!--- doc-test-ignore-start -->
 ```python
-with ColoInitContext(device='cpu', default_dist_spec=default_dist_spec, default_pg=default_pg):
+with LazyInitContext(default_device=torch.device('cuda')):
   model = gpt2_medium(checkpoint=True)
 ```
+<!--- doc-test-ignore-end -->
 
-Define the model parameters as follows:
+We've provided `Booster` API which is user-friendly. We recommend you use `Booster` API. But if you still want to use low level API, you can read below content of this section.
 
+Wrap the model with `GeminiDDP`.
+
+<!--- doc-test-ignore-start -->
 ```python
-chunk_manager = init_chunk_manager(model=module,
-                                           init_device=device,
-                                           hidden_dim=hidden_dim,
-                                           search_range_mb=search_range_mb,
-                                           min_chunk_size_mb=min_chunk_size_mb)
-gemini_manager = GeminiManager(placement_policy, chunk_manager)
+model = GeminiDDP(model, hidden_dim=hidden_dim, min_chunk_size_m=min_chunk_size_m)
 ```
+<!--- doc-test-ignore-end -->
 
-`hidden_dim` is the hidden dimension of DNN. Users can provide this argument to speed up searching. If users do not know this argument before training, it is ok. We will use a default value 1024. `min_chunk_size_mb` is the the minimum chunk size in MegaByte. If the aggregate size of parameters is still samller than the minimum chunk size, all parameters will be compacted into one small chunk.
+`hidden_dim` is the hidden dimension of DNN. Users can provide this argument to speed up searching. If users do not know this argument before training, it is ok. We will use a default value 1024. `min_chunk_size_m` is a floating point, being the minimum chunk size divided by 2^20 (e.g., if min_chunk_size_m=2.5, then the minimum chunk size should be 2.5*(2^20)).If the aggregate size of parameters is still smaller than the minimum chunk size, all parameters will be compacted into one small chunk.
 
 Initialization of the optimizer.
+<!--- doc-test-ignore-start -->
 ```python
 optimizer = GeminiAdamOptimizer(model, lr=1e-3, initial_scale=2**5)
 ```
+<!--- doc-test-ignore-start -->
 
 Training
+<!--- doc-test-ignore-start -->
 ```python
 optimizer.zero_grad()
 outputs = model(input_ids, attn_mask)
@@ -87,6 +93,7 @@ loss = criterion(outputs, input_ids)
 optimizer.backward(loss)
 optimizer.step()
 ```
+<!--- doc-test-ignore-start -->
 > ⚠️ Note: Please do not use `loss.backward()`, the standard way of writing is `optimizer.backward(loss)`.
 
 ### Train GPT
@@ -97,6 +104,7 @@ For simplicity, we just use randomly generated data here.
 
 First we only need to import `GPT2LMHeadModel` from `Huggingface transformers` to define our model, which does not require users to define or modify the model, so that users can use it more conveniently.
 
+Define a GPT model:
 ```python
 class GPTLMModel(nn.Module):
 
@@ -141,74 +149,6 @@ class GPTLMLoss(nn.Module):
         return self.loss_fn(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 ```
 
-Define tensor parallel and parameter sharding strategies for tensor parallelism:
-
-```python
-def tensor_parallelize(model: torch.nn.Module, pg: ProcessGroup):
-    for mn, module in model.named_modules():
-        for pn, param in module.named_parameters(recurse=False):
-            if hasattr(param, 'visited'):
-                continue
-            param.set_dist_spec(ReplicaSpec())
-            if 'mlp.c_fc' in mn:
-                if 'weight' in pn or 'bias' in pn:
-                    split_param_col_tp1d(param, pg)
-                    param.compute_spec.set_output_replicate(False)
-                else:
-                    param.set_dist_spec(ReplicaSpec())
-            elif 'mlp.c_proj' in mn:
-                if 'weight' in pn:
-                    split_param_row_tp1d(param, pg)
-                else:
-                    param.set_dist_spec(ReplicaSpec())
-            elif 'wte' in mn or 'wpe' in mn:
-                split_param_col_tp1d(param, pg)
-            elif 'c_attn' in mn or 'c_proj' in mn:
-                split_param_col_tp1d(param, pg)
-            else:
-                param.set_dist_spec(ReplicaSpec())
-
-            param.visited = True
-def split_param_single_dim_tp1d(dim: int, param: ColoParameter, pg: ProcessGroup):
-    spec = (ShardSpec([dim], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    param.set_tensor_spec(*spec)
-
-
-def split_param_row_tp1d(param: ColoParameter, pg: ProcessGroup):
-    split_param_single_dim_tp1d(0, param, pg)
-
-
-def split_param_col_tp1d(param: ColoParameter, pg: ProcessGroup):
-    split_param_single_dim_tp1d(-1, param, pg)
-```
-
-Define a model which uses Gemini + ZeRO DDP:
-
-```python
-def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: str = "auto"):
-    cai_version = colossalai.__version__
-    if version.parse(cai_version) > version.parse("0.1.10"):
-        from colossalai.nn.parallel import GeminiDDP
-        model = GeminiDDP(model,
-                          device=get_current_device(),
-                          placement_policy=placememt_policy,
-                          pin_memory=True,
-                          search_range_mb=32)
-    elif version.parse(cai_version) <= version.parse("0.1.10") and version.parse(cai_version) >= version.parse("0.1.9"):
-        from colossalai.gemini import ChunkManager, GeminiManager
-        chunk_size = ChunkManager.search_chunk_size(model, 64 * 1024**2, 32)
-        gemini_manager = GeminiManager(placememt_policy, chunk_manager)
-        chunk_manager = ChunkManager(chunk_size,
-                                     pg,
-                                     enable_distributed_storage=True,
-                                     init_device=GeminiManager.get_default_device(placememt_policy))
-        model = ZeroDDP(model, gemini_manager)
-    else:
-        raise NotImplemented(f"CAI version {cai_version} is not supported")
-    return model
-```
-
-As we pre-train GPT in this example, we just use a simple language model loss.
 
 Write a function to get random inputs:
 
@@ -219,9 +159,15 @@ def get_data(batch_size, seq_len, vocab_size):
     return input_ids, attention_mask
 ```
 
-Finally, we can define our training loop:
+Finally, we define a model which uses Gemini + ZeRO DDP and define our training loop, As we pre-train GPT in this example, we just use a simple language model loss:
 
 ```python
+from colossalai.nn.optimizer import HybridAdam
+
+from colossalai.booster import Booster
+from colossalai.lazy import LazyInitContext
+from colossalai.booster.plugin import GeminiPlugin
+
 def main():
     args = parse_args()
     BATCH_SIZE = 8
@@ -232,22 +178,19 @@ def main():
 
     # build criterion
     criterion = GPTLMLoss()
+    optimizer = HybridAdam(model.parameters(), lr=0.001)
 
     torch.manual_seed(123)
-    default_pg = ProcessGroup(tp_degree=args.tp_degree)
-    default_dist_spec = ShardSpec([-1], [args.tp_degree]) if args.shardinit else None
     # build GPT model
-    with ColoInitContext(device='cpu', default_dist_spec=default_dist_spec, default_pg=default_pg):
+    with ColoInitContext(default_device=torch.device('cuda')):
       model = gpt2_medium(checkpoint=True)
-    pg = default_pg
-    # Tensor Parallelism (TP)
-    tensor_parallelize(model, pg)
-    # Gemini + ZeRO DP, Note it must be used after TP
-    model = gemini_zero_dpp(model, pg, args.placement)
-    # build optimizer
-    optimizer = GeminiAdamOptimizer(model, lr=1e-3, initial_scale=2**5)
-    numel = sum([p.numel() for p in model.parameters()])
-    get_tflops_func = partial(get_tflops, numel, BATCH_SIZE, SEQ_LEN)
+
+
+    # Gemini + ZeRO DP
+    plugin = GeminiPlugin(max_norm=1.0, initial_scale=2**5)
+    booster = Booster(plugin=plugin)
+    model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
+
     torch.cuda.synchronize()
     model.train()
     for n in range(NUM_STEPS):
@@ -256,10 +199,12 @@ def main():
         optimizer.zero_grad()
         outputs = model(input_ids, attn_mask)
         loss = criterion(outputs, input_ids)
-        optimizer.backward(loss)
+        booster.backward(loss, optimizer)
         optimizer.step()
 
     torch.cuda.synchronize()
 ```
-> ⚠️ Note: If you want to use the Gemini module, please do not use the [Gradient Accumulation](../features/gradient_accumulation.md) we mentioned before。
+> ⚠️ Note: If you want to use the Gemini module, please do not use the [Gradient Accumulation](../features/gradient_accumulation_with_booster.md) we mentioned before。
 The complete example can be found on [Train GPT with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt).
+
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 zero_with_chunk.py  -->
