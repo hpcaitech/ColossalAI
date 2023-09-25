@@ -266,8 +266,6 @@ class HybridParallelPlugin(PipelinePluginBase):
     Tensor parallel, pipeline parallel and data parallel(DDP/ZeRO) can be picked and combined in this plugin.
     The size of tp and pp should be passed in by user, then the size of dp is automatically calculated from dp_size = world_size / (tp_size * pp_size).
 
-    Example:
-
     ```python
     from colossalai.booster import Booster
     from colossalai.booster.plugin import HybridParallelPlugin

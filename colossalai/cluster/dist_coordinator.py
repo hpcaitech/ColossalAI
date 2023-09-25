@@ -20,7 +20,6 @@ class DistCoordinator(metaclass=SingletonMeta):
         - master: the process with rank 0
         - node master: the process with local rank 0 on the current node
 
-    Example:
 
     ```python
     from colossalai.cluster.dist_coordinator import DistCoordinator
@@ -134,7 +133,6 @@ class DistCoordinator(metaclass=SingletonMeta):
         other processes in the same process group. This is often useful when downloading is required
         as we only want to download in one process to prevent file corruption.
 
-        Example:
 
         ```python
         from colossalai.cluster import DistCoordinator
@@ -179,8 +177,6 @@ class DistCoordinator(metaclass=SingletonMeta):
     def on_master_only(self, process_group: ProcessGroup = None):
         """
         A function wrapper that only executes the wrapped function on the master process (rank 0).
-
-        Example:
 
         ```python
         from colossalai.cluster import DistCoordinator

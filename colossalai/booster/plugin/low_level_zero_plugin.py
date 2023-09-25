@@ -213,8 +213,6 @@ class LowLevelZeroPlugin(DPPluginBase):
     """
     Plugin for low level zero.
 
-    Example:
-
     ```python
     from colossalai.booster import Booster
     from colossalai.booster.plugin import LowLevelZeroPlugin

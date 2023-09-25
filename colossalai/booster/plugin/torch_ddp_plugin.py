@@ -130,8 +130,6 @@ class TorchDDPPlugin(DPPluginBase):
     """
     Plugin for PyTorch DDP.
 
-    Example:
-
     ```python
     from colossalai.booster import Booster
     from colossalai.booster.plugin import TorchDDPPlugin

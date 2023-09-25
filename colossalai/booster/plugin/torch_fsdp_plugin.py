@@ -143,8 +143,6 @@ class TorchFSDPPlugin(DPPluginBase):
     """
     Plugin for PyTorch FSDP.
 
-    Example:
-
     ```python
     from colossalai.booster import Booster
     from colossalai.booster.plugin import TorchFSDPPlugin

@@ -229,8 +229,6 @@ class GeminiPlugin(DPPluginBase):
     """
     Plugin for Gemini.
 
-    Example:
-
     ```python
     from colossalai.booster import Booster
     from colossalai.booster.plugin import GeminiPlugin
