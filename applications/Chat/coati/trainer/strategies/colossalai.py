@@ -129,6 +129,9 @@ class GeminiStrategy(DDPStrategy):
         seed: int = 42,
         shard_init: bool = False,  # only for stage 3
         placement_policy: str = "auto",
+        shard_param_frac: float = 1.0,  # only for static placement
+        offload_optim_frac: float = 0.0,  # only for static placement
+        offload_param_frac: float = 0.0,  # only for static placement
         pin_memory: bool = True,  # only for stage 3
         force_outputs_fp32: bool = False,  # only for stage 3
         search_range_m: int = 32,  # only for stage 3
@@ -159,9 +162,9 @@ class GeminiStrategy(DDPStrategy):
         plugin_initializer = lambda: GeminiPlugin(
             chunk_init_device=get_current_device(),
             placement_policy=placement_policy,
-            shard_param_frac=1.0,
-            offload_optim_frac=1.0,
-            offload_param_frac=1.0,
+            shard_param_frac=shard_param_frac,
+            offload_optim_frac=offload_optim_frac,
+            offload_param_frac=offload_param_frac,
             precision="fp16",
             pin_memory=pin_memory,
             force_outputs_fp32=force_outputs_fp32,
@@ -193,6 +196,5 @@ class GeminiStrategy(DDPStrategy):
         return super().model_init_context()
 
     def unwrap_model(self, model: nn.Module) -> nn.Module:
-        ddp_model = model.unwrap()
-        assert isinstance(ddp_model, GeminiDDP)
-        return ddp_model.module
+        assert isinstance(model, GeminiDDP)
+        return model.module
