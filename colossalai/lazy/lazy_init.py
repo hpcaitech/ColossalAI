@@ -11,6 +11,7 @@ from torch.utils._pytree import tree_map
 from colossalai.logging import get_dist_logger
 
 from .construction import ConstructorManager
+from .pretrained import PretrainedManager
 
 import colossalai._analyzer._subclasses._meta_registration  # noqa
 
@@ -595,11 +596,13 @@ class LazyInitContext:
         )
 
         ConstructorManager.apply(overrides)
+        PretrainedManager.inject()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.tensor_cls.default_device = self.old_default_device
         LazyInitContext._replaced = False
         ConstructorManager.clear()
+        PretrainedManager.recover()
 
     @staticmethod
     def materialize(module: nn.Module, verbose: bool = False) -> nn.Module:
