@@ -40,13 +40,13 @@ def main(args):
     with strategy.model_init_context():
         # configure model
         if args.model == "gpt2":
-            initial_model = GPTActor()
+            initial_model = GPTActor(pretrained=args.pretrain)
         elif args.model == "bloom":
-            initial_model = BLOOMActor()
+            initial_model = BLOOMActor(pretrained=args.pretrain)
         elif args.model == "opt":
-            initial_model = OPTActor()
+            initial_model = OPTActor(pretrained=args.pretrain)
         elif args.model == "llama":
-            initial_model = LlamaActor()
+            initial_model = LlamaActor(pretrained=args.pretrain)
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
@@ -73,13 +73,13 @@ def main(args):
         reward_model.to(torch.bfloat16).to(torch.cuda.current_device())
 
         if args.model == "gpt2":
-            actor = GPTActor(lora_rank=args.lora_rank)
+            actor = GPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
         elif args.model == "bloom":
-            actor = BLOOMActor(lora_rank=args.lora_rank)
+            actor = BLOOMActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
         elif args.model == "opt":
-            actor = OPTActor(lora_rank=args.lora_rank)
+            actor = OPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
         elif args.model == "llama":
-            actor = LlamaActor(lora_rank=args.lora_rank)
+            actor = LlamaActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 

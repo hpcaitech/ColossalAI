@@ -89,15 +89,15 @@ class DDPStrategy(Strategy):
     def save_pretrained(
         self, model: nn.Module, path: str, shard: bool = True, tokenizer: Optional[PreTrainedTokenizerBase] = None
     ) -> None:
-        # if dist.get_rank() == 0:
-        #     unwrapped_model = self.unwrap_model(model)
-        #     assert isinstance(unwrapped_model, (Actor, Critic, RewardModel))
-        #     pretrained_model = unwrapped_model.model
-        #     assert isinstance(pretrained_model, PreTrainedModel)
-        #     # HACK: only use hf save_pretrained to save config
-        #     pretrained_model.save_pretrained(path, save_function=lambda *args, **kwargs: None)
-        #     if tokenizer is not None:
-        #         tokenizer.save_pretrained(path)
+        if dist.get_rank() == 0:
+            unwrapped_model = self.unwrap_model(model)
+            assert isinstance(unwrapped_model, (Actor, Critic, RewardModel))
+            pretrained_model = unwrapped_model.model
+            assert isinstance(pretrained_model, PreTrainedModel)
+            # HACK: only use hf save_pretrained to save config
+            pretrained_model.save_pretrained(path, save_function=lambda *args, **kwargs: None)
+            if tokenizer is not None:
+                tokenizer.save_pretrained(path)
 
         self.save_model(model, path, shard=shard)
 
