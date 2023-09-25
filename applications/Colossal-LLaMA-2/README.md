@@ -18,10 +18,14 @@
     - [Data](#data)
     - [Tokenizer](#tokenizer)
     - [Training Strategy](#training-strategy)
+    - [Bridging Any Domain-specific Large Models](#bridging-any-domain-specific-large-models)
 - [Citations](#citations)
 
 ## News
-* [2023/09] 🔥 TODO We released **Colossal-LLaMA-2-7B-base** based on LLaMA-2. [Download weights](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base).
+* [2023/09] [One Half-Day of Training Using a Few Hundred Dollars Yields Similar Results to Mainstream Large Models, Open-Source and Commercial-Free Domain-Specific Llm Solution](https://www.hpc-ai.tech/blog/one-half-day-of-training-using-a-few-hundred-dollars-yields-similar-results-to-mainstream-large-models-open-source-and-commercial-free-domain-specific-llm-solution)
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Colossal-LLaMA-2)
+[[blog]](https://www.hpc-ai.tech/blog/one-half-day-of-training-using-a-few-hundred-dollars-yields-similar-results-to-mainstream-large-models-open-source-and-commercial-free-domain-specific-llm-solution)
+[[model weights]](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base)
 
 ## Colossal-LLaMA-2-7B
 The [Colossal-AI](https://github.com/hpcaitech/ColossalAI) team has introduced the open-source model **Colossal-LLaMA-2-7B-base**. This model, a derivation of LLaMA-2, has undergone continual pre-training involving approximately 8.5 billion tokens over a duration of 15 hours with 64 A800 GPUs. At a cost of **less than $1,000**, you can achieve results **similar to those that cost millions of dollars to pretrain from scratch**. It is licensed under the LLaMA-2 license and [Apache 2.0 License](https://github.com/hpcaitech/ColossalAI/blob/main/LICENSE) **without any additional commercial use restrictions**. This solution can also be used to build models of specific domain knowledge or tasks.
@@ -47,7 +51,7 @@ The generation config for all dataset is greedy search.
 |       Baichuan2-13B-Base       |     -      |      2.6T       |             |    54.84 (59.17)     | 62.62 (61.97) |  52.08  | 58.25  | 58.10  |
 |           ChatGLM-6B           |     -      |      1.0T       |             |    39.67 (40.63)     |   41.17 (-)   |  40.10  | 36.53  | 38.90  |
 |          ChatGLM2-6B           |     -      |      1.4T       |             |    44.74 (45.46)     |   49.40 (-)   |  46.36  | 45.49  | 51.70  |
-|          InternLM-7B           |     -      |        -        |                |    46.70 (51.00)     |   52.00 (-)   |  44.77  | 61.64  | 52.80  |
+|          InternLM-7B           |     -      |      1.6T       |                |    46.70 (51.00)     |   52.00 (-)   |  44.77  | 61.64  | 52.80  |
 |            Qwen-7B             |     -      |      2.2T       |             | 54.29 (56.70) | 56.03 (58.80) |  52.47  | 56.42  | 59.60  |
 |                                |            |                 |                 |                      |               |         |        |        |
 |           Llama-2-7B           |     -      |      2.0T       |             |    44.47 (45.30)     |   32.97 (-)   |  32.60  | 25.46  |   -    |
@@ -96,7 +100,7 @@ We also recorded the training logs for the experiment
 <img src="https://github.com/hpcaitech/public_assets/blob/main/applications/colossal-llama-2/trainingLossByTokens.jpeg?raw=true" width=600/>
 </p>
 
-### Import from Transformers
+### Import from Transformers (Inference)
 To load Colossal-LLaMA-2-7B-base model using Transformers, use the following code:
 ```Python
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -345,6 +349,13 @@ The following figure illustrates the three stages for training Colossal-LLaMA-2.
 Our experiments have revealed that the distributions within the training dataset, as well as the arrangement of various topic-related data points, significantly impact the overall performance of the model, particularly in the context of continual pre-training of LLaMA-2.
 
 In an effort to achieve a more balanced distribution and exert control over the dataset's ordering, we have adopted a method where we divide each sub-dataset into discrete bins. These bins are then combined to construct individual data buckets, with one bin contributed by each sub-dataset.
+
+### Bridging Any Domain-specific Large Models
+Applying the above process to perform knowledge transfer in any field allows for the cost-effective construction of lightweight domain-specific foundational large models.
+
+<p id="domain_specific-llm" align="center">
+<img src="https://github.com/hpcaitech/public_assets/blob/main/applications/colossal-llama-2/domain_specific-llm.jpeg?raw=true" width=800/>
+</p>
 
 ## Citations
 ```bibtex
