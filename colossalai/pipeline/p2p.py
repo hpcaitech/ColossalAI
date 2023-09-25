@@ -159,12 +159,14 @@ def _recv_object(src: int, dst: int, group: ProcessGroup) -> Any:
     return object_list[0]
 
 
-def _p2p_comm_shape(
+def _p2p_comm(
     tensor_send_next: torch.Tensor,
     recv_prev: bool,
     peer: int,
     group: ProcessGroup,
+    comm_dtype: torch.dtype = torch.float16,
 ):
+    # send and recv shape
     send_next_shape = None
     recv_prev_shape = None
 
@@ -194,19 +196,9 @@ def _p2p_comm_shape(
     if recv_prev_shape is not None:
         recv_prev_shape = recv_prev_shape.tolist()
 
-    return recv_prev_shape
-
-
-def _p2p_comm(
-    tensor_send_next: torch.Tensor,
-    recv_pre: bool,
-    peer: int,
-    group: ProcessGroup,
-    comm_dtype: torch.dtype = torch.float16,
-):
+    # send and recv data
     tensor_recv_prev = None
-    recv_prev_shape = _p2p_comm_shape(tensor_send_next, recv_pre, peer, group)
-    if recv_pre:
+    if recv_prev:
         tensor_recv_prev = torch.empty(recv_prev_shape, device=torch.cuda.current_device(), dtype=comm_dtype)
 
     ops = []
