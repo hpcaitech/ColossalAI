@@ -740,7 +740,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         saved_groups = state_dict["param_groups"]
         for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
             new_pg = copy.deepcopy(saved_pg)
-            new_pg["params"] = old_pg["params"]
+            new_pg["params"] = old_pg["params"]  # Only keep the parameters kept by current pipeline stage.
             updated_groups.append(new_pg)
         optimizer.optim.__dict__.update({"param_groups": updated_groups})
 
@@ -755,6 +755,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         # Then shard the loaded optimizer states if using tp/zero.
         for param, state in optimizer.optim.state.items():
+            if param is None:
+                continue
             device = param.device
             if master_to_working_map is not None:
                 working_param = master_to_working_map[id(param)]
