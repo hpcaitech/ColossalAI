@@ -179,8 +179,6 @@ def train(args):
     )
 
     # save model checkpoint after fitting on only rank0
-    print(type(model))
-    # print(model)
     strategy.save_pretrained(model, path=args.save_path, tokenizer=tokenizer)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
