@@ -16,7 +16,8 @@ class PretrainedManager:
             from transformers.modeling_utils import PreTrainedModel
         except ImportError:
             return
-        PretrainedManager.old_from_pretrained = PreTrainedModel.from_pretrained
+        # recover bound method to plain function
+        PretrainedManager.old_from_pretrained = PreTrainedModel.from_pretrained.__func__
         PreTrainedModel.from_pretrained = new_from_pretrained
 
     @staticmethod
@@ -25,10 +26,12 @@ class PretrainedManager:
             from transformers.modeling_utils import PreTrainedModel
         except ImportError:
             return
-        PreTrainedModel.from_pretrained = PretrainedManager.old_from_pretrained
+        # convert plain function to class method
+        PreTrainedModel.from_pretrained = classmethod(PretrainedManager.old_from_pretrained)
         PretrainedManager.old_from_pretrained = None
 
 
+@classmethod
 def new_from_pretrained(
     cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], *model_args, **kwargs
 ) -> Module:
@@ -112,7 +115,6 @@ def new_from_pretrained(
 
     # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
     # index of the files.
-    is_sharded = False
 
     if pretrained_model_name_or_path is not None:
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
@@ -132,7 +134,6 @@ def new_from_pretrained(
                 archive_file = os.path.join(
                     pretrained_model_name_or_path, subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
                 )
-                is_sharded = True
             elif os.path.isfile(
                 os.path.join(pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_NAME, variant))
             ):
@@ -147,7 +148,6 @@ def new_from_pretrained(
                 archive_file = os.path.join(
                     pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_INDEX_NAME, variant)
                 )
-                is_sharded = True
             else:
                 raise EnvironmentError(
                     f"Error no file named {_add_variant(WEIGHTS_NAME, variant)} found in directory"
@@ -193,7 +193,7 @@ def new_from_pretrained(
                         **cached_file_kwargs,
                     )
                     if resolved_archive_file is not None:
-                        is_sharded = True
+                        pass
                     elif use_safetensors:
                         raise EnvironmentError(
                             f" {_add_variant(SAFE_WEIGHTS_NAME, variant)} or {_add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)} and thus cannot be loaded with `safetensors`. Please make sure that the model has been saved with `safe_serialization=True` or do not set `use_safetensors=True`."
@@ -212,7 +212,7 @@ def new_from_pretrained(
                         **cached_file_kwargs,
                     )
                     if resolved_archive_file is not None:
-                        is_sharded = True
+                        pass
                 if resolved_archive_file is None:
                     # Otherwise, maybe there is a TF or Flax model file.  We try those to give a helpful error
                     # message.
@@ -304,9 +304,6 @@ def new_from_pretrained(
 
     # set pretrained path
     if resolved_archive_file:
-        # for sharded checkpoints, the pretrained path is the directory containing the checkpoint files
-        # for unsharded checkpoints, the pretrained path is the checkpoint file itself
-        local_pretrained_path = resolved_archive_file if not is_sharded else os.path.dirname(resolved_archive_file)
-        pretrained_interface.set_pretrained_path(model, local_pretrained_path)
+        pretrained_interface.set_pretrained_path(model, resolved_archive_file)
 
     return model
