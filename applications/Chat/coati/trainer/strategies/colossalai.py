@@ -196,5 +196,6 @@ class GeminiStrategy(DDPStrategy):
         return super().model_init_context()
 
     def unwrap_model(self, model: nn.Module) -> nn.Module:
+        model = model.unwrap()
         assert isinstance(model, GeminiDDP)
         return model.module

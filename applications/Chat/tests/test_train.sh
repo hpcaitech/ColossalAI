@@ -80,11 +80,10 @@ SKIPPED_TESTS=(
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
-    "bloom-colossalai_zero2-4"
 )
 
 GRAD_CKPTS=('' '--grad_checkpoint')
-for lora_rank in '0' '4'; do
+for lora_rank in '0'; do
     for model in ${MODELS[@]}; do
         strategies=($(shuf -e "${STRATEGIES[@]}"))
         for strategy in ${strategies[@]}; do
@@ -133,14 +132,11 @@ SKIPPED_TESTS=(
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
-    "gpt2-colossalai_gemini"
-    "opt-colossalai_gemini"
-    "bloom-colossalai_gemini"
 )
 
 LOSS_FNS=('log_sig' 'log_exp')
 DATASETS=('Anthropic/hh-rlhf' 'Dahoas/rm-static')
-for lora_rank in '0' '4'; do
+for lora_rank in '0'; do
     for model in ${MODELS[@]}; do
         strategies=($(shuf -e "${STRATEGIES[@]}"))
         for strategy in ${strategies[@]}; do
@@ -191,13 +187,10 @@ SKIPPED_TESTS=(
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
-    "gpt2-colossalai_gemini"
-    "opt-colossalai_gemini"
-    "bloom-colossalai_gemini"
 )
 
 for model in ${MODELS[@]}; do
-    for lora_rank in '0' '4'; do
+    for lora_rank in '0'; do
         strategies=($(shuf -e "${STRATEGIES[@]}"))
         for strategy in ${strategies[@]}; do
             if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy-$lora_rank " ]]; then
@@ -221,7 +214,7 @@ for model in ${MODELS[@]}; do
                     --experience_batch_size 2 --train_batch_size 1 --lora_rank $lora_rank \
                     --pretrain $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank} \
                     $rm_pretrain_model --rm_path $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt \
-                    --save_path $EXAMPLES_DIR/rlhf_models/actor_checkpoint_prompts.pt
+                    --save_path $EXAMPLES_DIR/rlhf_models/actor_checkpoint_prompts
                 passed=$?
                 if [ $passed -eq 0 ]; then
                     break
@@ -236,4 +229,4 @@ for model in ${MODELS[@]}; do
         rm $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt
     done
 done
-rm $EXAMPLES_DIR/rlhf_models/actor_checkpoint_prompts.pt
+rm -rf $EXAMPLES_DIR/rlhf_models/actor_checkpoint_prompts

@@ -163,7 +163,8 @@ def train(args):
         use_wandb=args.use_wandb,
     )
     # save model checkpoint after fitting on only rank0
-    strategy.save_model(model, args.save_path, only_rank0=True)
+    state_dict = model.state_dict()
+    torch.save(state_dict, args.save_path)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(

@@ -23,7 +23,7 @@ def main(args):
     if args.strategy == "ddp":
         strategy = DDPStrategy()
     elif args.strategy == "colossalai_gemini":
-        strategy = GeminiStrategy(placement_policy="auto", initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy="static", initial_scale=2**5)
     elif args.strategy == "colossalai_zero2":
         strategy = LowLevelZeroStrategy(stage=2, placement_policy="cuda")
     else:
@@ -40,13 +40,13 @@ def main(args):
     with strategy.model_init_context():
         # configure model
         if args.model == "gpt2":
-            initial_model = GPTActor(pretrained=args.pretrain)
+            initial_model = GPTActor()
         elif args.model == "bloom":
-            initial_model = BLOOMActor(pretrained=args.pretrain)
+            initial_model = BLOOMActor()
         elif args.model == "opt":
-            initial_model = OPTActor(pretrained=args.pretrain)
+            initial_model = OPTActor()
         elif args.model == "llama":
-            initial_model = LlamaActor(pretrained=args.pretrain)
+            initial_model = LlamaActor()
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
@@ -73,13 +73,13 @@ def main(args):
         reward_model.to(torch.bfloat16).to(torch.cuda.current_device())
 
         if args.model == "gpt2":
-            actor = GPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
+            actor = GPTActor(lora_rank=args.lora_rank)
         elif args.model == "bloom":
-            actor = BLOOMActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
+            actor = BLOOMActor(lora_rank=args.lora_rank)
         elif args.model == "opt":
-            actor = OPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
+            actor = OPTActor(lora_rank=args.lora_rank)
         elif args.model == "llama":
-            actor = LlamaActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
+            actor = LlamaActor(lora_rank=args.lora_rank)
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
@@ -165,6 +165,9 @@ def main(args):
         (actor, actor_optim), (critic, critic_optim), reward_model, initial_model
     )
 
+    strategy.load_model(initial_model, args.pretrain)
+    strategy.load_model(actor, args.pretrain)
+
     # configure trainer
     trainer = PPOTrainer(
         strategy,
@@ -197,7 +200,7 @@ def main(args):
     )
 
     # save model checkpoint after fitting
-    strategy.save_model(actor, args.save_path, only_rank0=True)
+    strategy.save_model(actor, args.save_path)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(

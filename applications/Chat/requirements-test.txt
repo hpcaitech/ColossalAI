@@ -1,2 +1,2 @@
 pytest
-colossalai==0.3.2
+colossalai==0.3.3

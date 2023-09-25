@@ -1,6 +1,7 @@
 set -xue
 
-BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
+#BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
+BASE_DIR="/home/lcjmy/vepfs/ColossalAI/applications/Chat"
 EXAMPLES_DIR=$BASE_DIR/examples
 
 echo "[Test]: testing inference ..."
