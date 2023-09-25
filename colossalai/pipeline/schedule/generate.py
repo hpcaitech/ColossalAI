@@ -17,6 +17,10 @@ from .base import PipelineSchedule
 
 
 class ActionIntervalBuffer():
+    """
+    The buffer to save the interval hidden states and new token for stage to use.
+
+    """
 
     def __int__(self):
         self.hidden_states = None
@@ -28,7 +32,7 @@ class ActionIntervalBuffer():
 
 
 class GenerateSchedule(PipelineSchedule):
-    '''
+    """
     GenerateSchedule is a class that handles the pipeline parallel inference.
     In our schedule, we place tie weight layer, embedding and lm_head in the same device to save space, so in
     this schedule, the out for each encoding progress is on rank0.
@@ -37,7 +41,7 @@ class GenerateSchedule(PipelineSchedule):
         stage_manager (`PipelineStageManager`): Pipeline stage manager.
         mb_manager (`MicroBatchManager`): Micro batch manager.
         verbose (bool): Whether to verbose the information of the pipeline.
-    '''
+    """
 
     def __init__(self, stage_manager: PipelineStageManager, mb_manager: MicroBatchManager, verbose: bool) -> None:
         super().__init__(stage_manager)

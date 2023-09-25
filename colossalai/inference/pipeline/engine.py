@@ -12,13 +12,9 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.pipeline.schedule.generate import GenerateSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.shardformer._utils import getattr_
 from colossalai.shardformer.policies.base_policy import Policy
 
 from .microbatch_manager import MicroBatchManager
-from .policy.gpt2_ppinfer import GPT2LMHeadModelPipelinePolicy
-from .utils import get_suffix_name, set_tensors_to_none
-
 
 class PPInferEngine:
     '''

@@ -166,6 +166,19 @@ def _p2p_comm(
     group: ProcessGroup,
     comm_dtype: torch.dtype = torch.float16,
 ):
+    """ 
+    Send and recv tensor using P2P communication, used when pipeline size is 2 to solve the race communication.
+
+    Agrs:
+        tensor_send_next (torch.Tensor): tensor to be sent to next stage
+        recv_prev (bool): whether to receive tensor from previous stage
+        peer (int): rank of the peer
+        group (ProcessGroup): process group
+        comm_dtype (torch.dtype): dtype of the tensor to be sent
+    
+    Returns:
+        torch.Tensor: tensor received from previous stage
+    """
     # send and recv shape
     send_next_shape = None
     recv_prev_shape = None
