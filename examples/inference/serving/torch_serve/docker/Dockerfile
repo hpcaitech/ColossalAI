@@ -35,10 +35,10 @@ RUN apt-get update && \
 
 # install colossalai
 ARG VERSION=main
-RUN git clone -b ${VERSION} https://github.com/hpcaitech/ColossalAI.git \
-    && cd ./ColossalAI \
-    && git checkout 3e05c07bb8921f2a8f9736b6f6673d4e9f1697d0 \
-    && CUDA_EXT=1 pip install -v --no-cache-dir .
+RUN git clone -b ${VERSION} https://github.com/hpcaitech/ColossalAI.git && \
+    cd ./ColossalAI && \
+    git checkout 3e05c07bb8921f2a8f9736b6f6673d4e9f1697d0 && \
+    CUDA_EXT=1 pip install -v --no-cache-dir .
 
 # install titans
 RUN pip install --no-cache-dir titans
@@ -51,7 +51,7 @@ RUN pip install --no-cache-dir triton==2.0.0.dev20221202
 
 # install torchserve
 ARG VERSION=master
-RUN git clone -b ${VERSION} https://github.com/pytorch/serve.git \
-    && cd ./serve \
-    && python ./ts_scripts/install_dependencies.py --cuda=cu116 \
-    && pip install torchserve torch-model-archiver torch-workflow-archiver
+RUN git clone -b ${VERSION} https://github.com/pytorch/serve.git && \
+    cd ./serve && \
+    python ./ts_scripts/install_dependencies.py --cuda=cu116 && \
+    pip install torchserve torch-model-archiver torch-workflow-archiver
