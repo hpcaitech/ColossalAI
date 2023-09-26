@@ -14,7 +14,6 @@ from transformers.models.llama import LlamaConfig
 import colossalai
 from colossalai import get_default_parser
 from colossalai.booster import Booster
-from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.logging import disable_existing_loggers, get_dist_logger
@@ -89,7 +88,7 @@ def parse_args():
         type=str,
         default="hybrid",
         help="parallel plugin",
-        choices=["zero1", "zero2", "hybrid"],
+        choices=["zero1_ep", "zero2_ep", "hybrid"],
     )
     # hybrid plugin
     parser.add_argument("--pp_size", type=int, default=2, help="pp size")
@@ -146,15 +145,29 @@ def main():
 
     # Set plugin
     booster_kwargs = {}
-    if args.plugin == "zero1":
-        plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=1)
+    if args.plugin == "zero1_ep":
+        plugin = MoeHybridParallelPlugin(
+            tp_size=1,
+            pp_size=1,
+            zero_stage=1,
+            custom_policy=OpenMoeForCausalLMPolicy(),
+            enable_fused_normalization=args.use_kernel,
+            enable_jit_fused=args.use_kernel,
+        )
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",
             use_kernel_optim=args.use_kernel if not test_mode else False,
         )
-    elif args.plugin == "zero2":
-        plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
+    elif args.plugin == "zero2_ep":
+        plugin = MoeHybridParallelPlugin(
+            tp_size=1,
+            pp_size=1,
+            zero_stage=2,
+            custom_policy=OpenMoeForCausalLMPolicy(),
+            enable_fused_normalization=args.use_kernel,
+            enable_jit_fused=args.use_kernel,
+        )
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",
