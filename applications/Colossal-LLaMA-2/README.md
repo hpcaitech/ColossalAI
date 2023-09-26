@@ -73,7 +73,7 @@ The generation config for all dataset is greedy search.
 >
 > For other models and other dataset, we calculate logits over "A", "B", "C" and "D".
 
-❗️ More details of the evaluation methods and reproduction of the results, please refer to [TODO: ColossalEval]().
+❗️ More details of the evaluation methods and reproduction of the results, please refer to [ColossalEval](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval).
 
 ### Examples
 | Question Type | Question | <center>Colossal-LLaMA-2-7b-base</center> |
