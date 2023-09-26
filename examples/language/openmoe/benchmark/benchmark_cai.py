@@ -122,7 +122,14 @@ def main():
         )
     elif args.plugin == "zero2_ep":
         dp_size = dist.get_world_size()
-        plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
+        plugin = MoeHybridParallelPlugin(
+            tp_size=1,
+            pp_size=1,
+            zero_stage=2,
+            custom_policy=OpenMoeForCausalLMPolicy(),
+            enable_fused_normalization=args.use_kernel,
+            enable_jit_fused=args.use_kernel,
+        )
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",
