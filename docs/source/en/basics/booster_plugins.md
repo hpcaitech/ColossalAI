@@ -74,8 +74,6 @@ This plugin implements the combination of various parallel training strategies a
 
 > ⚠ When using this plugin, only the subset of Huggingface transformers supported by Shardformer are compatible with tensor parallel, pipeline parallel and optimization tools. Mainstream transformers such as Llama 1, Llama 2, OPT, Bloom, Bert and GPT2 etc. are all supported by Shardformer.
 
-> ⚠ This plugin only supports sharded checkpointing methods for model/optimizer at present. Unsharded checkpointing methods will be supported in future release.
-
 {{ autodoc:colossalai.booster.plugin.HybridParallelPlugin }}
 
 ### Torch DDP Plugin
