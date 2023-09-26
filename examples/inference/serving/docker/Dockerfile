@@ -6,6 +6,12 @@ RUN mkdir ~/.ssh && \
     ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa && \
     cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 
+# install curl
+RUN apt-get update && \
+    apt-get -y install curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # Download and extract OpenJDK 17
 ENV JAVA_HOME /opt/openjdk-17
 RUN apt-get update && \
@@ -31,10 +37,14 @@ RUN apt-get update && \
 ARG VERSION=main
 RUN git clone -b ${VERSION} https://github.com/hpcaitech/ColossalAI.git \
     && cd ./ColossalAI \
+    && git checkout 3e05c07bb8921f2a8f9736b6f6673d4e9f1697d0 \
     && CUDA_EXT=1 pip install -v --no-cache-dir .
 
 # install titans
 RUN pip install --no-cache-dir titans
+
+# install transformers
+RUN pip install --no-cache-dir transformers
 
 # install triton
 RUN pip install --no-cache-dir triton==2.0.0.dev20221202
@@ -45,7 +55,3 @@ RUN git clone -b ${VERSION} https://github.com/pytorch/serve.git \
     && cd ./serve \
     && python ./ts_scripts/install_dependencies.py --cuda=cu116 \
     && pip install torchserve torch-model-archiver torch-workflow-archiver
-
-# install requirements
-RUN cd ./ColossalAI/examples/inference/serving \
-    pip install -r requirements.txt
