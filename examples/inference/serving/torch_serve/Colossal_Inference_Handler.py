@@ -131,7 +131,7 @@ class ColossalInferenceHandler(BaseHandler, ABC):
     def preprocess(self, requests):
         """Basic text preprocessing, based on the user's chocie of application mode.
         Args:
-            requests (str): The Input data in the form of text is passed on to the preprocess
+            requests: The Input data in the form of text is passed on to the preprocess
             function.
         Returns:
             list : The preprocess function returns a list of Tensor for the size of the word tokens.
