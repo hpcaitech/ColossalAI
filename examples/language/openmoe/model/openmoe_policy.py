@@ -141,7 +141,8 @@ class OpenMoePolicy(Policy):
         elif num_layers == 12 and num_stages == 2:
             return [8, 4]
         else:
-            raise NotImplementedError(f"num_layers: {num_layers}, num_stages: {num_stages} not supported.")
+            print(f"num_layers: {num_layers}, num_stages: {num_stages} not optimized, use origin pp policy")
+            return Policy.distribute_layers(num_layers, num_stages)
 
 
 class OpenMoeModelPolicy(OpenMoePolicy):
