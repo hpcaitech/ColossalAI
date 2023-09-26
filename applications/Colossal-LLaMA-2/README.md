@@ -32,6 +32,10 @@ The [Colossal-AI](https://github.com/hpcaitech/ColossalAI) team has introduced t
 
 Colossal-LLaMA-2-7B-base is designed to accommodate both the Chinese and English languages, featuring an expansive context window spanning 4096 tokens. Remarkably, it has exhibited exceptional performance when benchmarked against models of equivalent scale in standard Chinese and English evaluation metrics, including C-Eval and MMLU, among others. 
 
+❗️**Important notice**: 
+* All training data used for this project is collected from well-known public dataset. 
+* We do not use any testing data from the evaluation benchmarks for training.
+
 ### Performance Evaluation
 We conducted comprehensive evaluation on 4 dataset and compare our Colossal-Llama-2-7b-base model with various models.
 
@@ -73,7 +77,7 @@ The generation config for all dataset is greedy search.
 >
 > For other models and other dataset, we calculate logits over "A", "B", "C" and "D".
 
-❗️ More details of the evaluation methods and reproduction of the results, please refer to [TODO: ColossalEval]().
+❗️ More details of the evaluation methods and reproduction of the results, please refer to [ColossalEval](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval).
 
 ### Examples
 | Question Type | Question | <center>Colossal-LLaMA-2-7b-base</center> |
