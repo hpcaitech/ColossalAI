@@ -249,7 +249,7 @@ class GenerateSchedule(PipelineSchedule):
         #run by round
         for _ in range(self.round):
             self.timestamps = [[] for _ in range(self.stage_manager.num_stages)
-                                ] if self.verbose and self.stage_manager.is_first_stage() else None
+                              ] if self.verbose and self.stage_manager.is_first_stage() else None
             self.action_interval_buffer.clear()
             while self.mb_manager.is_micro_batch_done() is False:
                 actions = self.genAction(model)
@@ -287,7 +287,7 @@ class GenerateSchedule(PipelineSchedule):
         # run by round
         for _ in range(self.round):
             self.timestamps = [[] for _ in range(self.stage_manager.num_stages)
-                          ] if self.verbose and self.stage_manager.is_first_stage() else None
+                              ] if self.verbose and self.stage_manager.is_first_stage() else None
             while self.mb_manager.is_micro_batch_done() is False:
                 inputs_dict = None
                 new_token = None
@@ -316,7 +316,7 @@ class GenerateSchedule(PipelineSchedule):
                         new_token = self._get_token_id(logits['logits'])
                         self.mb_manager.step(None, None, new_token)
                         # If the current micro batch is not DONE, go through blocks
-                        if self.mb_manager.cur_state is Status.GENERATE:
+                        if self.mb_manager.cur_state in (Status.GENERATE, Status.COOLDOWN):
                             inputs_dict = self._prepare_inputs_for_new_token(new_token)
                             output_dict = model_forward(model, inputs_dict, None)
                             self.mb_manager.step(inputs_dict, output_dict, None)
@@ -327,7 +327,8 @@ class GenerateSchedule(PipelineSchedule):
                         self.mb_manager.step(inputs_dict, output_dict, None)
 
                 # Current microbatch is not DONE, send hidden_state to next stage
-                if not self.stage_manager.is_first_stage() or self.mb_manager.cur_state is Status.GENERATE:
+                if not self.stage_manager.is_first_stage() or self.mb_manager.cur_state in (Status.GENERATE,
+                                                                                            Status.COOLDOWN):
                     self.comm.send_forward({'hidden_states': output_dict['hidden_states']})
 
                 self.mb_manager.next()

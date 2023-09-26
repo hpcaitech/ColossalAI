@@ -11,6 +11,7 @@ from colossalai.shardformer.policies.base_policy import Policy
 
 from .microbatch_manager import MicroBatchManager
 
+
 class PPInferEngine:
     '''
     PPInferEngine is a class that handles the pipeline parallel inference.
@@ -64,8 +65,9 @@ class PPInferEngine:
         self.stage_manager = PipelineStageManager(self.pg_mesh, 0, True)
         self.mb_manager = MicroBatchManager(self.stage_manager.stage, new_length, micro_batch_size,
                                             micro_batch_buffer_size or pp_size)
+        self.verbose = verbose
         self.schedule = GenerateSchedule(self.stage_manager, self.mb_manager, verbose)
-        
+
         assert dtype in ['fp16', 'fp32', 'bf16'], "dtype should be one of 'fp16', 'fp32', 'bf16'"
         if dtype == 'fp16':
             model.half()
@@ -73,10 +75,12 @@ class PPInferEngine:
             model.to(torch.bfloat16)
         self.model = pp_model or self._shardformer(model, model_policy)
 
-
     def inference(self, input_list):
-        out = self.schedule.generate_step(self.model, iter(input_list))
-        return out
+        out, timestamp = self.schedule.generate_step(self.model, iter(input_list))
+        if self.verbose:
+            return out, timestamp
+        else:
+            return out
 
     def _shardformer(self, model, model_policy):
         shardconfig = ShardConfig(
