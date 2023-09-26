@@ -221,12 +221,12 @@ def main():
         plugin = HybridParallelPlugin(
             tp_size=1,
             pp_size=2,
-            num_microbatches=None,
+            num_microbatches=2,
             microbatch_size=1,
-            enable_all_optimization=True,
-            zero_stage=1,
-            precision="fp16",
-            initial_scale=1,
+            # enable_all_optimization=False,
+            # zero_stage=1,
+            # precision="fp16",
+            # initial_scale=1,
         )
 
     booster = Booster(plugin=plugin, **booster_kwargs)

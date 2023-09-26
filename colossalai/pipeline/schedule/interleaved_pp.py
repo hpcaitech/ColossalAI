@@ -163,6 +163,7 @@ class InterleavedSchedule(PipelineSchedule):
     def forward_step(
         self,
         model_chunk: Module,
+        # layers: Optional[List[List[int]]],
         model_chunk_id: int,
         input_obj: Optional[dict],
         criterion: Callable,
@@ -184,7 +185,11 @@ class InterleavedSchedule(PipelineSchedule):
 
         # for the first stage, input_obj is None
         # for the non-first stage, input_obj is the output of the previous stage and it's must be a dict
-        output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)
+        if input_obj is None:
+            input_obj = {}
+        input_obj["model_chunk_id"] = model_chunk_id
+        # output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)
+        output_obj = model_forward(model_chunk, micro_batch, input_obj)
 
         if self.is_last_stage(model_chunk_id):
             loss = criterion(output_obj, micro_batch) / self.num_microbatches
@@ -243,13 +248,15 @@ class InterleavedSchedule(PipelineSchedule):
 
     def forward_backward_step(
         self,
-        model_chunk: Module,
+        model_chunk,
         data_iter: Iterable,
         criterion: Callable[..., Any],
         optimizer: Optional[OptimizerWrapper] = None,
         return_loss: bool = False,
         return_outputs: bool = False,
     ) -> dict:
+        # self.xxx = func(model.config.xx, stage
+
         """Runs interleaved 1F1B schedule, with communication between pipeline stages.
 
         Args:
@@ -268,7 +275,8 @@ class InterleavedSchedule(PipelineSchedule):
             assert forward_only, "Optimizer should be passed when doing backward."
 
         self.load_batch(data_iter)
-        num_model_chunks = len(model_chunk)
+        # raise Exception
+        num_model_chunks = 2
 
         # num_warmup_microbatches is the step when not all the processes are working
         num_microbatches = self.num_microbatches * num_model_chunks
@@ -303,10 +311,10 @@ class InterleavedSchedule(PipelineSchedule):
         # Run warmup forward passes.
         for i in range(num_warmup_microbatches):
             model_chunk_id = self.get_model_chunk_id(i, forward=True)
-
             # recv first on first rank to avoid sending or recving at the same time
             if self.stage_manager.is_first_stage():
                 input_obj = self.recv_forward(model_chunk_id)
+
                 output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
                 self.send_forward(model_chunk_id, output_obj)
                 if not forward_only:
