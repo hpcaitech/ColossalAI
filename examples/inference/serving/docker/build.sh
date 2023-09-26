@@ -1,1 +1,1 @@
-docker build -t hpcaitech/colossal-inference-serve:0.0.1 .
+docker build -t colossal-infer-ts:0.0.1 .

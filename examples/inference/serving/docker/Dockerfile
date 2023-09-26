@@ -1,4 +1,3 @@
-# FROM hpcaitech/cuda-conda:11.6
 FROM hpcaitech/pytorch-cuda:1.13.0-11.6.0
 
 # enable passwordless ssh
@@ -7,11 +6,20 @@ RUN mkdir ~/.ssh && \
     ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa && \
     cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 
-# enable RDMA support
+# Download and extract OpenJDK 17
+ENV JAVA_HOME /opt/openjdk-17
 RUN apt-get update && \
-    apt-get install -y infiniband-diags perftest ibverbs-providers libibumad3 libibverbs1 libnl-3-200 libnl-route-3-200 librdmacm1 && \
-    apt-get clean && \
+    apt-get install -y wget && \
+    wget -q https://download.java.net/openjdk/jdk17/ri/openjdk-17+35_linux-x64_bin.tar.gz -O /tmp/openjdk.tar.gz && \
+    mkdir -p $JAVA_HOME && \
+    tar xzf /tmp/openjdk.tar.gz -C $JAVA_HOME --strip-components=1 && \
+    rm /tmp/openjdk.tar.gz && \
+    apt-get purge -y --auto-remove wget && \
     rm -rf /var/lib/apt/lists/*
+
+ENV PATH $JAVA_HOME/bin:$PATH
+RUN export JAVA_HOME
+RUN java -version
 
 # install ninja
 RUN apt-get update && \
@@ -23,7 +31,6 @@ RUN apt-get update && \
 ARG VERSION=main
 RUN git clone -b ${VERSION} https://github.com/hpcaitech/ColossalAI.git \
     && cd ./ColossalAI \
-    && git checkout 3e05c07bb8921f2a8f9736b6f6673d4e9f1697d0 \
     && CUDA_EXT=1 pip install -v --no-cache-dir .
 
 # install titans
@@ -38,3 +45,7 @@ RUN git clone -b ${VERSION} https://github.com/pytorch/serve.git \
     && cd ./serve \
     && python ./ts_scripts/install_dependencies.py --cuda=cu116 \
     && pip install torchserve torch-model-archiver torch-workflow-archiver
+
+# install requirements
+RUN cd ./ColossalAI/examples/inference/serving \
+    pip install -r requirements.txt
