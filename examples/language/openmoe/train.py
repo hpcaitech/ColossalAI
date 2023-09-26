@@ -27,7 +27,7 @@ def move_to_cuda(batch, device):
     return {k: v.to(device) for k, v in batch.items()}
 
 
-def load_ckpt(repo_name: str, model: OpenMoeForCausalLM):
+def load_ckpt(repo_name: str, model: OpenMoeForCausalLM, booster: Booster):
     ckpt_path = snapshot_download(repo_name)
     # single ckpt
     if os.path.exists(os.path.join(ckpt_path, "pytorch_model.bin")):
@@ -37,7 +37,7 @@ def load_ckpt(repo_name: str, model: OpenMoeForCausalLM):
         ckpt_path = os.path.join(ckpt_path, "pytorch_model.bin.index.json")
     else:
         raise ValueError(f"Invalid checkpoint path: {ckpt_path}")
-    MoeCheckpintIO().load_model(model, ckpt_path)
+    booster.load_model(model, ckpt_path)
 
 
 class RandomDataset(Dataset):
@@ -211,8 +211,6 @@ def main():
     setattr(config, "z_loss_factor", args.z_loss_factor)
     with skip_init():
         model = OpenMoeForCausalLM(config)
-    if not test_mode:
-        load_ckpt(repo_name, model)
     logger.info(f"Finish init model with config:\n{config}", ranks=[0])
 
     # Enable gradient checkpointing
@@ -229,6 +227,8 @@ def main():
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
+    if not test_mode:
+        load_ckpt(repo_name, model, booster)
     use_pipeline = (isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1)
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     logger.info(f"Finish init booster", ranks=[0])

@@ -4,12 +4,12 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.distributed as dist
-
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 from colossalai.booster.plugin.hybrid_parallel_plugin import HybridParallelPlugin
 from colossalai.cluster import ProcessGroupMesh
+from colossalai.moe import MoeCheckpintIO
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
@@ -231,3 +231,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                           pin_memory=pin_memory,
                           num_workers=num_workers,
                           **_kwargs)
+
+    def get_checkpoint_io(self) -> MoeCheckpintIO:
+        self.checkpoint_io = MoeCheckpintIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
+        return self.checkpoint_io
