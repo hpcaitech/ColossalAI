@@ -41,6 +41,7 @@ MODELS_DIR=$BASE_DIR/examples/models_config
 MODELS=('gpt2' 'bloom' 'opt' 'llama')
 STRATEGIES=('ddp' 'colossalai_gemini' 'colossalai_zero2')
 
+
 export OMP_NUM_THREADS=8
 
 # install requirements

@@ -74,6 +74,7 @@ def main(args):
 
         if args.model == "gpt2":
             actor = GPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
+            # actor = GPTActor.from_pretrained(args.pretrain)
         elif args.model == "bloom":
             actor = BLOOMActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
         elif args.model == "opt":
@@ -165,8 +166,8 @@ def main(args):
         (actor, actor_optim), (critic, critic_optim), reward_model, initial_model
     )
 
-    strategy.load_model(initial_model, args.pretrain)
-    strategy.load_model(actor, args.pretrain)
+    # strategy.load_model(initial_model, args.pretrain)
+    # strategy.load_model(actor, args.pretrain)
 
     # configure trainer
     trainer = PPOTrainer(
@@ -200,7 +201,7 @@ def main(args):
     )
 
     # save model checkpoint after fitting
-    strategy.save_model(actor, args.save_path)
+    strategy.save_pretrained(actor, path=args.save_path)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(
