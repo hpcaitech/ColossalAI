@@ -1,8 +1,8 @@
 from typing import Any, Callable, List, Optional, Union
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
+from dynamic_batching.infer_batch import InferBatch  # may intergrate with batchinfer state
 from transformers import BloomForCausalLM, LlamaForCausalLM
 from transformers.generation import GenerationConfig
 from transformers.generation.stopping_criteria import StoppingCriteriaList
@@ -90,6 +90,8 @@ class TPInferEngine:
 
         self.shard_config = shard_config
         self.model = None
+        self.cache = {}
+
         # optimize the original model by sharding with ShardFormer
         self._optimize_model(model=model.to(device))
 
@@ -116,13 +118,15 @@ class TPInferEngine:
 
     def _post_init_gptq_buffer(self, model: nn.Module) -> None:
         from colossalai.inference.quant.gptq.cai_gptq import CaiQuantLinear
+
         HAS_GPTQ_CUDA = False
         try:
             from colossalai.kernel.op_builder.gptq import GPTQBuilder
+
             gptq_cuda = GPTQBuilder().load()
             HAS_GPTQ_CUDA = True
         except ImportError:
-            warnings.warn('CUDA gptq is not installed')
+            warnings.warn("CUDA gptq is not installed")
             HAS_GPTQ_CUDA = False
 
         for name, submodule in model.named_modules():
@@ -130,8 +134,9 @@ class TPInferEngine:
                 self.max_dq_buffer_size = max(self.max_dq_buffer_size, submodule.qweight.numel() * 8)
 
                 if self.use_act_order:
-                    self.max_inner_outer_dim = max(self.max_inner_outer_dim, submodule.infeatures,
-                                                   submodule.outfeatures)
+                    self.max_inner_outer_dim = max(
+                        self.max_inner_outer_dim, submodule.infeatures, submodule.outfeatures
+                    )
                 self.bits = submodule.bits
         if not (HAS_GPTQ_CUDA and self.bits == 4):
             return
@@ -141,15 +146,16 @@ class TPInferEngine:
             max_input_len = self.max_input_len
         # The temp_state buffer is required to reorder X in the act-order case.
         # The temp_dq buffer is required to dequantize weights when using cuBLAS, typically for the prefill.
-        self.gptq_temp_state_buffer = torch.zeros((max_input_len, self.max_inner_outer_dim),
-                                                  dtype=torch.float16,
-                                                  device=torch.cuda.current_device())
-        self.gptq_temp_dq_buffer = torch.zeros((1, self.max_dq_buffer_size),
-                                               dtype=torch.float16,
-                                               device=torch.cuda.current_device())
+        self.gptq_temp_state_buffer = torch.zeros(
+            (max_input_len, self.max_inner_outer_dim), dtype=torch.float16, device=torch.cuda.current_device()
+        )
+        self.gptq_temp_dq_buffer = torch.zeros(
+            (1, self.max_dq_buffer_size), dtype=torch.float16, device=torch.cuda.current_device()
+        )
 
-        gptq_cuda.prepare_buffers(torch.device(torch.cuda.current_device()), self.gptq_temp_state_buffer,
-                                  self.gptq_temp_dq_buffer)
+        gptq_cuda.prepare_buffers(
+            torch.device(torch.cuda.current_device()), self.gptq_temp_state_buffer, self.gptq_temp_dq_buffer
+        )
         # Using the default from exllama repo here.
         matmul_recons_thd = 8
         matmul_fused_remap = False
@@ -366,6 +372,56 @@ class TPInferEngine:
         device = infer_state.start_loc.device
         infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device=device)
         infer_state.seq_len += 1
+
+    def forward(self, batch_id, is_prefill):
+        batch: InferBatch = self.cache.pop(batch_id)
+        kwargs = {
+            "batch_size": len(batch),
+            "total_token_num": batch.nopad_total_token_num,
+            "max_len_in_batch": batch.nopad_max_len_in_batch,
+            "input_ids": batch.input_ids,
+            "b_loc": batch.nopad_b_loc,
+            "b_start_loc": batch.nopad_b_start_loc,
+            "b_seq_len": batch.nopad_b_seq_len,
+            "is_prefill": is_prefill,
+        }
+        logits = self.model.forward(**kwargs)
+        next_token_ids, next_token_probs = sample(logits, batch)
+        next_token_ids = next_token_ids.detach().cpu().numpy()
+        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+        output_dict = {}
+        new_input_ids = []
+        for i, (r, all_input_ids, next_token_id, next_token_logprob) in enumerate(
+            zip(batch.requests, batch.all_input_ids, next_token_ids, next_token_logprobs)
+        ):
+            # all_input_ids_tensor = torch.tensor(all_input_ids, dtype=torch.long, device="cuda")
+            all_input_ids.append(int(next_token_id))
+            # all_input_ids_tensor = None
+            new_input_ids.append(next_token_id)
+            batch.all_input_ids[i] = all_input_ids
+            batch.input_lengths[i] += 1
+            batch.out_token_id_counts[i][next_token_id] += 1
+            metadata = {
+                "id": int(next_token_id),
+                "logprob": float(next_token_logprob),
+            }
+            output_dict[r["request_id"]] = (int(next_token_id), metadata)
+
+        batch.input_ids = torch.tensor(new_input_ids, dtype=torch.long).cuda()
+        batch.nopad_b_start_loc = batch.nopad_b_start_loc + torch.arange(
+            0, len(batch), dtype=torch.int32, device="cuda"
+        )
+        batch.nopad_total_token_num += len(batch)
+        batch.nopad_max_len_in_batch += 1
+        batch.nopad_b_seq_len += 1
+        self.cache[batch.batch_id] = batch
+        return output_dict
+
+    def _prefill_batch(self, batch_id):
+        return self.forward(batch_id, is_prefill=True)
+
+    def _decode_batch(self, batch_id):
+        return self.forward(batch_id, is_prefill=False)
 
     # might want to create a sequence pool
     # add a single request/sequence/input text at a time and record its length
