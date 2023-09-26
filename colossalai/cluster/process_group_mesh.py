@@ -94,7 +94,7 @@ class ProcessGroupMesh:
         return np.unravel_index(rank, shape)
 
     @staticmethod
-    def ravel(coord: Tuple[int, ...], shape: Tuple[int, ...], mode: str = 'raise') -> int:
+    def ravel(coord: Tuple[int, ...], shape: Tuple[int, ...], mode: str = "raise") -> int:
         """Convert a coordinate to a rank.
            mode: ['raise', 'wrap', 'clip'], see https://numpy.org/doc/stable/reference/generated/numpy.ravel_multi_index.html.
            with wrap, index out of range would be wrapped around.
@@ -141,8 +141,9 @@ class ProcessGroupMesh:
         return list(self._group_to_ranks[group])
 
     @staticmethod
-    def get_coords_along_axis(base_coord: Tuple[int, ...], axis: int,
-                              indices_at_axis: List[int]) -> List[Tuple[int, ...]]:
+    def get_coords_along_axis(
+        base_coord: Tuple[int, ...], axis: int, indices_at_axis: List[int]
+    ) -> List[Tuple[int, ...]]:
         """Get coordinates along the given axis.
 
         Args:
@@ -155,13 +156,12 @@ class ProcessGroupMesh:
         """
         coords_in_group = []
         for idx in indices_at_axis:
-            coords_in_group.append(base_coord[:axis] + (idx,) + base_coord[axis + 1:])
+            coords_in_group.append(base_coord[:axis] + (idx,) + base_coord[axis + 1 :])
         return coords_in_group
 
-    def create_group_along_axis(self,
-                                axis: int,
-                                indices_at_axis: Optional[List[int]] = None,
-                                backend: Optional[str] = None) -> ProcessGroup:
+    def create_group_along_axis(
+        self, axis: int, indices_at_axis: Optional[List[int]] = None, backend: Optional[str] = None
+    ) -> ProcessGroup:
         """Create all process groups along the given axis, and return the one which the current process belongs to.
 
         Args:
@@ -186,10 +186,9 @@ class ProcessGroupMesh:
                 target_group = group
         return target_group
 
-    def get_group_along_axis(self,
-                             axis: int,
-                             indices_at_axis: Optional[List[int]] = None,
-                             backend: Optional[str] = None) -> ProcessGroup:
+    def get_group_along_axis(
+        self, axis: int, indices_at_axis: Optional[List[int]] = None, backend: Optional[str] = None
+    ) -> ProcessGroup:
         """Get the process group along the given axis which the current process belongs to. If the process group doesn't exist, it will be created.
 
         Args:

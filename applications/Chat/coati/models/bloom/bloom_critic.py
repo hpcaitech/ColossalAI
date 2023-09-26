@@ -1,8 +1,7 @@
 from typing import Optional
 
-import torch
 import torch.nn as nn
-from transformers import BloomConfig, BloomForCausalLM, BloomModel
+from transformers import BloomConfig, BloomModel
 
 from ..base import Critic
 
@@ -18,12 +17,14 @@ class BLOOMCritic(Critic):
         lora_train_bias (str): LoRA bias training mode.
     """
 
-    def __init__(self,
-                 pretrained: str = None,
-                 config: Optional[BloomConfig] = None,
-                 lora_rank: int = 0,
-                 lora_train_bias: str = 'none',
-                 **kwargs) -> None:
+    def __init__(
+        self,
+        pretrained: str = None,
+        config: Optional[BloomConfig] = None,
+        lora_rank: int = 0,
+        lora_train_bias: str = "none",
+        **kwargs,
+    ) -> None:
         if pretrained is not None:
             model = BloomModel.from_pretrained(pretrained)
         elif config is not None:

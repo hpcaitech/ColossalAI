@@ -8,6 +8,7 @@ from torch import Tensor
 from torch.nn import Module
 from torch.nn.modules.loss import _Loss
 
+from colossalai.interface import OptimizerWrapper
 from colossalai.legacy.engine.gradient_handler import BaseGradientHandler
 from colossalai.legacy.engine.schedule import (
     BaseSchedule,
@@ -15,9 +16,8 @@ from colossalai.legacy.engine.schedule import (
     NonPipelineSchedule,
     PipelineSchedule,
 )
+from colossalai.legacy.zero.gemini import BaseOpHook, register_ophooks_recursively
 from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.zero.legacy.gemini import BaseOpHook, register_ophooks_recursively
 
 
 class Engine:
@@ -27,7 +27,7 @@ class Engine:
 
     Args:
         model (``torch.nn.Module``): The neural network model.
-        optimizer (``colossalai.nn.optimizer.ColossalaiOptimizer``): Optimizer for updating the parameters.
+        optimizer (``colossalai.interface.OptimizerWrapper``): Optimizer for updating the parameters.
         criterion (``torch.nn.modules.loss._Loss``, optional): Loss function for calculating loss.
         gradient_handlers (List[``BaseGradientHandler``], optional): A list of gradient handler used in backward.
         clip_grad_norm (float, optional): The norm of gradient clipping.
@@ -59,15 +59,17 @@ class Engine:
     `Run resnet cifar10 with engine <https://github.com/hpcaitech/ColossalAI-Examples/blob/main/image/resnet/run_resnet_cifar10_with_engine.py>`_.
     """
 
-    def __init__(self,
-                 model: Module,
-                 optimizer: "ColossalaiOptimizer",
-                 criterion: Optional[_Loss] = None,
-                 gradient_handlers: Optional[List[BaseGradientHandler]] = None,
-                 clip_grad_norm: float = 0.0,
-                 ophook_list: Optional[List[BaseOpHook]] = None,
-                 verbose: bool = True,
-                 schedule: Optional[BaseSchedule] = None):
+    def __init__(
+        self,
+        model: Module,
+        optimizer: "OptimizerWrapper",
+        criterion: Optional[_Loss] = None,
+        gradient_handlers: Optional[List[BaseGradientHandler]] = None,
+        clip_grad_norm: float = 0.0,
+        ophook_list: Optional[List[BaseOpHook]] = None,
+        verbose: bool = True,
+        schedule: Optional[BaseSchedule] = None,
+    ):
         self._model = model
         self._optimizer = optimizer
         self._criterion = criterion
@@ -76,7 +78,7 @@ class Engine:
         self._logger = get_dist_logger()
 
         # state
-        self.training = True    # default
+        self.training = True  # default
 
         # build gradient handler
         if gradient_handlers:
@@ -91,8 +93,9 @@ class Engine:
 
         # build schedule
         if schedule:
-            assert isinstance(schedule, BaseSchedule), \
-                f'expected schedule to be of type BaseSchedule, but got {type(schedule)}'
+            assert isinstance(
+                schedule, BaseSchedule
+            ), f"expected schedule to be of type BaseSchedule, but got {type(schedule)}"
             self._schedule = schedule
         else:
             self._schedule = NonPipelineSchedule()
@@ -149,15 +152,13 @@ class Engine:
         logger.warning(f"removing hooks is currently not supported")
 
     def zero_grad(self):
-        """Set the gradient of parameters to zero
-        """
+        """Set the gradient of parameters to zero"""
         self.optimizer.zero_grad()
 
     def step(self):
-        """Execute parameter update
-        """
+        """Execute parameter update"""
         self._all_reduce_gradients()
-        self.optimizer.clip_grad_norm(self.model, self._clip_grad_norm)
+        self.optimizer.clip_grad_by_norm(self._clip_grad_norm)
         return self.optimizer.step()
 
     def backward(self, loss: Tensor):
@@ -192,8 +193,7 @@ class Engine:
         return self.model(*args, **kwargs)
 
     def _all_reduce_gradients(self):
-        """Handles all-reduce operations of gradients across different parallel groups.
-        """
+        """Handles all-reduce operations of gradients across different parallel groups."""
         for handler in self._gradient_handlers:
             handler.handle_gradient()
 
@@ -208,13 +208,11 @@ class Engine:
         return output, label, loss
 
     def train(self):
-        """Sets the model to training mode.
-        """
+        """Sets the model to training mode."""
         self.training = True
         self._model.train()
 
     def eval(self):
-        """Sets the model to evaluation mode.
-        """
+        """Sets the model to evaluation mode."""
         self.training = False
         self._model.eval()

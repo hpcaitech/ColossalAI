@@ -20,9 +20,9 @@ except ImportError:
     from transformers.generation import LogitsProcessorList, TemperatureLogitsWarper, TopKLogitsWarper, TopPLogitsWarper
 
 
-def prepare_logits_processor(top_k: Optional[int] = None,
-                             top_p: Optional[float] = None,
-                             temperature: Optional[float] = None) -> LogitsProcessorList:
+def prepare_logits_processor(
+    top_k: Optional[int] = None, top_p: Optional[float] = None, temperature: Optional[float] = None
+) -> LogitsProcessorList:
     processor_list = LogitsProcessorList()
     if temperature is not None and temperature != 1.0:
         processor_list.append(TemperatureLogitsWarper(temperature))
@@ -41,29 +41,30 @@ def _is_sequence_finished(unfinished_sequences: torch.Tensor) -> bool:
     return unfinished_sequences.max() == 0
 
 
-def sample_streamingly(model: nn.Module,
-                       input_ids: torch.Tensor,
-                       max_generate_tokens: int,
-                       early_stopping: bool = False,
-                       eos_token_id: Optional[int] = None,
-                       pad_token_id: Optional[int] = None,
-                       top_k: Optional[int] = None,
-                       top_p: Optional[float] = None,
-                       temperature: Optional[float] = None,
-                       prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
-                       update_model_kwargs_fn: Optional[Callable[[dict, Any], dict]] = None,
-                       **model_kwargs) -> Generator:
-
+def sample_streamingly(
+    model: nn.Module,
+    input_ids: torch.Tensor,
+    max_generate_tokens: int,
+    early_stopping: bool = False,
+    eos_token_id: Optional[int] = None,
+    pad_token_id: Optional[int] = None,
+    top_k: Optional[int] = None,
+    top_p: Optional[float] = None,
+    temperature: Optional[float] = None,
+    prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
+    update_model_kwargs_fn: Optional[Callable[[dict, Any], dict]] = None,
+    **model_kwargs,
+) -> Generator:
     logits_processor = prepare_logits_processor(top_k, top_p, temperature)
     unfinished_sequences = input_ids.new(input_ids.shape[0]).fill_(1)
 
     for _ in range(max_generate_tokens):
-        model_inputs = prepare_inputs_fn(input_ids, **model_kwargs) if prepare_inputs_fn is not None else {
-            'input_ids': input_ids
-        }
+        model_inputs = (
+            prepare_inputs_fn(input_ids, **model_kwargs) if prepare_inputs_fn is not None else {"input_ids": input_ids}
+        )
         outputs = model(**model_inputs)
 
-        next_token_logits = outputs['logits'][:, -1, :]
+        next_token_logits = outputs["logits"][:, -1, :]
         # pre-process distribution
         next_token_logits = logits_processor(input_ids, next_token_logits)
         # sample
@@ -107,25 +108,26 @@ def update_model_kwargs_fn(outputs: dict, **model_kwargs) -> dict:
     if "attention_mask" in model_kwargs:
         attention_mask = model_kwargs["attention_mask"]
         model_kwargs["attention_mask"] = torch.cat(
-            [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1)
+            [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
+        )
 
     return model_kwargs
 
 
 class Dialogue(BaseModel):
-    instruction: str = Field(min_length=1, example='Count up from 1 to 500.')
-    response: str = Field(example='')
+    instruction: str = Field(min_length=1, example="Count up from 1 to 500.")
+    response: str = Field(example="")
 
 
-def _format_dialogue(instruction: str, response: str = ''):
-    return f'\n\n### Instruction:\n{instruction}\n\n### Response:\n{response}'
+def _format_dialogue(instruction: str, response: str = ""):
+    return f"\n\n### Instruction:\n{instruction}\n\n### Response:\n{response}"
 
 
-STOP_PAT = re.compile(r'(###|instruction:).*', flags=(re.I | re.S))
+STOP_PAT = re.compile(r"(###|instruction:).*", flags=(re.I | re.S))
 
 
 class ChatPromptProcessor:
-    SAFE_RESPONSE = 'The input/response contains inappropriate content, please rephrase your prompt.'
+    SAFE_RESPONSE = "The input/response contains inappropriate content, please rephrase your prompt."
 
     def __init__(self, tokenizer, context: str, max_len: int = 2048, censored_words: List[str] = []):
         self.tokenizer = tokenizer
@@ -138,42 +140,48 @@ class ChatPromptProcessor:
 
     def preprocess_prompt(self, history: List[Dialogue], max_new_tokens: int) -> str:
         if self.context_len is None:
-            self.context_len = len(self.tokenizer(self.context)['input_ids'])
+            self.context_len = len(self.tokenizer(self.context)["input_ids"])
         if self.dialogue_placeholder_len is None:
             self.dialogue_placeholder_len = len(
-                self.tokenizer(_format_dialogue(''), add_special_tokens=False)['input_ids'])
+                self.tokenizer(_format_dialogue(""), add_special_tokens=False)["input_ids"]
+            )
         prompt = self.context
         # the last dialogue must be in the prompt
         last_dialogue = history.pop()
         # the response of the last dialogue is empty
-        assert last_dialogue.response == ''
-        if len(self.tokenizer(_format_dialogue(last_dialogue.instruction), add_special_tokens=False)
-               ['input_ids']) + max_new_tokens + self.context_len >= self.max_len:
+        assert last_dialogue.response == ""
+        if (
+            len(self.tokenizer(_format_dialogue(last_dialogue.instruction), add_special_tokens=False)["input_ids"])
+            + max_new_tokens
+            + self.context_len
+            >= self.max_len
+        ):
             # to avoid truncate placeholder, apply truncate to the original instruction
-            instruction_truncated = self.tokenizer(last_dialogue.instruction,
-                                                   add_special_tokens=False,
-                                                   truncation=True,
-                                                   max_length=(self.max_len - max_new_tokens - self.context_len -
-                                                               self.dialogue_placeholder_len))['input_ids']
+            instruction_truncated = self.tokenizer(
+                last_dialogue.instruction,
+                add_special_tokens=False,
+                truncation=True,
+                max_length=(self.max_len - max_new_tokens - self.context_len - self.dialogue_placeholder_len),
+            )["input_ids"]
             instruction_truncated = self.tokenizer.decode(instruction_truncated).lstrip()
             prompt += _format_dialogue(instruction_truncated)
             return prompt
 
-        res_len = self.max_len - max_new_tokens - len(self.tokenizer(prompt)['input_ids'])
+        res_len = self.max_len - max_new_tokens - len(self.tokenizer(prompt)["input_ids"])
 
         rows = []
         for dialogue in history[::-1]:
             text = _format_dialogue(dialogue.instruction, dialogue.response)
-            cur_len = len(self.tokenizer(text, add_special_tokens=False)['input_ids'])
+            cur_len = len(self.tokenizer(text, add_special_tokens=False)["input_ids"])
             if res_len - cur_len < 0:
                 break
             res_len -= cur_len
             rows.insert(0, text)
-        prompt += ''.join(rows) + _format_dialogue(last_dialogue.instruction)
+        prompt += "".join(rows) + _format_dialogue(last_dialogue.instruction)
         return prompt
 
     def postprocess_output(self, output: str) -> str:
-        output = STOP_PAT.sub('', output)
+        output = STOP_PAT.sub("", output)
         return output.strip()
 
     def has_censored_words(self, text: str) -> bool:
@@ -184,7 +192,6 @@ class ChatPromptProcessor:
 
 
 class LockedIterator:
-
     def __init__(self, it, lock: Lock) -> None:
         self.lock = lock
         self.it = iter(it)

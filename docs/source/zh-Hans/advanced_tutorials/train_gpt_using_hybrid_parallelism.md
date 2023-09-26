@@ -37,12 +37,12 @@ import torch.nn as nn
 from colossalai import nn as col_nn
 from colossalai.amp import AMP_TYPE
 from colossalai.legacy.builder.pipeline import partition_uniform
-from colossalai.context.parallel_mode import ParallelMode
+from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.legacy.engine.schedule import (InterleavedPipelineSchedule,
                                         PipelineSchedule)
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.nn.layer.wrapper import PipelineSharedModuleWrapper
+from colossalai.legacy.nn.layer.wrapper import PipelineSharedModuleWrapper
 from colossalai.legacy.trainer import Trainer, hooks
 from colossalai.utils.timer import MultiTimer
 from model_zoo.gpt import GPTLMLoss

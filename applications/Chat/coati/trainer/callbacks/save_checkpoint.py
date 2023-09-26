@@ -36,34 +36,35 @@ class SaveCheckpoint(Callback):
 
     """
 
-    def __init__(self,
-                 path: str,
-                 interval: int,
-                 strategy: Strategy,
-                 actor: nn.Module = None,
-                 critic: nn.Module = None,
-                 actor_optim: Optimizer = None,
-                 critic_optim: Optimizer = None) -> None:
+    def __init__(
+        self,
+        path: str,
+        interval: int,
+        strategy: Strategy,
+        actor: nn.Module = None,
+        critic: nn.Module = None,
+        actor_optim: Optimizer = None,
+        critic_optim: Optimizer = None,
+    ) -> None:
         super().__init__()
-        self.path = os.path.join(path, 'checkpoint')
+        self.path = os.path.join(path, "checkpoint")
         self.interval = interval
         self.strategy = strategy
-        self.model_dict = {'actor': [actor, actor_optim], 'critic': [critic, critic_optim]}
+        self.model_dict = {"actor": [actor, actor_optim], "critic": [critic, critic_optim]}
 
     def on_episode_end(self, episode: int) -> None:
         if (episode + 1) % self.interval != 0:
             return
-        base_path = os.path.join(self.path, f'episode_{episode}')
+        base_path = os.path.join(self.path, f"episode_{episode}")
         if not os.path.exists(base_path):
             os.makedirs(base_path)
 
         for model in self.model_dict.keys():
-
             # save model
             if self.model_dict[model][0] is None:
                 # saving only optimizer states is meaningless, so it would be skipped
                 continue
-            model_path = os.path.join(base_path, f'{model}.pt')
+            model_path = os.path.join(base_path, f"{model}.pt")
             self.strategy.save_model(model=self.model_dict[model][0], path=model_path, only_rank0=True)
 
             # save optimizer
@@ -71,5 +72,5 @@ class SaveCheckpoint(Callback):
                 continue
             only_rank0 = not isinstance(self.strategy, (LowLevelZeroStrategy, GeminiStrategy))
             rank = 0 if is_rank_0() else dist.get_rank()
-            optim_path = os.path.join(base_path, f'{model}-optim-rank-{rank}.pt')
+            optim_path = os.path.join(base_path, f"{model}-optim-rank-{rank}.pt")
             self.strategy.save_optimizer(optimizer=self.model_dict[model][1], path=optim_path, only_rank0=only_rank0)

@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 import torch
 import torch.fx
@@ -64,8 +64,10 @@ def _benchmark_autochunk_gpt_gm(
     para_mem = float(parameter_size(model)) / 1024**2 * 6
     act_mem = _benchmark_memory(gm, inputs)
     speed = _benchmark_speed(gm, inputs)
-    print("gpt autochunk, time: %.4fs, act mem: %.2fMB, para mem: %.2fMB, all mem: %.2fMB" %
-          (speed, act_mem, para_mem, act_mem + para_mem))
+    print(
+        "gpt autochunk, time: %.4fs, act mem: %.2fMB, para mem: %.2fMB, all mem: %.2fMB"
+        % (speed, act_mem, para_mem, act_mem + para_mem)
+    )
 
 
 def _benchmark_autochunk_gpt_origin(
@@ -86,8 +88,10 @@ def _benchmark_autochunk_gpt_origin(
     para_mem = float(parameter_size(model)) / 1024**2 * 6
     act_mem = _benchmark_memory(model, inputs)
     speed = _benchmark_speed(model, inputs)
-    print("gpt origin, time: %.4fs, act mem: %.2fMB, para mem: %.2fMB, all mem: %.2fMB" %
-          (speed, act_mem, para_mem, act_mem + para_mem))
+    print(
+        "gpt origin, time: %.4fs, act mem: %.2fMB, para mem: %.2fMB, all mem: %.2fMB"
+        % (speed, act_mem, para_mem, act_mem + para_mem)
+    )
     return act_mem
 
 
@@ -115,6 +119,7 @@ def _benchmark_speed(model, inputs, loop=5):
 
 def benchmark_autochunk_gpt(batch=1, seq=512, n_embd=768, n_head=12):
     from test_autochunk_gpt import GPT2Config, GPT2Model, get_data
+
     model = GPT2Model
     config = GPT2Config(n_embd=n_embd, n_positions=seq, n_layer=2, n_head=n_head)
     model = model(config=config)
@@ -125,7 +130,7 @@ def benchmark_autochunk_gpt(batch=1, seq=512, n_embd=768, n_head=12):
         try:
             _benchmark_autochunk_gpt_gm(model, get_data(shape), max_mem * ratio)
         except RuntimeError as e:
-            if e.args[0] == 'Search failed. Try a larger memory threshold.':
+            if e.args[0] == "Search failed. Try a larger memory threshold.":
                 break
         except Exception as e:
             raise e

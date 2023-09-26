@@ -2,7 +2,7 @@ transformers>=4.20.1
 tqdm
 datasets
 loralib
-colossalai==0.3.1
+colossalai>=0.3.1
 torch<2.0.0, >=1.12.1
 langchain
 tokenizers
@@ -11,3 +11,4 @@ sse_starlette
 wandb
 sentencepiece
 gpustat
+tensorboard

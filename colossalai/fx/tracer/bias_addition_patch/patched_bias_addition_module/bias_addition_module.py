@@ -27,8 +27,8 @@ class BiasAdditionModule(ABC):
         Note: this function will be invoked during module initializing,
               you should never call this function.
         """
-        weight_node_kind = 'get_attr'
-        weight_node_target = self.target + '.weight'
+        weight_node_kind = "get_attr"
+        weight_node_target = self.target + ".weight"
         weight_proxy = self.tracer.create_proxy(weight_node_kind, weight_node_target, (), {})
         return weight_proxy
 
@@ -39,8 +39,8 @@ class BiasAdditionModule(ABC):
         Note: this function will be invoked during module initializing,
               you should never call this function.
         """
-        bias_node_kind = 'get_attr'
-        bias_node_target = self.target + '.bias'
+        bias_node_kind = "get_attr"
+        bias_node_target = self.target + ".bias"
         bias_proxy = self.tracer.create_proxy(bias_node_kind, bias_node_target, (), {})
         return bias_proxy
 
@@ -54,14 +54,13 @@ class BiasAdditionModule(ABC):
             considered during module initializing. However, we need to consider those attributes as kwargs
             in F.conv2d.
         """
-        pass
 
     def create_non_bias_func_proxy(self, input_proxy=None):
         """
         This method is used to create the non_bias_func proxy, the node created by this proxy will
         compute the main computation, such as convolution, with bias option banned.
         """
-        node_kind = 'call_function'
+        node_kind = "call_function"
         node_target = self.substitute_func
         if input_proxy is None:
             input_proxy = self.args[0]
@@ -75,7 +74,7 @@ class BiasAdditionModule(ABC):
         This method is used to create the bias_addition_proxy, the node created by this proxy will
         compute the sum of non_bias_func result and bias with some reshape operation if needed.
         """
-        bias_add_node_kind = 'call_function'
+        bias_add_node_kind = "call_function"
         bias_add_node_target = operator.add
         bias_add_args = (non_bias_func_proxy, bias_proxy)
         bias_add_proxy = self.tracer.create_proxy(bias_add_node_kind, bias_add_node_target, tuple(bias_add_args), {})
@@ -100,7 +99,6 @@ class BiasAdditionModule(ABC):
             %view : [#users=1] = call_method[target=view](args = (%conv_bias, [1, -1, 1, 1]), kwargs = {})
             %add : [#users=1] = call_function[target=operator.add](args = (%conv2d, %view), kwargs = {})
         """
-        pass
 
 
 module_to_func_dict = {

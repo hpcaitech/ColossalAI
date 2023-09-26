@@ -12,11 +12,12 @@ from .node_handler import ModuleHandler, NodeHandler
 from .registry import operator_registry
 from .strategy import EmbeddingStrategyGenerator, StrategyGenerator
 
-__all__ = ['EmbeddingModuleHandler', 'EmbeddingFunctionHandler']
+__all__ = ["EmbeddingModuleHandler", "EmbeddingFunctionHandler"]
 
 
-def _convert_logical_sharding_to_physical_sharding_spec_for_embedding(strategy: ShardingStrategy, input_name: str,
-                                                                      output_name: str) -> List[ShardingStrategy]:
+def _convert_logical_sharding_to_physical_sharding_spec_for_embedding(
+    strategy: ShardingStrategy, input_name: str, output_name: str
+) -> List[ShardingStrategy]:
     """
     This function converts the logical sharding spec to the physical sharding spec for both the input and output
     of the embedding operation.
@@ -56,27 +57,31 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_embedding(strategy: 
             output_sharding_spec = strategy_copy.get_sharding_spec_by_name(output_op_data.name)
             try:
                 # replace the 0th dimension in the logical sharding with ith dimension in the physical sharding
-                update_partition_dim(sharding_spec=input_sharding_spec,
-                                     dim_mapping={0: i},
-                                     physical_shape=input_op_data.data.shape,
-                                     inplace=True)
+                update_partition_dim(
+                    sharding_spec=input_sharding_spec,
+                    dim_mapping={0: i},
+                    physical_shape=input_op_data.data.shape,
+                    inplace=True,
+                )
 
                 if last_logical_output_dims in output_sharding_spec.dim_partition_dict:
                     dim_mapping = {0: i, last_logical_output_dims: last_physical_output_dims}
                 else:
                     dim_mapping = {0: i}
 
-                update_partition_dim(sharding_spec=output_sharding_spec,
-                                     dim_mapping=dim_mapping,
-                                     physical_shape=output_op_data.data.shape,
-                                     inplace=True)
+                update_partition_dim(
+                    sharding_spec=output_sharding_spec,
+                    dim_mapping=dim_mapping,
+                    physical_shape=output_op_data.data.shape,
+                    inplace=True,
+                )
 
-                strategy_copy.name = f'{strategy.name}_{i}'
+                strategy_copy.name = f"{strategy.name}_{i}"
                 sharding_strategies.append(strategy_copy)
 
             except ShardingNotDivisibleError as e:
                 logger.debug(
-                    f'Errored occurred when converting the logical sharding spec to the physical one. Error details: {e}'
+                    f"Errored occurred when converting the logical sharding spec to the physical one. Error details: {e}"
                 )
     else:
         # the generated sharding strategy does not shard the non-matrix dimension,
@@ -87,20 +92,21 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_embedding(strategy: 
         output_sharding_spec = strategy_copy.get_sharding_spec_by_name(output_op_data.name)
 
         # after updating, the logical shape will be replaced by the physical shape
-        update_partition_dim(sharding_spec=input_sharding_spec,
-                             dim_mapping={},
-                             physical_shape=input_op_data.data.shape,
-                             inplace=True)
+        update_partition_dim(
+            sharding_spec=input_sharding_spec, dim_mapping={}, physical_shape=input_op_data.data.shape, inplace=True
+        )
 
         if last_logical_output_dims in output_sharding_spec.dim_partition_dict:
             dim_mapping = {last_logical_output_dims: last_physical_output_dims}
         else:
             dim_mapping = {}
 
-        update_partition_dim(sharding_spec=output_sharding_spec,
-                             dim_mapping=dim_mapping,
-                             physical_shape=output_op_data.data.shape,
-                             inplace=True)
+        update_partition_dim(
+            sharding_spec=output_sharding_spec,
+            dim_mapping=dim_mapping,
+            physical_shape=output_op_data.data.shape,
+            inplace=True,
+        )
         sharding_strategies.append(strategy_copy)
 
     return sharding_strategies
@@ -125,14 +131,16 @@ class EmbeddingModuleHandler(ModuleHandler):
         # Finally, the input will be transformed back to its original shape in self.post_process
         input_meta_data = self.node.args[0]._meta_data
         input_logical_shape = input_meta_data.view(-1).shape
-        physical_input_operand = OperationData(name=str(self.node.args[0]),
-                                               type=OperationDataType.ARG,
-                                               data=input_meta_data,
-                                               logical_shape=input_logical_shape)
+        physical_input_operand = OperationData(
+            name=str(self.node.args[0]),
+            type=OperationDataType.ARG,
+            data=input_meta_data,
+            logical_shape=input_logical_shape,
+        )
 
-        physical_other_operand = OperationData(name="weight",
-                                               type=OperationDataType.PARAM,
-                                               data=self.named_parameters['weight'])
+        physical_other_operand = OperationData(
+            name="weight", type=OperationDataType.PARAM, data=self.named_parameters["weight"]
+        )
 
         # Same as input, in nn.Embedding operation, all the dimensions of output will be treated as
         # (batch dimension, embedding dimension), and then the sharding spec will be generated based
@@ -141,10 +149,12 @@ class EmbeddingModuleHandler(ModuleHandler):
         # Finally, the output will be transformed back to its original shape in self.post_process
         output_meta_data = self.node._meta_data
         output_logical_shape = output_meta_data.view(-1, output_meta_data.shape[-1]).shape
-        physical_output = OperationData(name=str(self.node),
-                                        type=OperationDataType.OUTPUT,
-                                        data=output_meta_data,
-                                        logical_shape=output_logical_shape)
+        physical_output = OperationData(
+            name=str(self.node),
+            type=OperationDataType.OUTPUT,
+            data=output_meta_data,
+            logical_shape=output_logical_shape,
+        )
 
         mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
 
@@ -157,10 +167,9 @@ class EmbeddingModuleHandler(ModuleHandler):
         # create multiple sharding strategies for the inputs
         # as input can be multi-dimensional and the partition dim is only 2D,
         # we need to map the partition at logical dim 0 to one of the first few dimensions of the input and output
-        strategies = _convert_logical_sharding_to_physical_sharding_spec_for_embedding(strategy=strategy,
-                                                                                       input_name=str(
-                                                                                           self.node.args[0]),
-                                                                                       output_name=str(self.node))
+        strategies = _convert_logical_sharding_to_physical_sharding_spec_for_embedding(
+            strategy=strategy, input_name=str(self.node.args[0]), output_name=str(self.node)
+        )
         return strategies
 
 
@@ -183,10 +192,12 @@ class EmbeddingFunctionHandler(NodeHandler):
         # Finally, the input will be transformed back to its original shape in self.post_process
         input_meta_data = self.node.args[0]._meta_data
         input_logical_shape = input_meta_data.view(-1).shape
-        physical_input_operand = OperationData(name=str(self.node.args[0]),
-                                               type=OperationDataType.ARG,
-                                               data=self.node.args[0]._meta_data,
-                                               logical_shape=input_logical_shape)
+        physical_input_operand = OperationData(
+            name=str(self.node.args[0]),
+            type=OperationDataType.ARG,
+            data=self.node.args[0]._meta_data,
+            logical_shape=input_logical_shape,
+        )
 
         # check if the other operand is a parameter
         if isinstance(self.node.args[1]._meta_data, torch.nn.parameter.Parameter):
@@ -194,9 +205,9 @@ class EmbeddingFunctionHandler(NodeHandler):
         else:
             data_type = OperationDataType.ARG
 
-        physical_other_operand = OperationData(name=str(self.node.args[1]),
-                                               type=data_type,
-                                               data=self.node.args[1]._meta_data)
+        physical_other_operand = OperationData(
+            name=str(self.node.args[1]), type=data_type, data=self.node.args[1]._meta_data
+        )
 
         # Same as input, in F.embedding operation, all the dimensions of output will be treated as
         # (batch dimension, embedding dimension), and then the sharding spec will be generated based
@@ -223,8 +234,7 @@ class EmbeddingFunctionHandler(NodeHandler):
         # create multiple sharding strategies for the inputs
         # as input can be multi-dimensional and the partition dim is only 2D,
         # we need to map the partition at logical dim 0 to one of the first few dimensions of the input and output
-        strategies = _convert_logical_sharding_to_physical_sharding_spec_for_embedding(strategy=strategy,
-                                                                                       input_name=str(
-                                                                                           self.node.args[0]),
-                                                                                       output_name=str(self.node))
+        strategies = _convert_logical_sharding_to_physical_sharding_spec_for_embedding(
+            strategy=strategy, input_name=str(self.node.args[0]), output_name=str(self.node)
+        )
         return strategies

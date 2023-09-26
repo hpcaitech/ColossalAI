@@ -47,16 +47,20 @@ config.qformer_config.hidden_dropout_prob = 0
 config.text_config.dropout = 0
 
 # register the blip2 variants
-model_zoo.register(name='transformers_blip2',
-                   model_fn=lambda: transformers.Blip2Model(config),
-                   data_gen_fn=data_gen,
-                   output_transform_fn=output_transform_fn,
-                   loss_fn=loss_fn_blip2_model,
-                   model_attribute=ModelAttribute(has_control_flow=True))
+model_zoo.register(
+    name="transformers_blip2",
+    model_fn=lambda: transformers.Blip2Model(config),
+    data_gen_fn=data_gen,
+    output_transform_fn=output_transform_fn,
+    loss_fn=loss_fn_blip2_model,
+    model_attribute=ModelAttribute(has_control_flow=True),
+)
 
-model_zoo.register(name='transformers_blip2_conditional_gerneration',
-                   model_fn=lambda: transformers.Blip2ForConditionalGeneration(config),
-                   data_gen_fn=data_gen,
-                   output_transform_fn=output_transform_fn,
-                   loss_fn=loss_fn_blip2_model,
-                   model_attribute=ModelAttribute(has_control_flow=True))
+model_zoo.register(
+    name="transformers_blip2_conditional_gerneration",
+    model_fn=lambda: transformers.Blip2ForConditionalGeneration(config),
+    data_gen_fn=data_gen,
+    output_transform_fn=output_transform_fn,
+    loss_fn=loss_fn_blip2_model,
+    model_attribute=ModelAttribute(has_control_flow=True),
+)

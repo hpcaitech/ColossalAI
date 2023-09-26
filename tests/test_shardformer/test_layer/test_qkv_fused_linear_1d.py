@@ -53,16 +53,15 @@ def rearrange(tensor: torch.Tensor, dim: int):
     return rearanged_tensor
 
 
-@parameterize('lazy_init', [False, True])
+@parameterize("lazy_init", [False, True])
 def check_linear_conv_1d_col(lazy_init: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
     linear = Conv1D(192, 48).cuda()
     with ctx:
         linear_copy = Conv1D(192, 48).cuda()
-    linear_conv_col = GPT2FusedLinearConv1D_Col.from_native_module(linear_copy,
-                                                                   process_group=None,
-                                                                   gather_output=True,
-                                                                   n_fused=3)
+    linear_conv_col = GPT2FusedLinearConv1D_Col.from_native_module(
+        linear_copy, process_group=None, gather_output=True, n_fused=3
+    )
 
     assert linear.weight.shape == torch.Size([48, 192])
     assert linear.bias.shape == torch.Size([192])
@@ -89,7 +88,7 @@ def check_linear_conv_1d_col(lazy_init: bool):
     assert_close(target_grad, linear_conv_col.weight.grad)
 
 
-@parameterize('lazy_init', [False, True])
+@parameterize("lazy_init", [False, True])
 def check_linear_conv_1d_row(lazy_init: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
 
@@ -124,7 +123,7 @@ def check_linear_conv_1d_row(lazy_init: bool):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     # test for linear conv
     check_linear_conv_1d_col()
@@ -136,5 +135,5 @@ def test_linearconv():
     spawn(run_dist, nprocs=2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_linearconv()

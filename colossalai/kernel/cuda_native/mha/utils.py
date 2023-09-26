@@ -20,18 +20,18 @@ class Unpad(torch.autograd.Function):
         # [b, s, ...]
         assert tensor.ndim >= 3
         ctx.bsz = tensor.shape[0]
-        out = rearrange(tensor, 'b s ... -> (b s) ...')
+        out = rearrange(tensor, "b s ... -> (b s) ...")
         ctx.shape = out.shape
         # [ntokens, ...]
         return out[indices]
 
     @staticmethod
     def backward(ctx, grad_output):
-        indices, = ctx.saved_tensors
+        (indices,) = ctx.saved_tensors
         # [ntokens, ...]
         grad = torch.zeros(ctx.shape, dtype=grad_output.dtype, device=grad_output.device)
         grad[indices] = grad_output
-        grad = rearrange(grad, '(b s) ... -> b s ...', b=ctx.bsz)
+        grad = rearrange(grad, "(b s) ... -> b s ...", b=ctx.bsz)
         # [b, s, ...]
         return grad, None
 
@@ -54,7 +54,7 @@ class Repad(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        indices, = ctx.saved_tensors
+        (indices,) = ctx.saved_tensors
         # [b*s, ...]
         grad = grad_output[indices]
         # [ntokens, ...]

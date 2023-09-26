@@ -1,11 +1,12 @@
-import torch
-from torch.fx import symbolic_trace
-from torch.fx import GraphModule
-from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, balanced_split_pass
-from colossalai.fx import ColoTracer
 import inspect
 import random
+
 import numpy as np
+import torch
+from torch.fx import GraphModule
+
+from colossalai.fx import ColoTracer
+from colossalai.fx.passes.adding_split_node_pass import balanced_split_pass, split_with_split_nodes_pass
 
 MANUAL_SEED = 0
 random.seed(MANUAL_SEED)
@@ -46,6 +47,6 @@ def split_model_and_compare_output(model, data, meta_args=None):
         output_part1 = model_part1(output_part0)
     else:
         if len(output_part0) > len(sig.parameters):
-            output_part0 = output_part0[:len(sig.parameters)]
+            output_part0 = output_part0[: len(sig.parameters)]
         output_part1 = model_part1(*output_part0)
     assert output.equal(output_part1)

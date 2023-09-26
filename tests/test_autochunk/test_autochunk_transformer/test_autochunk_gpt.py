@@ -5,6 +5,7 @@ import torch
 
 try:
     from transformers import GPT2Config, GPT2Model
+
     MODELS = [GPT2Model]
     HAS_REPO = True
 except:
@@ -52,13 +53,15 @@ def test_autochunk_gpt(model, shape, max_memory):
 
 
 if __name__ == "__main__":
-    run_test(rank=0,
-             data=get_data((BATCH_SIZE, SEQ_LENGTH)),
-             max_memory=None,
-             model=GPT2Model,
-             config=GPT2Config(n_embd=96, n_position=SEQ_LENGTH, n_layer=2, n_head=4),
-             print_code=False,
-             print_est_mem=False,
-             print_mem=False,
-             print_progress=False,
-             eval_mem=False)
+    run_test(
+        rank=0,
+        data=get_data((BATCH_SIZE, SEQ_LENGTH)),
+        max_memory=None,
+        model=GPT2Model,
+        config=GPT2Config(n_embd=96, n_position=SEQ_LENGTH, n_layer=2, n_head=4),
+        print_code=False,
+        print_est_mem=False,
+        print_mem=False,
+        print_progress=False,
+        eval_mem=False,
+    )
