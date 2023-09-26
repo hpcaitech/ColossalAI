@@ -225,7 +225,7 @@ Here is details about CLI arguments:
 You can use `colossalai run` to launch multi-nodes training:
 ```bash
 colossalai run --nproc_per_node YOUR_GPU_PER_NODE --hostfile YOUR_HOST_FILE \
-pretrain.py --OTHER_CONFIGURATIONS
+train.py --OTHER_CONFIGURATIONS
 ``` 
 Here is a sample hostfile:
 ```bash
