@@ -1,11 +1,6 @@
-import re
-from functools import partial
-from types import MethodType
-from typing import Callable, List, Optional, Set
+from typing import Callable, List, Optional, Set, Union
 
-import numpy as np
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 
 from colossalai.cluster import ProcessGroupMesh
@@ -50,7 +45,7 @@ class PPInferEngine:
     def __init__(
         self,
         pp_size: int,
-        fp16: bool = True,
+        dtype: str = 'fp16',
         pp_model: nn.Module = None,
         model: nn.Module = None,
         model_policy: Policy = None,
@@ -70,8 +65,12 @@ class PPInferEngine:
         self.mb_manager = MicroBatchManager(self.stage_manager.stage, new_length, micro_batch_size,
                                             micro_batch_buffer_size or pp_size)
         self.schedule = GenerateSchedule(self.stage_manager, self.mb_manager, verbose)
-        if fp16:
+        
+        assert dtype in ['fp16', 'fp32', 'bf16'], "dtype should be one of 'fp16', 'fp32', 'bf16'"
+        if dtype == 'fp16':
             model.half()
+        elif dtype == 'bf16':
+            model.to(torch.bfloat16)
         self.model = pp_model or self._shardformer(model, model_policy)
 
 

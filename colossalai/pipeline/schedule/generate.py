@@ -133,6 +133,7 @@ class GenerateSchedule(PipelineSchedule):
         """
         inputs_dict = self.load_micro_batch()
         if self.verbose and self.stage_manager.is_first_stage():
+            torch.cuda.synchronize()
             self.timestamps[self.mb_manager.idx].append(time.time())
         output_dict = model_forward(model, inputs_dict, None)
 
@@ -148,6 +149,7 @@ class GenerateSchedule(PipelineSchedule):
         hidden_states = {'hidden_states': hidden_states}
         logits = model_forward(model, None, hidden_states)
         if self.verbose and self.stage_manager.is_first_stage():
+            torch.cuda.synchronize()
             self.timestamps[self.mb_manager.idx].append(time.time())
         assert 'logits' in logits, f"When first stage in GENERATE phase, the ouput should have attribute `logits`, but has {logits.keys()}"
         new_token = self._get_token_id(logits['logits'])
@@ -295,6 +297,7 @@ class GenerateSchedule(PipelineSchedule):
                 if self.stage_manager.is_first_stage() and self.mb_manager.cur_state is Status.PREFILL:
                     inputs_dict = self.load_micro_batch()
                     if self.verbose and self.stage_manager.is_first_stage():
+                        torch.cuda.synchronize()
                         self.timestamps[self.mb_manager.idx].append(time.time())
                     output_dict = model_forward(model, inputs_dict, None)
                     self.mb_manager.step(inputs_dict, output_dict, None)
@@ -307,6 +310,7 @@ class GenerateSchedule(PipelineSchedule):
                         assert hidden_states is not None, "When first stage in GENERATE phase, the hidden states should not be None"
                         logits = model_forward(model, None, hidden_states)
                         if self.verbose and self.stage_manager.is_first_stage():
+                            torch.cuda.synchronize()
                             self.timestamps[self.mb_manager.idx].append(time.time())
                         assert 'logits' in logits, f"When first stage in GENERATE phase, the ouput should have attribute `logits`, but has {logits.keys()}"
                         new_token = self._get_token_id(logits['logits'])
