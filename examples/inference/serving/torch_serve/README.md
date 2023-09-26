@@ -3,17 +3,16 @@
 ## Overview
 
 This demo is used for testing and demonstrating the usage of Colossal Inference from `colossalai.inference` with deployment with TorchServe. It imports inference modules from colossalai and is based on
-https://github.com/hpcaitech/ColossalAI/tree/d151dcab740eaae784333c93d85100c3641bd115. For now, single-gpu inference serving is supported.
+https://github.com/hpcaitech/ColossalAI/tree/3e05c07bb8921f2a8f9736b6f6673d4e9f1697d0. For now, single-gpu inference serving is supported.
 
 ## Conda Environment for testing
 Records to create a conda env to test locally as follows. We might want to use docker or configure env on cloud platform later.
 
+*NOTE*: It requires the installation of jdk and the set of `JAVA_HOME`. We recommend to install open-jdk-17 (Please refer to https://openjdk.org/projects/jdk/17/)
+
 ```bash
 # use python 3.8 or 3.9
 conda create -n infer python=3.9
-
-# prevent installing cuda stuff to root or somewhere weird
-module unload cuda
 
 # use torch 1.13+cuda11.6 for inference
 pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
@@ -54,7 +53,7 @@ or use relatively small models (as we did) for local testing.
 ### 2. Archive the model
 With torch archiver, we will pack the model file (.zip) as well as handler file (.py) together into a .mar file. And then in serving process these files will be unpacked by TorchServe. Revelant model configs and inference configs can be set in `model-config.yaml`.
 ```bash
-cd Language/ColossalInfer
+cd ./ColossalAI/examples/inference/serving/torch_serve
 # create a folder under the current directory to store the packed model created by torch archiver
 mkdir model_store
 torch-model-archiver --model-name bloom --version 0.1 --handler Colossal_Inference_Handler.py --config-file model-config.yaml --extra-files <dir_zipped_model>/model.zip --export-path ./model_store/
