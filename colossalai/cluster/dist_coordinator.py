@@ -20,14 +20,16 @@ class DistCoordinator(metaclass=SingletonMeta):
         - master: the process with rank 0
         - node master: the process with local rank 0 on the current node
 
-    Example:
-        >>> from colossalai.cluster.dist_coordinator import DistCoordinator
-        >>> coordinator = DistCoordinator()
-        >>>
-        >>> if coordinator.is_master():
-        >>>     do_something()
-        >>>
-        >>> coordinator.print_on_master('hello world')
+
+    ```python
+    from colossalai.cluster.dist_coordinator import DistCoordinator
+    coordinator = DistCoordinator()
+
+    if coordinator.is_master():
+        do_something()
+
+    coordinator.print_on_master('hello world')
+    ```
 
     Attributes:
         rank (int): the rank of the current process
@@ -131,11 +133,13 @@ class DistCoordinator(metaclass=SingletonMeta):
         other processes in the same process group. This is often useful when downloading is required
         as we only want to download in one process to prevent file corruption.
 
-        Example:
-            >>> from colossalai.cluster import DistCoordinator
-            >>> dist_coordinator = DistCoordinator()
-            >>> with dist_coordinator.priority_execution():
-            >>>     dataset = CIFAR10(root='./data', download=True)
+
+        ```python
+        from colossalai.cluster import DistCoordinator
+        dist_coordinator = DistCoordinator()
+        with dist_coordinator.priority_execution():
+            dataset = CIFAR10(root='./data', download=True)
+        ```
 
         Args:
             executor_rank (int): the process rank to execute without blocking, all other processes will be blocked
@@ -174,13 +178,14 @@ class DistCoordinator(metaclass=SingletonMeta):
         """
         A function wrapper that only executes the wrapped function on the master process (rank 0).
 
-        Example:
-            >>> from colossalai.cluster import DistCoordinator
-            >>> dist_coordinator = DistCoordinator()
-            >>>
-            >>> @dist_coordinator.on_master_only()
-            >>> def print_on_master(msg):
-            >>>     print(msg)
+        ```python
+        from colossalai.cluster import DistCoordinator
+        dist_coordinator = DistCoordinator()
+
+        @dist_coordinator.on_master_only()
+        def print_on_master(msg):
+            print(msg)
+        ```
         """
         is_master = self.is_master(process_group)
 

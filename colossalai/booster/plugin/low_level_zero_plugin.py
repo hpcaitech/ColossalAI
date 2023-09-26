@@ -213,16 +213,17 @@ class LowLevelZeroPlugin(DPPluginBase):
     """
     Plugin for low level zero.
 
-    Example:
-        >>> from colossalai.booster import Booster
-        >>> from colossalai.booster.plugin import LowLevelZeroPlugin
-        >>>
-        >>> model, train_dataset, optimizer, criterion = ...
-        >>> plugin = LowLevelZeroPlugin()
+    ```python
+    from colossalai.booster import Booster
+    from colossalai.booster.plugin import LowLevelZeroPlugin
 
-        >>> train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=8)
-        >>> booster = Booster(plugin=plugin)
-        >>> model, optimizer, train_dataloader, criterion = booster.boost(model, optimizer, train_dataloader, criterion)
+    model, train_dataset, optimizer, criterion = ...
+    plugin = LowLevelZeroPlugin()
+
+    train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=8)
+    booster = Booster(plugin=plugin)
+    model, optimizer, train_dataloader, criterion = booster.boost(model, optimizer, train_dataloader, criterion)
+    ```
 
     Args:
         strage (int, optional): ZeRO stage. Defaults to 1.

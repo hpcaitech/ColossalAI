@@ -130,16 +130,17 @@ class TorchDDPPlugin(DPPluginBase):
     """
     Plugin for PyTorch DDP.
 
-    Example:
-        >>> from colossalai.booster import Booster
-        >>> from colossalai.booster.plugin import TorchDDPPlugin
-        >>>
-        >>> model, train_dataset, optimizer, criterion = ...
-        >>> plugin = TorchDDPPlugin()
+    ```python
+    from colossalai.booster import Booster
+    from colossalai.booster.plugin import TorchDDPPlugin
 
-        >>> train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=8)
-        >>> booster = Booster(plugin=plugin)
-        >>> model, optimizer, train_dataloader, criterion = booster.boost(model, optimizer, train_dataloader, criterion)
+    model, train_dataset, optimizer, criterion = ...
+    plugin = TorchDDPPlugin()
+
+    train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=8)
+    booster = Booster(plugin=plugin)
+    model, optimizer, train_dataloader, criterion = booster.boost(model, optimizer, train_dataloader, criterion)
+    ```
 
     Args:
         broadcast_buffers (bool, optional): Whether to broadcast buffers in the beginning of training. Defaults to True.

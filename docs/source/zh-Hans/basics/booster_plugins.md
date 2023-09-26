@@ -71,8 +71,6 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 
 > ⚠ 在使用该插件的时候, 只有支持Shardformer的部分Huggingface transformers模型才能够使用张量并行、流水线并行以及优化工具。Llama 1、Llama 2、OPT、Bloom、Bert以及GPT2等主流transformers模型均已支持Shardformer。
 
-> ⚠ 该插件当前只对模型和优化器支持分片的checkpoint方法。不分片的checkpoint方法会在未来的版本中被支持。
-
 {{ autodoc:colossalai.booster.plugin.HybridParallelPlugin }}
 
 ### Torch DDP 插件
