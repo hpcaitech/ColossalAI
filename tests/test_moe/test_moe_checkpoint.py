@@ -9,13 +9,10 @@ from transformers.models.llama import LlamaConfig
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
-from colossalai.moe import MoeCheckpintIO
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from colossalai.utils import get_current_device
 from examples.language.openmoe.model.modeling_openmoe import OpenMoeForCausalLM
 from examples.language.openmoe.model.openmoe_policy import OpenMoeForCausalLMPolicy
-from tests.test_moe.moe_utils import MoeModel
 
 
 def get_config():
