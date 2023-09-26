@@ -250,12 +250,15 @@ class BertPolicy(Policy):
                 module = self.model
             else:
                 module = self.model.bert
-            #'''
-            # interleaved
-            num_chunks = 2
+
+            # num_chunks > 1 if interleaved
+            num_chunks = stage_manager.num_model_chunks
             layers_per_stage = Policy.distribute_layers(
                 len(module.encoder.layer), stage_manager.num_stages * num_chunks
             )
+            print("***layers per stage***")
+            print(layers_per_stage)
+            raise Exception("assigning layers")
             stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
             # [0,3],[6,9]
 

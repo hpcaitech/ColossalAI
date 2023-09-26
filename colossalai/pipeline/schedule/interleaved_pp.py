@@ -3,7 +3,7 @@ from typing import Any, Callable, Iterable, List, Optional, Union
 
 import torch
 import torch.cuda
-from torch.nn import Module
+from torch.nn import Module, ModuleList
 from torch.utils._pytree import tree_map
 
 from colossalai.interface import OptimizerWrapper
@@ -162,8 +162,7 @@ class InterleavedSchedule(PipelineSchedule):
 
     def forward_step(
         self,
-        model_chunk: Module,
-        # layers: Optional[List[List[int]]],
+        model_chunk: Union[ModuleList, Module],
         model_chunk_id: int,
         input_obj: Optional[dict],
         criterion: Callable,
@@ -172,7 +171,7 @@ class InterleavedSchedule(PipelineSchedule):
     ) -> Union[torch.Tensor, dict]:
         """Forward one step of the pipeline
         Args:
-            model (Module): Model Chunk to be run
+            model (ModuleList or Module): Model Chunk to be run
             input_obj (Optional[dict]): The output from the previous stage. If it is the first stage, the `input_obj` is None.
             criterion (Callable): Criterion to calculate loss.
             accum_loss (Optional[torch.Tensor], optional): Accumulated loss. Defaults to None.
@@ -188,8 +187,11 @@ class InterleavedSchedule(PipelineSchedule):
         if input_obj is None:
             input_obj = {}
         input_obj["model_chunk_id"] = model_chunk_id
-        # output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)
-        output_obj = model_forward(model_chunk, micro_batch, input_obj)
+
+        if isinstance(model_chunk, ModuleList):
+            output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)
+        else:
+            output_obj = model_forward(model_chunk, micro_batch, input_obj)
 
         if self.is_last_stage(model_chunk_id):
             loss = criterion(output_obj, micro_batch) / self.num_microbatches
@@ -248,19 +250,17 @@ class InterleavedSchedule(PipelineSchedule):
 
     def forward_backward_step(
         self,
-        model_chunk,
+        model_chunk: Union[ModuleList, Module],
         data_iter: Iterable,
         criterion: Callable[..., Any],
         optimizer: Optional[OptimizerWrapper] = None,
         return_loss: bool = False,
         return_outputs: bool = False,
     ) -> dict:
-        # self.xxx = func(model.config.xx, stage
-
         """Runs interleaved 1F1B schedule, with communication between pipeline stages.
 
         Args:
-            model_chunk (List[Module]): Model Chunk to be trained.
+            model_chunk (ModuleList or Module): Model Chunk to be trained. Original interleaved uses a module list whereas shardformer uses entire model + layer specification
             data_iter (Iterable): Data iterator.
             criterion (Callable[[Any, Any], Tensor]): Criterion to be used. It should take two arguments: model outputs and inputs, and returns loss tensor.
             optimizer (OptimizerWrapper, optional): Optimizer to be used. Can be None when only forward is executed. Defaults to None.
@@ -275,8 +275,7 @@ class InterleavedSchedule(PipelineSchedule):
             assert forward_only, "Optimizer should be passed when doing backward."
 
         self.load_batch(data_iter)
-        # raise Exception
-        num_model_chunks = 2
+        num_model_chunks = self.num_model_chunks
 
         # num_warmup_microbatches is the step when not all the processes are working
         num_microbatches = self.num_microbatches * num_model_chunks

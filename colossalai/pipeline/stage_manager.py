@@ -18,7 +18,9 @@ class PipelineStageManager:
         stage (int): The current stage.
     """
 
-    def __init__(self, pg_mesh: ProcessGroupMesh, pipeline_axis: int, is_virtual: bool = False) -> None:
+    def __init__(
+        self, pg_mesh: ProcessGroupMesh, pipeline_axis: int, is_virtual: bool = False, num_model_chunks=1
+    ) -> None:
         self.pg_mesh = pg_mesh
         self.pipeline_axis = pipeline_axis
         self.prev_rank: Optional[Tuple[int, ...]] = None
@@ -32,6 +34,8 @@ class PipelineStageManager:
         # the next rank of the last rank is rank0
         next_coord = coord[: self.pipeline_axis] + (coord[self.pipeline_axis] + 1,) + coord[self.pipeline_axis + 1 :]
         self.next_rank = self.pg_mesh.ravel(next_coord, self.pg_mesh.shape, mode="wrap")
+        # number of layer chunks in each stage for interleaved pipeline, with each device has non-discontinuous layers
+        self.num_model_chunks = num_model_chunks
 
         # init p2p process groups
         stages = list(range(self.num_stages))

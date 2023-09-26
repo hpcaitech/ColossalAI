@@ -20,7 +20,7 @@ from colossalai.amp.naive_amp.mixed_precision_optimizer import MixedPrecisionOpt
 from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.pipeline.schedule import InterleavedSchedule
+from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
@@ -352,6 +352,8 @@ class HybridParallelPlugin(PipelinePluginBase):
         communication_dtype: Optional[torch.dtype] = None,
         overlap_communication: bool = True,
         custom_policy: Policy = None,
+        pp_style: str = "1f1b",
+        num_model_chunks: int = 1,
     ) -> None:
         super().__init__()
         assert (
@@ -377,26 +379,30 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.schedule = None
         self.custom_policy = custom_policy
         self.num_microbatches = num_microbatches
-        print("num_microbatches: ", self.num_microbatches)
-        print("micro_batch_size: ", microbatch_size)
+        self.pp_style = pp_style
+        self.num_model_chunks = num_model_chunks
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
             assert (
                 num_microbatches is not None or microbatch_size is not None
             ), "num_microbatches or microbatch_size must be specified when using pipeline parallelism"
             assert self.zero_stage <= 1, "zero stage must be 0 or 1 when using pipeline parallelism"
-            self.stage_manager = PipelineStageManager(self.pg_mesh, PP_AXIS, is_virtual=True)
-            """
-            self.schedule = OneForwardOneBackwardSchedule(self.stage_manager,
-                                                          num_microbatches=num_microbatches,
-                                                          microbatch_size=microbatch_size)
-            """
-            self.schedule = InterleavedSchedule(
-                num_microbatches=num_microbatches,
-                # microbatch_size=microbatch_size,
-                num_model_chunks=2,
-                stage_manager=self.stage_manager,
+            self.stage_manager = PipelineStageManager(
+                self.pg_mesh, PP_AXIS, is_virtual=True, num_model_chunks=self.num_model_chunks
             )
+
+            if self.pp_style == "interleaved":
+                assert self.num_model_chunks > 1, "number of model chunks must be > 1 when using interleaved"
+                self.schedule = InterleavedSchedule(
+                    num_microbatches=num_microbatches,
+                    num_model_chunks=num_model_chunks,
+                    stage_manager=self.stage_manager,
+                )
+            else:
+                self.schedule = OneForwardOneBackwardSchedule(
+                    self.stage_manager, num_microbatches=num_microbatches, microbatch_size=microbatch_size
+                )
+
             #'''
             # raise Exception
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
