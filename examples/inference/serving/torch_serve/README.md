@@ -5,7 +5,8 @@
 This demo is used for testing and demonstrating the usage of Colossal Inference from `colossalai.inference` with deployment with TorchServe. It imports inference modules from colossalai and is based on
 https://github.com/hpcaitech/ColossalAI/tree/3e05c07bb8921f2a8f9736b6f6673d4e9f1697d0. For now, single-gpu inference serving is supported.
 
-## Conda Environment for testing
+## Environment for testing
+### Option #1: Use Conda Env
 Records to create a conda env to test locally as follows. We might want to use docker or configure env on cloud platform later.
 
 *NOTE*: It requires the installation of jdk and the set of `JAVA_HOME`. We recommend to install open-jdk-17 (Please refer to https://openjdk.org/projects/jdk/17/)
@@ -27,17 +28,43 @@ pip install -r requirements/requirements-test.txt
 CUDA_EXT=1 pip install -e .
 
 # install torchserve
-cd <path_to_pytorch_serve_repo>
+cd <path_to_torch_serve_repo>
 python ./ts_scripts/install_dependencies.py --cuda=cu116
 pip install torchserve torch-model-archiver torch-workflow-archiver
+```
+
+### Option #2: Use Docker
+To use the stable diffusion Docker image, you can build using the provided the [Dockerfile](./docker/Dockerfile).
+
+```bash
+# build from dockerfile
+cd ColossalAI/examples/inference/serving/torch_serve/docker
+docker build -t hpcaitech/colossal-infer-ts:0.2.0 .
+```
+
+Once you have the image ready, you can launch the image with the following command
+
+```bash
+cd ColossalAI/examples/inference/serving/torch_serve
+
+# run the docker container
+docker run --rm \
+    -it --gpus all \
+    --name <name_you_assign> \
+    -v <your-data-dir>:/data/scratch \
+    -w <ColossalAI_dir> \
+    hpcaitech/colossal-infer-ts:0.2.0 \
+    /bin/bash
 ```
 
 ## Steps to deploy a model
 
 ###  1.download/prepare a model
-To use on cloud platform, we will zip the downloaded model.
+We will download a bloom model, and then zip the downloaded model. You could download the model from [HuggingFace](https://huggingface.co/models) manually, or you might want to refer to this script [download_model.py](https://github.com/pytorch/serve/blob/c3ca2599b4d36d2b61302064b02eab1b65e1908d/examples/large_models/utils/Download_model.py) provided by pytorch-serve team to help you download a snapshot of the model.
+
 ```bash
 # download snapshots
+cd <path_to_torch_serve>/examples/large_models/utils/
 huggingface-cli login
 python download_model.py --model_name bigscience/bloom-560m -o <path_to_store_downloaded_model>
 
