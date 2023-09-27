@@ -1,7 +1,5 @@
 import logging
 import os
-import random
-import socket
 import zipfile
 from abc import ABC
 
@@ -52,7 +50,7 @@ class ColossalInferenceHandler(BaseHandler, ABC):
         inference_config = ctx.model_yaml_config["handler"]
         self.inference_config = inference_config
         logger.info(self.inference_config)
-        
+
         self.tp_size = self.inference_config.get("tp_size", 1)
         self.max_batch_size = self.inference_config.get("max_batch_size", 4)
         self.max_input_len = self.inference_config.get("max_input_len", 1024)
@@ -62,7 +60,7 @@ class ColossalInferenceHandler(BaseHandler, ABC):
         logger.info(f"Device set to {self.device}")
         logger.info(f"torch.cuda.device_count() {torch.cuda.device_count()}")
 
-        # Unpacking from model_dir 
+        # Unpacking from model_dir
         model_dir_path = os.path.join(model_dir, "model")
         with zipfile.ZipFile(model_dir + "/model.zip", "r") as zip_ref:
             zip_ref.extractall(model_dir_path)
@@ -165,7 +163,7 @@ class ColossalInferenceHandler(BaseHandler, ABC):
         inferences = []
 
         do_sample = self.inference_config.get("do_sample", True)
-        top_p = self.inference_config.get("top_p", 0.95 if do_sample else 1.0 )
+        top_p = self.inference_config.get("top_p", 0.95 if do_sample else 1.0)
         top_k = self.inference_config.get("top_k", 60 if do_sample else 50)
         input_ids_batch = input_ids_batch.to(self.device)
         outputs = self.infer_engine.generate(
