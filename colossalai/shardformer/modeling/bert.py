@@ -57,10 +57,9 @@ class BertPipelineForwards:
         return_dict: Optional[bool] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,  # this is from the previous stage
-        # stage_index: Optional[List[int]] = None,
+        stage_index: Union[Optional[List[int]], Optional[List[List[int]]]] = None,
         shard_config: ShardConfig = None,
-        layers: Optional[List[List[int]]] = None,
-        model_chunk_id: Optional[int] = None,
+        model_chunk_id: int = 0,
     ):
         # TODO(jianghai): add explaination of the output here.
         r"""
@@ -96,8 +95,9 @@ class BertPipelineForwards:
         else:
             use_cache = False
 
-        # get stage index based on assigned layers and chunk id
-        stage_index = layers[model_chunk_id]
+        # if interleaved, get stage index from a list of stages based on chunk id
+        if stage_index is not None and all(isinstance(item, list) for item in stage_index):
+            stage_index = stage_index[model_chunk_id]
         if stage_manager.is_first_stage() and model_chunk_id == 0:
             if input_ids is not None and inputs_embeds is not None:
                 raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
@@ -183,8 +183,6 @@ class BertPipelineForwards:
                 use_cache = False
         next_decoder_cache = () if use_cache else None
 
-        # retrieval stage from multiple stages
-        # stage_index = multiple_stage_index[model_chunk_id]
         start_idx, end_idx = stage_index[0], stage_index[1]
 
         # layer_outputs
@@ -257,7 +255,7 @@ class BertPipelineForwards:
         # end of a stage loop
         sequence_output = hidden_states if hidden_states is not None else None
 
-        if stage_manager.is_last_stage() and model_chunk_id == 1:
+        if stage_manager.is_last_stage() and model_chunk_id == stage_manager.num_model_chunks - 1:
             pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
             if not return_dict:
                 return (sequence_output, pooled_output) + layer_outputs[1:]
@@ -667,12 +665,9 @@ class BertPipelineForwards:
         return_dict: Optional[bool] = None,
         hidden_states: Optional[torch.Tensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
-        # stage_index: Optional[List[int]] = None,
+        stage_index: Union[Optional[List[int]], Optional[List[List[int]]]] = None,
         shard_config: ShardConfig = None,
-        model_chunk_id: Optional[int] = None,
-        layers: Optional[List[List[int]]] = None,
-        # num_chunks: int = None,
-        # model_chunk_id: int = None,
+        model_chunk_id: int = 0,
     ):
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -704,13 +699,12 @@ class BertPipelineForwards:
             return_dict=return_dict,
             hidden_states=hidden_states,
             stage_manager=stage_manager,
-            # stage_index=stage_index,
+            stage_index=stage_index,
             shard_config=shard_config,
-            layers=layers,
             model_chunk_id=model_chunk_id,
         )
 
-        if stage_manager.is_last_stage() and model_chunk_id == 1:
+        if stage_manager.is_last_stage() and model_chunk_id == stage_manager.num_model_chunks - 1:
             pooled_output = outputs[1]
 
             pooled_output = self.dropout(pooled_output)

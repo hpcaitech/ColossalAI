@@ -64,11 +64,17 @@ def evaluate_model(
             batch = move_to_cuda(batch)
             labels = batch["labels"]
             if use_pipeline:
+                """skip the last batch with batch size 31 for interleaved pipeline parallel
+                as the number of microbatches needs to be a multiple of pipeline parallel devices
+                """
+                if booster.plugin.pp_style == "interleaved" and len(labels) < 32:
+                    continue
                 pg_mesh = booster.plugin.pg_mesh
                 pp_group = booster.plugin.pp_group
                 current_pp_group_ranks = pg_mesh.get_ranks_in_group(pp_group)
                 current_rank = dist.get_rank()
                 batch = iter([batch])
+
                 outputs = booster.execute_pipeline(batch, model, criterion, return_loss=True, return_outputs=True)
 
                 if is_pp_last_stage:
@@ -224,11 +230,11 @@ def main():
             num_microbatches=2,
             pp_style="interleaved",
             num_model_chunks=2,
-            # microbatch_size=1,
-            # enable_all_optimization=False,
-            # zero_stage=1,
-            # precision="fp16",
-            # initial_scale=1,
+            microbatch_size=None,
+            enable_all_optimization=True,
+            zero_stage=1,
+            precision="fp16",
+            initial_scale=1,
         )
 
     booster = Booster(plugin=plugin, **booster_kwargs)

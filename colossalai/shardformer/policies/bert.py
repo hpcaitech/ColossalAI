@@ -251,46 +251,25 @@ class BertPolicy(Policy):
             else:
                 module = self.model.bert
 
-            # num_chunks > 1 if interleaved
-            num_chunks = stage_manager.num_model_chunks
+            # num_model_chunks > 1 if interleaved
+            num_model_chunks = stage_manager.num_model_chunks
             layers_per_stage = Policy.distribute_layers(
-                len(module.encoder.layer), stage_manager.num_stages * num_chunks
+                len(module.encoder.layer), stage_manager.num_stages * num_model_chunks
             )
-            print("***layers per stage***")
-            print(layers_per_stage)
-            raise Exception("assigning layers")
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            # [0,3],[6,9]
 
-            multiple_stage_index = []
-            multiple_stage_index.append(stage_index)
-            if stage_index[0] == 0:
-                multiple_stage_index.append([6, 9])
+            if num_model_chunks > 1:
+                stage_index = Policy.get_stage_index(
+                    layers_per_stage, stage_manager.stage, stage_manager.num_stages, num_model_chunks
+                )
             else:
-                multiple_stage_index.append([9, 12])
-
-            print("multiple stages added")
-            print(multiple_stage_index)
-            method_replacement = {
-                "forward": partial(
-                    new_forward,
-                    stage_manager=stage_manager,
-                    layers=multiple_stage_index,
-                    shard_config=self.shard_config,
-                )
-            }
-            """
-            # 1f1b
-
-            layers_per_stage = Policy.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+                stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
 
             method_replacement = {
                 "forward": partial(
-                    new_forward, stage_manager=stage_manager, layers=stage_index, shard_config=self.shard_config
+                    new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
                 )
             }
-            """
+
             self.append_or_create_method_replacement(
                 description=method_replacement, policy=policy, target_key=model_cls
             )
@@ -308,26 +287,27 @@ class BertPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        #'''
-        # interleaved
-        layers_per_stage = self.distribute_layers(len(module.encoder.layer), stage_manager.num_stages * 2)
+        num_model_chunks = stage_manager.num_model_chunks
+        layers_per_stage = self.distribute_layers(
+            len(module.encoder.layer), stage_manager.num_stages * num_model_chunks
+        )
         if stage_manager.is_first_stage():
             held_layers.append(module.embeddings)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
-        # raise Exception
-        held_layers.extend(module.encoder.layer[start_idx:end_idx])
-        held_layers.extend(module.encoder.layer[start_idx + 6 : end_idx + 6])
+        if num_model_chunks > 1:
+            stage_index = Policy.get_stage_index(
+                layers_per_stage, stage_manager.stage, stage_manager.num_stages, num_model_chunks
+            )
+        else:
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
 
-        """
-
-        #1f1b
-        layers_per_stage = self.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
-        if stage_manager.is_first_stage():
-            held_layers.append(module.embeddings)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
-        #raise Exception
-        held_layers.extend(module.encoder.layer[start_idx:end_idx])
-        """
+        # interleaved stage index for one device comes in pairs, e.g.[[0,3],[6,9]]
+        if all(isinstance(item, list) for item in stage_index):
+            for i in range(len(stage_index)):
+                start_idx, end_idx = stage_index[i]
+                held_layers.extend(module.encoder.layer[start_idx:end_idx])
+        else:
+            start_idx, end_idx = stage_index
+            held_layers.extend(module.encoder.layer[start_idx:end_idx])
 
         if stage_manager.is_last_stage():
             held_layers.append(module.pooler)

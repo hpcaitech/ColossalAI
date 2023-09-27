@@ -34,7 +34,7 @@ class PipelineStageManager:
         # the next rank of the last rank is rank0
         next_coord = coord[: self.pipeline_axis] + (coord[self.pipeline_axis] + 1,) + coord[self.pipeline_axis + 1 :]
         self.next_rank = self.pg_mesh.ravel(next_coord, self.pg_mesh.shape, mode="wrap")
-        # number of layer chunks in each stage for interleaved pipeline, with each device has non-discontinuous layers
+        # number of layer chunks in each stage for interleaved pipeline, with each device has discontinuous layers
         self.num_model_chunks = num_model_chunks
 
         # init p2p process groups

@@ -16,18 +16,25 @@ from .base import PipelineSchedule
 
 
 class InterleavedSchedule(PipelineSchedule):
-    def __init__(self, num_microbatches: int, num_model_chunks: int, stage_manager: PipelineStageManager) -> None:
-        self.num_model_chunks = num_model_chunks
-        assert (
-            num_microbatches % self.num_model_chunks == 0
-        ), "Number of microbatches should be an integer multiple of number of model chunks"
+    def __init__(
+        self,
+        stage_manager: PipelineStageManager,
+        num_microbatches: Optional[int] = None,
+        microbatch_size: Optional[int] = None,
+        num_model_chunks: Optional[int] = 1,
+    ) -> None:
         super().__init__(stage_manager)
+        assert (
+            num_microbatches is not None or microbatch_size is not None
+        ), "Either num_microbatches or microbatch_size should be provided"
         self.comm = PipelineP2PCommunication(stage_manager)
         self.num_microbatches = num_microbatches
+        self.microbatch_size = microbatch_size
         self.batch: Optional[Any] = None
         self.batch_size: Optional[int] = None
         self.microbatch_offset: Optional[int] = None
-        self.microbatch_size: Optional[int] = None
+        self._use_microbatch_size = num_microbatches is None
+        self.num_model_chunks = num_model_chunks
 
     def load_batch(self, data_iter: Iterable, device: Optional[torch.device] = None) -> None:
         """Load a batch from data iterator.
@@ -42,8 +49,22 @@ class InterleavedSchedule(PipelineSchedule):
         self.batch = batch
         self.batch_size = get_batch_size(batch)
         self.microbatch_offset = [0 for _ in range(self.num_model_chunks)]
-        assert self.batch_size % self.num_microbatches == 0, "Batch size should divided by the number of microbatches"
-        self.microbatch_size = self.batch_size // self.num_microbatches
+        if not self._use_microbatch_size:
+            assert (
+                self.batch_size % self.num_microbatches == 0
+            ), "Batch size should divided by the number of microbatches"
+            self.microbatch_size = self.batch_size // self.num_microbatches
+        else:
+            assert self.batch_size % self.microbatch_size == 0, "Batch size should divided by the microbatch size"
+            self.num_microbatches = self.batch_size // self.microbatch_size
+
+        assert (
+            self.num_microbatches % self.num_model_chunks == 0
+        ), "Number of microbatches should be an integer multiple of number of model chunks"
+
+        assert (
+            self.num_microbatches % self.stage_manager.num_stages == 0
+        ), "Number of microbatches should be an integer multiple of number of pipeline parallel devices"
 
     def load_micro_batch(self, model_chunk_id: int) -> Any:
         """Load a micro batch from the current batch.
@@ -184,6 +205,8 @@ class InterleavedSchedule(PipelineSchedule):
 
         # for the first stage, input_obj is None
         # for the non-first stage, input_obj is the output of the previous stage and it's must be a dict
+
+        # in shardformer, each device still has the entire model, so we need to pass the model_chunk_id to replaced forward
         if input_obj is None:
             input_obj = {}
         input_obj["model_chunk_id"] = model_chunk_id
@@ -306,7 +329,9 @@ class InterleavedSchedule(PipelineSchedule):
         # for ranks except the first one, get into recv state
         # print(self.stage_manager.stage,num_microbatches, num_warmup_microbatches, num_microbatches_remaining)
         input_obj = self.recv_forward(0)
-        input_objs[0].append(input_obj)
+        if not forward_only:
+            input_objs[0].append(input_obj)
+
         # Run warmup forward passes.
         for i in range(num_warmup_microbatches):
             model_chunk_id = self.get_model_chunk_id(i, forward=True)

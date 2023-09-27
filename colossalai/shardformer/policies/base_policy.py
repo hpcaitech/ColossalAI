@@ -217,8 +217,7 @@ class Policy(ABC):
     def get_stage_index(
         layers_per_stage: List[int], stage: int, num_stages=None, num_model_chunks=1
     ) -> Union[List[int], List[List[int]]]:
-        # [6, 6] stage 0
-        # [3,3,3,3] stage 0
+        # num_stages info is only needed for interleaved pipeline stage assignment
         if num_stages is None:
             """
             get the start index and end index of layers for each stage.
@@ -231,7 +230,7 @@ class Policy(ABC):
             return [start_idx, end_idx]
         else:
             """
-            interleaved pipeline: get the start index and end index pairs for each stage's layers.
+            interleaved pipeline: get the start index and end index PAIRS for each stage.
             """
             num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
 
