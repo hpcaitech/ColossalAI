@@ -221,7 +221,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 if self._master_weights is True:
                     splited_param_current_rank = splited_params[self._local_rank].detach().float().to(device)
                 else:
-                    splited_param_current_rank = splited_params[self._local_rank].to(self._dtype).to(device)
+                    splited_param_current_rank = splited_params[self._local_rank].to(device)
                 params_current_rank.append(splited_param_current_rank)
                 self._param_store.link_master_and_working_param(splited_param_current_rank, param)
 
