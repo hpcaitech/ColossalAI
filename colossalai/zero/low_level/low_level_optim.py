@@ -79,6 +79,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         overlap_communication: bool = False,
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
+        master_weights: bool = True,  # master weights
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
         tp_process_group: Optional[ProcessGroup] = None,  # if using tp
         forced_dtype: Optional[torch.dtype] = None,
@@ -114,6 +115,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # gradient clipping
         self._clip_grad_norm = clip_grad_norm
+
+        # master weights copy
+        self._master_weights = master_weights
 
         if forced_dtype:
             for group in self.optim.param_groups:
@@ -213,7 +217,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     padding_param = param.data.view(-1)
                 splited_params = padding_param.split(padding_param.numel() // self._world_size)
 
-                splited_param_current_rank = splited_params[self._local_rank].detach().float().to(device)
+                # use fp32 when master_weights is True
+                if self._master_weights is True:
+                    splited_param_current_rank = splited_params[self._local_rank].detach().float().to(device)
+                else:
+                    splited_param_current_rank = splited_params[self._local_rank].detach().to(self._dtype).to(device)
                 params_current_rank.append(splited_param_current_rank)
                 self._param_store.link_master_and_working_param(splited_param_current_rank, param)
 
@@ -424,6 +432,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 # it is not 'really' working, e.g. the droped layer
                 # else the splited grad should be attached to the splited param
                 grads = self._grad_store.get_partitioned_gradients_by_param_id(group_id, id(working_param))
+
                 if len(grads) > 0:
                     real_working_params[group_id].append(working_param)
                     grad = grads[grad_index].to(splited_param.dtype).to(splited_param.device)
@@ -458,13 +467,13 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for group_id in range(self.num_param_groups):
             master_working_param = self.optim.param_groups[group_id]["params"]
             for idx, splited_param in enumerate(master_working_param):
-                working_param = real_working_params[group_id][idx]
+                working_param = real_working_params[group_id][idx]          
                 all_splited_param = [
                     torch.zeros(splited_param.shape, device="cuda", dtype=dtype) for _ in range(self._world_size)
                 ]
                 dist.all_gather(all_splited_param, splited_param.cuda().to(dtype), group=self.dp_pg)
                 working_param.data.copy_(flatten(all_splited_param)[: working_param.numel()].reshape_as(working_param))
-
+        
             self.optim.param_groups[group_id]["params"] = self._master_param_groups_of_current_rank[group_id]
 
     #############################
