@@ -1,4 +1,4 @@
-# Pipeline Inference
+# 🐳 Pipeline Inference
 
 ## Table of Contents
 
