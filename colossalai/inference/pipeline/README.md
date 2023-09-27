@@ -52,6 +52,7 @@ sh run.sh
 We conducted multiple benchmark tests to evaluate the performance. We compared the inference `latency` and `throughputs` between `Pipeline Inference` and `hugging face` pipeline. The test environment is 2*A10, 20G.
 
 ### Llama Throughput(tokens/s)
+
 #### 7b, fp16
 | batch_size(micro_batch size)| 2(1) | 4(2) | 8(4) | 16(8) | 32(8) | 32(16)|
 | :---: | :---: | :---: | :---: | :---: | :---: | :---:|
@@ -59,6 +60,14 @@ We conducted multiple benchmark tests to evaluate the performance. We compared t
 | Hugging Face(1024, 128) |  41.43 | 65.30 | 91.93 | 114.62 | OOM| OOM |
 | Pipeline Inference(512, 512) | 43.37 | 82.81 | 148.03 | 229.06 | 238.67 | 312.82 |
 | Hugging Face(512, 512) |  49.13 | 84.91 | 132.87 | 178.30 | OOM| OOM |
+
+#### 7b, fp32
+| batch_size(micro_batch size)| 2(1) | 4(2) | 8(4) | 16(4) |
+| :---: | :---: | :---: | :---: | :---: |
+| Pipeline Inference(1024, 128) | 20.61 | 31.23 | 45.20 | 47.46 |
+| Hugging Face(1024, 128) | 19.80 | 29.37| OOM | OOM |
+| Pipeline Inference(512, 512) | 28.07 | 46.76 | 79.35 | 81.70 |
+| Hugging Face(512, 512) |  25.67 | 43.97 | 60.67 | OOM |
 
 #### 13b, fp16
 | batch_size(micro_batch size)| 2(1) | 4(2) | 8(4) | 16(4) |
