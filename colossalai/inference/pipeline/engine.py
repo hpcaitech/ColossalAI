@@ -1,23 +1,15 @@
-import re
-from functools import partial
-from types import MethodType
-from typing import Callable, List, Optional, Set
+from typing import Callable, List, Optional, Set, Union
 
-import numpy as np
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.pipeline.schedule.generate import GenerateSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.shardformer._utils import getattr_
 from colossalai.shardformer.policies.base_policy import Policy
 
 from .microbatch_manager import MicroBatchManager
-from .policy.gpt2_ppinfer import GPT2LMHeadModelPipelinePolicy
-from .utils import get_suffix_name, set_tensors_to_none
 
 
 class PPInferEngine:
@@ -54,6 +46,7 @@ class PPInferEngine:
     def __init__(
         self,
         pp_size: int,
+        dtype: str = 'fp16',
         pp_model: nn.Module = None,
         model: nn.Module = None,
         model_policy: Policy = None,
@@ -72,12 +65,22 @@ class PPInferEngine:
         self.stage_manager = PipelineStageManager(self.pg_mesh, 0, True)
         self.mb_manager = MicroBatchManager(self.stage_manager.stage, new_length, micro_batch_size,
                                             micro_batch_buffer_size or pp_size)
+        self.verbose = verbose
         self.schedule = GenerateSchedule(self.stage_manager, self.mb_manager, verbose)
+
+        assert dtype in ['fp16', 'fp32', 'bf16'], "dtype should be one of 'fp16', 'fp32', 'bf16'"
+        if dtype == 'fp16':
+            model.half()
+        elif dtype == 'bf16':
+            model.to(torch.bfloat16)
         self.model = pp_model or self._shardformer(model, model_policy)
 
     def inference(self, input_list):
-        out = self.schedule.generate_step(self.model, iter(input_list))
-        return out
+        out, timestamp = self.schedule.generate_step(self.model, iter(input_list))
+        if self.verbose:
+            return out, timestamp
+        else:
+            return out
 
     def _shardformer(self, model, model_policy):
         shardconfig = ShardConfig(
