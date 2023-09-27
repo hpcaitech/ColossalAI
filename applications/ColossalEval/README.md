@@ -1,4 +1,8 @@
-# ColossalEval
+<div align="center">
+<h1>
+<img src="https://github.com/hpcaitech/public_assets/blob/main/applications/colossal-llama-2/colossaleval.jpg?raw=true" width=800/>
+</h1>
+</div>
 
 ## Table of Contents
 
@@ -57,7 +61,9 @@ More details about metrics can be found in [Metrics](#metrics).
 |           ChatGLM-6B           |     -      |      1.0T       |             |    39.67 (40.63)     |   41.17 (-)   |  40.10  | 36.53  | 38.90  |
 |          ChatGLM2-6B           |     -      |      1.4T       |             |    44.74 (45.46)     |   49.40 (-)   |  46.36  | 45.49  | 51.70  |
 |          InternLM-7B           |     -      |        -        |                |    46.70 (51.00)     |   52.00 (-)   |  44.77  | 61.64  | 52.80  |
-|            Qwen-7B             |     -      |      2.2T       |             | 54.29 (56.70) | 56.03 (58.80) |  52.47  | 56.42  | 59.60  |
+| InternLM-20B | - | 2.3T | | 60.96 (62.05) | 59.08 (-) | 57.96 | 61.92 | - |
+|            Qwen-7B (original)             |     -      |      2.2T       |             | 54.29 (56.70) | 56.03 (58.80) |  52.47  | 56.42  | 59.60  |
+|            Qwen-7B             |     -      |      2.4T       |             | 58.33 (58.20) | 62.54 (62.20) |  64.34  | 74.05 | 63.50 |
 |                                |            |                 |                 |                      |               |         |        |        |
 |           Llama-2-7B           |     -      |      2.0T       |             |    44.47 (45.30)     |   32.97 (-)   |  32.60  | 25.46  |   -    |
 | Linly-AI/Chinese-LLaMA-2-7B-hf | Llama-2-7B |      1.0T       |             |        37.43         |     29.92     |  32.00  | 27.57  |   -    |
@@ -74,7 +80,7 @@ More details about metrics can be found in [Metrics](#metrics).
 >
 > We use zero-shot for ChatGLM models.
 >
-> Qwen-7B is now inaccessible in Hugging Face, we are using the latest version of it before it was made inaccessible. Only for dataset MMLU, the prompt would be "xxx Answer:"(remove the space after ":") and we calculate the logits over " A", " B", " C" and " D" for Qwen-7B. Qwen-7B tends to be much more deterministic than other models. For example, the logits over " A" can be `-inf` and softmax would be exact `0`.
+> To evaluate Qwen-7B on dataset MMLU, the prompt would be "xxx Answer:"(remove the space after ":") and we calculate the logits over " A", " B", " C" and " D" for Qwen-7B. Both the original and updated versions of Qwen-7B tend to be much more deterministic than other models. For example, the logits over " A" can be `-inf` and softmax would be exact `0`.
 >
 > For other models and other dataset, we calculate logits over "A", "B", "C" and "D".
 
@@ -185,8 +191,8 @@ Example:
 In this step, you will configure your tokenizer and model arguments to infer on the given datasets.
 
 A config file consists of two parts.
-1. Model config. In model config, you need to specify model name, model path, model class, tokenizer arguments and model arguments.
-2. Dataset config. In dataset config, you need to specify dataset name, path and dataset class.
+1. Model config. In model config, you need to specify model name, model path, model class, tokenizer arguments and model arguments. For model class, currently we support `HuggingFaceModel`, `HuggingFaceCausalLM`, `ChatGLMModel` and `ChatGLMModel2`. `HuggingFaceModel` is for models that can be loaded with `AutoModel` and `HuggingFaceCausalLM` is for models that can be loaded with `AutoModelForCausalLM`. `ChatGLMModel` and `ChatGLMModel2` are for ChatGLM and ChatGLM2 models respectively. You can check all model classes in `colossal_eval/models/__init__.py`. If your model should set `trust_remote_code` as true, specify it in the `tokenizer_kwargs` and `model_kwargs` fields.
+2. Dataset config. In dataset config, you need to specify dataset name, path and dataset class. Currently, we support zero-shot on dataset MMLU, CMMLU, AGIEval, GAOKAO-Bench and LongBench and few-shot on dataset MMLU, CMMLU and AGIEval. If you want to enable few shot, set `few_shot` as true. You can check all model classes in `colossal_eval/dataset/__init__.py`.
 
 Once you have all config ready, the program will run inference on all the given datasets on all the given models.
 
@@ -253,7 +259,7 @@ In dataset evaluation, we calculate different metrics on the given inference res
 
 A config file for dataset evaluation consists of two parts.
 1. Model config. In model config, you need to specify model name. If you want to evaluate perplexity over a pretrain dataset and calculate per-byte-perplexity, you have to add your tokenizer config and model max length.
-2. Dataset config. In dataset config, you need to specify the evaluation arguments for the dataset.
+2. Dataset config. In dataset config, you need to specify the evaluation metrics for the dataset.
 
 Once you have all config ready, the program will run evaluation on inference results for all given models and dataset.
 
@@ -315,7 +321,7 @@ The following is an example of a English config file. The configuration file can
 ```
 
 ##### How to Use
-After setting the config file, you can evaluate the model using `examples/gpt_evaluation/eval.py`. If you want to make comparisons between answers of two different models, you should specify two answer files in the argument `answer_file_list` and two model names in the argument `model_name_list`(details can be found in `colossal_eval/evaluate/GPT Evaluation.md`). If you want to evaluate one answer file, the length of both `answer_file_list` and `model_name_list` should be 1 and the program will perform evaluation using GPTs.
+After setting the config file, you can evaluate the model using `examples/gpt_evaluation/eval.py`. If you want to make comparisons between answers of two different models, you should specify two answer files in the argument `answer_file_list` and two model names in the argument `model_name_list`(details can be found in `colossal_eval/evaluate/GPT Evaluation.md`). If you want to evaluate one answer file, the length of both `answer_file_list` and `model_name_list` should be 1 and the program will perform evaluation using GPTs. The prompt files for battle and gpt evaluation can be found in `configs/gpt_evaluation/prompt`. `target file` is the path to the converted dataset you save during inference time.
 
 An example script is provided as follows:
 
@@ -381,7 +387,7 @@ We provide 2 examples for you to explore our `colossal_eval` package.
 This example is in folder `examples/dataset_evaluation`.
 
 1. `cd examples/dataset_evaluation`
-2. Fill in your inference config file in `config/inference/config.json`. Set the model and dataset parameters
+2. Fill in your inference config file in `config/inference/config.json`. Set the model and dataset parameters.
 3. Run `inference.sh` to get inference results.
 4. Fill in your evaluation config file in `config/evaluation/config.json`. Set the model and dataset parameters.
 5. Run `eval_dataset.sh` to get evaluation results.

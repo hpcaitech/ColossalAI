@@ -30,10 +30,10 @@
 ## Colossal-LLaMA-2-7B
 The [Colossal-AI](https://github.com/hpcaitech/ColossalAI) team has introduced the open-source model **Colossal-LLaMA-2-7B-base**. This model, a derivation of LLaMA-2, has undergone continual pre-training involving approximately 8.5 billion tokens over a duration of 15 hours with 64 A800 GPUs. At a cost of **less than $1,000**, you can achieve results **similar to those that cost millions of dollars to pretrain from scratch**. It is licensed under the LLaMA-2 license and [Apache 2.0 License](https://github.com/hpcaitech/ColossalAI/blob/main/LICENSE) **without any additional commercial use restrictions**. This solution can also be used to build models of specific domain knowledge or tasks.
 
-Colossal-LLaMA-2-7B-base is designed to accommodate both the Chinese and English languages, featuring an expansive context window spanning 4096 tokens. Remarkably, it has exhibited exceptional performance when benchmarked against models of equivalent scale in standard Chinese and English evaluation metrics, including C-Eval and MMLU, among others. 
+Colossal-LLaMA-2-7B-base is designed to accommodate both the Chinese and English languages, featuring an expansive context window spanning 4096 tokens. Remarkably, it has exhibited exceptional performance when benchmarked against models of equivalent scale in standard Chinese and English evaluation metrics, including C-Eval and MMLU, among others.
 
-❗️**Important notice**: 
-* All training data used for this project is collected from well-known public dataset. 
+❗️**Important notice**:
+* All training data used for this project is collected from well-known public dataset.
 * We do not use any testing data from the evaluation benchmarks for training.
 
 ### Performance Evaluation
@@ -56,7 +56,7 @@ The generation config for all dataset is greedy search.
 |           ChatGLM-6B           |     -      |      1.0T       |             |    39.67 (40.63)     |   41.17 (-)   |  40.10  | 36.53  | 38.90  |
 |          ChatGLM2-6B           |     -      |      1.4T       |             |    44.74 (45.46)     |   49.40 (-)   |  46.36  | 45.49  | 51.70  |
 |          InternLM-7B           |     -      |      1.6T       |                |    46.70 (51.00)     |   52.00 (-)   |  44.77  | 61.64  | 52.80  |
-|            Qwen-7B             |     -      |      2.2T       |             | 54.29 (56.70) | 56.03 (58.80) |  52.47  | 56.42  | 59.60  |
+|            Qwen-7B (original)             |     -      |      2.2T       |             | 54.29 (56.70) | 56.03 (58.80) |  52.47  | 56.42  | 59.60  |
 |                                |            |                 |                 |                      |               |         |        |        |
 |           Llama-2-7B           |     -      |      2.0T       |             |    44.47 (45.30)     |   32.97 (-)   |  32.60  | 25.46  |   -    |
 | Linly-AI/Chinese-LLaMA-2-7B-hf | Llama-2-7B |      1.0T       |             |        37.43         |     29.92     |  32.00  | 27.57  |   -    |
@@ -91,7 +91,7 @@ The generation config for all dataset is greedy search.
 | Information Extraction  | The company's annual conference, featuring keynote speakers and exclusive product launches, will be held at the Los Angeles Convention Center from October 20th to October 23rd, 2021. Extract the date mentioned in the above sentence.  | The date mentioned in the sentence is October 20th to October 23rd, 2021.  |
 | Error Correction  | Please correct the syntax error and restructure the sentence: "Went to the store me and my friend."  | The given sentence "Went to the store me and my friend." is incorrect due to a syntax error and it lacks a subject. The corrected version with proper grammar and sentence structure would be: "My friend and I went to the store."  |
 
-❗️ More examples of question answering, please refer to [Colossal-LLaMA-2-7B-base Examples](docs/example.md). 
+❗️ More examples of question answering, please refer to [Colossal-LLaMA-2-7B-base Examples](docs/example.md).
 
 ### Training Logs
 We also recorded the training logs for the experiment
@@ -168,7 +168,7 @@ python colossal_llama2/tokenizer/init_tokenizer.py \
 Here is details about CLI arguments:
 * Source tokenizer directory: `--source_tokenizer_dir`. Directory to the source tokenizer. It should at least contain three files: `special_tokens_map.json`, `tokenizer.model` and `tokenizer_config.json`.
 * Target tokenizer directory: `--target_tokenizer_dir`. Directory to the target tokenizer.
-* Tokens to be added: `--expand_tokens_file`. Additional tokens to be added to the tokenizer. 
+* Tokens to be added: `--expand_tokens_file`. Additional tokens to be added to the tokenizer.
 
 #### 2. Init Model Preparation
 Initialize the new model checkpoint by calculating the mean values from the original model checkpoint.
@@ -191,7 +191,7 @@ Here is details about CLI arguments:
 #### 3. Data Preparation
 Raw data should be formatted as `jsonl` format. Each data point should have the following fields:
 * `source` (str, compulsory): This part is ignored when calculating loss. Default can be empty.
-* `target` (str, compulsory): Loss will be calculated. 
+* `target` (str, compulsory): Loss will be calculated.
 * `category` (str, compulsory): Tags for each data point.
 
 Examples:
@@ -226,7 +226,7 @@ You can use `colossalai run` to launch multi-nodes training:
 ```bash
 colossalai run --nproc_per_node YOUR_GPU_PER_NODE --hostfile YOUR_HOST_FILE \
 train.py --OTHER_CONFIGURATIONS
-``` 
+```
 Here is a sample hostfile:
 ```bash
 hostname1
@@ -240,7 +240,7 @@ Here is details about CLI arguments:
 * Pre-trained model path: `--pretrained`. Path to the pre-trained model in Hugging Face format.
 * Dataset path: `--dataset`. Path to the pre-tokenized dataset.
 * Booster plugin: `--plugin`. `gemini`, `gemini_auto`, `zero2`，`zero2_cpu` and `3d` are supported.For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins/).
-* Intermediate checkpoint to load: `--load_checkpoint`. Path to the intermediate checkpoint. Saved checkpoint contains the states for `lr_scheduler`, `optimizer`,`running_states.json` and `modelling`. If `load_checkpoint` points to the `modelling` folder, only the model weights will be loaded without any other states to support multi-stage training. 
+* Intermediate checkpoint to load: `--load_checkpoint`. Path to the intermediate checkpoint. Saved checkpoint contains the states for `lr_scheduler`, `optimizer`,`running_states.json` and `modelling`. If `load_checkpoint` points to the `modelling` folder, only the model weights will be loaded without any other states to support multi-stage training.
 * Save interval: `--save_interval`. The interval (steps) of saving checkpoints. The default value is 1000.
 * Checkpoint directory: `--save_dir`. The directoty path to save checkpoint and intermediate states. Intermediate states include `lr_scheduler`, `optimizer`,`running_states.json` and `modelling`.
 * Tensorboard directory: `--tensorboard_dir`. The path to save tensorboard logs.
@@ -334,7 +334,7 @@ To balance both sides, we finally construct our vocabulary with size 69,104. The
 
 ### Training Strategy
 #### Multi-stage Training
-In order to enhance the model's performance and harness the full potential of the original LLaMA-2, we have developed a multi-stage training strategy. This strategy is designed to systematically unlock the model's capabilities over a series of stages. 
+In order to enhance the model's performance and harness the full potential of the original LLaMA-2, we have developed a multi-stage training strategy. This strategy is designed to systematically unlock the model's capabilities over a series of stages.
 
 Therefore, we have divided the training process into three stages:
 * Large-scale pre-training stage (Conducted by LLaMA-2): This initial stage is aimed at establishing the model's foundational capabilities from the ground up. It necessitates the use of a substantial dataset comprising no less than 1 trillion tokens.
@@ -343,7 +343,7 @@ Therefore, we have divided the training process into three stages:
 
 Following the completion of this multi-stage training process, the model exhibits notable improvements in performance across both English and Chinese benchmarks.
 
-The following figure illustrates the three stages for training Colossal-LLaMA-2. 
+The following figure illustrates the three stages for training Colossal-LLaMA-2.
 
 <p id="Colossal-LLaMA-2-Multi-stage-training" align="center">
 <img src="https://github.com/hpcaitech/public_assets/blob/main/applications/colossal-llama-2/multi-stage-training.png?raw=true" width=600/>
@@ -372,7 +372,7 @@ Applying the above process to perform knowledge transfer in any field allows for
 ```
 ```bibtex
 @misc{touvron2023llama,
-    title={Llama 2: Open Foundation and Fine-Tuned Chat Models}, 
+    title={Llama 2: Open Foundation and Fine-Tuned Chat Models},
     author={Hugo Touvron and Louis Martin and Kevin Stone and Peter Albert and Amjad Almahairi and Yasmine Babaei and Nikolay Bashlykov and Soumya Batra and Prajjwal Bhargava and Shruti Bhosale and Dan Bikel and Lukas Blecher and Cristian Canton Ferrer and Moya Chen and Guillem Cucurull and David Esiobu and Jude Fernandes and Jeremy Fu and Wenyin Fu and Brian Fuller and Cynthia Gao and Vedanuj Goswami and Naman Goyal and Anthony Hartshorn and Saghar Hosseini and Rui Hou and Hakan Inan and Marcin Kardas and Viktor Kerkez and Madian Khabsa and Isabel Kloumann and Artem Korenev and Punit Singh Koura and Marie-Anne Lachaux and Thibaut Lavril and Jenya Lee and Diana Liskovich and Yinghai Lu and Yuning Mao and Xavier Martinet and Todor Mihaylov and Pushkar Mishra and Igor Molybog and Yixin Nie and Andrew Poulton and Jeremy Reizenstein and Rashi Rungta and Kalyan Saladi and Alan Schelten and Ruan Silva and Eric Michael Smith and Ranjan Subramanian and Xiaoqing Ellen Tan and Binh Tang and Ross Taylor and Adina Williams and Jian Xiang Kuan and Puxin Xu and Zheng Yan and Iliyan Zarov and Yuchen Zhang and Angela Fan and Melanie Kambadur and Sharan Narang and Aurelien Rodriguez and Robert Stojnic and Sergey Edunov and Thomas Scialom},
     year={2023},
     eprint={2307.09288},
@@ -388,5 +388,3 @@ Applying the above process to perform knowledge transfer in any field allows for
 }
 }
 ```
-
-
