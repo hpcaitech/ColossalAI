@@ -5,7 +5,10 @@ from typing import Dict, List
 import numpy as np
 import torch
 from lightllm.common.configs.config import setting
-from lightllm.common.mem_manager import MemoryManager
+
+from colossalai.inference.tensor_parallel import MemoryManager
+
+# make batch infer state an attr of InferBatch
 
 
 class InferSamplingParams:
@@ -44,19 +47,17 @@ class InferBatch:
     out_token_id_counts: List
     sampling_param_list: List[InferSamplingParams]
 
-    input_ids: torch.Tensor
-
     nopad_total_token_num: int
     nopad_max_len_in_batch: int
     nopad_b_loc: torch.Tensor
     nopad_b_start_loc: torch.Tensor
     nopad_b_seq_len: torch.Tensor
-    mem_manager: MemoryManager
+    cache_manager: MemoryManager
 
     @classmethod
     @torch.no_grad()
     def init_batch(
-        cls, batch_id, requests, dtype: torch.dtype, device: torch.device, mem_manager: MemoryManager, vocab_size: int
+        cls, batch_id, requests, dtype: torch.dtype, device: torch.device, cache_manager: MemoryManager, vocab_size: int
     ):
         input_lengths = []
         all_input_ids = []
@@ -112,7 +113,7 @@ class InferBatch:
             nopad_b_seq_len=nopad_b_seq_len,
             out_token_id_counts=out_token_id_counts,
             sampling_param_list=sampling_param_list,
-            mem_manager=mem_manager,
+            cache_manager=cache_manager,
         )
 
     @torch.no_grad()
@@ -127,7 +128,7 @@ class InferBatch:
                 ]
             )
         remove_index = torch.cat(remove_index, dim=-1)
-        self.mem_manager.free(remove_index)
+        self.cache_manager.free(remove_index)
         return
 
     @torch.no_grad()
@@ -168,7 +169,7 @@ class InferBatch:
                 )
         remove_index = torch.cat(remove_index, dim=-1)
 
-        self.mem_manager.free(remove_index)
+        self.cache_manager.free(remove_index)
 
         nopad_max_len_in_batch = 0
         for i, request_id in enumerate(request_ids):
@@ -207,7 +208,7 @@ class InferBatch:
             nopad_b_seq_len=nopad_b_seq_len,
             out_token_id_counts=[self.out_token_id_counts[_i] for _i in indices],
             sampling_param_list=[self.sampling_param_list[_i] for _i in indices],
-            mem_manager=self.mem_manager,
+            cache_manager=self.cache_manager,
         )
 
     @classmethod
@@ -274,7 +275,7 @@ class InferBatch:
             nopad_b_seq_len=nopad_b_seq_len,
             out_token_id_counts=out_token_id_counts,
             sampling_param_list=sampling_param_list,
-            mem_manager=batches[0].mem_manager,
+            cache_manager=batches[0].cache_manager,
         )
 
     def __len__(self):

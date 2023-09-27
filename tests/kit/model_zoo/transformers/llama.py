@@ -27,8 +27,10 @@ if HAS_LLAMA:
         # tokenized_input = tokenizer(input, return_tensors='pt').to('cuda')
         # -----------------------------------
 
-        input_ids = torch.Tensor([[1, 15043, 29892, 590, 11203, 338, 274, 1082]]).long()
-        attention_mask = torch.Tensor([[1, 1, 1, 1, 1, 1, 1, 1]]).long()
+        input_ids = torch.Tensor(
+            [[1, 15043, 29892, 590, 11203, 338, 274, 1082], [1, 15043, 29892, 590, 11203, 338, 274, 1082]]
+        ).long()
+        attention_mask = torch.Tensor([[1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1]]).long()
         return dict(input_ids=input_ids, attention_mask=attention_mask)
 
     # label is needed for casual lm
@@ -47,10 +49,10 @@ if HAS_LLAMA:
     loss_fn_for_seq_classification = lambda output: output.logits.mean()
 
     config = LlamaConfig(
-        num_hidden_layers=4,
-        hidden_size=128,
+        num_hidden_layers=8,
+        hidden_size=4096,
         intermediate_size=256,
-        num_attention_heads=4,
+        num_attention_heads=32,
         max_position_embeddings=128,
         num_labels=16,
     )

@@ -7,12 +7,12 @@ from .io_struct import Batch, Req
 
 
 class ReqQueue:
-    def __init__(self, max_total_tokens, batch_max_tokens, running_max_req_size) -> None:
+    def __init__(self, max_total_tokens, batch_max_tokens, running_max_req_size, waiting_req_list=[]) -> None:
         self.max_total_tokens = max_total_tokens
         assert batch_max_tokens is not None
         self.batch_max_tokens = batch_max_tokens
         self.running_max_req_size = running_max_req_size
-        self.waiting_req_list: List[Req] = []
+        self.waiting_req_list: List[Req] = waiting_req_list
 
     def append(self, req):
         self.waiting_req_list.append(req)
@@ -39,7 +39,8 @@ class ReqQueue:
         size_array = np.arange(1, len(self.cache_len_list) + 1, 1)
 
         need_max_token_num = (left_out_len_array * size_array + cum_run_len_array).max()
-        if need_max_token_num < self.max_total_tokens and len(self.cache_len_list) <= self.running_max_req_size:
+        # NOTE: change here < to <=
+        if need_max_token_num <= self.max_total_tokens and len(self.cache_len_list) <= self.running_max_req_size:
             return True
         else:
             return False
@@ -47,16 +48,16 @@ class ReqQueue:
     def generate_new_batch(self, current_batch: Batch):
         if current_batch is not None and len(current_batch.reqs) >= self.running_max_req_size:
             return None
-
         self._init_cache_list(current_batch)
         can_run_list = []
         new_batch_total_tokens = 0
         aborted_count = 0
         for req in self.waiting_req_list:
+            flag = self._can_add_new_req(req)
             if req.aborted:
                 aborted_count += 1
                 continue
-            if self._can_add_new_req(req) and new_batch_total_tokens + req.input_len <= self.batch_max_tokens:
+            if flag and new_batch_total_tokens + req.input_len <= self.batch_max_tokens:
                 can_run_list.append(req)
                 new_batch_total_tokens += req.input_len
             else:

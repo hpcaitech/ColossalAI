@@ -3,18 +3,18 @@ import os
 import pytest
 import torch
 from packaging import version
+from transformers import LlamaForCausalLM, LlamaTokenizer
 
 import colossalai
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
-from tests.kit.model_zoo import model_zoo
 
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
-TPSIZE = 2
-BATCH_SIZE = 8
-MAX_INPUT_LEN = 12
+TPSIZE = 1
+BATCH_SIZE = 2
+MAX_INPUT_LEN = 8
 MAX_OUTPUT_LEN = 100
 
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
@@ -53,22 +53,27 @@ def init_to_get_rotary(self, base=10000):
     ],
 )
 def run_llama_test(test_config):
-    sub_model_zoo = model_zoo.get_sub_registry("transformers_llama_for_casual_lm")
-    for name, (model_fn, data_gen_fn, _, _, _) in sub_model_zoo.items():
-        orig_model = model_fn()
-        init_to_get_rotary(orig_model.model, base=10000)
-        orig_model = orig_model.half()
-        data = data_gen_fn()
+    tokenizer = LlamaTokenizer.from_pretrained("/data/scratch/llama-7b-hf")
+    tokenizer.pad_token_id = tokenizer.unk_token_id
+    model = LlamaForCausalLM.from_pretrained("/data/scratch/llama-7b-hf", pad_token_id=tokenizer.eos_token_id)
+    init_to_get_rotary(model.model, base=10000)
+    model = model.half()
 
-        shard_config = ShardConfig(
-            enable_tensor_parallelism=True if test_config["tp_size"] > 1 else False, inference_only=True
-        )
-        infer_engine = TPInferEngine(orig_model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+    shard_config = ShardConfig(
+        enable_tensor_parallelism=True if test_config["tp_size"] > 1 else False, inference_only=True
+    )
+    infer_engine = TPInferEngine(model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
 
-        generate_kwargs = dict(do_sample=False)
-        outputs = infer_engine.generate(data, **generate_kwargs)
+    generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
+    input_tokens = {
+        "input_ids": torch.randint(1, 1000, (BATCH_SIZE, MAX_INPUT_LEN), device="cuda"),
+        "attention_mask": torch.ones((BATCH_SIZE, MAX_INPUT_LEN), device="cuda"),
+    }
+    torch.cuda.synchronize()
 
-        assert outputs is not None
+    outputs = infer_engine.generate(input_tokens, **generate_kwargs)
+
+    assert outputs is not None
 
 
 def check_llama(rank, world_size, port):

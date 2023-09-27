@@ -2,7 +2,6 @@ from typing import Any, Callable, List, Optional, Union
 
 import torch
 import torch.nn as nn
-from dynamic_batching.infer_batch import InferBatch  # may intergrate with batchinfer state
 from transformers import BloomForCausalLM, LlamaForCausalLM
 from transformers.generation import GenerationConfig
 from transformers.generation.stopping_criteria import StoppingCriteriaList
@@ -13,6 +12,8 @@ from colossalai.shardformer.policies.auto_policy import get_autopolicy
 
 from .batch_infer_state import BatchInferState
 from .kvcache_manager import MemoryManager
+
+# from dynamic_batching.infer_batch import InferBatch
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
@@ -276,7 +277,7 @@ class TPInferEngine:
             attention_mask = [attention_mask] if attention_mask is not None else attention_mask
 
         batch_size = len(input_ids_list)
-
+        print(input_ids_list.shape)
         seq_start_indexes = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
         seq_lengths = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
         start_index = 0
@@ -310,6 +311,7 @@ class TPInferEngine:
         batch_infer_state.past_key_values_len = 0
         batch_infer_state.is_context_stage = True
         batch_infer_state.set_cache_manager(self.cache_manager)
+
         return batch_infer_state
 
     @torch.no_grad()
@@ -340,6 +342,7 @@ class TPInferEngine:
         elif isinstance(model, BloomForCausalLM):
             model = self.model.transformer
         setattr(model, "infer_state", batch_infer_state)
+        print(model.infer_state)
 
         outputs = self.model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 
@@ -373,19 +376,41 @@ class TPInferEngine:
         infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device=device)
         infer_state.seq_len += 1
 
+    @torch.no_grad()
     def forward(self, batch_id, is_prefill):
-        batch: InferBatch = self.cache.pop(batch_id)
-        kwargs = {
+        batch = self.cache.pop(batch_id)
+        print(batch)
+        all_input_ids = torch.tensor(batch.all_input_ids).cuda()
+        print(all_input_ids)
+        infer_state = self.prepare_batch_state(all_input_ids)
+
+        batch_args = {
             "batch_size": len(batch),
-            "total_token_num": batch.nopad_total_token_num,
             "max_len_in_batch": batch.nopad_max_len_in_batch,
-            "input_ids": batch.input_ids,
-            "b_loc": batch.nopad_b_loc,
-            "b_start_loc": batch.nopad_b_start_loc,
-            "b_seq_len": batch.nopad_b_seq_len,
-            "is_prefill": is_prefill,
+            "block_loc": batch.nopad_b_loc,
+            "start_loc": batch.nopad_b_start_loc,
+            "seq_len": batch.nopad_b_seq_len,
+            "cache_manager": batch.cache_manager,
+            "is_context_stage": is_prefill,
         }
-        logits = self.model.forward(**kwargs)
+
+        BatchInferState(**batch_args)
+        model = self.model
+        if isinstance(model, LlamaForCausalLM):
+            model = self.model.model
+        elif isinstance(model, BloomForCausalLM):
+            model = self.model.transformer
+        setattr(model, "infer_state", infer_state)
+        print(model.infer_state)
+
+        position_ids = torch.arange(0, 5, dtype=torch.long, device="cuda")
+        position_ids = position_ids.repeat(2, 1)
+        self.generate(input_tokens=all_input_ids)
+        logits = self.model.forward(input_ids=all_input_ids, position_ids=position_ids)
+
+        print(logits)
+
+        print("yeah")
         next_token_ids, next_token_probs = sample(logits, batch)
         next_token_ids = next_token_ids.detach().cpu().numpy()
         next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
@@ -417,9 +442,11 @@ class TPInferEngine:
         self.cache[batch.batch_id] = batch
         return output_dict
 
+    @torch.no_grad()
     def _prefill_batch(self, batch_id):
         return self.forward(batch_id, is_prefill=True)
 
+    @torch.no_grad()
     def _decode_batch(self, batch_id):
         return self.forward(batch_id, is_prefill=False)
 
