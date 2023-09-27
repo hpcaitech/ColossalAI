@@ -1,16 +1,8 @@
-import math
-import time
-
-import numpy as np
 import pytest
 import torch
-import torch.nn as nn
-import transformers
 from packaging import version
 
 try:
-    import triton
-    import triton.language as tl
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
@@ -22,6 +14,7 @@ try:
     from exllama_kernels import prepare_buffers, set_tuning_params
 
     from colossalai.inference.quant.gptq import CaiQuantLinear
+
     HAS_AUTO_GPTQ = True
 except:
     HAS_AUTO_GPTQ = False
@@ -32,13 +25,14 @@ import warnings
 HAS_GPTQ_CUDA = False
 try:
     from colossalai.kernel.op_builder.gptq import GPTQBuilder
+
     gptq_cuda = GPTQBuilder().load()
     HAS_GPTQ_CUDA = True
 except ImportError:
-    warnings.warn('CUDA gptq is not installed')
+    warnings.warn("CUDA gptq is not installed")
     HAS_GPTQ_CUDA = False
 
-TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.4')
+TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 
 max_inner_outer_dim = 1
 max_input_len = 1
@@ -64,9 +58,9 @@ def init_buffer(cai_linear, use_act_order=False):
         max_input_len = 4096
     # The temp_state buffer is required to reorder X in the act-order case.
     # The temp_dq buffer is required to dequantize weights when using cuBLAS, typically for the prefill.
-    gptq_temp_state_buffer = torch.zeros((max_input_len, max_inner_outer_dim),
-                                         dtype=torch.float16,
-                                         device=torch.cuda.current_device())
+    gptq_temp_state_buffer = torch.zeros(
+        (max_input_len, max_inner_outer_dim), dtype=torch.float16, device=torch.cuda.current_device()
+    )
     gptq_temp_dq_buffer = torch.zeros((1, max_dq_buffer_size), dtype=torch.float16, device=torch.cuda.current_device())
 
     gptq_cuda.prepare_buffers(torch.device(torch.cuda.current_device()), gptq_temp_state_buffer, gptq_temp_dq_buffer)
@@ -77,10 +71,11 @@ def init_buffer(cai_linear, use_act_order=False):
     gptq_cuda.set_tuning_params(matmul_recons_thd, matmul_fused_remap, matmul_no_half2)
 
 
-@pytest.mark.skipif(not TRITON_CUDA_SUPPORT or not HAS_TRITON or not HAS_AUTO_GPTQ,
-                    reason="triton requires cuda version to be higher than 11.4 or not install auto-gptq")
+@pytest.mark.skipif(
+    not TRITON_CUDA_SUPPORT or not HAS_TRITON or not HAS_AUTO_GPTQ,
+    reason="triton requires cuda version to be higher than 11.4 or not install auto-gptq",
+)
 def test_gptq_linear():
-
     infeature = 1024
     outfeature = 1024
     group_size = 128
@@ -120,7 +115,7 @@ def test_gptq_linear():
     max_input_len = 2048
     buffers = {
         "temp_state": torch.zeros((max_input_len, max_inner_outer_dim), dtype=torch.float16, device=device),
-        "temp_dq": torch.zeros((1, max_dq_buffer_size), dtype=torch.float16, device=device)
+        "temp_dq": torch.zeros((1, max_dq_buffer_size), dtype=torch.float16, device=device),
     }
 
     prepare_buffers(device, buffers["temp_state"], buffers["temp_dq"])
@@ -146,5 +141,4 @@ def test_gptq_linear():
 
 
 if __name__ == "__main__":
-
     test_gptq_linear()
