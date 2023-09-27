@@ -13,29 +13,11 @@ from ts.torch_handler.base_handler import BaseHandler
 import colossalai
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
 from colossalai.shardformer import ShardConfig
+from colossalai.testing import free_port
 
 logger = logging.getLogger(__name__)
 logger.info("Transformers version %s", transformers.__version__)
 logger.info("ColossalAI version %s", colossalai.__version__)
-
-
-# from colossalai.testing
-# assins a random port, for demo use only
-def free_port() -> int:
-    """Get a free port on localhost.
-
-    Returns:
-        int: A free port on localhost.
-    """
-    while True:
-        port = random.randint(20000, 65000)
-        try:
-            with socket.socket() as sock:
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                sock.bind(("localhost", port))
-                return port
-        except OSError:
-            continue
 
 
 class ColossalInferenceHandler(BaseHandler, ABC):
@@ -68,34 +50,35 @@ class ColossalInferenceHandler(BaseHandler, ABC):
 
         # Inference configs are collected together in model yaml config for handler use
         inference_config = ctx.model_yaml_config["handler"]
-        logger.info(inference_config)
-        inference_config["model_type"]
-        self.tp_size = inference_config.get("tp_size", 1)
-        self.max_batch_size = inference_config.get("max_batch_size", 4)
-        self.max_input_len = inference_config.get("max_input_len", 1024)
-        self.max_output_len = inference_config.get("max_output_len", 128)
+        self.inference_config = inference_config
+        logger.info(self.inference_config)
+        
+        self.tp_size = self.inference_config.get("tp_size", 1)
+        self.max_batch_size = self.inference_config.get("max_batch_size", 4)
+        self.max_input_len = self.inference_config.get("max_input_len", 1024)
+        self.max_output_len = self.inference_config.get("max_output_len", 128)
 
         self.device = torch.device("cuda:" + str(gpu_id) if torch.cuda.is_available() and gpu_id >= 0 else "cpu")
         logger.info(f"Device set to {self.device}")
         logger.info(f"torch.cuda.device_count() {torch.cuda.device_count()}")
 
-        logger.info(f"Unpacking from model_dir {model_dir}")
+        # Unpacking from model_dir 
         model_dir_path = os.path.join(model_dir, "model")
         with zipfile.ZipFile(model_dir + "/model.zip", "r") as zip_ref:
             zip_ref.extractall(model_dir_path)
-        logger.info(f"Loading {inference_config['model_type']} pretrain model and tokenizer")
-        if inference_config["model_type"] == "bloom":
+        logger.info(f"Loading {self.inference_config['model_type']} pretrain model and tokenizer")
+        if self.inference_config["model_type"] == "bloom":
             self.model = BloomForCausalLM.from_pretrained(
                 model_dir_path,
             )
             self.tokenizer = BloomTokenizerFast.from_pretrained(model_dir_path, return_tensors="pt")
-        elif inference_config["model_type"] == "llama":
+        elif self.inference_config["model_type"] == "llama":
             self.model = LlamaForCausalLM.from_pretrained(
                 model_dir_path,
             )
             self.tokenizer = AutoTokenizer.from_pretrained(model_dir_path, return_tensors="pt")
         else:
-            logger.warning(f"Model type {inference_config['model_type']} not supported yet.")
+            logger.warning(f"Model type {self.inference_config['model_type']} not supported yet.")
 
         logger.info("Transformer model from path %s loaded successfully", model_dir)
 
@@ -181,13 +164,15 @@ class ColossalInferenceHandler(BaseHandler, ABC):
         input_ids_batch, attention_mask_batch = input_batch
         inferences = []
 
-        # mode: text_generation
+        do_sample = self.inference_config.get("do_sample", True)
+        top_p = self.inference_config.get("top_p", 0.95 if do_sample else 1.0 )
+        top_k = self.inference_config.get("top_k", 60 if do_sample else 50)
         input_ids_batch = input_ids_batch.to(self.device)
         outputs = self.infer_engine.generate(
             dict(input_ids=input_ids_batch, attention_mask=attention_mask_batch),
-            do_sample=True,
-            top_p=0.95,
-            top_k=60,
+            do_sample=do_sample,
+            top_p=top_p,
+            top_k=top_k,
         )
 
         for i, _ in enumerate(outputs):
