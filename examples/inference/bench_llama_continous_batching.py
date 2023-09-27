@@ -64,7 +64,7 @@ def run_llama_test(args):
     else:
         input_tokens = [np.random.randint(1, 1000, [max_input_len]).tolist() for _ in range(max_batch_size)]
 
-    iters = 10
+    iters = 5
     times = []
 
     if test_mode == "colossalai":
@@ -90,38 +90,27 @@ def run_llama_test(args):
             )
     elif test_mode == "vllm":
         infer_engine = LLM(model=llama_model_path, tokenizer=tokenizer)
+        sampling_params = SamplingParams(
+            n=1,
+            temperature=1.0,
+            top_p=1.0,
+            use_beam_search=False,
+            ignore_eos=True,
+            max_tokens=max_output_len,
+        )
 
     for i in range(iters):
         torch.cuda.synchronize()
         start = time.time()
         if test_mode == "colossalai":
-            outputs = infer_engine.generate(prompt_token_ids=input_tokens, **generate_kwargs)
+            outputs = infer_engine.generate(prompt_token_ids=input_tokens)
         elif test_mode == "vllm":
-            sampling_params = SamplingParams(temperature=0.0, max_tokens=max_output_len)
             outputs = infer_engine.generate(prompt_token_ids=input_tokens, sampling_params=sampling_params)
         torch.cuda.synchronize()
         end = time.time()
-        if test_mode == "colossalai" and not test_continous_batching:
-            out_len = outputs.shape[1]
-        else:
-            # out_len = len(outputs[0].outputs[0].token_ids)
-            out_len = 1024 + 128
-        print("generation time {} s".format(str(end - start)))
-        times.append((end - start) / (out_len - max_input_len))
+        times.append((end - start) / (max_output_len))
 
-    print("outputs, ", len(outputs))
     print_perf_stats(times, model_config, max_batch_size)
-
-    # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
-    #     with record_function("model_inference"):
-    #         torch.cuda.synchronize()
-    #         if test_mode == "colossalai":
-    #             outputs = infer_engine.generate(prompt_token_ids=input_tokens, **generate_kwargs)
-    #         elif test_mode == "vllm":
-    #             sampling_params = SamplingParams(temperature=0.0, max_tokens=max_output_len)
-    #             outputs = infer_engine.generate(prompt_token_ids=input_tokens, sampling_params=sampling_params)
-    #         torch.cuda.synchronize()
-    # print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
 
 
 def check_llama(rank, world_size, port, args):
