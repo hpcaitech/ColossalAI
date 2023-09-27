@@ -1,4 +1,5 @@
 import argparse
+import warnings
 
 import torch
 import torch.distributed as dist
@@ -33,6 +34,10 @@ def train(args):
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
     # configure model
+    if args.lora_rank > 0:
+        warnings.warn("Lora is not supported yet.")
+        args.lora_rank = 0
+
     with strategy.model_init_context():
         if args.model == "bloom":
             model = BLOOMRM(pretrained=args.pretrain, lora_rank=args.lora_rank)
@@ -165,7 +170,8 @@ def train(args):
         LORA_MANAGER.merge_weights = True
         model.eval()
     # save model checkpoint after fitting on only rank0
-    strategy.save_model(model, args.save_path, only_rank0=True)
+    state_dict = model.state_dict()
+    torch.save(state_dict, args.save_path)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(
