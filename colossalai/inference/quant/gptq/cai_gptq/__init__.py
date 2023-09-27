@@ -3,9 +3,10 @@ import warnings
 HAS_AUTO_GPTQ = False
 try:
     import auto_gptq
+
     HAS_AUTO_GPTQ = True
 except ImportError:
-    warnings.warn('please install auto-gptq from https://github.com/PanQiWei/AutoGPTQ')
+    warnings.warn("please install auto-gptq from https://github.com/PanQiWei/AutoGPTQ")
     HAS_AUTO_GPTQ = False
 
 if HAS_AUTO_GPTQ:
