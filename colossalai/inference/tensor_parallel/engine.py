@@ -1,8 +1,8 @@
-from typing import Any, Callable, Dict, List, Optional, Union
+import warnings
+from typing import Any, Callable, List, Optional, Union
 
 import torch
 import torch.nn as nn
-import warnings
 from transformers import (
     AutoConfig,
     AutoTokenizer,
@@ -15,13 +15,14 @@ from transformers import (
 from transformers.generation import GenerationConfig
 from transformers.generation.stopping_criteria import StoppingCriteriaList
 from transformers.tokenization_utils_base import BatchEncoding
+
 try:
     from vllm import LLM
     from vllm.outputs import RequestOutput
     from vllm.sampling_params import SamplingParams
-    
+
     USE_CONTINOUS_BATCHING = True
-    
+
 except ImportError:
     warnings.warn("vllm is not installed, continuous batching will not be supported.")
     USE_CONTINOUS_BATCHING = False
@@ -32,7 +33,7 @@ from colossalai.shardformer.policies.auto_policy import get_autopolicy
 
 from .batch_infer_state import BatchInferState
 from .kvcache_manager import MemoryManager
-from .utils import init_to_get_rotary, replace_page_attention
+from .utils import init_to_get_rotary
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
@@ -40,7 +41,7 @@ _supported_models = {
     "LlamaForCausalLM": LlamaForCausalLM,
     "LLaMAForCausalLM": LlamaForCausalLM,
     "LlamaModel": LlamaForCausalLM,
-    "BloomForCausalLM": BloomForCausalLM
+    "BloomForCausalLM": BloomForCausalLM,
 }
 
 
@@ -69,22 +70,21 @@ class TPInferEngine:
         >>> outputs = infer_engine.generate(input_ids, **generate_kwargs)
     """
 
-    def __init__(self,
-                 model: Union[str, nn.Module],
-                 shard_config: ShardConfig = None,
-                 max_batch_size: int = 8,
-                 max_input_len: int = 16,
-                 max_output_len: int = 8,
-                 trust_remote_code: bool = False,
-                 use_continous_batching: bool = False,
-                 tokenizer: Optional[Union[str, PreTrainedTokenizer, PreTrainedTokenizerFast]] = None,
-                 dtype: torch.dtype = torch.float16,
-                 device: str = 'cuda') -> None:
-
+    def __init__(
+        self,
+        model: Union[str, nn.Module],
+        shard_config: ShardConfig = None,
+        max_batch_size: int = 8,
+        max_input_len: int = 16,
+        max_output_len: int = 8,
+        trust_remote_code: bool = False,
+        use_continous_batching: bool = False,
+        tokenizer: Optional[Union[str, PreTrainedTokenizer, PreTrainedTokenizerFast]] = None,
+        dtype: torch.dtype = torch.float16,
+        device: str = "cuda",
+    ) -> None:
         if tokenizer is None:
-            print("model: ", model)
-            assert isinstance(model, str), \
-                "when tokenizer is None, model must be string."
+            assert isinstance(model, str), "when tokenizer is None, model must be string."
             tokenizer = model
 
         self.tp_size = 1
@@ -94,13 +94,13 @@ class TPInferEngine:
             self.tp_size = shard_config.tensor_parallel_size
 
         if self.use_continous_batching:
-            assert isinstance(model, str) and isinstance(tokenizer, str), \
-                "when using continous_batching, model and tokenizer must be string."
+            assert isinstance(model, str) and isinstance(
+                tokenizer, str), "when using continous_batching, model and tokenizer must be string."
             self.llm_engine = LLM(model=model,
                                   tokenizer=tokenizer,
-                                  trust_remote_code=trust_remote_code,
+                                  trust_remote_code=True,
                                   tensor_parallel_size=self.tp_size)
-            #TODO We will replace multiple models' attention forward with shardformer in vllm to achieve multi-stream optimization later.
+            # TODO We will replace multiple models' attention forward with shardformer in vllm to achieve multi-stream optimization later.
             # kv_cache_stream = torch.cuda.Stream()
             # self.model = replace_page_attention(self.llm_engine.llm_engine.workers[0].model, kv_cache_stream)
             self.model = self.llm_engine.llm_engine.workers[0].model
@@ -129,11 +129,10 @@ class TPInferEngine:
         self.layer_num = self.model.config.num_hidden_layers
 
         self.cache_manager = None
-        
+
         self._optimize_model()
 
     def _get_model_and_tokenizer(self, model: str, tokenizer: str, trust_remote_code: bool) -> nn.Module:
-
         if isinstance(model, nn.Module) and isinstance(tokenizer, (PreTrainedTokenizer, PreTrainedTokenizerFast)):
             return model, tokenizer
 
@@ -142,7 +141,7 @@ class TPInferEngine:
         try:
             config = AutoConfig.from_pretrained(model, trust_remote_code=trust_remote_code)
         except ValueError as e:
-            if (not trust_remote_code and "requires you to execute the configuration file" in str(e)):
+            if not trust_remote_code and "requires you to execute the configuration file" in str(e):
                 err_msg = ("Failed to load the model config. If the model is a custom "
                            "model not yet available in the HuggingFace transformers "
                            "library, consider setting `trust_remote_code=True` in LLM "
@@ -186,7 +185,7 @@ class TPInferEngine:
             self._shard_model_by(shardformer)
 
     def _prepare_with_shard_config(self, shard_config: Optional[ShardConfig] = None) -> ShardConfig:
-        """ Prepare the engine with a given ShardConfig.
+        """Prepare the engine with a given ShardConfig.
 
         Args:
             shard_config (ShardConfig): shard config given to specify settings of the engine.
@@ -211,9 +210,9 @@ class TPInferEngine:
         return shard_config
 
     def _shard_model_by(self, shardformer: ShardFormer) -> None:
-        """ Shard original model by the given ShardFormer and store the sharded model. """
-        assert self.tp_size == shardformer.shard_config.tensor_parallel_size, \
-            "Discrepancy between the tp size of TPInferEngine and the tp size of shard config"
+        """Shard original model by the given ShardFormer and store the sharded model."""
+        assert (self.tp_size == shardformer.shard_config.tensor_parallel_size
+               ), "Discrepancy between the tp size of TPInferEngine and the tp size of shard config"
         model_name = self.model.__class__.__name__
         assert model_name in self.supported_models, f"Unsupported model cls {model_name} for TP inference."
         if model_name == "LlamaForCausalLM":
@@ -226,10 +225,12 @@ class TPInferEngine:
     def supported_models(self) -> List[str]:
         return list(_supported_models.keys())
 
-    def generate(self,
-                 prompts: Optional[Union[str, List[str]]] = None,
-                 prompt_token_ids: Optional[Union[BatchEncoding, dict, list, torch.Tensor]] = None,
-                 **generate_kwargs) -> Union[List[RequestOutput], torch.Tensor]:
+    def generate(
+        self,
+        prompts: Optional[Union[str, List[str]]] = None,
+        prompt_token_ids: Optional[Union[BatchEncoding, dict, list, torch.Tensor]] = None,
+        **generate_kwargs,
+    ) -> Union[List[RequestOutput], torch.Tensor]:
         """Generate token sequence.
 
         Args:
@@ -251,7 +252,7 @@ class TPInferEngine:
             prompts = [prompts]
         if prompts is not None and prompt_token_ids is not None:
             if isinstance(prompt_token_ids, (BatchEncoding, dict)):
-                prompt_token_len = len(prompt_token_ids['input_ids'])
+                prompt_token_len = len(prompt_token_ids["input_ids"])
             elif isinstance(prompt_token_ids, torch.Tensor):
                 prompt_token_len = prompt_token_ids.shape[0]
             else:
@@ -261,8 +262,8 @@ class TPInferEngine:
                                  "must be the same.")
 
         if self.use_continous_batching:
-            if not isinstance(prompt_token_ids, list):
-                raise TypeError(f"prompt_token_ids type must be list, when using continous batching.")
+            if not isinstance(prompt_token_ids, list) and prompt_token_ids:
+                raise TypeError(f"prompt_token_ids type must be list or None, when using continous batching.")
             sampling_params = SamplingParams(temperature=0.0, max_tokens=self.max_output_len)
             return self.llm_engine.generate(prompts=prompts,
                                             prompt_token_ids=prompt_token_ids,
@@ -272,16 +273,16 @@ class TPInferEngine:
             input_tokens = self.tokenizer.batch_encode_plus(prompts, return_tensors="pt", padding=True)
         else:
             input_tokens = prompt_token_ids
-            
+
         if isinstance(input_tokens, list):
-            input_tokens = torch.Tensor(input_tokens).cuda()
+            input_tokens = torch.Tensor(input_tokens).long().cuda()
 
         if isinstance(input_tokens, torch.Tensor):
             input_tokens = dict(input_ids=input_tokens, attention_mask=torch.ones_like(input_tokens, dtype=torch.bool))
         for t in input_tokens:
             if torch.is_tensor(input_tokens[t]):
                 input_tokens[t] = input_tokens[t].cuda()
-        if 'max_new_tokens' not in generate_kwargs:
+        if "max_new_tokens" not in generate_kwargs:
             generate_kwargs.update(max_new_tokens=self.max_output_len)
 
         return self._generate_by_set_infer_state(input_tokens, **generate_kwargs)
@@ -310,8 +311,8 @@ class TPInferEngine:
         attention_mask = None
 
         if isinstance(inputs, (BatchEncoding, dict)):
-            input_ids_list = inputs['input_ids']
-            attention_mask = inputs['attention_mask']
+            input_ids_list = inputs["input_ids"]
+            attention_mask = inputs["attention_mask"]
         else:
             input_ids_list = inputs
         if isinstance(input_ids_list[0], int):    # for a single input
@@ -320,8 +321,8 @@ class TPInferEngine:
 
         batch_size = len(input_ids_list)
 
-        seq_start_indexes = torch.zeros(batch_size, dtype=torch.int32, device='cuda')
-        seq_lengths = torch.zeros(batch_size, dtype=torch.int32, device='cuda')
+        seq_start_indexes = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
+        seq_lengths = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
         start_index = 0
 
         max_len_in_batch = -1
@@ -344,10 +345,10 @@ class TPInferEngine:
                 seq_start_indexes[i] = start_index
                 start_index += curr_seq_len
                 max_len_in_batch = curr_seq_len if curr_seq_len > max_len_in_batch else max_len_in_batch
-        block_loc = torch.empty((batch_size, self.max_input_len + self.max_output_len), dtype=torch.long, device='cuda')
+        block_loc = torch.empty((batch_size, self.max_input_len + self.max_output_len), dtype=torch.long, device="cuda")
         batch_infer_state = BatchInferState(batch_size, max_len_in_batch)
-        batch_infer_state.seq_len = seq_lengths.to('cuda')
-        batch_infer_state.start_loc = seq_start_indexes.to('cuda')
+        batch_infer_state.seq_len = seq_lengths.to("cuda")
+        batch_infer_state.start_loc = seq_start_indexes.to("cuda")
         batch_infer_state.block_loc = block_loc
         batch_infer_state.decode_layer_id = 0
         batch_infer_state.past_key_values_len = 0
@@ -382,7 +383,7 @@ class TPInferEngine:
             model = self.model.model
         elif isinstance(model, BloomForCausalLM):
             model = self.model.transformer
-        setattr(model, 'infer_state', batch_infer_state)
+        setattr(model, "infer_state", batch_infer_state)
 
         outputs = self.model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 
@@ -396,14 +397,15 @@ class TPInferEngine:
     #      as an arg into model.forward.
     #      It requires rewriting model generate and replacing model forward.
     @torch.no_grad()
-    def _generate_by_pass_infer_state(self,
-                                      input_tokens,
-                                      max_out_length: int,
-                                      generation_config: Optional[GenerationConfig] = None,
-                                      stopping_criteria: Optional[StoppingCriteriaList] = None,
-                                      prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
-                                      **model_kwargs) -> torch.Tensor:
-
+    def _generate_by_pass_infer_state(
+        self,
+        input_tokens,
+        max_out_length: int,
+        generation_config: Optional[GenerationConfig] = None,
+        stopping_criteria: Optional[StoppingCriteriaList] = None,
+        prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
+        **model_kwargs,
+    ) -> torch.Tensor:
         raise NotImplementedError("generate by passing BatchInferState is not implemented.")
 
     # might want to use in rewritten generate method: use after model.forward
