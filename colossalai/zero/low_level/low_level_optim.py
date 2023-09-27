@@ -216,15 +216,18 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 else:
                     padding_param = param.data.view(-1)
                 splited_params = padding_param.split(padding_param.numel() // self._world_size)
-
+                
                 # use fp32 when master_weights is True
                 if self._master_weights is True:
-                    splited_param_current_rank = splited_params[self._local_rank].detach().float().to(device)
+                    splited_param_current_rank = splited_params[self._local_rank].detach().float().to(device)  
                 else:
-                    splited_param_current_rank = splited_params[self._local_rank].to(device)
+                    splited_param_current_rank = splited_params[self._local_rank] 
+                
                 params_current_rank.append(splited_param_current_rank)
+                # should also link the splited_param to param when master_weights is False
+                # or the grad cannot be found in step() method
                 self._param_store.link_master_and_working_param(splited_param_current_rank, param)
-
+                
         return params_current_rank
 
     ###########################
@@ -432,7 +435,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 # it is not 'really' working, e.g. the droped layer
                 # else the splited grad should be attached to the splited param
                 grads = self._grad_store.get_partitioned_gradients_by_param_id(group_id, id(working_param))
-
                 if len(grads) > 0:
                     real_working_params[group_id].append(working_param)
                     grad = grads[grad_index].to(splited_param.dtype).to(splited_param.device)
@@ -467,13 +469,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for group_id in range(self.num_param_groups):
             master_working_param = self.optim.param_groups[group_id]["params"]
             for idx, splited_param in enumerate(master_working_param):
-                working_param = real_working_params[group_id][idx]          
+                working_param = real_working_params[group_id][idx]
                 all_splited_param = [
                     torch.zeros(splited_param.shape, device="cuda", dtype=dtype) for _ in range(self._world_size)
                 ]
                 dist.all_gather(all_splited_param, splited_param.cuda().to(dtype), group=self.dp_pg)
                 working_param.data.copy_(flatten(all_splited_param)[: working_param.numel()].reshape_as(working_param))
-        
             self.optim.param_groups[group_id]["params"] = self._master_param_groups_of_current_rank[group_id]
 
     #############################
