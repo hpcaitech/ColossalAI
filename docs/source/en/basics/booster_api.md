@@ -32,6 +32,8 @@ Plugin is an important component that manages parallel configuration (eg: The ge
 
 More details about usages of each plugin can be found in chapter [Booster Plugins](./booster_plugins.md).
 
+Some plugins support lazy initialization, which can be used to save memory when initializating large models. For more details, please see [Lazy Initialization](../features/lazy_init.md).
+
 ### API of booster
 
 {{ autodoc:colossalai.booster.Booster }}
