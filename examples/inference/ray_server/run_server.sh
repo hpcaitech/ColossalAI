@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-python api_server_async_engine.py \
+python async_server.py \
        --model decapoda-research/llama-7b-hf \
        --tokenizer hf-internal-testing/llama-tokenizer \
        -tp 4 \

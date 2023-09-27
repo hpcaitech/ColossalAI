@@ -1,6 +1,6 @@
 prompt=$1
 echo $prompt
-python api_client.py \
+python client.py \
        --host localhost \
        --port 8000 \
        --n 4 \
