@@ -16,7 +16,6 @@ from colossalai.testing.random import seed_all
 
 
 class MlpModel(nn.Module):
-
     def __init__(self):
         super(MlpModel, self).__init__()
         self.linear1 = nn.Linear(4, 8)
@@ -28,17 +27,15 @@ class MlpModel(nn.Module):
         return x
 
 
-def pp_linear_fwd(forward,
-                  data: torch.Tensor = None,
-                  input_obj: torch.Tensor = None,
-                  stage_mgr: PipelineStageManager = None):
-
+def pp_linear_fwd(
+    forward, data: torch.Tensor = None, input_obj: torch.Tensor = None, stage_mgr: PipelineStageManager = None
+):
     if stage_mgr.is_first_stage():
-        return {'input_obj': forward(data)}
+        return {"input_obj": forward(data)}
     elif stage_mgr.is_last_stage():
         return forward(input_obj)
     else:
-        return {'input_obj': forward(input_obj)}
+        return {"input_obj": forward(input_obj)}
 
 
 def examine_pp():
@@ -61,7 +58,7 @@ def examine_pp():
     DP_DIM, PP_DIM, TP_DIM = 0, 1, 2
     pg_mesh = ProcessGroupMesh(1, world_size, 1)
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
-    schedule = OneForwardOneBackwardSchedule(NUM_MICRO_BATCHS, stage_manager)
+    schedule = OneForwardOneBackwardSchedule(stage_manager, num_microbatches=NUM_MICRO_BATCHS)
 
     for idx, (_, sub_model) in enumerate(pp_model.named_children()):
         if idx % (world_size) == local_rank:
@@ -89,16 +86,13 @@ def examine_pp():
     torch_loss = criterion(torch_output, _)
     torch_loss.backward()
 
-    pp_ret = schedule.forward_backward_step(sharded_model,
-                                            pp_optimizer,
-                                            iter(input_list),
-                                            criterion,
-                                            return_loss=True,
-                                            return_outputs=True)
+    pp_ret = schedule.forward_backward_step(
+        sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True, return_outputs=True
+    )
 
     # check loss
     if stage_manager.is_last_stage():
-        assert torch.allclose(torch_loss, pp_ret['loss'])
+        assert torch.allclose(torch_loss, pp_ret["loss"])
 
     # check gradients
     torch_grad = []
@@ -120,7 +114,7 @@ def examine_pp():
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
     examine_pp()
 
 
@@ -130,5 +124,5 @@ def test_pp():
     spawn(run_dist, 2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_pp()

@@ -5,7 +5,6 @@ from colossalai.shardformer.shard.utils import set_tensors_to_none
 
 
 class Net(nn.Module):
-
     def __init__(self) -> None:
         super().__init__()
         self.layers = nn.Sequential(nn.Linear(1, 2), nn.Linear(2, 3))

@@ -1,10 +1,8 @@
 from torch.optim.lr_scheduler import CosineAnnealingLR as _CosineAnnealingLR
 
-from colossalai.registry import LR_SCHEDULERS
 from .delayed import DelayerScheduler, WarmupDelayerScheduler, WarmupScheduler
 
 
-@LR_SCHEDULERS.register_module
 class CosineAnnealingLR(_CosineAnnealingLR):
     r"""Set the learning rate of each parameter group using a cosine annealing
     schedule, where :math:`\eta_{max}` is set to the initial lr and
@@ -48,7 +46,6 @@ class CosineAnnealingLR(_CosineAnnealingLR):
         super().__init__(optimizer, total_steps, eta_min=eta_min, last_epoch=last_epoch)
 
 
-@LR_SCHEDULERS.register_module
 class CosineAnnealingWarmupLR(WarmupScheduler):
     """Cosine annealing learning rate scheduler with learning rate warmup. A linear warmup schedule will be applied.
 
@@ -61,15 +58,13 @@ class CosineAnnealingWarmupLR(WarmupScheduler):
             the schedule is started from the beginning or When last_epoch=-1, sets initial lr as lr.
     """
 
-    def __init__(self, optimizer, total_steps: int, warmup_steps: int = 0, eta_min: float = 0., last_epoch: int = -1):
-        base_scheduler = _CosineAnnealingLR(optimizer,
-                                            total_steps - warmup_steps,
-                                            eta_min=eta_min,
-                                            last_epoch=last_epoch)
-        super().__init__(optimizer, warmup_steps, base_scheduler)
+    def __init__(self, optimizer, total_steps: int, warmup_steps: int = 0, eta_min: float = 0.0, last_epoch: int = -1):
+        base_scheduler = _CosineAnnealingLR(
+            optimizer, total_steps - warmup_steps, eta_min=eta_min, last_epoch=last_epoch
+        )
+        super().__init__(optimizer, warmup_steps, base_scheduler, last_epoch=last_epoch)
 
 
-@LR_SCHEDULERS.register_module
 class FlatAnnealingLR(DelayerScheduler):
     """Flat and cosine annealing learning rate scheduler. The learning rate will be a fixed value before starting decay.
 
@@ -83,14 +78,13 @@ class FlatAnnealingLR(DelayerScheduler):
 
     def __init__(self, optimizer, total_steps: int, pct_start: float = 0.72, last_epoch: int = -1, **kwargs):
         if not (0.0 <= pct_start <= 1.0):
-            raise ValueError(f'pct_start must >= 0.0 and <= 1.0, got {pct_start}')
+            raise ValueError(f"pct_start must >= 0.0 and <= 1.0, got {pct_start}")
         flat_steps = int(total_steps * pct_start)
         anneal_steps = total_steps - flat_steps
         base_scheduler = _CosineAnnealingLR(optimizer, anneal_steps)
         super().__init__(optimizer, flat_steps, base_scheduler, last_epoch=last_epoch)
 
 
-@LR_SCHEDULERS.register_module
 class FlatAnnealingWarmupLR(WarmupDelayerScheduler):
     """Flat and cosine annealing learning rate scheduler with learning rate warmup. A linear warmup schedule will be
     applied, and then the learning rate will be a fixed value before starting decay.
@@ -105,16 +99,18 @@ class FlatAnnealingWarmupLR(WarmupDelayerScheduler):
             the schedule is started from the beginning or When last_epoch=-1, sets initial lr as lr.
     """
 
-    def __init__(self,
-                 optimizer,
-                 total_steps: int,
-                 warmup_steps: int = 0,
-                 pct_start: float = 0.72,
-                 eta_min: int = 0,
-                 last_epoch: int = -1,
-                 **kwargs):
+    def __init__(
+        self,
+        optimizer,
+        total_steps: int,
+        warmup_steps: int = 0,
+        pct_start: float = 0.72,
+        eta_min: int = 0,
+        last_epoch: int = -1,
+        **kwargs,
+    ):
         if not (0.0 <= pct_start <= 1.0):
-            raise ValueError(f'pct_start must >= 0.0 and <= 1.0, got {pct_start}')
+            raise ValueError(f"pct_start must >= 0.0 and <= 1.0, got {pct_start}")
         flat_steps = int((total_steps - warmup_steps) * pct_start)
         anneal_steps = total_steps - warmup_steps - flat_steps
         base_scheduler = _CosineAnnealingLR(optimizer, anneal_steps, eta_min=eta_min)

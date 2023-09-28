@@ -33,13 +33,14 @@ def run_on_environment_flag(name: str):
         import pytest
     except ImportError:
         raise ImportError(
-            'This function requires `pytest` to be installed, please do `pip install pytest` and try again.')
+            "This function requires `pytest` to be installed, please do `pip install pytest` and try again."
+        )
 
     assert isinstance(name, str)
-    flag = os.environ.get(name.upper(), '0')
+    flag = os.environ.get(name.upper(), "0")
 
-    reason = f'Environment variable {name} is {flag}'
-    if flag == '1':
+    reason = f"Environment variable {name} is {flag}"
+    if flag == "1":
         return pytest.mark.skipif(False, reason=reason)
     else:
         return pytest.mark.skipif(True, reason=reason)

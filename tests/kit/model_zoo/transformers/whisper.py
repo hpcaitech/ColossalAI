@@ -33,7 +33,7 @@ def data_gen_for_conditional_generation():
     #         or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored (masked), the loss is
     #         only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
     data = data_gen()
-    data['labels'] = torch.tensor([[0, 1]], dtype=torch.int64)
+    data["labels"] = torch.tensor([[0, 1]], dtype=torch.int64)
     return data
 
 
@@ -44,8 +44,8 @@ def data_gen_for_audio_classification():
     #         `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
     # `WhisperForAudioClassification` does not need `decoder_input_ids`
     data = data_gen()
-    data.pop('decoder_input_ids')
-    data['labels'] = torch.tensor([1], dtype=torch.int64)
+    data.pop("decoder_input_ids")
+    data["labels"] = torch.tensor([1], dtype=torch.int64)
     return data
 
 
@@ -69,23 +69,29 @@ config = transformers.WhisperConfig(
 )
 
 # register the Whisper variants
-model_zoo.register(name='transformers_whisper',
-                   model_fn=lambda: transformers.WhisperModel(config),
-                   data_gen_fn=data_gen,
-                   output_transform_fn=output_transform_fn,
-                   loss_fn=loss_fn,
-                   model_attribute=ModelAttribute(has_control_flow=True))
+model_zoo.register(
+    name="transformers_whisper",
+    model_fn=lambda: transformers.WhisperModel(config),
+    data_gen_fn=data_gen,
+    output_transform_fn=output_transform_fn,
+    loss_fn=loss_fn,
+    model_attribute=ModelAttribute(has_control_flow=True),
+)
 
-model_zoo.register(name='transformers_whisper_for_conditional_generation',
-                   model_fn=lambda: transformers.WhisperForConditionalGeneration(config),
-                   data_gen_fn=data_gen_for_conditional_generation,
-                   output_transform_fn=output_transform_fn,
-                   loss_fn=loss_fn_attr,
-                   model_attribute=ModelAttribute(has_control_flow=True))
+model_zoo.register(
+    name="transformers_whisper_for_conditional_generation",
+    model_fn=lambda: transformers.WhisperForConditionalGeneration(config),
+    data_gen_fn=data_gen_for_conditional_generation,
+    output_transform_fn=output_transform_fn,
+    loss_fn=loss_fn_attr,
+    model_attribute=ModelAttribute(has_control_flow=True),
+)
 
-model_zoo.register(name='transformers_whisper_for_audio_classification',
-                   model_fn=lambda: transformers.WhisperForAudioClassification(config),
-                   data_gen_fn=data_gen_for_audio_classification,
-                   output_transform_fn=output_transform_fn,
-                   loss_fn=loss_fn_attr,
-                   model_attribute=ModelAttribute(has_control_flow=True))
+model_zoo.register(
+    name="transformers_whisper_for_audio_classification",
+    model_fn=lambda: transformers.WhisperForAudioClassification(config),
+    data_gen_fn=data_gen_for_audio_classification,
+    output_transform_fn=output_transform_fn,
+    loss_fn=loss_fn_attr,
+    model_attribute=ModelAttribute(has_control_flow=True),
+)

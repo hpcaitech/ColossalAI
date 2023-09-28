@@ -9,20 +9,22 @@ from torch.utils._pytree import tree_flatten
 
 
 def assert_equal(a: Tensor, b: Tensor):
-    assert torch.all(a == b), f'expected a and b to be equal but they are not, {a} vs {b}'
+    assert torch.all(a == b), f"expected a and b to be equal but they are not, {a} vs {b}"
 
 
 def assert_not_equal(a: Tensor, b: Tensor):
-    assert not torch.all(a == b), f'expected a and b to be not equal but they are, {a} vs {b}'
+    assert not torch.all(a == b), f"expected a and b to be not equal but they are, {a} vs {b}"
 
 
 def assert_close_loose(a: Tensor, b: Tensor, rtol: float = 1e-3, atol: float = 1e-3):
-    assert_close(a,
-                 b,
-                 rtol=rtol,
-                 atol=atol,
-                 msg=f"Tensor not close, shape: {a.shape} vs {b.shape}, \
-                                                   dtype: {a.dtype} vs {b.dtype}")
+    assert_close(
+        a,
+        b,
+        rtol=rtol,
+        atol=atol,
+        msg=f"Tensor not close, shape: {a.shape} vs {b.shape}, \
+                                                   dtype: {a.dtype} vs {b.dtype}",
+    )
 
 
 def assert_equal_in_group(tensor: Tensor, process_group: ProcessGroup = None):
@@ -35,12 +37,13 @@ def assert_equal_in_group(tensor: Tensor, process_group: ProcessGroup = None):
     for i in range(world_size - 1):
         a = tensor_list[i]
         b = tensor_list[i + 1]
-        assert torch.all(a == b), f'expected tensors on rank {i} and {i + 1} to be equal but they are not, {a} vs {b}'
+        assert torch.all(a == b), f"expected tensors on rank {i} and {i + 1} to be equal but they are not, {a} vs {b}"
 
 
 def check_state_dict_equal(d1: OrderedDict, d2: OrderedDict, ignore_device: bool = True):
-    assert len(list(d1.keys())) == len(list(d2.keys())), \
-           f"Number of keys unequal: {len(list(d1.keys()))} vs {len(list(d2.keys()))}"
+    assert len(list(d1.keys())) == len(
+        list(d2.keys())
+    ), f"Number of keys unequal: {len(list(d1.keys()))} vs {len(list(d2.keys()))}"
     for k, v1 in d1.items():
         assert k in d2
         v2 = d2[k]
@@ -86,12 +89,9 @@ def check_state_dict_equal_pytree(d1: OrderedDict, d2: OrderedDict, ignore_devic
             assert v1 == v2, f"{v1} not equals to {v2}"
 
 
-def assert_hf_output_close(out1: Any,
-                           out2: Any,
-                           ignore_keys: List[str] = None,
-                           track_name: str = "",
-                           atol=1e-5,
-                           rtol=1e-5):
+def assert_hf_output_close(
+    out1: Any, out2: Any, ignore_keys: List[str] = None, track_name: str = "", atol=1e-5, rtol=1e-5
+):
     """
     Check if two outputs from huggingface are equal.
 
@@ -108,23 +108,17 @@ def assert_hf_output_close(out1: Any,
         for k in out1.keys():
             if ignore_keys is not None and k in ignore_keys:
                 continue
-            assert_hf_output_close(out1[k],
-                                   out2[k],
-                                   track_name=f"{track_name}.{k}",
-                                   ignore_keys=ignore_keys,
-                                   atol=atol,
-                                   rtol=rtol)
+            assert_hf_output_close(
+                out1[k], out2[k], track_name=f"{track_name}.{k}", ignore_keys=ignore_keys, atol=atol, rtol=rtol
+            )
     elif isinstance(out1, (list, tuple)) and isinstance(out2, (list, tuple)):
         # if two values are list
         # we recursively check the elements
         assert len(out1) == len(out2)
         for i in range(len(out1)):
-            assert_hf_output_close(out1[i],
-                                   out2[i],
-                                   track_name=f"{track_name}.{i}",
-                                   ignore_keys=ignore_keys,
-                                   atol=atol,
-                                   rtol=rtol)
+            assert_hf_output_close(
+                out1[i], out2[i], track_name=f"{track_name}.{i}", ignore_keys=ignore_keys, atol=atol, rtol=rtol
+            )
     elif isinstance(out1, Tensor) and isinstance(out2, Tensor):
         if out1.shape != out2.shape:
             raise AssertionError(f"{track_name}: shape mismatch: {out1.shape} vs {out2.shape}")

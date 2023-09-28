@@ -5,6 +5,7 @@ import torch
 
 try:
     from timm.models.vision_transformer import vit_large_patch16_384 as vit
+
     MODELS = [vit]
     HAS_REPO = True
 except:
@@ -19,7 +20,7 @@ from colossalai.testing import clear_cache_before_run, parameterize, spawn
 
 def get_data() -> Tuple[List, List]:
     data = torch.rand(1, 3, 384, 384)
-    meta_args = {'x': data}
+    meta_args = {"x": data}
     return data, meta_args
 
 

@@ -49,15 +49,6 @@ def check_stage_manager():
         next_rank = ranks_in_group[ranks_in_group.index(rank) + 1]
         assert stage_manager.get_next_rank() == next_rank
 
-    # check virtual stage
-    stage_manager.set_num_virtual_stages(PP_SIZE * 2)
-    assert stage_manager.num_virtual_stages == PP_SIZE * 2
-    stage_manager.set_virtual_stage(stage_manager.stage * 2)
-    assert stage_manager.virtual_stage == stage_manager.stage * 2
-    with stage_manager.switch_virtual_stage(stage_manager.stage * 2 + 1):
-        assert stage_manager.virtual_stage == stage_manager.stage * 2 + 1
-    assert stage_manager.virtual_stage == stage_manager.stage * 2
-
     # check p2p groups
     for prev, cur in zip(ranks_in_group[:-1], ranks_in_group[1:]):
         if rank in [prev, cur]:
@@ -73,7 +64,7 @@ def check_stage_manager():
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, port=port, host="localhost")
     check_stage_manager()
 
 
@@ -83,5 +74,5 @@ def test_pipeline_stage_manager():
     spawn(run_dist, 4)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_pipeline_stage_manager()

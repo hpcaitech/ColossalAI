@@ -59,9 +59,9 @@ def calculate_fwd_tmp(n: Node) -> int:
         Returns:
             bool: Whether the node is a ReLU-like node
         """
-        if n.op == 'call_function':
+        if n.op == "call_function":
             return n.target in OUTPUT_SAVED_OPS
-        elif n.op == 'call_module':
+        elif n.op == "call_module":
             return type(n.graph.owning_module.get_submodule(n.target)) in OUTPUT_SAVED_MOD
         return False
 

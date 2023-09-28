@@ -29,11 +29,11 @@ def _cuda_safe_tensor_to_object(tensor: torch.Tensor, tensor_size: torch.Size) -
         Any: object after unpickled
     """
     buf = tensor.numpy().tobytes()[:tensor_size]
-    if b'cuda' in buf:
+    if b"cuda" in buf:
         buf_array = bytearray(buf)
         device_index = torch.cuda.current_device()
         # There might be more than one output tensors during forward
-        for cuda_str in re.finditer(b'cuda', buf_array):
+        for cuda_str in re.finditer(b"cuda", buf_array):
             pos = cuda_str.start()
             buf_array[pos + 5] = 48 + device_index
         buf = bytes(buf_array)
@@ -45,10 +45,9 @@ def _cuda_safe_tensor_to_object(tensor: torch.Tensor, tensor_size: torch.Size) -
     return unpickle
 
 
-def _broadcast_object_list(object_list: List[Any],
-                           src: int,
-                           group: ProcessGroup,
-                           device: Optional[Union[torch.device, str, int]] = None):
+def _broadcast_object_list(
+    object_list: List[Any], src: int, group: ProcessGroup, device: Optional[Union[torch.device, str, int]] = None
+):
     """This is a modified version of the broadcast_object_list in torch.distribution
     The only difference is that object will be move to correct device after unpickled.
     If local_rank = src, then object list will be sent to rank src. Otherwise, object list will
@@ -99,8 +98,8 @@ def _broadcast_object_list(object_list: List[Any],
     if my_rank == src:
         object_tensor = torch.cat(tensor_list)
     else:
-        object_tensor = torch.empty(    # type: ignore[call-overload]
-            torch.sum(object_sizes_tensor).item(),    # type: ignore[arg-type]
+        object_tensor = torch.empty(  # type: ignore[call-overload]
+            torch.sum(object_sizes_tensor).item(),  # type: ignore[arg-type]
             dtype=torch.uint8,
         )
 
@@ -114,7 +113,7 @@ def _broadcast_object_list(object_list: List[Any],
 
     if my_rank != src:
         for i, obj_size in enumerate(object_sizes_tensor):
-            obj_view = object_tensor[offset:offset + obj_size]
+            obj_view = object_tensor[offset : offset + obj_size]
             obj_view = obj_view.type(torch.uint8)
             if obj_view.device != torch.device("cpu"):
                 obj_view = obj_view.cpu()
@@ -123,8 +122,10 @@ def _broadcast_object_list(object_list: List[Any],
             unpickle_object = _cuda_safe_tensor_to_object(obj_view, obj_size)
 
             # unconsistence in device
-            if isinstance(unpickle_object,
-                          torch.Tensor) and unpickle_object.device.index != torch.cuda.current_device():
+            if (
+                isinstance(unpickle_object, torch.Tensor)
+                and unpickle_object.device.index != torch.cuda.current_device()
+            ):
                 unpickle_object = unpickle_object.cuda()
 
             object_list[i] = unpickle_object
@@ -160,7 +161,6 @@ def _recv_object(src: int, dst: int, group: ProcessGroup) -> Any:
 
 
 class PipelineP2PCommunication:
-
     def __init__(self, stage_manager: PipelineStageManager) -> None:
         self.stage_manager = stage_manager
 
@@ -173,14 +173,10 @@ class PipelineP2PCommunication:
         Returns:
             Any: The input tensor or input tensor list.
         """
-        if self.stage_manager.is_first_stage():
-            input_tensor = None
-        else:
-            if prev_rank is None:
-                prev_rank = self.stage_manager.get_prev_rank()
-            cur_rank = self.stage_manager.get_rank()
-            input_tensor = _recv_object(prev_rank, cur_rank,
-                                        self.stage_manager.get_p2p_process_group(prev_rank, cur_rank))
+        if prev_rank is None:
+            prev_rank = self.stage_manager.get_prev_rank()
+        cur_rank = self.stage_manager.get_rank()
+        input_tensor = _recv_object(prev_rank, cur_rank, self.stage_manager.get_p2p_process_group(prev_rank, cur_rank))
 
         return input_tensor
 
@@ -193,14 +189,12 @@ class PipelineP2PCommunication:
         Returns:
             Any: The input gradient tensor or gradient tensor list.
         """
-        if self.stage_manager.is_last_stage():
-            output_tensor_grad = None
-        else:
-            if next_rank is None:
-                next_rank = self.stage_manager.get_next_rank()
-            cur_rank = self.stage_manager.get_rank()
-            output_tensor_grad = _recv_object(next_rank, cur_rank,
-                                              self.stage_manager.get_p2p_process_group(next_rank, cur_rank))
+        if next_rank is None:
+            next_rank = self.stage_manager.get_next_rank()
+        cur_rank = self.stage_manager.get_rank()
+        output_tensor_grad = _recv_object(
+            next_rank, cur_rank, self.stage_manager.get_p2p_process_group(next_rank, cur_rank)
+        )
 
         return output_tensor_grad
 
@@ -211,12 +205,10 @@ class PipelineP2PCommunication:
             output_object (Any): Object to be sent.
             next_rank (int, optional): The rank of the recipient of the tensor.
         """
-        if not self.stage_manager.is_last_stage():
-            if next_rank is None:
-                next_rank = self.stage_manager.get_next_rank()
-            cur_rank = self.stage_manager.get_rank()
-            _send_object(output_object, cur_rank, next_rank,
-                         self.stage_manager.get_p2p_process_group(cur_rank, next_rank))
+        if next_rank is None:
+            next_rank = self.stage_manager.get_next_rank()
+        cur_rank = self.stage_manager.get_rank()
+        _send_object(output_object, cur_rank, next_rank, self.stage_manager.get_p2p_process_group(cur_rank, next_rank))
 
     def send_backward(self, input_object: Any, prev_rank: int = None) -> None:
         """Sends the gradient tensor to the previous stage in pipeline.
@@ -225,9 +217,7 @@ class PipelineP2PCommunication:
             input_object (Any): Object to be sent.
             prev_rank (int, optional): The rank of the recipient of the tensor
         """
-        if not self.stage_manager.is_first_stage():
-            if prev_rank is None:
-                prev_rank = self.stage_manager.get_prev_rank()
-            cur_rank = self.stage_manager.get_rank()
-            _send_object(input_object, cur_rank, prev_rank,
-                         self.stage_manager.get_p2p_process_group(cur_rank, prev_rank))
+        if prev_rank is None:
+            prev_rank = self.stage_manager.get_prev_rank()
+        cur_rank = self.stage_manager.get_rank()
+        _send_object(input_object, cur_rank, prev_rank, self.stage_manager.get_p2p_process_group(cur_rank, prev_rank))

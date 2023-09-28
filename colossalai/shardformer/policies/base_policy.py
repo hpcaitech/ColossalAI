@@ -11,15 +11,10 @@ from torch.nn import Module
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
+from ..layer.parallel_module import ParallelModule
 from ..shard.shard_config import ShardConfig
 
 __all__ = ["ParallelModule", "SubModuleReplacementDescription", "ModulePolicyDescription", "Policy"]
-
-
-class ParallelModule():
-
-    def __init__(self):
-        pass
 
 
 @dataclass
@@ -55,7 +50,7 @@ class ModulePolicyDescription:
                         new_weight = shard_rowwise(weight, process_group)
                         module.weight = torch.nn.Parameter(new_weight)
                     ```
-        sub_module_replacement (List[SubModuleReplacementDescription]): each element in the list is a ParamReplacementDescription
+        sub_module_replacement (List[SubModuleReplacementDescription]): each element in the list is a SubModuleReplacementDescription
                     object which specifies the module to be replaced and the target module used to replacement.
         method_replace (Dict[str, Callable]): key is the method name, value is the method for replacement
     """
@@ -111,14 +106,12 @@ class Policy(ABC):
         This method is made abstractmethod with no default implementation because we want to the policy writer
         to take note of the feature supported by his/her model and policy.
         """
-        pass
 
     @abstractmethod
     def preprocess(self) -> nn.Module:
         r"""
         Perform some preprocessing of the model, like reshaping the embedding layer.
         """
-        pass
 
     @abstractmethod
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
@@ -127,7 +120,6 @@ class Policy(ABC):
         and the value is the ModulePolicyDescription object. The ModulePolicyDescription object describes how the module
         will be transformed.
         """
-        pass
 
     @abstractmethod
     def postprocess(self) -> nn.Module:
@@ -135,13 +127,13 @@ class Policy(ABC):
         Perform some postprocessing of the model, like binding the weight of embedding layer with
         the classifier layer
         """
-        pass
 
     def append_or_create_submodule_replacement(
-            self, description: Union[SubModuleReplacementDescription,
-                                     List[SubModuleReplacementDescription]], policy: Dict[Union[str, nn.Module],
-                                                                                          ModulePolicyDescription],
-            target_key: Union[str, nn.Module]) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
+        self,
+        description: Union[SubModuleReplacementDescription, List[SubModuleReplacementDescription]],
+        policy: Dict[Union[str, nn.Module], ModulePolicyDescription],
+        target_key: Union[str, nn.Module],
+    ) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         r"""
         Append or create a new submodule replacement description to the policy for the given key.
 
@@ -166,8 +158,11 @@ class Policy(ABC):
         return policy
 
     def append_or_create_method_replacement(
-            self, description: Dict[str, Callable], policy: Dict[Union[str, nn.Module], ModulePolicyDescription],
-            target_key: Union[str, nn.Module]) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
+        self,
+        description: Dict[str, Callable],
+        policy: Dict[Union[str, nn.Module], ModulePolicyDescription],
+        target_key: Union[str, nn.Module],
+    ) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         r"""
         Append or create a new method replacement description to the policy for the given key.
 
@@ -204,9 +199,7 @@ class Policy(ABC):
 
     @staticmethod
     def distribute_layers(num_layers: int, num_stages: int) -> List[int]:
-        """Divide layers into stages
-
-        """
+        """Divide layers into stages"""
         quotient = num_layers // num_stages
         remainder = num_layers % num_stages
 

@@ -200,7 +200,6 @@ We provide an online inference server and a benchmark. We aim to run inference o
 We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and FP16 inference.
 
 Online inference server scripts can help you deploy your own services.
-
 For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
 ## Coati7B examples
@@ -414,7 +413,7 @@ You may contact us or participate in the following ways:
 1. [Leaving a Star ⭐](https://github.com/hpcaitech/ColossalAI/stargazers) to show your like and support. Thanks!
 2. Posting an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose), or submitting a PR on GitHub follow the guideline in [Contributing](https://github.com/hpcaitech/ColossalAI/blob/main/CONTRIBUTING.md).
 3. Join the Colossal-AI community on
-   [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
+   [Slack](https://github.com/hpcaitech/public_assets/tree/main/colossalai/contact/slack),
    and [WeChat(微信)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your ideas.
 4. Send your official proposal to email contact@hpcaitech.com
 
@@ -428,7 +427,7 @@ Thanks so much to all of our amazing contributors!
    </a>
 </div>
 
-- An open-source low cost solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline. [[demo]](https://chat.colossalai.org)
+- An open-source low-cost solution for cloning [ChatGPT](https://openai.com/blog/chatgpt/) with a complete RLHF pipeline. [[demo]](https://chat.colossalai.org)
 
 <p id="ChatGPT_scaling" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chatgpt/ChatGPT%20scaling.png" width=800/>
@@ -469,8 +468,7 @@ Coati is developed by ColossalAI Team:
 - [ofey404](https://github.com/ofey404)
 - [Wenhao Chen](https://github.com/CWHer)
 
-The Phd student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
-
+The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
 - [Zangwei Zheng](https://github.com/zhengzangw)
 - [Xue Fuzhao](https://github.com/XueFuzhao)
 

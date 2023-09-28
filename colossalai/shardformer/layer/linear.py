@@ -24,6 +24,8 @@ from colossalai.tensor.d_tensor.api import (
 
 from ._operation import (
     gather_forward_split_backward,
+    linear_gather_forward_reducescatter_backward,
+    linear_reducescatter_forward_gather_backward,
     linear_with_async_comm,
     reduce_forward,
     split_forward_gather_backward,
@@ -31,7 +33,7 @@ from ._operation import (
 from .parallel_module import ParallelModule
 from .utils import create_randomizer_with_offset
 
-__all__ = ['Linear1D_Col', 'Linear1D_Row']
+__all__ = ["Linear1D_Col", "Linear1D_Row"]
 
 
 class Linear1D_Col(ParallelModule):
@@ -50,6 +52,8 @@ class Linear1D_Col(ParallelModule):
         gather_output (bool, optional): If true, call all-gather on output and make Y available
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
+        seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
+        overlap (`bool`): If set to ``True``, it will overlap input all-gather with gradient computation during backward, defaults to False.
         skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
             which is preserved for kernel fusion, defaults to False
         weight_initializer (`typing.Callable`):
@@ -61,31 +65,39 @@ class Linear1D_Col(ParallelModule):
     `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
-    def __init__(self,
-                 in_features: int,
-                 out_features: int,
-                 bias: bool = True,
-                 dtype: torch.dtype = None,
-                 device: torch.device = None,
-                 process_group: ProcessGroup = None,
-                 gather_output: bool = False,
-                 skip_bias_add: bool = False,
-                 weight: Optional[Parameter] = None,
-                 bias_: Optional[Parameter] = None,
-                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+        process_group: ProcessGroup = None,
+        gather_output: bool = False,
+        seq_parallel: bool = False,
+        seq_parallel_dim: int = 1,
+        overlap: torch.cuda.Stream = None,
+        skip_bias_add: bool = False,
+        weight: Optional[Parameter] = None,
+        bias_: Optional[Parameter] = None,
+        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+    ):
         super().__init__()
 
         # Keep input parameters
         self.in_features = in_features
         self.out_features = out_features
         self.gather_output = gather_output
+        self.seq_parallel = seq_parallel
+        self.seq_parallel_dim = seq_parallel_dim
+        self.overlap = overlap
         self.skip_bias_add = skip_bias_add
         self.device = device
         self.process_group = process_group
 
         if skip_bias_add and not bias:
-            raise ValueError('cannot skip bias addition if bias is None')
+            raise ValueError("cannot skip bias addition if bias is None")
 
         # offset the seed with randomizer index and rank
         seed = torch.random.initial_seed()
@@ -93,13 +105,13 @@ class Linear1D_Col(ParallelModule):
 
         # sanity check
         if weight is not None:
-            assert not bias or bias_ is not None, 'bias_ must be provided if bias is True when weight is not None'
+            assert not bias or bias_ is not None, "bias_ must be provided if bias is True when weight is not None"
         else:
-            assert bias_ is None, 'bias_ must be None if weight is None'
+            assert bias_ is None, "bias_ must be None if weight is None"
 
         # Parameters.
         if weight is None:
-            factory_kwargs = {'device': device, 'dtype': dtype}
+            factory_kwargs = {"device": device, "dtype": dtype}
             self.weight = Parameter(torch.empty(self.out_features, self.in_features, **factory_kwargs))
         else:
             weight.data = weight.data.to(device=device, dtype=dtype)
@@ -125,8 +137,9 @@ class Linear1D_Col(ParallelModule):
             self.reset_parameters(weight_initializer, bias_initializer)
 
     @staticmethod
-    def from_native_module(module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args,
-                           **kwargs) -> ParallelModule:
+    def from_native_module(
+        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
+    ) -> ParallelModule:
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
         """
@@ -139,8 +152,7 @@ class Linear1D_Col(ParallelModule):
 
         # ensure only one process group is passed
         if isinstance(process_group, (list, tuple)):
-            assert len(process_group) == 1, \
-                f'Expected only one process group, got {len(process_group)}.'
+            assert len(process_group) == 1, f"Expected only one process group, got {len(process_group)}."
             process_group = process_group[0]
 
         tp_size = dist.get_world_size(process_group)
@@ -149,17 +161,20 @@ class Linear1D_Col(ParallelModule):
 
         if out_features % tp_size != 0:
             raise ValueError(
-                f"The size of out_features:{out_features} is not integer multiples of tensor parallel size: {tp_size}!")
+                f"The size of out_features:{out_features} is not integer multiples of tensor parallel size: {tp_size}!"
+            )
 
-        linear_1d = Linear1D_Col(in_features=in_features,
-                                 out_features=out_features,
-                                 bias=bias,
-                                 device=device,
-                                 process_group=process_group,
-                                 weight=module.weight,
-                                 bias_=module.bias,
-                                 *args,
-                                 **kwargs)
+        linear_1d = Linear1D_Col(
+            in_features=in_features,
+            out_features=out_features,
+            bias=bias,
+            device=device,
+            process_group=process_group,
+            weight=module.weight,
+            bias_=module.bias,
+            *args,
+            **kwargs,
+        )
 
         return linear_1d
 
@@ -171,16 +186,23 @@ class Linear1D_Col(ParallelModule):
                 bias_initializer(self.bias, fan_in=fan_in)
 
     def forward(self, input_: Tensor) -> Tuple[Tensor, Tensor]:
-        assert input_.shape[-1] == self.weight.shape[-1], \
-            'Invalid shapes in Linear1D_Col forward: input={}, weight={}. Expected last dim of input {}.'.format(
-                input_.shape, self.weight.shape, self.weight.shape[-1])
+        assert (
+            input_.shape[-1] == self.weight.shape[-1]
+        ), "Invalid shapes in Linear1D_Col forward: input={}, weight={}. Expected last dim of input {}.".format(
+            input_.shape, self.weight.shape, self.weight.shape[-1]
+        )
 
         # Set up backprop all-reduce.
         input_parallel = input_
 
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
-        output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, True)
+        if self.seq_parallel:
+            output_parallel = linear_gather_forward_reducescatter_backward(
+                input_parallel, self.weight, bias, self.process_group, True, self.seq_parallel_dim, self.overlap
+            )
+        else:
+            output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, True)
 
         if self.gather_output:
             # All-gather across the partitions.
@@ -195,7 +217,7 @@ class Linear1D_Col(ParallelModule):
 
 
 class Linear1D_Row(ParallelModule):
-    r""" Linear layer with row parallelism
+    r"""Linear layer with row parallelism
 
     Args:
         in_features (int): size of each input sample.
@@ -203,6 +225,8 @@ class Linear1D_Row(ParallelModule):
         bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
         dtype (`torch.dtype`): The dtype of parameters, defaults to None.
         parallel_input (bool): If set to ``True``, it's assumed that the input is split, defaults to False.
+        process_group (`torch.distributed.ProcessGroup`): The process group to be used for weight sharding and communication, defaults to None.
+        seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
         skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
             which is preserved for kernel fusion, defaults to False
         weight_initializer (:class:`typing.Callable`, optional):
@@ -214,20 +238,24 @@ class Linear1D_Row(ParallelModule):
     `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
-    def __init__(self,
-                 in_features: int,
-                 out_features: int,
-                 bias: bool = True,
-                 dtype: torch.dtype = None,
-                 device: torch.device = None,
-                 process_group: ProcessGroup = None,
-                 parallel_input: bool = True,
-                 skip_bias_add: bool = False,
-                 weight: Optional[Parameter] = None,
-                 bias_: Optional[Parameter] = None,
-                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
-                 stream_chunk_num: int = 1):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+        process_group: ProcessGroup = None,
+        seq_parallel: bool = False,
+        seq_parallel_dim: int = 1,
+        parallel_input: bool = True,
+        skip_bias_add: bool = False,
+        weight: Optional[Parameter] = None,
+        bias_: Optional[Parameter] = None,
+        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+        stream_chunk_num: int = 1,
+    ):
         super().__init__()
 
         self.stream_chunk_num = stream_chunk_num
@@ -238,10 +266,12 @@ class Linear1D_Row(ParallelModule):
         self.parallel_input = parallel_input
         self.skip_bias_add = skip_bias_add
         self.process_group = process_group
+        self.seq_parallel = seq_parallel
+        self.seq_parallel_dim = seq_parallel_dim
         self.num_partitions = dist.get_world_size(self.process_group)
 
         if skip_bias_add and not bias:
-            raise ValueError('cannot skip bias addition if bias is None')
+            raise ValueError("cannot skip bias addition if bias is None")
 
         # offset the seed with randomizer index and rank
         seed = torch.random.initial_seed()
@@ -249,14 +279,14 @@ class Linear1D_Row(ParallelModule):
 
         # sanity check
         if weight is not None:
-            assert not bias or bias_ is not None, 'bias_ must be provided if bias is True when weight is not None'
+            assert not bias or bias_ is not None, "bias_ must be provided if bias is True when weight is not None"
         else:
-            assert bias_ is None, 'bias_ must be None if weight is None'
+            assert bias_ is None, "bias_ must be None if weight is None"
 
         # Parameters.
         if weight is None:
             # Initialize weight.
-            factory_kwargs = {'device': device, 'dtype': dtype}
+            factory_kwargs = {"device": device, "dtype": dtype}
             self.weight = Parameter(torch.empty(self.out_features, self.in_features, **factory_kwargs))
         else:
             weight.data = weight.data.to(device=device, dtype=dtype)
@@ -283,8 +313,9 @@ class Linear1D_Row(ParallelModule):
                 self.reset_parameters(weight_initializer, bias_initializer)
 
     @staticmethod
-    def from_native_module(module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args,
-                           **kwargs) -> ParallelModule:
+    def from_native_module(
+        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
+    ) -> ParallelModule:
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
         """
@@ -297,8 +328,7 @@ class Linear1D_Row(ParallelModule):
 
         # ensure only one process group is passed
         if isinstance(process_group, (list, tuple)):
-            assert len(process_group) == 1, \
-                f'Expected only one process group, got {len(process_group)}.'
+            assert len(process_group) == 1, f"Expected only one process group, got {len(process_group)}."
             process_group = process_group[0]
 
         tp_size = dist.get_world_size(process_group)
@@ -307,17 +337,20 @@ class Linear1D_Row(ParallelModule):
 
         if in_features % tp_size != 0:
             raise ValueError(
-                f"The size of in_features:{in_features} is not integer multiples of tensor parallel size: {tp_size}!")
+                f"The size of in_features:{in_features} is not integer multiples of tensor parallel size: {tp_size}!"
+            )
 
-        linear_1d = Linear1D_Row(in_features=in_features,
-                                 out_features=out_features,
-                                 bias=bias,
-                                 device=device,
-                                 process_group=process_group,
-                                 weight=module.weight,
-                                 bias_=module.bias,
-                                 *args,
-                                 **kwargs)
+        linear_1d = Linear1D_Row(
+            in_features=in_features,
+            out_features=out_features,
+            bias=bias,
+            device=device,
+            process_group=process_group,
+            weight=module.weight,
+            bias_=module.bias,
+            *args,
+            **kwargs,
+        )
 
         return linear_1d
 
@@ -345,14 +378,18 @@ class Linear1D_Row(ParallelModule):
     def forward(self, input_: Tensor) -> Tensor:
         # Set up backprop all-reduce.
         if self.parallel_input:
-            assert input_.shape[-1] == self.weight.shape[-1], \
-                'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
-                input_.shape, self.weight.shape, self.weight.shape[-1])
+            assert (
+                input_.shape[-1] == self.weight.shape[-1]
+            ), "Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.".format(
+                input_.shape, self.weight.shape, self.weight.shape[-1]
+            )
             input_ = input_
         else:
-            assert divide(input_.shape[-1], self.num_partitions) == self.weight.shape[-1], \
-                'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
-                input_.shape, self.weight.shape, self.weight.shape[-1] * self.num_partitions)
+            assert (
+                divide(input_.shape[-1], self.num_partitions) == self.weight.shape[-1]
+            ), "Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.".format(
+                input_.shape, self.weight.shape, self.weight.shape[-1] * self.num_partitions
+            )
             input_ = split_forward_gather_backward(input_, dim=-1, process_group=self.process_group)
 
         if self.stream_chunk_num > 1:
@@ -363,9 +400,9 @@ class Linear1D_Row(ParallelModule):
                 handle_list = []
                 for i in range(self.stream_chunk_num):
                     output_parallel_list[i] = F.linear(input_, self.weight_list[i])
-                    handle = torch.distributed.all_reduce(output_parallel_list[i],
-                                                          group=self.process_group,
-                                                          async_op=True)
+                    handle = torch.distributed.all_reduce(
+                        output_parallel_list[i], group=self.process_group, async_op=True
+                    )
                     handle_list.append(handle)
                     # output_parallel_list[i] = reduce_input(output_parallel_list[i], ParallelMode.PARALLEL_1D)
                 for handle in handle_list:
@@ -373,7 +410,12 @@ class Linear1D_Row(ParallelModule):
                 output = torch.cat(output_parallel_list, dim=-1)
         else:
             output_parallel = F.linear(input_, self.weight)
-            output = reduce_forward(output_parallel, self.process_group)
+            if self.seq_parallel:
+                output = linear_reducescatter_forward_gather_backward(
+                    output_parallel, self.process_group, self.seq_parallel_dim
+                )
+            else:
+                output = reduce_forward(output_parallel, self.process_group)
 
         if not self.skip_bias_add:
             if self.bias is not None:

@@ -11,14 +11,15 @@ def load_quant(model: nn.Module, checkpoint: str, wbits: int, groupsize: int):
 
     # ignore lm head
     layers = find_layers(model)
-    for name in ['lm_head']:
+    for name in ["lm_head"]:
         if name in layers:
             del layers[name]
 
     make_quant(model, layers, wbits, groupsize)
 
-    if checkpoint.endswith('.safetensors'):
+    if checkpoint.endswith(".safetensors"):
         from safetensors.torch import load_file as safe_load
+
         model.load_state_dict(safe_load(checkpoint))
     else:
         model.load_state_dict(torch.load(checkpoint))
