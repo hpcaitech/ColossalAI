@@ -55,30 +55,6 @@ def run_chatglm2_test(test_config):
 
     assert outputs is not None
 
-    # tokenizer = AutoTokenizer.from_pretrained("THUDM/chatglm2-6b", trust_remote_code=True)
-    # # pad_token_id = 0
-    # model_fn = lambda: ChatGLMForConditionalGeneration(infer_config, empty_init=False)
-    # orig_model = model_fn()
-    # orig_model = orig_model.half()
-
-    # text = ["how is the weather today?"]
-    # input_ids = tokenizer.batch_encode_plus(text, return_tensors="pt", padding=True)
-    # shard_config = ShardConfig(
-    #     enable_tensor_parallelism=True if test_config["tp_size"] > 1 else False, inference_only=True
-    # )
-    # infer_engine = TPInferEngine(orig_model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-
-    # generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
-    # outputs = infer_engine.generate(input_ids, **generate_kwargs)
-    # assert outputs is not None
-
-    # # print("outputs.shape: ", outputs[0].shape)
-    # # print("outputs: ", outputs[0])
-    # if not dist.is_initialized() or dist.get_rank() == 0:
-    #     for o in outputs:
-    #         output_text = tokenizer.decode(o)
-    #         print(output_text)
-
 
 def check_chatglm2(rank, world_size, port):
     disable_existing_loggers()
