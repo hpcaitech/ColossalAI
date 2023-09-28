@@ -29,7 +29,7 @@ CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
     ],
 )
 def run_chatglm2_test(test_config):
-    chagglm_config = ChatGLMConfig(
+    chatglm_config = ChatGLMConfig(
         num_layers=2,
         vocab_size=1200,
         use_cache=True,
@@ -38,7 +38,7 @@ def run_chatglm2_test(test_config):
         num_attention_heads=8,
         hidden_size=1024,
     )
-    model = ChatGLMForConditionalGeneration(chagglm_config)
+    model = ChatGLMForConditionalGeneration(chatglm_config)
     model = model.half()
 
     shard_config = ShardConfig(
