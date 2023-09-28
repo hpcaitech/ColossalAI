@@ -6,7 +6,7 @@ The list of applications include:
 
 - [X] [Colossal-LLaMA-2](./Colossal-LLaMA-2/): Continual Pre-training of LLaMA-2.
 - [X] [ColossalEval](./ColossalEval): Evaluation Pipeline for LLMs.
-- [X] [Chatbot](./Chat/README.md): Replication of ChatGPT with RLHF.
+- [X] [ColossalChat](./Chat/README.md): Replication of ChatGPT with RLHF.
 - [X] [FastFold](https://github.com/hpcaitech/FastFold): Optimizing AlphaFold (Biomedicine) Training and Inference on GPU Clusters.
 
 > Please note that the `Chatbot` application is migrated from the original `ChatGPT` folder.
