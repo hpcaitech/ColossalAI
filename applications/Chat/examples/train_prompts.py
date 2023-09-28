@@ -13,10 +13,11 @@ from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroSt
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer
-
+from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer, AutoConfig
+from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 from colossalai.nn.optimizer import HybridAdam
-
+from transformers.models.gpt2.modeling_gpt2 import GPT2Model
+from transformers import BloomConfig, BloomModel
 
 def main(args):
     # configure strategy
@@ -36,9 +37,13 @@ def main(args):
     with strategy.model_init_context():
         # configure model
         if args.model == "gpt2":
-            initial_model = GPTActor(pretrained=args.pretrain)
+            config = AutoConfig.from_pretrained(args.pretrain)
+            config.dropout = 0.0
+            initial_model = GPTActor(config=config)
         elif args.model == "bloom":
-            initial_model = BLOOMActor(pretrained=args.pretrain)
+            config = AutoConfig.from_pretrained(args.pretrain)
+            config.dropout = 0.0
+            initial_model = BLOOMActor(config=config)
         elif args.model == "opt":
             initial_model = OPTActor(pretrained=args.pretrain)
         elif args.model == "llama":
@@ -52,9 +57,21 @@ def main(args):
             rm_model_name = args.rm_model
 
         if rm_model_name == "gpt2":
+            if args.rm_pretrain:
+                config = AutoConfig.from_pretrained(args.rm_pretrain)
+            else:
+                config = GPT2Config()
+            config.dropout = 0.0
             reward_model = GPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+            reward_model.model = GPT2Model(config)
         elif rm_model_name == "bloom":
+            if args.rm_pretrain:
+                config = AutoConfig.from_pretrained(args.rm_pretrain)
+            else:
+                config = BloomConfig()
+            config.dropout = 0.0
             reward_model = BLOOMRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+            reward_model.model = BloomModel(config)
         elif rm_model_name == "opt":
             reward_model = OPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         elif rm_model_name == "llama":
@@ -63,15 +80,19 @@ def main(args):
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
         if args.rm_path is not None:
-            reward_model.load_state_dict(state_dict, strict=False)
+            reward_model.load_state_dict(state_dict, strict=True)
 
         initial_model.to(torch.bfloat16).to(torch.cuda.current_device())
         reward_model.to(torch.bfloat16).to(torch.cuda.current_device())
 
         if args.model == "gpt2":
-            actor = GPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
+            config = AutoConfig.from_pretrained(args.pretrain)
+            config.dropout = 0.0
+            actor = GPTActor(config=config, lora_rank=args.lora_rank)
         elif args.model == "bloom":
-            actor = BLOOMActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
+            config = AutoConfig.from_pretrained(args.pretrain)
+            config.dropout = 0.0
+            actor = BLOOMActor(config=config, lora_rank=args.lora_rank)
         elif args.model == "opt":
             actor = OPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
         elif args.model == "llama":
@@ -79,20 +100,29 @@ def main(args):
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
-        if rm_model_name == "gpt2":
+        if args.model == "gpt2":
+            config = GPT2Config()
+            config.dropout = 0.0
             critic = GPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        elif rm_model_name == "bloom":
+            critic.model = GPT2Model(config)
+        elif args.model == "bloom":
+            config = BloomConfig()
+            config.dropout = 0.0
             critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        elif rm_model_name == "opt":
+            critic.model = BloomModel(config)
+        elif args.model == "opt":
             critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        elif rm_model_name == "llama":
+        elif args.model == "llama":
             critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         else:
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
-        if args.rm_path is not None:
-            critic.load_state_dict(state_dict, strict=False)
-            del state_dict
+        # if args.rm_path is not None:
+        #     critic.load_state_dict(state_dict, strict=True)
+        #     del state_dict
+
+        if args.pretrain is not None:
+            actor.model.load_state_dict(torch.load(args.pretrain+ '/pytorch_model.bin', map_location="cpu"), strict=True)
 
         actor.to(torch.bfloat16).to(torch.cuda.current_device())
         critic.to(torch.bfloat16).to(torch.cuda.current_device())
@@ -100,10 +130,10 @@ def main(args):
     # configure optimizer
     if args.strategy.startswith("colossalai"):
         actor_optim = HybridAdam(actor.parameters(), lr=args.lr)
-        critic_optim = HybridAdam(critic.parameters(), lr=args.lr)
+        critic_optim = HybridAdam(critic.parameters(), lr=0.001)
     else:
         actor_optim = Adam(actor.parameters(), lr=args.lr)
-        critic_optim = Adam(critic.parameters(), lr=args.lr)
+        critic_optim = Adam(critic.parameters(), lr=args.critic_lr)
 
     # configure tokenizer
     if args.model == "gpt2":
@@ -127,6 +157,19 @@ def main(args):
         raise ValueError(f'Unsupported model "{args.model}"')
     # NOTE: generate() requires padding_side to be "left"
     tokenizer.padding_side = "left"
+
+    # configure tokenizer
+    if args.rm_model == "gpt2":
+        rm_model_tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        rm_model_tokenizer.pad_token = rm_model_tokenizer.eos_token
+    elif args.rm_model == "bloom":
+        rm_model_tokenizer = BloomTokenizerFast.from_pretrained(
+            "bigscience/bloom-560m"
+        )
+        rm_model_tokenizer.pad_token = rm_model_tokenizer.eos_token
+    else:
+        raise ValueError(f'Unsupported model "{args.model}"')
+    rm_model_tokenizer.padding_side = "left"
 
     prompt_dataset = PromptDataset(
         tokenizer=tokenizer,
@@ -171,9 +214,11 @@ def main(args):
         actor_optim,
         critic_optim,
         tokenizer=tokenizer,
+        rm_model_tokenizer = rm_model_tokenizer,
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
         train_batch_size=args.train_batch_size,
+        buffer_limit=args.train_batch_size,
         max_length=args.max_seq_len,
         use_cache=True,
         do_sample=True,
@@ -226,19 +271,20 @@ if __name__ == "__main__":
     parser.add_argument("--rm_pretrain", type=str, default=None)
     parser.add_argument("--save_path", type=str, default="actor_checkpoint_prompts")
     parser.add_argument("--need_optim_ckpt", type=bool, default=False)
-    parser.add_argument("--num_episodes", type=int, default=10)
-    parser.add_argument("--num_collect_steps", type=int, default=10)
+    parser.add_argument("--num_episodes", type=int, default=1)
+    parser.add_argument("--num_collect_steps", type=int, default=2)
     parser.add_argument("--num_update_steps", type=int, default=5)
-    parser.add_argument("--train_batch_size", type=int, default=8)
+    parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--ptx_batch_size", type=int, default=1)
     parser.add_argument("--experience_batch_size", type=int, default=8)
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
-    parser.add_argument("--lr", type=float, default=1e-7)
+    parser.add_argument("--lr", type=float, default=9e-6)
+    parser.add_argument("--critic_lr", type=float, default=5e-6)
     parser.add_argument("--kl_coef", type=float, default=0.1)
     parser.add_argument("--ptx_coef", type=float, default=0.9)
     parser.add_argument("--max_input_len", type=int, default=96)
-    parser.add_argument("--max_seq_len", type=int, default=128)
+    parser.add_argument("--max_seq_len", type=int, default=256)
     parser.add_argument("--log_dir", default="logs", type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
     args = parser.parse_args()

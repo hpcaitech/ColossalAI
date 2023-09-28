@@ -20,10 +20,12 @@ class NaiveExperienceMaker(ExperienceMaker):
         reward_model: RewardModel,
         initial_model: Actor,
         tokenizer: PreTrainedTokenizer,
+        rm_model_tokenizer: PreTrainedTokenizer,
         kl_coef: float = 0.1,
     ) -> None:
         super().__init__(actor, critic, reward_model, initial_model)
         self.tokenizer = tokenizer
+        self.rm_model_tokenizer = rm_model_tokenizer
         self.kl_coef = kl_coef
 
     @torch.no_grad()
@@ -34,7 +36,11 @@ class NaiveExperienceMaker(ExperienceMaker):
         self.reward_model.eval()
 
         # generate sequences
+        
         sequences = generate(self.actor, input_ids, self.tokenizer, **generate_kwargs)
+
+        self.actor.train()
+        self.critic.train()
 
         # calculate auxiliary tensors
         attention_mask = None
@@ -55,17 +61,42 @@ class NaiveExperienceMaker(ExperienceMaker):
         action_mask = action_mask[:, -(sequences.size(1) - input_len) :]
         num_actions = action_mask.size(1)
 
-        actor_output = self.actor(sequences, attention_mask)["logits"]
-        action_log_probs = calc_action_log_probs(actor_output, sequences, num_actions)
-        base_model_output = self.initial_model(sequences, attention_mask)["logits"]
-        base_action_log_probs = calc_action_log_probs(base_model_output, sequences, num_actions)
-        value = self.critic(sequences, attention_mask)
-        r = self.reward_model(sequences, attention_mask)
+        with torch.no_grad():
+            actor_output = self.actor(sequences, attention_mask)["logits"]
+            action_log_probs = calc_action_log_probs(actor_output, sequences, num_actions)
+            base_model_output = self.initial_model(sequences, attention_mask)["logits"]
+        
+            base_action_log_probs = calc_action_log_probs(base_model_output, sequences, num_actions)
+            value = self.critic(sequences, attention_mask)
+            # print("value:", value.size())
+            sequences_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True)
+            sequences_rm = self.rm_model_tokenizer(
+                sequences_text, return_tensors="pt", padding="max_length", truncation=True, max_length=300
+            )
+            r = self.reward_model(sequences_rm['input_ids'].to(dtype=torch.long, device=sequences.device), 
+                                  sequences_rm['attention_mask'].to(device=sequences.device))
+            for i in range(r.size(0)):
+                r[i] = r[i] if action_mask[i].sum()>15 else -1.
+        torch.set_printoptions(threshold=10_000)
         reward = compute_reward(r, self.kl_coef, action_log_probs, base_action_log_probs, action_mask=action_mask)
+        # print("reward:", reward.size())
 
-        advantage = reward - value
-        # TODO(ver217): maybe normalize adv
-        if advantage.ndim == 1:
-            advantage = advantage.unsqueeze(-1)
+        advantage = 0
+        advantages = []
+        # print(reward[0])
+        # print(action_mask[0])
+        # print(value[0][-num_actions:]*action_mask[0])
+        value = value[:,-num_actions:] * action_mask
+        for t in range(num_actions-1, -1, -1):
+            q_next = value[:, t+1] if t!=num_actions-1 else 0.
+            advantage = reward[:, t]+ 1.0 * q_next - value[:, t] + 1. * 0.95 * advantage
+            advantages.append(advantage)
+        advantages = torch.stack(advantages[::-1], dim=1)
+        # print("advantage:", advantages.size())
+        advantages = advantages.detach()
+        # print(advantages[0])
+        # exit()
+        value = value.detach()
+        r = r.detach()
 
-        return Experience(sequences, action_log_probs, value, reward, advantage, attention_mask, action_mask)
+        return Experience(sequences, action_log_probs, value, r, advantages, attention_mask, action_mask)

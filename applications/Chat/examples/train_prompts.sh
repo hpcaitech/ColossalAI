@@ -12,14 +12,21 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "Now CUDA_VISIBLE_DEVICES is set to:"
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
-
 set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
 # torchrun --standalone --nproc_per_node=2 train_prompts.py prompts.csv --strategy colossalai_zero2
 
-torchrun --standalone --nproc_per_node=2 train_prompts.py \
-    --pretrain_dataset /path/to/data.json \
-    --prompt_dataset /path/to/data.json \
+torchrun --standalone --rdzv_endpoint="localhost:12355" --nproc_per_node=1 train_prompts.py \
+    --pretrain_dataset /home/lcyab/data/Anthropic_rlhf/pretrain_data.json \
+    --prompt_dataset /home/lcyab/data/Anthropic_rlhf/prompts_en.jsonl \
     --strategy colossalai_zero2 \
-    --num_episodes 1 --num_collect_steps 2 --num_update_steps 1 \
-    --train_batch_size 2
+    --num_episodes 2000 --num_collect_steps 2 --num_update_steps 1 \
+    --experience_batch_size 8 \
+    --train_batch_size 16 \
+    --save_path '/home/lcyab/data/Anthropic_rlhf/actor/v1' \
+    --ptx_coef 0.0 \
+    --rm_model bloom \
+    --rm_path '/home/lcyab/data/Anthropic_rlhf/reward_model' \
+    --pretrain '/home/lcyab/data/Anthropic_rlhf/actor/pretrain' \
+    --use_wandb
+

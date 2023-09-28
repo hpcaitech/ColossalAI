@@ -39,14 +39,19 @@ class PolicyLoss(nn.Module):
         advantages: torch.Tensor,
         action_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        ratio = (log_probs - old_log_probs).exp()
+        skip = False
+        ratio = ((log_probs - old_log_probs)*action_mask).exp()
+        ratio = ratio.clamp(0.0, 10.0)
+        # if torch.mean(ratio)>10.:
+        #     # print(ratio)
+        #     skip = True
+        # advantages = advantages.clamp(-5, 5)
         surr1 = ratio * advantages
         surr2 = ratio.clamp(1 - self.clip_eps, 1 + self.clip_eps) * advantages
         loss = -torch.min(surr1, surr2)
-        if action_mask is not None:
-            loss = masked_mean(loss, action_mask)
+        loss = masked_mean(loss, action_mask)
         loss = loss.mean()
-        return loss
+        return loss, skip, (-torch.min(surr1, surr2)).max()
 
 
 class ValueLoss(nn.Module):
@@ -54,7 +59,7 @@ class ValueLoss(nn.Module):
     Value Loss for PPO
     """
 
-    def __init__(self, clip_eps: float = 0.4) -> None:
+    def __init__(self, clip_eps: float = 0.2) -> None:
         super().__init__()
         self.clip_eps = clip_eps
 
@@ -62,13 +67,15 @@ class ValueLoss(nn.Module):
         self,
         values: torch.Tensor,
         old_values: torch.Tensor,
-        reward: torch.Tensor,
+        advantage: torch.Tensor,
         action_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        returns = advantage + old_values
         values_clipped = old_values + (values - old_values).clamp(-self.clip_eps, self.clip_eps)
-        surr1 = (values_clipped - reward) ** 2
-        surr2 = (values - reward) ** 2
+        surr1 = (values_clipped - returns) ** 2
+        surr2 = (values - returns) ** 2
         loss = torch.max(surr1, surr2)
+        loss = masked_mean(loss, action_mask)
         loss = loss.mean()
         return 0.5 * loss
 

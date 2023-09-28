@@ -17,8 +17,7 @@ def _compute_approx_kl(
         action_mask: Mask for actions.
     """
 
-    log_ratio = log_probs_base - log_probs
-    approx_kl = (log_ratio.exp() - 1) - log_ratio
+    approx_kl = log_probs_base - log_probs
     if action_mask is not None:
         approx_kl = masked_mean(approx_kl, action_mask, dim=1)
         return approx_kl
@@ -32,11 +31,29 @@ def compute_reward(
     log_probs: torch.Tensor,
     log_probs_base: torch.Tensor,
     action_mask: Optional[torch.Tensor] = None,
+    reward_eps = 5
 ) -> torch.Tensor:
+    '''
+    Args:
+        log_probs: [batch_size, response_length]
+        log_probs_base: [batch_size, response_length]
+        action_mask: [batch_size, response_length]
+        r: float
+    Returns:
+        reward: [batch_size, response_length]
+    '''
+
     if kl_coef <= 0.0:
         return r
-    kl = _compute_approx_kl(log_probs, log_probs_base, action_mask=action_mask)
-    reward = r - kl_coef * kl
+    kl = -kl_coef * (log_probs - log_probs_base) # _compute_approx_kl(log_probs, log_probs_base, action_mask=action_mask)
+    reward = kl
+    # print(reward[0]*action_mask[0])
+    r_clip = torch.clamp(r, -reward_eps, reward_eps)
+    # print(r_clip[0])
+    for i in range(action_mask.size(0)):
+        assert action_mask[i].sum()>0
+        reward[i, :action_mask[i].sum()] += r_clip[i]
+        reward[i, action_mask[i].sum():] *= 0
     return reward
 
 
