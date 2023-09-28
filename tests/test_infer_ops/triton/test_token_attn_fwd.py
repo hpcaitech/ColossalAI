@@ -1,20 +1,18 @@
-import time
-
 import pytest
 import torch
 from packaging import version
 
 try:
-    import triton
-    import triton.language as tl
+    pass
 
     from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
+
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
     print("please install triton from https://github.com/openai/triton")
 
-TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.4')
+TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 
 
 def torch_att(xq, xk, xv, bs, seqlen, num_head, head_dim):
@@ -29,10 +27,10 @@ def torch_att(xq, xk, xv, bs, seqlen, num_head, head_dim):
     return torch.sum(prob * xv, dim=1, keepdim=False)
 
 
-@pytest.mark.skipif(not TRITON_CUDA_SUPPORT or not HAS_TRITON,
-                    reason="triton requires cuda version to be higher than 11.4")
+@pytest.mark.skipif(
+    not TRITON_CUDA_SUPPORT or not HAS_TRITON, reason="triton requires cuda version to be higher than 11.4"
+)
 def test():
-
     Z, head_num, seq_len, head_dim = 22, 112 // 8, 2048, 128
     dtype = torch.float16
     q = torch.empty((Z, head_num, head_dim), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2)

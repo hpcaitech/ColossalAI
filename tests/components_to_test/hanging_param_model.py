@@ -28,16 +28,14 @@ class HangingParamModule(CheckpointModule):
 
 
 class DummyDataLoader(DummyDataGenerator):
-
     def generate(self):
         data = torch.rand(16, 4)
         label = torch.randint(low=0, high=2, size=(16,))
         return data, label
 
 
-@non_distributed_component_funcs.register(name='hanging_param_model')
+@non_distributed_component_funcs.register(name="hanging_param_model")
 def get_training_components():
-
     def model_builder(checkpoint=False):
         return HangingParamModule(checkpoint)
 
@@ -46,4 +44,5 @@ def get_training_components():
 
     criterion = torch.nn.CrossEntropyLoss()
     from colossalai.nn.optimizer import HybridAdam
+
     return model_builder, trainloader, testloader, HybridAdam, criterion

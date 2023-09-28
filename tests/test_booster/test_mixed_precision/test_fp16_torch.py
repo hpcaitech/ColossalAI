@@ -9,11 +9,11 @@ from tests.kit.model_zoo import model_zoo
 
 def run_torch_amp(rank, world_size, port):
     # init dist env
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
-    sub_model_zoo = model_zoo.get_sub_registry('timm')
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
+    sub_model_zoo = model_zoo.get_sub_registry("timm")
     for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in sub_model_zoo.items():
         # dlrm_interactionarch has not parameters, so skip
-        if name == 'dlrm_interactionarch':
+        if name == "dlrm_interactionarch":
             continue
 
         model = model_fn().cuda()
@@ -21,7 +21,7 @@ def run_torch_amp(rank, world_size, port):
         criterion = lambda x: x.mean()
         data = data_gen_fn()
         data = {
-            k: v.to('cuda') if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v for k, v in data.items()
+            k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
         }
         mixed_precision = FP16TorchMixedPrecision()
         model, optimizer, criterion = mixed_precision.configure(model, optimizer, criterion)

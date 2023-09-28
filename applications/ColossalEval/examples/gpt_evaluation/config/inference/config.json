@@ -1,0 +1,33 @@
+{
+  "model": [
+    {
+      "name": "model name",
+      "model_class": "HuggingFaceCausalLM",
+      "parameters": {
+        "path": "path to model",
+        "model_max_length": 4096,
+        "tokenizer_path": "",
+        "tokenizer_kwargs": {
+          "trust_remote_code": true
+        },
+        "peft_path": null,
+        "model_kwargs": {
+          "torch_dtype": "torch.float32",
+          "trust_remote_code": true
+        },
+        "prompt_template": "plain",
+        "batch_size": 4
+      }
+    }
+  ],
+  "dataset": [
+    {
+      "name": "colossal",
+      "dataset_class": "ColossalDataset",
+      "debug": false,
+      "few_shot": false,
+      "path": "../../configs/gpt_evaluation/data/eval_en_examples.json",
+      "save_path": "path to save converted dataset (inference_data/colossal.json)"
+    }
+  ]
+}

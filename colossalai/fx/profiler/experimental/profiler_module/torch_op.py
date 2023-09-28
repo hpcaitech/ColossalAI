@@ -1,7 +1,8 @@
-import operator
+from typing import Tuple
+
 import torch
+
 from ..registry import meta_profiler_module
-from typing import Optional, Tuple, Union
 
 
 @meta_profiler_module.register(torch.nn.Flatten)

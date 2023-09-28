@@ -3,24 +3,21 @@ from typing import Dict, List, Union
 import torch
 import torch.nn.functional as F
 
-from colossalai.auto_parallel.tensor_shard.utils import (
-    check_sharding_spec_validity,
-    transpose_partition_dim,
-    update_partition_dim,
-)
+from colossalai.auto_parallel.tensor_shard.utils import transpose_partition_dim, update_partition_dim
 from colossalai.logging import get_dist_logger
 from colossalai.tensor.sharding_spec import ShardingNotDivisibleError
 
-from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy, StrategiesVector
-from .node_handler import MetaInfoModuleHandler, MetaInfoNodeHandler, ModuleHandler, NodeHandler
+from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy
+from .node_handler import MetaInfoModuleHandler, MetaInfoNodeHandler
 from .registry import operator_registry
 from .strategy import LinearProjectionStrategyGenerator, StrategyGenerator
 
-__all__ = ['LinearModuleHandler', 'LinearFunctionHandler']
+__all__ = ["LinearModuleHandler", "LinearFunctionHandler"]
 
 
-def _update_sharding_spec_for_transposed_weight_for_linear(strategy: ShardingStrategy,
-                                                           weight_name: str) -> ShardingStrategy:
+def _update_sharding_spec_for_transposed_weight_for_linear(
+    strategy: ShardingStrategy, weight_name: str
+) -> ShardingStrategy:
     """
     This function is a helper function used by both module node handler and function node handler. This function will
     convert the sharding spec for the transposed weight to the correct partition spec.
@@ -32,16 +29,17 @@ def _update_sharding_spec_for_transposed_weight_for_linear(strategy: ShardingStr
     # switch the dimensions of the transposed weight
     sharding_spec = strategy.get_sharding_spec_by_name(weight_name)
     op_data = strategy.get_op_data_by_name(weight_name)
-    assert op_data.logical_shape[0] == op_data.data.shape[1] and \
-           op_data.logical_shape[1] == op_data.data.shape[0], \
-           "Expected the logical shape  of the linear operator's weight is equal to transposed physical shape"
+    assert (
+        op_data.logical_shape[0] == op_data.data.shape[1] and op_data.logical_shape[1] == op_data.data.shape[0]
+    ), "Expected the logical shape  of the linear operator's weight is equal to transposed physical shape"
     dim_size = len(op_data.logical_shape)
     transpose_partition_dim(sharding_spec, 0, dim_size - 1)
     return strategy
 
 
-def _convert_logical_sharding_to_physical_sharding_spec_for_linear(strategy: ShardingStrategy, input_name: str,
-                                                                   output_name: str) -> List[ShardingStrategy]:
+def _convert_logical_sharding_to_physical_sharding_spec_for_linear(
+    strategy: ShardingStrategy, input_name: str, output_name: str
+) -> List[ShardingStrategy]:
     """
     This function converts the logical sharding spec to the physical sharding spec for both the input and output of the linear operation. The input and output
     should have the same sharding spec.
@@ -99,22 +97,26 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_linear(strategy: Sha
                 input_dim_mapping = {0: i}
                 input_dim_mapping.update(input_last_dim_mapping)
 
-                update_partition_dim(sharding_spec=input_sharding_spec,
-                                     dim_mapping=input_dim_mapping,
-                                     physical_shape=input_op_data.data.shape,
-                                     inplace=True)
+                update_partition_dim(
+                    sharding_spec=input_sharding_spec,
+                    dim_mapping=input_dim_mapping,
+                    physical_shape=input_op_data.data.shape,
+                    inplace=True,
+                )
                 output_dim_mapping = {0: i}
                 output_dim_mapping.update(output_last_dim_mapping)
 
-                update_partition_dim(sharding_spec=output_sharding_spec,
-                                     dim_mapping=output_dim_mapping,
-                                     physical_shape=output_op_data.data.shape,
-                                     inplace=True)
-                strategy_copy.name = f'{strategy.name}_{i}'
+                update_partition_dim(
+                    sharding_spec=output_sharding_spec,
+                    dim_mapping=output_dim_mapping,
+                    physical_shape=output_op_data.data.shape,
+                    inplace=True,
+                )
+                strategy_copy.name = f"{strategy.name}_{i}"
                 sharding_strategies.append(strategy_copy)
             except ShardingNotDivisibleError as e:
                 logger.debug(
-                    f'Errored occurred when converting the logical sharding spec to the physical one. Error details: {e}'
+                    f"Errored occurred when converting the logical sharding spec to the physical one. Error details: {e}"
                 )
     else:
         # the generated sharding strategy does not shard the non-matrix dimension,
@@ -127,17 +129,21 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_linear(strategy: Sha
         # after updating, the logical shape will be replaced by the physical shape
         input_dim_mapping = {}
         input_dim_mapping.update(input_last_dim_mapping)
-        update_partition_dim(sharding_spec=input_sharding_spec,
-                             dim_mapping=input_dim_mapping,
-                             physical_shape=input_op_data.data.shape,
-                             inplace=True)
+        update_partition_dim(
+            sharding_spec=input_sharding_spec,
+            dim_mapping=input_dim_mapping,
+            physical_shape=input_op_data.data.shape,
+            inplace=True,
+        )
 
         output_dim_mapping = {}
         output_dim_mapping.update(output_last_dim_mapping)
-        update_partition_dim(sharding_spec=output_sharding_spec,
-                             dim_mapping=output_dim_mapping,
-                             physical_shape=output_op_data.data.shape,
-                             inplace=True)
+        update_partition_dim(
+            sharding_spec=output_sharding_spec,
+            dim_mapping=output_dim_mapping,
+            physical_shape=output_op_data.data.shape,
+            inplace=True,
+        )
         sharding_strategies.append(strategy_copy)
     return sharding_strategies
 
@@ -152,10 +158,13 @@ class LinearModuleHandler(MetaInfoModuleHandler):
         op_data_mapping = self.get_operation_data_mapping()
         generators = []
         generators.append(
-            LinearProjectionStrategyGenerator(op_data_mapping,
-                                              self.device_mesh,
-                                              linear_projection_type='linear',
-                                              solver_perference=self.solver_perference))
+            LinearProjectionStrategyGenerator(
+                op_data_mapping,
+                self.device_mesh,
+                linear_projection_type="linear",
+                solver_perference=self.solver_perference,
+            )
+        )
         return generators
 
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
@@ -163,28 +172,34 @@ class LinearModuleHandler(MetaInfoModuleHandler):
         # the strategies will be transformed back to its original shape in self.post_process
         input_meta_data = self.node.args[0]._meta_data
         input_logical_shape = input_meta_data.view(-1, input_meta_data.shape[-1]).shape
-        physical_input_operand = OperationData(name=str(self.node.args[0]),
-                                               type=OperationDataType.ARG,
-                                               data=input_meta_data,
-                                               logical_shape=input_logical_shape)
-        physical_other_operand = OperationData(name="weight",
-                                               type=OperationDataType.PARAM,
-                                               data=self.named_parameters['weight'],
-                                               logical_shape=self.named_parameters['weight'].shape[::-1])
+        physical_input_operand = OperationData(
+            name=str(self.node.args[0]),
+            type=OperationDataType.ARG,
+            data=input_meta_data,
+            logical_shape=input_logical_shape,
+        )
+        physical_other_operand = OperationData(
+            name="weight",
+            type=OperationDataType.PARAM,
+            data=self.named_parameters["weight"],
+            logical_shape=self.named_parameters["weight"].shape[::-1],
+        )
         output_meta_data = self.node._meta_data
         output_logical_shape = output_meta_data.view(-1, output_meta_data.shape[-1]).shape
-        physical_output = OperationData(name=str(self.node),
-                                        type=OperationDataType.OUTPUT,
-                                        data=output_meta_data,
-                                        logical_shape=output_logical_shape)
+        physical_output = OperationData(
+            name=str(self.node),
+            type=OperationDataType.OUTPUT,
+            data=output_meta_data,
+            logical_shape=output_logical_shape,
+        )
 
         mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
 
-        if 'bias' in self.named_parameters is not None:
-            physical_bias_operand = OperationData(name="bias",
-                                                  type=OperationDataType.PARAM,
-                                                  data=self.named_parameters['bias'])
-            mapping['bias'] = physical_bias_operand
+        if "bias" in self.named_parameters is not None:
+            physical_bias_operand = OperationData(
+                name="bias", type=OperationDataType.PARAM, data=self.named_parameters["bias"]
+            )
+            mapping["bias"] = physical_bias_operand
         return mapping
 
     def post_process(self, strategy: ShardingStrategy) -> Union[ShardingStrategy, List[ShardingStrategy]]:
@@ -194,14 +209,14 @@ class LinearModuleHandler(MetaInfoModuleHandler):
         2. the input and output sharding specs are updated to physical shape.
         """
         # switch the dimensions of the transposed weight
-        strategy = _update_sharding_spec_for_transposed_weight_for_linear(strategy=strategy, weight_name='weight')
+        strategy = _update_sharding_spec_for_transposed_weight_for_linear(strategy=strategy, weight_name="weight")
 
         # create multiple sharding strategies for the inputs
         # as input can be multi-dimensional and the partition dim is only 2D,
         # we need to map the partition at dim 0 to one of the first few dimensions of the input
-        strategies = _convert_logical_sharding_to_physical_sharding_spec_for_linear(strategy=strategy,
-                                                                                    input_name=str(self.node.args[0]),
-                                                                                    output_name=str(self.node))
+        strategies = _convert_logical_sharding_to_physical_sharding_spec_for_linear(
+            strategy=strategy, input_name=str(self.node.args[0]), output_name=str(self.node)
+        )
         return strategies
 
 
@@ -215,7 +230,8 @@ class LinearFunctionHandler(MetaInfoNodeHandler):
         op_data_mapping = self.get_operation_data_mapping()
         generators = []
         generators.append(
-            LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh, linear_projection_type='linear'))
+            LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh, linear_projection_type="linear")
+        )
         return generators
 
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
@@ -223,10 +239,12 @@ class LinearFunctionHandler(MetaInfoNodeHandler):
         # the strategies will be transformed back to its original shape in self.post_process
         input_meta_data = self.node.args[0]._meta_data
         input_logical_shape = input_meta_data.view(-1, input_meta_data.shape[-1]).shape
-        physical_input_operand = OperationData(name=str(self.node.args[0]),
-                                               type=OperationDataType.ARG,
-                                               data=self.node.args[0]._meta_data,
-                                               logical_shape=input_logical_shape)
+        physical_input_operand = OperationData(
+            name=str(self.node.args[0]),
+            type=OperationDataType.ARG,
+            data=self.node.args[0]._meta_data,
+            logical_shape=input_logical_shape,
+        )
 
         # check if the other operand is a parameter
         if isinstance(self.node.args[1]._meta_data, torch.nn.parameter.Parameter):
@@ -234,10 +252,12 @@ class LinearFunctionHandler(MetaInfoNodeHandler):
         else:
             data_type = OperationDataType.ARG
 
-        physical_other_operand = OperationData(name=str(self.node.args[1]),
-                                               type=data_type,
-                                               data=self.node.args[1]._meta_data,
-                                               logical_shape=self.node.args[1]._meta_data.shape[::-1])
+        physical_other_operand = OperationData(
+            name=str(self.node.args[1]),
+            type=data_type,
+            data=self.node.args[1]._meta_data,
+            logical_shape=self.node.args[1]._meta_data.shape[::-1],
+        )
         output_meta_data = self.node._meta_data
         output_logical_shape = output_meta_data.view(-1, output_meta_data.shape[-1]).shape
         physical_output = OperationData(
@@ -249,27 +269,28 @@ class LinearFunctionHandler(MetaInfoNodeHandler):
 
         mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
 
-        if 'bias' in self.node.kwargs and self.node.kwargs['bias'] is not None:
+        if "bias" in self.node.kwargs and self.node.kwargs["bias"] is not None:
             # check if the other operand is a parameter
             if isinstance(self.node.kwargs["bias"]._meta_data, torch.nn.parameter.Parameter):
                 data_type = OperationDataType.PARAM
             else:
                 data_type = OperationDataType.ARG
-            physical_bias_operand = OperationData(name=str(self.node.kwargs["bias"]),
-                                                  type=data_type,
-                                                  data=self.node.kwargs["bias"]._meta_data)
-            mapping['bias'] = physical_bias_operand
+            physical_bias_operand = OperationData(
+                name=str(self.node.kwargs["bias"]), type=data_type, data=self.node.kwargs["bias"]._meta_data
+            )
+            mapping["bias"] = physical_bias_operand
 
         return mapping
 
     def post_process(self, strategy: ShardingStrategy):
         # switch the dimensions of the transposed weight
-        strategy = _update_sharding_spec_for_transposed_weight_for_linear(strategy=strategy,
-                                                                          weight_name=str(self.node.args[1]))
+        strategy = _update_sharding_spec_for_transposed_weight_for_linear(
+            strategy=strategy, weight_name=str(self.node.args[1])
+        )
         # create multiple sharding strategies for the inputs
         # as input can be multi-dimensional and the partition dim is only 2D,
         # we need to map the partition at dim 0 to one of the first few dimensions of the input
-        strategies = _convert_logical_sharding_to_physical_sharding_spec_for_linear(strategy=strategy,
-                                                                                    input_name=str(self.node.args[0]),
-                                                                                    output_name=str(self.node))
+        strategies = _convert_logical_sharding_to_physical_sharding_spec_for_linear(
+            strategy=strategy, input_name=str(self.node.args[0]), output_name=str(self.node)
+        )
         return strategies

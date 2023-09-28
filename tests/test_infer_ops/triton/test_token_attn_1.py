@@ -5,16 +5,16 @@ import torch
 from packaging import version
 
 try:
-    import triton
-    import triton.language as tl
+    pass
 
     from colossalai.kernel.triton.token_attention_kernel import token_attn_fwd_1
+
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
     print("please install triton from https://github.com/openai/triton")
 
-TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.4')
+TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 
 
 def torch_attn(xq, xk, bs, seqlen, num_head, head_dim):
@@ -23,8 +23,9 @@ def torch_attn(xq, xk, bs, seqlen, num_head, head_dim):
     keys = xk
     xq = xq.transpose(1, 2)
     keys = keys.transpose(1, 2)
-    scores = (torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(head_dim)).squeeze().transpose(0, 1).reshape(
-        num_head, -1)
+    scores = (
+        (torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(head_dim)).squeeze().transpose(0, 1).reshape(num_head, -1)
+    )
     return scores
 
 
@@ -37,10 +38,11 @@ def torch_attn_1(xq, xk, seqlen, num_head, head_dim):
     return logics
 
 
-@pytest.mark.skipif(not TRITON_CUDA_SUPPORT or not HAS_TRITON,
-                    reason="triton requires cuda version to be higher than 11.4")
+@pytest.mark.skipif(
+    not TRITON_CUDA_SUPPORT or not HAS_TRITON, reason="triton requires cuda version to be higher than 11.4"
+)
 def test_attn_1():
-    import time
+    pass
 
     batch_size, seq_len, head_num, head_dim = 17, 1025, 12, 128
 

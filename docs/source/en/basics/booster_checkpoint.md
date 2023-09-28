@@ -19,6 +19,30 @@ Model must be boosted by `colossalai.booster.Booster` before saving. `checkpoint
 
 Model must be boosted by `colossalai.booster.Booster` before loading. It will detect the checkpoint format automatically, and load in corresponding way.
 
+If you want to load a pretrained model from Huggingface while the model is too large to be directly loaded through `from_pretrained` on a single device, a recommended way is to download the pretrained weights to a local directory, and use `booster.load` to load from that directory after boosting the model. Also, the model should be initialized under lazy initialization context to avoid OOM. Here is an example pseudocode:
+```python
+from colossalai.lazy import LazyInitContext
+from huggingface_hub import snapshot_download
+...
+
+# Initialize model under lazy init context
+init_ctx = LazyInitContext(default_device=get_current_device)
+with init_ctx:
+     model = LlamaForCausalLM(config)
+
+...
+
+# Wrap the model through Booster.boost
+model, optimizer, _, _, _ = booster.boost(model, optimizer)
+
+# download huggingface pretrained model to local directory.
+model_dir = snapshot_download(repo_id="lysandre/arxiv-nlp")
+
+# load model using booster.load
+booster.load(model, model_dir)
+...
+```
+
 ## Optimizer Checkpoint
 
 {{ autodoc:colossalai.booster.Booster.save_optimizer }}

@@ -24,8 +24,9 @@ def embedding_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem
 
     # compute cost
     fwd_compute_cost = flop_mapping[torch.ops.aten.embedding.default]([weight_tensor, input_tensor], [output_tensor])
-    bwd_compute_cost = flop_mapping[torch.ops.aten.embedding_dense_backward.default]([output_tensor, weight_tensor],
-                                                                                     [weight_tensor])
+    bwd_compute_cost = flop_mapping[torch.ops.aten.embedding_dense_backward.default](
+        [output_tensor, weight_tensor], [weight_tensor]
+    )
 
     compute_cost = TrainCycleItem(fwd=fwd_compute_cost, bwd=bwd_compute_cost, total=fwd_compute_cost + bwd_compute_cost)
 
@@ -34,10 +35,9 @@ def embedding_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem
     # NOTE: during the backward phase of torch.nn.Embedding, it seems when the input is large enough, it will
     # have a temp memory which is kind of weird and we don't know the reason yet, so currently we just assume
     # that there will be no temp memory, as the temp memory is significantly smaller than the gradient memory
-    fwd_memory_cost = MemoryCost(activation=compute_size_in_bytes([input_tensor, output_tensor]),
-                                 parameter=0,
-                                 temp=0,
-                                 buffer=0)
+    fwd_memory_cost = MemoryCost(
+        activation=compute_size_in_bytes([input_tensor, output_tensor]), parameter=0, temp=0, buffer=0
+    )
     bwd_memory_cost = MemoryCost(activation=compute_size_in_bytes([weight_tensor]), parameter=0, temp=0, buffer=0)
 
     total_memory_cost = MemoryCost(activation=fwd_memory_cost.activation + bwd_memory_cost.activation)

@@ -1,0 +1,202 @@
+[
+  {
+    "category": "brainstorming",
+    "instruction": "Which are some popular fiction books that I should read?",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 1
+  },
+  {
+    "category": "brainstorming",
+    "instruction": "How do I properly store fruits and vegetables to keep them fresh for longer?",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 2
+  },
+  {
+    "category": "brainstorming",
+    "instruction": "How do you properly chop an onion without crying?",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 3
+  },
+  {
+    "category": "brainstorming",
+    "instruction": "How to make an international transfer? Please provide 3 techniques.",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 4
+  },
+  {
+    "category": "brainstorming",
+    "instruction": "Name five leadership qualities that you consider most important.",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 5
+  },
+  {
+    "category": "chat",
+    "instruction": "Complete a dialogue based on the following character information. Alex: A novice writer who is struggling to find inspiration and develop his writing skills. Emma: A successful author with many published works, providing guidance and advice to Alex.",
+    "input": "Alex: Hi Emma, I have been writing for a while now but can't seem to make any progress. Can you give me any advice? Emma: Hi Alex, sure. What kind of writing are you doing? Alex: I'm trying to write a novel, but I just can't seem to find any inspiration. Emma: ",
+    "output": "",
+    "target": "",
+    "id": 6
+  },
+  {
+    "category": "chat",
+    "instruction": "Complete a dialogue based on the following character information. John: An experienced software engineer with a passion for coding. Karen: A recent college graduate who is interested in learning more about software development.",
+    "input": "Karen: Hi John, I noticed that you have a lot of experience in the software industry. Can you tell me what you think is the most important skill for a software engineer? John: ",
+    "output": "",
+    "target": "",
+    "id": 7
+  },
+  {
+    "category": "chat",
+    "instruction": "Complete a dialogue based on the following character information. Sarah is a new employee who is nervous about her first presentation; Tom is her boss who has given her coaching and preparation materials.",
+    "input": "Sarah: Tom, I'm feeling really nervous about my presentation tomorrow. Tom: I know how you feel, Sarah. However, I believe in you and your abilities. Just stick to the preparation materials that I have given you, and you'll do great. Sarah: Thank you, Tom. What if I forget something important during the presentation? Tom: ",
+    "output": "",
+    "target": "",
+    "id": 8
+  },
+  {
+    "category": "chat",
+    "instruction": "Complete a dialogue based on the following character information. Sarah: a young artist who is full of creative ideas and always eager to try new things. Jack: a seasoned artist who has achieved great success in the art world and is more traditional in his approach to art.",
+    "input": "Sarah: Hi Jack, I'm really excited to meet you. I'm a big fan of your work. Jack: Hi Sarah, nice to meet you too. So, what kind of art do you do? Sarah: I am passionate about abstract art, especially combining different materials and colors. I think it can really give people a new perspective on things. Jack: That's interesting, but I am more focused on realistic paintings. I believe the most important thing is to master the basic skills first. Sarah: ",
+    "output": "",
+    "target": "",
+    "id": 9
+  },
+  {
+    "category": "chat",
+    "instruction": "Complete a conversation based on the following persona information. Sarah is a college student who is interested in joining a volunteer organization. John is the leader of the volunteer organization and is eager to welcome new members.",
+    "input": "Sarah: Hi, I'm Sarah, and I'm interested in joining your volunteer organization. John: Hi Sarah, welcome! We're always looking for new members who are passionate about volunteering. What areas would you like to focus on? Sarah: I'm interested in community outreach and working with children. John: ",
+    "output": "",
+    "target": "",
+    "id": 10
+  },
+  {
+    "category": "generation",
+    "instruction": "Write an email based on the subject:",
+    "input": "Subject: \"Invitation to an Exclusive Webinar\"",
+    "output": "",
+    "target": "",
+    "id": 11
+  },
+  {
+    "category": "generation",
+    "instruction": "Write a set of guidelines for first-time pet owners on how to properly care for a new puppy.",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 12
+  },
+  {
+    "category": "generation",
+    "instruction": "Can you help me write a persuasive speech on why we should recycle more and take better care of the environment?",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 13
+  },
+  {
+    "category": "generation",
+    "instruction": "Write a pitch for a brand-new mobile app that helps people organize their daily tasks more efficiently.",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 14
+  },
+  {
+    "category": "generation",
+    "instruction": "Write a social media post promoting an upcoming concert featuring a local band.",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 15
+  },
+  {
+    "category": "open_qa",
+    "instruction": "Describe the significance of the Renaissance period in European history.",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 16
+  },
+  {
+    "category": "open_qa",
+    "instruction": "What is the term for the surgical removal of the appendix?",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 17
+  },
+  {
+    "category": "open_qa",
+    "instruction": "Explain the process of osmosis in biological systems.",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 18
+  },
+  {
+    "category": "open_qa",
+    "instruction": "Who were the members of the Beatles band?",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 19
+  },
+  {
+    "category": "open_qa",
+    "instruction": "Who painted the The Scream?",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 20
+  },
+  {
+    "category": "roleplay",
+    "instruction": "I want you to act as a linux terminal. I will type commands and you will reply with what the terminal should show. I want you to only reply with the terminal output inside one unique code block, and nothing else. do not write explanations. do not type commands unless I instruct you to do so. when i need to tell you something in english, i will do so by putting text inside curly brackets {like this}. my first command is pwd",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 21
+  },
+  {
+    "category": "roleplay",
+    "instruction": "I want you to act as a travel guide. I will write you my location and you will suggest a place to visit near my location. In some cases, I will also give you the type of places I will visit. You will also suggest me places of similar type that are close to my first location. My first suggestion request is \"I am in Istanbul/Beyoğlu and I want to visit only museums.\"",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 22
+  },
+  {
+    "category": "roleplay",
+    "instruction": "I want you to act as an advertiser. You will create a campaign to promote a product or service of your choice. You will choose a target audience, develop key messages and slogans, select the media channels for promotion, and decide on any additional activities needed to reach your goals. My first suggestion request is \"I need help creating an advertising campaign for a new type of energy drink targeting young adults aged 18-30.\"",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 23
+  },
+  {
+    "category": "roleplay",
+    "instruction": "I want you to act as a storyteller. You will come up with entertaining stories that are engaging, imaginative and captivating for the audience. It can be fairy tales, educational stories or any other type of stories which has the potential to capture people's attention and imagination. Depending on the target audience, you may choose specific themes or topics for your storytelling session e.g., if it’s children then you can talk about animals; If it’s adults then history-based tales might engage them better etc. My first request is \"I need an interesting story on perseverance.\"",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 24
+  },
+  {
+    "category": "roleplay",
+    "instruction": "I want you to act as a rapper. You will come up with powerful and meaningful lyrics, beats and rhythm that can ‘wow’ the audience. Your lyrics should have an intriguing meaning and message which people can relate too. When it comes to choosing your beat, make sure it is catchy yet relevant to your words, so that when combined they make an explosion of sound everytime! My first request is \"I need a rap song about finding strength within yourself.\"",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 25
+  }
+]

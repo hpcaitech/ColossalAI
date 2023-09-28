@@ -11,6 +11,7 @@ def print_rank_0(message: str) -> None:
     """
     try:
         import torch.distributed as dist
+
         if not dist.is_initialized():
             is_main_rank = True
         else:
@@ -36,7 +37,8 @@ def get_cuda_version_in_pytorch() -> List[int]:
         torch_cuda_minor = torch.version.cuda.split(".")[1]
     except:
         raise ValueError(
-            "[extension] Cannot retrieve the CUDA version in the PyTorch binary given by torch.version.cuda")
+            "[extension] Cannot retrieve the CUDA version in the PyTorch binary given by torch.version.cuda"
+        )
     return torch_cuda_major, torch_cuda_minor
 
 
@@ -50,7 +52,7 @@ def get_cuda_bare_metal_version(cuda_dir) -> List[int]:
     Returns:
         The CUDA version required by PyTorch, in the form of tuple (major, minor).
     """
-    nvcc_path = os.path.join(cuda_dir, 'bin/nvcc')
+    nvcc_path = os.path.join(cuda_dir, "bin/nvcc")
 
     if cuda_dir is None:
         raise ValueError(
@@ -85,9 +87,9 @@ def check_system_pytorch_cuda_match(cuda_dir):
 
     if bare_metal_major != torch_cuda_major:
         raise Exception(
-            f'[extension] Failed to build PyTorch extension because the detected CUDA version ({bare_metal_major}.{bare_metal_minor}) '
-            f'mismatches the version that was used to compile PyTorch ({torch_cuda_major}.{torch_cuda_minor}).'
-            'Please make sure you have set the CUDA_HOME correctly and installed the correct PyTorch in https://pytorch.org/get-started/locally/ .'
+            f"[extension] Failed to build PyTorch extension because the detected CUDA version ({bare_metal_major}.{bare_metal_minor}) "
+            f"mismatches the version that was used to compile PyTorch ({torch_cuda_major}.{torch_cuda_minor})."
+            "Please make sure you have set the CUDA_HOME correctly and installed the correct PyTorch in https://pytorch.org/get-started/locally/ ."
         )
 
     if bare_metal_minor != torch_cuda_minor:
@@ -107,10 +109,11 @@ def get_pytorch_version() -> List[int]:
         A tuple of integers in the form of (major, minor, patch).
     """
     import torch
-    torch_version = torch.__version__.split('+')[0]
-    TORCH_MAJOR = int(torch_version.split('.')[0])
-    TORCH_MINOR = int(torch_version.split('.')[1])
-    TORCH_PATCH = int(torch_version.split('.')[2], 16)
+
+    torch_version = torch.__version__.split("+")[0]
+    TORCH_MAJOR = int(torch_version.split(".")[0])
+    TORCH_MINOR = int(torch_version.split(".")[1])
+    TORCH_PATCH = int(torch_version.split(".")[2], 16)
     return TORCH_MAJOR, TORCH_MINOR, TORCH_PATCH
 
 
@@ -132,7 +135,8 @@ def check_pytorch_version(min_major_version, min_minor_version) -> bool:
     if torch_major < min_major_version or (torch_major == min_major_version and torch_minor < min_minor_version):
         raise RuntimeError(
             f"[extension] Colossal-AI requires Pytorch {min_major_version}.{min_minor_version} or newer.\n"
-            "The latest stable release can be obtained from https://pytorch.org/get-started/locally/")
+            "The latest stable release can be obtained from https://pytorch.org/get-started/locally/"
+        )
 
 
 def check_cuda_availability():
@@ -143,6 +147,7 @@ def check_cuda_availability():
         A boolean value. True if CUDA is available and False otherwise.
     """
     import torch
+
     return torch.cuda.is_available()
 
 
@@ -155,29 +160,31 @@ def set_cuda_arch_list(cuda_dir):
 
     # we only need to set this when CUDA is not available for cross-compilation
     if not cuda_available:
-        warnings.warn('\n[extension]  PyTorch did not find available GPUs on this system.\n'
-                      'If your intention is to cross-compile, this is not an error.\n'
-                      'By default, Colossal-AI will cross-compile for \n'
-                      '1. Pascal (compute capabilities 6.0, 6.1, 6.2),\n'
-                      '2. Volta (compute capability 7.0)\n'
-                      '3. Turing (compute capability 7.5),\n'
-                      '4. Ampere (compute capability 8.0, 8.6)if the CUDA version is >= 11.0\n'
-                      '\nIf you wish to cross-compile for a single specific architecture,\n'
-                      'export TORCH_CUDA_ARCH_LIST="compute capability" before running setup.py.\n')
+        warnings.warn(
+            "\n[extension]  PyTorch did not find available GPUs on this system.\n"
+            "If your intention is to cross-compile, this is not an error.\n"
+            "By default, Colossal-AI will cross-compile for \n"
+            "1. Pascal (compute capabilities 6.0, 6.1, 6.2),\n"
+            "2. Volta (compute capability 7.0)\n"
+            "3. Turing (compute capability 7.5),\n"
+            "4. Ampere (compute capability 8.0, 8.6)if the CUDA version is >= 11.0\n"
+            "\nIf you wish to cross-compile for a single specific architecture,\n"
+            'export TORCH_CUDA_ARCH_LIST="compute capability" before running setup.py.\n'
+        )
 
         if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
             bare_metal_major, bare_metal_minor = get_cuda_bare_metal_version(cuda_dir)
 
-            arch_list = ['6.0', '6.1', '6.2', '7.0', '7.5']
+            arch_list = ["6.0", "6.1", "6.2", "7.0", "7.5"]
 
             if int(bare_metal_major) == 11:
                 if int(bare_metal_minor) == 0:
-                    arch_list.append('8.0')
+                    arch_list.append("8.0")
                 else:
-                    arch_list.append('8.0')
-                    arch_list.append('8.6')
+                    arch_list.append("8.0")
+                    arch_list.append("8.6")
 
-            arch_list_str = ';'.join(arch_list)
+            arch_list_str = ";".join(arch_list)
             os.environ["TORCH_CUDA_ARCH_LIST"] = arch_list_str
         return False
     return True
@@ -197,13 +204,13 @@ def get_cuda_cc_flag() -> List[str]:
     import torch
 
     cc_flag = []
-    max_arch = ''.join(str(i) for i in torch.cuda.get_device_capability())
+    max_arch = "".join(str(i) for i in torch.cuda.get_device_capability())
     for arch in torch.cuda.get_arch_list():
-        res = re.search(r'sm_(\d+)', arch)
+        res = re.search(r"sm_(\d+)", arch)
         if res:
             arch_cap = res[1]
             if int(arch_cap) >= 60 and int(arch_cap) <= int(max_arch):
-                cc_flag.extend(['-gencode', f'arch=compute_{arch_cap},code={arch}'])
+                cc_flag.extend(["-gencode", f"arch=compute_{arch_cap},code={arch}"])
     return cc_flag
 
 

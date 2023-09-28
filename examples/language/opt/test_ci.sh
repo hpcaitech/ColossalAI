@@ -7,9 +7,9 @@ do
 for GPUNUM in 1 4
 do
 
-torchrun \
-  --standalone \
+colossalai run \
   --nproc_per_node ${GPUNUM} \
+  --master_port 29505 \
   opt_benchmark.py \
   --model_name_or_path "facebook/opt-125m" \
   --plugin ${PLUGIN} \

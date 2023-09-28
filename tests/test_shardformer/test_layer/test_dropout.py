@@ -56,7 +56,7 @@ def check_dropout_replicated_input():
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     check_dropout_parallel_input()
     check_dropout_replicated_input()
 
@@ -66,5 +66,5 @@ def test_dropout():
     spawn(run_dist, nprocs=2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_dropout()

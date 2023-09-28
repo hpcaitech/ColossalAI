@@ -11,11 +11,11 @@ from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
 import colossalai
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.initialize import launch
+from colossalai.legacy.context import ParallelMode
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.initialize import launch
+from colossalai.legacy.utils import get_dataloader, print_rank_0
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from colossalai.utils import get_dataloader, print_rank_0
 
 BATCH_SIZE = 8
 
@@ -23,7 +23,7 @@ CONFIG = dict(NUM_MICRO_BATCHES=2, parallel=dict(pipeline=dict(size=2), tensor=d
 
 
 def run_schedule(rank, world_size, port):
-    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     # build model
     model = resnet18(num_classes=10)
@@ -33,20 +33,23 @@ def run_schedule(rank, world_size, port):
     elif gpc.get_local_rank(ParallelMode.PIPELINE) == 1:
 
         class Flatten(nn.Module):
-
             def forward(self, x):
                 return torch.flatten(x, 1)
 
         model = nn.Sequential(model.layer3, model.layer4, model.avgpool, Flatten(), model.fc)
 
-    print_rank_0('model is created')
+    print_rank_0("model is created")
 
-    train_dataset = CIFAR10(root=Path(os.environ['DATA']),
-                            download=True,
-                            transform=transforms.Compose([
-                                transforms.ToTensor(),
-                                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
-                            ]))
+    train_dataset = CIFAR10(
+        root=Path(os.environ["DATA"]),
+        download=True,
+        transform=transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
+            ]
+        ),
+    )
 
     train_dataloader = get_dataloader(
         dataset=train_dataset,
@@ -63,7 +66,7 @@ def run_schedule(rank, world_size, port):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0)
 
     # initialize
-    engine, train_dataloader, _, _ = colossalai.initialize(model, optimizer, criterion, train_dataloader)
+    engine, train_dataloader, _, _ = colossalai.legacy.initialize(model, optimizer, criterion, train_dataloader)
 
     # build pipeline schedule
     schedule = engine.schedule
@@ -83,5 +86,5 @@ def test_pipeline_schedule():
     spawn(run_schedule, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_pipeline_schedule()

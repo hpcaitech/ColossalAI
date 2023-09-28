@@ -1,4 +1,4 @@
-# booster 使用
+# Booster API
 
 作者: [Mingyan Jiang](https://github.com/jiangmingyan), [Jianghai Chen](https://github.com/CjhHa1), [Baizhou Zhang](https://github.com/Fridge003)
 
@@ -11,7 +11,8 @@
 
 <!-- update this url-->
 
-- [使用 booster 训练](https://github.com/hpcaitech/ColossalAI/blob/main/examples/tutorial/new_api/cifar_resnet)
+- [使用Booster在CIFAR-10数据集上训练ResNet](https://github.com/hpcaitech/ColossalAI/blob/main/examples/tutorial/new_api/cifar_resnet)
+- [使用Booster在RedPajama数据集上训练Llama-1/2](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama2)
 
 ## 简介
 
@@ -33,6 +34,8 @@ Booster 插件是管理并行配置的重要组件（eg：gemini 插件封装了
 **_TorchFSDPPlugin:_** TorchFSDPPlugin封装了 Pytorch的FSDP加速方案，可以用于零冗余优化器数据并行（ZeroDP）的训练。
 
 若想了解更多关于插件的用法细节，请参考[Booster 插件](./booster_plugins.md)章节。
+
+有一些插件支持懒惰初始化，它能节省初始化大模型时的内存占用。详情请参考[懒惰初始化](../features/lazy_init.md)。
 
 ### Booster 接口
 

@@ -1,0 +1,44 @@
+{
+  "language": "cn",
+  "category": {
+    "brainstorming": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "creativity",
+        "practicality",
+        "reasonableness"
+      ]
+    },
+    "chat": {
+      "GPT": [
+        "language organization",
+        "naturalness",
+        "engagingness",
+        "fidelity"
+      ]
+    },
+    "generation": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "diversity"
+      ]
+    },
+    "open_qa": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "correctness"
+      ]
+    },
+    "roleplay": {
+      "GPT": [
+        "language organization",
+        "relevance",
+        "fidelity",
+        "creativity"
+      ]
+    }
+  }
+}
