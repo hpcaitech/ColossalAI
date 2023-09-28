@@ -106,16 +106,31 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
         return super().zero_grad(*args, **kwargs)
 
     def _unscale_and_clip_grads(self, total_norm: float) -> None:
+        """
+        Unscale and clip gradients before performing the optimization step.
+
+        Args:
+            total_norm (float): The computed total gradient norm.
+
+        Returns:
+            None
+        """
         div_scale = 1.0
+
+        # If mixed-precision training is used, get the gradient division scale from the mixed-precision handler.
         if self.mixed_precision is not None:
             div_scale = self.mixed_precision.get_grad_div_scale()
 
         if self.max_norm > 0.0:
-            # norm is in fact norm*scale
+            # Calculate the scaling factor for gradient clipping
+            # The gradient norm is scaled by 'div_scale' and then clipped to 'max_norm'
             clip = ((total_norm / div_scale) + 1e-6) / self.max_norm
+
+            # If the clip factor exceeds 1, adjust 'div_scale' accordingly to ensure clipping
             if clip > 1:
                 div_scale = clip * div_scale
 
+        # Apply the scaling factor to gradients
         for group in self.param_groups:
             for p in group["params"]:
                 if p.grad is None:
@@ -123,9 +138,8 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
                 p.grad.data.mul_(1.0 / div_scale)
 
     def _compute_grad_norm(self, param_gradient_pairs: List[Tuple[Tensor]], norm_type: int = 2) -> int:
-        """Clips the gradient norm of an iterable of parameter-gradient pairs.
-        This function is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and extended
-        to handle parameters from model parallelism.
+        r"""
+        Compute and return the gradient norm for gradient clipping.
 
         Args:
             param_gradient_pairs (List[Tuple[Tensor]]): List of (parameter, gradient) pairs; gradients are used for norm calculation.
@@ -179,9 +193,6 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
                 )
 
             total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
-
-        if total_norm == float("inf") or total_norm == -float("inf") or total_norm != total_norm:
-            total_norm = -1
 
         return total_norm
 

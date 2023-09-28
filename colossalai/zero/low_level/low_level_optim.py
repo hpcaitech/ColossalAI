@@ -464,9 +464,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             self.optim.param_groups[group_id]["params"] = self._master_param_groups_of_current_rank[group_id]
 
     def _compute_grad_norm(self, gradients: List[Tensor], norm_type: int = 2) -> float:
-        """Clips gradient norm of an iterable of parameters.
-        This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
-        added functionality to handle model parallel parameters.
+        r"""
+        Compute and return the gradient norm for gradient clipping.
 
         Args:
             gradients (List[Tensor]): The gradients to compute norm
@@ -521,9 +520,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 )
 
             total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
-
-        if total_norm == float("inf") or total_norm == -float("inf") or total_norm != total_norm:
-            total_norm = -1
 
         return total_norm
 

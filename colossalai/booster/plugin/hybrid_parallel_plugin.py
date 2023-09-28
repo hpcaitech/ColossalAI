@@ -183,19 +183,30 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
         super().__init__(optim)
 
     def step(self, *args, **kwargs):
+        r"""
+        Perform an optimization step.
+
+        Args:
+            *args: Variable-length positional arguments to be passed to the optimizer's step function.
+            **kwargs: Keyword arguments to be passed to the optimizer's step function.
+        """
+
         if self.max_norm > 0:
-            # compute the total norm.
+            # Compute the total gradient norm.
             param_gradient_pairs = [
                 (p, p.grad) for group in self.optim.param_groups for p in group["params"] if p.grad is not None
             ]
             total_norm = self._compute_grad_norm(param_gradient_pairs)
-            self._clip_grads(total_norm)
+
+            # Clip the gradients to prevent exploding gradients.
+            self._clip_grad_norm(total_norm)
+
+        # Perform the optimization step using the underlying optimizer.
         self.optim.step(*args, **kwargs)
 
     def _compute_grad_norm(self, param_gradient_pairs: List[Tuple[Tensor]], norm_type: int = 2) -> int:
-        """Clips the gradient norm of an iterable of parameter-gradient pairs.
-        This function is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and extended
-        to handle parameters from model parallelism.
+        r"""
+        Compute and return the gradient norm for gradient clipping.
 
         Args:
             param_gradient_pairs (List[Tuple[Tensor]]): List of (parameter, gradient) pairs; gradients are used for norm calculation.
@@ -216,7 +227,7 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
         gradients = [grad for param, grad in param_gradient_pairs]
 
         if tp_size > 1 and norm_type != inf:
-            # grad_to_param_mapping is used to check which gradients are not distributed in tensor parallelism.
+            # grad_to_param_mapping is used to check which gradients are not distributed across devices of the 'tp_group'.
             grad_to_param_mapping = {id(grad): param for param, grad in param_gradient_pairs}
 
         if norm_type == inf:
@@ -270,20 +281,26 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
                 # Therefore, we subtract the norm of the shared parameter's gradient from the total norm exponentiated.
                 for shared_param in self.shared_params:
                     if self.stage_manager.stage in shared_param:
-                        shared_param_of_stage = shared_param[self.stage_manager.stage]
+                        stage_shared_param = shared_param[self.stage_manager.stage]
                         shared_param_grad_nrom_exponentiated = (
-                            _compute_norm_across_tp([shared_param_of_stage.grad]) ** norm_type
+                            _compute_norm_across_tp([stage_shared_param.grad]) ** norm_type
                         )
                         total_norm_exponentiated -= shared_param_grad_nrom_exponentiated
 
             total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
 
-        if total_norm == float("inf") or total_norm == -float("inf") or total_norm != total_norm:
-            total_norm = -1
-
         return total_norm
 
-    def _clip_grads(self, total_norm: float) -> None:
+    def _clip_grad_norm(self, total_norm: float) -> None:
+        r"""
+        Clips the gradients of the model's parameters to prevent exploding gradients.
+
+        Args:
+            total_norm (float): The computed total gradient norm.
+
+        Returns:
+            None
+        """
         clip_coef = torch.tensor(self.max_norm / (total_norm + 1e-6))
         clip_coef_clamped = torch.clamp(clip_coef, max=1.0)
 
@@ -343,9 +360,8 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
         )
 
     def _compute_grad_norm(self, param_gradient_pairs: List[Tuple[Tensor]], norm_type: int = 2) -> int:
-        """Clips the gradient norm of an iterable of parameter-gradient pairs.
-        This function is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and extended
-        to handle parameters from model parallelism.
+        r"""
+        Compute and return the gradient norm for gradient clipping.
 
         Args:
             param_gradient_pairs (List[Tuple[Tensor]]): List of (parameter, gradient) pairs; gradients are used for norm calculation.
@@ -383,9 +399,10 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
                 # Therefore, we subtract the norm of the shared parameter's gradient from the total norm exponentiated.
                 for shared_param in self.shared_params:
                     if self.stage_manager.stage in shared_param:
-                        shared_param_of_stage = shared_param[self.stage_manager.stage]
-                        master_shared_param = self.working_to_master_map[shared_param_of_stage]
-                        param_grad_pair = (shared_param_of_stage, master_shared_param.grad)
+                        stage_working_shared_param = shared_param[self.stage_manager.stage]
+                        stage_master_shared_param = self.working_to_master_map[stage_working_shared_param]
+                        # Note that the d_tensor is only labeled on working parameters, so we should pass the working parameters.
+                        param_grad_pair = (stage_working_shared_param, stage_master_shared_param.grad)
                         shared_param_grad_nrom_exponentiated = (
                             super()._compute_grad_norm([param_grad_pair]) ** norm_type
                         )
@@ -393,9 +410,6 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
 
             # compute the 'total_norm'
             total_norm = total_norm_exponentiated ** (1.0 / norm_type)
-
-        if total_norm == float("inf") or total_norm == -float("inf") or total_norm != total_norm:
-            total_norm = -1
 
         return total_norm
 
@@ -454,39 +468,47 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         )
 
     def _compute_grad_norm(self, gradients: List[Tensor], norm_type: int = 2) -> float:
-        """Clips gradient norm of an iterable of parameters.
-        This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
-        added functionality to handle model parallel parameters.
+        r"""
+        Compute and return the gradient norm for gradient clipping.
 
         Args:
-            gradients (List[Tensor]): The gradients to compute norm
-            norm_type (int, optional): type of the used p-norm, Can be ``'inf'`` for infinity norm. Defaults to 2.
+            gradients (List[Tensor]): A list of tensors containing gradients.
+            norm_type (int, optional): Type of the p-norm to be computed. Defaults to 2.
 
         Returns:
-            float: The total norm of given gradients
+            float: The computed gradient norm.
         """
 
+        # Check if the list of gradients is empty
         if len(gradients) == 0:
             return 0.0
 
+        # Determine the size of the parameter parallel group (pp_pg)
         pp_size = get_world_size(self.pp_pg) if self.pp_pg is not None else 1
+
+        # Convert norm_type to float
         norm_type = float(norm_type)
 
         # The parent class calculates the norm of 'tp' and 'dp' gradients,
         # so we only need to calculate the norm of 'pp' gradients.
+
         if norm_type == inf:
+            # Calculate the total norm using the maximum norm
             total_norm = super()._compute_grad_norm(gradients, norm_type)
 
+            # If there are multiple processes in the parameter parallel group (pp_pg),
+            # recompute the 'total_norm'
             if pp_size > 1:
-                # recompute the 'total_norm'
                 total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
                 dist.all_reduce(tensor=total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.pp_pg)
                 total_norm = total_norm_cuda[0].item()
         else:
+            # Calculate the total norm exponentiated
             total_norm_exponentiated = super()._compute_grad_norm(gradients, norm_type) ** norm_type
 
+            # If there are multiple processes in the parameter parallel group (pp_pg),
+            # recompute the 'total_norm_exponentiated'
             if pp_size > 1:
-                # recompute the 'total_norm_exponentiated'
                 total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
                 dist.all_reduce(total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
                 total_norm_exponentiated = total_norm_exponentiated_cuda[0].item()
@@ -495,16 +517,13 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
                 # Therefore, we subtract the norm of the shared parameter's gradient from the total norm exponentiated.
                 for shared_param in self.shared_params:
                     if self.stage_manager.stage in shared_param:
-                        shared_param_of_stage = shared_param[self.stage_manager.stage]
-                        working_grad = self._grad_store.get_working_grad_by_param_id(id(shared_param_of_stage))
-                        shared_param_grad_nrom_exponentiated = super()._compute_grad_norm([working_grad]) ** norm_type
-                        total_norm_exponentiated -= shared_param_grad_nrom_exponentiated
+                        stage_shared_param = shared_param[self.stage_manager.stage]
+                        working_grad = self._grad_store.get_working_grad_by_param_id(id(stage_shared_param))
+                        shared_param_grad_norm_exponentiated = super()._compute_grad_norm([working_grad]) ** norm_type
+                        total_norm_exponentiated -= shared_param_grad_norm_exponentiated
 
-            # compute the 'total_norm'
+            # Compute the 'total_norm' from 'total_norm_exponentiated'
             total_norm = total_norm_exponentiated ** (1.0 / norm_type)
-
-        if total_norm == float("inf") or total_norm == -float("inf") or total_norm != total_norm:
-            total_norm = -1
 
         return total_norm
 
