@@ -1,13 +1,15 @@
 # this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 import copy
+import ctypes
 from contextlib import contextmanager
 from functools import partial
-from typing import Dict, Iterator, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from torch.distributed import ProcessGroup
+from torch import Tensor, inf
+from torch.distributed import ProcessGroup, get_world_size
 from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.mixed_precision_mixin import (
@@ -17,18 +19,12 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
 )
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
+from colossalai.tensor.d_tensor.api import is_distributed_tensor
 
 # from colossalai.tensor import ColoParameter, ProcessGroup
 from colossalai.utils.cuda import get_current_device
 
-from ._utils import (
-    calculate_global_norm_from_list,
-    compute_norm,
-    flatten,
-    has_inf_or_nan,
-    release_param_grad,
-    sync_tensor,
-)
+from ._utils import calculate_global_norm_from_list, flatten, has_inf_or_nan, release_param_grad, sync_tensor
 from .bookkeeping import BucketStore, GradientStore, ParameterStore
 
 
@@ -433,7 +429,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
             # compute norm
             working_grads = self._grad_store.get_working_grads_by_group_id(group_id)
-            norm_group = compute_norm(gradients=working_grads, dp_group=self.dp_pg, tp_group=self.tp_pg)
+            norm_group = self._compute_grad_norm(gradients=working_grads)
             norm_groups.append(norm_group)
 
             self._grad_store.reset_grads_by_group_id(group_id)
@@ -466,6 +462,70 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 working_param.data.copy_(flatten(all_splited_param)[: working_param.numel()].reshape_as(working_param))
 
             self.optim.param_groups[group_id]["params"] = self._master_param_groups_of_current_rank[group_id]
+
+    def _compute_grad_norm(self, gradients: List[Tensor], norm_type: int = 2) -> float:
+        """Clips gradient norm of an iterable of parameters.
+        This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
+        added functionality to handle model parallel parameters.
+
+        Args:
+            gradients (List[Tensor]): The gradients to compute norm
+            norm_type (int, optional): type of the used p-norm, Can be ``'inf'`` for infinity norm. Defaults to 2.
+
+        Returns:
+            float: The total norm of given gradients
+        """
+
+        if len(gradients) == 0:
+            return 0.0
+
+        tp_size = get_world_size(self.tp_pg) if self.tp_pg is not None else 1
+
+        norm_type = float(norm_type)
+        if norm_type == inf:
+            total_norm = max(grad.data.abs().max() for grad in gradients)
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+            dist.all_reduce(total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.dp_pg)
+            if tp_size > 1:
+                dist.all_reduce(tensor=total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.tp_pg)
+
+            total_norm = total_norm_cuda[0].item()
+        else:
+            total_norm_exponentiated = 0.0
+            for grad in gradients:
+                grad_norm_exponentiated = grad.data.double().norm(norm_type) ** norm_type
+
+                # If 'tp_size' is greater than 1 and the parameter for the gradient is not a distributed tensor,
+                # it indicates that the parameter is not distributed across devices of the 'tp_group'.
+                # Consequently, there is no need to perform an 'all_reduce' operation for 'grad_norm'.
+                # However, we still perform the 'all_reduce' operation for the sake of good coding practices.
+                # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
+                if tp_size > 1:
+                    param_id_for_grad = self._grad_store.get_param_id_for_grad(grad)
+                    param_for_grad = ctypes.cast(param_id_for_grad, ctypes.py_object).value
+
+                    if is_distributed_tensor(param_for_grad) == False:
+                        grad_norm_exponentiated /= tp_size
+
+                total_norm_exponentiated += grad_norm_exponentiated.item()
+
+            # Sum across all model parallel GPUs.
+            total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
+            torch.distributed.all_reduce(
+                total_norm_exponentiated_cuda, op=torch.distributed.ReduceOp.SUM, group=self.dp_pg
+            )
+
+            if tp_size > 1:
+                dist.all_reduce(
+                    tensor=total_norm_exponentiated_cuda, op=torch.distributed.ReduceOp.SUM, group=self.tp_pg
+                )
+
+            total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
+
+        if total_norm == float("inf") or total_norm == -float("inf") or total_norm != total_norm:
+            total_norm = -1
+
+        return total_norm
 
     #############################
     # Mixed Precision Utilities #

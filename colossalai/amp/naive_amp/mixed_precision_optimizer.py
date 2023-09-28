@@ -1,11 +1,14 @@
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 import torch
-from torch import Tensor
+import torch.distributed as dist
+from torch import Tensor, inf
+from torch.distributed import ProcessGroup, get_world_size
 from torch.nn import Module, Parameter
 from torch.optim import Optimizer
 
 from colossalai.interface import OptimizerWrapper
+from colossalai.tensor.d_tensor.api import is_distributed_tensor
 
 from .mixed_precision_mixin import BF16MixedPrecisionMixin, FP16MixedPrecisionMixin
 
@@ -47,6 +50,7 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
         hysteresis: int = 2,
         max_scale: float = 2**32,
         max_norm: float = 0.0,
+        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
     ):
         super().__init__(optim)
         if precision == "fp16":
@@ -68,11 +72,11 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
             self.mixed_precision = BF16MixedPrecisionMixin()
         else:
             raise ValueError(f"Unsupported precision: {precision}")
-        if max_norm > 0.0:
-            raise NotImplementedError("max_norm is not supported yet.")
         self.max_norm = max_norm
         self.working_to_master_map: Dict[Parameter, Tensor] = {}
         self.master_to_working_map: Dict[Tensor, Parameter] = {}
+
+        self.tp_pg = tp_process_group
 
         # create master weights
         for group in self.optim.param_groups:
@@ -118,16 +122,68 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
                     continue
                 p.grad.data.mul_(1.0 / div_scale)
 
-    def _compute_grad_norm(self) -> float:
-        if self.max_norm <= 0.0:
+    def _compute_grad_norm(self, param_gradient_pairs: List[Tuple[Tensor]], norm_type: int = 2) -> int:
+        """Clips the gradient norm of an iterable of parameter-gradient pairs.
+        This function is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and extended
+        to handle parameters from model parallelism.
+
+        Args:
+            param_gradient_pairs (List[Tuple[Tensor]]): List of (parameter, gradient) pairs; gradients are used for norm calculation.
+            norm_type (int, optional): Type of the norm used (e.g., 2 for L2 norm). Defaults to 2.
+
+        Returns:
+            float: The total norm of the given gradients.
+        """
+
+        if len(param_gradient_pairs) == 0:
             return 0.0
-        grads = [p.grad for group in self.param_groups for p in group["params"] if p.grad is not None]
-        if len(grads) == 0:
-            return 0.0
-        device = grads[0].device
-        # TODO(ver217): support tp
-        total_norm = torch.norm(torch.stack([torch.norm(g.detach(), 2).to(device) for g in grads]), 2)
-        return total_norm.item()
+
+        tp_size = get_world_size(self.tp_pg) if self.tp_pg is not None else 1
+        norm_type = float(norm_type)
+
+        # gradients used for norm calculation.
+        gradients = [grad for param, grad in param_gradient_pairs]
+
+        if tp_size > 1 and norm_type != inf:
+            # grad_to_param_mapping is used to check which gradients are not distributed in tensor parallelism.
+            grad_to_param_mapping = {id(grad): param for param, grad in param_gradient_pairs}
+
+        if norm_type == inf:
+            total_norm = max(grad.data.abs().max() for grad in gradients)
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+            if tp_size > 1:
+                dist.all_reduce(tensor=total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.tp_pg)
+
+            total_norm = total_norm_cuda[0].item()
+        else:
+            total_norm_exponentiated = 0.0
+            for grad in gradients:
+                grad_norm_exponentiated = grad.data.double().norm(norm_type) ** norm_type
+
+                # If 'tp_size' is greater than 1 and the parameter for the gradient is not a distributed tensor,
+                # it indicates that the parameter is not distributed across devices of the 'tp_group'.
+                # Consequently, there is no need to perform an 'all_reduce' operation for 'grad_norm'.
+                # However, we still perform the 'all_reduce' operation for the sake of good coding practices.
+                # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
+                if tp_size > 1:
+                    param_for_grad = grad_to_param_mapping[id(grad)]
+                    if is_distributed_tensor(param_for_grad) == False:
+                        grad_norm_exponentiated /= tp_size
+
+                total_norm_exponentiated += grad_norm_exponentiated.item()
+
+            total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
+            if tp_size > 1:
+                dist.all_reduce(
+                    tensor=total_norm_exponentiated_cuda, op=torch.distributed.ReduceOp.SUM, group=self.tp_pg
+                )
+
+            total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
+
+        if total_norm == float("inf") or total_norm == -float("inf") or total_norm != total_norm:
+            total_norm = -1
+
+        return total_norm
 
     def step(self, *args, **kwargs):
         if self.mixed_precision.should_skip_step():
@@ -142,8 +198,22 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
                 if working_param.grad is not None:
                     p.grad = working_param.grad.data.float()
                     working_param.grad = None
-        total_norm = self._compute_grad_norm()
+
+        # gradient unscale and clip.
+        if self.max_norm <= 0:
+            # no need to compute gradient norm.
+            total_norm = 0.0
+        else:
+            # compute the total norm.
+            param_gradient_pairs = [
+                (self.master_to_working_map[p], p.grad)
+                for group in self.param_groups
+                for p in group["params"]
+                if p.grad is not None
+            ]
+            total_norm = self._compute_grad_norm(param_gradient_pairs)
         self._unscale_and_clip_grads(total_norm)
+
         self.optim.step(*args, **kwargs)
         # update working params
         for group in self.optim.param_groups:

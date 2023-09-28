@@ -7,7 +7,8 @@ from typing import Any, Callable, Iterator, List, Optional, OrderedDict, Tuple, 
 import numpy as np
 import torch
 import torch.distributed as dist
-from torch.distributed import ProcessGroup
+from torch import Tensor, inf
+from torch.distributed import ProcessGroup, get_world_size
 from torch.nn import Module, SyncBatchNorm
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
@@ -24,6 +25,7 @@ from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
+from colossalai.tensor.d_tensor.api import is_distributed_tensor
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 from .pp_plugin_base import PipelinePluginBase
@@ -160,11 +162,136 @@ def init_pipeline_optimizer(optim: Optimizer, model: Module):
 
 
 class HybridParallelNaiveOptimizer(OptimizerWrapper):
-    def __init__(self, optim: Optimizer, model: Module, use_pipeline: bool, param_info: OrderedDict):
+    def __init__(
+        self,
+        optim: Optimizer,
+        model: Module,
+        use_pipeline: bool,
+        param_info: OrderedDict,
+        max_norm: float = 0,
+        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
+        pp_process_group: Optional[ProcessGroup] = None,  # if using pp
+    ):
         self.param_info = param_info
         if use_pipeline:
             init_pipeline_optimizer(optim, model)
+        self.stage_manager = model.stage_manager
+        self.shared_params = model.shared_params
+        self.max_norm = max_norm
+        self.tp_pg = tp_process_group
+        self.pp_pg = pp_process_group
         super().__init__(optim)
+
+    def step(self, *args, **kwargs):
+        if self.max_norm > 0:
+            # compute the total norm.
+            param_gradient_pairs = [
+                (p, p.grad) for group in self.optim.param_groups for p in group["params"] if p.grad is not None
+            ]
+            total_norm = self._compute_grad_norm(param_gradient_pairs)
+            self._clip_grads(total_norm)
+        self.optim.step(*args, **kwargs)
+
+    def _compute_grad_norm(self, param_gradient_pairs: List[Tuple[Tensor]], norm_type: int = 2) -> int:
+        """Clips the gradient norm of an iterable of parameter-gradient pairs.
+        This function is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and extended
+        to handle parameters from model parallelism.
+
+        Args:
+            param_gradient_pairs (List[Tuple[Tensor]]): List of (parameter, gradient) pairs; gradients are used for norm calculation.
+            norm_type (int, optional): Type of the norm used (e.g., 2 for L2 norm). Defaults to 2.
+
+        Returns:
+            float: The total norm of the given gradients.
+        """
+
+        if len(param_gradient_pairs) == 0:
+            return 0.0
+
+        tp_size = get_world_size(self.tp_pg) if self.tp_pg is not None else 1
+        pp_size = get_world_size(self.pp_pg) if self.pp_pg is not None else 1
+        norm_type = float(norm_type)
+
+        # gradients used for norm calculation.
+        gradients = [grad for param, grad in param_gradient_pairs]
+
+        if tp_size > 1 and norm_type != inf:
+            # grad_to_param_mapping is used to check which gradients are not distributed in tensor parallelism.
+            grad_to_param_mapping = {id(grad): param for param, grad in param_gradient_pairs}
+
+        if norm_type == inf:
+            total_norm = max(grad.data.abs().max() for grad in gradients)
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+            if tp_size > 1:
+                dist.all_reduce(tensor=total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.tp_pg)
+            if pp_size > 1:
+                dist.all_reduce(tensor=total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.pp_pg)
+            total_norm = total_norm_cuda[0].item()
+        else:
+
+            def _compute_norm_across_tp(gradients):
+                total_norm_exponentiated = 0.0
+                for grad in gradients:
+                    grad_norm_exponentiated = grad.data.double().norm(norm_type) ** norm_type
+
+                    # If 'tp_size' is greater than 1 and the parameter for the gradient is not a distributed tensor,
+                    # it indicates that the parameter is not distributed across devices of the 'tp_group'.
+                    # Consequently, there is no need to perform an 'all_reduce' operation for 'grad_norm'.
+                    # However, we still perform the 'all_reduce' operation for the sake of good coding practices.
+                    # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
+                    if tp_size > 1:
+                        param_for_grad = grad_to_param_mapping[id(grad)]
+                        if is_distributed_tensor(param_for_grad) == False:
+                            grad_norm_exponentiated /= tp_size
+
+                    total_norm_exponentiated += grad_norm_exponentiated.item()
+
+                total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
+
+                if tp_size > 1:
+                    # compute norm in tp process group
+                    dist.all_reduce(
+                        tensor=total_norm_exponentiated_cuda, op=torch.distributed.ReduceOp.SUM, group=self.tp_pg
+                    )
+
+                total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
+
+                return total_norm
+
+            total_norm_exponentiated = _compute_norm_across_tp(gradients) ** norm_type
+
+            if pp_size > 1:
+                # compute norm in pp process group
+                total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
+                dist.all_reduce(total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
+                total_norm_exponentiated = total_norm_exponentiated_cuda[0].item()
+
+                # Due to the presence of shared parameters, we should avoid computing the gradient norm of shared parameters twice.
+                # Therefore, we subtract the norm of the shared parameter's gradient from the total norm exponentiated.
+                for shared_param in self.shared_params:
+                    if self.stage_manager.stage in shared_param:
+                        shared_param_of_stage = shared_param[self.stage_manager.stage]
+                        shared_param_grad_nrom_exponentiated = (
+                            _compute_norm_across_tp([shared_param_of_stage.grad]) ** norm_type
+                        )
+                        total_norm_exponentiated -= shared_param_grad_nrom_exponentiated
+
+            total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
+
+        if total_norm == float("inf") or total_norm == -float("inf") or total_norm != total_norm:
+            total_norm = -1
+
+        return total_norm
+
+    def _clip_grads(self, total_norm: float) -> None:
+        clip_coef = torch.tensor(self.max_norm / (total_norm + 1e-6))
+        clip_coef_clamped = torch.clamp(clip_coef, max=1.0)
+
+        for group in self.optim.param_groups:
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                p.grad.data.mul_(clip_coef_clamped)
 
     def update_master_params(self, model: Module):
         pass
@@ -192,22 +319,85 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
         hysteresis: int = 2,
         max_scale: float = 2**32,
         max_norm: float = 0,
+        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
+        pp_process_group: Optional[ProcessGroup] = None,  # if using pp
     ):
         self.param_info = param_info
+        self.stage_manager = model.stage_manager
+        self.shared_params = model.shared_params
+        self.pp_pg = pp_process_group
         if use_pipeline:
             init_pipeline_optimizer(optim, model)
         super().__init__(
             optim,
-            precision,
-            initial_scale,
-            min_scale,
-            growth_factor,
-            backoff_factor,
-            growth_interval,
-            hysteresis,
-            max_scale,
-            max_norm,
+            precision=precision,
+            initial_scale=initial_scale,
+            min_scale=min_scale,
+            growth_factor=growth_factor,
+            backoff_factor=backoff_factor,
+            growth_interval=growth_interval,
+            hysteresis=hysteresis,
+            max_scale=max_scale,
+            max_norm=max_norm,
+            tp_process_group=tp_process_group,
         )
+
+    def _compute_grad_norm(self, param_gradient_pairs: List[Tuple[Tensor]], norm_type: int = 2) -> int:
+        """Clips the gradient norm of an iterable of parameter-gradient pairs.
+        This function is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and extended
+        to handle parameters from model parallelism.
+
+        Args:
+            param_gradient_pairs (List[Tuple[Tensor]]): List of (parameter, gradient) pairs; gradients are used for norm calculation.
+            norm_type (int, optional): Type of the norm used (e.g., 2 for L2 norm). Defaults to 2.
+
+        Returns:
+            float: The total norm of the given gradients.
+        """
+        if len(param_gradient_pairs) == 0:
+            return 0.0
+
+        pp_size = get_world_size(self.pp_pg) if self.pp_pg is not None else 1
+        norm_type = float(norm_type)
+
+        # The parent class calculates the norm of 'tp' and 'dp' gradients,
+        # so we only need to calculate the norm of 'pp' gradients.
+        if norm_type == inf:
+            total_norm = super()._compute_grad_norm(param_gradient_pairs, norm_type)
+
+            if pp_size > 1:
+                # recompute the 'total_norm'
+                total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+                dist.all_reduce(tensor=total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.pp_pg)
+                total_norm = total_norm_cuda[0].item()
+        else:
+            total_norm_exponentiated = super()._compute_grad_norm(param_gradient_pairs, norm_type) ** norm_type
+
+            if pp_size > 1:
+                # recompute the 'total_norm_exponentiated'
+                total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
+                dist.all_reduce(total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
+                total_norm_exponentiated = total_norm_exponentiated_cuda[0].item()
+
+                # Due to the presence of shared parameters, we should avoid computing the gradient norm of shared parameters twice.
+                # Therefore, we subtract the norm of the shared parameter's gradient from the total norm exponentiated.
+                for shared_param in self.shared_params:
+                    if self.stage_manager.stage in shared_param:
+                        shared_param_of_stage = shared_param[self.stage_manager.stage]
+                        master_shared_param = self.working_to_master_map[shared_param_of_stage]
+                        param_grad_pair = (shared_param_of_stage, master_shared_param.grad)
+                        shared_param_grad_nrom_exponentiated = (
+                            super()._compute_grad_norm([param_grad_pair]) ** norm_type
+                        )
+                        total_norm_exponentiated -= shared_param_grad_nrom_exponentiated
+
+            # compute the 'total_norm'
+            total_norm = total_norm_exponentiated ** (1.0 / norm_type)
+
+        if total_norm == float("inf") or total_norm == -float("inf") or total_norm != total_norm:
+            total_norm = -1
+
+        return total_norm
 
 
 class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
@@ -233,9 +423,13 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         cpu_offload: bool = False,  # cpu offload
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
         tp_process_group: Optional[ProcessGroup] = None,  # if using tp
+        pp_process_group: Optional[ProcessGroup] = None,  # if using pp
         forced_dtype: Optional[torch.dtype] = None,
     ):
         self.param_info = param_info
+        self.stage_manager = model.stage_manager
+        self.shared_params = model.shared_params
+        self.pp_pg = pp_process_group
         if use_pipeline:
             init_pipeline_optimizer(optimizer, model)
         super().__init__(
@@ -258,6 +452,61 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             tp_process_group,
             forced_dtype,
         )
+
+    def _compute_grad_norm(self, gradients: List[Tensor], norm_type: int = 2) -> float:
+        """Clips gradient norm of an iterable of parameters.
+        This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
+        added functionality to handle model parallel parameters.
+
+        Args:
+            gradients (List[Tensor]): The gradients to compute norm
+            norm_type (int, optional): type of the used p-norm, Can be ``'inf'`` for infinity norm. Defaults to 2.
+
+        Returns:
+            float: The total norm of given gradients
+        """
+
+        if len(gradients) == 0:
+            return 0.0
+
+        pp_size = get_world_size(self.pp_pg) if self.pp_pg is not None else 1
+        norm_type = float(norm_type)
+
+        # The parent class calculates the norm of 'tp' and 'dp' gradients,
+        # so we only need to calculate the norm of 'pp' gradients.
+        if norm_type == inf:
+            total_norm = super()._compute_grad_norm(gradients, norm_type)
+
+            if pp_size > 1:
+                # recompute the 'total_norm'
+                total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+                dist.all_reduce(tensor=total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.pp_pg)
+                total_norm = total_norm_cuda[0].item()
+        else:
+            total_norm_exponentiated = super()._compute_grad_norm(gradients, norm_type) ** norm_type
+
+            if pp_size > 1:
+                # recompute the 'total_norm_exponentiated'
+                total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
+                dist.all_reduce(total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
+                total_norm_exponentiated = total_norm_exponentiated_cuda[0].item()
+
+                # Due to the presence of shared parameters, we should avoid computing the gradient norm of shared parameters twice.
+                # Therefore, we subtract the norm of the shared parameter's gradient from the total norm exponentiated.
+                for shared_param in self.shared_params:
+                    if self.stage_manager.stage in shared_param:
+                        shared_param_of_stage = shared_param[self.stage_manager.stage]
+                        working_grad = self._grad_store.get_working_grad_by_param_id(id(shared_param_of_stage))
+                        shared_param_grad_nrom_exponentiated = super()._compute_grad_norm([working_grad]) ** norm_type
+                        total_norm_exponentiated -= shared_param_grad_nrom_exponentiated
+
+            # compute the 'total_norm'
+            total_norm = total_norm_exponentiated ** (1.0 / norm_type)
+
+        if total_norm == float("inf") or total_norm == -float("inf") or total_norm != total_norm:
+            total_norm = -1
+
+        return total_norm
 
 
 class HybridParallelPlugin(PipelinePluginBase):
@@ -475,11 +724,19 @@ class HybridParallelPlugin(PipelinePluginBase):
                         param_info=param_info,
                         precision=self.precision,
                         max_norm=self.max_norm,
+                        pp_process_group=self.pp_group,
+                        tp_process_group=self.tp_group,
                         **self.amp_config,
                     )
                 else:
                     optimizer = HybridParallelNaiveOptimizer(
-                        optimizer, model, use_pipeline=self.enable_pipeline_parallelism, param_info=param_info
+                        optimizer,
+                        model,
+                        use_pipeline=self.enable_pipeline_parallelism,
+                        param_info=param_info,
+                        max_norm=self.max_norm,
+                        pp_process_group=self.pp_group,
+                        tp_process_group=self.tp_group,
                     )
             else:
                 assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
@@ -491,6 +748,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     param_info=param_info,
                     dp_process_group=self.dp_group,
                     tp_process_group=self.tp_group,
+                    pp_process_group=self.pp_group,
                     verbose=True,
                     clip_grad_norm=self.max_norm,
                     **self.zero_config,
