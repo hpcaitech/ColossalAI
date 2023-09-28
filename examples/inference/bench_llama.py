@@ -68,7 +68,7 @@ def run_llama_test(args):
     model = LlamaForCausalLM.from_pretrained(llama_model_path, pad_token_id=tokenizer.eos_token_id)
     init_to_get_rotary(model.model, base=10000)
     model = model.half()
-
+    print("model config:", model.config)
     model_config = model.config
 
     shard_config = ShardConfig(enable_tensor_parallelism=True if args.tp_size > 1 else False, inference_only=True)
