@@ -1,2 +1,2 @@
 pytest
-colossalai==0.3.1
+git+https://github.com/hpcaitech/ColossalAI.git@ef4b99ebcda823c32e221383ac9365a82697cd5d#egg=colossalai

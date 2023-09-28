@@ -2,7 +2,7 @@ transformers>=4.20.1
 tqdm
 datasets
 loralib
-colossalai==0.3.1
+git+https://github.com/hpcaitech/ColossalAI.git@ef4b99ebcda823c32e221383ac9365a82697cd5d#egg=colossalai
 torch<2.0.0, >=1.12.1
 langchain
 tokenizers
