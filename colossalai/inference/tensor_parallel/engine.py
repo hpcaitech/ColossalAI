@@ -277,7 +277,6 @@ class TPInferEngine:
             attention_mask = [attention_mask] if attention_mask is not None else attention_mask
 
         batch_size = len(input_ids_list)
-        print(input_ids_list.shape)
         seq_start_indexes = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
         seq_lengths = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
         start_index = 0
@@ -342,7 +341,6 @@ class TPInferEngine:
         elif isinstance(model, BloomForCausalLM):
             model = self.model.transformer
         setattr(model, "infer_state", batch_infer_state)
-        print(model.infer_state)
 
         outputs = self.model.generate(**input_tokens, **generate_kwargs, early_stopping=False)
 
@@ -379,10 +377,10 @@ class TPInferEngine:
     @torch.no_grad()
     def forward(self, batch_id, is_prefill):
         batch = self.cache.pop(batch_id)
-        print(batch)
-        all_input_ids = torch.tensor(batch.all_input_ids).cuda()
-        print(all_input_ids)
-        infer_state = self.prepare_batch_state(all_input_ids)
+        if is_prefill:
+            input_ = torch.tensor(batch.all_input_ids).cuda()
+        else:
+            input_ = batch.input_ids.reshape(len(batch), 1)
 
         batch_args = {
             "batch_size": len(batch),
@@ -394,33 +392,34 @@ class TPInferEngine:
             "is_context_stage": is_prefill,
         }
 
-        BatchInferState(**batch_args)
+        infer_state = BatchInferState(**batch_args)
         model = self.model
         if isinstance(model, LlamaForCausalLM):
             model = self.model.model
         elif isinstance(model, BloomForCausalLM):
             model = self.model.transformer
         setattr(model, "infer_state", infer_state)
-        print(model.infer_state)
 
-        position_ids = torch.arange(0, 5, dtype=torch.long, device="cuda")
-        position_ids = position_ids.repeat(2, 1)
-        self.generate(input_tokens=all_input_ids)
-        logits = self.model.forward(input_ids=all_input_ids, position_ids=position_ids)
+        output = self.model.forward(input_ids=input_)
+        logits = output.logits
+        prob_out = torch.softmax(logits, dim=-1)
+        predict_ids = torch.argmax(prob_out, dim=-1, keepdim=True)
+        prob_out = torch.log(prob_out).detach().cpu().numpy()
+        predict_ids = predict_ids.detach().cpu().numpy()
+        # [batch_size, 1 ,vocab_size]
+        # next_token_ids, next_token_probs = sample(logits, batch)
+        # next_token_ids = next_token_ids.detach().cpu().numpy()
+        # next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
 
-        print(logits)
-
-        print("yeah")
-        next_token_ids, next_token_probs = sample(logits, batch)
-        next_token_ids = next_token_ids.detach().cpu().numpy()
-        next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
         output_dict = {}
         new_input_ids = []
         for i, (r, all_input_ids, next_token_id, next_token_logprob) in enumerate(
-            zip(batch.requests, batch.all_input_ids, next_token_ids, next_token_logprobs)
+            zip(batch.requests, batch.all_input_ids, predict_ids, prob_out)
         ):
+            next_token_id = int(next_token_id[0])
+            next_token_logprob = next_token_logprob[0][next_token_id]
             # all_input_ids_tensor = torch.tensor(all_input_ids, dtype=torch.long, device="cuda")
-            all_input_ids.append(int(next_token_id))
+            all_input_ids.append(next_token_id)
             # all_input_ids_tensor = None
             new_input_ids.append(next_token_id)
             batch.all_input_ids[i] = all_input_ids

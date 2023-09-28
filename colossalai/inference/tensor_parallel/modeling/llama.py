@@ -108,9 +108,7 @@ class LlamaInferenceForwards:
             infer_state.init_block_loc(
                 infer_state.block_loc, infer_state.seq_len, seq_length, infer_state.context_mem_index
             )
-            print(infer_state)
         else:
-            return
             infer_state.is_context_stage = False
             alloc_mem = infer_state.cache_manager.alloc_contiguous(batch_size)
             if alloc_mem is not None:
@@ -139,8 +137,6 @@ class LlamaInferenceForwards:
             position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
         else:
             position_ids = position_ids.view(-1, seq_length).long()
-        print(position_ids.shape)
-        print(position_ids)
         if infer_state.is_context_stage:
             infer_state.position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(
                 position_ids.view(-1).shape[0], -1
@@ -225,7 +221,6 @@ class LlamaInferenceForwards:
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
-        print(hidden_states.shape)
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
@@ -285,17 +280,12 @@ class LlamaInferenceForwards:
             infer_state.cache_manager.past_key_values_length += q_len  # seq_len
 
         cos, sin = infer_state.position_cos, infer_state.position_sin
-        # print("shape ", cos.shape, query_states.view(-1, self.num_heads, self.head_dim).shape, )
-        print(self.num_heads, self.head_dim)
-        #   改
+
         rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
         rotary_embedding_fwd(key_states.view(-1, self.num_heads, self.head_dim), cos, sin)
 
         def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
-            print(key_buffer.shape)
-            print("shape of mem key buffer", mem_manager.key_buffer[layer_id].shape)
             copy_kv_cache_to_dest(key_buffer, context_mem_index, mem_manager.key_buffer[layer_id])
-
             copy_kv_cache_to_dest(value_buffer, context_mem_index, mem_manager.value_buffer[layer_id])
             return
 
@@ -305,7 +295,6 @@ class LlamaInferenceForwards:
 
         if infer_state.is_context_stage:
             # first token generation
-            print(infer_state.decode_layer_id)
             # copy key and value calculated in current step to memory manager
             _copy_kv_to_mem_cache(
                 infer_state.decode_layer_id,
@@ -314,10 +303,7 @@ class LlamaInferenceForwards:
                 infer_state.context_mem_index,
                 infer_state.cache_manager,
             )
-            print("yeah")
-
             attn_output = torch.empty_like(query_states)
-
             llama_context_attn_fwd(
                 query_states,
                 key_states,
@@ -327,8 +313,6 @@ class LlamaInferenceForwards:
                 infer_state.seq_len,
                 infer_state.cache_manager.past_key_values_length,
             )
-            print("yeah")
-
         else:
             if infer_state.decode_is_contiguous:
                 # if decode is contiguous, then we copy to key cache and value cache in cache manager directly

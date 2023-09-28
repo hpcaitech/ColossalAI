@@ -93,13 +93,11 @@ class DynamicBatchManager:
         handle the requests
         """
         # 删除所有已经 finished 的 req
-        print("in step forward")
         if self.running_batch is None:
             new_batch = self.req_queue.generate_new_batch(self.running_batch)
             if new_batch is not None:
                 self.stats_tool.count_prompt_tokens(new_batch)
                 self.running_batch = new_batch
-                print(new_batch.reqs)
                 self._prefill_batch(self.running_batch)
                 self._filter_runing_batch()
                 self.has_wait_tokens = 0
@@ -158,10 +156,11 @@ class DynamicBatchManager:
         # TODO: figure out if cache and batch id is needed
         rets = self.engine._prefill_batch(batch.batch_id)
         ans = rets
+        # ans should be a dict
         if self.world_size != 1:
-            req_to_out_token_id = obtain(ans[0])
+            req_to_out_token_id = obtain(ans)
         else:
-            req_to_out_token_id = ans[0]
+            req_to_out_token_id = ans
         self._add_token_id_to_req(batch, req_to_out_token_id)
         has_new_finished_req = batch.mark_finished_req(self.eos_id)
         # self._send_to_detokenization_proc(batch, req_to_out_token_id)
@@ -173,9 +172,9 @@ class DynamicBatchManager:
         rets = self.engine._decode_batch(batch.batch_id)
         ans = rets
         if self.world_size != 1:
-            req_to_out_token_id = obtain(ans[0])  # gather or something
+            req_to_out_token_id = obtain(ans)  # gather or something
         else:
-            req_to_out_token_id = ans[0]
+            req_to_out_token_id = ans
         self._add_token_id_to_req(batch, req_to_out_token_id)
         has_new_finished_req = batch.mark_finished_req(self.eos_id)
         # self._send_to_detokenization_proc(batch, req_to_out_token_id)
@@ -281,7 +280,7 @@ if __name__ == "__main__":
     waiting_list.append(req1)
     waiting_list.append(req2)
 
-    colossalai.launch(config={}, rank=0, world_size=1, host="localhost", port=8081, backend="nccl")
+    colossalai.launch(config={}, rank=0, world_size=1, host="localhost", port=8082, backend="nccl")
     tokenizer = LlamaTokenizer.from_pretrained("/data/scratch/llama-7b-hf")
     tokenizer.pad_token_id = tokenizer.unk_token_id
     model = LlamaForCausalLM.from_pretrained("/data/scratch/llama-7b-hf", pad_token_id=tokenizer.eos_token_id)
