@@ -7,6 +7,7 @@ try:
     from .copy_kv_cache_dest import copy_kv_cache_to_dest
     from .fused_layernorm import layer_norm
     from .gptq_triton import gptq_fused_linear_triton
+    from .int8_rotary_embedding_kernel import int8_rotary_embedding_fwd
     from .rms_norm import rmsnorm_forward
     from .rotary_embedding_kernel import rotary_embedding_fwd
     from .softmax import softmax
@@ -22,6 +23,7 @@ try:
         "rotary_embedding_fwd",
         "token_attention_fwd",
         "gptq_fused_linear_triton",
+        "int8_rotary_embedding_fwd",
     ]
 
 except ImportError:
