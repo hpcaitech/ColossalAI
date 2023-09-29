@@ -20,7 +20,6 @@ def copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, 
     """
     copy_kv_cache_to_dest(key_buffer, context_mem_index, mem_manager.key_buffer[layer_id])
     copy_kv_cache_to_dest(value_buffer, context_mem_index, mem_manager.value_buffer[layer_id])
-    return
 
 
 def init_to_get_rotary(self, base=10000, use_elem=False):
@@ -46,16 +45,15 @@ def init_to_get_rotary(self, base=10000, use_elem=False):
     base = float(base)
 
     # NTK  ref: https://www.reddit.com/r/LocalLLaMA/comments/14lz7j5/ntkaware_scaled_rope_allows_llama_models_to_have/
-    try:
-        ntk_alpha = float(os.environ.get("INFER_NTK_ALPHA", 1))
-        assert ntk_alpha >= 1
+    ntk_alpha = float(os.environ.get("INFER_NTK_ALPHA", None))
+
+    if ntk_alpha is not None:
+        ntk_alpha = float(ntk_alpha)
+        assert ntk_alpha >= 1, "NTK alpha must be greater than or equal to 1"
         if ntk_alpha > 1:
             print(f"Note: NTK enabled, alpha set to {ntk_alpha}")
         max_seq_len *= ntk_alpha
         base = base * (ntk_alpha ** (self.head_dim_ / (self.head_dim_ - 2)))  # Base change formula
-    except:
-        print(f"Note: NTK alpha should be set >=1")
-        ntk_alpha = 1
 
     n_elem = self.config.head_dim_
     if use_elem:
@@ -67,4 +65,3 @@ def init_to_get_rotary(self, base=10000, use_elem=False):
 
     self._cos_cached = torch.cos(freqs).to(torch.float16).cuda()
     self._sin_cached = torch.sin(freqs).to(torch.float16).cuda()
-    return
