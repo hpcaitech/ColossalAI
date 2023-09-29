@@ -1,13 +1,14 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, List, Union
+from typing import Any, Dict, List, Union
 
 import ray
 import ray.util.collective as collective
 import starlette
 import torch
 from ray import serve
+from ray.serve import Application
 from transformers import BloomForCausalLM, BloomTokenizerFast
 
 import colossalai
@@ -79,7 +80,16 @@ class Worker:
         return text_output
 
 
-@serve.deployment(num_replicas=1, ray_actor_options={"num_gpus": 0})
+@serve.deployment(
+    ray_actor_options={"num_cpus": 1, "num_gpus": 0},
+    max_concurrent_queries=5,
+    autoscaling_config={
+        "target_num_ongoing_requests_per_replica": 1,
+        "min_replicas": 1,
+        "initial_replicas": 1,
+        "max_replicas": 1,
+    },
+)
 class Driver:
     def __init__(self, config):
         log_cuda_info("Driver:init")
@@ -133,6 +143,10 @@ class Config:
     max_output_len: int = 32
 
 
-# *** add model path manually into the config***
-driver_config = Config(model_path="ADD_MODEL_PATH_HRER")
-app = Driver.bind(config=driver_config)
+def app(args: Dict[str, str]) -> Application:
+    model_path = args.get("path", None)
+    if model_path is None:
+        raise ValueError("Model path not provided!")
+
+    driver_config = Config(model_path=model_path)
+    return Driver.options(name="Colossal-Inference-Driver").bind(config=driver_config)

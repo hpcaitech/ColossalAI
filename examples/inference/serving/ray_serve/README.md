@@ -37,7 +37,7 @@ pip install transformers
 
 Under the current directory, we could launch the app by the following command:
 ```bash
-    RAY_DEDUP_LOGS=0 serve run Colossal_Inference_rayserve:app
+    RAY_DEDUP_LOGS=0 serve run Colossal_Inference_rayserve:app path="PATH_TO_YOUR_MODEL_DIR"
 ```
 
 By default, Ray deduplicates logs across cluster. Here we set `RAY_DEDUP_LOGS=0`` to disable log deduplication, enabling each actor to log information in CLI.
