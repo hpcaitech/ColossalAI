@@ -2,7 +2,7 @@
 
 This example is used for demonstrating and testing the deployment of Colossal Inference from `colossalai.inference` with [Ray Serve](https://docs.ray.io/en/latest/serve/index.html). It imports inference modules from colossalai and is based on https://github.com/hpcaitech/ColossalAI/tree/a22706337a57dd1c98b95739dd09d98bd55947a0.
 
-Single-gpu inference and multiple-gpu inference (i.e. tensor parallel) serving are supported.
+Single-gpu inference as well as multiple-gpu inference (i.e. tensor parallel) serving are supported.
 
 ## Env Installation
 
@@ -27,12 +27,15 @@ conda install -c conda-forge cupy cudnn cutensor nccl cuda-version=11.6
 cd <path_to_ColossalAI_repo>
 CUDA_EXT=1 pip install -e .
 
+# install other dependencies
+pip install triton==2.0.0.dev20221202
 pip install transformers
 ```
 
 ## Launch Ray Serve and run the app
 ### Method #1. CLI command
 
+Under the current directory, we could launch the app by the following command:
 ```bash
     RAY_DEDUP_LOGS=0 serve run Colossal_Inference_rayserve:app
 ```
@@ -47,18 +50,19 @@ python send_request.py
 ```
 
 ### Method #2. Run inside script
-
-Attach the following to the end of the file, and run the script via `python Colossal_Inference_rayserve.py`
+We could also launch ray serve and run the app inside the script.
+Attach the following to the end of the file,
 ```pyhton
 handle: DeploymentHandle = serve.run(app)
 print(requests.get("http://localhost:8000/?text={}".format(text)))
 ```
+and then run the script by `python Colossal_Inference_rayserve.py`
 
 
+### Terminate Ray Serve
+Ray serve and the application would terminate automatically as you choose the second method to run any job in the script. If you choose the first method (serve run), you might want to apply `ctrl+c` to shut down the application.
 
-Use
+To make sure all the active Ray processes are killed, run
 ```bash
 ray stop
 ```
-
-to kill any active Ray processes
