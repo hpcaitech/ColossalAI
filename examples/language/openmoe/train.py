@@ -14,7 +14,6 @@ from transformers.models.llama import LlamaConfig
 import colossalai
 from colossalai import get_default_parser
 from colossalai.booster import Booster
-from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.logging import disable_existing_loggers, get_dist_logger
@@ -28,7 +27,7 @@ def move_to_cuda(batch, device):
     return {k: v.to(device) for k, v in batch.items()}
 
 
-def load_ckpt(repo_name: str, model: OpenMoeForCausalLM):
+def load_ckpt(repo_name: str, model: OpenMoeForCausalLM, booster: Booster):
     ckpt_path = snapshot_download(repo_name)
     # single ckpt
     if os.path.exists(os.path.join(ckpt_path, "pytorch_model.bin")):
@@ -38,7 +37,7 @@ def load_ckpt(repo_name: str, model: OpenMoeForCausalLM):
         ckpt_path = os.path.join(ckpt_path, "pytorch_model.bin.index.json")
     else:
         raise ValueError(f"Invalid checkpoint path: {ckpt_path}")
-    MoeCheckpintIO().load_model(model, ckpt_path)
+    booster.load_model(model, ckpt_path)
 
 
 class RandomDataset(Dataset):
@@ -89,7 +88,7 @@ def parse_args():
         type=str,
         default="hybrid",
         help="parallel plugin",
-        choices=["zero1", "zero2", "hybrid"],
+        choices=["zero1_ep", "zero2_ep", "hybrid"],
     )
     # hybrid plugin
     parser.add_argument("--pp_size", type=int, default=2, help="pp size")
@@ -146,15 +145,29 @@ def main():
 
     # Set plugin
     booster_kwargs = {}
-    if args.plugin == "zero1":
-        plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=1)
+    if args.plugin == "zero1_ep":
+        plugin = MoeHybridParallelPlugin(
+            tp_size=1,
+            pp_size=1,
+            zero_stage=1,
+            custom_policy=OpenMoeForCausalLMPolicy(),
+            enable_fused_normalization=args.use_kernel,
+            enable_jit_fused=args.use_kernel,
+        )
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",
             use_kernel_optim=args.use_kernel if not test_mode else False,
         )
-    elif args.plugin == "zero2":
-        plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
+    elif args.plugin == "zero2_ep":
+        plugin = MoeHybridParallelPlugin(
+            tp_size=1,
+            pp_size=1,
+            zero_stage=2,
+            custom_policy=OpenMoeForCausalLMPolicy(),
+            enable_fused_normalization=args.use_kernel,
+            enable_jit_fused=args.use_kernel,
+        )
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",
@@ -198,8 +211,6 @@ def main():
     setattr(config, "z_loss_factor", args.z_loss_factor)
     with skip_init():
         model = OpenMoeForCausalLM(config)
-    if not test_mode:
-        load_ckpt(repo_name, model)
     logger.info(f"Finish init model with config:\n{config}", ranks=[0])
 
     # Enable gradient checkpointing
@@ -216,6 +227,8 @@ def main():
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
+    if not test_mode:
+        load_ckpt(repo_name, model, booster)
     use_pipeline = (isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1)
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     logger.info(f"Finish init booster", ranks=[0])

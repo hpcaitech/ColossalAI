@@ -997,10 +997,11 @@ class ZLossCrossEntropy(torch.autograd.Function):
         shifted = logits - max_logit
         exp_shifted = torch.exp(shifted)
         sum_exp = torch.sum(exp_shifted, axis=-1, keepdims=True)
-        log_softmax = shifted - torch.log(sum_exp)
+        sum_exp_log = torch.log(sum_exp)
+        log_softmax = shifted - sum_exp_log
         loss = -torch.sum(targets * log_softmax, axis=-1)
         # Add auxilliary z-loss term.
-        log_z = torch.squeeze(torch.log(sum_exp) + max_logit, axis=-1)
+        log_z = torch.squeeze(sum_exp_log + max_logit, axis=-1)
         total_z_loss = z_loss * torch.square(log_z)
         loss += total_z_loss
         ctx.z_loss = z_loss
