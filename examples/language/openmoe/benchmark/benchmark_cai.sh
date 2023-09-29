@@ -2,12 +2,11 @@
 
 set -xue
 
-NUM_GPU=4
-MODEL="base"
-BATCH_SIZE=1
+NUM_GPU=8
+MODEL="8b"
 SEQ_LENGTH=2048
-WARMUP=10
-ACTIVE=10
+WARMUP=5
+ACTIVE=5
 
 # HACK: make model importable
 example_dir=$(dirname $(realpath $(dirname $0)))
@@ -21,7 +20,7 @@ fi
 torchrun --standalone --nproc_per_node $NUM_GPU \
     $example_dir/benchmark/benchmark_cai.py \
     --model_name $MODEL \
-    --batch_size $BATCH_SIZE \
+    --batch_size 512 \
     --seq_length $SEQ_LENGTH \
     --warmup $WARMUP \
     --active $ACTIVE \
@@ -29,28 +28,28 @@ torchrun --standalone --nproc_per_node $NUM_GPU \
     --plugin hybrid \
     --pp_size 2 \
     --dp_size 1 \
-    --ep_size 2 \
+    --ep_size 4 \
     --zero_stage 1 \
-    --microbatch_size 1
-
-# zero1
-torchrun --standalone --nproc_per_node $NUM_GPU \
-    $example_dir/benchmark/benchmark_cai.py \
-    --model_name $MODEL \
-    --batch_size $BATCH_SIZE \
-    --seq_length $SEQ_LENGTH \
-    --warmup $WARMUP \
-    --active $ACTIVE \
-    --plugin zero1 \
-    --use_kernel
+    --microbatch_size 32
 
 # zero2
 torchrun --standalone --nproc_per_node $NUM_GPU \
     $example_dir/benchmark/benchmark_cai.py \
     --model_name $MODEL \
-    --batch_size $BATCH_SIZE \
+    --batch_size 8 \
     --seq_length $SEQ_LENGTH \
     --warmup $WARMUP \
     --active $ACTIVE \
     --plugin zero2 \
+    --use_kernel
+
+# zero2_ep
+torchrun --standalone --nproc_per_node $NUM_GPU \
+    $example_dir/benchmark/benchmark_cai.py \
+    --model_name $MODEL \
+    --batch_size 16 \
+    --seq_length $SEQ_LENGTH \
+    --warmup $WARMUP \
+    --active $ACTIVE \
+    --plugin zero2_ep \
     --use_kernel

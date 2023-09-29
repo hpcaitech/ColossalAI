@@ -2,12 +2,12 @@
 
 set -xue
 
-NUM_GPU=4
-MODEL="base"
+NUM_GPU=8
+MODEL="8b"
 BATCH_SIZE=1
 SEQ_LENGTH=2048
-WARMUP=10
-ACTIVE=10
+WARMUP=5
+ACTIVE=5
 
 # HACK: make model importable
 example_dir=$(dirname $(realpath $(dirname $0)))

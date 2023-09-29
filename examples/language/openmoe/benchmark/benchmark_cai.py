@@ -72,7 +72,7 @@ def parse_args():
         type=str,
         default="hybrid",
         help="parallel plugin",
-        choices=["zero1", "zero2", "hybrid"],
+        choices=["zero2", "zero2_ep", "hybrid"],
     )
     # hybrid plugin
     parser.add_argument("--pp_size", type=int, default=2, help="pp size")
@@ -112,17 +112,24 @@ def main():
 
     # Set plugin
     booster_kwargs = {}
-    if args.plugin == "zero1":
-        dp_size = dist.get_world_size()
-        plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=1)
-        MOE_MANAGER.setup(
-            seed=42,
-            parallel="EP",
-            use_kernel_optim=args.use_kernel,
-        )
-    elif args.plugin == "zero2":
+    if args.plugin == "zero2":
         dp_size = dist.get_world_size()
         plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
+        MOE_MANAGER.setup(
+            seed=42,
+            parallel=None,
+            use_kernel_optim=args.use_kernel,
+        )
+    elif args.plugin == "zero2_ep":
+        dp_size = dist.get_world_size()
+        plugin = MoeHybridParallelPlugin(
+            tp_size=1,
+            pp_size=1,
+            zero_stage=2,
+            custom_policy=OpenMoeForCausalLMPolicy(),
+            enable_fused_normalization=args.use_kernel,
+            enable_jit_fused=args.use_kernel,
+        )
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",
@@ -215,6 +222,7 @@ def main():
                     pbar.set_postfix({"loss": loss.item()})
             else:
                 # Forward pass
+                data = next(train_dataloader_iter)
                 data = move_to_cuda(data, torch.cuda.current_device())
                 outputs = model(**data)
                 loss = outputs["loss"]

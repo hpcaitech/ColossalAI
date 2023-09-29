@@ -1,13 +1,15 @@
 import argparse
+import functools
 import os
 
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import tqdm
-from model.modeling_openmoe import LlamaConfig, OpenMoeForCausalLM
+from model.modeling_openmoe import LlamaConfig, OpenMoeDecoderLayer, OpenMoeForCausalLM
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.fully_sharded_data_parallel import MixedPrecision
+from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from torch.utils.data import Dataset
 from torch.utils.data.distributed import DistributedSampler
 from transformers import Adafactor
@@ -18,8 +20,9 @@ from colossalai.moe.manager import MOE_MANAGER
 
 
 class RandomDataset(Dataset):
-
-    def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000):
+    def __init__(
+        self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000
+    ):
         self.num_samples = num_samples
         self.max_length = max_length
         self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length))
@@ -45,9 +48,13 @@ def fsdp_main(rank, world_size, args):
     MOE_MANAGER.setup(seed=42, parallel=None, use_kernel_optim=False)
 
     dp_size = dist.get_world_size()
-    dataset = RandomDataset(max_length=args.seq_length,
-                            num_samples=args.batch_size * (args.warmup + args.active) * dp_size)
-    sampler = DistributedSampler(dataset, rank=rank, num_replicas=world_size, shuffle=False)
+    dataset = RandomDataset(
+        max_length=args.seq_length,
+        num_samples=args.batch_size * (args.warmup + args.active) * dp_size,
+    )
+    sampler = DistributedSampler(
+        dataset, rank=rank, num_replicas=world_size, shuffle=False
+    )
     train_kwargs = {"batch_size": args.batch_size, "sampler": sampler}
     train_loader = torch.utils.data.DataLoader(dataset, **train_kwargs)
     torch.cuda.set_device(rank)
@@ -57,7 +64,13 @@ def fsdp_main(rank, world_size, args):
     setattr(config, "router_z_loss_factor", 0.1)
     setattr(config, "label_smoothing", 0.1)
     setattr(config, "z_loss_factor", 0.1)
-    model = OpenMoeForCausalLM(config).to(rank)
+    model = OpenMoeForCausalLM(config)
+    auto_wrap_policy = functools.partial(
+        transformer_auto_wrap_policy,
+        transformer_layer_cls={
+            OpenMoeDecoderLayer,
+        },
+    )
     model = FSDP(
         model,
         mixed_precision=MixedPrecision(
@@ -65,6 +78,8 @@ def fsdp_main(rank, world_size, args):
             reduce_dtype=torch.float16,
             buffer_dtype=torch.float16,
         ),
+        auto_wrap_policy=auto_wrap_policy,
+        device_id=torch.cuda.current_device(),
     )
     optimizer = Adafactor(model.parameters())
     model.train()
@@ -99,7 +114,9 @@ def fsdp_main(rank, world_size, args):
 
     performance_evaluator.on_fit_end()
     if dist.get_rank() == 0:
-        print(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
+        print(
+            f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB"
+        )
 
 
 if __name__ == "__main__":
