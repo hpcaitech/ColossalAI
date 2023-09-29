@@ -9,20 +9,9 @@ def send_query(text):
     return resp.text
 
 
-test_sentences = [
-    "The cat chased the mouse.",
-    "Sunshine brings joy and warmth.",
-    "Coding requires practice and patience.",
-    "Rainy days inspire cozy reading.",
-    "Laughter is contagious and heartwarming.",
-    "Hiking mountains builds strength and resilience.",
-    "Family bonds grow stronger with time.",
-    "Science unlocks mysteries of the universe.",
-    "Music soothes the soul and ignites passion.",
-    "Artistic expression knows no boundaries.",
-]
+test_sentence = "Introduce some landmarks in Beijing"
 
-results = ray.get([send_query.remote(text) for text in test_sentences])
+results = ray.get(send_query.remote(test_sentence))
 print("Result returned:")
 for res in results:
     print(res)
