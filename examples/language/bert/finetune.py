@@ -57,7 +57,7 @@ def evaluate_model(
 
     def evaluate_subset(dataloader: DataLoader):
         use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
-        is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
+        is_pp_last_device = use_pipeline and booster.plugin.stage_manager.is_last_device()
 
         accum_loss = torch.zeros(1, device=get_current_device())
         for batch in dataloader:
@@ -77,7 +77,7 @@ def evaluate_model(
 
                 outputs = booster.execute_pipeline(batch, model, criterion, return_loss=True, return_outputs=True)
 
-                if is_pp_last_stage:
+                if is_pp_last_device:
                     logits = outputs["outputs"]["logits"]
                     val_loss = outputs["loss"]
                     accum_loss.add_(val_loss)
@@ -93,7 +93,6 @@ def evaluate_model(
                 elif current_rank in current_pp_group_ranks:
                     object_list = [None, None]
                     dist.broadcast_object_list(object_list, src=current_pp_group_ranks[-1], group=pp_group)
-
                     metric.add_batch(predictions=object_list[0].to(get_current_device()), references=labels)
                     accum_loss.add_(object_list[1].to(get_current_device()))
 
@@ -139,8 +138,8 @@ def train_epoch(
     coordinator: DistCoordinator,
 ):
     use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
-    is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
-    print_flag = (not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_stage)
+    is_pp_last_device = use_pipeline and booster.plugin.stage_manager.is_last_device()
+    print_flag = (not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_device)
     total_step = len(train_dataloader)
 
     model.train()
@@ -154,7 +153,7 @@ def train_epoch(
                     train_dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
                 )
                 # Backward and optimize
-                if is_pp_last_stage:
+                if is_pp_last_device:
                     loss = outputs["loss"]
                     pbar.set_postfix({"loss": loss.item()})
             else:
@@ -227,10 +226,10 @@ def main():
         plugin = HybridParallelPlugin(
             tp_size=1,
             pp_size=2,
-            num_microbatches=2,
+            num_microbatches=None,
             pp_style="interleaved",
             num_model_chunks=2,
-            microbatch_size=None,
+            microbatch_size=1,
             enable_all_optimization=True,
             zero_stage=1,
             precision="fp16",

@@ -35,6 +35,7 @@ class InterleavedSchedule(PipelineSchedule):
         self.microbatch_offset: Optional[int] = None
         self._use_microbatch_size = num_microbatches is None
         self.num_model_chunks = num_model_chunks
+        self.layers = None
 
     def load_batch(self, data_iter: Iterable, device: Optional[torch.device] = None) -> None:
         """Load a batch from data iterator.
@@ -104,7 +105,7 @@ class InterleavedSchedule(PipelineSchedule):
         Returns:
             bool: Whether the current virtual stage is the first stage.
         """
-        if self.stage_manager.is_first_stage() and model_chunk_id == 0:
+        if self.stage_manager.is_first_device() and model_chunk_id == 0:
             return True
         return False
 
@@ -117,7 +118,7 @@ class InterleavedSchedule(PipelineSchedule):
         Returns:
             bool: Whether the current virtual stage is the last stage.
         """
-        if self.stage_manager.is_last_stage() and model_chunk_id == self.num_model_chunks - 1:
+        if self.stage_manager.is_last_device() and model_chunk_id == self.num_model_chunks - 1:
             return True
         return False
 
@@ -206,14 +207,13 @@ class InterleavedSchedule(PipelineSchedule):
         # for the first stage, input_obj is None
         # for the non-first stage, input_obj is the output of the previous stage and it's must be a dict
 
-        # in shardformer, each device still has the entire model, so we need to pass the model_chunk_id to replaced forward
-        if input_obj is None:
-            input_obj = {}
-        input_obj["model_chunk_id"] = model_chunk_id
-
         if isinstance(model_chunk, ModuleList):
             output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)
         else:
+            # in shardformer, each device still has the entire model, so we need to pass the relevant stage layers
+            if input_obj is None:
+                input_obj = {}
+            input_obj["stage_index"] = self.layers[model_chunk_id]
             output_obj = model_forward(model_chunk, micro_batch, input_obj)
 
         if self.is_last_stage(model_chunk_id):
@@ -319,9 +319,9 @@ class InterleavedSchedule(PipelineSchedule):
             input_objs = [[] for _ in range(num_model_chunks)]
             output_objs = [[] for _ in range(num_model_chunks)]
 
-        outputs = [] if return_outputs and self.stage_manager.is_last_stage() else None
+        outputs = [] if return_outputs and self.stage_manager.is_last_device() else None
 
-        if return_loss and self.stage_manager.is_last_stage():
+        if return_loss and self.stage_manager.is_last_device():
             accum_loss = torch.zeros(1, device=get_current_device())
         else:
             accum_loss = None
@@ -335,10 +335,10 @@ class InterleavedSchedule(PipelineSchedule):
         # Run warmup forward passes.
         for i in range(num_warmup_microbatches):
             model_chunk_id = self.get_model_chunk_id(i, forward=True)
+            self.stage_manager.model_chunk_id = model_chunk_id
             # recv first on first rank to avoid sending or recving at the same time
-            if self.stage_manager.is_first_stage():
+            if self.stage_manager.is_first_device():
                 input_obj = self.recv_forward(model_chunk_id)
-
                 output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
                 self.send_forward(model_chunk_id, output_obj)
                 if not forward_only:
@@ -361,6 +361,7 @@ class InterleavedSchedule(PipelineSchedule):
         # Run 1F1B in steady state.
         for i in range(num_microbatches_remaining):
             model_chunk_id = self.get_model_chunk_id(i + num_warmup_microbatches, forward=True)
+            self.stage_manager.model_chunk_id = model_chunk_id
             last_iteration = i == (num_microbatches_remaining - 1)
 
             output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
@@ -399,10 +400,10 @@ class InterleavedSchedule(PipelineSchedule):
         if not forward_only:
             for i in range(num_microbatches_remaining, num_microbatches):
                 model_chunk_id = self.get_model_chunk_id(i, forward=False)
+                self.stage_manager.model_chunk_id = model_chunk_id
                 # print(f"{self.stage_manager.stage}/{model_chunk_id}: {len(input_objs[model_chunk_id])} {len(output_objs[model_chunk_id])} {i}")
                 input_obj = input_objs[model_chunk_id].pop(0)
                 output_obj = output_objs[model_chunk_id].pop(0)
-
                 output_obj_grad = self.recv_backward(model_chunk_id)
                 input_obj_grad = self.backward_step(optimizer, input_obj, output_obj, output_obj_grad)
                 self.send_backward(model_chunk_id, input_obj_grad)

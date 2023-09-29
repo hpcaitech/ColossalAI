@@ -120,7 +120,7 @@ def examine_pp(num_micro_batches):
     )
 
     # check loss
-    if stage_manager.is_last_stage():
+    if stage_manager.is_last_device():
         assert torch.allclose(torch_loss, pp_ret["loss"])
 
     # check gradients

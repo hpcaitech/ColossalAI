@@ -4,6 +4,7 @@ from typing import Optional
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
+from colossalai.pipeline.schedule import PipelineSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 __all__ = ["ShardConfig"]
@@ -17,6 +18,7 @@ class ShardConfig:
     Args:
         tensor_parallel_process_group (Optional[ProcessGroup]): The process group of tensor parallelism, it's necessary when using tensor parallel. Defaults to None, which is the global process group.
         pipeline_stage_manager (Optional[PipelineStageManager]): If using pipeline parallelism, it's necessary to specify a pipeline stage manager for inter-process communication in pipeline parallelism. Defaults to None, which means not using pipeline parallelism.
+        scheduler (Optional[PipelineSchedule]): If using interleaved pp, it's necessary to specify the scheduler for layer assignment for each device.
         enable_tensor_parallelism (bool): Whether to use tensor parallelism. Defaults to True.
         enable_fused_normalization (bool): Whether to use fused layernorm. Defaults to False.
         enable_flash_attention (bool, optional): Whether to switch on flash attention. Defaults to False.
@@ -28,6 +30,7 @@ class ShardConfig:
     """
     tensor_parallel_process_group: Optional[ProcessGroup] = None
     pipeline_stage_manager: Optional[PipelineStageManager] = None
+    scheduler: Optional[PipelineSchedule] = None
     enable_tensor_parallelism: bool = True
     enable_fused_normalization: bool = False
     enable_flash_attention: bool = False

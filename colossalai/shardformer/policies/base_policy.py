@@ -9,6 +9,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
 
+from colossalai.pipeline.schedule import PipelineSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 from ..layer.parallel_module import ParallelModule
@@ -97,6 +98,12 @@ class Policy(ABC):
     def pipeline_stage_manager(self) -> Optional[PipelineStageManager]:
         if self.shard_config is not None:
             return self.shard_config.pipeline_stage_manager
+        return None
+
+    @property
+    def scheduler(self) -> Optional[PipelineSchedule]:
+        if self.shard_config is not None:
+            return self.shard_config.scheduler
         return None
 
     @abstractmethod

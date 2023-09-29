@@ -317,6 +317,8 @@ class HybridParallelPlugin(PipelinePluginBase):
         communication_dtype (torch.dtype, optional): Communication dtype when using ZeRO. If not specified, the dtype of param will be used. Defaults to None.
         overlap_communication (bool, optional): Whether to overlap communication and computation when using ZeRO. Defaults to True.
         custom_policy (Policy, optional): Custom policy for Shardformer. Defaults to None.
+        pp_style (str, optional): The style for pipeline parallelism. Defaults to '1f1b'.
+        num_model_chunks (int, optional): The number of model chunks for interleaved pipeline parallelism. Defaults to 1.
     """
 
     def __init__(
@@ -403,15 +405,14 @@ class HybridParallelPlugin(PipelinePluginBase):
                 self.schedule = OneForwardOneBackwardSchedule(
                     self.stage_manager, num_microbatches=num_microbatches, microbatch_size=microbatch_size
                 )
-
-            #'''
-            # raise Exception
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
         self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
         self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
+
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
             pipeline_stage_manager=self.stage_manager,
+            scheduler=self.schedule,
             enable_tensor_parallelism=self.tp_size > 1,
             enable_all_optimization=self.enable_all_optimization,
             enable_fused_normalization=self.enable_fused_normalization,

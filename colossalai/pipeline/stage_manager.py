@@ -36,6 +36,7 @@ class PipelineStageManager:
         self.next_rank = self.pg_mesh.ravel(next_coord, self.pg_mesh.shape, mode="wrap")
         # number of layer chunks in each stage for interleaved pipeline, with each device has discontinuous layers
         self.num_model_chunks = num_model_chunks
+        self.model_chunk_id = 0
 
         # init p2p process groups
         stages = list(range(self.num_stages))
@@ -59,13 +60,30 @@ class PipelineStageManager:
         Returns:
             bool: Whether the current stage is the first stage.
         """
-        return self.stage == 0
+        return self.stage == 0 and self.model_chunk_id == 0
 
     def is_last_stage(self) -> bool:
         """Is the current stage the last stage.
 
         Returns:
             bool: Whether the current stage is the last stage.
+        """
+        return self.stage == self.num_stages - 1 and self.model_chunk_id == self.num_model_chunks - 1
+
+    # introduced due to interleaved pipeline parallel, as the first/last device may also hold intermediate stages
+    def is_first_device(self) -> bool:
+        """Is the current stage on the first device.
+
+        Returns:
+            bool: Whether the current stage is on the first device.
+        """
+        return self.stage == 0
+
+    def is_last_device(self) -> bool:
+        """Is the current stage on the last device.
+
+        Returns:
+            bool: Whether the current stage on the last device.
         """
         return self.stage == self.num_stages - 1
 

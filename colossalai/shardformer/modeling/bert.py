@@ -57,9 +57,8 @@ class BertPipelineForwards:
         return_dict: Optional[bool] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,  # this is from the previous stage
-        stage_index: Union[Optional[List[int]], Optional[List[List[int]]]] = None,
+        stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
-        model_chunk_id: int = 0,
     ):
         # TODO(jianghai): add explaination of the output here.
         r"""
@@ -95,10 +94,7 @@ class BertPipelineForwards:
         else:
             use_cache = False
 
-        # if interleaved, get stage index from a list of stages based on chunk id
-        if stage_index is not None and all(isinstance(item, list) for item in stage_index):
-            stage_index = stage_index[model_chunk_id]
-        if stage_manager.is_first_stage() and model_chunk_id == 0:
+        if stage_manager.is_first_stage():
             if input_ids is not None and inputs_embeds is not None:
                 raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
             elif input_ids is not None:
@@ -161,7 +157,7 @@ class BertPipelineForwards:
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
         hidden_states = hidden_states if hidden_states is not None else None
 
-        if stage_manager.is_first_stage() and model_chunk_id == 0:
+        if stage_manager.is_first_stage():
             hidden_states = self.embeddings(
                 input_ids=input_ids,
                 position_ids=position_ids,
@@ -184,7 +180,6 @@ class BertPipelineForwards:
         next_decoder_cache = () if use_cache else None
 
         start_idx, end_idx = stage_index[0], stage_index[1]
-
         # layer_outputs
         layer_outputs = hidden_states if hidden_states is not None else None
 
@@ -200,7 +195,7 @@ class BertPipelineForwards:
                 )
 
         for idx, encoder_layer in enumerate(self.encoder.layer[start_idx:end_idx], start=start_idx):
-            if stage_manager.is_first_stage() and model_chunk_id == 0 and idx == 0:
+            if stage_manager.is_first_stage() and idx == 0:
                 encoder_attention_mask = encoder_extended_attention_mask
 
             if output_hidden_states:
@@ -255,7 +250,7 @@ class BertPipelineForwards:
         # end of a stage loop
         sequence_output = hidden_states if hidden_states is not None else None
 
-        if stage_manager.is_last_stage() and model_chunk_id == stage_manager.num_model_chunks - 1:
+        if stage_manager.is_last_stage():
             pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
             if not return_dict:
                 return (sequence_output, pooled_output) + layer_outputs[1:]
@@ -665,9 +660,8 @@ class BertPipelineForwards:
         return_dict: Optional[bool] = None,
         hidden_states: Optional[torch.Tensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
-        stage_index: Union[Optional[List[int]], Optional[List[List[int]]]] = None,
+        stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
-        model_chunk_id: int = 0,
     ):
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -701,10 +695,9 @@ class BertPipelineForwards:
             stage_manager=stage_manager,
             stage_index=stage_index,
             shard_config=shard_config,
-            model_chunk_id=model_chunk_id,
         )
 
-        if stage_manager.is_last_stage() and model_chunk_id == stage_manager.num_model_chunks - 1:
+        if stage_manager.is_last_stage():
             pooled_output = outputs[1]
 
             pooled_output = self.dropout(pooled_output)
