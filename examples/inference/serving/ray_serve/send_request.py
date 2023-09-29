@@ -11,7 +11,6 @@ def send_query(text):
 
 test_sentence = "Introduce some landmarks in Beijing"
 
-results = ray.get(send_query.remote(test_sentence))
+result = ray.get(send_query.remote(test_sentence))
 print("Result returned:")
-for res in results:
-    print(res)
+print(result)

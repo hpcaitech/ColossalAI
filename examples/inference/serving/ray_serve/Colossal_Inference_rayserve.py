@@ -41,14 +41,11 @@ class Worker:
         self.max_input_len = max_input_len
         self.max_output_len = max_output_len
 
-    def setup(self, world_size, rank):
+    def setup(self, world_size, rank, port):
         # initialize a ray collective group, otherwise colossalai distributed env won't be built successfully
         collective.init_collective_group(world_size, rank, "nccl", "default")
         # initialize and set distributed environment
-        available_port = free_port()  # just grab a free port on localhost
-        colossalai.launch(
-            config={}, rank=rank, world_size=world_size, host="localhost", port=available_port, backend="nccl"
-        )
+        colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
         ray_serve_logger.info(f"Worker with rank {rank} (world size {world_size}) setting up..")
         log_cuda_info("Worker.setup")
 
@@ -93,13 +90,17 @@ class Driver:
         self.workers = []
         init_rets = []
 
+        # Just grab a free port on localhost
+        # NOTE workers in this communication group listen to the same port
+        available_port = free_port()
+
         for i in range(self.num_workers):
             worker_name = "worker_idx_{}".format(i)
             w = Worker.options(name=worker_name).remote(
                 model_path, self.num_workers, config.max_batch_size, config.max_input_len, config.max_output_len
             )
             self.workers.append(w)
-            init_rets.append(w.setup.remote(self.num_workers, i))
+            init_rets.append(w.setup.remote(self.num_workers, i, available_port))
         _options = {
             "group_name": "default_driver",
             "world_size": self.num_workers,
@@ -133,14 +134,5 @@ class Config:
 
 
 # *** add model path manually into the config***
-driver_config = Config(model_path="ADD MODEL PATH HRER")
+driver_config = Config(model_path="ADD_MODEL_PATH_HRER")
 app = Driver.bind(config=driver_config)
-
-
-# 1. use the following cmd in CLI
-# RAY_DEDUP_LOGS=0 serve run Colossal_Inference_rayserve:app
-
-# 2. or, uncomment the following lines
-# handle: DeploymentHandle = serve.run(app)
-# print(requests.post("http://localhost:8000/", json={"text": text}).json())
-# print(requests.get("http://localhost:8000/?text={}".format(text)))

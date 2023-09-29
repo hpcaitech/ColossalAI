@@ -53,3 +53,12 @@ Attach the following to the end of the file, and run the script via `python Colo
 handle: DeploymentHandle = serve.run(app)
 print(requests.get("http://localhost:8000/?text={}".format(text)))
 ```
+
+
+
+Use
+```bash
+ray stop
+```
+
+to kill any active Ray processes
