@@ -4,15 +4,14 @@ import torch
 from torch.fx.node import Node
 
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, ShardingStrategy
-from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec, ShapeConsistencyManager
 
 from ..constants import BCAST_FUNC_OP
 from ..utils import comm_actions_for_oprands, recover_sharding_spec_for_broadcast_shape
-from .node_handler import MetaInfoNodeHandler, NodeHandler
+from .node_handler import MetaInfoNodeHandler
 from .registry import operator_registry
 from .strategy import BinaryElementwiseStrategyGenerator, StrategyGenerator
 
-__all__ = ['BinaryElementwiseHandler']
+__all__ = ["BinaryElementwiseHandler"]
 
 
 @operator_registry.register(BCAST_FUNC_OP)
@@ -38,7 +37,7 @@ class BinaryElementwiseHandler(MetaInfoNodeHandler):
                 # The meta_data of node type argument could also possibly be a non-tensor object.
                 if not isinstance(meta_data, torch.Tensor):
                     assert isinstance(meta_data, (int, float))
-                    meta_data = torch.Tensor([meta_data]).to('meta')
+                    meta_data = torch.Tensor([meta_data]).to("meta")
                     non_tensor = True
 
             else:
@@ -46,7 +45,7 @@ class BinaryElementwiseHandler(MetaInfoNodeHandler):
                 # but we can deem it as meta data
                 # as it won't affect the strategy generation
                 assert isinstance(self.node.args[idx], (int, float))
-                meta_data = torch.Tensor([self.node.args[idx]]).to('meta')
+                meta_data = torch.Tensor([self.node.args[idx]]).to("meta")
                 non_tensor = True
 
             return meta_data, non_tensor
@@ -58,24 +57,27 @@ class BinaryElementwiseHandler(MetaInfoNodeHandler):
         # and filter the non-tensor op_data in post_process.
         self.non_tensor_list = []
         # assert False
-        input_op_data = OperationData(name=str(self.node.args[0]),
-                                      type=_get_op_data_type(input_meta_data),
-                                      data=input_meta_data,
-                                      logical_shape=bcast_shape)
-        other_op_data = OperationData(name=str(self.node.args[1]),
-                                      type=_get_op_data_type(other_meta_data),
-                                      data=other_meta_data,
-                                      logical_shape=bcast_shape)
-        output_op_data = OperationData(name=str(self.node),
-                                       type=OperationDataType.OUTPUT,
-                                       data=output_meta_data,
-                                       logical_shape=bcast_shape)
+        input_op_data = OperationData(
+            name=str(self.node.args[0]),
+            type=_get_op_data_type(input_meta_data),
+            data=input_meta_data,
+            logical_shape=bcast_shape,
+        )
+        other_op_data = OperationData(
+            name=str(self.node.args[1]),
+            type=_get_op_data_type(other_meta_data),
+            data=other_meta_data,
+            logical_shape=bcast_shape,
+        )
+        output_op_data = OperationData(
+            name=str(self.node), type=OperationDataType.OUTPUT, data=output_meta_data, logical_shape=bcast_shape
+        )
         if non_tensor_input:
             self.non_tensor_list.append(input_op_data)
         if non_tensor_other:
             self.non_tensor_list.append(other_op_data)
 
-        mapping = {'input': input_op_data, 'other': other_op_data, 'output': output_op_data}
+        mapping = {"input": input_op_data, "other": other_op_data, "output": output_op_data}
         return mapping
 
     def get_strategy_generator(self) -> List[StrategyGenerator]:
@@ -100,14 +102,14 @@ class BinaryElementwiseHandler(MetaInfoNodeHandler):
                 logical_shape = op_data.logical_shape
                 sharding_spec = strategy.get_sharding_spec_by_name(op_data.name)
                 sharding_spec, removed_dims = recover_sharding_spec_for_broadcast_shape(
-                    sharding_spec, logical_shape, physical_shape)
+                    sharding_spec, logical_shape, physical_shape
+                )
 
                 strategy.sharding_specs[op_data] = sharding_spec
                 if len(removed_dims) > 0:
-                    comm_action = comm_actions_for_oprands(node=self.node,
-                                                           removed_dims=removed_dims,
-                                                           op_data=op_data,
-                                                           sharding_spec=sharding_spec)
+                    comm_action = comm_actions_for_oprands(
+                        node=self.node, removed_dims=removed_dims, op_data=op_data, sharding_spec=sharding_spec
+                    )
                     strategy.communication_actions[op_data] = comm_action
 
         return strategy

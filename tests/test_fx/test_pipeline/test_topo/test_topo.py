@@ -7,7 +7,7 @@ BATCH_SIZE = 1
 SEQ_LENGHT = 16
 
 
-@pytest.mark.skip('ShapeProp is not compatible with PyTorch 1.11.0')
+@pytest.mark.skip("ShapeProp is not compatible with PyTorch 1.11.0")
 def test_opt():
     MODEL_LIST = [
         MLP,
@@ -15,10 +15,7 @@ def test_opt():
     ]
 
     CONFIGS = [
-        {
-            'dim': 10,
-            'layers': 12
-        },
+        {"dim": 10, "layers": 12},
         transformers.OPTConfig(vocab_size=100, hidden_size=128, num_hidden_layers=4, num_attention_heads=4),
     ]
 
@@ -45,5 +42,5 @@ def test_opt():
         check_topo(top_mod, topo)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_opt()

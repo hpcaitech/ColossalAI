@@ -204,7 +204,7 @@ def main():
 
     torch.cuda.synchronize()
 ```
-> ⚠️ 注意：如果你使用Gemini模块的话，请不要使用我们之前提到过的[梯度累加](../features/gradient_accumulation.md)。
+> ⚠️ 注意：如果你使用Gemini模块的话，请不要使用我们之前提到过的[梯度累加](../features/gradient_accumulation_with_booster.md)。
 完整的例子代码可以在 [Train GPT with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt). 获得。
 
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=1 zero_with_chunk.py  -->

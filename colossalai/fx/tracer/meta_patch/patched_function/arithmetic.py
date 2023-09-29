@@ -4,7 +4,7 @@ from ...registry import meta_patched_function
 
 
 @meta_patched_function.register(torch.matmul)
-@meta_patched_function.register('matmul')    # for built-in op @
+@meta_patched_function.register("matmul")  # for built-in op @
 def torch_matmul(input, other, *, out=None):
     # copied from huggingface.utils.fx
     d1 = input.dim()
@@ -44,8 +44,8 @@ def torch_matmul(input, other, *, out=None):
 
 @meta_patched_function.register(torch.abs)
 def torch_abs(input, *, out=None):
-    assert out is None, 'out is not supported yet'
-    return torch.empty(input.shape, device='meta')
+    assert out is None, "out is not supported yet"
+    return torch.empty(input.shape, device="meta")
 
 
 @meta_patched_function.register(torch.bmm)
@@ -89,7 +89,7 @@ def torch_addmm(input, mat1, mat2, *, beta=1, alpha=1, out=None):
 
 @meta_patched_function.register(torch.var_mean)
 def torch_var_mean(input, dim, unbiased=True, keepdim=False, *, out=None):
-    assert out is None, 'saving to out is not supported yet'
-    var = torch.empty(1).squeeze(0).to('meta')
-    mean = torch.empty(1).squeeze(0).to('meta')
+    assert out is None, "saving to out is not supported yet"
+    var = torch.empty(1).squeeze(0).to("meta")
+    mean = torch.empty(1).squeeze(0).to("meta")
     return var, mean

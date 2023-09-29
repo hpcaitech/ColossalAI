@@ -1,5 +1,3 @@
-from functools import partial
-
 import pytest
 import torch
 import torch.nn as nn
@@ -21,7 +19,6 @@ from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import n
 
 
 class GetItemFromTensorModel(nn.Module):
-
     def __init__(self, getitem_index):
         super().__init__()
         self.getitem_index = getitem_index
@@ -34,12 +31,12 @@ class GetItemFromTensorModel(nn.Module):
 
 def check_getitem_from_tensor_handler(rank, getitem_index, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     model = GetItemFromTensorModel(getitem_index=getitem_index)
 
-    input = torch.rand(8, 16, 64, 32).to('cuda')
-    other = torch.rand(64, 32).to('cuda')
+    input = torch.rand(8, 16, 64, 32).to("cuda")
+    other = torch.rand(64, 32).to("cuda")
     # index of linear node in computation graph
     node_index = 2
     # total number of linear strategies
@@ -49,18 +46,20 @@ def check_getitem_from_tensor_handler(rank, getitem_index, world_size, port):
     mesh_shape = (2, 2)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
 
-    numerical_test_for_node_strategy(model=model,
-                                     device_mesh=device_mesh,
-                                     node_index=node_index,
-                                     strategy_number=strategy_number,
-                                     input_args=[input, other],
-                                     meta_arg_names=['input', 'other'],
-                                     node_type='following')
+    numerical_test_for_node_strategy(
+        model=model,
+        device_mesh=device_mesh,
+        node_index=node_index,
+        strategy_number=strategy_number,
+        input_args=[input, other],
+        meta_arg_names=["input", "other"],
+        node_type="following",
+    )
 
     tracer = ColoTracer(bias_addition_split=True)
     meta_args = {
-        "input": torch.rand(8, 16, 64, 32).to('meta'),
-        "other": torch.rand(64, 32).to('meta'),
+        "input": torch.rand(8, 16, 64, 32).to("meta"),
+        "other": torch.rand(64, 32).to("meta"),
     }
     graph = tracer.trace(model, meta_args=meta_args)
 
@@ -72,14 +71,14 @@ def check_getitem_from_tensor_handler(rank, getitem_index, world_size, port):
     linear_strategies_vector = StrategiesVector(linear_mod_node)
 
     # build handler
-    linear_handler = LinearFunctionHandler(node=linear_mod_node,
-                                           device_mesh=device_mesh,
-                                           strategies_vector=linear_strategies_vector)
+    linear_handler = LinearFunctionHandler(
+        node=linear_mod_node, device_mesh=device_mesh, strategies_vector=linear_strategies_vector
+    )
     linear_handler.register_strategy(compute_resharding_cost=False)
-    setattr(linear_mod_node, 'strategies_vector', linear_strategies_vector)
-    getitem_handler = GetItemHandler(node=getitem_mod_node,
-                                     device_mesh=device_mesh,
-                                     strategies_vector=getitem_strategies_vector)
+    setattr(linear_mod_node, "strategies_vector", linear_strategies_vector)
+    getitem_handler = GetItemHandler(
+        node=getitem_mod_node, device_mesh=device_mesh, strategies_vector=getitem_strategies_vector
+    )
 
     getitem_handler.register_strategy(compute_resharding_cost=False)
     # check operation data mapping
@@ -94,17 +93,16 @@ def check_getitem_from_tensor_handler(rank, getitem_index, world_size, port):
     assert len(getitem_strategies_vector) == len(linear_strategies_vector)
 
 
-@run_on_environment_flag(name='AUTO_PARALLEL')
+@run_on_environment_flag(name="AUTO_PARALLEL")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 # @parameterize('getitem_index', [slice(0, 2), (slice(None), slice(None))])
-@parameterize('getitem_index', [1, (1, 4), slice(0, 2), (slice(None), slice(None))])
+@parameterize("getitem_index", [1, (1, 4), slice(0, 2), (slice(None), slice(None))])
 def test_getitem_from_tensor_handler(getitem_index):
     spawn(check_getitem_from_tensor_handler, 4)
 
 
 class GetItemFromTupleModel(nn.Module):
-
     def __init__(self):
         super().__init__()
 
@@ -114,7 +112,7 @@ class GetItemFromTupleModel(nn.Module):
         return x
 
 
-@run_on_environment_flag(name='AUTO_PARALLEL')
+@run_on_environment_flag(name="AUTO_PARALLEL")
 @clear_cache_before_run()
 def test_getitem_from_tuple_handler():
     model = GetItemFromTupleModel()
@@ -125,7 +123,7 @@ def test_getitem_from_tuple_handler():
     #     %getitem : [#users=1] = call_function[target=operator.getitem](args = (%split, 1), kwargs = {})
     #     return getitem
     meta_args = {
-        "input": torch.rand(4, 4, 64, 64).to('meta'),
+        "input": torch.rand(4, 4, 64, 64).to("meta"),
     }
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
@@ -146,20 +144,20 @@ def test_getitem_from_tuple_handler():
         node=input_node,
         device_mesh=device_mesh,
         strategies_vector=input_strategies_vector,
-        placeholder_option='replicated',
+        placeholder_option="replicated",
     )
     input_handler.register_strategy(compute_resharding_cost=False)
-    setattr(input_node, 'strategies_vector', input_strategies_vector)
-    split_handler = DefaultReshapeHandler(node=split_node,
-                                          device_mesh=device_mesh,
-                                          strategies_vector=split_strategies_vector)
+    setattr(input_node, "strategies_vector", input_strategies_vector)
+    split_handler = DefaultReshapeHandler(
+        node=split_node, device_mesh=device_mesh, strategies_vector=split_strategies_vector
+    )
     split_handler.register_strategy(compute_resharding_cost=False)
-    setattr(split_node, 'strategies_vector', split_strategies_vector)
-    getitem_handler = GetItemHandler(node=getitem_node,
-                                     device_mesh=device_mesh,
-                                     strategies_vector=getitem_strategies_vector)
+    setattr(split_node, "strategies_vector", split_strategies_vector)
+    getitem_handler = GetItemHandler(
+        node=getitem_node, device_mesh=device_mesh, strategies_vector=getitem_strategies_vector
+    )
     getitem_handler.register_strategy(compute_resharding_cost=False)
-    setattr(getitem_node, 'strategies_vector', getitem_strategies_vector)
+    setattr(getitem_node, "strategies_vector", getitem_strategies_vector)
 
     # check operation data mapping
     mapping = getitem_handler.get_operation_data_mapping()
@@ -169,23 +167,23 @@ def test_getitem_from_tuple_handler():
         # make sure they have valid values
         assert op_data.data is not None
 
-    assert mapping['input'].name == "split"
-    assert mapping['input'].type == OperationDataType.ARG
-    assert mapping['input'].logical_shape == (torch.Size([2, 4, 64, 64]), torch.Size([2, 4, 64, 64]))
+    assert mapping["input"].name == "split"
+    assert mapping["input"].type == OperationDataType.ARG
+    assert mapping["input"].logical_shape == (torch.Size([2, 4, 64, 64]), torch.Size([2, 4, 64, 64]))
 
-    assert mapping['index'].name == "index"
-    assert isinstance(mapping['index'].data, int)
-    assert mapping['index'].type == OperationDataType.ARG
+    assert mapping["index"].name == "index"
+    assert isinstance(mapping["index"].data, int)
+    assert mapping["index"].type == OperationDataType.ARG
 
-    assert mapping['output'].name == "getitem"
-    assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.Size([2, 4, 64, 64])
-    assert mapping['output'].type == OperationDataType.OUTPUT
+    assert mapping["output"].name == "getitem"
+    assert mapping["output"].data.is_meta
+    assert mapping["output"].data.shape == torch.Size([2, 4, 64, 64])
+    assert mapping["output"].type == OperationDataType.OUTPUT
 
     # getitem is a following strategy handler, so the number of strategies is equal to the predecessor node.
     assert len(getitem_strategies_vector) == len(split_strategies_vector)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_getitem_from_tensor_handler()
     test_getitem_from_tuple_handler()

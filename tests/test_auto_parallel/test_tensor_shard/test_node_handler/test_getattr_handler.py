@@ -12,7 +12,6 @@ from colossalai.testing import clear_cache_before_run
 
 
 class GetattrModel(nn.Module):
-
     def __init__(self):
         super().__init__()
         self.conv = nn.Conv2d(4, 16, 3, padding=1, bias=False)
@@ -22,7 +21,7 @@ class GetattrModel(nn.Module):
         return weight
 
 
-@pytest.mark.skip('ShapeProp is not compatible with PyTorch 1.11.0')
+@pytest.mark.skip("ShapeProp is not compatible with PyTorch 1.11.0")
 @clear_cache_before_run()
 def test_getattr_handler():
     model = GetattrModel()
@@ -31,7 +30,7 @@ def test_getattr_handler():
     #     %input_1 : torch.Tensor [#users=0] = placeholder[target=input]
     #     %conv_weight : [#users=1] = get_attr[target=conv.weight]
     #     return conv_weight
-    meta_args = {'input': torch.rand(4, 4, 64, 64).to('meta')}
+    meta_args = {"input": torch.rand(4, 4, 64, 64).to("meta")}
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
     shape_prop_pass(gm, *meta_args.values())
@@ -42,9 +41,9 @@ def test_getattr_handler():
     getattr_strategies_vector = StrategiesVector(getattr_node)
 
     # build handler
-    getattr_handler = GetattrHandler(node=getattr_node,
-                                     device_mesh=device_mesh,
-                                     strategies_vector=getattr_strategies_vector)
+    getattr_handler = GetattrHandler(
+        node=getattr_node, device_mesh=device_mesh, strategies_vector=getattr_strategies_vector
+    )
 
     getattr_handler.register_strategy(compute_resharding_cost=False)
 
@@ -56,20 +55,20 @@ def test_getattr_handler():
         # make sure they have valid values
         assert op_data.data is not None
 
-    assert mapping['output'].name == "conv_weight"
-    assert mapping['output'].data.shape == torch.Size((16, 4, 3, 3))
-    assert mapping['output'].type == OperationDataType.OUTPUT
+    assert mapping["output"].name == "conv_weight"
+    assert mapping["output"].data.shape == torch.Size((16, 4, 3, 3))
+    assert mapping["output"].type == OperationDataType.OUTPUT
     strategy_name_list = [val.name for val in getattr_handler.strategies_vector]
-    assert 'get_attr [S0, S1, R, R]' in strategy_name_list
-    assert 'get_attr [S1, S0, R, R]' in strategy_name_list
-    assert 'get_attr [S01, R, R, R]' in strategy_name_list
-    assert 'get_attr [R, S01, R, R]' in strategy_name_list
-    assert 'get_attr [S0, R, R, R]' in strategy_name_list
-    assert 'get_attr [R, S0, R, R]' in strategy_name_list
-    assert 'get_attr [S1, R, R, R]' in strategy_name_list
-    assert 'get_attr [R, S1, R, R]' in strategy_name_list
-    assert 'get_attr [R, R, R, R]' in strategy_name_list
+    assert "get_attr [S0, S1, R, R]" in strategy_name_list
+    assert "get_attr [S1, S0, R, R]" in strategy_name_list
+    assert "get_attr [S01, R, R, R]" in strategy_name_list
+    assert "get_attr [R, S01, R, R]" in strategy_name_list
+    assert "get_attr [S0, R, R, R]" in strategy_name_list
+    assert "get_attr [R, S0, R, R]" in strategy_name_list
+    assert "get_attr [S1, R, R, R]" in strategy_name_list
+    assert "get_attr [R, S1, R, R]" in strategy_name_list
+    assert "get_attr [R, R, R, R]" in strategy_name_list
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_getattr_handler()

@@ -12,7 +12,6 @@ except:
 
 
 class MyModule(nn.Module):
-
     def __init__(self):
         super().__init__()
         self.a = nn.Linear(10, 10)
@@ -43,14 +42,14 @@ class MyModule(nn.Module):
         return checkpoint(self.checkpoint_0, x)
 
 
-@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='torch version < 12')
+@pytest.mark.skipif(torch.__version__ < "1.12.0", reason="torch version < 12")
 @clear_cache_before_run()
 def test_nested_ckpt():
     model = MyModule()
     x = torch.rand(10, 10)
-    gm = symbolic_trace(model, meta_args={'x': x}, trace_act_ckpt=True)
+    gm = symbolic_trace(model, meta_args={"x": x}, trace_act_ckpt=True)
     assert torch.allclose(gm(x), model(x)), "The traced model should generate the same output as the original model."
-    for ckpt_def in filter(lambda s: s.startswith('checkpoint'), dir(model)):
+    for ckpt_def in filter(lambda s: s.startswith("checkpoint"), dir(model)):
         assert ckpt_def in gm.code, f"Checkpoint {ckpt_def} should be in the traced code.\n Traced code = {gm.code}"
 
 

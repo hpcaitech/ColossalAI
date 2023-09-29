@@ -8,7 +8,7 @@ from .registry import operator_registry
 from .strategy import StrategyGenerator
 from .strategy.tensor_constructor_generator import TensorConstructorGenerator
 
-__all__ = ['TensorConstructorHandler']
+__all__ = ["TensorConstructorHandler"]
 
 
 @operator_registry.register(torch.arange)

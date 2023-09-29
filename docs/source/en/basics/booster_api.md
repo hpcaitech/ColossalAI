@@ -9,7 +9,8 @@ Author: [Mingyan Jiang](https://github.com/jiangmingyan), [Jianghai Chen](https:
 
 **Example Code**
 
-- [Train with Booster](https://github.com/hpcaitech/ColossalAI/blob/main/examples/tutorial/new_api/cifar_resnet)
+- [Train ResNet on CIFAR-10 with Booster](https://github.com/hpcaitech/ColossalAI/blob/main/examples/tutorial/new_api/cifar_resnet)
+- [Train LLaMA-1/2 on RedPajama with Booster](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama2)
 
 ## Introduction
 
@@ -30,6 +31,8 @@ Plugin is an important component that manages parallel configuration (eg: The ge
 **_TorchFSDPPlugin:_** This plugin wraps the FSDP acceleration solution of Pytorch and can be used to train models with zero-dp.
 
 More details about usages of each plugin can be found in chapter [Booster Plugins](./booster_plugins.md).
+
+Some plugins support lazy initialization, which can be used to save memory when initializating large models. For more details, please see [Lazy Initialization](../features/lazy_init.md).
 
 ### API of booster
 

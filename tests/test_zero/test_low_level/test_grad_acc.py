@@ -14,7 +14,6 @@ from colossalai.zero import LowLevelZeroOptimizer
 
 
 class MlpModel(nn.Module):
-
     def __init__(self):
         super(MlpModel, self).__init__()
         self.linear1 = nn.Linear(128, 256)
@@ -36,16 +35,12 @@ def exam_zero_1_2_grad_acc():
     # create optimizer
     zero1_optimizer = torch.optim.Adam(zero1_model.parameters(), lr=1)
     zero2_optimizer = torch.optim.Adam(zero2_model.parameters(), lr=1)
-    zero1_optimizer = LowLevelZeroOptimizer(zero1_optimizer,
-                                            overlap_communication=True,
-                                            initial_scale=32,
-                                            clip_grad_norm=1.0,
-                                            verbose=True)
-    zero2_optimizer = LowLevelZeroOptimizer(zero2_optimizer,
-                                            overlap_communication=True,
-                                            partition_grad=True,
-                                            initial_scale=32,
-                                            clip_grad_norm=1.0)
+    zero1_optimizer = LowLevelZeroOptimizer(
+        zero1_optimizer, overlap_communication=True, initial_scale=32, clip_grad_norm=1.0, verbose=True
+    )
+    zero2_optimizer = LowLevelZeroOptimizer(
+        zero2_optimizer, overlap_communication=True, partition_grad=True, initial_scale=32, clip_grad_norm=1.0
+    )
     # create data
     seed_all(2021 + local_rank)
     input_data1 = torch.randn(32, 128).cuda()
@@ -91,10 +86,9 @@ def exam_zero_1_grad_acc(sync):
     # we only test stage 1 here
     # in `check_sharded_param_consistency.py`, we will test whether
     # level 1 and 2 will produce exactly the same results
-    zero_optimizer = LowLevelZeroOptimizer(zero_optimizer,
-                                           overlap_communication=False,
-                                           reduce_bucket_size=262144,
-                                           clip_grad_norm=1.0)
+    zero_optimizer = LowLevelZeroOptimizer(
+        zero_optimizer, overlap_communication=False, reduce_bucket_size=262144, clip_grad_norm=1.0
+    )
 
     torch_optimizer = torch.optim.Adam(torch_model.parameters(), lr=1)
 
@@ -104,7 +98,6 @@ def exam_zero_1_grad_acc(sync):
     input_data2 = torch.randn(32, 128).cuda()
 
     def fwd_bwd_func(no_sync, cur_data, check_flag):
-
         # zero1 fwd and bwd
         with conditional_context(zero_optimizer.no_sync(), no_sync):
             zero_output = zero_model(cur_data)
@@ -135,7 +128,7 @@ def exam_zero_1_grad_acc(sync):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
 
     exam_zero_1_grad_acc(sync=True)
     exam_zero_1_grad_acc(sync=False)
@@ -147,5 +140,5 @@ def test_grad_accumulation():
     spawn(run_dist, 2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_grad_accumulation()

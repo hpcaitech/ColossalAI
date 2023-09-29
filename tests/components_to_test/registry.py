@@ -2,7 +2,6 @@
 
 
 class Registry:
-
     def __init__(self):
         self._registry = dict()
 
@@ -36,4 +35,4 @@ class Registry:
 non_distributed_component_funcs = Registry()
 model_parallel_component_funcs = Registry()
 
-__all__ = ['non_distributed_component_funcs', 'model_parallel_component_funcs']
+__all__ = ["non_distributed_component_funcs", "model_parallel_component_funcs"]

@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 
 from ...registry import bias_addition_module
 from .bias_addition_module import BiasAdditionModule
@@ -7,7 +6,6 @@ from .bias_addition_module import BiasAdditionModule
 
 @bias_addition_module.register(torch.nn.Linear)
 class BiasAdditionLinear(BiasAdditionModule):
-
     def extract_kwargs_from_mod(self):
         return {}
 

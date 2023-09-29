@@ -17,11 +17,11 @@ CONFIG = dict()
 
 
 def run_test(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     expert_module = nn.Linear
     expert_factor = dict(in_features=DIM, out_features=DIM, device=get_current_device())
 
-    MOE_CONTEXT.setup(42)    # MOE initialization
+    MOE_CONTEXT.setup(42)  # MOE initialization
     noisy_func = UniformNoiseGenerator()
     router = Top1Router(noisy_func=noisy_func)
     num_experts_list = [1, 2, 4]
@@ -67,5 +67,5 @@ def test_grad_handler():
     spawn(run_test, 4)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_grad_handler()

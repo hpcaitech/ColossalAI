@@ -22,7 +22,7 @@ class HFRepoFiles:
             file_path = hf_hub_download(self.repo_id, file, local_dir=dir_path)
 
     def download_all(self):
-        file_path = snapshot_download(self.repo_id)
+        snapshot_download(self.repo_id)
 
 
 def test_init(model: str, dir_path: str):
@@ -31,19 +31,19 @@ def test_init(model: str, dir_path: str):
         actor = GPTActor(config=config)
         critic = GPTCritic(config=config)
         reward_model = GPTRM(config=config)
-        tokenizer = GPT2Tokenizer.from_pretrained(dir_path)
+        GPT2Tokenizer.from_pretrained(dir_path)
     elif model == "bloom":
         config = BloomConfig.from_pretrained(dir_path)
         actor = BLOOMActor(config=config)
         critic = BLOOMCritic(config=config)
         reward_model = BLOOMRM(config=config)
-        tokenizer = BloomTokenizerFast.from_pretrained(dir_path)
+        BloomTokenizerFast.from_pretrained(dir_path)
     elif model == "opt":
         config = AutoConfig.from_pretrained(dir_path)
         actor = OPTActor(config=config)
         critic = OPTCritic(config=config)
         reward_model = OPTRM(config=config)
-        tokenizer = AutoTokenizer.from_pretrained(dir_path)
+        AutoTokenizer.from_pretrained(dir_path)
     else:
         raise NotImplementedError(f"Model {model} not implemented")
 
@@ -59,17 +59,12 @@ if __name__ == "__main__":
         exit(0)
 
     repo_list = {
-        "gpt2": HFRepoFiles(
-            repo_id="gpt2",
-            files=["config.json", "tokenizer.json", "vocab.json", "merges.txt"]
-        ),
+        "gpt2": HFRepoFiles(repo_id="gpt2", files=["config.json", "tokenizer.json", "vocab.json", "merges.txt"]),
         "bloom": HFRepoFiles(
-            repo_id="bigscience/bloom-560m",
-            files=["config.json", "tokenizer.json", "tokenizer_config.json"]
+            repo_id="bigscience/bloom-560m", files=["config.json", "tokenizer.json", "tokenizer_config.json"]
         ),
         "opt": HFRepoFiles(
-            repo_id="facebook/opt-350m",
-            files=["config.json", "tokenizer_config.json", "vocab.json", "merges.txt"]
+            repo_id="facebook/opt-350m", files=["config.json", "tokenizer_config.json", "vocab.json", "merges.txt"]
         ),
     }
 

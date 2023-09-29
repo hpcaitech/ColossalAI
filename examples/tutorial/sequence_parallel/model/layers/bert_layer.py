@@ -20,18 +20,20 @@ class BertLayer(nn.Module):
     output of the same size.
     """
 
-    def __init__(self,
-                 layer_number,
-                 hidden_size,
-                 num_attention_heads,
-                 attention_dropout,
-                 mlp_ratio,
-                 hidden_dropout,
-                 is_naive_fp16,
-                 apply_residual_connection_post_layernorm=False,
-                 fp32_residual_connection=False,
-                 bias_dropout_fusion: bool = True,
-                 convert_fp16_to_fp32_in_softmax: bool = False):
+    def __init__(
+        self,
+        layer_number,
+        hidden_size,
+        num_attention_heads,
+        attention_dropout,
+        mlp_ratio,
+        hidden_dropout,
+        is_naive_fp16,
+        apply_residual_connection_post_layernorm=False,
+        fp32_residual_connection=False,
+        bias_dropout_fusion: bool = True,
+        convert_fp16_to_fp32_in_softmax: bool = False,
+    ):
         super().__init__()
         self.layer_number = layer_number
 
@@ -50,7 +52,8 @@ class BertLayer(nn.Module):
             layer_number=layer_number,
             apply_query_key_layer_scaling=True,
             convert_fp16_to_fp32_in_softmax=convert_fp16_to_fp32_in_softmax,
-            fp16=is_naive_fp16)
+            fp16=is_naive_fp16,
+        )
 
         self.hidden_dropout = hidden_dropout
         self.bias_dropout_fusion = bias_dropout_fusion
@@ -90,8 +93,9 @@ class BertLayer(nn.Module):
 
         # re-enable torch grad to enable fused optimization.
         with torch.enable_grad():
-            layernorm_input = bias_dropout_add_func(attention_output, attention_bias.expand_as(residual), residual,
-                                                    self.hidden_dropout)
+            layernorm_input = bias_dropout_add_func(
+                attention_output, attention_bias.expand_as(residual), residual, self.hidden_dropout
+            )
 
         # Layer norm post the self attention.
         layernorm_output = self.post_attention_layernorm(layernorm_input)

@@ -2,9 +2,9 @@ import torch
 import torch.distributed as dist
 from torch.nn import Parameter
 
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.global_variables import tensor_parallel_env as env
 from colossalai.legacy.nn import (
     Classifier1D,
     Embedding1D,
@@ -15,7 +15,8 @@ from colossalai.legacy.nn import (
     VocabParallelCrossEntropyLoss1D,
     VocabParallelEmbedding1D,
 )
-from colossalai.utils import get_current_device, print_rank_0
+from colossalai.legacy.utils import print_rank_0
+from colossalai.utils import get_current_device
 
 from .common import BATCH_SIZE, DEPTH, HIDDEN_SIZE, NUM_CLASSES, SEQ_LENGTH, VOCAB_SIZE, check_equal
 
@@ -43,7 +44,7 @@ def check_linear_col():
     W = W.clone()
     W.requires_grad = True
 
-    B_shape = (OUTPUT_SIZE)
+    B_shape = OUTPUT_SIZE
     B_master = torch.randn(B_shape, dtype=dtype, device=device)
     dist.broadcast(B_master, src=0)
     B = torch.chunk(B_master, DEPTH, dim=0)[i]
@@ -64,7 +65,7 @@ def check_linear_col():
     C = torch.chunk(C_master, DEPTH, dim=-1)[i]
 
     check_equal(out, C)
-    print_rank_0('linear_col forward: pass')
+    print_rank_0("linear_col forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
@@ -86,7 +87,7 @@ def check_linear_col():
     B_grad = torch.chunk(B_grad, DEPTH, dim=0)[i]
     check_equal(B_grad, layer.bias.grad)
 
-    print_rank_0('linear_col backward: pass')
+    print_rank_0("linear_col backward: pass")
 
 
 def check_linear_row():
@@ -113,7 +114,7 @@ def check_linear_row():
     W = W.clone()
     W.requires_grad = True
 
-    B_shape = (INPUT_SIZE)
+    B_shape = INPUT_SIZE
     B_master = torch.randn(B_shape, dtype=dtype, device=device)
     dist.broadcast(B_master, src=0)
     B = B_master.clone()
@@ -133,7 +134,7 @@ def check_linear_row():
     C = C_master.clone()
 
     check_equal(out, C)
-    print_rank_0('linear_row forward: pass')
+    print_rank_0("linear_row forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
@@ -154,7 +155,7 @@ def check_linear_row():
     B_grad = B_master.grad
     check_equal(B_grad, layer.bias.grad)
 
-    print_rank_0('linear_row backward: pass')
+    print_rank_0("linear_row backward: pass")
 
 
 def check_embed():
@@ -183,7 +184,7 @@ def check_embed():
     C_master = embed_master(A_master)
     C = C_master.clone()
     check_equal(out, C)
-    print_rank_0('embed forward: pass')
+    print_rank_0("embed forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
@@ -196,7 +197,7 @@ def check_embed():
     B_grad = embed_master.weight.grad
     B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[i]
     check_equal(B_grad, embed.weight.grad)
-    print_rank_0('embed backward: pass')
+    print_rank_0("embed backward: pass")
 
 
 def check_vocab_parallel_embed():
@@ -225,7 +226,7 @@ def check_vocab_parallel_embed():
     C_master = embed_master(A_master)
     C = C_master.clone()
     check_equal(out, C)
-    print_rank_0('vocab parallel embed forward: pass')
+    print_rank_0("vocab parallel embed forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
@@ -238,7 +239,7 @@ def check_vocab_parallel_embed():
     B_grad = embed_master.weight.grad
     B_grad = torch.chunk(B_grad, DEPTH, dim=0)[i]
     check_equal(B_grad, embed.weight.grad)
-    print_rank_0('vocab parallel embed backward: pass')
+    print_rank_0("vocab parallel embed backward: pass")
 
 
 def check_classifier_no_given_weight():
@@ -282,7 +283,7 @@ def check_classifier_no_given_weight():
     C = C_master.clone()
 
     check_equal(out, C)
-    print_rank_0('classifier (no given weight) forward: pass')
+    print_rank_0("classifier (no given weight) forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
@@ -304,7 +305,7 @@ def check_classifier_no_given_weight():
     B_grad = layer_master.bias.grad
     check_equal(B_grad, layer.bias.grad)
 
-    print_rank_0('classifier (no given weight) backward: pass')
+    print_rank_0("classifier (no given weight) backward: pass")
 
 
 def check_vocab_parallel_classifier_no_given_weight():
@@ -342,7 +343,7 @@ def check_vocab_parallel_classifier_no_given_weight():
     C = torch.chunk(C_master, DEPTH, dim=-1)[i]
 
     check_equal(out, C)
-    print_rank_0('vocab parallel classifier (no given weight) forward: pass')
+    print_rank_0("vocab parallel classifier (no given weight) forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
@@ -364,7 +365,7 @@ def check_vocab_parallel_classifier_no_given_weight():
     B_grad = torch.chunk(B_grad, DEPTH, dim=0)[i]
     check_equal(B_grad, layer.bias.grad)
 
-    print_rank_0('vocab parallel classifier (no given weight) backward: pass')
+    print_rank_0("vocab parallel classifier (no given weight) backward: pass")
 
 
 def check_classifier_given_embed_weight():
@@ -400,7 +401,7 @@ def check_classifier_given_embed_weight():
     C_master = layer_master(embed_master(A_master))
     C = C_master.clone()
     check_equal(out, C)
-    print_rank_0('classifier (given embed weight) forward: pass')
+    print_rank_0("classifier (given embed weight) forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
@@ -415,7 +416,7 @@ def check_classifier_given_embed_weight():
     W_grad = torch.chunk(W_grad, DEPTH, dim=-1)[i]
     check_equal(W_grad, embed.weight.grad)
 
-    print_rank_0('classifier (given embed weight) backward: pass')
+    print_rank_0("classifier (given embed weight) backward: pass")
 
 
 def check_vocab_parallel_classifier_given_embed_weight():
@@ -451,7 +452,7 @@ def check_vocab_parallel_classifier_given_embed_weight():
     C_master = layer_master(embed_master(A_master))
     C = torch.chunk(C_master, DEPTH, dim=-1)[i]
     check_equal(out, C)
-    print_rank_0('vocab parallel classifier (given embed weight) forward: pass')
+    print_rank_0("vocab parallel classifier (given embed weight) forward: pass")
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
@@ -467,7 +468,7 @@ def check_vocab_parallel_classifier_given_embed_weight():
     W_grad = torch.chunk(W_grad, DEPTH, dim=0)[i]
     check_equal(W_grad, embed.weight.grad)
 
-    print_rank_0('vocab parallel classifier (given embed weight) backward: pass')
+    print_rank_0("vocab parallel classifier (given embed weight) backward: pass")
 
 
 def check_vocab_parallel_loss():
@@ -494,7 +495,7 @@ def check_vocab_parallel_loss():
     out_master.requires_grad = True
     loss_master = criterion_master(out_master, target_master)
     check_equal(loss, loss_master)
-    print_rank_0('vocab parallel loss forward: pass')
+    print_rank_0("vocab parallel loss forward: pass")
 
     loss.backward()
     loss_master.backward()
@@ -502,7 +503,7 @@ def check_vocab_parallel_loss():
     out_grad = out_master.grad
     out_grad = torch.chunk(out_grad, DEPTH, dim=-1)[i]
     check_equal(out_grad, out.grad)
-    print_rank_0('vocab parallel loss backward: pass')
+    print_rank_0("vocab parallel loss backward: pass")
 
 
 @torch.no_grad()
@@ -530,7 +531,7 @@ def check_linear_row_stream_inference():
     W = torch.chunk(W_master, DEPTH, dim=-1)[i]
     W = W.clone()
 
-    B_shape = (INPUT_SIZE)
+    B_shape = INPUT_SIZE
     B_master = torch.randn(B_shape, dtype=dtype, device=device)
     dist.broadcast(B_master, src=0)
     B = B_master.clone()
@@ -549,4 +550,4 @@ def check_linear_row_stream_inference():
     C = C_master.clone()
 
     check_equal(out, C)
-    print_rank_0('linear_row forward: pass')
+    print_rank_0("linear_row forward: pass")

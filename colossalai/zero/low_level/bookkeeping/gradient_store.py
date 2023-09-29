@@ -1,13 +1,11 @@
 from typing import List
 
 from torch import Tensor
-from torch._utils import _flatten_dense_tensors
 
 from .base_store import BaseStore
 
 
 class GradientStore(BaseStore):
-
     def __init__(self, *args, partition_grad: bool = False):
         super().__init__(*args)
         """

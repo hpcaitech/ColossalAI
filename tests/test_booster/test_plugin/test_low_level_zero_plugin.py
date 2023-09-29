@@ -11,9 +11,9 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
 # These models are not compatible with AMP
-_AMP_ERR_MODELS = ['timm_convit', 'deepfm_interactionarch']
+_AMP_ERR_MODELS = ["timm_convit", "deepfm_interactionarch"]
 # These models have no parameters
-_LOW_LEVEL_ZERO_ERR_MODELS = ['dlrm_interactionarch']
+_LOW_LEVEL_ZERO_ERR_MODELS = ["dlrm_interactionarch"]
 
 
 def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
@@ -26,7 +26,7 @@ def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
         data = data_gen_fn()
 
         data = {
-            k: v.to('cuda') if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v for k, v in data.items()
+            k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
         }
 
         model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
@@ -43,7 +43,7 @@ def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
         return repr(e)
 
 
-@parameterize('stage', [2])
+@parameterize("stage", [2])
 def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
     """check low level zero plugin over model zoo
 
@@ -52,7 +52,7 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
         early_stop (bool, optional): Whether to stop when getting the first error. Defaults to True.
     """
     passed_models = []
-    failed_info = {}    # (model_name, error) pair
+    failed_info = {}  # (model_name, error) pair
     ignore_models = _AMP_ERR_MODELS + _LOW_LEVEL_ZERO_ERR_MODELS
     skipped_models = []
 
@@ -73,15 +73,15 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
                 break
 
     if dist.get_rank() == 0:
-        print(f'Passed models({len(passed_models)}): {passed_models}\n\n')
-        print(f'Failed models({len(failed_info)}): {list(failed_info.keys())}\n\n')
-        print(f'Skipped models({len(skipped_models)}): {skipped_models}\n\n')
-    assert len(failed_info) == 0, '\n'.join([f'{k}: {v}' for k, v in failed_info.items()])
+        print(f"Passed models({len(passed_models)}): {passed_models}\n\n")
+        print(f"Failed models({len(failed_info)}): {list(failed_info.keys())}\n\n")
+        print(f"Skipped models({len(skipped_models)}): {skipped_models}\n\n")
+    assert len(failed_info) == 0, "\n".join([f"{k}: {v}" for k, v in failed_info.items()])
 
 
 def run_dist(rank, world_size, port, early_stop: bool = True):
     # init dist env
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
     check_low_level_zero_plugin(early_stop=early_stop)
 
 
@@ -90,5 +90,5 @@ def test_low_level_zero_plugin(early_stop: bool = True):
     spawn(run_dist, 4, early_stop=early_stop)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_low_level_zero_plugin(early_stop=False)
