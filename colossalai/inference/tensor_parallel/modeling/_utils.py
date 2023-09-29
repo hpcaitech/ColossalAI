@@ -9,17 +9,34 @@ from colossalai.kernel.triton.copy_kv_cache_dest import copy_kv_cache_to_dest
 
 
 def copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
+    """
+    This function copies the key and value cache to the memory cache
+    Args:
+        layer_id : id of current layer
+        key_buffer : key cache
+        value_buffer : value cache
+        context_mem_index : index of memory cache in kv cache manager
+        mem_manager : cache manager
+    """
     copy_kv_cache_to_dest(key_buffer, context_mem_index, mem_manager.key_buffer[layer_id])
     copy_kv_cache_to_dest(value_buffer, context_mem_index, mem_manager.value_buffer[layer_id])
     return
 
 
 def init_to_get_rotary(self, base=10000, use_elem=False):
+    """
+    This function initializes the rotary positional embedding, it is compatible for all models and is called in ShardFormer
+    Args:
+        self : Model that holds the rotary positional embedding
+        base : calculation arg
+        use_elem : activated when using chatglm-based models
+    """
     self.config.head_dim_ = self.config.hidden_size // self.config.num_attention_heads
     if not hasattr(self.config, "rope_scaling"):
         rope_scaling_factor = 1.0
     else:
         rope_scaling_factor = self.config.rope_scaling.factor if self.config.rope_scaling is not None else 1.0
+
     if hasattr(self.config, "max_sequence_length"):
         max_seq_len = self.config.max_sequence_length
     elif hasattr(self.config, "max_position_embeddings"):
@@ -37,7 +54,9 @@ def init_to_get_rotary(self, base=10000, use_elem=False):
         max_seq_len *= ntk_alpha
         base = base * (ntk_alpha ** (self.head_dim_ / (self.head_dim_ - 2)))  # Base change formula
     except:
-        pass
+        print(f"Note: NTK alpha should be set >=1")
+        ntk_alpha = 1
+
     n_elem = self.config.head_dim_
     if use_elem:
         n_elem //= 2
