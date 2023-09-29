@@ -6,8 +6,6 @@ import torch
 from packaging import version
 
 try:
-    pass
-
     from colossalai.kernel.triton import int8_rotary_embedding_fwd
 
     HAS_TRITON = True
