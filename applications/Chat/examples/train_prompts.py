@@ -81,6 +81,8 @@ def main(args):
 
         if args.rm_path is not None:
             reward_model.load_state_dict(state_dict, strict=True)
+        if args.pretrain is not None:
+            initial_model.model.load_state_dict(torch.load(args.pretrain+ '/pytorch_model.bin', map_location="cpu"), strict=True)
 
         initial_model.to(torch.bfloat16).to(torch.cuda.current_device())
         reward_model.to(torch.bfloat16).to(torch.cuda.current_device())

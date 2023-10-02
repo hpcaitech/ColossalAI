@@ -1,1 +1,0 @@
-{"global_step": 5, "_timestamp": 1695806648.0302207, "train/max_ratio": 212.25, "train/skip": 0.0, "train/actor_loss": 22.915956497192383, "train/lr_actor": 9.000000318337698e-06, "train/lr_critic": 0.0010000000474974513, "train/critic_loss": 49.08763885498047, "reward": -0.1580810546875, "value": 3.046875, "advantages": 0.92919921875, "_runtime": 24.86210870742798, "_step": 4}
