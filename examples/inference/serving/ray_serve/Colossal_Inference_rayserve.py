@@ -1,12 +1,12 @@
 import logging
 import os
-from dataclasses import dataclass
-from typing import Any, Dict, List, Union
+from typing import Any, List, Union
 
 import ray
 import ray.util.collective as collective
 import starlette
 import torch
+from pydantic import BaseModel
 from ray import serve
 from ray.serve import Application
 from transformers import BloomForCausalLM, BloomTokenizerFast
@@ -17,6 +17,16 @@ from colossalai.shardformer import ShardConfig
 from colossalai.testing import free_port
 
 ray_serve_logger = logging.getLogger("ray.serve")
+
+
+class GenConfigArgs(BaseModel):
+    """Config for generation"""
+
+    path: str
+    tp_size: int = 2
+    max_batch_size: int = 4
+    max_input_len: int = 128
+    max_output_len: int = 32
 
 
 def log_cuda_info(scope_name: str):
@@ -91,9 +101,9 @@ class Worker:
     },
 )
 class Driver:
-    def __init__(self, config):
+    def __init__(self, config: GenConfigArgs):
         log_cuda_info("Driver:init")
-        model_path = config.model_path
+        model_path = config.path
         tp_size = config.tp_size
 
         self.num_workers = tp_size
@@ -132,21 +142,10 @@ class Driver:
         return await self.batch_generate(request.query_params["text"])
 
 
-@dataclass
-class Config:
-    """temp config"""
+def app(args: GenConfigArgs) -> Application:
+    print(args)
+    if args.path is None or not os.path.exists(args.path):
+        raise ValueError("Model path not provided or invalid path!")
 
-    model_path: str
-    tp_size: int = 2
-    max_batch_size: int = 4
-    max_input_len: int = 128
-    max_output_len: int = 32
-
-
-def app(args: Dict[str, str]) -> Application:
-    model_path = args.get("path", None)
-    if model_path is None:
-        raise ValueError("Model path not provided!")
-
-    driver_config = Config(model_path=model_path)
-    return Driver.options(name="Colossal-Inference-Driver").bind(config=driver_config)
+    # driver_config = Config(model_path=model_path)
+    return Driver.options(name="Colossal-Inference-Driver").bind(config=args)
