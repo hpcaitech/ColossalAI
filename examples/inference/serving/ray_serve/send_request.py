@@ -4,7 +4,6 @@ import requests
 
 @ray.remote
 def send_query(text):
-    # resp = requests.post("http://localhost:8000/", json={"text": text})
     resp = requests.get("http://localhost:8000/?text={}".format(text))
     return resp.text
 

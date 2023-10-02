@@ -147,5 +147,4 @@ def app(args: GenConfigArgs) -> Application:
     if args.path is None or not os.path.exists(args.path):
         raise ValueError("Model path not provided or invalid path!")
 
-    # driver_config = Config(model_path=model_path)
     return Driver.options(name="Colossal-Inference-Driver").bind(config=args)
