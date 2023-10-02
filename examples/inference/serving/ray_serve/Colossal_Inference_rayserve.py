@@ -9,7 +9,7 @@ import torch
 from pydantic import BaseModel
 from ray import serve
 from ray.serve import Application
-from transformers import BloomForCausalLM, BloomTokenizerFast
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
@@ -61,10 +61,11 @@ class Worker:
         log_cuda_info("Worker.setup")
 
         # Load model
-        self.tokenizer = BloomTokenizerFast.from_pretrained(self.model_path)
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.model = BloomForCausalLM.from_pretrained(
-            self.model_path, pad_token_id=self.tokenizer.eos_token_id, torch_dtype=torch.float16
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.model = AutoModelForCausalLM.from_pretrained(
+            self.model_path, pad_token_id=self.tokenizer.pad_token_id, torch_dtype=torch.float16
         )
 
         shard_config = ShardConfig(enable_tensor_parallelism=True if world_size > 1 else False, inference_only=True)
