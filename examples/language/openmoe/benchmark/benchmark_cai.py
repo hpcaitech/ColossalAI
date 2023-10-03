@@ -1,9 +1,7 @@
 import os
 
-import datasets
 import torch
 import torch.distributed as dist
-import transformers
 from huggingface_hub import snapshot_download
 from model.modeling_openmoe import OpenMoeForCausalLM
 from model.openmoe_policy import OpenMoeForCausalLMPolicy
@@ -19,7 +17,6 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
-from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import skip_init
 from colossalai.utils import get_current_device
@@ -117,16 +114,6 @@ def main():
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
 
-    # Manage loggers
-    disable_existing_loggers()
-    logger = get_dist_logger()
-    if coordinator.is_master():
-        datasets.utils.logging.set_verbosity_warning()
-        transformers.utils.logging.set_verbosity_info()
-    else:
-        datasets.utils.logging.set_verbosity_error()
-        transformers.utils.logging.set_verbosity_error()
-
     # Set plugin
     booster_kwargs = {}
     if args.plugin == "zero2":
@@ -189,7 +176,7 @@ def main():
         )
     else:
         raise ValueError(f"Invalid plugin {args.plugin}")
-    logger.info(f"Set plugin as {plugin}", ranks=[0])
+    coordinator.print_on_master(f"Set plugin as {plugin}")
 
     # Build OpenMoe model
     repo_name = "hpcaitech/openmoe-" + args.model_name
@@ -200,7 +187,7 @@ def main():
     setattr(config, "z_loss_factor", 0.1)
     with skip_init():
         model = OpenMoeForCausalLM(config)
-    logger.info(f"Finish init model with config:\n{config}", ranks=[0])
+    coordinator.print_on_master(f"Finish init model with config:\n{config}")
 
     # Enable gradient checkpointing
     model.gradient_checkpointing_enable()
@@ -229,10 +216,10 @@ def main():
     load_ckpt(repo_name, model, booster)
     use_pipeline = (isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1)
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
-    logger.info(f"Finish init booster", ranks=[0])
+    coordinator.print_on_master(f"Finish init booster")
 
     # Start finetuning
-    logger.info(f"Start finetuning", ranks=[0])
+    coordinator.print_on_master(f"Start finetuning")
     model.train()
     train_dataloader_iter = iter(dataloader)
     total_len = len(train_dataloader_iter) - 1

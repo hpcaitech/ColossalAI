@@ -78,11 +78,11 @@ class BaseMLPExperts(nn.Module):
             seed_ctx = nullcontext()
         with seed_ctx:
             if gated:
-                nn.init.trunc_normal_(self.wi_gate, std=math.sqrt(0.1 / hidden_size))
-                nn.init.trunc_normal_(self.wi_up, std=math.sqrt(0.1 / hidden_size))
+                torch.nn.init.trunc_normal_(self.wi_gate, std=math.sqrt(0.1 / hidden_size))
+                torch.nn.init.trunc_normal_(self.wi_up, std=math.sqrt(0.1 / hidden_size))
             else:
-                nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
-            nn.init.trunc_normal_(self.wo, std=math.sqrt(0.1 / intermediate_size))
+                torch.nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
+            torch.nn.init.trunc_normal_(self.wo, std=math.sqrt(0.1 / intermediate_size))
 
         self.act_name = activation
         self.act = get_activation(activation)
