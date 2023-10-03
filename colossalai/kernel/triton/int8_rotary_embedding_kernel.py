@@ -57,17 +57,15 @@ def _rotary_kernel(
 
     cos = tl.load(Cos + off_dimcos_sin, mask=current_seq_range[:, None, None] < total_len, other=0.0)
     sin = tl.load(Sin + off_dimcos_sin, mask=current_seq_range[:, None, None] < total_len, other=0.0)
-    in_scale = tl.load(input_scale)
-    o_scale = tl.load(output_scale)
 
-    q0 = q0.to(tl.float32) * in_scale
-    q1 = q1.to(tl.float32) * in_scale
+    q0 = q0.to(tl.float32) * input_scale
+    q1 = q1.to(tl.float32) * input_scale
 
-    out0 = (q0 * cos - q1 * sin) / o_scale
-    out1 = (q0 * sin + q1 * cos) / o_scale
+    out0 = (q0 * cos - q1 * sin) / output_scale
+    out1 = (q0 * sin + q1 * cos) / output_scale
 
-    # out0 = out0.to(tl.int8)
-    # out1 = out1.to(tl.int8)
+    out0 = out0.to(tl.int8)
+    out1 = out1.to(tl.int8)
 
     tl.store(
         q + off_q0,
@@ -99,8 +97,8 @@ def int8_rotary_embedding_fwd(q, cos, sin, input_scale, output_scale):
 
     _rotary_kernel[grid](
         q,
-        input_scale,
-        output_scale,
+        input_scale.item(),
+        output_scale.item(),
         cos,
         sin,
         q.stride(0),
