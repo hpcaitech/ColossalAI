@@ -9,8 +9,6 @@ try:
     from colossalai.inference.quant.smoothquant.models.smoothquant_layer import LLamaSmoothquantAttention
     from colossalai.kernel.triton import int8_rotary_embedding_fwd
 
-    # /home/lcxk/data3/test_tp_infer/ColossalAI/colossalai/inference/quant/smoothquant/models/smoothquant_layer.py
-
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
@@ -28,7 +26,7 @@ from torch.nn import functional as F
 
 def torch_context_attention(xq, xk, xv, bs, seqlen, num_head, head_dim):
     """
-    adepted from https://github.com/ModelTC/lightllm/blob/main/lightllm/models/bloom/triton_kernel/context_flashattention_nopad.py#L253
+    adapted from https://github.com/ModelTC/lightllm/blob/main/lightllm/models/bloom/triton_kernel/context_flashattention_nopad.py#L253
     """
     xq = xq.view(bs, seqlen, num_head, head_dim)
     xk = xk.view(bs, seqlen, num_head, head_dim)
