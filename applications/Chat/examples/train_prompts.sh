@@ -16,6 +16,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
 # torchrun --standalone --nproc_per_node=2 train_prompts.py prompts.csv --strategy colossalai_zero2
 
+# the args satisfied: train_batch_size = num_collect_steps * experience_batch_size
 torchrun --standalone --rdzv_endpoint="localhost:12355" --nproc_per_node=1 train_prompts.py \
     --pretrain_dataset /home/lcyab/data/Anthropic_rlhf/pretrain_data.json \
     --prompt_dataset /home/lcyab/data/Anthropic_rlhf/prompts_en.jsonl \
@@ -23,10 +24,10 @@ torchrun --standalone --rdzv_endpoint="localhost:12355" --nproc_per_node=1 train
     --num_episodes 2000 --num_collect_steps 2 --num_update_steps 1 \
     --experience_batch_size 8 \
     --train_batch_size 16 \
-    --save_path '/home/lcyab/data/Anthropic_rlhf/actor/v1' \
-    --ptx_coef 0.0 \
-    --rm_model bloom \
-    --rm_path '/home/lcyab/data/Anthropic_rlhf/reward_model' \
-    --pretrain '/home/lcyab/data/Anthropic_rlhf/actor/pretrain' \
+    --save_path '/home/lcyab/data/Anthropic_rlhf/actor/v3_5' \
+    --ptx_coef 0.9 \
+    --rm_model gpt2 \
+    --rm_path '/home/lcyab/data/Anthropic_rlhf/reward_model_v2_1' \
+    --pretrain '/home/lcyab/data/Anthropic_rlhf/actor/pretrain_v3' \
     --use_wandb
 

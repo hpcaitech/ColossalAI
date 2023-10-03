@@ -12,6 +12,7 @@ from coati.trainer import PPOTrainer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from torch.optim import Adam
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data.distributed import DistributedSampler
 from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer, AutoConfig
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
@@ -119,10 +120,6 @@ def main(args):
         else:
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
-        # if args.rm_path is not None:
-        #     critic.load_state_dict(state_dict, strict=True)
-        #     del state_dict
-
         if args.pretrain is not None:
             actor.model.load_state_dict(torch.load(args.pretrain+ '/pytorch_model.bin', map_location="cpu"), strict=True)
 
@@ -202,9 +199,16 @@ def main(args):
     )
 
     # NOTE: For small models like opt-1.3b, reward model and initial model are not required to be parallelized.
-    (actor, actor_optim), (critic, critic_optim), reward_model, initial_model = strategy.prepare(
-        (actor, actor_optim), (critic, critic_optim), reward_model, initial_model
+    (critic, critic_optim), reward_model, initial_model = strategy.prepare(
+        (critic, critic_optim), reward_model, initial_model
     )
+    
+    lr_scheduler = CosineAnnealingLR(actor_optim, args.num_episodes)
+    strategy_dict = strategy.prepare(dict(model=actor, optimizer=actor_optim, lr_scheduler=lr_scheduler))
+    actor = strategy_dict["model"]
+    actor_optim = strategy_dict["optimizer"]
+    actor_lr_scheduler = strategy_dict["lr_scheduler"]
+
 
     # configure trainer
     trainer = PPOTrainer(
@@ -215,6 +219,7 @@ def main(args):
         initial_model,
         actor_optim,
         critic_optim,
+        actor_lr_scheduler,
         tokenizer=tokenizer,
         rm_model_tokenizer = rm_model_tokenizer,
         kl_coef=args.kl_coef,

@@ -159,6 +159,7 @@ class SupervisedDataset(Dataset):
         tokenizer: PreTrainedTokenizer,
         max_datasets_size: Optional[int] = None,
         max_length: int = 512,
+        prompt_dict: Optional[Dict[str, str]] = PROMPT_DICT
     ):
         super().__init__()
         logger.info("Loading data...")
@@ -170,7 +171,7 @@ class SupervisedDataset(Dataset):
             list_data_dict = list_data_dict[:max_datasets_size]
 
         logger.info("Formatting inputs...")
-        prompt_input, prompt_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
+        prompt_input, prompt_no_input = prompt_dict["prompt_input"], prompt_dict["prompt_no_input"]
         sources = [
             prompt_input.format_map(example) if "input" in example else prompt_no_input.format_map(example)
             for example in list_data_dict

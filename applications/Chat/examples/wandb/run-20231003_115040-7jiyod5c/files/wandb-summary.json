@@ -1,0 +1,1 @@
+{"_wandb": {"runtime": 5}, "global_step": 1, "_timestamp": 1696305046.4070795, "eval/mean_reward_choen": 7.395263671875, "eval/mean_reward_reject": -16.22509765625, "eval/dist": 4.724609375, "eval/acc": 0.637499988079071, "_runtime": 6.2636024951934814, "_step": 0}

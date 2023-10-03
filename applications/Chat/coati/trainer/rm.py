@@ -44,6 +44,7 @@ class RewardModelTrainer(SLTrainer):
         if self.eval_dataloader is not None:
             self.model.eval()
             dist, num_correct, num_samples = 0, 0, 0
+            mean_reward_choen, mean_reward_reject = [], []
             with torch.no_grad():
                 for chosen_ids, c_mask, reject_ids, r_mask in self.eval_dataloader:
                     chosen_ids = chosen_ids.squeeze(1).to(torch.cuda.current_device())
@@ -52,18 +53,23 @@ class RewardModelTrainer(SLTrainer):
                     r_mask = r_mask.squeeze(1).to(torch.cuda.current_device())
                     chosen_reward = self.model(chosen_ids, attention_mask=c_mask)
                     reject_reward = self.model(reject_ids, attention_mask=r_mask)
+                    mean_reward_choen.append(chosen_reward.mean().item())
+                    mean_reward_reject.append(reject_reward.mean().item())
                     num_samples += chosen_ids.size(0)
                     num_correct += (chosen_reward > reject_reward).sum().item()
                     dist += (chosen_reward - reject_reward).mean().item()
+                    
                 self.dist = dist / len(self.eval_dataloader)
                 self.acc = num_correct / num_samples
 
             if self.writer:
+                self.writer.add_scalar("eval/mean_reward_choen", sum(mean_reward_choen)/len(mean_reward_choen), epoch)
+                self.writer.add_scalar("eval/mean_reward_reject", sum(mean_reward_reject)/len(mean_reward_reject), epoch)
                 self.writer.add_scalar("eval/dist", self.dist, epoch)
                 self.writer.add_scalar("eval/acc", self.acc, epoch)
 
     def _train(self, epoch):
-        self.model.train()
+        self.model.eval()
         step_bar = tqdm.trange(
             len(self.train_dataloader), desc=f"Epoch {epoch + 1}/{self.max_epochs}", disable=not is_rank_0()
         )
@@ -82,6 +88,8 @@ class RewardModelTrainer(SLTrainer):
                 self.writer.add_scalar("train/loss", loss.item(), self.num_train_step)
                 self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
                 self.writer.add_scalar("train/dist", (chosen_reward - reject_reward).mean().item(), self.num_train_step)
+                self.writer.add_scalar("train/reward_chosen", chosen_reward.mean().item(), self.num_train_step)
+                self.writer.add_scalar("train/reward_reject", reject_reward.mean().item(), self.num_train_step)
                 self.writer.add_scalar(
                     "train/acc", (chosen_reward > reject_reward).float().mean().item(), self.num_train_step
                 )

@@ -42,10 +42,7 @@ class PolicyLoss(nn.Module):
         skip = False
         ratio = ((log_probs - old_log_probs)*action_mask).exp()
         ratio = ratio.clamp(0.0, 10.0)
-        # if torch.mean(ratio)>10.:
-        #     # print(ratio)
-        #     skip = True
-        # advantages = advantages.clamp(-5, 5)
+        advantages = advantages.clamp(-5, 5)
         surr1 = ratio * advantages
         surr2 = ratio.clamp(1 - self.clip_eps, 1 + self.clip_eps) * advantages
         loss = -torch.min(surr1, surr2)
@@ -87,10 +84,7 @@ class LogSigLoss(nn.Module):
     """
 
     def forward(self, chosen_reward: torch.Tensor, reject_reward: torch.Tensor) -> torch.Tensor:
-        probs = torch.sigmoid(chosen_reward - reject_reward)
-        log_probs = torch.log(probs)
-        loss = -log_probs.mean()
-        return loss
+        return -torch.nn.functional.logsigmoid(chosen_reward - reject_reward).mean()
 
 
 class LogExpLoss(nn.Module):

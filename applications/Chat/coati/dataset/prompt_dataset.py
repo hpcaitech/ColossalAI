@@ -31,7 +31,7 @@ class PromptDataset(Dataset):
             self.logger.info(f"Limiting dataset to {max_datasets_size} examples.")
             list_data_dict = list_data_dict[:max_datasets_size]
 
-        instructions = [data_dict["instruction"] for data_dict in list_data_dict]
+        instructions = ['Human: '+data_dict["instruction"]+'\nAssistant:' for data_dict in list_data_dict]
         tokens = tokenizer(
             instructions, return_tensors="pt", max_length=max_length, padding="max_length", truncation=True
         )

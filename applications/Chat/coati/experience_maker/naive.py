@@ -74,34 +74,25 @@ class NaiveExperienceMaker(ExperienceMaker):
         
             base_action_log_probs = calc_action_log_probs(base_model_output, sequences, num_actions)
             value = self.critic(sequences, attention_mask)
-            # print("value:", value.size())
             sequences_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True)
             sequences_rm = self.rm_model_tokenizer(
                 sequences_text, return_tensors="pt", padding="max_length", truncation=True, max_length=300
             )
             r = self.reward_model(sequences_rm['input_ids'].to(dtype=torch.long, device=sequences.device), 
                                   sequences_rm['attention_mask'].to(device=sequences.device))
-            for i in range(r.size(0)):
-                r[i] = r[i] if action_mask[i].sum()>15 else -1.
+            
         torch.set_printoptions(threshold=10_000)
         reward = compute_reward(r, self.kl_coef, action_log_probs_kl, base_action_log_probs, action_mask=action_mask)
-        # print("reward:", reward.size())
 
         advantage = 0
         advantages = []
-        # print(reward[0])
-        # print(action_mask[0])
-        # print(value[0][-num_actions:]*action_mask[0])
         value = value[:,-num_actions:] * action_mask
         for t in range(num_actions-1, -1, -1):
             q_next = value[:, t+1] if t!=num_actions-1 else 0.
-            advantage = reward[:, t]+ 1.0 * q_next - value[:, t] #+ 1. * 0.95 * advantage
+            advantage = 0.5 * (reward[:, t]+ 1.0 * q_next - value[:, t]) + 0.5 * advantage
             advantages.append(advantage)
         advantages = torch.stack(advantages[::-1], dim=1)
-        # print("advantage:", advantages.size())
         advantages = advantages.detach()
-        # print(advantages[0])
-        # exit()
         value = value.detach()
         r = r.detach()
 
