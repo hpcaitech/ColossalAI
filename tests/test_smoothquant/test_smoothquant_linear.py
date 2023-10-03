@@ -2,7 +2,6 @@ import warnings
 
 import pytest
 import torch
-from packaging import version
 
 try:
     from colossalai.kernel.op_builder.smoothquant import SmoothquantBuilder
@@ -10,15 +9,13 @@ try:
     smoothquant_cuda = SmoothquantBuilder().load()
     HAS_SMOOTHQUANT_CUDA = True
 except ImportError:
-    warnings.warn("CUDA gptq is not installed")
+    warnings.warn("CUDA smoothquant linear is not installed")
     HAS_SMOOTHQUANT_CUDA = False
-
-TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 
 
 @pytest.mark.skipif(
-    not TRITON_CUDA_SUPPORT or not HAS_SMOOTHQUANT_CUDA,
-    reason="triton requires cuda version to be higher than 11.4",
+    not HAS_SMOOTHQUANT_CUDA,
+    reason="smoothquant linear not installed properly",
 )
 def test_linear():
     a = torch.randint(-127, 127, (128, 512), dtype=torch.int8, device="cuda")

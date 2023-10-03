@@ -1,3 +1,5 @@
+// modified from https://github.com/Guangxuan-Xiao/torch-int/blob/main/torch_int/kernels/linear.cu
+
 #include "linear.h"
 #include <cutlass/core_io.h>
 #include <cutlass/cutlass.h>
