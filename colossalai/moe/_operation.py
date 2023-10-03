@@ -8,8 +8,8 @@ from torch.distributed import ProcessGroup
 from colossalai.moe.manager import MOE_MANAGER
 
 MOE_KERNEL = None
-WROLD_HANDLE_ALLGATHER = None
-WROLD_HANDLE_REDUCESCATTER = None
+WORLD_HANDLE_ALLGATHER = None
+WORLD_HANDLE_REDUCESCATTER = None
 
 
 def load_moe():
@@ -45,16 +45,16 @@ class AllGather(torch.autograd.Function):
         else:
             handle = dist.all_gather(buffer_list, inputs, group=group, async_op=True)
             if ctx is None and overlap:
-                global WROLD_HANDLE_ALLGATHER
-                WROLD_HANDLE_ALLGATHER = handle
+                global WORLD_HANDLE_ALLGATHER
+                WORLD_HANDLE_ALLGATHER = handle
             return outputs, handle
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None]:
-        global WROLD_HANDLE_REDUCESCATTER
-        if WROLD_HANDLE_REDUCESCATTER is not None:
-            WROLD_HANDLE_REDUCESCATTER.wait()
-            WROLD_HANDLE_REDUCESCATTER = None
+        global WORLD_HANDLE_REDUCESCATTER
+        if WORLD_HANDLE_REDUCESCATTER is not None:
+            WORLD_HANDLE_REDUCESCATTER.wait()
+            WORLD_HANDLE_REDUCESCATTER = None
         return (
             ReduceScatter.forward(None, grad_outputs[0], ctx.comm_grp, ctx.overlap)[0],
             None,
@@ -91,16 +91,16 @@ class ReduceScatter(torch.autograd.Function):
         else:
             handle = dist.reduce_scatter(outputs, buffer_list, group=group, async_op=True)
             if ctx is None and overlap:
-                global WROLD_HANDLE_REDUCESCATTER
-                WROLD_HANDLE_REDUCESCATTER = handle
+                global WORLD_HANDLE_REDUCESCATTER
+                WORLD_HANDLE_REDUCESCATTER = handle
             return outputs, handle
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None]:
-        global WROLD_HANDLE_ALLGATHER
-        if WROLD_HANDLE_ALLGATHER is not None:
-            WROLD_HANDLE_ALLGATHER.wait()
-            WROLD_HANDLE_ALLGATHER = None
+        global WORLD_HANDLE_ALLGATHER
+        if WORLD_HANDLE_ALLGATHER is not None:
+            WORLD_HANDLE_ALLGATHER.wait()
+            WORLD_HANDLE_ALLGATHER = None
         return (
             AllGather.forward(None, grad_outputs[0], ctx.comm_grp, ctx.overlap)[0],
             None,
