@@ -1,3 +1,5 @@
+# Code modified from smoothquant: https://github.com/mit-han-lab/smoothquant
+
 from typing import Optional, Tuple
 
 import torch
