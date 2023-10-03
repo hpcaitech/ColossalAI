@@ -2,11 +2,7 @@ import pytest
 import torch
 from packaging import version
 
-from colossalai.inference.quant.smoothquant.models.smoothquant_layer import LLamaSmoothquantAttention
-from colossalai.kernel.triton import int8_rotary_embedding_fwd
-
 try:
-    from colossalai.inference.quant.smoothquant.models.smoothquant_layer import LLamaSmoothquantAttention
     from colossalai.kernel.triton import int8_rotary_embedding_fwd
 
     HAS_TRITON = True
@@ -14,7 +10,14 @@ except ImportError:
     HAS_TRITON = False
     print("please install triton from https://github.com/openai/triton")
 
-TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
+try:
+    from colossalai.inference.quant.smoothquant.models import LLamaSmoothquantAttention
+
+    HAS_TORCH_INT = True
+except ImportError:
+    HAS_TORCH_INT = False
+    print("Please install torch_int from https://github.com/Guangxuan-Xiao/torch-int")
+
 
 TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 
@@ -48,7 +51,8 @@ def torch_context_attention(xq, xk, xv, bs, seqlen, num_head, head_dim):
 
 
 @pytest.mark.skipif(
-    not TRITON_CUDA_SUPPORT or not HAS_TRITON, reason="triton requires cuda version to be higher than 11.4"
+    not TRITON_CUDA_SUPPORT or not HAS_TRITON or not HAS_TORCH_INT,
+    reason="triton requires cuda version to be higher than 11.4 or not install torch_int",
 )
 def test_llama_context_attention():
     head_num = 8
