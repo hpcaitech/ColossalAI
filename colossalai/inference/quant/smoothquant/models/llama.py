@@ -198,7 +198,6 @@ class LlamaSmoothquantMLP(nn.Module):
         self.up_proj = W8A8BFP32OFP32Linear(hidden_size, intermediate_size)
         self.down_proj = W8A8BFP32OFP32Linear(intermediate_size, hidden_size)
         self.down_proj_input_scale = 1.0
-        self.inter_out_scale = 1.0
 
     def pack(
         self,
@@ -226,7 +225,7 @@ class LlamaSmoothquantMLP(nn.Module):
         gate_out = self.gate_proj(hidden_states)
         up_out = self.up_proj(hidden_states)
         inter_out = gate_out * up_out
-        inter_out = inter_out.div_(self.inter_out_scale).round().clamp(-128, 127).to(torch.int8)
+        inter_out = inter_out.div_(self.down_proj_input_scale).round().clamp(-128, 127).to(torch.int8)
         down_out = self.down_proj(inter_out)
         down_out = down_out.view(*x_shape[:-1], -1)
         return down_out
