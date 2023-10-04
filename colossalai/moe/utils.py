@@ -28,9 +28,10 @@ class NormalNoiseGenerator:
     """
 
     def __init__(self, num_experts: int):
-        self.normal = torch.distributions.normal.Normal(loc=torch.tensor(0.0, device=get_current_device()),
-                                                        scale=torch.tensor(1.0 / num_experts**2,
-                                                                           device=get_current_device())).rsample
+        self.normal = torch.distributions.normal.Normal(
+            loc=torch.tensor(0.0, device=get_current_device()),
+            scale=torch.tensor(1.0 / num_experts**2, device=get_current_device()),
+        ).rsample
 
     def __call__(self, inputs: torch.Tensor):
         noisy = self.normal(inputs.shape)
@@ -49,9 +50,10 @@ class UniformNoiseGenerator:
     """
 
     def __init__(self, eps: float = 1e-2):
-        self.uniform = torch.distributions.uniform.Uniform(low=torch.tensor(1.0 - eps, device=get_current_device()),
-                                                           high=torch.tensor(1.0 + eps,
-                                                                             device=get_current_device())).rsample
+        self.uniform = torch.distributions.uniform.Uniform(
+            low=torch.tensor(1.0 - eps, device=get_current_device()),
+            high=torch.tensor(1.0 + eps, device=get_current_device()),
+        ).rsample
 
     def __call__(self, inputs: torch.Tensor):
         noisy = self.uniform(inputs.shape)
@@ -65,9 +67,9 @@ def autocast_softmax(logit: torch.Tensor, dim: int):
 def get_noise_generator(noise_type: str, num_experts: int) -> Callable:
     if noise_type is None:
         return None
-    elif noise_type == 'Jitter':
+    elif noise_type == "Jitter":
         noisy_func = UniformNoiseGenerator()
-    elif noise_type == 'Gaussian':
+    elif noise_type == "Gaussian":
         noisy_func = NormalNoiseGenerator(num_experts)
     else:
         raise NotImplementedError("Unsupported input noisy policy")
@@ -75,11 +77,11 @@ def get_noise_generator(noise_type: str, num_experts: int) -> Callable:
 
 
 def get_activation(act: str) -> Callable:
-    if act is None or act == 'relu':
+    if act is None or act == "relu":
         return torch.nn.ReLU()
-    elif act == 'gelu':
+    elif act == "gelu":
         return torch.nn.GELU()
-    elif act == 'swiglu':
+    elif act == "swiglu":
         return SwiGLU
     else:
         raise NotImplementedError("Unsupported activation function")
@@ -103,24 +105,28 @@ def skip_init():
     skip param random init
     """
 
-    def _skip_init(x, *args, **kwargs):
-        return x
+    def _skip_init(*args, **kwargs):
+        pass
 
-    # __enter__
-    fn_saved = []
-    init_fn_list = [
-        torch.nn.init.constant_, torch.nn.init.uniform_, torch.nn.init.normal_, torch.nn.init.xavier_uniform_,
-        torch.nn.init.xavier_normal_, torch.nn.init.kaiming_uniform_, torch.nn.init.kaiming_normal_
-    ]
-    for fn in init_fn_list:
-        fn_saved.append(fn)
-        fn = _skip_init
+    init_func = {
+        "constant_": torch.nn.init.constant_,
+        "uniform_": torch.nn.init.uniform_,
+        "normal_": torch.nn.init.normal_,
+        "kaiming_uniform_": torch.nn.init.kaiming_uniform_,
+        "kaiming_normal_": torch.nn.init.kaiming_normal_,
+        "xavier_normal_": torch.nn.init.xavier_normal_,
+        "xavier_uniform_": torch.nn.init.xavier_uniform_,
+        "trunc_normal_": torch.nn.init.trunc_normal_,
+    }
+
+    for method_name, original_init in init_func.items():
+        setattr(torch.nn.init, method_name, _skip_init)
 
     yield
 
-    # __exit__
-    for fn, fn_saved in zip(init_fn_list, fn_saved):
-        fn = fn_saved
+    for method_name, original_init in init_func.items():
+        setattr(torch.nn.init, method_name, original_init)
+
     return
 
 

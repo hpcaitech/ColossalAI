@@ -8,6 +8,8 @@ from torch.distributed import ProcessGroup
 from colossalai.moe.manager import MOE_MANAGER
 
 MOE_KERNEL = None
+WORLD_HANDLE_ALLGATHER = None
+WORLD_HANDLE_REDUCESCATTER = None
 
 
 def load_moe():
@@ -19,9 +21,15 @@ def load_moe():
 
 class AllGather(torch.autograd.Function):
     @staticmethod
-    def forward(ctx: Any, inputs: Tensor, group: Optional[ProcessGroup] = None) -> Tensor:
+    def forward(
+        ctx: Any,
+        inputs: Tensor,
+        group: Optional[ProcessGroup] = None,
+        overlap: bool = False,
+    ) -> Tensor:
         if ctx is not None:
             ctx.comm_grp = group
+            ctx.overlap = overlap
 
         comm_size = dist.get_world_size(group)
         if comm_size == 1:
@@ -30,19 +38,40 @@ class AllGather(torch.autograd.Function):
         buffer_shape = (comm_size,) + inputs.shape
         outputs = torch.empty(buffer_shape, dtype=inputs.dtype, device=inputs.device)
         buffer_list = list(torch.chunk(outputs, comm_size, dim=0))
-        dist.all_gather(buffer_list, inputs, group=group)
-        return outputs
+        if not overlap:
+            dist.all_gather(buffer_list, inputs, group=group)
+            return outputs, None
+        else:
+            handle = dist.all_gather(buffer_list, inputs, group=group, async_op=True)
+            if ctx is None and overlap:
+                global WORLD_HANDLE_ALLGATHER
+                WORLD_HANDLE_ALLGATHER = handle
+            return outputs, handle
 
     @staticmethod
-    def backward(ctx: Any, grad_outputs: Tensor) -> Tuple[Tensor, None]:
-        return ReduceScatter.forward(None, grad_outputs, ctx.comm_grp), None
+    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None]:
+        global WORLD_HANDLE_REDUCESCATTER
+        if WORLD_HANDLE_REDUCESCATTER is not None:
+            WORLD_HANDLE_REDUCESCATTER.wait()
+            WORLD_HANDLE_REDUCESCATTER = None
+        return (
+            ReduceScatter.forward(None, grad_outputs[0], ctx.comm_grp, ctx.overlap)[0],
+            None,
+            None,
+        )
 
 
 class ReduceScatter(torch.autograd.Function):
     @staticmethod
-    def forward(ctx: Any, inputs: Tensor, group: Optional[ProcessGroup] = None) -> Tensor:
+    def forward(
+        ctx: Any,
+        inputs: Tensor,
+        group: Optional[ProcessGroup] = None,
+        overlap: bool = False,
+    ) -> Tensor:
         if ctx is not None:
             ctx.comm_grp = group
+            ctx.overlap = overlap
 
         comm_size = dist.get_world_size(group)
         if comm_size == 1:
@@ -54,12 +83,27 @@ class ReduceScatter(torch.autograd.Function):
         output_shape = inputs.shape[1:]
         outputs = torch.empty(output_shape, dtype=inputs.dtype, device=inputs.device)
         buffer_list = list(torch.chunk(inputs, comm_size, dim=0))
-        dist.reduce_scatter(outputs, buffer_list, group=group)
-        return outputs
+        if not overlap:
+            dist.reduce_scatter(outputs, buffer_list, group=group)
+            return outputs, None
+        else:
+            handle = dist.reduce_scatter(outputs, buffer_list, group=group, async_op=True)
+            if ctx is None and overlap:
+                global WORLD_HANDLE_REDUCESCATTER
+                WORLD_HANDLE_REDUCESCATTER = handle
+            return outputs, handle
 
     @staticmethod
-    def backward(ctx: Any, grad_outputs: Tensor) -> Tuple[Tensor, None]:
-        return AllGather.forward(None, grad_outputs, ctx.comm_grp), None
+    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None]:
+        global WORLD_HANDLE_ALLGATHER
+        if WORLD_HANDLE_ALLGATHER is not None:
+            WORLD_HANDLE_ALLGATHER.wait()
+            WORLD_HANDLE_ALLGATHER = None
+        return (
+            AllGather.forward(None, grad_outputs[0], ctx.comm_grp, ctx.overlap)[0],
+            None,
+            None,
+        )
 
 
 class AllToAll(torch.autograd.Function):
