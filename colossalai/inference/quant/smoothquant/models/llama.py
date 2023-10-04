@@ -6,9 +6,11 @@ import torch
 from torch import nn
 from torch_int.nn.bmm import BMM_S8T_S8N_F32T, BMM_S8T_S8N_S8T
 from torch_int.nn.linear import W8A8B8O8Linear, W8A8BFP32OFP32Linear
-from transformers.models.llama.modeling_llama import LlamaAttention
+from transformers.models.llama.modeling_llama import LlamaAttention, LlamaMLP
 
 from colossalai.kernel.triton import int8_rotary_embedding_fwd
+
+from .linear import W8A8BFP32O32LinearSiLU
 
 
 class LLamaSmoothquantAttention(nn.Module):
@@ -100,7 +102,11 @@ class LLamaSmoothquantAttention(nn.Module):
             self.rotary_output_scale,
         )
         int8_rotary_embedding_fwd(
-            key_states.view(-1, self.num_heads, self.head_dim), cos, sin, self.k_output_scale, self.rotary_output_scale
+            key_states.view(-1, self.num_heads, self.head_dim),
+            cos,
+            sin,
+            self.k_output_scale,
+            self.rotary_output_scale,
         )
 
         if past_key_value is not None:
@@ -183,3 +189,44 @@ class LLamaSmoothquantAttention(nn.Module):
         attn_output = self.out_proj(attn_output)
 
         return attn_output, attn_probs_reshaped, past_key_value
+
+
+class LlamaSmoothquantMLP(nn.Module):
+    def __init__(self, intermediate_size, hidden_size):
+        super().__init__()
+        self.gate_proj = W8A8BFP32O32LinearSiLU(hidden_size, intermediate_size)
+        self.up_proj = W8A8BFP32OFP32Linear(hidden_size, intermediate_size)
+        self.down_proj = W8A8BFP32OFP32Linear(intermediate_size, hidden_size)
+        self.down_proj_input_scale = 1.0
+        self.inter_out_scale = 1.0
+
+    def pack(
+        self,
+        mlp_module: LlamaMLP,
+        gate_proj_input_scale: float,
+        up_proj_input_scale: float,
+        down_proj_input_scale: float,
+    ):
+        int8_module = LlamaSmoothquantMLP(
+            mlp_module.intermediate_size,
+            mlp_module.hidden_size,
+        )
+
+        int8_module.gate_proj = W8A8BFP32O32LinearSiLU.from_float(mlp_module.gate_proj, gate_proj_input_scale)
+        int8_module.up_proj = W8A8BFP32OFP32Linear.from_float(mlp_module.up_proj, up_proj_input_scale)
+        int8_module.down_proj = W8A8BFP32OFP32Linear.from_float(mlp_module.down_proj, down_proj_input_scale)
+        self.down_proj_input_scale = down_proj_input_scale
+        return int8_module
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+    ):
+        x_shape = hidden_states.shape
+        gate_out = self.gate_proj(hidden_states)
+        up_out = self.up_proj(hidden_states)
+        inter_out = gate_out * up_out
+        inter_out = inter_out.div_(self.inter_out_scale).round().clamp(-128, 127).to(torch.int8)
+        down_out = self.down_proj(inter_out)
+        down_out = down_out.view(*x_shape[:-1], -1)
+        return down_out
