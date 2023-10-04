@@ -8,7 +8,7 @@ try:
 
     smoothquant_cuda = SmoothquantBuilder().load()
     HAS_SMOOTHQUANT_CUDA = True
-except ImportError:
+except:
     warnings.warn("CUDA smoothquant linear is not installed")
     HAS_SMOOTHQUANT_CUDA = False
 
