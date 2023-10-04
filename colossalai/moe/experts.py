@@ -1,6 +1,6 @@
 import math
 from contextlib import nullcontext
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -52,8 +52,9 @@ class BaseMLPExperts(nn.Module):
                 num_experts, use_tp=True if expert_parallel == "TP" else False)
             # get settings for different parallel
             if expert_parallel == "TP":
-                assert intermediate_size % MOE_MANAGER.max_ep_size == 0, \
-                    "intermediate_size should be divide by maximum expert parallel size"
+                assert (
+                    intermediate_size %
+                    MOE_MANAGER.max_ep_size == 0), "intermediate_size should be divide by maximum expert parallel size"
                 intermediate_size = intermediate_size // MOE_MANAGER.max_ep_size
                 num_experts = self.num_total_experts
             else:
@@ -77,11 +78,11 @@ class BaseMLPExperts(nn.Module):
             seed_ctx = nullcontext()
         with seed_ctx:
             if gated:
-                nn.init.trunc_normal_(self.wi_gate, std=math.sqrt(0.1 / hidden_size))
-                nn.init.trunc_normal_(self.wi_up, std=math.sqrt(0.1 / hidden_size))
+                torch.nn.init.trunc_normal_(self.wi_gate, std=math.sqrt(0.1 / hidden_size))
+                torch.nn.init.trunc_normal_(self.wi_up, std=math.sqrt(0.1 / hidden_size))
             else:
-                nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
-            nn.init.trunc_normal_(self.wo, std=math.sqrt(0.1 / intermediate_size))
+                torch.nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
+            torch.nn.init.trunc_normal_(self.wo, std=math.sqrt(0.1 / intermediate_size))
 
         self.act_name = activation
         self.act = get_activation(activation)
@@ -91,7 +92,7 @@ class BaseMLPExperts(nn.Module):
             for param in self.parameters():
                 set_moe_tensor_info(param, self.moe_info)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, param_slice: Tuple[slice] = (slice(None),)) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): The input tensor of shape (num_groups, num_experts, capacity, hidden_size)
@@ -110,14 +111,17 @@ class BaseMLPExperts(nn.Module):
 
         if self.gated:
             if HAS_TRITON and self.act_name == "swiglu":
-                x = LlamaActCombine.apply(torch.bmm(x, self.wi_gate), torch.bmm(x, self.wi_up))
+                x = LlamaActCombine.apply(
+                    torch.bmm(x, self.wi_gate[param_slice]),
+                    torch.bmm(x, self.wi_up[param_slice]),
+                )
             else:
-                x = self.act(torch.bmm(x, self.wi_gate)) * torch.bmm(x, self.wi_up)
+                x = self.act(torch.bmm(x, self.wi_gate[param_slice])) * torch.bmm(x, self.wi_up[param_slice])
         else:
-            x = torch.bmm(x, self.wi)
+            x = torch.bmm(x, self.wi[param_slice])
             x = self.act(x)
         x = self.drop(x)
-        x = torch.bmm(x, self.wo)
+        x = torch.bmm(x, self.wo[param_slice])
 
         x = x.reshape(inshape)
         x = x.transpose(0, 1).contiguous()
@@ -130,14 +134,24 @@ class EPMLPExperts(BaseMLPExperts):
     Use expert parallelism to split each expert evenly, which can deploy experts in
     """
 
-    def __init__(self,
-                 num_experts: int,
-                 hidden_size: int,
-                 intermediate_size: int,
-                 activation=None,
-                 drop_rate: float = 0,
-                 gated: bool = False):
-        super().__init__(num_experts, hidden_size, intermediate_size, "EP", activation, drop_rate, gated)
+    def __init__(
+        self,
+        num_experts: int,
+        hidden_size: int,
+        intermediate_size: int,
+        activation=None,
+        drop_rate: float = 0,
+        gated: bool = False,
+    ):
+        super().__init__(
+            num_experts,
+            hidden_size,
+            intermediate_size,
+            "EP",
+            activation,
+            drop_rate,
+            gated,
+        )
 
 
 class TPMLPExperts(BaseMLPExperts):
@@ -146,14 +160,24 @@ class TPMLPExperts(BaseMLPExperts):
     maximum expert parallel size can't be divide by the number of experts.
     """
 
-    def __init__(self,
-                 num_experts: int,
-                 hidden_size: int,
-                 intermediate_size: int,
-                 activation: str = None,
-                 drop_rate: float = 0,
-                 gated: bool = False):
-        super().__init__(num_experts, hidden_size, intermediate_size, "TP", activation, drop_rate, gated)
+    def __init__(
+        self,
+        num_experts: int,
+        hidden_size: int,
+        intermediate_size: int,
+        activation: str = None,
+        drop_rate: float = 0,
+        gated: bool = False,
+    ):
+        super().__init__(
+            num_experts,
+            hidden_size,
+            intermediate_size,
+            "TP",
+            activation,
+            drop_rate,
+            gated,
+        )
 
 
 def get_expert_class(name: str) -> BaseMLPExperts:

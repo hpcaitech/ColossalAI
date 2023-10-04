@@ -42,42 +42,52 @@ class SparseMLP(nn.Module):
         https://arxiv.org/abs/2201.05596
     """
 
-    def __init__(self,
-                 num_experts: int,
-                 top_k: int = 1,
-                 capacity_factor_train: float = 1.25,
-                 capacity_factor_eval: float = 2.0,
-                 min_capacity: int = 4,
-                 noisy_policy: Optional[str] = None,
-                 drop_tks: bool = True,
-                 expert_parallel: str = "EP",
-                 hidden_size: int = 2048,
-                 intermediate_size: int = 2048,
-                 activation: str = None,
-                 gated: bool = False):
+    def __init__(
+        self,
+        num_experts: int,
+        top_k: int = 1,
+        capacity_factor_train: float = 1.25,
+        capacity_factor_eval: float = 2.0,
+        min_capacity: int = 4,
+        noisy_policy: Optional[str] = None,
+        drop_tks: bool = True,
+        expert_parallel: str = "EP",
+        hidden_size: int = 2048,
+        intermediate_size: int = 2048,
+        activation: str = None,
+        gated: bool = False,
+    ):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_experts = num_experts
         self.use_kernel = MOE_MANAGER.use_kernel_optim
         self.expert_parallel = expert_parallel
-        assert expert_parallel in ["EP", "TP", None], f"Unsupported expert parallel type {expert_parallel}"
+        assert expert_parallel in [
+            "EP",
+            "TP",
+            None,
+        ], f"Unsupported expert parallel type {expert_parallel}"
 
         # moe router
         noisy_func = get_noise_generator(noisy_policy, num_experts)
         router_cls = get_router_cls(top_k)
-        self.router: MoeRouter = router_cls(capacity_factor_train=capacity_factor_train,
-                                            capacity_factor_eval=capacity_factor_eval,
-                                            min_capacity=min_capacity,
-                                            noisy_func=noisy_func,
-                                            drop_tks=drop_tks)
+        self.router: MoeRouter = router_cls(
+            capacity_factor_train=capacity_factor_train,
+            capacity_factor_eval=capacity_factor_eval,
+            min_capacity=min_capacity,
+            noisy_func=noisy_func,
+            drop_tks=drop_tks,
+        )
 
         # moe experts
         expert_cls = get_expert_class(expert_parallel)
-        self.experts: BaseMLPExperts = expert_cls(num_experts=num_experts,
-                                                  hidden_size=hidden_size,
-                                                  intermediate_size=intermediate_size,
-                                                  activation=activation,
-                                                  gated=gated)
+        self.experts: BaseMLPExperts = expert_cls(
+            num_experts=num_experts,
+            hidden_size=hidden_size,
+            intermediate_size=intermediate_size,
+            activation=activation,
+            gated=gated,
+        )
         if expert_parallel is not None:
             self.ep_group = get_ep_group(self.experts)
             self.ep_size = get_ep_size(self.experts)
@@ -88,9 +98,7 @@ class SparseMLP(nn.Module):
         self.gate_weight = torch.nn.Parameter(torch.empty(num_experts, self.hidden_size))
         nn.init.trunc_normal_(self.gate_weight, std=math.sqrt(0.1 / self.hidden_size))
 
-    def forward(self,
-                inputs: torch.Tensor) \
-            -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
             inputs (torch.Tensor): The input tensor of shape (batch_size, seq_len, hidden_size)
@@ -146,6 +154,15 @@ class SparseMLP(nn.Module):
         return expert_out
 
     def _ep_process(self, dispatch_data: torch.Tensor) -> torch.Tensor:
+        """
+        Expert Parallel
+
+        Args:
+            dispatch_data (torch.Tensor): (num_experts, capacity, hidden_size)
+
+        Returns:
+            torch.Tensor: (num_experts, capacity, hidden_size)
+        """
         expert_input = AllToAll.apply(dispatch_data, self.ep_group)
         input_shape = expert_input.shape
         expert_input = expert_input.reshape(self.ep_size, self.num_local_experts, -1, self.hidden_size)
@@ -155,7 +172,74 @@ class SparseMLP(nn.Module):
         return expert_output
 
     def _tp_process(self, dispatch_data: torch.Tensor) -> torch.Tensor:
-        expert_in = AllGather.apply(dispatch_data, self.ep_group)
-        expert_out = self.experts(expert_in)
-        expert_out = ReduceScatter.apply(expert_out, self.ep_group)
-        return expert_out
+        """
+        TP with overlap.
+
+        origin:
+                   |    C    |
+        |     A    |         |    R    |
+
+        overlap:
+              |    C1   ||    C2   ||    C3   ||    C4   |
+        | A1 || A2 |     | R1 | A3 || R2 | A4 || R3 |     | R4 |
+
+        C is computation, A is all gather, R is reduce scatter.
+
+        Args:
+            dispatch_data (torch.Tensor): (num_experts, capacity, hidden_size)
+
+        Returns:
+            torch.Tensor: (num_experts, capacity, hidden_size)
+        """
+        chunk_num = 4
+        chunk_size = dispatch_data.shape[0] // chunk_num
+        out = torch.empty_like(dispatch_data)
+        in_data = None
+        in_handle = None
+        out_data = None
+        out_handle = None
+
+        # backward compatibility for async op
+        torch.cuda.synchronize()
+
+        def get_chunk_slice(idx: int, gap: int) -> Tuple[slice]:
+            return (slice(idx * gap, (idx + 1) * gap),)
+
+        for i in range(chunk_num):
+            cur_chunk_slice = get_chunk_slice(i, chunk_size)
+
+            # if first, all gather
+            if i == 0:
+                d = dispatch_data[cur_chunk_slice].contiguous()
+                expert_in, _ = AllGather.apply(d, self.ep_group)
+            else:
+                expert_in = in_data
+
+            # async communication while compute
+            if i != 0:
+                # reduce scatter last out
+                out_data, out_handle = ReduceScatter.apply(out_data, self.ep_group, True)
+            if i != chunk_num - 1:
+                # all gather next in
+                next_d = dispatch_data[get_chunk_slice(i + 1, chunk_size)].contiguous()
+                in_data, in_handle = AllGather.apply(next_d, self.ep_group, True)
+
+            # compute
+            expert_out = self.experts(expert_in, cur_chunk_slice)
+
+            # sync handle
+            if i != 0:
+                out_handle.wait()
+                out[get_chunk_slice(i - 1, chunk_size)] = out_data
+            if i != chunk_num - 1:
+                in_handle.wait()
+            out_data = expert_out
+
+            # store out for last loop
+            if i == chunk_num - 1:
+                out_data, _ = ReduceScatter.apply(out_data, self.ep_group)
+                out[cur_chunk_slice] = out_data
+
+            # sync for async op
+            torch.cuda.synchronize()
+        return out
