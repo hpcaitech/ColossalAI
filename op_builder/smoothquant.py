@@ -44,3 +44,9 @@ class SmoothquantBuilder(Builder):
 
         ret = ["-O3", "--use_fast_math"] + self.version_dependent_macros + extra_cuda_flags
         return append_nvcc_threads(ret)
+
+    def builder(self):
+        try:
+            super().builder()
+        except:
+            warnings.warn("build smoothquant lib not successful")
