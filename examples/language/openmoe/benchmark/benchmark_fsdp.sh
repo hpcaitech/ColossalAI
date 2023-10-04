@@ -6,8 +6,8 @@ NUM_GPU=8
 MODEL="8b"
 BATCH_SIZE=1
 SEQ_LENGTH=2048
-WARMUP=5
-ACTIVE=5
+WARMUP=6
+ACTIVE=3
 
 # HACK: make model importable
 example_dir=$(dirname $(realpath $(dirname $0)))

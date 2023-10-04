@@ -1,5 +1,3 @@
-import math
-from contextlib import nullcontext
 from typing import Callable, Optional, Tuple
 
 import torch
@@ -9,7 +7,6 @@ from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_activation
-from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.moe_tensor.api import get_ep_size, set_moe_tensor_info
 
 if HAS_TRITON:
@@ -70,19 +67,6 @@ class BaseMLPExperts(nn.Module):
         else:
             self.wi = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
         self.wo = nn.Parameter(torch.empty(num_experts, intermediate_size, hidden_size))
-
-        # expert param should be different
-        if expert_parallel is not None:
-            seed_ctx = Randomizer(MOE_MANAGER.seed).fork_rng(enable_cpu=True)
-        else:
-            seed_ctx = nullcontext()
-        with seed_ctx:
-            if gated:
-                torch.nn.init.trunc_normal_(self.wi_gate, std=math.sqrt(0.1 / hidden_size))
-                torch.nn.init.trunc_normal_(self.wi_up, std=math.sqrt(0.1 / hidden_size))
-            else:
-                torch.nn.init.trunc_normal_(self.wi, std=math.sqrt(0.1 / hidden_size))
-            torch.nn.init.trunc_normal_(self.wo, std=math.sqrt(0.1 / intermediate_size))
 
         self.act_name = activation
         self.act = get_activation(activation)

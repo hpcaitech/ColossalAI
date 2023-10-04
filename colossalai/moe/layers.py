@@ -1,4 +1,5 @@
 import math
+from contextlib import nullcontext
 from typing import Optional, Tuple
 
 import torch
@@ -10,6 +11,7 @@ from colossalai.moe.experts import BaseMLPExperts, get_expert_class
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.routers import MoeRouter, get_router_cls
 from colossalai.moe.utils import get_noise_generator
+from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_size
 
 
@@ -59,9 +61,11 @@ class SparseMLP(nn.Module):
     ):
         super().__init__()
         self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
         self.num_experts = num_experts
         self.use_kernel = MOE_MANAGER.use_kernel_optim
         self.expert_parallel = expert_parallel
+        self.gated = gated
         assert expert_parallel in [
             "EP",
             "TP",
@@ -95,8 +99,27 @@ class SparseMLP(nn.Module):
             self.ep_group = None
         self.num_local_experts = self.experts.num_local_experts
 
+        # gate
         self.gate_weight = torch.nn.Parameter(torch.empty(num_experts, self.hidden_size))
-        nn.init.trunc_normal_(self.gate_weight, std=math.sqrt(0.1 / self.hidden_size))
+
+        # init param
+        self.reset_parameters()
+
+    @torch.no_grad()
+    def reset_parameters(self):
+        # expert param should be different
+        if self.expert_parallel is not None:
+            seed_ctx = Randomizer(MOE_MANAGER.seed).fork_rng(enable_cpu=True)
+        else:
+            seed_ctx = nullcontext()
+        with seed_ctx:
+            if self.gated:
+                torch.nn.init.normal_(self.experts.wi_gate, std=math.sqrt(0.1 / self.hidden_size))
+                torch.nn.init.normal_(self.experts.wi_up, std=math.sqrt(0.1 / self.hidden_size))
+            else:
+                torch.nn.init.normal_(self.experts.wi, std=math.sqrt(0.1 / self.hidden_size))
+            torch.nn.init.normal_(self.experts.wo, std=math.sqrt(0.1 / self.intermediate_size))
+        torch.nn.init.normal_(self.gate_weight, std=math.sqrt(0.1 / self.hidden_size))
 
     def forward(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
