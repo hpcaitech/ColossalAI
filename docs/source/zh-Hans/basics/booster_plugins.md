@@ -42,12 +42,6 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 
 - `timm.models.convit_base`
 - dlrm and deepfm models in `torchrec`
-- `diffusers.VQModel`
-- `transformers.AlbertModel`
-- `transformers.AlbertForPreTraining`
-- `transformers.BertModel`
-- `transformers.BertForPreTraining`
-- `transformers.GPT2DoubleHeadsModel`
 
 兼容性问题将在未来修复。
 
