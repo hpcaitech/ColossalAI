@@ -4,20 +4,24 @@ import pytest
 import torch
 from packaging import version
 
+from colossalai.kernel.op_builder.smoothquant import SmoothquantBuilder
+
 try:
     from colossalai.kernel.op_builder.smoothquant import SmoothquantBuilder
 
     smoothquant_cuda = SmoothquantBuilder().load()
     HAS_SMOOTHQUANT_CUDA = True
-except ImportError:
+except:
     warnings.warn("CUDA smoothquant linear is not installed")
     HAS_SMOOTHQUANT_CUDA = False
+
+from colossalai.inference.quant.smoothquant.models import LlamaSmoothquantMLP
 
 try:
     from colossalai.inference.quant.smoothquant.models import LlamaSmoothquantMLP
 
     HAS_TORCH_INT = True
-except ImportError:
+except:
     HAS_TORCH_INT = False
     warnings.warn("Please install torch_int from https://github.com/Guangxuan-Xiao/torch-int")
 
@@ -45,7 +49,7 @@ def torch_llama_mlp(gate_proj, up_proj, down_proj, x):
     not CUDA_SUPPORT or not HAS_SMOOTHQUANT_CUDA or not HAS_TORCH_INT,
     reason="smoothquant linear not installed properly or not install torch_int",
 )
-def test_linear():
+def test_llama_mlp():
     hidden_size = 256
     intermediate_size = 512
 
@@ -80,4 +84,4 @@ def test_linear():
 
 
 if __name__ == "__main__":
-    test_linear()
+    test_llama_mlp()
