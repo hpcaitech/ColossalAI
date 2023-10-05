@@ -21,13 +21,13 @@ torchrun --standalone --rdzv_endpoint="localhost:12355" --nproc_per_node=1 train
     --pretrain_dataset /home/lcyab/data/Anthropic_rlhf/pretrain_data.json \
     --prompt_dataset /home/lcyab/data/Anthropic_rlhf/prompts_en.jsonl \
     --strategy colossalai_zero2 \
-    --num_episodes 2000 --num_collect_steps 2 --num_update_steps 1 \
-    --experience_batch_size 8 \
-    --train_batch_size 16 \
+    --num_episodes 2000 --num_collect_steps 1 --num_update_steps 1 \
+    --experience_batch_size 4 \
+    --train_batch_size 4 \
     --save_path '/home/lcyab/data/Anthropic_rlhf/actor/v3_5' \
     --ptx_coef 0.0 \
     --rm_pretrain 'sugam11/gpt2-rlhf-reward' \
     --reward_model_tokenizer 'microsoft/DialogRPT-updown' \
     --pretrain '/home/lcyab/data/Anthropic_rlhf/actor/pretrain_v3' \
-    --use_wandb
+    # --use_wandb
 

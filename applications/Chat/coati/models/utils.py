@@ -42,10 +42,8 @@ def compute_reward(
     Returns:
         reward: [batch_size, response_length]
     '''
-
-    if kl_coef <= 0.0:
-        return r
-    kl = -kl_coef * (log_probs - log_probs_base) # _compute_approx_kl(log_probs, log_probs_base, action_mask=action_mask)
+    log_ratio = log_probs - log_probs_base
+    kl = -kl_coef * log_ratio * action_mask # _compute_approx_kl(log_probs, log_probs_base, action_mask=action_mask)
     reward = kl
     # print(reward[0]*action_mask[0])
     r_clip = torch.clamp(r, -reward_eps, reward_eps)
@@ -54,8 +52,7 @@ def compute_reward(
         assert action_mask[i].sum()>0
         reward[i, :action_mask[i].sum()] += r_clip[i]
         reward[i, action_mask[i].sum():] *= 0
-    return reward, kl
-
+    return reward, (log_ratio.exp() - 1 - log_ratio)*action_mask
 
 def _log_probs_from_logits(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     log_probs = F.log_softmax(logits, dim=-1)

@@ -72,7 +72,7 @@ class PPOTrainer(OnPolicyTrainer):
         actor_lr_scheduler: _LRScheduler,
         tokenizer: PreTrainedTokenizerBase,
         rm_model_tokenizer: PreTrainedTokenizerBase,
-        kl_coef: float = 0.001,
+        kl_coef: float = 0.1,
         ptx_coef: float = 0.9,
         train_batch_size: int = 8,
         buffer_limit: int = 0,
@@ -189,7 +189,8 @@ class PPOTrainer(OnPolicyTrainer):
         self.strategy.backward(critic_loss, self.critic, self.critic_optim)
         
         # TODO Implement check overflow here
-        self.strategy.optimizer_step(self.actor_optim)
+        if not to_skip:
+            self.strategy.optimizer_step(self.actor_optim)
         self.strategy.optimizer_step(self.critic_optim)
         self.actor_optim.zero_grad()
         self.critic_optim.zero_grad()

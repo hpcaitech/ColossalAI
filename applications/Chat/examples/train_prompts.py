@@ -20,6 +20,7 @@ from colossalai.nn.optimizer import HybridAdam
 from transformers.models.gpt2.modeling_gpt2 import GPT2Model
 from transformers import BloomConfig, BloomModel
 
+
 def main(args):
     # configure strategy
     if args.strategy == "ddp":
@@ -250,8 +251,8 @@ if __name__ == "__main__":
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
     parser.add_argument("--lr", type=float, default=9e-6)
-    parser.add_argument("--critic_lr", type=float, default=5e-6)
-    parser.add_argument("--kl_coef", type=float, default=0.1)
+    parser.add_argument("--critic_lr", type=float, default=9e-6)
+    parser.add_argument("--kl_coef", type=float, default=0.01)
     parser.add_argument("--ptx_coef", type=float, default=0.9)
     parser.add_argument("--max_input_len", type=int, default=96)
     parser.add_argument("--max_seq_len", type=int, default=256)
