@@ -4,8 +4,6 @@ import pytest
 import torch
 from packaging import version
 
-from colossalai.kernel.op_builder.smoothquant import SmoothquantBuilder
-
 try:
     from colossalai.kernel.op_builder.smoothquant import SmoothquantBuilder
 
@@ -15,7 +13,6 @@ except:
     warnings.warn("CUDA smoothquant linear is not installed")
     HAS_SMOOTHQUANT_CUDA = False
 
-from colossalai.inference.quant.smoothquant.models import LlamaSmoothquantMLP
 
 try:
     from colossalai.inference.quant.smoothquant.models import LlamaSmoothquantMLP
