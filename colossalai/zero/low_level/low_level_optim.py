@@ -28,6 +28,7 @@ from ._utils import (
     has_inf_or_nan,
     release_param_grad,
     sync_tensor,
+    unflatten,
 )
 from .bookkeeping import BucketStore, GradientStore, ParameterStore
 
@@ -80,7 +81,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             cpu_offload: bool = False,    # cpu offload
             dp_process_group: Optional[ProcessGroup] = None,    # the dp pg for comm
             tp_process_group: Optional[ProcessGroup] = None,    # if using tp
-            forced_dtype: Optional[torch.dtype] = None):
+            forced_dtype: Optional[torch.dtype] = None,
+            outer_dp_process_group: Optional[ProcessGroup] = None):
 
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
         self._dtype = self.optim.param_groups[0]['params'][0].dtype
@@ -97,6 +99,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # if process_group is none, will use the default one
         self.dp_pg = dp_process_group
+        self.outer_dp_pg = outer_dp_process_group
         self._local_rank = dist.get_rank(group=self.dp_pg)
         self._world_size = dist.get_world_size(group=self.dp_pg)
 
@@ -144,9 +147,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             for param in param_group['params']:
                 if param.requires_grad:
                     # skip moe param
-                    if is_moe_tensor(param):
-                        moe_params.append(param)
-                        continue
+                    # if is_moe_tensor(param):
+                    #     moe_params.append(param)
+                    #     continue
                     group_params.append(param)
 
             # add the working params to working_param_groups for bookkeeping
@@ -300,6 +303,39 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                                 self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
                             else:
                                 self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
+
+                    # find out non-moe tensors to sync in dp group
+                    flat_grads_per_rank = list(flat_grads_per_rank)
+                    if self.outer_dp_pg is not None:
+                        dp_param_list = []
+                        for idx, param in enumerate(self._bucket_store._param_list):
+                            if not is_moe_tensor(param):
+                                dp_param_list.append(idx)
+                        if len(dp_param_list) > 0:
+                            # delete non dp params from grad list
+                            for rank, grad_list in grad_in_bucket.items():
+                                cur_grads = unflatten(flat_grads_per_rank[rank], grad_list)
+                                for i in range(len(grad_list) - 1, -1, -1):
+                                    if i not in dp_param_list:
+                                        del cur_grads[i]
+                                        del grad_list[i]
+                                flat_grads_per_rank[rank] = flatten(cur_grads)
+                            flat_grads = flatten(flat_grads_per_rank)
+
+                            # all reduce grads in dp pg
+                            dist.all_reduce(flat_grads, group=self.outer_dp_pg)
+                            flat_grads_per_rank = flat_grads.split(flat_grads.numel() // self._world_size)
+
+                            # update grad in the same way
+                            for rank, grad_list in grad_in_bucket.items():
+                                sync_tensor(flat_grads_per_rank[rank], grad_list)
+                                for grad in grad_list:
+                                    param_id = self._bucket_store.get_param_id_of_grad(grad)
+                                    if len(self._grad_store.get_partitioned_gradients_by_param_id(
+                                            group_id, param_id)) < self._world_size:
+                                        self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                                    else:
+                                        self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
 
                 else:
                     flat_grads_list = list(flat_grads.split(len(flat_grads) // self._world_size))

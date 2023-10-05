@@ -86,7 +86,6 @@ def parse_args():
         type=str,
         default="hybrid",
         help="parallel plugin",
-        choices=["zero2", "zero2_ep", "hybrid", "zero2_tp"],
     )
     # hybrid plugin
     parser.add_argument("--pp_size", type=int, default=2, help="pp size")
@@ -122,6 +121,22 @@ def main():
         MOE_MANAGER.setup(
             seed=42,
             parallel=None,
+            use_kernel_optim=args.use_kernel,
+        )
+    elif args.plugin == "dp_zero":
+        dp_size = dist.get_world_size()
+        plugin = MoeHybridParallelPlugin(
+            tp_size=1,
+            pp_size=1,
+            zero_stage=1,
+            custom_policy=OpenMoeForCausalLMPolicy(),
+            enable_fused_normalization=args.use_kernel,
+            enable_jit_fused=args.use_kernel,
+            dp_size_with_zero=2,
+        )
+        MOE_MANAGER.setup(
+            seed=42,
+            parallel="EP",
             use_kernel_optim=args.use_kernel,
         )
     elif args.plugin == "zero2_ep":

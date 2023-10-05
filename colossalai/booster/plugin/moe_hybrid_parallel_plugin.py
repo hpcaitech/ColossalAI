@@ -1,14 +1,25 @@
 import random
-from typing import Optional
+from typing import Callable, Optional, Tuple
 
 import numpy as np
 import torch
 import torch.distributed as dist
+from torch.nn import Module
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
-from colossalai.booster.plugin.hybrid_parallel_plugin import HybridParallelPlugin
+from colossalai.booster.plugin.hybrid_parallel_plugin import (
+    HybridParallelAMPOptimizer,
+    HybridParallelModule,
+    HybridParallelNaiveOptimizer,
+    HybridParallelPlugin,
+    HybridParallelZeroOptimizer,
+    get_param_info,
+)
 from colossalai.cluster import ProcessGroupMesh
+from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.moe import MoeCheckpintIO
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -78,6 +89,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
     def __init__(self,
                  tp_size: int,
                  pp_size: int,
+                 dp_size_with_zero: int = 1,
                  precision: str = 'fp16',
                  zero_stage: int = 0,
                  enable_all_optimization: bool = False,
@@ -132,6 +144,15 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.enable_sequence_parallelism = enable_sequence_parallelism
         # we change pg mesh to (pp, dp, tp) for better moe performance
         self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size)
+
+        # pp-dp-zero
+        self.zero_size = self.dp_size // dp_size_with_zero
+        self.dp_size_with_zero = dp_size_with_zero
+        self.pg_mesh_dp_zero = ProcessGroupMesh(self.pp_size, self.dp_size_with_zero, self.zero_size)
+        # this zero group will be passed to zero optimizer
+        self.outer_dp_group = self.pg_mesh_dp_zero.get_group_along_axis(1)
+        self.zero_group = self.pg_mesh_dp_zero.get_group_along_axis(2)
+
         self.stage_manager = None
         self.schedule = None
         self.custom_policy = custom_policy
@@ -235,3 +256,52 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
     def get_checkpoint_io(self) -> MoeCheckpintIO:
         self.checkpoint_io = MoeCheckpintIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
         return self.checkpoint_io
+
+    def configure(
+        self,
+        model: Module,
+        optimizer: Optional[Optimizer] = None,
+        criterion: Optional[Callable] = None,
+        dataloader: Optional[DataLoader] = None,
+        lr_scheduler: Optional[LRScheduler] = None,
+    ) -> Tuple[Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
+        param_info = get_param_info(optimizer)
+        if not isinstance(model, ModelWrapper):
+            use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
+            model = HybridParallelModule(model, self.precision, self.shard_config, self.dp_group, use_ddp,
+                                         self.ddp_config, self.custom_policy)
+        if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
+            if self.zero_stage == 0:
+                if self.precision in ['fp16', 'bf16']:
+                    optimizer = HybridParallelAMPOptimizer(optimizer,
+                                                           model,
+                                                           use_pipeline=self.enable_pipeline_parallelism,
+                                                           param_info=param_info,
+                                                           precision=self.precision,
+                                                           max_norm=self.max_norm,
+                                                           **self.amp_config)
+                    self.checkpoint_io.link_master_and_working_param(optimizer.working_to_master_map,
+                                                                     optimizer.master_to_working_map)
+                else:
+                    optimizer = HybridParallelNaiveOptimizer(optimizer,
+                                                             model,
+                                                             use_pipeline=self.enable_pipeline_parallelism,
+                                                             param_info=param_info)
+            else:
+                assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
+                assert self.precision != 'fp32', "Please set precision to 'fp16' or 'bf16' when using ZeRO."
+                optimizer = HybridParallelZeroOptimizer(optimizer,
+                                                        model,
+                                                        use_pipeline=self.enable_pipeline_parallelism,
+                                                        param_info=param_info,
+                                                        dp_process_group=self.zero_group,
+                                                        tp_process_group=self.tp_group,
+                                                        outer_dp_process_group=self.outer_dp_group,
+                                                        verbose=True,
+                                                        clip_grad_norm=self.max_norm,
+                                                        **self.zero_config,
+                                                        **self.amp_config)
+                self.checkpoint_io.link_master_and_working_param(optimizer._param_store.working_to_master_param,
+                                                                 optimizer._param_store.master_to_working_param)
+
+        return model, optimizer, criterion, dataloader, lr_scheduler
