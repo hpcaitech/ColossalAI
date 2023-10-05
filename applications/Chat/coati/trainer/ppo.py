@@ -197,12 +197,14 @@ class PPOTrainer(OnPolicyTrainer):
         response_text = self.experience_maker.tokenizer.batch_decode(experience.sequences, skip_special_tokens=True)
         for i in range(len(response_text)):
             response_text[i] = response_text[i]+f'\n\nReward: {experience.reward[i]}'
-
+            print(response_text[i])
+            if i>2:
+                break
         if self.writer:
             # use wandb
             import wandb
-            my_table = wandb.Table(columns=["sample response"], data=[[response_text]])
-            self.wandb_run.log({"sample_response": my_table})
+            # my_table = wandb.Table(columns=["sample response"], data=[[response_text]])
+            # self.wandb_run.log({"sample_response": my_table})
             self.writer.add_scalar("train/max_ratio", max_ratio, self.num_train_step)
             self.writer.add_scalar("train/skip", 1 if to_skip else 0, self.num_train_step)
             self.writer.add_scalar("train/actor_loss", actor_loss.mean().item(), self.num_train_step)

@@ -14,7 +14,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer, AutoConfig
+from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer, AutoConfig, AutoModel, AutoModelForSequenceClassification
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 from colossalai.nn.optimizer import HybridAdam
 from transformers.models.gpt2.modeling_gpt2 import GPT2Model
@@ -38,9 +38,7 @@ def main(args):
     with strategy.model_init_context():
         # configure model
         if args.model == "gpt2":
-            config = AutoConfig.from_pretrained(args.pretrain)
-            config.dropout = 0.0
-            initial_model = GPTActor(config=config)
+            initial_model = GPTActor(pretrained=args.pretrain)
         elif args.model == "bloom":
             config = AutoConfig.from_pretrained(args.pretrain)
             config.dropout = 0.0
@@ -57,40 +55,18 @@ def main(args):
         else:
             rm_model_name = args.rm_model
 
-        if rm_model_name == "gpt2":
-            if args.rm_pretrain:
-                config = AutoConfig.from_pretrained(args.rm_pretrain)
-            else:
-                config = GPT2Config()
-            config.dropout = 0.0
-            reward_model = GPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-            reward_model.model = GPT2Model(config)
-        elif rm_model_name == "bloom":
-            if args.rm_pretrain:
-                config = AutoConfig.from_pretrained(args.rm_pretrain)
-            else:
-                config = BloomConfig()
-            config.dropout = 0.0
-            reward_model = BLOOMRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-            reward_model.model = BloomModel(config)
-        elif rm_model_name == "opt":
-            reward_model = OPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        elif rm_model_name == "llama":
-            reward_model = LlamaRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        else:
-            raise ValueError(f'Unsupported reward model "{rm_model_name}"')
-
+        reward_model = AutoModelForSequenceClassification.from_pretrained(args.rm_pretrain)      
         if args.rm_path is not None:
             reward_model.load_state_dict(state_dict, strict=True)
-        if args.pretrain is not None:
-            initial_model.model.load_state_dict(torch.load(args.pretrain+ '/pytorch_model.bin', map_location="cpu"), strict=True)
 
         initial_model.to(torch.bfloat16).to(torch.cuda.current_device())
         reward_model.to(torch.bfloat16).to(torch.cuda.current_device())
 
         if args.model == "gpt2":
             config = AutoConfig.from_pretrained(args.pretrain)
-            config.dropout = 0.0
+            config.embd_pdrop = 0.00
+            config.attn_pdrop = 0.00
+            config.resid_pdrop = 0.00
             actor = GPTActor(config=config, lora_rank=args.lora_rank)
         elif args.model == "bloom":
             config = AutoConfig.from_pretrained(args.pretrain)
@@ -104,10 +80,7 @@ def main(args):
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
         if args.model == "gpt2":
-            config = GPT2Config()
-            config.dropout = 0.0
-            critic = GPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-            critic.model = GPT2Model(config)
+            critic = GPTCritic(pretrained="gpt2", lora_rank=args.lora_rank)
         elif args.model == "bloom":
             config = BloomConfig()
             config.dropout = 0.0
@@ -158,16 +131,7 @@ def main(args):
     tokenizer.padding_side = "left"
 
     # configure tokenizer
-    if args.rm_model == "gpt2":
-        rm_model_tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-        rm_model_tokenizer.pad_token = rm_model_tokenizer.eos_token
-    elif args.rm_model == "bloom":
-        rm_model_tokenizer = BloomTokenizerFast.from_pretrained(
-            "bigscience/bloom-560m"
-        )
-        rm_model_tokenizer.pad_token = rm_model_tokenizer.eos_token
-    else:
-        raise ValueError(f'Unsupported model "{args.model}"')
+    rm_model_tokenizer = AutoTokenizer.from_pretrained(args.reward_model_tokenizer)
     rm_model_tokenizer.padding_side = "left"
 
     prompt_dataset = PromptDataset(
@@ -272,6 +236,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--model", default="gpt2", choices=["gpt2", "bloom", "opt", "llama"])
     parser.add_argument("--tokenizer", type=str, default=None)
+    parser.add_argument("--reward_model_tokenizer", type=str, default=None)
     parser.add_argument("--pretrain", type=str, default=None)
     parser.add_argument("--rm_model", default=None, choices=["gpt2", "bloom", "opt", "llama"])
     parser.add_argument("--rm_path", type=str, default=None)

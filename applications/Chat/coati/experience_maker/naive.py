@@ -78,10 +78,9 @@ class NaiveExperienceMaker(ExperienceMaker):
             sequences_rm = self.rm_model_tokenizer(
                 sequences_text, return_tensors="pt", padding="max_length", truncation=True, max_length=300
             )
-            r = self.reward_model(sequences_rm['input_ids'].to(dtype=torch.long, device=sequences.device), 
-                                  sequences_rm['attention_mask'].to(device=sequences.device))
-            
-        torch.set_printoptions(threshold=10_000)
+            r = self.reward_model(**{'input_ids':sequences_rm['input_ids'].to(dtype=torch.long, device=sequences.device), 
+                                  'attention_mask':sequences_rm['attention_mask'].to(device=sequences.device)}).logits.squeeze(-1)
+        # torch.set_printoptions(threshold=10_000)
         reward = compute_reward(r, self.kl_coef, action_log_probs_kl, base_action_log_probs, action_mask=action_mask)
 
         advantage = 0
@@ -89,7 +88,7 @@ class NaiveExperienceMaker(ExperienceMaker):
         value = value[:,-num_actions:] * action_mask
         for t in range(num_actions-1, -1, -1):
             q_next = value[:, t+1] if t!=num_actions-1 else 0.
-            advantage = 0.5 * (reward[:, t]+ 1.0 * q_next - value[:, t]) + 0.5 * advantage
+            advantage = 1.0 * (reward[:, t]+ 1.0 * q_next - value[:, t]) + 0.95 * advantage
             advantages.append(advantage)
         advantages = torch.stack(advantages[::-1], dim=1)
         advantages = advantages.detach()
