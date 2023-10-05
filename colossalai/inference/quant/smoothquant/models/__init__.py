@@ -9,4 +9,4 @@ except ImportError:
     )
 
 if HAS_TORCH_INT:
-    from .smoothquant_layer import LLamaSmoothquantAttention
+    from .llama import LLamaSmoothquantAttention, LlamaSmoothquantMLP
