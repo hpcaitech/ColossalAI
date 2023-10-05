@@ -39,16 +39,16 @@ def main(args):
         # configure model
         if args.model == "gpt2":
             initial_model = GPTActor(pretrained=args.pretrain)
-        elif args.model == "bloom":
-            config = AutoConfig.from_pretrained(args.pretrain)
-            config.dropout = 0.0
-            initial_model = BLOOMActor(config=config)
-        elif args.model == "opt":
-            initial_model = OPTActor(pretrained=args.pretrain)
-        elif args.model == "llama":
-            initial_model = LlamaActor(pretrained=args.pretrain)
-        else:
-            raise ValueError(f'Unsupported actor model "{args.model}"')
+        # elif args.model == "bloom":
+        #     config = AutoConfig.from_pretrained(args.pretrain)
+        #     config.dropout = 0.0
+        #     initial_model = BLOOMActor(config=config)
+        # elif args.model == "opt":
+        #     initial_model = OPTActor(pretrained=args.pretrain)
+        # elif args.model == "llama":
+        #     initial_model = LlamaActor(pretrained=args.pretrain)
+        # else:
+        #     raise ValueError(f'Unsupported actor model "{args.model}"')
 
         if args.rm_model is None:
             rm_model_name = args.model
@@ -67,7 +67,7 @@ def main(args):
             config.embd_pdrop = 0.00
             config.attn_pdrop = 0.00
             config.resid_pdrop = 0.00
-            actor = GPTActor(config=config, lora_rank=args.lora_rank)
+            actor = GPTActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
         # elif args.model == "bloom":
         #     config = AutoConfig.from_pretrained(args.pretrain)
         #     config.dropout = 0.0
@@ -92,6 +92,7 @@ def main(args):
         #     critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         # else:
         #     raise ValueError(f'Unsupported reward model "{rm_model_name}"')
+
 
         actor.to(torch.bfloat16).to(torch.cuda.current_device())
         critic.to(torch.bfloat16).to(torch.cuda.current_device())
@@ -129,7 +130,7 @@ def main(args):
 
     # configure tokenizer
     rm_model_tokenizer = AutoTokenizer.from_pretrained(args.reward_model_tokenizer)
-    # rm_model_tokenizer.padding_side = "left"
+    rm_model_tokenizer.padding_side = "left"
 
     prompt_dataset = PromptDataset(
         tokenizer=tokenizer,
@@ -224,7 +225,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--prompt_dataset", type=str, default=None, help="path to the prompt dataset")
     parser.add_argument("--pretrain_dataset", type=str, default=None, help="path to the pretrained dataset")
-    parser.add_argument("--max_datasets_size", type=int, default=50000)
+    parser.add_argument("--max_datasets_size", type=int, default=100)
     parser.add_argument(
         "--strategy",
         choices=["ddp", "colossalai_gemini", "colossalai_zero2"],

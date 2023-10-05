@@ -28,7 +28,10 @@ class GPTActor(Actor):
         **kwargs,
     ) -> None:
         if pretrained is not None:
-            model = GPT2LMHeadModel.from_pretrained(pretrained)
+            if config is not None:
+                model = GPT2LMHeadModel.from_pretrained(pretrained, config=config)
+            else:
+                model = GPT2LMHeadModel.from_pretrained(pretrained)
         elif config is not None:
             model = GPT2LMHeadModel(config)
         else:
