@@ -89,7 +89,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
     def __init__(self,
                  tp_size: int,
                  pp_size: int,
-                 dp_size_with_zero: int = 1,
+                 outer_dp_size: int = 1,
                  precision: str = 'fp16',
                  zero_stage: int = 0,
                  enable_all_optimization: bool = False,
@@ -145,13 +145,11 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         # we change pg mesh to (pp, dp, tp) for better moe performance
         self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size)
 
-        # pp-dp-zero
-        self.zero_size = self.dp_size // dp_size_with_zero
-        self.dp_size_with_zero = dp_size_with_zero
-        self.pg_mesh_dp_zero = ProcessGroupMesh(self.pp_size, self.dp_size_with_zero, self.zero_size)
-        # this zero group will be passed to zero optimizer
+        # sync moe in outer dp group, and sync other param in global dp group
+        self.inner_dp_size = self.dp_size // outer_dp_size
+        self.outer_dp_size = outer_dp_size
+        self.pg_mesh_dp_zero = ProcessGroupMesh(self.pp_size, self.outer_dp_size, self.inner_dp_size)
         self.outer_dp_group = self.pg_mesh_dp_zero.get_group_along_axis(1)
-        self.zero_group = self.pg_mesh_dp_zero.get_group_along_axis(2)
 
         self.stage_manager = None
         self.schedule = None
@@ -294,7 +292,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                                                         model,
                                                         use_pipeline=self.enable_pipeline_parallelism,
                                                         param_info=param_info,
-                                                        dp_process_group=self.zero_group,
+                                                        dp_process_group=self.dp_group,
                                                         tp_process_group=self.tp_group,
                                                         outer_dp_process_group=self.outer_dp_group,
                                                         verbose=True,

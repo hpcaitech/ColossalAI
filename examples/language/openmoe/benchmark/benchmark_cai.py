@@ -132,11 +132,12 @@ def main():
             custom_policy=OpenMoeForCausalLMPolicy(),
             enable_fused_normalization=args.use_kernel,
             enable_jit_fused=args.use_kernel,
-            dp_size_with_zero=2,
+            outer_dp_size=2,
         )
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",
+            max_ep_size=dp_size // 2,
             use_kernel_optim=args.use_kernel,
         )
     elif args.plugin == "zero2_ep":

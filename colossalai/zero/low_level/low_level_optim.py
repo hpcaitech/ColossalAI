@@ -3,6 +3,7 @@ import copy
 from contextlib import contextmanager
 from functools import partial
 from typing import Dict, Iterator, Optional, Tuple
+from torch._utils import _flatten_dense_tensors
 
 import torch
 import torch.distributed as dist
@@ -146,10 +147,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             group_params = list()
             for param in param_group['params']:
                 if param.requires_grad:
-                    # skip moe param
-                    # if is_moe_tensor(param):
-                    #     moe_params.append(param)
-                    #     continue
+                    if self.outer_dp_pg is not None:
+                        # skip moe param
+                        if is_moe_tensor(param):
+                            moe_params.append(param)
+                            continue
                     group_params.append(param)
 
             # add the working params to working_param_groups for bookkeeping
@@ -264,8 +266,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if self._bucket_store.num_elements_in_bucket() > 0:
             self._bucket_store.build_grad_in_bucket()
 
-            flat_grads = self._bucket_store.get_flatten_grad()
-            flat_grads /= self._world_size
+            if self.outer_dp_pg is None:
+                flat_grads = self._bucket_store.get_flatten_grad()
+                flat_grads /= self._world_size
 
             # ready to add other tensors to bucket
             self._bucket_store.reset_num_elements_in_bucket()
@@ -273,7 +276,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             if self._overlap_communication:
                 stream = self._comm_stream
                 # in case of the memory being reused in the default stream
-                flat_grads.record_stream(stream)
+                if self.outer_dp_pg is None:
+                    flat_grads.record_stream(stream)
                 # waiting for ops in the default stream finishing
                 stream.wait_stream(torch.cuda.current_stream())
             else:
@@ -282,60 +286,80 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             with torch.cuda.stream(stream):
                 group_id = self._bucket_store.current_group_id
 
-                grad_dtype = flat_grads.dtype
-                if self._communication_dtype is not None:
-                    flat_grads = flat_grads.to(self._communication_dtype)
+                if self.outer_dp_pg is None:
+                    grad_dtype = flat_grads.dtype
+                    if self._communication_dtype is not None:
+                        flat_grads = flat_grads.to(self._communication_dtype)
 
                 if not self._partition_grads:
-                    dist.all_reduce(flat_grads, group=self.dp_pg)
-                    if flat_grads.dtype != grad_dtype:
-                        flat_grads = flat_grads.to(grad_dtype)
+                    
+                    # record moe and non moe param
+                    moe_list = []
+                    for param in self._bucket_store._param_list:
+                        moe_list.append(is_moe_tensor(param))
 
-                    flat_grads_per_rank = flat_grads.split(flat_grads.numel() // self._world_size)
-                    grad_in_bucket = self._bucket_store.get_grad()
-
-                    for rank, grad_list in grad_in_bucket.items():
-                        sync_tensor(flat_grads_per_rank[rank], grad_list)
-                        for grad in grad_list:
-                            param_id = self._bucket_store.get_param_id_of_grad(grad)
-                            if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id,
-                                                                                          param_id)) < self._world_size:
-                                self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                    # divide them into different groups
+                    moe_grad_list = []
+                    non_moe_grad_list = []
+                    for rank, grad_list in self._bucket_store._grad_in_bucket.items():
+                        non_moe_cur_grad = []
+                        moe_cur_grad = []
+                        for i in range(len(grad_list)):
+                            if moe_list[i] == True:
+                                moe_cur_grad.append(grad_list[i])
                             else:
-                                self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
+                                non_moe_cur_grad.append(grad_list[i])
+                        if len(moe_cur_grad) > 0:
+                            moe_grad_list.append(moe_cur_grad)
+                        if len(non_moe_cur_grad) > 0:
+                            non_moe_grad_list.append(non_moe_cur_grad)
+                    
+                    # sync non moe param in global dp group
+                    if len(non_moe_grad_list) > 0:
+                        flat_grads = []
+                        for grad_list in non_moe_grad_list:
+                            flat_grads.append(_flatten_dense_tensors(grad_list))
+                        flat_grads = _flatten_dense_tensors(flat_grads)
+                        flat_grads /= self._world_size
+                        
+                        dist.all_reduce(flat_grads, group=self.dp_pg)
+                        # if flat_grads.dtype != grad_dtype:
+                        #     flat_grads = flat_grads.to(grad_dtype)
 
-                    # find out non-moe tensors to sync in dp group
-                    flat_grads_per_rank = list(flat_grads_per_rank)
-                    if self.outer_dp_pg is not None:
-                        dp_param_list = []
-                        for idx, param in enumerate(self._bucket_store._param_list):
-                            if not is_moe_tensor(param):
-                                dp_param_list.append(idx)
-                        if len(dp_param_list) > 0:
-                            # delete non dp params from grad list
-                            for rank, grad_list in grad_in_bucket.items():
-                                cur_grads = unflatten(flat_grads_per_rank[rank], grad_list)
-                                for i in range(len(grad_list) - 1, -1, -1):
-                                    if i not in dp_param_list:
-                                        del cur_grads[i]
-                                        del grad_list[i]
-                                flat_grads_per_rank[rank] = flatten(cur_grads)
-                            flat_grads = flatten(flat_grads_per_rank)
+                        flat_grads_per_rank = flat_grads.split(flat_grads.numel() // self._world_size)
 
-                            # all reduce grads in dp pg
-                            dist.all_reduce(flat_grads, group=self.outer_dp_pg)
-                            flat_grads_per_rank = flat_grads.split(flat_grads.numel() // self._world_size)
+                        for rank, grad_list in enumerate(non_moe_grad_list):
+                            sync_tensor(flat_grads_per_rank[rank], grad_list)
+                            for grad in grad_list:
+                                param_id = self._bucket_store.get_param_id_of_grad(grad)
+                                if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id,
+                                                                                            param_id)) < self._world_size:
+                                    self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                                else:
+                                    self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
 
-                            # update grad in the same way
-                            for rank, grad_list in grad_in_bucket.items():
-                                sync_tensor(flat_grads_per_rank[rank], grad_list)
-                                for grad in grad_list:
-                                    param_id = self._bucket_store.get_param_id_of_grad(grad)
-                                    if len(self._grad_store.get_partitioned_gradients_by_param_id(
-                                            group_id, param_id)) < self._world_size:
-                                        self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
-                                    else:
-                                        self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
+                    # sync moe param only in zero group
+                    if self.outer_dp_pg is not None and len(moe_grad_list) > 0:
+                        flat_grads = []
+                        for grad_list in moe_grad_list:
+                            flat_grads.append(_flatten_dense_tensors(grad_list))
+                        flat_grads = _flatten_dense_tensors(flat_grads)
+                        
+                        dist.all_reduce(flat_grads, group=self.outer_dp_pg)
+                        # if flat_grads.dtype != grad_dtype:
+                        #     flat_grads = flat_grads.to(grad_dtype)
+
+                        flat_grads_per_rank = flat_grads.split(flat_grads.numel() // self._world_size)
+
+                        for rank, grad_list in enumerate(moe_grad_list):
+                            sync_tensor(flat_grads_per_rank[rank], grad_list)
+                            for grad in grad_list:
+                                param_id = self._bucket_store.get_param_id_of_grad(grad)
+                                if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id,
+                                                                                            param_id)) < self._world_size:
+                                    self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                                else:
+                                    self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
 
                 else:
                     flat_grads_list = list(flat_grads.split(len(flat_grads) // self._world_size))
