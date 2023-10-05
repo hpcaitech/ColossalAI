@@ -146,10 +146,13 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size)
 
         # sync moe in outer dp group, and sync other param in global dp group
-        self.inner_dp_size = self.dp_size // outer_dp_size
-        self.outer_dp_size = outer_dp_size
-        self.pg_mesh_dp_zero = ProcessGroupMesh(self.pp_size, self.outer_dp_size, self.inner_dp_size)
-        self.outer_dp_group = self.pg_mesh_dp_zero.get_group_along_axis(1)
+        if outer_dp_size > 1:
+            self.inner_dp_size = self.dp_size // outer_dp_size
+            self.outer_dp_size = outer_dp_size
+            self.pg_mesh_dp_zero = ProcessGroupMesh(self.pp_size, self.outer_dp_size, self.inner_dp_size)
+            self.outer_dp_group = self.pg_mesh_dp_zero.get_group_along_axis(1)
+        else:
+            self.outer_dp_group = None
 
         self.stage_manager = None
         self.schedule = None
