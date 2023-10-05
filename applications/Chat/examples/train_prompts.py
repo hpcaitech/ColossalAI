@@ -68,33 +68,30 @@ def main(args):
             config.attn_pdrop = 0.00
             config.resid_pdrop = 0.00
             actor = GPTActor(config=config, lora_rank=args.lora_rank)
-        elif args.model == "bloom":
-            config = AutoConfig.from_pretrained(args.pretrain)
-            config.dropout = 0.0
-            actor = BLOOMActor(config=config, lora_rank=args.lora_rank)
-        elif args.model == "opt":
-            actor = OPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
-        elif args.model == "llama":
-            actor = LlamaActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
-        else:
-            raise ValueError(f'Unsupported actor model "{args.model}"')
+        # elif args.model == "bloom":
+        #     config = AutoConfig.from_pretrained(args.pretrain)
+        #     config.dropout = 0.0
+        #     actor = BLOOMActor(config=config, lora_rank=args.lora_rank)
+        # elif args.model == "opt":
+        #     actor = OPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
+        # elif args.model == "llama":
+        #     actor = LlamaActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
+        # else:
+        #     raise ValueError(f'Unsupported actor model "{args.model}"')
 
         if args.model == "gpt2":
             critic = GPTCritic(pretrained="gpt2", lora_rank=args.lora_rank)
-        elif args.model == "bloom":
-            config = BloomConfig()
-            config.dropout = 0.0
-            critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-            critic.model = BloomModel(config)
-        elif args.model == "opt":
-            critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        elif args.model == "llama":
-            critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        else:
-            raise ValueError(f'Unsupported reward model "{rm_model_name}"')
-
-        if args.pretrain is not None:
-            actor.model.load_state_dict(torch.load(args.pretrain+ '/pytorch_model.bin', map_location="cpu"), strict=True)
+        # elif args.model == "bloom":
+        #     config = BloomConfig()
+        #     config.dropout = 0.0
+        #     critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+        #     critic.model = BloomModel(config)
+        # elif args.model == "opt":
+        #     critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+        # elif args.model == "llama":
+        #     critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+        # else:
+        #     raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
         actor.to(torch.bfloat16).to(torch.cuda.current_device())
         critic.to(torch.bfloat16).to(torch.cuda.current_device())
@@ -132,7 +129,7 @@ def main(args):
 
     # configure tokenizer
     rm_model_tokenizer = AutoTokenizer.from_pretrained(args.reward_model_tokenizer)
-    rm_model_tokenizer.padding_side = "left"
+    # rm_model_tokenizer.padding_side = "left"
 
     prompt_dataset = PromptDataset(
         tokenizer=tokenizer,

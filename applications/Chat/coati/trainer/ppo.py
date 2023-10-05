@@ -72,7 +72,7 @@ class PPOTrainer(OnPolicyTrainer):
         actor_lr_scheduler: _LRScheduler,
         tokenizer: PreTrainedTokenizerBase,
         rm_model_tokenizer: PreTrainedTokenizerBase,
-        kl_coef: float = 0.1,
+        kl_coef: float = 0.001,
         ptx_coef: float = 0.9,
         train_batch_size: int = 8,
         buffer_limit: int = 0,
@@ -216,6 +216,7 @@ class PPOTrainer(OnPolicyTrainer):
 
             # self.writer.add_scalar("reward", experience.reward_raw.mean().item(), self.num_train_step)
             self.writer.add_scalar("reward", experience.reward.mean().item(), self.num_train_step)
+            self.writer.add_scalar("approx_kl", experience.kl.mean().item(), self.num_train_step)
             self.writer.add_scalar("value", experience.values.mean().item(), self.num_train_step)
             self.writer.add_scalar("advantages", experience.advantages.mean().item(), self.num_train_step)
 

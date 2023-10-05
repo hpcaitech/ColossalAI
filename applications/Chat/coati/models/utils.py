@@ -54,7 +54,7 @@ def compute_reward(
         assert action_mask[i].sum()>0
         reward[i, :action_mask[i].sum()] += r_clip[i]
         reward[i, action_mask[i].sum():] *= 0
-    return reward
+    return reward, kl
 
 
 def _log_probs_from_logits(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:

@@ -21,7 +21,7 @@ class NaiveExperienceMaker(ExperienceMaker):
         initial_model: Actor,
         tokenizer: PreTrainedTokenizer,
         rm_model_tokenizer: PreTrainedTokenizer,
-        kl_coef: float = 0.1,
+        kl_coef: float = 0.01,
     ) -> None:
         super().__init__(actor, critic, reward_model, initial_model)
         self.tokenizer = tokenizer
@@ -81,7 +81,9 @@ class NaiveExperienceMaker(ExperienceMaker):
             r = self.reward_model(**{'input_ids':sequences_rm['input_ids'].to(dtype=torch.long, device=sequences.device), 
                                   'attention_mask':sequences_rm['attention_mask'].to(device=sequences.device)}).logits.squeeze(-1)
         # torch.set_printoptions(threshold=10_000)
-        reward = compute_reward(r, self.kl_coef, action_log_probs_kl, base_action_log_probs, action_mask=action_mask)
+        reward, kl = compute_reward(r, self.kl_coef, action_log_probs_kl, base_action_log_probs, action_mask=action_mask)
+
+        # Adopted from https://github.com/CarperAI/trlx/blob/main/trlx/models/modeling_ppo.py#L134
 
         advantage = 0
         advantages = []
@@ -95,4 +97,4 @@ class NaiveExperienceMaker(ExperienceMaker):
         value = value.detach()
         r = r.detach()
 
-        return Experience(sequences, action_log_probs, value, r, advantages, attention_mask, action_mask)
+        return Experience(sequences, action_log_probs, value, r, kl, advantages, attention_mask, action_mask)
