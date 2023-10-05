@@ -167,6 +167,12 @@ class PPOTrainer(OnPolicyTrainer):
         
         actor_logits = self.actor(experience.sequences, experience.attention_mask)["logits"] # [batch size, prompt_length + response_length]
         action_log_probs = calc_action_log_probs(actor_logits, experience.sequences, num_actions)
+        # print(experience.sequences[0])
+        # print("old prob",experience.action_log_probs[0].exp())
+        # print("current prob", action_log_probs[0].exp())
+        # print(action_log_probs[0].size())
+        # print((action_log_probs[0] - experience.action_log_probs[0]).exp()*experience.action_mask[0])
+        # exit()
         actor_loss, to_skip, max_ratio = self.actor_loss_fn(
             action_log_probs, experience.action_log_probs, experience.advantages, action_mask=experience.action_mask
         )

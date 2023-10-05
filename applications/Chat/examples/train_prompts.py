@@ -56,18 +56,29 @@ def main(args):
         else:
             rm_model_name = args.rm_model
 
-        reward_model = AutoModelForSequenceClassification.from_pretrained(args.rm_pretrain)      
+        if rm_model_name == "gpt2":
+            reward_model = GPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+        elif rm_model_name == "bloom":
+            reward_model = BLOOMRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+        elif rm_model_name == "opt":
+            reward_model = OPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+        elif rm_model_name == "llama":
+            reward_model = LlamaRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+        else:
+            raise ValueError(f'Unsupported reward model "{rm_model_name}"')
+ 
         if args.rm_path is not None:
             reward_model.load_state_dict(state_dict, strict=True)
+        
 
-        initial_model.to(torch.bfloat16).to(torch.cuda.current_device())
-        reward_model.to(torch.bfloat16).to(torch.cuda.current_device())
+        initial_model.to(torch.cuda.current_device())
+        reward_model.to(torch.cuda.current_device())
 
         if args.model == "gpt2":
             config = AutoConfig.from_pretrained(args.pretrain)
-            config.embd_pdrop = 0.00
-            config.attn_pdrop = 0.00
-            config.resid_pdrop = 0.00
+            config.embd_pdrop = 0.000
+            config.attn_pdrop = 0.0001
+            config.resid_pdrop = 0.0001
             actor = GPTActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
         # elif args.model == "bloom":
         #     config = AutoConfig.from_pretrained(args.pretrain)
@@ -95,8 +106,8 @@ def main(args):
         #     raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
 
-        actor.to(torch.bfloat16).to(torch.cuda.current_device())
-        critic.to(torch.bfloat16).to(torch.cuda.current_device())
+        actor.to(torch.cuda.current_device())
+        critic.to(torch.cuda.current_device())
 
     # configure optimizer
     if args.strategy.startswith("colossalai"):
@@ -132,6 +143,7 @@ def main(args):
     # configure tokenizer
     rm_model_tokenizer = AutoTokenizer.from_pretrained(args.reward_model_tokenizer)
     rm_model_tokenizer.padding_side = "left"
+    rm_model_tokenizer.pad_token = rm_model_tokenizer.eos_token
 
     prompt_dataset = PromptDataset(
         tokenizer=tokenizer,
@@ -252,8 +264,8 @@ if __name__ == "__main__":
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
     parser.add_argument("--lr", type=float, default=9e-6)
     parser.add_argument("--critic_lr", type=float, default=9e-6)
-    parser.add_argument("--kl_coef", type=float, default=0.01)
-    parser.add_argument("--ptx_coef", type=float, default=0.9)
+    parser.add_argument("--kl_coef", type=float, default=0.1)
+    parser.add_argument("--ptx_coef", type=float, default=0.0)
     parser.add_argument("--max_input_len", type=int, default=96)
     parser.add_argument("--max_seq_len", type=int, default=256)
     parser.add_argument("--log_dir", default="logs", type=str)
