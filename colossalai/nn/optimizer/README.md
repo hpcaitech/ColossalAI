@@ -18,7 +18,7 @@ quickly deploy large AI model training and inference, reducing large AI model tr
 [**Paper**](https://arxiv.org/abs/2110.14883) |
 [**Documentation**](https://www.colossalai.org/) |
 [**Forum**](https://github.com/hpcaitech/ColossalAI/discussions) |
-[**Slack**](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w)
+[**Slack**](https://github.com/hpcaitech/public_assets/tree/main/colossalai/contact/slack)
 
 
 ## Table of Content

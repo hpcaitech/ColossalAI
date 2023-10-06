@@ -20,9 +20,8 @@ from colossalai.testing import (
 from tests.kit.model_zoo import model_zoo
 
 
-# TODO (Baizhou): Add test cases for shard=False
 @clear_cache_before_run()
-@parameterize("shard", [True])
+@parameterize("shard", [True, False])
 @parameterize("model_name", ["transformers_gpt"])
 @parameterize("size_per_shard", [32])
 @parameterize(
