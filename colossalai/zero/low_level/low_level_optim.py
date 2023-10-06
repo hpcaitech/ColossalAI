@@ -100,9 +100,13 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # if process_group is none, will use the default one
         self.dp_pg = dp_process_group
-        self.inner_dp_pg = inner_dp_process_group
         self._local_rank = dist.get_rank(group=self.dp_pg)
         self._world_size = dist.get_world_size(group=self.dp_pg)
+        
+        # inner dp
+        self.inner_dp_pg = inner_dp_process_group
+        self.inner_dp_pg_size = dist.get_world_size(group=self.inner_dp_pg)
+        self.inner_dp_pg_rank = dist.get_rank(group=self.inner_dp_pg)
 
         self.tp_pg = tp_process_group
 
@@ -494,11 +498,21 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 # else the splited grad should be attached to the splited param
                 grads = self._grad_store.get_partitioned_gradients_by_param_id(group_id, id(working_param))
                 if len(grads) > 0:
-                    real_working_params[group_id].append(working_param)
-                    grad = grads[grad_index].to(splited_param.dtype).to(splited_param.device)
-                    splited_param.grad = grad
-                    grad_partition_groups.append(grad)
-                    real_master_params[group_id].append(splited_param)
+                    # moe hybrid zero
+                    if self.inner_dp_pg is not None and is_moe_tensor(working_param):
+                        real_working_params[group_id].append(working_param)
+                        param_slice = self._world_size // self.inner_dp_pg_size
+                        grad = grads[self.inner_dp_pg_rank * param_slice: (self.inner_dp_pg_rank + 1) * param_slice]
+                        grad = flatten(grad).to(splited_param.dtype).to(splited_param.device)
+                        splited_param.grad = grad
+                        grad_partition_groups.append(grad)
+                        real_master_params[group_id].append(splited_param)
+                    else:
+                        real_working_params[group_id].append(working_param)
+                        grad = grads[grad_index].to(splited_param.dtype).to(splited_param.device)
+                        splited_param.grad = grad
+                        grad_partition_groups.append(grad)
+                        real_master_params[group_id].append(splited_param)
 
             # compute norm
             working_grads = self._grad_store.get_working_grads_by_group_id(group_id)
