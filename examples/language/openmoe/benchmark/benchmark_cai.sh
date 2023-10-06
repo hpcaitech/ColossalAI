@@ -36,8 +36,7 @@ torchrun --standalone --nproc_per_node $NUM_GPU \
     --warmup $WARMUP \
     --active $ACTIVE \
     --plugin ep \
-    --use_kernel \
-    --extra_dp_size 2
+    --use_kernel
 
 # ep_zero
 torchrun --standalone --nproc_per_node $NUM_GPU \
