@@ -83,7 +83,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             dp_process_group: Optional[ProcessGroup] = None,    # the dp pg for comm
             tp_process_group: Optional[ProcessGroup] = None,    # if using tp
             forced_dtype: Optional[torch.dtype] = None,
-            inner_dp_process_group: Optional[ProcessGroup] = None):
+            extra_dp_process_group: Optional[ProcessGroup] = None):
 
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
         self._dtype = self.optim.param_groups[0]['params'][0].dtype
@@ -104,9 +104,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self._world_size = dist.get_world_size(group=self.dp_pg)
         
         # inner dp
-        self.inner_dp_pg = inner_dp_process_group
-        self.inner_dp_pg_size = dist.get_world_size(group=self.inner_dp_pg)
-        self.inner_dp_pg_rank = dist.get_rank(group=self.inner_dp_pg)
+        self.extra_dp_pg = extra_dp_process_group
+        self.extra_dp_pg_size = dist.get_world_size(group=self.extra_dp_pg)
+        self.extra_dp_pg_rank = dist.get_rank(group=self.extra_dp_pg)
 
         self.tp_pg = tp_process_group
 
@@ -151,7 +151,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             group_params = list()
             for param in param_group['params']:
                 if param.requires_grad:
-                    if self.inner_dp_pg is not None:
+                    if self.extra_dp_pg is not None:
                         # skip moe param
                         if is_moe_tensor(param):
                             moe_params.append(param)
@@ -270,7 +270,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if self._bucket_store.num_elements_in_bucket() > 0:
             self._bucket_store.build_grad_in_bucket()
 
-            if self.inner_dp_pg is None:
+            if self.extra_dp_pg is None:
                 flat_grads = self._bucket_store.get_flatten_grad()
                 flat_grads /= self._world_size
 
@@ -280,7 +280,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             if self._overlap_communication:
                 stream = self._comm_stream
                 # in case of the memory being reused in the default stream
-                if self.inner_dp_pg is None:
+                if self.extra_dp_pg is None:
                     flat_grads.record_stream(stream)
                 # waiting for ops in the default stream finishing
                 stream.wait_stream(torch.cuda.current_stream())
@@ -290,7 +290,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             with torch.cuda.stream(stream):
                 group_id = self._bucket_store.current_group_id
 
-                if self.inner_dp_pg is None:
+                if self.extra_dp_pg is None:
                     grad_dtype = flat_grads.dtype
                     if self._communication_dtype is not None:
                         flat_grads = flat_grads.to(self._communication_dtype)
@@ -343,13 +343,13 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                                     self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
 
                     # sync moe param only in zero group
-                    if self.inner_dp_pg is not None and len(moe_grad_list) > 0:
+                    if self.extra_dp_pg is not None and len(moe_grad_list) > 0:
                         flat_grads = []
                         for grad_list in moe_grad_list:
                             flat_grads.append(_flatten_dense_tensors(grad_list))
                         flat_grads = _flatten_dense_tensors(flat_grads)
                         
-                        dist.all_reduce(flat_grads, group=self.inner_dp_pg)
+                        dist.all_reduce(flat_grads, group=self.extra_dp_pg)
                         # if flat_grads.dtype != grad_dtype:
                         #     flat_grads = flat_grads.to(grad_dtype)
 
@@ -499,10 +499,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 grads = self._grad_store.get_partitioned_gradients_by_param_id(group_id, id(working_param))
                 if len(grads) > 0:
                     # moe hybrid zero
-                    if self.inner_dp_pg is not None and is_moe_tensor(working_param):
+                    if self.extra_dp_pg is not None and is_moe_tensor(working_param):
                         real_working_params[group_id].append(working_param)
-                        param_slice = self._world_size // self.inner_dp_pg_size
-                        grad = grads[self.inner_dp_pg_rank * param_slice: (self.inner_dp_pg_rank + 1) * param_slice]
+                        param_slice = self._world_size // self.extra_dp_pg_size
+                        grad = grads[self.extra_dp_pg_rank * param_slice: (self.extra_dp_pg_rank + 1) * param_slice]
                         grad = flatten(grad).to(splited_param.dtype).to(splited_param.device)
                         splited_param.grad = grad
                         grad_partition_groups.append(grad)

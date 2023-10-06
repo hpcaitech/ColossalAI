@@ -89,7 +89,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
     def __init__(self,
                  tp_size: int,
                  pp_size: int,
-                 inner_dp_size: int = 1,
+                 extra_dp_size: int = 1,
                  precision: str = 'fp16',
                  zero_stage: int = 0,
                  enable_all_optimization: bool = False,
@@ -118,6 +118,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                  cpu_offload: bool = False,
                  communication_dtype: Optional[torch.dtype] = None,
                  overlap_communication: bool = True,
+                 use_ep_inside: bool = True,
                  custom_policy: Policy = None) -> None:
 
         super().__init__(tp_size=tp_size,
@@ -146,14 +147,18 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size)
 
         # sync moe in outer dp group, and sync other param in global dp group
-        if inner_dp_size > 1:
-            self.outer_dp_size = self.dp_size // inner_dp_size
-            self.inner_dp_size = inner_dp_size
-            self.pg_mesh_dp_zero = ProcessGroupMesh(self.pp_size, self.outer_dp_size, self.inner_dp_size)
-            self.inner_dp_group = self.pg_mesh_dp_zero.get_group_along_axis(2)
+        if extra_dp_size > 1:
+            ep_size = self.dp_size // extra_dp_size
+            if use_ep_inside:
+                self.pg_mesh_moe = ProcessGroupMesh(self.pp_size, extra_dp_size, ep_size)
+                self.extra_dp_group = self.pg_mesh_moe.get_group_along_axis(1)
+                print(f"Zero Parallel: pp {self.pp_size}, outer_dp {extra_dp_size}, inner_dp {ep_size}")
+            else:
+                self.pg_mesh_moe = ProcessGroupMesh(self.pp_size, ep_size, extra_dp_size)
+                self.extra_dp_group = self.pg_mesh_moe.get_group_along_axis(2)
+                print(f"Zero Parallel: pp {self.pp_size}, outer_dp {ep_size}, inner_dp {extra_dp_size}")
         else:
-            self.inner_dp_group = None
-        print(f"Zero Parallel: pp {self.pp_size}, outer_dp {self.outer_dp_size}, inner_dp {inner_dp_size}")
+            self.extra_dp_group = None
 
         self.stage_manager = None
         self.schedule = None
@@ -298,7 +303,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                                                         param_info=param_info,
                                                         dp_process_group=self.dp_group,
                                                         tp_process_group=self.tp_group,
-                                                        inner_dp_process_group=self.inner_dp_group,
+                                                        extra_dp_process_group=self.extra_dp_group,
                                                         verbose=True,
                                                         clip_grad_norm=self.max_norm,
                                                         **self.zero_config,

@@ -93,7 +93,7 @@ def parse_args():
     parser.add_argument("--ep_size", type=int, default=2, help="ep size")
     parser.add_argument("--zero_stage", type=int, default=1, help="zero stage in hybrid plugin")
     parser.add_argument("--microbatch_size", type=int, default=1, help="microbatch size")
-    parser.add_argument("--inner_dp_size", type=int, default=1)
+    parser.add_argument("--extra_dp_size", type=int, default=1)
     # kernel
     parser.add_argument(
         "--use_kernel",
@@ -116,81 +116,73 @@ def main():
 
     # Set plugin
     booster_kwargs = {}
+    hybrid_dict = {"tp_size": 1, "custom_policy": OpenMoeForCausalLMPolicy(), "enable_fused_normalization": args.use_kernel, "enable_jit_fused": args.use_kernel}
+    mgr_dict = {"seed": 42, "use_kernel_optim": args.use_kernel}
     if args.plugin == "zero2":
         dp_size = dist.get_world_size()
         plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
         MOE_MANAGER.setup(
-            seed=42,
             parallel=None,
-            use_kernel_optim=args.use_kernel,
+            **mgr_dict,
         )
-    elif args.plugin == "dp_zero":
+    elif args.plugin == "ep":
         dp_size = dist.get_world_size()
         plugin = MoeHybridParallelPlugin(
-            tp_size=1,
+            pp_size=1,
+            zero_stage=2,
+            **hybrid_dict,
+        )
+        MOE_MANAGER.setup(
+            parallel="EP",
+            **mgr_dict,
+        )
+    elif args.plugin == "ep_zero":
+        dp_size = dist.get_world_size()
+        use_ep_inside = False
+        plugin = MoeHybridParallelPlugin(
             pp_size=1,
             zero_stage=1,
-            custom_policy=OpenMoeForCausalLMPolicy(),
-            enable_fused_normalization=args.use_kernel,
-            enable_jit_fused=args.use_kernel,
-            inner_dp_size=args.inner_dp_size,
+            extra_dp_size=args.extra_dp_size,
+            use_ep_inside=use_ep_inside,
+            **hybrid_dict,
         )
         MOE_MANAGER.setup(
-            seed=42,
             parallel="EP",
-            max_ep_size=dp_size // args.inner_dp_size,
-            use_kernel_optim=args.use_kernel,
-            use_ep_inside=False,
+            max_ep_size=dp_size // args.extra_dp_size,
+            use_ep_inside=use_ep_inside,
+            **mgr_dict,
         )
-    elif args.plugin == "zero2_ep":
+    elif args.plugin == "zero_ep":
         dp_size = dist.get_world_size()
+        use_ep_inside = True
         plugin = MoeHybridParallelPlugin(
-            tp_size=1,
             pp_size=1,
-            zero_stage=2,
-            custom_policy=OpenMoeForCausalLMPolicy(),
-            enable_fused_normalization=args.use_kernel,
-            enable_jit_fused=args.use_kernel,
+            zero_stage=1,
+            extra_dp_size=args.extra_dp_size,
+            use_ep_inside=use_ep_inside,
+            **hybrid_dict,
         )
         MOE_MANAGER.setup(
-            seed=42,
             parallel="EP",
-            use_kernel_optim=args.use_kernel,
-        )
-    elif args.plugin == "zero2_tp":
-        dp_size = dist.get_world_size()
-        plugin = MoeHybridParallelPlugin(
-            tp_size=1,
-            pp_size=1,
-            zero_stage=2,
-            custom_policy=OpenMoeForCausalLMPolicy(),
-            enable_fused_normalization=args.use_kernel,
-            enable_jit_fused=args.use_kernel,
-        )
-        MOE_MANAGER.setup(
-            seed=42,
-            parallel="TP",
-            use_kernel_optim=args.use_kernel,
+            max_ep_size=dp_size // args.extra_dp_size,
+            use_ep_inside=use_ep_inside,
+            **mgr_dict,
         )
     elif args.plugin == "hybrid":
         dp_size = dist.get_world_size() // args.pp_size
         plugin = MoeHybridParallelPlugin(
-            tp_size=1,
             pp_size=args.pp_size,
             zero_stage=args.zero_stage,
             microbatch_size=args.microbatch_size,
-            custom_policy=OpenMoeForCausalLMPolicy(),
-            enable_fused_normalization=args.use_kernel,
-            enable_jit_fused=args.use_kernel,
+            **hybrid_dict,
         )
         MOE_MANAGER.setup(
-            seed=42,
             parallel="EP",
             mode="fixed",
             fixed_dp_size=args.dp_size,
             fixed_ep_size=args.ep_size,
             fixed_pp_size=args.pp_size,
-            use_kernel_optim=args.use_kernel,
+            **mgr_dict,
         )
     else:
         raise ValueError(f"Invalid plugin {args.plugin}")
