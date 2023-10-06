@@ -2,7 +2,7 @@
 
 set -xue
 
-NUM_GPU=8
+NUM_GPU=4
 MODEL="8b"
 SEQ_LENGTH=2048
 WARMUP=8
@@ -16,7 +16,7 @@ else
     export PYTHONPATH=$example_dir:$PYTHONPATH
 fi
 
-# zero2
+# zero
 torchrun --standalone --nproc_per_node $NUM_GPU \
     $example_dir/benchmark/benchmark_cai.py \
     --model_name $MODEL \
@@ -24,10 +24,10 @@ torchrun --standalone --nproc_per_node $NUM_GPU \
     --seq_length $SEQ_LENGTH \
     --warmup $WARMUP \
     --active $ACTIVE \
-    --plugin zero2 \
+    --plugin zero \
     --use_kernel
 
-# zero2_tp
+# ep
 torchrun --standalone --nproc_per_node $NUM_GPU \
     $example_dir/benchmark/benchmark_cai.py \
     --model_name $MODEL \
@@ -35,10 +35,11 @@ torchrun --standalone --nproc_per_node $NUM_GPU \
     --seq_length $SEQ_LENGTH \
     --warmup $WARMUP \
     --active $ACTIVE \
-    --plugin zero2_tp \
-    --use_kernel
+    --plugin ep \
+    --use_kernel \
+    --extra_dp_size 2
 
-# zero2_ep
+# ep_zero
 torchrun --standalone --nproc_per_node $NUM_GPU \
     $example_dir/benchmark/benchmark_cai.py \
     --model_name $MODEL \
@@ -46,14 +47,27 @@ torchrun --standalone --nproc_per_node $NUM_GPU \
     --seq_length $SEQ_LENGTH \
     --warmup $WARMUP \
     --active $ACTIVE \
-    --plugin zero2_ep \
-    --use_kernel
+    --plugin ep_zero \
+    --use_kernel \
+    --extra_dp_size 2
+
+# zero_ep
+torchrun --standalone --nproc_per_node $NUM_GPU \
+    $example_dir/benchmark/benchmark_cai.py \
+    --model_name $MODEL \
+    --batch_size 12 \
+    --seq_length $SEQ_LENGTH \
+    --warmup $WARMUP \
+    --active $ACTIVE \
+    --plugin zero_ep \
+    --use_kernel \
+    --extra_dp_size 2
 
 # hybrid
 torchrun --standalone --nproc_per_node $NUM_GPU \
     $example_dir/benchmark/benchmark_cai.py \
     --model_name $MODEL \
-    --batch_size 512 \
+    --batch_size 128 \
     --seq_length $SEQ_LENGTH \
     --warmup $WARMUP \
     --active $ACTIVE \

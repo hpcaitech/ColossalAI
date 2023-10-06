@@ -118,7 +118,7 @@ def main():
     booster_kwargs = {}
     hybrid_dict = {"tp_size": 1, "custom_policy": OpenMoeForCausalLMPolicy(), "enable_fused_normalization": args.use_kernel, "enable_jit_fused": args.use_kernel}
     mgr_dict = {"seed": 42, "use_kernel_optim": args.use_kernel}
-    if args.plugin == "zero2":
+    if args.plugin == "zero":
         dp_size = dist.get_world_size()
         plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
         MOE_MANAGER.setup(
