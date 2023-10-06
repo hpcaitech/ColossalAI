@@ -6,7 +6,6 @@ import torch.nn as nn
 import colossalai
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin
 from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroModel
-from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.utils import get_current_device
 from colossalai.zero.gemini.gemini_ddp import GeminiDDP
 
@@ -130,6 +129,9 @@ class GeminiStrategy(DDPStrategy):
         seed: int = 42,
         shard_init: bool = False,  # only for stage 3
         placement_policy: str = "auto",
+        shard_param_frac: float = 1.0,  # only for static placement
+        offload_optim_frac: float = 0.0,  # only for static placement
+        offload_param_frac: float = 0.0,  # only for static placement
         pin_memory: bool = True,  # only for stage 3
         force_outputs_fp32: bool = False,  # only for stage 3
         search_range_m: int = 32,  # only for stage 3
@@ -160,6 +162,9 @@ class GeminiStrategy(DDPStrategy):
         plugin_initializer = lambda: GeminiPlugin(
             chunk_init_device=get_current_device(),
             placement_policy=placement_policy,
+            shard_param_frac=shard_param_frac,
+            offload_optim_frac=offload_optim_frac,
+            offload_param_frac=offload_param_frac,
             precision="fp16",
             pin_memory=pin_memory,
             force_outputs_fp32=force_outputs_fp32,
@@ -188,7 +193,7 @@ class GeminiStrategy(DDPStrategy):
         colossalai.launch_from_torch({}, seed=self.seed)
 
     def model_init_context(self):
-        return LazyInitContext(default_device=get_current_device())
+        return super().model_init_context()
 
     def unwrap_model(self, model: nn.Module) -> nn.Module:
         assert isinstance(model, GeminiDDP)

@@ -8,6 +8,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 
+import colossalai.interface.pretrained as pretrained_utils
 from colossalai.checkpoint_io import GeneralCheckpointIO
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 
@@ -131,6 +132,7 @@ class Booster:
         """
         # TODO(FrankLeeeee): consider multi-model and multi-optimizer case
         # TODO(FrankLeeeee): consider multi-dataloader case
+        pretrained_path = pretrained_utils.get_pretrained_path(model)
         # transform model for mixed precision
         if self.plugin:
             model, optimizer, criterion, dataloader, lr_scheduler = self.plugin.configure(
@@ -145,6 +147,12 @@ class Booster:
             # transform model for mixed precision
             # when mixed_precision is specified and the plugin is not given or does not control the precision
             model, optimizer, criterion = self.mixed_precision.configure(model, optimizer, criterion)
+
+        if pretrained_path:
+            self.load_model(model, pretrained_path)
+            # clear pretrained path attr
+            orig_model = model.unwrap() if isinstance(model, ModelWrapper) else model
+            pretrained_utils.set_pretrained_path(orig_model, None)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 

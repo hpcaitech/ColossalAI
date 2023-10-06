@@ -11,6 +11,7 @@ from torch.utils._pytree import tree_map
 from colossalai.logging import get_dist_logger
 
 from .construction import ConstructorManager
+from .pretrained import PretrainedManager
 
 import colossalai._analyzer._subclasses._meta_registration  # noqa
 
@@ -471,30 +472,11 @@ class LazyTensor(torch.Tensor):
 class LazyInitContext:
     """Context manager for lazy initialization. Enables initializing the model without allocating real memory.
 
-    Usage:
-        1. The model is initialized, but no real memory is allocated.
-        >>> ctx = LazyInitContext()
-        >>> with ctx:
-        >>>     model = MyModel().cuda()
-
-        2. The model is initialized with ``MetaTensor`` as weights, but still no real memory is allocated.
-        >>> with ctx.traceable(model):
-        >>>     gm = symbolic_trace(model, meta_args=meta_args)
-        >>> # Solve the execution strategy and apply the strategy to the model
-        >>> strategy = StrategyAndSpec()
-
-        3. The model is initialized with ``torch.Tensor`` as weights, and real memory is allocated. (single device)
-        >>> model = ctx.materialize(model)
-
-        3. The model is initialized with sharded ``torch.Tensor`` as weights, and real memory is allocated. (distributed scenario)
-        >>> model = apply_strategy_to_all_params(model, strategy)
-        >>> model = ctx.distribute(model)
-
-    Warnings:
-        This API is still experimental and further modifications can be made to it.
-        For example:
-            1. Quantization strategies can be applied before allocating real memory.
-            2. Lazy initialization seems slower than normal initialization.
+    Args:
+        tensor_cls (Union[_MyTensor, LazyTensor], optional): This is only for test. Defaults to LazyTensor.
+        default_device (Optional[Union[torch.device, str, int]], optional): Defalt device for initialization.
+            If it's cuda, initilization will be accelerated, but cuda memory will be allocated. By default, it's cpu.
+            Defaults to None.
     """
 
     _replaced: bool = False
@@ -595,11 +577,13 @@ class LazyInitContext:
         )
 
         ConstructorManager.apply(overrides)
+        PretrainedManager.inject()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.tensor_cls.default_device = self.old_default_device
         LazyInitContext._replaced = False
         ConstructorManager.clear()
+        PretrainedManager.recover()
 
     @staticmethod
     def materialize(module: nn.Module, verbose: bool = False) -> nn.Module:

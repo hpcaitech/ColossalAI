@@ -44,12 +44,6 @@ We've tested compatibility on some famous models, following models may not be su
 
 - `timm.models.convit_base`
 - dlrm and deepfm models in `torchrec`
-- `diffusers.VQModel`
-- `transformers.AlbertModel`
-- `transformers.AlbertForPreTraining`
-- `transformers.BertModel`
-- `transformers.BertForPreTraining`
-- `transformers.GPT2DoubleHeadsModel`
 
 Compatibility problems will be fixed in the future.
 
@@ -73,8 +67,6 @@ This plugin implements the combination of various parallel training strategies a
 4. Zero: This plugin can adopt Zero 1/2 as data parallel strategy through setting the `zero_stage` argument as 1 or 2 when initializing plugin. Zero 1 is compatible with pipeline parallel strategy, while Zero 2 is not. More details about its argument configuration can be found in [Low Level Zero Plugin](#low-level-zero-plugin).
 
 > ⚠ When using this plugin, only the subset of Huggingface transformers supported by Shardformer are compatible with tensor parallel, pipeline parallel and optimization tools. Mainstream transformers such as Llama 1, Llama 2, OPT, Bloom, Bert and GPT2 etc. are all supported by Shardformer.
-
-> ⚠ This plugin only supports sharded checkpointing methods for model/optimizer at present. Unsharded checkpointing methods will be supported in future release.
 
 {{ autodoc:colossalai.booster.plugin.HybridParallelPlugin }}
 

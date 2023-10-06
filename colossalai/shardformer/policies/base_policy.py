@@ -50,7 +50,7 @@ class ModulePolicyDescription:
                         new_weight = shard_rowwise(weight, process_group)
                         module.weight = torch.nn.Parameter(new_weight)
                     ```
-        sub_module_replacement (List[SubModuleReplacementDescription]): each element in the list is a ParamReplacementDescription
+        sub_module_replacement (List[SubModuleReplacementDescription]): each element in the list is a SubModuleReplacementDescription
                     object which specifies the module to be replaced and the target module used to replacement.
         method_replace (Dict[str, Callable]): key is the method name, value is the method for replacement
     """
