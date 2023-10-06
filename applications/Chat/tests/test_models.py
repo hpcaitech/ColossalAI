@@ -209,8 +209,9 @@ def test_loss(batch_size: int, seq_len: int, num_labels: int):
             batch_size,
             seq_len,
         ),
-        "reward": torch.randn(
+        "advantage": torch.randn(
             batch_size,
+            seq_len,
         ),
         "action_mask": torch.randn(batch_size, seq_len),
     }

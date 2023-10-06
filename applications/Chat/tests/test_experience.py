@@ -62,7 +62,7 @@ def make_and_consume_experience(strategy):
             self.eos_token_id = 0
             self.pad_token_id = 0
 
-        def batch_decode(sequences, skip_special_tokens=True):
+        def batch_decode(self, sequences, skip_special_tokens=True):
             return "This is a test sentence."
 
     tokenizer = MockTokenizer()
