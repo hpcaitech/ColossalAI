@@ -1,5 +1,5 @@
 from typing import Dict, List, Optional
-import logging
+
 from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import Experience, NaiveExperienceMaker
 from coati.models.base import Actor, Critic, RewardModel, get_base_model
@@ -99,7 +99,9 @@ class PPOTrainer(OnPolicyTrainer):
         self.actor_scheduler = actor_lr_scheduler
         self.tokenizer = tokenizer
         self.rm_model_tokenizer = rm_model_tokenizer
-        self.experience_maker = NaiveExperienceMaker(self.actor, self.critic, reward_model, initial_model, self.tokenizer, self.rm_model_tokenizer, kl_coef)
+        self.experience_maker = NaiveExperienceMaker(
+            self.actor, self.critic, reward_model, initial_model, self.tokenizer, self.rm_model_tokenizer, kl_coef
+        )
 
         self.actor_loss_fn = PolicyLoss(eps_clip)
         self.critic_loss_fn = ValueLoss(value_clip)
@@ -132,7 +134,7 @@ class PPOTrainer(OnPolicyTrainer):
         if use_wandb and is_rank_0():
             assert log_dir is not None, "log_dir must be provided when use_wandb is True"
             import wandb
-            
+
             self.wandb_run = wandb.init(project="Coati-ppo", sync_tensorboard=True)
         if log_dir is not None and is_rank_0():
             import os
@@ -154,18 +156,20 @@ class PPOTrainer(OnPolicyTrainer):
         return self.experience_maker.make_experience(**prompts, **self.generate_kwargs)
 
     def _training_step(self, experience: Experience):
-        '''
+        """
         Args:
             experience:
                 sequences: [batch_size, prompt_length + response_length] --- <PAD>...<PAD><PROMPT>...<PROMPT><RESPONSE>...<RESPONSE><PAD>...<PAD>
-        '''
+        """
         self.num_train_step += 1
         self.actor.train()
         self.critic.train()
         num_actions = experience.action_log_probs.size(1)
         # policy loss
-        
-        actor_logits = self.actor(experience.sequences, experience.attention_mask)["logits"] # [batch size, prompt_length + response_length]
+
+        actor_logits = self.actor(experience.sequences, experience.attention_mask)[
+            "logits"
+        ]  # [batch size, prompt_length + response_length]
         action_log_probs = calc_action_log_probs(actor_logits, experience.sequences, num_actions)
 
         actor_loss, to_skip, max_ratio = self.actor_loss_fn(
@@ -181,37 +185,44 @@ class PPOTrainer(OnPolicyTrainer):
             ptx_log_probs = self.actor(batch["input_ids"], batch["attention_mask"])["logits"]
             ptx_loss = self.ptx_coef * self.ptx_loss_fn(ptx_log_probs, batch["labels"])
             self.strategy.backward(ptx_loss, self.actor, self.actor_optim)
-        
+
         # value loss
-        values = self.critic(experience.sequences, attention_mask=experience.attention_mask) # [batch size, prompt_length + response_length]
-        critic_loss = self.critic_loss_fn(values[:,-num_actions:], experience.values, experience.advantages,
-                                           action_mask=experience.action_mask)
+        values = self.critic(
+            experience.sequences, attention_mask=experience.attention_mask
+        )  # [batch size, prompt_length + response_length]
+        critic_loss = self.critic_loss_fn(
+            values[:, -num_actions:], experience.values, experience.advantages, action_mask=experience.action_mask
+        )
         critic_loss = critic_loss * self.vf_coef
         self.strategy.backward(critic_loss, self.critic, self.critic_optim)
-        
+
         # TODO Implement check overflow here
         if not to_skip:
             self.strategy.optimizer_step(self.actor_optim)
         self.strategy.optimizer_step(self.critic_optim)
         self.actor_optim.zero_grad()
         self.critic_optim.zero_grad()
-        self.actor_scheduler.step()
+        if self.actor_scheduler:
+            self.actor_scheduler.step()
         response_text = self.experience_maker.tokenizer.batch_decode(experience.sequences, skip_special_tokens=True)
         for i in range(len(response_text)):
-            response_text[i] = response_text[i]+f'\n\nReward: {experience.reward[i]}'
-            if i<3:
+            response_text[i] = response_text[i] + f"\n\nReward: {experience.reward[i]}"
+            if i < 3:
                 print(response_text[i])
-            
+
         if self.writer:
             # use wandb
             import wandb
-            if self.num_train_step%50==1 and 'wandb_run' in self.__dict__:
-                my_table = wandb.Table(columns=[f"sample response {i}" for i in range(len(response_text))], data=[response_text])
+
+            if self.num_train_step % 50 == 1 and "wandb_run" in self.__dict__:
+                my_table = wandb.Table(
+                    columns=[f"sample response {i}" for i in range(len(response_text))], data=[response_text]
+                )
                 try:
                     self.wandb_run.log({"sample_response": my_table})
                 except OSError as e:
                     print(e)
-                        
+
             self.writer.add_scalar("train/max_ratio", max_ratio, self.num_train_step)
             self.writer.add_scalar("train/skip", 1 if to_skip else 0, self.num_train_step)
             self.writer.add_scalar("train/actor_loss", actor_loss.mean().item(), self.num_train_step)
