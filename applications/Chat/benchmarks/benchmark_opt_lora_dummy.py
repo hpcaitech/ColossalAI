@@ -204,6 +204,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_collect_steps", type=int, default=8)
     parser.add_argument("--num_update_steps", type=int, default=1)
     parser.add_argument("--train_batch_size", type=int, default=8)
+    parser.add_argument("--save_per_num_episodes", type=int, default=1000)
     parser.add_argument("--experience_batch_size", type=int, default=8)
     parser.add_argument("--lora_rank", type=int, default=0)
     parser.add_argument("--cuda_mem_frac", type=float, default=1.0)

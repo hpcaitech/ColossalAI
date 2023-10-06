@@ -65,6 +65,12 @@ def make_and_consume_experience(strategy):
         def batch_decode(self, sequences, skip_special_tokens=True):
             return "This is a test sentence."
 
+        def __call__(self, sequences, **kwargs):
+            return {
+                "input_ids": torch.randint(0, 50257, (len(sequences), 100), device="cpu"),
+                "attention_mask": torch.ones((len(sequences), 100), device="cpu"),
+            }
+
     tokenizer = MockTokenizer()
     experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, tokenizer, tokenizer)
     data_buffer = NaiveExperienceBuffer(SAMPLE_BATCH_SIZE, cpu_offload=False)
