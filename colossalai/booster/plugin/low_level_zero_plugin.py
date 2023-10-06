@@ -226,7 +226,7 @@ class LowLevelZeroPlugin(DPPluginBase):
     ```
 
     Args:
-        strage (int, optional): ZeRO stage. Defaults to 1.
+        stage (int, optional): ZeRO stage. Defaults to 1.
         precision (str, optional): precision. Support 'fp16', 'bf16' and 'fp32'. Defaults to 'fp16'.
         initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
         min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
