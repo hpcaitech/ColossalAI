@@ -93,6 +93,7 @@ def parse_args():
     parser.add_argument("--ep_size", type=int, default=2, help="ep size")
     parser.add_argument("--zero_stage", type=int, default=1, help="zero stage in hybrid plugin")
     parser.add_argument("--microbatch_size", type=int, default=1, help="microbatch size")
+    parser.add_argument("--inner_dp_size", type=int, default=1)
     # kernel
     parser.add_argument(
         "--use_kernel",
@@ -132,13 +133,14 @@ def main():
             custom_policy=OpenMoeForCausalLMPolicy(),
             enable_fused_normalization=args.use_kernel,
             enable_jit_fused=args.use_kernel,
-            outer_dp_size=2,
+            inner_dp_size=args.inner_dp_size,
         )
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",
-            max_ep_size=dp_size // 2,
+            max_ep_size=dp_size // args.inner_dp_size,
             use_kernel_optim=args.use_kernel,
+            use_ep_inside=False,
         )
     elif args.plugin == "zero2_ep":
         dp_size = dist.get_world_size()

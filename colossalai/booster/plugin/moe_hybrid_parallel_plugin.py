@@ -89,7 +89,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
     def __init__(self,
                  tp_size: int,
                  pp_size: int,
-                 outer_dp_size: int = 1,
+                 inner_dp_size: int = 1,
                  precision: str = 'fp16',
                  zero_stage: int = 0,
                  enable_all_optimization: bool = False,
@@ -146,13 +146,14 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size)
 
         # sync moe in outer dp group, and sync other param in global dp group
-        if outer_dp_size > 1:
-            self.inner_dp_size = self.dp_size // outer_dp_size
-            self.outer_dp_size = outer_dp_size
+        if inner_dp_size > 1:
+            self.outer_dp_size = self.dp_size // inner_dp_size
+            self.inner_dp_size = inner_dp_size
             self.pg_mesh_dp_zero = ProcessGroupMesh(self.pp_size, self.outer_dp_size, self.inner_dp_size)
-            self.outer_dp_group = self.pg_mesh_dp_zero.get_group_along_axis(1)
+            self.inner_dp_group = self.pg_mesh_dp_zero.get_group_along_axis(2)
         else:
-            self.outer_dp_group = None
+            self.inner_dp_group = None
+        print(f"Zero Parallel: pp {self.pp_size}, outer_dp {self.outer_dp_size}, inner_dp {inner_dp_size}")
 
         self.stage_manager = None
         self.schedule = None
@@ -297,7 +298,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                                                         param_info=param_info,
                                                         dp_process_group=self.dp_group,
                                                         tp_process_group=self.tp_group,
-                                                        outer_dp_process_group=self.outer_dp_group,
+                                                        inner_dp_process_group=self.inner_dp_group,
                                                         verbose=True,
                                                         clip_grad_norm=self.max_norm,
                                                         **self.zero_config,

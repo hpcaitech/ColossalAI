@@ -209,14 +209,14 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             dp_process_group: Optional[ProcessGroup] = None,    # the dp pg for comm
             tp_process_group: Optional[ProcessGroup] = None,    # if using tp
             forced_dtype: Optional[torch.dtype] = None,
-            outer_dp_process_group: Optional[ProcessGroup] = None):
+            inner_dp_process_group: Optional[ProcessGroup] = None):
         self.param_info = param_info
         if use_pipeline:
             init_pipeline_optimizer(optimizer, model)
         super().__init__(optimizer, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
                          hysteresis, max_scale, clip_grad_norm, verbose, reduce_bucket_size, communication_dtype,
                          overlap_communication, partition_grad, cpu_offload, dp_process_group, tp_process_group,
-                         forced_dtype, outer_dp_process_group)
+                         forced_dtype, inner_dp_process_group)
 
 
 class HybridParallelPlugin(PipelinePluginBase):
