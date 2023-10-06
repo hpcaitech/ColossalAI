@@ -161,7 +161,7 @@ def test_models(models_maker: Callable[[], Tuple[Actor, Critic, RewardModel]], b
         assert isinstance(critic, Critic)
         get_base_model(critic)
         critic_output = critic(**critic_input)
-        assert critic_output.shape == (batch_size,)
+        assert critic_output.shape == (batch_size, seq_len)
 
     if rm:
         assert isinstance(rm, RewardModel)
@@ -192,6 +192,7 @@ def test_loss(batch_size: int, seq_len: int, num_labels: int):
         "advantages": torch.randn(
             batch_size,
         ),
+        "action_mask": torch.randn(batch_size, seq_len),
     }
     loss(**loss_input)
 
@@ -206,6 +207,7 @@ def test_loss(batch_size: int, seq_len: int, num_labels: int):
         "reward": torch.randn(
             batch_size,
         ),
+        "action_mask": torch.randn(batch_size, seq_len),
     }
     loss(**loss_input)
 

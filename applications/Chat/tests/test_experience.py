@@ -63,7 +63,7 @@ def make_and_consume_experience(strategy):
             self.pad_token_id = 0
 
     tokenizer = MockTokenizer()
-    experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, tokenizer)
+    experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, tokenizer, tokenizer)
     data_buffer = NaiveExperienceBuffer(SAMPLE_BATCH_SIZE, cpu_offload=False)
 
     generate_kwargs = dict(do_sample=True, max_length=16)
