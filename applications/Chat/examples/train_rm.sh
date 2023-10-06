@@ -24,6 +24,5 @@ torchrun --standalone --nproc_per_node=2 --nnodes=1 train_reward_model.py \
     --save_path '/home/lcyab/data/Anthropic_rlhf/reward_model_v2_1' \
     --use_wandb \
     --batch_size 16 \
-    --max_epochs 10 \
-    --model_path '/home/lcyab/data/Anthropic_rlhf/reward_model_v2_1' \
+    --max_epochs 10
 

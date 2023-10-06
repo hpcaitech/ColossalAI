@@ -167,12 +167,7 @@ class PPOTrainer(OnPolicyTrainer):
         
         actor_logits = self.actor(experience.sequences, experience.attention_mask)["logits"] # [batch size, prompt_length + response_length]
         action_log_probs = calc_action_log_probs(actor_logits, experience.sequences, num_actions)
-        # print(experience.sequences[0])
-        # print("old prob",experience.action_log_probs[0].exp())
-        # print("current prob", action_log_probs[0].exp())
-        # print(action_log_probs[0].size())
-        # print((action_log_probs[0] - experience.action_log_probs[0]).exp()*experience.action_mask[0])
-        # exit()
+
         actor_loss, to_skip, max_ratio = self.actor_loss_fn(
             action_log_probs, experience.action_log_probs, experience.advantages, action_mask=experience.action_mask
         )
@@ -204,14 +199,19 @@ class PPOTrainer(OnPolicyTrainer):
         response_text = self.experience_maker.tokenizer.batch_decode(experience.sequences, skip_special_tokens=True)
         for i in range(len(response_text)):
             response_text[i] = response_text[i]+f'\n\nReward: {experience.reward[i]}'
-            print(response_text[i])
-            if i>2:
-                break
+            if i<3:
+                print(response_text[i])
+            
         if self.writer:
             # use wandb
             import wandb
-            # my_table = wandb.Table(columns=["sample response"], data=[[response_text]])
-            # self.wandb_run.log({"sample_response": my_table})
+            if self.num_train_step%50==1 and 'wandb_run' in self.__dict__:
+                my_table = wandb.Table(columns=[f"sample response {i}" for i in range(len(response_text))], data=[response_text])
+                try:
+                    self.wandb_run.log({"sample_response": my_table})
+                except OSError as e:
+                    print(e)
+                        
             self.writer.add_scalar("train/max_ratio", max_ratio, self.num_train_step)
             self.writer.add_scalar("train/skip", 1 if to_skip else 0, self.num_train_step)
             self.writer.add_scalar("train/actor_loss", actor_loss.mean().item(), self.num_train_step)
@@ -220,8 +220,6 @@ class PPOTrainer(OnPolicyTrainer):
             self.writer.add_scalar("train/critic_loss", critic_loss.mean().item(), self.num_train_step)
             if self.ptx_coef != 0:
                 self.writer.add_scalar("train/ptx_loss", ptx_loss.mean().item(), self.num_train_step)
-
-            # self.writer.add_scalar("reward", experience.reward_raw.mean().item(), self.num_train_step)
             self.writer.add_scalar("reward", experience.reward.mean().item(), self.num_train_step)
             self.writer.add_scalar("approx_kl", experience.kl.mean().item(), self.num_train_step)
             self.writer.add_scalar("value", experience.values.mean().item(), self.num_train_step)

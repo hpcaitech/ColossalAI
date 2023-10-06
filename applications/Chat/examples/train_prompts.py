@@ -40,16 +40,14 @@ def main(args):
         # configure model
         if args.model == "gpt2":
             initial_model = GPTActor(pretrained=args.pretrain)
-        # elif args.model == "bloom":
-        #     config = AutoConfig.from_pretrained(args.pretrain)
-        #     config.dropout = 0.0
-        #     initial_model = BLOOMActor(config=config)
-        # elif args.model == "opt":
-        #     initial_model = OPTActor(pretrained=args.pretrain)
-        # elif args.model == "llama":
-        #     initial_model = LlamaActor(pretrained=args.pretrain)
-        # else:
-        #     raise ValueError(f'Unsupported actor model "{args.model}"')
+        elif args.model == "bloom":
+            initial_model = BLOOMActor(pretrained=args.pretrain)
+        elif args.model == "opt":
+            initial_model = OPTActor(pretrained=args.pretrain)
+        elif args.model == "llama":
+            initial_model = LlamaActor(pretrained=args.pretrain)
+        else:
+            raise ValueError(f'Unsupported actor model "{args.model}"')
 
         if args.rm_model is None:
             rm_model_name = args.model
@@ -80,31 +78,38 @@ def main(args):
             config.attn_pdrop = 0.0001
             config.resid_pdrop = 0.0001
             actor = GPTActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
-        # elif args.model == "bloom":
-        #     config = AutoConfig.from_pretrained(args.pretrain)
-        #     config.dropout = 0.0
-        #     actor = BLOOMActor(config=config, lora_rank=args.lora_rank)
-        # elif args.model == "opt":
-        #     actor = OPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
-        # elif args.model == "llama":
-        #     actor = LlamaActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
-        # else:
-        #     raise ValueError(f'Unsupported actor model "{args.model}"')
+        elif args.model == "bloom":
+            config = AutoConfig.from_pretrained(args.pretrain)
+            # TODO: find a proper hyperparameter setting for BLOOM
+            config.attention_dropout = 0.0001
+            config.hidden_dropout = 0.0001
+            actor = BLOOMActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
+        elif args.model == "opt":
+            config = AutoConfig.from_pretrained(args.pretrain)
+            # TODO: find a proper hyperparameter setting for OPT
+            config.attention_dropout = 0.0001
+            config.dropout = 0.0001
+            config.layerdrop = 0.000
+            actor = OPTActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
+        elif args.model == "llama":
+            # Note: llama disable dropout by default
+            actor = LlamaActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
+        else:
+            raise ValueError(f'Unsupported actor model "{args.model}"')
 
         if args.model == "gpt2":
             critic = GPTCritic(pretrained="gpt2", lora_rank=args.lora_rank)
-        # elif args.model == "bloom":
-        #     config = BloomConfig()
-        #     config.dropout = 0.0
-        #     critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        #     critic.model = BloomModel(config)
-        # elif args.model == "opt":
-        #     critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        # elif args.model == "llama":
-        #     critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        # else:
-        #     raise ValueError(f'Unsupported reward model "{rm_model_name}"')
-
+        elif args.model == "bloom":
+            config = BloomConfig()
+            config.dropout = 0.0
+            critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+            critic.model = BloomModel(config)
+        elif args.model == "opt":
+            critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+        elif args.model == "llama":
+            critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+        else:
+            raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
         actor.to(torch.cuda.current_device())
         critic.to(torch.cuda.current_device())
@@ -142,7 +147,6 @@ def main(args):
 
     # configure tokenizer
     rm_model_tokenizer = AutoTokenizer.from_pretrained(args.reward_model_tokenizer)
-    rm_model_tokenizer.padding_side = "left"
     rm_model_tokenizer.pad_token = rm_model_tokenizer.eos_token
 
     prompt_dataset = PromptDataset(
@@ -213,6 +217,7 @@ def main(args):
         num_episodes=args.num_episodes,
         num_collect_steps=args.num_collect_steps,
         num_update_steps=args.num_update_steps,
+        save_per_num_episodes = args.save_per_num_episodes,
         prompt_dataloader=prompt_dataloader,
         pretrain_dataloader=pretrain_dataloader,
         log_dir=args.log_dir,
@@ -238,7 +243,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--prompt_dataset", type=str, default=None, help="path to the prompt dataset")
     parser.add_argument("--pretrain_dataset", type=str, default=None, help="path to the pretrained dataset")
-    parser.add_argument("--max_datasets_size", type=int, default=100)
+    parser.add_argument("--max_datasets_size", type=int, default=50000)
     parser.add_argument(
         "--strategy",
         choices=["ddp", "colossalai_gemini", "colossalai_zero2"],
@@ -257,6 +262,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_episodes", type=int, default=1)
     parser.add_argument("--num_collect_steps", type=int, default=2)
     parser.add_argument("--num_update_steps", type=int, default=5)
+    parser.add_argument("--save_per_num_episodes", type=int, default=1000)
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--ptx_batch_size", type=int, default=1)
     parser.add_argument("--experience_batch_size", type=int, default=8)

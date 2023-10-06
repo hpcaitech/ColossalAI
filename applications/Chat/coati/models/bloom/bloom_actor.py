@@ -26,7 +26,10 @@ class BLOOMActor(Actor):
         lora_train_bias: str = "none",
     ) -> None:
         if pretrained is not None:
-            model = BloomForCausalLM.from_pretrained(pretrained)
+            if config is not None:
+                model = BloomForCausalLM.from_pretrained(pretrained, config=config)
+            else:
+                model = BloomForCausalLM.from_pretrained(pretrained)
         elif config is not None:
             model = BloomForCausalLM(config)
         else:

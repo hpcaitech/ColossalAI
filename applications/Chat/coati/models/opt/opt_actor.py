@@ -27,7 +27,10 @@ class OPTActor(Actor):
         lora_train_bias: str = "none",
     ) -> None:
         if pretrained is not None:
-            model = OPTForCausalLM.from_pretrained(pretrained)
+            if config is not None:
+                model = OPTForCausalLM.from_pretrained(pretrained, config=config)
+            else:
+                model = OPTForCausalLM.from_pretrained(pretrained)
         elif config is not None:
             model = OPTForCausalLM(config)
         else:

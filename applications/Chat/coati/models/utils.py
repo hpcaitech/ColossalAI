@@ -42,7 +42,7 @@ def compute_reward(
     Returns:
         reward: [batch_size, response_length]
     '''
-    log_ratio = log_probs - log_probs_base
+    log_ratio = log_probs - log_probs_base # address numerical instability issue
     kl = -kl_coef * log_ratio * action_mask # _compute_approx_kl(log_probs, log_probs_base, action_mask=action_mask)
     reward = kl
     # print(reward[0]*action_mask[0])
@@ -52,7 +52,7 @@ def compute_reward(
         assert action_mask[i].sum()>0
         reward[i, :action_mask[i].sum()] += r_clip[i]
         reward[i, action_mask[i].sum():] *= 0
-    return reward, (log_ratio.exp() - 1 - log_ratio)*action_mask
+    return reward, ((log_ratio*(log_ratio<10)).exp() - 1 - log_ratio)*action_mask
 
 def _log_probs_from_logits(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     log_probs = F.log_softmax(logits, dim=-1)

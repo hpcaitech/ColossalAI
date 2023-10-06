@@ -160,6 +160,7 @@ class OnPolicyTrainer(ABC):
         num_episodes: int,
         num_collect_steps: int,
         num_update_steps: int,
+        save_per_num_episodes: int,
         *args,
         **kwargs,
     ):
@@ -186,3 +187,20 @@ class OnPolicyTrainer(ABC):
                         self._update_phase(update_step)
                     # NOTE: this is for on-policy algorithms
                     self.data_buffer.clear()
+                if is_rank_0() and (episode + 1) % save_per_num_episodes == 0:
+                    if args.lora_rank > 0 and args.merge_lora_weights:
+                        from coati.models.lora import LORA_MANAGER
+
+                        # NOTE: set model to eval to merge LoRA weights
+                        LORA_MANAGER.merge_weights = True
+                        self.actor.eval()
+                    # save model checkpoint after fitting
+                    self.strategy.save_model(self.actor, args.save_path, only_rank0=True)
+                    # save optimizer checkpoint on all ranks
+                    if args.need_optim_ckpt:
+                        self.strategy.save_optimizer(
+                            self.actor_optim, "actor_optim_checkpoint_prompts_%d.pt" % (torch.cuda.current_device()), only_rank0=False
+                        )
+
+                    self.strategy.save_checkpoint(episode)
+

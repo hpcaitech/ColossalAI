@@ -27,10 +27,10 @@ from colossalai.nn.optimizer import HybridAdam
 # please use the same format as the training data of your reward model
 PROMPT_DICT = {
     "prompt_input": (
-        "Human: {instruction} {input}\nAssistant:"
+        "{instruction} {input}\n"
     ),
     "prompt_no_input": (
-        "Human: {instruction}\nAssistant:"
+        "{instruction}\n"
     ),
 }
 

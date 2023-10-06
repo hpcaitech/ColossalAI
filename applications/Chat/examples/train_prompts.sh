@@ -21,7 +21,7 @@ torchrun --standalone --rdzv_endpoint="localhost:12355" --nproc_per_node=1 train
     --pretrain_dataset /home/lcyab/data/Anthropic_rlhf/pretrain_data.json \
     --prompt_dataset /home/lcyab/data/Anthropic_rlhf/prompts_en.jsonl \
     --strategy colossalai_zero2 \
-    --num_episodes 2000 --num_collect_steps 1 --num_update_steps 1 \
+    --num_episodes 8000 --num_collect_steps 1 --num_update_steps 1 \
     --experience_batch_size 32 \
     --train_batch_size 32 \
     --save_path '/home/lcyab/data/Anthropic_rlhf/actor/v3_5' \

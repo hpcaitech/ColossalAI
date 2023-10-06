@@ -26,7 +26,10 @@ class LlamaActor(Actor):
         lora_train_bias: str = "none",
     ) -> None:
         if pretrained is not None:
-            model = LlamaForCausalLM.from_pretrained(pretrained)
+            if config is not None:
+                model = LlamaForCausalLM.from_pretrained(pretrained, config=config)
+            else:
+                model = LlamaForCausalLM.from_pretrained(pretrained)
         elif config is not None:
             model = LlamaForCausalLM(config)
         else:
