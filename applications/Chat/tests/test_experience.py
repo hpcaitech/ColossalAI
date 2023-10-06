@@ -63,7 +63,7 @@ def make_and_consume_experience(strategy):
             self.pad_token_id = 0
 
         def batch_decode(self, sequences, skip_special_tokens=True):
-            return "This is a test sentence."
+            return ["This is a test sentence." for i in range(len(sequences))]
 
         def __call__(self, sequences, **kwargs):
             return {
