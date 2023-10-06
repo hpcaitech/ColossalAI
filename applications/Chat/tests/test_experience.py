@@ -68,7 +68,7 @@ def make_and_consume_experience(strategy):
         def __call__(self, sequences, **kwargs):
             return {
                 "input_ids": torch.randint(0, 50257, (len(sequences), 100), device="cpu"),
-                "attention_mask": torch.ones((len(sequences), 100), device="cpu"),
+                "attention_mask": torch.ones((len(sequences), 100), device="cpu").bool(),
             }
 
     tokenizer = MockTokenizer()
