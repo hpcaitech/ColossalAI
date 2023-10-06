@@ -185,12 +185,15 @@ def test_loss(batch_size: int, seq_len: int, num_labels: int):
     loss_input = {
         "log_probs": torch.randn(
             batch_size,
+            seq_len,
         ),
         "old_log_probs": torch.randn(
             batch_size,
+            seq_len,
         ),
         "advantages": torch.randn(
             batch_size,
+            seq_len,
         ),
         "action_mask": torch.randn(batch_size, seq_len),
     }
@@ -200,9 +203,11 @@ def test_loss(batch_size: int, seq_len: int, num_labels: int):
     loss_input = {
         "values": torch.randn(
             batch_size,
+            seq_len,
         ),
         "old_values": torch.randn(
             batch_size,
+            seq_len,
         ),
         "reward": torch.randn(
             batch_size,
