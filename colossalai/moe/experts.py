@@ -48,15 +48,12 @@ class BaseMLPExperts(nn.Module):
             self.num_local_experts, self.moe_info = MOE_MANAGER.get_info(
                 num_experts, use_tp=True if expert_parallel == "TP" else False)
             # get settings for different parallel
+            self.ep_size = get_ep_size(self)
             if expert_parallel == "TP":
-                assert (
-                    intermediate_size %
-                    MOE_MANAGER.max_ep_size == 0), "intermediate_size should be divide by maximum expert parallel size"
-                intermediate_size = intermediate_size // MOE_MANAGER.max_ep_size
+                intermediate_size = intermediate_size // self.ep_size
                 num_experts = self.num_total_experts
             else:
                 num_experts = self.num_local_experts
-            self.ep_size = get_ep_size(self)
         else:
             self.num_local_experts = self.num_total_experts
             self.ep_size = 1
