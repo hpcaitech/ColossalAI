@@ -57,9 +57,9 @@ def run_test_checkpoint(strategy_name: str, shard: bool):
         rank0_dirname = rank0_dirname[0]
 
         model_path = os.path.join(rank0_dirname, "model" if shard else f"model.pt")
-        strategy.save_model(actor, model_path, only_rank0=not shard)
+        strategy.save_model(actor, model_path)
         optim_path = os.path.join(rank0_dirname, "optim" if shard else "optim.pt")
-        strategy.save_optimizer(actor_optim, optim_path, only_rank0=not shard)
+        strategy.save_optimizer(actor_optim, optim_path)
         dist.barrier()
 
         strategy.load_model(actor, model_path, strict=False)
