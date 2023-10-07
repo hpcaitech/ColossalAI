@@ -74,6 +74,7 @@ class GeminiDDP(ModelWrapper):
         mixed_precision: torch.dtype = torch.float16,
         process_group: Optional[ProcessGroup] = None,
         memstats: Optional[MemStats] = None,  # genimi memory stats
+        master_weights: bool = True,
         verbose: bool = False,
     ) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
@@ -114,6 +115,9 @@ class GeminiDDP(ModelWrapper):
         self.scatter_after_inference = scatter_after_inference
         self.mixed_precision = mixed_precision
         self.dp_process_group = process_group or _get_default_group()
+
+        self.reuse_fp16_chunk = master_weights
+        self.master_weights = master_weights
 
         self._logger = get_dist_logger()
 
@@ -321,8 +325,13 @@ class GeminiDDP(ModelWrapper):
                     f"Parameter `{self.param2name[p]}` failed at the gradient reduction. "
                     "Some unsupported torch function is operated upon this parameter."
                 )
-            self.chunk_manager.trans_tensor_state(p, TensorState.READY_FOR_REDUCE)
-            chunk.copy_tensor_to_chunk_slice(p, grad)
+            if not self.reuse_fp16_chunk:
+                chunk = self.chunk_manager.init_grad_chunk(chunk)
+                # hold -> compute -> hold after bwd
+                chunk.tensor_trans_state(p, TensorState.COMPUTE)
+                chunk.tensor_trans_state(p, TensorState.HOLD_AFTER_BWD)
+            chunk.tensor_trans_state(p, TensorState.READY_FOR_REDUCE)
+            chunk.copy_tensor_to_chunk_slice(p, grad, update_ptr=self.reuse_fp16_chunk)
             reduced = self.chunk_manager.reduce_chunk(chunk)
             if reduced:
                 if chunk.is_gathered:

@@ -245,3 +245,8 @@ class ChunkManager:
         chunk.release_chunk()
         self.accessed_chunks.remove(chunk)
         self.accessed_mem -= chunk.chunk_mem
+
+    def init_grad_chunk(self, chunk: Chunk) -> Chunk:
+        grad_chunk = chunk.init_grad_chunk()
+        self.__add_memory_usage(grad_chunk.memory_usage)
+        return grad_chunk

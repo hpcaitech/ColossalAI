@@ -178,6 +178,9 @@ class GeminiOptimizer(OptimizerWrapper):
                 begin, end = self.param_to_range[fake_param]
                 chunk16 = chunk32.paired_chunk
 
+                if not self.module.reuse_fp16_chunk:
+                    chunk16 = chunk16.grad_chunk
+
                 fake_param.data = chunk16.payload[begin:end]
                 fake_param.grad = fake_param.data
                 fake_param.data = chunk32.payload[begin:end]
