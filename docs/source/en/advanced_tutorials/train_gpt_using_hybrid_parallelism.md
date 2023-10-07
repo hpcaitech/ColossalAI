@@ -138,8 +138,8 @@ model, optimizer, _criterion, _, lr_scheduler = booster.boost(
 
 ## Training GPT-2 using hybrid parallelism
 
-In the previous tutorial, We've explained how to inject various parallelism features into the model and its training components using the Booster and `HybridParallelPlugin`. Now we can start model training.
-Define a training function
+In the previous tutorial, We've explained how to inject various parallelism features into the model and its training components using the Booster and `HybridParallelPlugin`. Now we can start model training. 
+Define a training function. When pipeline parallelism is used, you need to call booster.execute_pipeline to schedule the stages of model training.
 ```python
 def train_epoch(
     epoch: int,
@@ -151,7 +151,8 @@ def train_epoch(
     booster: Booster,
     coordinator: DistCoordinator,
 ):
-    is_pp_last_stage = booster.plugin.stage_manager.is_last_stage()
+    use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
+    is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     total_step = len(train_dataloader)
 
     model.train()
@@ -164,17 +165,27 @@ def train_epoch(
     ) as pbar:
         # Forward pass
         for _ in pbar:
-            outputs = booster.execute_pipeline(
-                train_dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
-            )
-            # Backward and optimize
-            if is_pp_last_stage:
-                loss = outputs["loss"]
+            if use_pipeline:
+                outputs = booster.execute_pipeline(
+                    train_dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
+                )
+                # Backward and optimize
+                if is_pp_last_stage:
+                    loss = outputs["loss"]
+                    pbar.set_postfix({"loss": loss.item()})
+            else:
+                data = next(train_dataloader_iter)
+                data = move_to_cuda(data)
+                outputs = model(**data)
+                loss = _criterion(outputs, None)
+                # Backward
+                booster.backward(loss, optimizer)
                 pbar.set_postfix({"loss": loss.item()})
 
             optimizer.step()
             optimizer.zero_grad()
             lr_scheduler.step()
+
 ```
 Training the gpt-2 model
 ```python

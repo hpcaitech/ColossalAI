@@ -148,7 +148,8 @@ def train_epoch(
     booster: Booster,
     coordinator: DistCoordinator,
 ):
-    is_pp_last_stage = booster.plugin.stage_manager.is_last_stage()
+    use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
+    is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     total_step = len(train_dataloader)
 
     model.train()
@@ -161,17 +162,27 @@ def train_epoch(
     ) as pbar:
         # Forward pass
         for _ in pbar:
-            outputs = booster.execute_pipeline(
-                train_dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
-            )
-            # Backward and optimize
-            if is_pp_last_stage:
-                loss = outputs["loss"]
+            if use_pipeline:
+                outputs = booster.execute_pipeline(
+                    train_dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
+                )
+                # Backward and optimize
+                if is_pp_last_stage:
+                    loss = outputs["loss"]
+                    pbar.set_postfix({"loss": loss.item()})
+            else:
+                data = next(train_dataloader_iter)
+                data = move_to_cuda(data)
+                outputs = model(**data)
+                loss = _criterion(outputs, None)
+                # Backward
+                booster.backward(loss, optimizer)
                 pbar.set_postfix({"loss": loss.item()})
 
             optimizer.step()
             optimizer.zero_grad()
             lr_scheduler.step()
+
 ```
 训练 GPT-2 模型。
 ```python
