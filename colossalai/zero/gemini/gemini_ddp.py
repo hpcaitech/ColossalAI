@@ -325,25 +325,32 @@ class GeminiDDP(ModelWrapper):
                     f"Parameter `{self.param2name[p]}` failed at the gradient reduction. "
                     "Some unsupported torch function is operated upon this parameter."
                 )
+            grad_chunk = chunk
             if not self.reuse_fp16_chunk:
-                chunk = self.chunk_manager.init_grad_chunk(chunk)
+                grad_chunk = self.chunk_manager.init_grad_chunk(chunk)
                 # hold -> compute -> hold after bwd
-                chunk.tensor_trans_state(p, TensorState.COMPUTE)
-                chunk.tensor_trans_state(p, TensorState.HOLD_AFTER_BWD)
-            chunk.tensor_trans_state(p, TensorState.READY_FOR_REDUCE)
-            chunk.copy_tensor_to_chunk_slice(p, grad, update_ptr=self.reuse_fp16_chunk)
-            reduced = self.chunk_manager.reduce_chunk(chunk)
+                grad_chunk.tensor_trans_state(p, TensorState.COMPUTE)
+                grad_chunk.tensor_trans_state(p, TensorState.HOLD_AFTER_BWD)
+                # fp16 param chunk: hold after bwd -> ready for reduce -> hold
+                chunk.tensor_trans_state(p, TensorState.READY_FOR_REDUCE)
+                chunk.tensor_trans_state(p, TensorState.HOLD)
+
+            grad_chunk.tensor_trans_state(p, TensorState.READY_FOR_REDUCE)
+            grad_chunk.copy_tensor_to_chunk_slice(p, grad, update_ptr=self.reuse_fp16_chunk)
+            reduced = self.chunk_manager.reduce_chunk(grad_chunk)
             if reduced:
-                if chunk.is_gathered:
-                    chunk.cuda_global_chunk.div_(chunk.pg_size)
+                if grad_chunk.is_gathered:
+                    grad_chunk.cuda_global_chunk.div_(chunk.pg_size)
                 else:
-                    chunk.cuda_shard.div_(chunk.pg_size)
+                    grad_chunk.cuda_shard.div_(chunk.pg_size)
                 # check overflow elements
-                self.overflow_counter += chunk.has_inf_or_nan
+                self.overflow_counter += grad_chunk.has_inf_or_nan
                 # record l2 norm for gradient clipping
-                if chunk.l2_norm_flag:
-                    chunk.set_l2_norm()
-                self.chunk_manager.move_chunk(chunk, self.grads_device[p], force_copy=True)
+                if grad_chunk.l2_norm_flag:
+                    grad_chunk.set_l2_norm()
+                self.chunk_manager.move_chunk(grad_chunk, self.grads_device[p], force_copy=True)
+                if not self.master_weights:
+                    self.chunk_manager.move_chunk(chunk, self.grads_device[p], force_copy=True)
         return empty_grad
 
     def zero_grad(self, set_to_none: bool = False) -> None:
@@ -677,12 +684,9 @@ class GeminiDDP(ModelWrapper):
                 p.data = p.data.to(device=get_current_device(), dtype=self.mixed_precision)
                 continue
 
-            # create a fp32 parameter
-            fp32_p = p.data.float()
             # create a fp16 parameter
             p.data = p.data.to(self.mixed_precision)
-
-            # register the fp16 parameter and fp32 parameter in the chunk manager
+            # register the fp16 parameter
             self.chunk_manager.register_tensor(
                 tensor=p,
                 group_type="fp16_param",
@@ -691,22 +695,27 @@ class GeminiDDP(ModelWrapper):
                 cpu_offload=cpu_offload,
                 pin_memory=pin_memory,
             )
-            self.chunk_manager.register_tensor(
-                tensor=fp32_p,
-                group_type="fp32_param",
-                config_key=dp_world_size,
-                process_group=self.dp_process_group,
-                cpu_offload=cpu_offload,
-                pin_memory=pin_memory,
-            )
-
             self.fp16_params.append(p)
-            self.fp32_params.append(fp32_p)
+
+            if self.master_weights:
+                # create a fp32 parameter
+                fp32_p = p.data.float()
+                self.chunk_manager.register_tensor(
+                    tensor=fp32_p,
+                    group_type="fp32_param",
+                    config_key=dp_world_size,
+                    process_group=self.dp_process_group,
+                    cpu_offload=cpu_offload,
+                    pin_memory=pin_memory,
+                )
+                self.fp32_params.append(fp32_p)
 
         self.chunk_manager.close_all_groups()
 
         self.gemini_manager.setup_grads_device(self.fp16_params, self.grads_device)
+
         # move master weights to corresponding device and setup paired chunks
+        # if no master weights, fp32_params should be empty and this loop will be skipped
         for p, fp32_p in zip(self.fp16_params, self.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
             chunk_32 = self.chunk_manager.get_chunk(fp32_p)
