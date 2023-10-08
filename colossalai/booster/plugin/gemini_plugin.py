@@ -97,7 +97,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
 
         Path(checkpoint_path).mkdir(parents=True, exist_ok=True)
 
-        state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=True, dtype=torch.float32)
+        state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=True)
         weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint_path)
 
