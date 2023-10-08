@@ -2,6 +2,10 @@
 
 作者: Hongxin Liu, Yongbin Li, Mingyan Jiang
 
+**前置教程**
+- [并行插件](../basics/booster_plugins.md)
+- [booster API](../basics/booster_api.md)
+
 **示例代码**
 - [ColossalAI-Examples GPT2](https://github.com/flybird11111/ColossalAI/tree/main/examples/language/gpt/hybridparallelism)
 
@@ -47,7 +51,12 @@ from colossalai.utils import get_current_device
 ```
 
 ## 定义GPT-2模型的训练组件
-
+创建分布式环境.
+```python
+    # Launch ColossalAI
+    colossalai.launch_from_torch(config={}, seed=42)
+    coordinator = DistCoordinator()
+```
 在使用混合并行之前，您可以按照正常流程定义训练所需的组件。
 
 定义超参数。
@@ -91,7 +100,7 @@ optimizer_grouped_parameters = [
 
 optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, eps=1e-8)
 ```
-Prepare lr_scheduler and criterion
+准备 lr_scheduler 和 criterion，需要注意的是，当混合并行使用了管道并行时，还需定义criterion函数。这个函数应该以 模型前后向的输入和输出 作为参数，并返回loss。
 ```python
 output_transform_fn = lambda x: x
 criterion = lambda x: x.loss
@@ -136,7 +145,7 @@ model, optimizer, _criterion, _, lr_scheduler = booster.boost(
 ## 使用混合并行训练 GPT-2
 
 在前面的教程中，我们已经解释了如何使用 Booster 和 HybridParallelPlugin 将各种并行特性注入到模型及其训练组件中。现在我们可以开始模型训练。
-定义一个训练函数。
+定义一个训练函数。当使用了管道并行时，需要调用`booster.execute_pipeline`进行模型训练的阶段调度。
 ```python
 def train_epoch(
     epoch: int,

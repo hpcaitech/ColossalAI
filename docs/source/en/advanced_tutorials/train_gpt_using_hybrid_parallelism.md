@@ -2,6 +2,10 @@
 
 Author: Hongxin Liu, Yongbin Li, Mingyan Jiang
 
+**Prerequisite:**
+- [parallellism plugin](../basics/booster_plugins.md)
+- [booster API](../basics/booster_api.md)
+
 **Example Code**
 - [ColossalAI-Examples GPT](https://github.com/flybird11111/ColossalAI/tree/main/examples/language/gpt/hybridparallelism)
 
@@ -47,8 +51,6 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 ```
 
-
-
 ## Define GPT-2‘s Training Components
 
 Before using mixed parallelism, you can define the components needed for training according to the normal workflow.
@@ -60,6 +62,12 @@ BATCH_SIZE = 32
 LEARNING_RATE = 2.4e-5
 WEIGHT_DECAY = 0.01
 WARMUP_FRACTION = 0.1
+```
+we create a distributed environment.
+```python
+    # Launch ColossalAI
+    colossalai.launch_from_torch(config={}, seed=42)
+    coordinator = DistCoordinator()
 ```
 Prepare dataloader
 ```python
@@ -78,7 +86,7 @@ if model_name == "gpt2":
 else:
     raise RuntimeError
 ```
-Prepare optimizer and criterion, It's important to note that, during hybrid parallelism training, a callable function variable should be passed the `execute_pipeline`. This function should take 'input' and 'output' as parameters and return the loss.
+Prepare the lr_scheduler and criterion, and it's important to note that when hybrid parallelism with pipeline parallelism is used, a criterion function should also be defined. This function should take the input and output of the model's forward pass as parameters and return the loss.
 ```python
 no_decay = ["bias", "LayerNorm.weight"]
 optimizer_grouped_parameters = [
@@ -139,7 +147,7 @@ model, optimizer, _criterion, _, lr_scheduler = booster.boost(
 ## Training GPT-2 using hybrid parallelism
 
 In the previous tutorial, We've explained how to inject various parallelism features into the model and its training components using the Booster and `HybridParallelPlugin`. Now we can start model training. 
-Define a training function. When pipeline parallelism is used, you need to call booster.execute_pipeline to schedule the stages of model training.
+Define a training function. When pipeline parallelism is used, you need to call `booster.execute_pipeline` to schedule the stages of model training.
 ```python
 def train_epoch(
     epoch: int,

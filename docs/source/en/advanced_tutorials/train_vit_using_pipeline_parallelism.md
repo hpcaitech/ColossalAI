@@ -2,8 +2,12 @@
 
 Author: Hongxin Liu, Yongbin Li
 
+**Prerequisite:**
+- [parallellism plugin](../basics/booster_plugins.md)
+- [booster API](../basics/booster_api.md)
+
 **Example Code**
-- [ColossalAI-Examples Pipeline Parallel ViT](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/image/vision_transformer/pipeline_parallel)
+- [ColossalAI-Examples Pipeline Parallel ViT](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/vit)
 
 **Related Paper**
 - [Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM](https://arxiv.org/abs/2104.04473)
@@ -19,157 +23,62 @@ We assume that your GPU memory cannot fit ViT/L-16, and your memory can fit this
 
 In this tutorial we will cover:
 
-1. The definition of ViT model, based on [TIMM](https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py)
-2. Processing the dataset
-3. Training ViT using pipeline
+1. Define the ViT model and related training components.
+2. Boost the model using a booster.
+3. Train the ViT model using pipeline parallelism.
 
 ## Import libraries
 
 ```python
-import os
-from collections import OrderedDict
-from functools import partial
+from typing import Any, Callable, Iterator
+
+import torch
+import torch.distributed as dist
+import torch.nn as nn
+import transformers
+from args import parse_demo_args
+from data import BeansDataset, beans_collator
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from transformers import ViTConfig, ViTForImageClassification, ViTImageProcessor
 
 import colossalai
-import colossalai.nn as col_nn
-import torch
-import torch.nn as nn
-from colossalai.legacy.builder import build_pipeline_model
-from colossalai.legacy.engine.schedule import (InterleavedPipelineSchedule,
-                                        PipelineSchedule)
+from colossalai.booster import Booster
+from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.cluster import DistCoordinator
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.legacy.trainer import Trainer, hooks
-from colossalai.utils import MultiTimer, get_dataloader
-from timm.models import vision_transformer as vit
-from torchvision import transforms
-from torchvision.datasets import CIFAR10
+from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
+from colossalai.nn.optimizer import HybridAdam
 ```
-
-
-
 ## Define Vision Transformer model
-
-Generally, we provide 3 ways to build a pipelined model:
-
-1. `colossalai.legacy.builder.build_pipeline_model_from_cfg`
-2. `colossalai.legacy.builder.build_pipeline_model`
-3. Split the model by stages by yourself
-
-When your memory can fit the model, you can use the first two methods to build your model, otherwise you must split the model by yourself. The first two methods first build the whole model on CPU, then split the model, and finally you can just move the corresponding part of model to GPU.
-
-`colossalai.legacy.builder.build_pipeline_model_from_cfg()` receives a config file of model, and it can split the model uniformly (by layer) or balanced (by parameter size).
-
-If you are familiar with `PyTorch`, you can use  `colossalai.legacy.builder.build_pipeline_model()` which receives a `torch.nn.Sequential` model and split it by layer uniformly.
-
-In this tutorial, we will modify [TIMM/ViT](https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py) to `torch.nn.Sequential` and then use `colossalai.legacy.builder.build_pipeline_model()` to build the pipelined model.
-
-When the data is **one** `Tensor`, you can use the positional argument in `forward()` of your model to get the data tensor. For the first stage of pipeline, the first positional argument of `forward()` is the data tensor loaded from data loader. For other stages, the first positional argument of `forward()` is the output tensor from the previous stage. Note that if the stage is not the last stage, the return of `forward()` must be a `Tensor`.
-
-When the data is a `dict` of `Tensor`, you can use named keyword arguments in `forward()` of your model to get the data `dict`.
-
+First, we create a distributed environment.
 ```python
-class ViTEmbedding(nn.Module):
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768, embed_layer=vit.PatchEmbed, drop_rate=0., distilled=False):
-        super().__init__()
-        self.embed_dim = embed_dim  # num_features for consistency with other models
-        self.num_tokens = 2 if distilled else 1
-        self.patch_embed = embed_layer(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
-        num_patches = self.patch_embed.num_patches
-
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.dist_token = nn.Parameter(torch.zeros(1, 1, embed_dim)) if distilled else None
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim))
-        self.pos_drop = nn.Dropout(p=drop_rate)
-        self.init_weights()
-
-    def forward(self, x):
-        x = self.patch_embed(x)
-        cls_token = self.cls_token.expand(x.shape[0], -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
-        if self.dist_token is None:
-            x = torch.cat((cls_token, x), dim=1)
-        else:
-            x = torch.cat((cls_token, self.dist_token.expand(x.shape[0], -1, -1), x), dim=1)
-        x = self.pos_drop(x + self.pos_embed)
-        return x
-
-    def init_weights(self):
-        vit.trunc_normal_(self.pos_embed, std=.02)
-        if self.dist_token is not None:
-            vit.trunc_normal_(self.dist_token, std=.02)
-        vit.trunc_normal_(self.cls_token, std=.02)
-        self.apply(vit._init_vit_weights)
-
-
-class ViTHead(nn.Module):
-    def __init__(self, embed_dim=768, num_classes=1000, norm_layer=None, distilled=False, representation_size=None):
-        super().__init__()
-        norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
-        self.norm = norm_layer(embed_dim)
-        self.num_classes = num_classes
-        self.distilled = distilled
-        self.num_features = embed_dim
-        # Representation layer
-        if representation_size and not distilled:
-            self.num_features = representation_size
-            self.pre_logits = nn.Sequential(OrderedDict([
-                ('fc', nn.Linear(embed_dim, representation_size)),
-                ('act', nn.Tanh())
-            ]))
-        else:
-            self.pre_logits = nn.Identity()
-        # Classifier head(s)
-        self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
-        self.head_dist = None
-        if distilled:
-            self.head_dist = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
-        self.init_weights()
-
-    def forward(self, x):
-        x = self.norm(x)
-        if self.distilled:
-            x, x_dist = self.head(x[:, 0]), self.head_dist(x[:, 1])
-            if self.training and not torch.jit.is_scripting():
-                # during inference, return the average of both classifier predictions
-                return x, x_dist
-            else:
-                return (x + x_dist) / 2
-        else:
-            x = self.pre_logits(x[:, 0])
-            x = self.head(x)
-        return x
-
-    def init_weights(self):
-        self.apply(vit._init_vit_weights)
-
-
-def sequential_vit(img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
-                   num_heads=12, mlp_ratio=4., qkv_bias=True, representation_size=None, distilled=False,
-                   drop_rate=0., attn_drop_rate=0., drop_path_rate=0., embed_layer=vit.PatchEmbed, norm_layer=None,
-                   act_layer=None):
-    norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
-    act_layer = act_layer or nn.GELU
-    embedding = ViTEmbedding(img_size=img_size, patch_size=patch_size, in_chans=in_chans,
-                             embed_dim=embed_dim, embed_layer=embed_layer, drop_rate=drop_rate, distilled=distilled)
-    dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
-    blocks = [vit.Block(
-        dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, drop=drop_rate,
-        attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, act_layer=act_layer)
-        for i in range(depth)]
-    for block in blocks:
-        block.apply(vit._init_vit_weights)
-    head = ViTHead(embed_dim=embed_dim, num_classes=num_classes, norm_layer=norm_layer,
-                   distilled=distilled, representation_size=representation_size)
-    return nn.Sequential(embedding, *blocks, head)
-
-
-def vit_large_patch16_224(**kwargs):
-    model_kwargs = dict(embed_dim=1024, depth=24, num_heads=16, **kwargs)
-    return sequential_vit(**model_kwargs)
+    # Launch ColossalAI
+    colossalai.launch_from_torch(config={}, seed=args.seed)
+    coordinator = DistCoordinator()
+    world_size = coordinator.world_size
 ```
-
-## Process the dataset
-
+Before training, you can define the relevant components for model training according to the normal workflow, such as defining the model, data loaders, optimizers, and so on. It's important to note that when using pipeline parallelism, you also need to define a criterion function. This function takes the input and output of the model's forward pass as inputs and returns the loss.
+Define the model:
+```python
+    config = ViTConfig.from_pretrained(args.model_name_or_path)
+    config.num_labels = num_labels
+    config.id2label = {str(i): c for i, c in enumerate(train_dataset.label_names)}
+    config.label2id = {c: str(i) for i, c in enumerate(train_dataset.label_names)}
+    model = ViTForImageClassification.from_pretrained(
+        args.model_name_or_path, config=config, ignore_mismatched_sizes=True
+    )
+```
+Define the optimizer:
+```python
+total_steps = len(train_dataloader) * args.num_epoch
+num_warmup_steps = int(args.warmup_ratio * total_steps)
+lr_scheduler = CosineAnnealingWarmupLR(
+        optimizer=optimizer, total_steps=(len(train_dataloader) * args.num_epoch), warmup_steps=num_warmup_steps
+    )
+```
 Generally, we train ViT on large dataset like Imagenet. For simplicity, we just use CIFAR-10 here, since this tutorial is just for pipeline training.
 
 ```python
@@ -192,57 +101,96 @@ def build_cifar(batch_size):
     test_dataloader = get_dataloader(dataset=test_dataset, batch_size=batch_size, pin_memory=True)
     return train_dataloader, test_dataloader
 ```
-
+Define the criterion function:
+```python
+def _criterion(outputs, inputs):
+    outputs = output_transform_fn(outputs)
+    loss = criterion(outputs)
+    return loss
+```
+prepare the dataset.
+```python
+image_processor = ViTImageProcessor.from_pretrained(args.model_name_or_path)
+train_dataset = BeansDataset(image_processor, args.tp_size, split="train")
+eval_dataset = BeansDataset(image_processor, args.tp_size, split="validation")
+num_labels = train_dataset.num_labels
+```
 ## Training ViT using pipeline
 
-You can set the size of pipeline parallel and number of microbatches in config. `NUM_CHUNKS` is useful when using interleaved-pipeline (for more details see [Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM](https://arxiv.org/abs/2104.04473) ). The original batch will be split into `num_microbatches`, and each stage will load a micro batch each time. Then we will generate an appropriate schedule for you to execute the pipeline training. If you don't need the output and label of model, you can set `return_output_label` to `False` when calling `trainer.fit()` which can further reduce GPU memory usage.
-
-You should `export DATA=/path/to/cifar`.
-
+We begin by enhancing the model with colossalai's pipeline parallelism strategy. First, we define a HybridParallelPlugin object. HybridParallelPlugin encapsulates various parallelism strategies in colossalai. You can specify the use of pipeline parallelism by setting three parameters: pp_size, num_microbatches, and microbatch_size. For specific parameter settings, refer to the plugin-related documentation. Then, we initialize the booster with the HybridParallelPlugin object.
 ```python
-BATCH_SIZE = 16
-NUM_EPOCHS = 60
-NUM_CHUNKS = 1
-CONFIG = dict(NUM_MICRO_BATCHES=4, parallel=dict(pipeline=2))
+plugin = HybridParallelPlugin(
+            tp_size=args.tp_size,
+            pp_size=args.pp_size,
+            num_microbatches=None,
+            microbatch_size=1,
+            enable_all_optimization=True,
+            precision="fp16",
+            initial_scale=1,
+        )
+booster = Booster(plugin=plugin, **booster_kwargs)
+```
+Next, we use booster.boost to inject the features encapsulated by the plugin into the model training components.
+```python
+model, optimizer, _criterion, train_dataloader, lr_scheduler = booster.boost(
+        model=model, optimizer=optimizer, criterion=criterion, dataloader=train_dataloader, lr_scheduler=lr_scheduler
+    )
+```
+Finally, we can train the model using pipeline parallelism. First, we define a training function that describes the training process. It's important to note that when using pipeline parallelism, you need to call booster.execute_pipeline to perform the model training. This function will invoke the scheduler to manage the model's forward and backward operations.
+```python
+def run_forward_backward(
+    model: nn.Module,
+    optimizer: Optimizer,
+    criterion: Callable[[Any, Any], torch.Tensor],
+    data_iter: Iterator,
+    booster: Booster,
+):
+# run pipeline forward backward when enabling pp in hybrid parallel plugin
+output_dict = booster.execute_pipeline(
+    data_iter, model, criterion, optimizer, return_loss=True, return_outputs=True
+)
+loss, outputs = output_dict["loss"], output_dict["outputs"]
 
 
-def train():
-    disable_existing_loggers()
-    parser = colossalai.get_default_parser()
-    args = parser.parse_args()
-    colossalai.launch_from_torch(backend=args.backend, config=CONFIG)
-    logger = get_dist_logger()
+def train_epoch(
+    epoch: int,
+    model: nn.Module,
+    optimizer: Optimizer,
+    criterion: Callable[[Any, Any], torch.Tensor],
+    lr_scheduler: LRScheduler,
+    dataloader: DataLoader,
+    booster: Booster,
+    coordinator: DistCoordinator,
+):
+    torch.cuda.synchronize()
 
-    # build model
-    model = vit_large_patch16_224()
-    model = build_pipeline_model(model, num_chunks=NUM_CHUNKS, verbose=True)
+    num_steps = len(dataloader)
+    data_iter = iter(dataloader)
+    enable_pbar = coordinator.is_master()
+    if isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1:
+        # when using pp, only the last stage of master pipeline (dp_rank and tp_rank are both zero) shows pbar
+        tp_rank = dist.get_rank(booster.plugin.tp_group)
+        dp_rank = dist.get_rank(booster.plugin.dp_group)
+        enable_pbar = tp_rank == 0 and dp_rank == 0 and booster.plugin.stage_manager.is_last_stage()
+    model.train()
 
-    # build criterion
-    criterion = nn.CrossEntropyLoss()
+    with tqdm(range(num_steps), desc=f"Epoch [{epoch + 1}]", disable=not enable_pbar) as pbar:
+        for _ in pbar:
+            loss, _ = run_forward_backward(model, optimizer, criterion, data_iter, booster)
+            optimizer.step()
+            lr_scheduler.step()
 
-    # optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0)
-
-    # build dataloader
-    train_dataloader, test_dataloader = build_cifar(BATCH_SIZE)
-
-    engine, train_dataloader, test_dataloader, _ = colossalai.initialize(model, optimizer, criterion,
-                                                                         train_dataloader, test_dataloader)
-    timer = MultiTimer()
-
-    trainer = Trainer(engine=engine, timer=timer, logger=logger)
-
-    hook_list = [
-        hooks.LossHook(),
-        hooks.AccuracyHook(col_nn.metric.Accuracy()),
-        hooks.LogMetricByEpochHook(logger),
-    ]
-
-    trainer.fit(train_dataloader=train_dataloader,
-                epochs=NUM_EPOCHS,
-                test_dataloader=test_dataloader,
-                test_interval=1,
-                hooks=hook_list,
-                display_progress=True)
+            # Print batch loss
+            if enable_pbar:
+                pbar.set_postfix({"loss": loss.item()})
+```
+Start training the model.
+```python
+for epoch in range(args.num_epoch):
+    train_epoch(epoch, model, optimizer, criterion, lr_scheduler, train_dataloader, booster, coordinator)
+```
+After training is complete, you can use booster.save_model to save the model.
+```python
+booster.save_model(model, args.output_path, shard=True)
 ```
 <!-- doc-test-command: echo  -->
