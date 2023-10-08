@@ -36,7 +36,6 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import transformers
-from args import parse_demo_args
 from data import BeansDataset, beans_collator
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
@@ -53,30 +52,46 @@ from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 ```
 ## Define Vision Transformer model
+Define hyperparameters.
+```python
+SEED = 42
+MODEL_PATH = "google/vit-base-patch16-224"
+LEARNING_RATE = 5e-5
+WEIGHT_DECAY = 0.0
+NUM_EPOCH = 3
+WARMUP_RATIO = 0.3
+TP_SIZE = 2
+PP_SIZE = 2
+```
 First, we create a distributed environment.
 ```python
     # Launch ColossalAI
-    colossalai.launch_from_torch(config={}, seed=args.seed)
+    colossalai.launch_from_torch(config={}, seed=SEED)
     coordinator = DistCoordinator()
     world_size = coordinator.world_size
 ```
 Before training, you can define the relevant components for model training according to the normal workflow, such as defining the model, data loaders, optimizers, and so on. It's important to note that when using pipeline parallelism, you also need to define a criterion function. This function takes the input and output of the model's forward pass as inputs and returns the loss.
 Define the model:
 ```python
-    config = ViTConfig.from_pretrained(args.model_name_or_path)
+    config = ViTConfig.from_pretrained(MODEL_PATH)
     config.num_labels = num_labels
     config.id2label = {str(i): c for i, c in enumerate(train_dataset.label_names)}
     config.label2id = {c: str(i) for i, c in enumerate(train_dataset.label_names)}
     model = ViTForImageClassification.from_pretrained(
-        args.model_name_or_path, config=config, ignore_mismatched_sizes=True
+        MODEL_PATH, config=config, ignore_mismatched_sizes=True
     )
 ```
-Define the optimizer:
+Define optimizer：
 ```python
-total_steps = len(train_dataloader) * args.num_epoch
-num_warmup_steps = int(args.warmup_ratio * total_steps)
+optimizer = HybridAdam(model.parameters(), lr=(LEARNING_RATE * world_size), weight_decay=WEIGHT_DECAY)
+```
+Define the lr scheduler:
+```python
+total_steps = len(train_dataloader) * NUM_EPOCH
+num_warmup_steps = int(WARMUP_RATIO * total_steps)
 lr_scheduler = CosineAnnealingWarmupLR(
-        optimizer=optimizer, total_steps=(len(train_dataloader) * args.num_epoch), warmup_steps=num_warmup_steps
+        optimizer=optimizer, total_steps=(len(train_dataloader) * total_steps = len(train_dataloader) * NUM_EPOCH
+), warmup_steps=num_warmup_steps
     )
 ```
 Generally, we train ViT on large dataset like Imagenet. For simplicity, we just use CIFAR-10 here, since this tutorial is just for pipeline training.
@@ -101,6 +116,13 @@ def build_cifar(batch_size):
     test_dataloader = get_dataloader(dataset=test_dataset, batch_size=batch_size, pin_memory=True)
     return train_dataloader, test_dataloader
 ```
+prepare the dataset.
+```python
+image_processor = ViTImageProcessor.from_pretrained(MODEL_PATH)
+train_dataset = BeansDataset(image_processor, TP_SIZE, split="train")
+eval_dataset = BeansDataset(image_processor, TP_SIZE, split="validation")
+num_labels = train_dataset.num_labels
+```
 Define the criterion function:
 ```python
 def _criterion(outputs, inputs):
@@ -108,19 +130,12 @@ def _criterion(outputs, inputs):
     loss = criterion(outputs)
     return loss
 ```
-prepare the dataset.
-```python
-image_processor = ViTImageProcessor.from_pretrained(args.model_name_or_path)
-train_dataset = BeansDataset(image_processor, args.tp_size, split="train")
-eval_dataset = BeansDataset(image_processor, args.tp_size, split="validation")
-num_labels = train_dataset.num_labels
-```
 ## Boost VIT Model
 We begin by enhancing the model with colossalai's pipeline parallelism strategy. First, we define a HybridParallelPlugin object. HybridParallelPlugin encapsulates various parallelism strategies in colossalai. You can specify the use of pipeline parallelism by setting three parameters: pp_size, num_microbatches, and microbatch_size. For specific parameter settings, refer to the plugin-related documentation. Then, we initialize the booster with the HybridParallelPlugin object.
 ```python
 plugin = HybridParallelPlugin(
-            tp_size=args.tp_size,
-            pp_size=args.pp_size,
+            tp_size=TP_SIZE,
+            pp_size=PP_SIZE,
             num_microbatches=None,
             microbatch_size=1,
             enable_all_optimization=True,
@@ -186,11 +201,7 @@ def train_epoch(
 ```
 Start training the model.
 ```python
-for epoch in range(args.num_epoch):
+for epoch in range(NUM_EPOCH):
     train_epoch(epoch, model, optimizer, criterion, lr_scheduler, train_dataloader, booster, coordinator)
-```
-After training is complete, you can use booster.save_model to save the model.
-```python
-booster.save_model(model, args.output_path, shard=True)
 ```
 <!-- doc-test-command: echo  -->

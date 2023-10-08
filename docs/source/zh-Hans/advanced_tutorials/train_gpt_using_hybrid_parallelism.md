@@ -20,27 +20,23 @@
 ## 目录
 
 在本教程中，我们将介绍:
-
-1. 定义 GPT-2 模型的训练组件
-2. 使用 [HybridParallelPlugin](../basics/booster_plugins.md) 增强GPT-2模型
-3. 使用混合并行训练 GPT-2
+1. 初始化混合并行插件
+2. 定义 GPT-2 模型的训练组件
+3. 使用 [HybridParallelPlugin](../basics/booster_plugins.md) 增强GPT-2模型
+4. 使用混合并行训练 GPT-2
 
 ## 导入依赖库
 
 ```python
-import argparse
 from typing import Callable, List, Union
-
-import evaluate
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from data import GLUEDataBuilder
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoConfig, GPT2ForSequenceClassification, get_linear_schedule_with_warmup
+from transformers import AutoTokenizer
 
 import colossalai
 from colossalai.booster import Booster
@@ -49,16 +45,29 @@ from colossalai.cluster import DistCoordinator
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 ```
-
-## 定义GPT-2模型的训练组件
-创建分布式环境.
+### 定义plugin
+定义一个[`HybridParallelPlugin`](../basics/booster_plugins.md)对象，指定所需要使用的并行策略
 ```python
-    # Launch ColossalAI
-    colossalai.launch_from_torch(config={}, seed=42)
-    coordinator = DistCoordinator()
+plugin = HybridParallelPlugin(
+    tp_size=1,
+    pp_size=2,
+    num_microbatches=None,
+    microbatch_size=1,
+    enable_all_optimization=True,
+    zero_stage=1,
+    precision="fp16",
+    initial_scale=1,
+)
 ```
-在使用混合并行之前，您可以按照正常流程定义训练所需的组件。
 
+## 创建分布式环境.
+```python
+# Launch ColossalAI
+colossalai.launch_from_torch(config={}, seed=42)
+coordinator = DistCoordinator()
+```
+## 定义GPT-2模型的训练组件
+在使用混合并行之前，您需要定义训练所使用的组件。
 定义超参数。
 ```python
 NUM_EPOCHS = 3
@@ -67,25 +76,33 @@ LEARNING_RATE = 2.4e-5
 WEIGHT_DECAY = 0.01
 WARMUP_FRACTION = 0.1
 ```
-定义数据加载器。
+获取数据集。您可以使用`plugin.prepare_dataloader`生成dataloader,也可以自定义生成dataloader。
 ```python
-data_builder = GLUEDataBuilder(
-    model_name, plugin, args.task, train_batch_size=BATCH_SIZE, eval_batch_size=BATCH_SIZE
+def tokenize_batch(batch, tokenizer: Optional[AutoTokenizer] = None, max_length: int = 2048):
+    texts = [sample["sentence1"] + sample["sentence2"] for sample in batch]
+    data = tokenizer(texts, return_tensors="pt", padding="max_length", truncation=True, max_length=max_length)
+    data = {k: v.cuda() for k, v in data.items()}
+    data["labels"] = data["input_ids"].clone()
+    return data
+
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
+dataset = datasets.load_dataset("glue", "mrpc")
+train_dataloader = plugin.prepare_dataloader(
+    dataset["train"],
+    batch_size=BATCH_SIZE,
+    shuffle=True,
+    drop_last=True,
+    collate_fn=partial(tokenize_batch, tokenizer=tokenizer, max_length=512),
 )
-train_dataloader = data_builder.train_dataloader()
-test_dataloader = data_builder.test_dataloader()
 ```
 定义GPT-2模型。
 ```python
-cfg = AutoConfig.from_pretrained(model_name, num_labels=data_builder.num_labels)
-
-if model_name == "gpt2":
-    model = GPT2ForSequenceClassification.from_pretrained(model_name, config=cfg).cuda()
-else:
-    raise RuntimeError
+cfg = AutoConfig.from_pretrained("gpt2", num_labels=2)
+model = GPT2ForSequenceClassification.from_pretrained("gpt2", config=cfg).cuda()
 ```
-准备优化器和损失函数。需要注意的是，在混合并行训练期间，应该传递一个可调用的函数变量给`execute_pipeline`。这个函数应该以 'input' 和 'output' 作为参数，并返回损失值。
+准备优化器
 ```python
+lr = LEARNING_RATE * coordinator.world_size
 no_decay = ["bias", "LayerNorm.weight"]
 optimizer_grouped_parameters = [
     {
@@ -100,7 +117,7 @@ optimizer_grouped_parameters = [
 
 optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, eps=1e-8)
 ```
-准备 lr_scheduler 和 criterion，需要注意的是，当混合并行使用了管道并行时，还需定义criterion函数。这个函数应该以 模型前后向的输入和输出 作为参数，并返回loss。
+准备 lr_scheduler 和 criterion，需要注意的是，当混合并行使用了管道并行时，还需定义criterion函数。这个函数应该以模型前后向的输入和输出作为参数，并返回loss。
 ```python
 output_transform_fn = lambda x: x
 criterion = lambda x: x.loss
@@ -121,17 +138,7 @@ def _criterion(outputs, inputs):
 ## 增强GPT-2模型
 使用 HybridParallelPlugin 定义一个 booster（增强器）。根据设置的插件参数，booster会将一种或者多种并行策略注入到模型中。该例子中使用了管道并行，zero1，及半精度训练等优化。
 ```python
-plugin = HybridParallelPlugin(
-    tp_size=1,
-    pp_size=2,
-    num_microbatches=None,
-    microbatch_size=1,
-    enable_all_optimization=True,
-    zero_stage=1,
-    precision="fp16",
-    initial_scale=1,
-)
-
+booster_kwargs["mixed_precision"] = "fp16"
 booster = Booster(plugin=plugin, **booster_kwargs)
 ```
 使用定义的 booster 来增强这些组件。
@@ -198,4 +205,4 @@ def train_epoch(
 for epoch in range(NUM_EPOCHS):
     train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, train_dataloader, booster, coordinator)
 ```
-<!-- doc-test-command: echo  -->
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 train_gpt_using_hybrid_parallelism.py  -->

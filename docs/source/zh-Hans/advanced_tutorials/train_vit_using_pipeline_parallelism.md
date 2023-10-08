@@ -34,7 +34,6 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import transformers
-from args import parse_demo_args
 from data import BeansDataset, beans_collator
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
@@ -51,34 +50,46 @@ from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 ```
 ## 定义 Vision Transformer 模型
+
+定义超参数
+```python
+SEED = 42
+MODEL_PATH = "google/vit-base-patch16-224"
+LEARNING_RATE = 5e-5
+WEIGHT_DECAY = 0.0
+NUM_EPOCH = 3
+WARMUP_RATIO = 0.3
+TP_SIZE = 2
+PP_SIZE = 2
+```
 首先我们创建一个分布式环境
 ```python
-    # Launch ColossalAI
-    colossalai.launch_from_torch(config={}, seed=args.seed)
-    coordinator = DistCoordinator()
-    world_size = coordinator.world_size
+# Launch ColossalAI
+colossalai.launch_from_torch(config={}, seed=SEED)
+coordinator = DistCoordinator()
+world_size = coordinator.world_size
 ```
 在训练之前您可以按照正常流程定义模型训练的相关组，如定义模型，数据加载器，优化器等。需要注意的是，当使用管道并行时，还需定义一个criterion函数，该函数的输入是模型前向的输入和输出，返回的是loss。
 定义模型：
 ```python
-    config = ViTConfig.from_pretrained(args.model_name_or_path)
-    config.num_labels = num_labels
-    config.id2label = {str(i): c for i, c in enumerate(train_dataset.label_names)}
-    config.label2id = {c: str(i) for i, c in enumerate(train_dataset.label_names)}
-    model = ViTForImageClassification.from_pretrained(
-        args.model_name_or_path, config=config, ignore_mismatched_sizes=True
-    )
+config = ViTConfig.from_pretrained(MODEL_PATH)
+config.num_labels = num_labels
+config.id2label = {str(i): c for i, c in enumerate(train_dataset.label_names)}
+config.label2id = {c: str(i) for i, c in enumerate(train_dataset.label_names)}
+model = ViTForImageClassification.from_pretrained(
+    MODEL_PATH, config=config, ignore_mismatched_sizes=True
+)
 ```
 定义optimizer：
 ```python
-optimizer = HybridAdam(model.parameters(), lr=(args.learning_rate * world_size), weight_decay=args.weight_decay)
+optimizer = HybridAdam(model.parameters(), lr=(LEARNING_RATE * world_size), weight_decay=WEIGHT_DECAY)
 ```
 定义lr scheduler
 ```python
-total_steps = len(train_dataloader) * args.num_epoch
-num_warmup_steps = int(args.warmup_ratio * total_steps)
+total_steps = len(train_dataloader) * NUM_EPOCH
+num_warmup_steps = int(WARMUP_RATIO * total_steps)
 lr_scheduler = CosineAnnealingWarmupLR(
-        optimizer=optimizer, total_steps=(len(train_dataloader) * args.num_epoch), warmup_steps=num_warmup_steps
+        optimizer=optimizer, total_steps=(len(train_dataloader) * NUM_EPOCH), warmup_steps=num_warmup_steps
     )
 ```
 一般来说, 我们在大型数据集如 ImageNet 上训练 ViT。为了简单期间，我们在这里只使用 CIFAR-10, 因为本教程只是用于流水并行训练。
@@ -103,6 +114,13 @@ def build_cifar(batch_size):
     test_dataloader = get_dataloader(dataset=test_dataset, batch_size=batch_size, pin_memory=True)
     return train_dataloader, test_dataloader
 ```
+获取数据集
+```python
+image_processor = ViTImageProcessor.from_pretrained(MODEL_PATH)
+train_dataset = BeansDataset(image_processor, TP_SIZE, split="train")
+eval_dataset = BeansDataset(image_processor, TP_SIZE, split="validation")
+num_labels = train_dataset.num_labels
+```
 定义criterion函数：
 ```python
 def _criterion(outputs, inputs):
@@ -110,19 +128,12 @@ def _criterion(outputs, inputs):
     loss = criterion(outputs)
     return loss
 ```
-获取数据集
-```python
-image_processor = ViTImageProcessor.from_pretrained(args.model_name_or_path)
-train_dataset = BeansDataset(image_processor, args.tp_size, split="train")
-eval_dataset = BeansDataset(image_processor, args.tp_size, split="validation")
-num_labels = train_dataset.num_labels
-```
 ## 增强VIT模型
 我们开始使用colossalai的管道并行策略来增强模型，首先我们先定义一个`HybridParallelPlugin`的对象，[`HybridParallelPlugin`](../basics/booster_plugins.md)封装了colossalai的多种并行策略，通过设置`pp_size`、`num_microbatches`、`microbatch_size`这三个参数可来指定使用管道并行策略，具体参数设置可参考plugin相关文档。之后我们使用`HybridParallelPlugin`对象来初始化booster。
 ```python
 plugin = HybridParallelPlugin(
-            tp_size=args.tp_size,
-            pp_size=args.pp_size,
+            tp_size=TP_SIZE,
+            pp_size=TP_SIZE,
             num_microbatches=None,
             microbatch_size=1,
             enable_all_optimization=True,
@@ -188,11 +199,7 @@ def train_epoch(
 ```
 开始训练模型
 ```python
-for epoch in range(args.num_epoch):
+for epoch in range(NUM_EPOCH):
     train_epoch(epoch, model, optimizer, criterion, lr_scheduler, train_dataloader, booster, coordinator)
-```
-训练完成后，可调用`booster.save_model`保存模型。
-```python
-booster.save_model(model, args.output_path, shard=True)
 ```
 <!-- doc-test-command: echo  -->
