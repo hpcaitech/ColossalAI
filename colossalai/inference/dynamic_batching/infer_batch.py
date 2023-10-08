@@ -4,7 +4,6 @@ from typing import Dict, List
 
 import numpy as np
 import torch
-from lightllm.common.configs.config import setting
 
 from colossalai.inference.tensor_parallel import MemoryManager
 
@@ -53,11 +52,19 @@ class InferBatch:
     nopad_b_start_loc: torch.Tensor
     nopad_b_seq_len: torch.Tensor
     cache_manager: MemoryManager
+    max_total_len: int
 
     @classmethod
     @torch.no_grad()
     def init_batch(
-        cls, batch_id, requests, dtype: torch.dtype, device: torch.device, cache_manager: MemoryManager, vocab_size: int
+        cls,
+        batch_id,
+        requests,
+        dtype: torch.dtype,
+        device: torch.device,
+        cache_manager: MemoryManager,
+        vocab_size: int,
+        max_total_len: int,
     ):
         input_lengths = []
         all_input_ids = []
@@ -68,7 +75,7 @@ class InferBatch:
 
         nopad_total_token_num = 0
         nopad_max_len_in_batch = 0
-        nopad_b_loc = torch.empty((len(requests), setting["max_req_total_len"] + 12), dtype=torch.long, device="cuda")
+        nopad_b_loc = torch.empty((len(requests), max_total_len + 12), dtype=torch.long, device="cuda")
         nopad_b_start_loc = torch.zeros(len(requests), dtype=torch.int32, device="cuda")
         for i, r in enumerate(requests):
             # request id -> idx in list mapping
@@ -91,6 +98,7 @@ class InferBatch:
 
         nopad_b_seq_len = torch.tensor(input_lengths, dtype=torch.int32, device="cuda")
         nopad_b_start_loc[1:] = torch.cumsum(nopad_b_seq_len, dim=0, dtype=torch.int32)[0:-1]
+
         if len(requests) > 1:
             input_ids = np.concatenate(all_input_ids, dtype=np.int64)
         else:
@@ -114,6 +122,7 @@ class InferBatch:
             out_token_id_counts=out_token_id_counts,
             sampling_param_list=sampling_param_list,
             cache_manager=cache_manager,
+            max_total_len=max_total_len,
         )
 
     @torch.no_grad()
@@ -145,9 +154,7 @@ class InferBatch:
 
         nopad_total_token_num = 0
         nopad_max_len_in_batch = 0
-        nopad_b_loc = torch.empty(
-            (len(request_ids), setting["max_req_total_len"] + 12), dtype=torch.long, device="cuda"
-        )
+        nopad_b_loc = torch.empty((len(request_ids), self.max_total_len + 12), dtype=torch.long, device="cuda")
         nopad_b_start_loc = torch.zeros(len(request_ids), dtype=torch.int32, device="cuda")
         nopad_b_seq_len = torch.zeros(len(request_ids), dtype=torch.int32, device="cuda")
 
@@ -228,7 +235,7 @@ class InferBatch:
         nopad_total_token_num = batch1.nopad_total_token_num + batch2.nopad_total_token_num
         nopad_max_len_in_batch = max(batch1.nopad_max_len_in_batch, batch2.nopad_max_len_in_batch)
 
-        nopad_b_loc = torch.empty((new_batch_size, setting["max_req_total_len"] + 12), dtype=torch.long, device="cuda")
+        nopad_b_loc = torch.empty((new_batch_size, batch1.max_total_len + 12), dtype=torch.long, device="cuda")
         nopad_b_start_loc = torch.zeros(new_batch_size, dtype=torch.int32, device="cuda")
         nopad_b_seq_len = torch.zeros(new_batch_size, dtype=torch.int32, device="cuda")
         nopad_start_loc_len_temp = 0

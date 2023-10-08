@@ -376,6 +376,9 @@ class TPInferEngine:
 
     @torch.no_grad()
     def forward(self, batch_id, is_prefill):
+        """
+        Forward is used in Dynamic Batching
+        """
         batch = self.cache.pop(batch_id)
         if is_prefill:
             input_ = torch.tensor(batch.all_input_ids).cuda()
@@ -402,22 +405,27 @@ class TPInferEngine:
 
         output = self.model.forward(input_ids=input_)
         logits = output.logits
-        prob_out = torch.softmax(logits, dim=-1)
+        # bsz, seq_len, vocab_size
+        prob_out = torch.softmax(
+            logits[
+                :,
+                -1,
+            ],
+            dim=-1,
+        ).squeeze(1)
+        # prob_out: bsz, vocab_size
         predict_ids = torch.argmax(prob_out, dim=-1, keepdim=True)
         prob_out = torch.log(prob_out).detach().cpu().numpy()
         predict_ids = predict_ids.detach().cpu().numpy()
-        # [batch_size, 1 ,vocab_size]
-        # next_token_ids, next_token_probs = sample(logits, batch)
-        # next_token_ids = next_token_ids.detach().cpu().numpy()
-        # next_token_logprobs = torch.log(next_token_probs).detach().cpu().numpy()
+        # [ batch_size, 1 ]
 
         output_dict = {}
         new_input_ids = []
         for i, (r, all_input_ids, next_token_id, next_token_logprob) in enumerate(
             zip(batch.requests, batch.all_input_ids, predict_ids, prob_out)
         ):
-            next_token_id = int(next_token_id[0])
-            next_token_logprob = next_token_logprob[0][next_token_id]
+            next_token_id = int(next_token_id)
+            next_token_logprob = next_token_logprob[next_token_id]
             # all_input_ids_tensor = torch.tensor(all_input_ids, dtype=torch.long, device="cuda")
             all_input_ids.append(next_token_id)
             # all_input_ids_tensor = None
@@ -432,12 +440,8 @@ class TPInferEngine:
             output_dict[r["request_id"]] = (int(next_token_id), metadata)
 
         batch.input_ids = torch.tensor(new_input_ids, dtype=torch.long).cuda()
-        batch.nopad_b_start_loc = batch.nopad_b_start_loc + torch.arange(
-            0, len(batch), dtype=torch.int32, device="cuda"
-        )
         batch.nopad_total_token_num += len(batch)
         batch.nopad_max_len_in_batch += 1
-        batch.nopad_b_seq_len += 1
         self.cache[batch.batch_id] = batch
         return output_dict
 

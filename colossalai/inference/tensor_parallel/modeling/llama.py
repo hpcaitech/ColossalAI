@@ -71,8 +71,6 @@ class LlamaInferenceForwards:
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ):
-        batch_size = input_ids.shape[0]  # input_ids.shape[0]
-
         infer_state = self.infer_state
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
@@ -89,14 +87,11 @@ class LlamaInferenceForwards:
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
         seq_length_with_past = seq_length
-        past_key_values_length = 0
 
-        if past_key_values is not None:
-            #  NOT READY FOR PRIME TIME
-            #  dummy but work, revise it
-            past_key_values_length = infer_state.cache_manager.past_key_values_length
-            # past_key_values_length = past_key_values[0][0].shape[2]
-            seq_length_with_past = seq_length_with_past + past_key_values_length
+        #  NOT READY FOR PRIME TIME
+        #  dummy but work, revise it
+        past_key_values_length = infer_state.cache_manager.past_key_values_length
+        seq_length_with_past = seq_length_with_past + past_key_values_length
 
         # NOTE: differentiate with prefill stage
         #       block_loc require different value-assigning method for two different stage
@@ -194,7 +189,7 @@ class LlamaInferenceForwards:
 
         # update indices
         # infer_state.block_loc[:, infer_state.max_len_in_batch-1] = infer_state.total_token_num + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
-        infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
+        infer_state.start_loc += torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.seq_len += 1
 
         if not return_dict:
