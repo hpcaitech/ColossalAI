@@ -13,9 +13,9 @@ from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
-TPSIZE = 1
-BATCH_SIZE = 2
-MAX_INPUT_LEN = 8
+TPSIZE = 2
+BATCH_SIZE = 8
+MAX_INPUT_LEN = 12
 MAX_OUTPUT_LEN = 100
 
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
