@@ -22,7 +22,7 @@
 在本教程中，我们将介绍:
 
 1. 定义ViT模型及相关训练组件
-2. 使用booster增强模型
+2. 使用 [HybridParallelPlugin](../basics/booster_plugins.md) 增强VIT模型
 3. 使用流水并行训练 ViT
 
 ## 导入依赖库
@@ -50,15 +50,14 @@ from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 ```
-加载分布式环境
+## 定义 Vision Transformer 模型
+首先我们创建一个分布式环境
 ```python
     # Launch ColossalAI
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
     world_size = coordinator.world_size
 ```
-## 定义 Vision Transformer 模型
-
 在训练之前您可以按照正常流程定义模型训练的相关组，如定义模型，数据加载器，优化器等。需要注意的是，当使用管道并行时，还需定义一个criterion函数，该函数的输入是模型前向的输入和输出，返回的是loss。
 定义模型：
 ```python
@@ -118,7 +117,7 @@ train_dataset = BeansDataset(image_processor, args.tp_size, split="train")
 eval_dataset = BeansDataset(image_processor, args.tp_size, split="validation")
 num_labels = train_dataset.num_labels
 ```
-## 使用流水并行训练 ViT
+## 增强VIT模型
 我们开始使用colossalai的管道并行策略来增强模型，首先我们先定义一个`HybridParallelPlugin`的对象，[`HybridParallelPlugin`](../basics/booster_plugins.md)封装了colossalai的多种并行策略，通过设置`pp_size`、`num_microbatches`、`microbatch_size`这三个参数可来指定使用管道并行策略，具体参数设置可参考plugin相关文档。之后我们使用`HybridParallelPlugin`对象来初始化booster。
 ```python
 plugin = HybridParallelPlugin(
@@ -138,6 +137,7 @@ model, optimizer, _criterion, train_dataloader, lr_scheduler = booster.boost(
         model=model, optimizer=optimizer, criterion=criterion, dataloader=train_dataloader, lr_scheduler=lr_scheduler
     )
 ```
+## 使用流水并行训练 ViT
 最后我们就可以使用管道并行来训练模型了，我们先定义一个训练函数，描述训练过程，需要注意的是，如果使用了管道并行策略，需要调用`booster.execute_pipeline`来执行模型的训练，它会调用`scheduler`管理模型的前后向操作。
 ```python
 def run_forward_backward(

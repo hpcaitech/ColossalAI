@@ -7,7 +7,7 @@ Author: Hongxin Liu, Yongbin Li, Mingyan Jiang
 - [booster API](../basics/booster_api.md)
 
 **Example Code**
-- [ColossalAI-Examples GPT](https://github.com/flybird11111/ColossalAI/tree/main/examples/language/gpt/hybridparallelism)
+- [ColossalAI-Examples GPT](https://github.com/hpcaitech/ColossalAI/blob/main/examples/language/gpt/hybridparallelism/finetune.py)
 
 
 **Related Paper**
@@ -23,7 +23,7 @@ In the previous tutorial, we introduce how to train ViT with pipeline. In this t
 In this tutorial we will cover:
 
 1. Defining the Training Components of the GPT-2 Model
-2. Boost the Training Components with [`HybridParallelPlugin`](../basics/booster_plugins.md)
+2. Boost the GPT-2 Model with [`HybridParallelPlugin`](../basics/booster_plugins.md)
 3. Training GPT-2 using hybrid parallelism
 
 ## Import libraries
@@ -86,7 +86,7 @@ if model_name == "gpt2":
 else:
     raise RuntimeError
 ```
-Prepare the lr_scheduler and criterion, and it's important to note that when hybrid parallelism with pipeline parallelism is used, a criterion function should also be defined. This function should take the input and output of the model's forward pass as parameters and return the loss.
+prepare optimizer
 ```python
 no_decay = ["bias", "LayerNorm.weight"]
 optimizer_grouped_parameters = [
@@ -102,7 +102,7 @@ optimizer_grouped_parameters = [
 
 optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, eps=1e-8)
 ```
-Prepare lr_scheduler and criterion
+Prepare the lr_scheduler and criterion, and it's important to note that when hybrid parallelism with pipeline parallelism is used, a criterion function should also be defined. This function should take the input and output of the model's forward pass as parameters and return the loss.
 ```python
 output_transform_fn = lambda x: x
 criterion = lambda x: x.loss
@@ -120,7 +120,7 @@ def _criterion(outputs, inputs):
     loss = criterion(outputs)
     return loss
 ```
-
+## Boost GPT-2 Model
 Define a booster with `HybridParallelPlugin`. Based on the configured plugin parameters, the booster will inject one or more parallel strategies into the model. In this example, pipeline parallelism, zero1, and mixed-precision training optimizations are utilized.
 ```python
 plugin = HybridParallelPlugin(

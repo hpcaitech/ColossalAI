@@ -24,7 +24,7 @@ We assume that your GPU memory cannot fit ViT/L-16, and your memory can fit this
 In this tutorial we will cover:
 
 1. Define the ViT model and related training components.
-2. Boost the model using a booster.
+2. Boost the VIT Model with [`HybridParallelPlugin`](../basics/booster_plugins.md)
 3. Train the ViT model using pipeline parallelism.
 
 ## Import libraries
@@ -115,8 +115,7 @@ train_dataset = BeansDataset(image_processor, args.tp_size, split="train")
 eval_dataset = BeansDataset(image_processor, args.tp_size, split="validation")
 num_labels = train_dataset.num_labels
 ```
-## Training ViT using pipeline
-
+## Boost VIT Model
 We begin by enhancing the model with colossalai's pipeline parallelism strategy. First, we define a HybridParallelPlugin object. HybridParallelPlugin encapsulates various parallelism strategies in colossalai. You can specify the use of pipeline parallelism by setting three parameters: pp_size, num_microbatches, and microbatch_size. For specific parameter settings, refer to the plugin-related documentation. Then, we initialize the booster with the HybridParallelPlugin object.
 ```python
 plugin = HybridParallelPlugin(
@@ -136,6 +135,7 @@ model, optimizer, _criterion, train_dataloader, lr_scheduler = booster.boost(
         model=model, optimizer=optimizer, criterion=criterion, dataloader=train_dataloader, lr_scheduler=lr_scheduler
     )
 ```
+## Training ViT using pipeline
 Finally, we can train the model using pipeline parallelism. First, we define a training function that describes the training process. It's important to note that when using pipeline parallelism, you need to call booster.execute_pipeline to perform the model training. This function will invoke the scheduler to manage the model's forward and backward operations.
 ```python
 def run_forward_backward(
