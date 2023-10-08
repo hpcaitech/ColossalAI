@@ -67,7 +67,7 @@ def exam_gemini_grad_acc(placement_config, keep_gathered: bool, use_grad_checkpo
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
 
     set_seed(rank)
-    accum_iter = 3
+    accum_iter = 4
     for i, (input_ids, label) in enumerate(train_dataloader):
         input_ids, label = input_ids.cuda(), label.cuda()
 

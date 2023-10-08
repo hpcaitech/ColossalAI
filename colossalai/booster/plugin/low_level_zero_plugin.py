@@ -335,4 +335,4 @@ class LowLevelZeroPlugin(DPPluginBase):
 
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         assert isinstance(optimizer, LowLevelZeroOptimizer)
-        return optimizer.optim.no_sync()
+        return optimizer.no_sync()
