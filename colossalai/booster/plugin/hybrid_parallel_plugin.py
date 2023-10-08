@@ -272,22 +272,22 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
             total_norm_exponentiated = _compute_norm_across_tp(gradients) ** norm_type
 
             if pp_size > 1:
-                # compute norm in pp process group
-                total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
-                dist.all_reduce(total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
-                total_norm_exponentiated = total_norm_exponentiated_cuda[0].item()
-
                 # Due to the presence of shared parameters, we should avoid computing the gradient norm of shared parameters twice.
-                # Therefore, we subtract the norm of the shared parameter's gradient from the total norm exponentiated.
+                # Therefore, we subtract half of the norm of the shared parameter's gradient from the total norm exponentiated.
                 for shared_param in self.shared_params:
                     if self.stage_manager.stage in shared_param:
                         stage_shared_param = shared_param[self.stage_manager.stage]
                         shared_param_grad_nrom_exponentiated = (
                             _compute_norm_across_tp([stage_shared_param.grad]) ** norm_type
                         )
-                        total_norm_exponentiated -= shared_param_grad_nrom_exponentiated
+                        total_norm_exponentiated -= shared_param_grad_nrom_exponentiated / 2
 
-            total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
+                # compute norm in pp process group
+                total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
+                dist.all_reduce(total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
+                total_norm_exponentiated = total_norm_exponentiated_cuda[0].item()
+
+            total_norm = total_norm_exponentiated ** (1.0 / norm_type)
 
         return total_norm
 
@@ -390,13 +390,8 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
             total_norm_exponentiated = super()._compute_grad_norm(param_gradient_pairs, norm_type) ** norm_type
 
             if pp_size > 1:
-                # recompute the 'total_norm_exponentiated'
-                total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
-                dist.all_reduce(total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
-                total_norm_exponentiated = total_norm_exponentiated_cuda[0].item()
-
                 # Due to the presence of shared parameters, we should avoid computing the gradient norm of shared parameters twice.
-                # Therefore, we subtract the norm of the shared parameter's gradient from the total norm exponentiated.
+                # Therefore, we subtract half of the norm of the shared parameter's gradient from the total norm exponentiated.
                 for shared_param in self.shared_params:
                     if self.stage_manager.stage in shared_param:
                         stage_working_shared_param = shared_param[self.stage_manager.stage]
@@ -406,7 +401,12 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
                         shared_param_grad_nrom_exponentiated = (
                             super()._compute_grad_norm([param_grad_pair]) ** norm_type
                         )
-                        total_norm_exponentiated -= shared_param_grad_nrom_exponentiated
+                        total_norm_exponentiated -= shared_param_grad_nrom_exponentiated / 2
+
+                # recompute the 'total_norm_exponentiated'
+                total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
+                dist.all_reduce(total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
+                total_norm_exponentiated = total_norm_exponentiated_cuda[0].item()
 
             # compute the 'total_norm'
             total_norm = total_norm_exponentiated ** (1.0 / norm_type)
@@ -506,25 +506,23 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             # Calculate the total norm exponentiated
             total_norm_exponentiated = super()._compute_grad_norm(gradients, norm_type) ** norm_type
 
-            # If there are multiple processes in the parameter parallel group (pp_pg),
-            # recompute the 'total_norm_exponentiated'
             if pp_size > 1:
-                total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
-                dist.all_reduce(total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
-                total_norm_exponentiated = total_norm_exponentiated_cuda[0].item()
-
                 # Due to the presence of shared parameters, we should avoid computing the gradient norm of shared parameters twice.
-                # Therefore, we subtract the norm of the shared parameter's gradient from the total norm exponentiated.
+                # Therefore, we subtract half of the norm of the shared parameter's gradient from the total norm exponentiated.
                 for shared_param in self.shared_params:
                     if self.stage_manager.stage in shared_param:
                         stage_shared_param = shared_param[self.stage_manager.stage]
                         working_grad = self._grad_store.get_working_grad_by_param_id(id(stage_shared_param))
                         shared_param_grad_norm_exponentiated = super()._compute_grad_norm([working_grad]) ** norm_type
-                        total_norm_exponentiated -= shared_param_grad_norm_exponentiated
+                        total_norm_exponentiated -= shared_param_grad_norm_exponentiated / 2
+
+                # recompute the total_norm_exponentiated
+                total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
+                dist.all_reduce(total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
+                total_norm_exponentiated = total_norm_exponentiated_cuda[0].item()
 
             # Compute the 'total_norm' from 'total_norm_exponentiated'
             total_norm = total_norm_exponentiated ** (1.0 / norm_type)
-
         return total_norm
 
 
