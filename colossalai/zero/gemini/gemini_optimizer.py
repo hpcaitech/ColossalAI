@@ -133,8 +133,7 @@ class GeminiOptimizer(OptimizerWrapper):
         for p in ddp_param_list:
             chunk_16 = self.chunk_manager.get_chunk(p)
             if chunk_16 not in self.chunk16_set:
-                grad_chunk = chunk_16 if self.module.reuse_fp16_chunk else chunk_16.grad_chunk
-                grad_chunk.l2_norm_flag = self.clipping_flag
+                chunk_16.l2_norm_flag = self.clipping_flag
                 self.chunk16_set.add(chunk_16)
 
         self.__init__optimizer()

@@ -339,14 +339,19 @@ class GeminiDDP(ModelWrapper):
             grad_chunk.copy_tensor_to_chunk_slice(p, grad, update_ptr=self.reuse_fp16_chunk)
             reduced = self.chunk_manager.reduce_chunk(grad_chunk)
             if reduced:
+                if not self.reuse_fp16_chunk:
+                    if chunk.keep_gathered:
+                        self.chunk_manager.fake_release_chunk(chunk)
+                    else:
+                        self.chunk_manager.release_chunk(chunk)
                 if grad_chunk.is_gathered:
                     grad_chunk.cuda_global_chunk.div_(chunk.pg_size)
                 else:
                     grad_chunk.cuda_shard.div_(chunk.pg_size)
                 # check overflow elements
                 self.overflow_counter += grad_chunk.has_inf_or_nan
-                # record l2 norm for gradient clipping
-                if grad_chunk.l2_norm_flag:
+                # record l2 norm for gradient clipping. flag is bound to fp16 chunk
+                if chunk.l2_norm_flag:
                     grad_chunk.set_l2_norm()
                 self.chunk_manager.move_chunk(grad_chunk, self.grads_device[p], force_copy=True)
                 if not self.master_weights:

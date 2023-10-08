@@ -52,13 +52,14 @@ def check_param(model: GeminiDDP, torch_model: torch.nn.Module):
 
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("model_name", ["gpt2"])
-def exam_grad_clipping(placement_config, model_name: str):
+@parameterize("master_weights", [False, True])
+def exam_grad_clipping(placement_config, model_name: str, master_weights: bool):
     set_seed(1912)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
     torch_model = model_builder().cuda()
-    amp_config = dict(opt_level="O2", keep_batchnorm_fp32=False, loss_scale=32)
+    amp_config = dict(opt_level="O2", keep_batchnorm_fp32=False, loss_scale=32, master_weights=master_weights)
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
@@ -78,7 +79,12 @@ def exam_grad_clipping(placement_config, model_name: str):
         init_device = None
 
     model = GeminiDDP(
-        model, chunk_config_dict=config_dict, chunk_init_device=init_device, pin_memory=True, **placement_config
+        model,
+        chunk_config_dict=config_dict,
+        chunk_init_device=init_device,
+        pin_memory=True,
+        **placement_config,
+        master_weights=master_weights,
     )
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)

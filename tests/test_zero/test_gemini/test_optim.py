@@ -70,13 +70,14 @@ def check_param(model: GeminiDDP, torch_model: torch.nn.Module, dtype: torch.dty
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("model_name", TEST_MODELS)
 @parameterize("mixed_precision", [torch.half, torch.bfloat16])
-def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dtype):
+@parameterize("master_weights", [False, True])
+def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dtype, master_weights: bool):
     set_seed(42)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
     torch_model = model_builder().cuda()
-    amp_config = dict(opt_level="O2", keep_batchnorm_fp32=False, loss_scale=128)
+    amp_config = dict(opt_level="O2", keep_batchnorm_fp32=False, loss_scale=128, master_weights=master_weights)
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
@@ -90,7 +91,9 @@ def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dt
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]["chunk_size"] = 5000
     config_dict[world_size]["keep_gathered"] = False
-    model = GeminiDDP(model, config_dict, **placement_config, mixed_precision=mixed_precision)
+    model = GeminiDDP(
+        model, config_dict, **placement_config, mixed_precision=mixed_precision, master_weights=master_weights
+    )
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = GeminiOptimizer(optimizer, model, initial_scale=128)

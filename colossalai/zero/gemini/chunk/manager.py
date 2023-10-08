@@ -247,6 +247,11 @@ class ChunkManager:
         self.accessed_mem -= chunk.chunk_mem
 
     def init_grad_chunk(self, chunk: Chunk) -> Chunk:
+        if chunk.grad_chunk is not None:
+            self.__sub_memory_usage(chunk.grad_chunk.memory_usage)
         grad_chunk = chunk.init_grad_chunk()
         self.__add_memory_usage(grad_chunk.memory_usage)
+        if grad_chunk not in self.accessed_chunks:
+            self.accessed_chunks.add(grad_chunk)
+            self.accessed_mem += grad_chunk.chunk_mem
         return grad_chunk
