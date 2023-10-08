@@ -143,16 +143,17 @@ class TorchFSDPPlugin(DPPluginBase):
     """
     Plugin for PyTorch FSDP.
 
-    Example:
-        >>> from colossalai.booster import Booster
-        >>> from colossalai.booster.plugin import TorchFSDPPlugin
-        >>>
-        >>> model, train_dataset, optimizer, criterion = ...
-        >>> plugin = TorchFSDPPlugin()
+    ```python
+    from colossalai.booster import Booster
+    from colossalai.booster.plugin import TorchFSDPPlugin
 
-        >>> train_dataloader = plugin.prepare_train_dataloader(train_dataset, batch_size=8)
-        >>> booster = Booster(plugin=plugin)
-        >>> model, optimizer, train_dataloader, criterion = booster.boost(model, optimizer, train_dataloader, criterion)
+    model, train_dataset, optimizer, criterion = ...
+    plugin = TorchFSDPPlugin()
+
+    train_dataloader = plugin.prepare_train_dataloader(train_dataset, batch_size=8)
+    booster = Booster(plugin=plugin)
+    model, optimizer, train_dataloader, criterion = booster.boost(model, optimizer, train_dataloader, criterion)
+    ```
 
     Args:
         See https://pytorch.org/docs/stable/fsdp.html for details.

@@ -23,7 +23,7 @@ def main(args):
     if args.strategy == "ddp":
         strategy = DDPStrategy()
     elif args.strategy == "colossalai_gemini":
-        strategy = GeminiStrategy(placement_policy="auto", initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy="static", initial_scale=2**5)
     elif args.strategy == "colossalai_zero2":
         strategy = LowLevelZeroStrategy(stage=2, placement_policy="cuda")
     else:
@@ -32,6 +32,10 @@ def main(args):
     if args.rm_path is not None:
         warnings.warn("LoRA weights should be merged with the model weights")
         state_dict = torch.load(args.rm_path, map_location="cpu")
+
+    if args.lora_rank > 0:
+        warnings.warn("Lora is not supported yet.")
+        args.lora_rank = 0
 
     with strategy.model_init_context():
         # configure model
@@ -199,7 +203,7 @@ def main(args):
         LORA_MANAGER.merge_weights = True
         actor.eval()
     # save model checkpoint after fitting
-    strategy.save_model(actor, args.save_path, only_rank0=True)
+    strategy.save_pretrained(actor, path=args.save_path)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(

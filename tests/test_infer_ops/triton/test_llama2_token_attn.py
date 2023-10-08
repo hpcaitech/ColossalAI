@@ -38,9 +38,7 @@ def test():
     q = torch.empty((Z, head_num, head_dim), dtype=dtype, device="cuda").normal_(mean=0.1, std=0.2)
     k = torch.empty((Z * seq_len, head_num, head_dim), dtype=dtype, device="cuda").normal_(mean=0.4, std=0.2)
     v = torch.empty((Z * seq_len, head_num, head_dim), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
-    o = torch.empty_like()
-    # o = torch.empty((Z, head_num, head_dim), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
-
+    o = torch.empty((Z, head_num, head_dim), dtype=dtype, device="cuda")
     max_kv_cache_len = seq_len
     kv_cache_start_loc = torch.zeros((Z,), dtype=torch.int32, device="cuda")
     kv_cache_loc = torch.zeros((Z, seq_len), dtype=torch.int32, device="cuda")
