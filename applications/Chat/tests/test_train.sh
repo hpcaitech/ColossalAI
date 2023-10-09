@@ -90,44 +90,44 @@ SKIPPED_TESTS=(
     "llama-colossalai_zero2"
 )
 
-# GRAD_CKPTS=('' '--grad_checkpoint')
-# for lora_rank in '0'; do
-#     for model in ${MODELS[@]}; do
-#         strategies=($(shuf -e "${STRATEGIES[@]}"))
-#         for strategy in ${strategies[@]}; do
-#             if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy-$lora_rank " ]]; then
-#                 echo "[Test]: Skipped $model-$strategy-$lora_rank"
-#                 continue
-#             elif [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy " ]]; then
-#                 echo "[Test]: Skipped $model-$strategy"
-#                 continue
-#             fi
-#             pretrain=$(get_pretrain $model)
-#             pretrain_model=""
-#             if [[ $lora_rank -gt 0 ]]; then
-#                 pretrain_model="--pretrain $pretrain"
-#             fi
-#             grad_ckpt=$(random_choice "${GRAD_CKPTS[@]}")
-#             for i in $(seq $NUM_RETRY); do
-#                 echo "[Test]: $model-$strategy-$lora_rank, attempt $i"
-#                 torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_sft.py \
-#                     $pretrain_model --tokenizer $MODELS_DIR/$model \
-#                     --model $model --strategy $strategy --lora_rank $lora_rank $grad_ckpt \
-#                     --dataset $SFT_DATASET --max_datasets_size 8 \
-#                     --max_epochs 1 --batch_size 1 --accumulation_steps 1 --lr 1e-8 \
-#                     --save_path $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank}
-#                 passed=$?
-#                 if [ $passed -eq 0 ]; then
-#                     break
-#                 fi
-#             done
-#             if [ $passed -ne 0 ]; then
-#                 echo "[Test]: Failed $model-$strategy-$lora_rank"
-#                 exit 1
-#             fi
-#         done
-#     done
-# done
+GRAD_CKPTS=('' '--grad_checkpoint')
+for lora_rank in '0'; do
+    for model in ${MODELS[@]}; do
+        strategies=($(shuf -e "${STRATEGIES[@]}"))
+        for strategy in ${strategies[@]}; do
+            if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy-$lora_rank " ]]; then
+                echo "[Test]: Skipped $model-$strategy-$lora_rank"
+                continue
+            elif [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy " ]]; then
+                echo "[Test]: Skipped $model-$strategy"
+                continue
+            fi
+            pretrain=$(get_pretrain $model)
+            pretrain_model=""
+            if [[ $lora_rank -gt 0 ]]; then
+                pretrain_model="--pretrain $pretrain"
+            fi
+            grad_ckpt=$(random_choice "${GRAD_CKPTS[@]}")
+            for i in $(seq $NUM_RETRY); do
+                echo "[Test]: $model-$strategy-$lora_rank, attempt $i"
+                torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_sft.py \
+                    $pretrain_model --tokenizer $MODELS_DIR/$model \
+                    --model $model --strategy $strategy --lora_rank $lora_rank $grad_ckpt \
+                    --dataset $SFT_DATASET --max_datasets_size 8 \
+                    --max_epochs 1 --batch_size 1 --accumulation_steps 1 --lr 1e-8 \
+                    --save_path $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank}
+                passed=$?
+                if [ $passed -eq 0 ]; then
+                    break
+                fi
+            done
+            if [ $passed -ne 0 ]; then
+                echo "[Test]: Failed $model-$strategy-$lora_rank"
+                exit 1
+            fi
+        done
+    done
+done
 
 echo "[Test]: testing reward model ..."
 
