@@ -105,6 +105,10 @@ class Batch:
         return has_new_finish
 
     def filter_finished(self):
+        """
+        Filter finished requests from the batch, the finished ones will be removed from 'reqs'.
+        """
+        # TODO: the logic of return should be defined here.
         unfinished_req = []
         for req in self.reqs:
             if not req.has_generate_finished:
@@ -123,6 +127,9 @@ class Batch:
 
     def __repr__(self):
         return f"batch_id={self.batch_id}, " f"reqs={self.reqs}, "
+
+    def __len__(self):
+        return len(self.reqs)
 
 
 class BatchTokenIdOut:

@@ -216,6 +216,7 @@ class InferBatch:
             out_token_id_counts=[self.out_token_id_counts[_i] for _i in indices],
             sampling_param_list=[self.sampling_param_list[_i] for _i in indices],
             cache_manager=self.cache_manager,
+            max_total_len=self.max_total_len,
         )
 
     @classmethod
@@ -234,7 +235,7 @@ class InferBatch:
         cumulative_batch_size = 0
         nopad_total_token_num = batch1.nopad_total_token_num + batch2.nopad_total_token_num
         nopad_max_len_in_batch = max(batch1.nopad_max_len_in_batch, batch2.nopad_max_len_in_batch)
-
+        max_total_len = max(batch1.max_total_len, batch2.max_total_len)
         nopad_b_loc = torch.empty((new_batch_size, batch1.max_total_len + 12), dtype=torch.long, device="cuda")
         nopad_b_start_loc = torch.zeros(new_batch_size, dtype=torch.int32, device="cuda")
         nopad_b_seq_len = torch.zeros(new_batch_size, dtype=torch.int32, device="cuda")
@@ -283,6 +284,7 @@ class InferBatch:
             out_token_id_counts=out_token_id_counts,
             sampling_param_list=sampling_param_list,
             cache_manager=batches[0].cache_manager,
+            max_total_len=max_total_len,
         )
 
     def __len__(self):

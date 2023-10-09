@@ -19,7 +19,7 @@ class DynamicBatchManager:
         log_stats=True,
         log_stats_interval=10,
         running_batch: Batch = None,
-        waiting_req_list=[],
+        waiting_req_list: List = [],
     ):
         """
         Args:   tp_engine : The tp engine that dynamic batch manager hold, defined before dynamic batch manager
@@ -34,7 +34,7 @@ class DynamicBatchManager:
         """
         self.engine = tp_engine
         self.max_total_token_num = max_total_token_num
-        running_max_req_size = self.engine.max_batch_size
+        running_max_req_size = self.engine.max_batch_size if self.engine is not None else 2
         self.req_queue = ReqQueue(max_total_token_num, batch_max_tokens, running_max_req_size, waiting_req_list)
         # all the inputs should be put into req_queue: waiting req list
 

@@ -3,7 +3,8 @@ import argparse
 import pytest
 import torch
 from packaging import version
-from transformers import LlamaForCausalLM, LlamaTokenizer
+from transformers import LlamaForCausalLM
+from transformers.models.llama.configuration_llama import LlamaConfig
 
 import colossalai
 from colossalai.inference.dynamic_batching.io_struct import Req
@@ -12,7 +13,6 @@ from colossalai.inference.manager import start_dynamic_batching
 from colossalai.inference.tensor_parallel import TPInferEngine
 from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
-from tests.test_infer.test_llama_infer import init_to_get_rotary
 
 TP_SIZE = 2
 MAX_BATCH_SIZE = 2
@@ -42,17 +42,14 @@ def run():
     waiting_list.append(req3)
     waiting_list.append(req4)
 
-    tokenizer = LlamaTokenizer.from_pretrained("/data/scratch/llama-7b-hf")
-    tokenizer.pad_token_id = tokenizer.unk_token_id
-    model = LlamaForCausalLM.from_pretrained("/data/scratch/llama-7b-hf", pad_token_id=tokenizer.eos_token_id)
+    llama_config = LlamaConfig(num_hidden_layers=2, bos_token_id=0, eos_token_id=1, vocab_size=1200, hidden_size=1024)
+    model = LlamaForCausalLM(llama_config)
     model = model.half()
 
-    init_to_get_rotary(model.model, base=10000)
     shard_config = ShardConfig(enable_tensor_parallelism=True if TP_SIZE > 1 else False, inference_only=True)
 
     infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
     start_dynamic_batching(args=args, tp_engine=infer_engine, waiting_req_list=waiting_list)
-    print("done")
 
 
 def check_dynamic_forward(rank, world_size, port):

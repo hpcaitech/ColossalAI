@@ -45,7 +45,7 @@ class ReqQueue:
         else:
             return False
 
-    def generate_new_batch(self, current_batch: Batch):
+    def generate_new_batch(self, current_batch: Batch = None):
         if current_batch is not None and len(current_batch.reqs) >= self.running_max_req_size:
             return None
         self._init_cache_list(current_batch)
@@ -69,3 +69,6 @@ class ReqQueue:
             return new_batch
         else:
             return None
+
+    def __len__(self):
+        return self.waiting_req_list.__len__()
