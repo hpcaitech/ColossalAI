@@ -39,12 +39,9 @@ BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
 EXAMPLES_DIR=$BASE_DIR/examples
 MODEL_SAVE_PATH=$EXAMPLES_DIR/rlhf_models
 MODELS_DIR=$BASE_DIR/examples/models_config
-# MODELS=('gpt2' 'bloom' 'opt' 'llama')
-# MODELS_PPO=('gpt2' 'bloom' 'opt')
-MODELS=('bloom')
-MODELS_PPO=('bloom')
-# STRATEGIES=('ddp' 'colossalai_gemini' 'colossalai_zero2')
-STRATEGIES=('colossalai_zero2')
+MODELS=('gpt2' 'bloom' 'opt' 'llama')
+MODELS_PPO=('gpt2' 'bloom' 'opt')
+STRATEGIES=('ddp' 'colossalai_gemini' 'colossalai_zero2')
 
 if [ ! -d "$MODEL_SAVE_PATH" ]; then
   mkdir "$MODEL_SAVE_PATH"

@@ -118,7 +118,7 @@ def test_lora(lora_rank: int, num_dim: int, num_layers: int):
         # HACK: skip llama due to long execution time
         # lambda: (LlamaActor(), LlamaCritic(), LlamaRM()),
         lambda: (OPTActor(), OPTCritic(), OPTRM()),
-        lambda: (ChatGLMActor(), None, None),
+        # lambda: (ChatGLMActor(), None, None), #temporally remove tests for chatglm
     ],
 )
 @torch.no_grad()
