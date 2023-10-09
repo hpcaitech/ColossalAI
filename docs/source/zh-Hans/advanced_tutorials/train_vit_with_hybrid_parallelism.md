@@ -112,9 +112,10 @@ def _criterion(outputs, inputs):
     return loss
 ```
 ## 增强VIT模型
-我们开始使用colossalai的混合并行策略来增强模型，首先我们先定义一个`HybridParallelPlugin`的对象，[`HybridParallelPlugin`](../basics/booster_plugins.md)封装了colossalai的多种并行策略，之后我们使用`HybridParallelPlugin`对象来初始化booster。
+我们开始使用colossalai的混合并行策略来增强模型，首先我们先定义一个`HybridParallelPlugin`的对象，[`HybridParallelPlugin`](../basics/booster_plugins.md)封装了colossalai的多种并行策略，之后我们使用`HybridParallelPlugin`对象来初始化booster并调用`booster.boost`来增强模型。
 ### 半精度训练
 在`HybridParallelPlugin`插件中，通过设置`precision`确定训练精度，可支持'fp16','bf16','fp32'三种类型。'fp16','bf16'为半精度类型，半精度在`HybridParallelPlugin`中有两种应用场景，一是使用zero数据并行时，需设置为半精度；二是指定使用amp半精度进行训练。
+
 使用amp半精度时，可设置相关参数。
 `initial_scale`（浮点数，可选项）：AMP的初始损失缩放比例。默认值为2**16。
 `min_scale`（浮点数，可选项）：AMP的最小损失缩放比例。默认值为1。
@@ -123,6 +124,7 @@ def _criterion(outputs, inputs):
 `growth_interval`（整数，可选项）：在使用AMP时，当没有溢出时增加损失缩放比例的步数。默认值为1000。
 `hysteresis`（整数，可选项）：在使用AMP时，减少损失缩放比例之前的溢出次数。默认值为2。
 `max_scale`（浮点数，可选项）：AMP的最大损失缩放比例。默认值为2**32。
+
 使用AMP的plugin示例：
 ```python
 plugin = HybridParallelPlugin(
@@ -133,6 +135,7 @@ plugin = HybridParallelPlugin(
 
 ### 张量并行
 `HybridParallelPlugin`是通过shardformer实现张量并行，在该插件中，可设置`tp_size`确定张量并行组的大小，此外，还有多个参数可设置张量并行时的优化特性：
+
 `enable_all_optimization`（布尔类型，可选项）：是否启用Shardformer支持的所有优化方法，目前所有优化方法包括融合归一化、flash attention和JIT。默认为False。
 `enable_fused_normalization`（布尔类型，可选项）：是否在Shardformer中启用融合归一化。默认为False。
 `enable_flash_attention`（布尔类型，可选项）：是否在Shardformer中启用flash attention。默认为False。
@@ -199,6 +202,7 @@ plugin = HybridParallelPlugin(
 
 ### 混合并行
 可参考上述的策略自定义合适的混合并行策略。定义混合并行的插件，并使用该插件定义一个booster：
+
 ```python
 plugin = HybridParallelPlugin(
             tp_size=TP_SIZE,
@@ -219,7 +223,7 @@ model, optimizer, _criterion, train_dataloader, lr_scheduler = booster.boost(
     )
 ```
 ## 使用混合并行训练 ViT
-最后就可以使用混合并行策略来训练模型了。我们先定义一个训练函数，描述训练过程。需要注意的是，如果使用了管道并行策略，需要调用`booster.execute_pipeline`来执行模型的训练，它会调用`scheduler`管理模型的前后向操作。
+最后就可以使用混合并行策略来训练模型了。我们先定义一个训练函数，描述训练过程。需要注意的是，如果使用了管道并行策略，需要调用`booster.execute_pipeline`来执行模型的训练，它会调用`scheduler`管理模型的前后向操作。  
 ```python
 def run_forward_backward(
     model: nn.Module,

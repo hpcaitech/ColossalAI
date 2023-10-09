@@ -68,7 +68,7 @@ WARMUP_RATIO = 0.3
 TP_SIZE = 2
 PP_SIZE = 2
 ```
-Let's create a distributed environment.
+Create a distributed environment.
 ```python
 # Launch ColossalAI
 colossalai.launch_from_torch(config={}, seed=SEEDå)
@@ -114,7 +114,7 @@ def _criterion(outputs, inputs):
     return loss
 ```
 ## Boost the VIT Model
-We begin using ColossalAI's hybrid parallelism strategy to enhance the model. First, let's define an object of `HybridParallelPlugin`. `HybridParallelPlugin` encapsulates various parallelism strategies in ColossalAI. Afterward, we use the `HybridParallelPlugin` object to initialize the booster.
+We begin using ColossalAI's hybrid parallelism strategy to enhance the model. First, let's define an object of `HybridParallelPlugin`. `HybridParallelPlugin` encapsulates various parallelism strategies in ColossalAI. Afterward, we use the `HybridParallelPlugin` object to initialize the booster and boost the VIT model.
 ### Training with AMP
 In the HybridParallelPlugin plugin, you can determine the training precision by setting the precision parameter, which supports three types: 'fp16', 'bf16', and 'fp32'. 'fp16' and 'bf16' are half-precision types. Half-precision is used in two scenarios in the HybridParallelPlugin:
 1. When using zero-data parallelism, you should set it to half-precision.
@@ -213,7 +213,7 @@ plugin = HybridParallelPlugin(
 booster_kwargs=dict(mixed_precision='fp16')
 booster = Booster(plugin=plugin, **booster_kwargs)
 ```
-Next, we use booster.boost to inject the features encapsulated by the plugin into the model training components.
+Next, we use `booster.boost` to inject the features encapsulated by the plugin into the model training components.
 ```python
 model, optimizer, _criterion, train_dataloader, lr_scheduler = booster.boost(
         model=model, optimizer=optimizer, criterion=criterion, dataloader=train_dataloader, lr_scheduler=lr_scheduler
