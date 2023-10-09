@@ -66,7 +66,7 @@ class LLamaSmoothquantAttention(nn.Module):
         self.register_buffer("v_output_scale", torch.tensor([1.0]))
         self.register_buffer("q_rotary_output_scale", torch.tensor([1.0]))
         self.register_buffer("k_rotary_output_scale", torch.tensor([1.0]))
-        self.register_buffer("qk_output_scale", torch.tensor([1.0]))
+        # self.register_buffer("qk_output_scale", torch.tensor([1.0]))
         self.register_buffer("attn_output_scale", torch.tensor([1.0]))
 
     @staticmethod
@@ -96,14 +96,14 @@ class LLamaSmoothquantAttention(nn.Module):
         int8_module.k_proj = W8A8B8O8Linear.from_float(module.k_proj, attn_input_scale, k_output_scale)
         int8_module.v_proj = W8A8B8O8Linear.from_float(module.v_proj, attn_input_scale, v_output_scale)
         int8_module.o_proj = W8A8BFP32OFP32Linear.from_float(module.o_proj, out_input_scale)
-        # print("qout_scale k out scale:", q_output_scale, k_output_scale)
-        int8_module.qk_bmm = BMM_S8T_S8N_F32T.from_scale(q_output_scale, k_output_scale)
+        # # print("qout_scale k out scale:", q_output_scale, k_output_scale)
+        # int8_module.qk_bmm = BMM_S8T_S8N_F32T.from_scale(q_output_scale, k_output_scale)
 
-        # alpha = s_prob * s_v / s_out, where s_prob = 1 / 127
-        int8_module.pv_bmm = BMM_S8T_S8N_S8T.from_scale(1.0 / 127, v_output_scale, out_input_scale)
+        # # alpha = s_prob * s_v / s_out, where s_prob = 1 / 127
+        # int8_module.pv_bmm = BMM_S8T_S8N_S8T.from_scale(1.0 / 127, v_output_scale, out_input_scale)
 
-        int8_module.qk_output_scale = torch.tensor(q_output_scale * k_output_scale)
-        int8_module.attn_output_scale = torch.tensor(1.0 / 127 * v_output_scale / out_input_scale)
+        # int8_module.qk_output_scale = torch.tensor(q_output_scale * k_output_scale)
+        int8_module.attn_output_scale = torch.tensor(out_input_scale)
 
         return int8_module
 
@@ -135,15 +135,15 @@ class LLamaSmoothquantAttention(nn.Module):
             query_states.view(-1, self.num_heads, self.head_dim),
             cos,
             sin,
-            self.q_output_scale,
-            self.q_rotary_output_scale,
+            self.q_output_scale.item(),
+            self.q_rotary_output_scale.item(),
         )
         int8_rotary_embedding_fwd(
             key_states.view(-1, self.num_heads, self.head_dim),
             cos,
             sin,
-            self.k_output_scale,
-            self.k_rotary_output_scale,
+            self.k_output_scale.item(),
+            self.k_rotary_output_scale.item(),
         )
 
         if past_key_value is None:
@@ -153,7 +153,7 @@ class LLamaSmoothquantAttention(nn.Module):
             key_states = key_states.view(*proj_shape)
             value_states = value_states.view(*proj_shape)
 
-            # attn_output = torch.empty(bsz * seq_len, self.num_heads, self.head_dim, dtype=torch.int8, device="cuda")
+            # attn_output = torch.empty(bsz * seq_len, self.num_heads, self.head_dim, dtype=torch.float32, device="cuda")
             attn_output = torch.empty_like(query_states)
 
             b_start_loc = torch.arange(start=0, end=bsz * seq_len, step=seq_len, dtype=torch.int, device="cuda")
@@ -172,6 +172,7 @@ class LLamaSmoothquantAttention(nn.Module):
                 b_seq_len,
                 seq_len,
             )
+
             if use_cache:
                 past_key_value = (
                     key_states.view(bsz, seq_len, -1, self.head_dim),

@@ -89,29 +89,29 @@ def int8_rotary_embedding_fwd(q, cos, sin, input_scale, output_scale):
     assert q.shape[0] == cos.shape[0] and q.shape[0] == sin.shape[0], f"q shape {q.shape} cos shape {cos.shape}"
     BLOCK_HEAD = 4
     BLOCK_SEQ = 32
-    (triton.cdiv(head_num, BLOCK_HEAD), triton.cdiv(total_len, BLOCK_SEQ))
+    grid = (triton.cdiv(head_num, BLOCK_HEAD), triton.cdiv(total_len, BLOCK_SEQ))
     if head_dim >= 128:
-        pass
+        num_warps = 8
     else:
-        pass
+        num_warps = 4
 
-    # _rotary_kernel[grid](
-    #     q,
-    #     input_scale.item(),
-    #     output_scale.item(),
-    #     cos,
-    #     sin,
-    #     q.stride(0),
-    #     q.stride(1),
-    #     q.stride(2),
-    #     cos.stride(0),
-    #     cos.stride(1),
-    #     total_len,
-    #     HEAD_NUM=head_num,
-    #     BLOCK_HEAD=BLOCK_HEAD,
-    #     BLOCK_SEQ=BLOCK_SEQ,
-    #     HEAD_DIM=head_dim,
-    #     num_warps=num_warps,
-    #     num_stages=1,
-    # )
+    _rotary_kernel[grid](
+        q,
+        input_scale,
+        output_scale,
+        cos,
+        sin,
+        q.stride(0),
+        q.stride(1),
+        q.stride(2),
+        cos.stride(0),
+        cos.stride(1),
+        total_len,
+        HEAD_NUM=head_num,
+        BLOCK_HEAD=BLOCK_HEAD,
+        BLOCK_SEQ=BLOCK_SEQ,
+        HEAD_DIM=head_dim,
+        num_warps=num_warps,
+        num_stages=1,
+    )
     return

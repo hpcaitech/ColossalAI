@@ -50,7 +50,7 @@ def test_rotary_emb():
     x = x / input_scale
     x = x.to(torch.int8)
 
-    int8_rotary_embedding_fwd(x, cos, sin, input_scale, output_scale)
+    int8_rotary_embedding_fwd(x, cos, sin, input_scale.item(), output_scale.item())
     y_triton = x.to(torch.float) * output_scale
     assert torch.allclose(y_triton, y_torch, atol=2e-1, rtol=1e-2, equal_nan=True)
 
