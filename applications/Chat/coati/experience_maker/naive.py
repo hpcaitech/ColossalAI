@@ -86,7 +86,7 @@ class NaiveExperienceMaker(ExperienceMaker):
             )
         reward, kl = compute_reward(r, self.kl_coef, action_log_probs, base_action_log_probs, action_mask=action_mask)
 
-        # Adopted from https://github.com/CarperAI/trlx/blob/main/trlx/models/modeling_ppo.py#L134
+        # Adapted from https://github.com/CarperAI/trlx/blob/main/trlx/models/modeling_ppo.py#L134
 
         lastgaelam = 0
         advantages_reversed = []

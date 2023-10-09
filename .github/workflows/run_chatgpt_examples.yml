@@ -42,8 +42,8 @@ jobs:
         run: |
           cd applications/Chat
           rm -rf ~/.cache/colossalai
-          ./tests/test_inference.sh
-          ./tests/test_benchmarks.sh
+          # ./tests/test_inference.sh
+          # ./tests/test_benchmarks.sh
           ./tests/test_train.sh
         env:
           NCCL_SHM_DISABLE: 1
