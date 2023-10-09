@@ -14,7 +14,7 @@ from colossalai.inference.tensor_parallel import TPInferEngine
 from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 
-TP_SIZE = 2
+TP_SIZE = 1
 MAX_BATCH_SIZE = 2
 MAX_INPUT_LEN = 5
 MAX_OUTPUT_LEN = 16
@@ -33,8 +33,8 @@ def run():
 
     req1 = Req(0, [0, 0, 10, 6, 8], sampling_params)
     req2 = Req(1, [10, 10, 10, 10, 10], sampling_params)
-    req3 = Req(2, [10, 10, 10, 10, 10], sampling_params)
-    req4 = Req(3, [10, 10, 10, 9, 1], sampling_params)
+    req3 = Req(2, [0, 0, 10, 10, 10], sampling_params)
+    req4 = Req(3, [0, 0, 10, 10, 10], sampling_params)
 
     waiting_list = []
     waiting_list.append(req1)

@@ -95,7 +95,7 @@ class MemoryManager:
         self.available_size += free_index.shape[0]
         self.mem_state[free_index] = 1
         # FIXME: should this be zero？
-        self.past_key_values_length = 0
+        # self.past_key_values_length = 0
 
     @torch.no_grad()
     def free_all(self):

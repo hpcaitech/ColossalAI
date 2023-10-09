@@ -151,7 +151,6 @@ class InferBatch:
         requests = []
         all_input_ids = []
         input_lengths = []
-
         nopad_total_token_num = 0
         nopad_max_len_in_batch = 0
         nopad_b_loc = torch.empty((len(request_ids), self.max_total_len + 12), dtype=torch.long, device="cuda")
@@ -175,7 +174,6 @@ class InferBatch:
                     ]
                 )
         remove_index = torch.cat(remove_index, dim=-1)
-
         self.cache_manager.free(remove_index)
 
         nopad_max_len_in_batch = 0

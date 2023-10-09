@@ -151,6 +151,7 @@ class DynamicBatchManager:
         For all batches, no matter it is a new batch or a mini batch, we need to do prefill first.
         """
         self._init_batch(batch)
+
         # TODO: figure out if cache and batch id is needed
         ans = self.engine._prefill_batch(batch.batch_id)
         req_to_out_token_id = ans
@@ -186,6 +187,7 @@ class DynamicBatchManager:
 
         m_batch = InferBatch.merge(batch1, batch2)
         self.engine.cache[batch1.batch_id] = m_batch
+        print("merged_batch", m_batch)
         del batch1
         del batch2
 

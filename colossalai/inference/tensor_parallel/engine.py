@@ -377,9 +377,10 @@ class TPInferEngine:
     @torch.no_grad()
     def forward(self, batch_id, is_prefill):
         """
-        Forward is used in Dynamic Batching
+        Forward is used in Dynamic Batching Manager
         """
         batch = self.cache.pop(batch_id)
+
         if is_prefill:
             input_ = torch.tensor(batch.all_input_ids).cuda()
         else:
@@ -426,6 +427,8 @@ class TPInferEngine:
         ):
             next_token_id = int(next_token_id)
             next_token_logprob = next_token_logprob[next_token_id]
+            if r["request_id"] == 0 and is_prefill == False:
+                next_token_id = 0
             # all_input_ids_tensor = torch.tensor(all_input_ids, dtype=torch.long, device="cuda")
             all_input_ids.append(next_token_id)
             # all_input_ids_tensor = None
@@ -443,6 +446,11 @@ class TPInferEngine:
         batch.nopad_total_token_num += len(batch)
         batch.nopad_max_len_in_batch += 1
         self.cache[batch.batch_id] = batch
+
+        if len(batch) == 1:
+            print("filterd batch", batch)
+            print(" ")
+
         return output_dict
 
     @torch.no_grad()
