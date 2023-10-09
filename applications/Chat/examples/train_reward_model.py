@@ -58,7 +58,7 @@ def train(args):
             if args.pretrain:
                 model = LlamaRM(pretrained=args.pretrain, lora_rank=args.lora_rank)
             else:
-                raise(ValueError("Please provide pretrain path"))
+                raise (ValueError("Please provide pretrain path"))
         else:
             raise ValueError(f'Unsupported model "{args.model}"')
 
@@ -154,7 +154,7 @@ def train(args):
         eval_dataset, shuffle=(eval_sampler is None), sampler=eval_sampler, batch_size=args.batch_size, pin_memory=True
     )
 
-    lr_scheduler = CosineAnnealingLR(optim, train_dataloader.__len__()*args.max_epochs // 100)
+    lr_scheduler = CosineAnnealingLR(optim, train_dataloader.__len__() * args.max_epochs // 100)
     strategy_dict = strategy.prepare(dict(model=model, optimizer=optim, lr_scheduler=lr_scheduler))
     model = strategy_dict["model"]
     optim = strategy_dict["optimizer"]
@@ -182,8 +182,10 @@ def train(args):
         LORA_MANAGER.merge_weights = True
         model.eval()
     # save model checkpoint after fitting on only rank0
-    state_dict = model.state_dict()
-    torch.save(state_dict, args.save_path)
+    strategy.save_model(model, args.save_path)
+
+    # state_dict = model.state_dict()
+    # torch.save(state_dict, args.save_path)
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(
@@ -205,7 +207,7 @@ if __name__ == "__main__":
         "--dataset", type=str, choices=["Anthropic/hh-rlhf", "Dahoas/rm-static"], default="Dahoas/rm-static"
     )
     parser.add_argument("--subset", type=lambda x: None if x == "None" else x, default=None)
-    parser.add_argument("--max_datasets_size", type=int, default=160800)  #160800
+    parser.add_argument("--max_datasets_size", type=int, default=160800)  # 160800
     parser.add_argument("--save_path", type=str, default="rm_ckpt")
     parser.add_argument("--max_epochs", type=int, default=8)
     parser.add_argument("--batch_size", type=int, default=16)
