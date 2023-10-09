@@ -11,14 +11,20 @@ from coati.models.opt import OPTRM, OPTActor, OPTCritic
 from coati.trainer import PPOTrainer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from torch.optim import Adam
-from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer, AutoConfig, AutoModel, AutoModelForSequenceClassification
-from transformers.models.gpt2.configuration_gpt2 import GPT2Config
+from transformers import (
+    AutoConfig,
+    AutoTokenizer,
+    BloomConfig,
+    BloomModel,
+    BloomTokenizerFast,
+    GPT2Tokenizer,
+    LlamaTokenizer,
+)
+
 from colossalai.nn.optimizer import HybridAdam
-from transformers.models.gpt2.modeling_gpt2 import GPT2Model
-from transformers import BloomConfig, BloomModel
 
 
 def main(args):
@@ -42,14 +48,13 @@ def main(args):
 
     with strategy.model_init_context():
         # configure model
+        # TODO: add support for llama
         if args.model == "gpt2":
             initial_model = GPTActor(pretrained=args.pretrain)
         elif args.model == "bloom":
             initial_model = BLOOMActor(pretrained=args.pretrain)
         elif args.model == "opt":
             initial_model = OPTActor(pretrained=args.pretrain)
-        elif args.model == "llama":
-            initial_model = LlamaActor(pretrained=args.pretrain)
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
@@ -68,10 +73,9 @@ def main(args):
             reward_model = LlamaRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         else:
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
- 
+
         if args.rm_path is not None:
             reward_model.load_state_dict(state_dict, strict=True)
-        
 
         initial_model.to(torch.cuda.current_device())
         reward_model.to(torch.cuda.current_device())
@@ -185,13 +189,12 @@ def main(args):
     (critic, critic_optim), reward_model, initial_model = strategy.prepare(
         (critic, critic_optim), reward_model, initial_model
     )
-    
+
     lr_scheduler = CosineAnnealingLR(actor_optim, args.num_episodes)
     strategy_dict = strategy.prepare(dict(model=actor, optimizer=actor_optim, lr_scheduler=lr_scheduler))
     actor = strategy_dict["model"]
     actor_optim = strategy_dict["optimizer"]
     actor_lr_scheduler = strategy_dict["lr_scheduler"]
-
 
     # configure trainer
     trainer = PPOTrainer(
@@ -204,7 +207,7 @@ def main(args):
         critic_optim,
         actor_lr_scheduler,
         tokenizer=tokenizer,
-        rm_model_tokenizer = rm_model_tokenizer,
+        rm_model_tokenizer=rm_model_tokenizer,
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
         train_batch_size=args.train_batch_size,
@@ -221,7 +224,7 @@ def main(args):
         num_episodes=args.num_episodes,
         num_collect_steps=args.num_collect_steps,
         num_update_steps=args.num_update_steps,
-        save_per_num_episodes = args.save_per_num_episodes,
+        save_per_num_episodes=args.save_per_num_episodes,
         prompt_dataloader=prompt_dataloader,
         pretrain_dataloader=pretrain_dataloader,
         log_dir=args.log_dir,
