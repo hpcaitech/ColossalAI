@@ -234,7 +234,7 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
                 dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.tp_pg)
             if pp_size > 1:
                 dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.pp_pg)
-            total_norm = total_norm_cuda[0].item()
+            total_norm = total_norm_cuda.item()
         else:
             # gradients used for norm calculation.
             gradients = [grad for param, grad in param_gradient_pairs]
@@ -255,15 +255,16 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
                     if is_distributed_tensor(param_for_grad) == False:
                         grad_norm_exponentiated /= tp_size
 
-                # If 'pp_size' is greater than 1 and the gradient is shared parameters,
+                # If 'pp_size' is greater than 1 and the gradient belongs to shared parameters,
                 # it means that this parameter is used in two different pipeline stages.
-                # To avoid redundant norm calculations, we divide the exponent of this norm by 2.
+                # To avoid redundant norm calculations, we divide the exponent of this norm by
+                # the number of shared stages.
                 if pp_size > 1:
                     for shared_param in self.shared_params:
                         if self.stage_manager.stage in shared_param:
                             stage_shared_param = shared_param[self.stage_manager.stage]
                             if grad is stage_shared_param.grad:
-                                grad_norm_exponentiated /= 2
+                                grad_norm_exponentiated /= len(shared_param)
 
                 total_norm_exponentiated += grad_norm_exponentiated
 
@@ -276,7 +277,7 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
                 dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
 
             # compute the total_norm
-            total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
+            total_norm = total_norm_exponentiated_cuda.item() ** (1.0 / norm_type)
 
         return total_norm
 
@@ -378,7 +379,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
             if pp_size > 1:
                 dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.pp_pg)
 
-            total_norm = total_norm_cuda[0].item()
+            total_norm = total_norm_cuda.item()
 
         else:
             # gradients used for norm calculation.
@@ -400,16 +401,17 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
                     if is_distributed_tensor(param_for_grad) == False:
                         grad_norm_exponentiated /= tp_size
 
-                # If 'pp_size' is greater than 1 and the gradient is shared parameters,
+                # If 'pp_size' is greater than 1 and the gradient belongs to shared parameters,
                 # it means that this parameter is used in two different pipeline stages.
-                # To avoid redundant norm calculations, we divide the exponent of this norm by 2.
+                # To avoid redundant norm calculations, we divide the exponent of this norm by
+                # the number of shared stages.
                 if pp_size > 1:
                     for shared_param in self.shared_params:
                         if self.stage_manager.stage in shared_param:
                             stage_working_shared_param = shared_param[self.stage_manager.stage]
                             stage_master_shared_param = self.working_to_master_map[stage_working_shared_param]
                             if grad is stage_master_shared_param.grad:
-                                grad_norm_exponentiated /= 2
+                                grad_norm_exponentiated /= len(shared_param)
 
                 total_norm_exponentiated += grad_norm_exponentiated
 
@@ -422,7 +424,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
                 dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
 
             # compute the total_norm
-            total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
+            total_norm = total_norm_exponentiated_cuda.item() ** (1.0 / norm_type)
 
         return total_norm
 
@@ -514,7 +516,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             if pp_size > 1:
                 dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.pp_pg)
 
-            total_norm = total_norm_cuda[0].item()
+            total_norm = total_norm_cuda.item()
         else:
             total_norm_exponentiated = 0.0
             for grad in gradients:
@@ -532,16 +534,17 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
                     if is_distributed_tensor(param_for_grad) == False:
                         grad_norm_exponentiated /= tp_size
 
-                # If 'pp_size' is greater than 1 and the gradient is shared parameters,
+                # If 'pp_size' is greater than 1 and the gradient belongs to shared parameters,
                 # it means that this parameter is used in two different pipeline stages.
-                # To avoid redundant norm calculations, we divide the exponent of this norm by 2.
+                # To avoid redundant norm calculations, we divide the exponent of this norm by
+                # the number of shared stages.
                 if pp_size > 1:
                     for shared_param in self.shared_params:
                         if self.stage_manager.stage in shared_param:
                             stage_shared_param = shared_param[self.stage_manager.stage]
                             working_grad = self._grad_store.get_working_grad_by_param_id(id(stage_shared_param))
                             if grad is working_grad:
-                                grad_norm_exponentiated /= 2
+                                grad_norm_exponentiated /= len(shared_param)
 
                 total_norm_exponentiated += grad_norm_exponentiated
 
@@ -557,7 +560,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
                 dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
 
             # Compute the 'total_norm' from 'total_norm_exponentiated'
-            total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
+            total_norm = total_norm_exponentiated_cuda.item() ** (1.0 / norm_type)
 
         return total_norm
 

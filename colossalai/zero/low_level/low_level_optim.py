@@ -479,7 +479,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
             dist.all_reduce(total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.dp_pg)
-            total_norm = total_norm_cuda[0].item()
+            total_norm = total_norm_cuda.item()
 
         else:
             total_norm_exponentiated = 0.0
@@ -492,7 +492,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             torch.distributed.all_reduce(
                 total_norm_exponentiated_cuda, op=torch.distributed.ReduceOp.SUM, group=self.dp_pg
             )
-            total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
+            total_norm = total_norm_exponentiated_cuda.item() ** (1.0 / norm_type)
 
         return total_norm
 
