@@ -107,9 +107,7 @@ lr_scheduler = CosineAnnealingWarmupLR(
 定义criterion函数：
 ```python
 def _criterion(outputs, inputs):
-    outputs = output_transform_fn(outputs)
-    loss = criterion(outputs)
-    return loss
+    return outputs.loss
 ```
 ## 增强VIT模型
 我们开始使用colossalai的混合并行策略来增强模型，首先我们先定义一个`HybridParallelPlugin`的对象，[`HybridParallelPlugin`](../basics/booster_plugins.md)封装了colossalai的多种并行策略，之后我们使用`HybridParallelPlugin`对象来初始化booster并调用`booster.boost`来增强模型。
@@ -187,7 +185,7 @@ zero相关参数设置：
 `communication_dtype`（torch数据类型，可选项）：在使用ZeRO时的通信数据类型。如果未指定，则将使用参数的数据类型。默认为None。
 `overlap_communication`（布尔值，可选项）：在使用ZeRO时是否重叠通信和计算。默认为True。
 
-ZERO1的plugin示例
+zero1的plugin示例
 
 ```python
 plugin = HybridParallelPlugin(
@@ -213,8 +211,7 @@ plugin = HybridParallelPlugin(
             precision="fp16",
             initial_scale=1,
         )
-booster_kwargs=dict(mixed_precision='fp16')
-booster = Booster(plugin=plugin, **booster_kwargs)
+booster = Booster(plugin=plugin)
 ```
 接着我们使用`booster.boost`来将plugin所封装的特性注入到模型训练组件中。
 ```python

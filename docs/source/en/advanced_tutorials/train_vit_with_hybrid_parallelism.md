@@ -109,9 +109,7 @@ lr_scheduler = CosineAnnealingWarmupLR(
 Define the criterion function:
 ```python
 def _criterion(outputs, inputs):
-    outputs = output_transform_fn(outputs)
-    loss = criterion(outputs)
-    return loss
+    return outputs.loss
 ```
 ## Boost the VIT Model
 We begin using ColossalAI's hybrid parallelism strategy to enhance the model. First, let's define an object of `HybridParallelPlugin`. `HybridParallelPlugin` encapsulates various parallelism strategies in ColossalAI. Afterward, we use the `HybridParallelPlugin` object to initialize the booster and boost the VIT model.
@@ -210,8 +208,7 @@ plugin = HybridParallelPlugin(
             precision="fp16",
             initial_scale=1,
         )
-booster_kwargs=dict(mixed_precision='fp16')
-booster = Booster(plugin=plugin, **booster_kwargs)
+booster = Booster(plugin=plugin)
 ```
 Next, we use `booster.boost` to inject the features encapsulated by the plugin into the model training components.
 ```python

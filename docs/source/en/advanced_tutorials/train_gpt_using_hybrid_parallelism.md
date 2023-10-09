@@ -122,8 +122,6 @@ optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, eps=1e-8)
 ```
 Prepare the lr_scheduler and criterion, and it's important to note that when hybrid parallelism with pipeline parallelism is used, a criterion function should also be defined. This function should take the input and output of the model's forward pass as parameters and return the loss.
 ```python
-output_transform_fn = lambda x: x
-criterion = lambda x: x.loss
 # lr scheduler
 total_steps = len(train_dataloader) * NUM_EPOCHS
 num_warmup_steps = int(WARMUP_FRACTION * total_steps)
@@ -134,15 +132,12 @@ lr_scheduler = get_linear_schedule_with_warmup(
 )
 
 def _criterion(outputs, inputs):
-    outputs = output_transform_fn(outputs)
-    loss = criterion(outputs)
-    return loss
+    return outputs.loss
 ```
 ## Boost the GPT-2 Model
 Define a booster with `HybridParallelPlugin`. Based on the configured plugin parameters, the booster will inject one or more parallel strategies into the model. In this example, pipeline parallelism, zero1, and mixed-precision training optimizations are utilized.
 ```python
-booster_kwargs=dict(mixed_precision='fp16')
-booster = Booster(plugin=plugin, **booster_kwargs)
+booster = Booster(plugin=plugin)
 ```
 Boost these components with the defined booster.
 ```python
@@ -169,6 +164,7 @@ def train_epoch(
 ):
     use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
+    print_flag = (not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_stage)
     total_step = len(train_dataloader)
 
     model.train()
@@ -177,7 +173,7 @@ def train_epoch(
     with tqdm(
         range(total_step),
         desc=f"Epoch [{epoch + 1}/{NUM_EPOCHS}]",
-        disable=not (coordinator.is_master() or is_pp_last_stage),
+        disable=not print_flag,
     ) as pbar:
         # Forward pass
         for _ in pbar:

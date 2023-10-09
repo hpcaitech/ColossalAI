@@ -117,10 +117,8 @@ optimizer_grouped_parameters = [
 
 optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, eps=1e-8)
 ```
-准备 lr_scheduler 和 criterion，需要注意的是，当混合并行使用了管道并行时，还需定义criterion函数。这个函数应该以模型前后向的输入和输出作为参数，并返回loss。
+准备 `lr_scheduler` 和 `criterion`，需要注意的是，当混合并行使用了管道并行时，还需定义`criterion`函数。这个函数应该以模型前后向的输入和输出作为参数，并返回loss。
 ```python
-output_transform_fn = lambda x: x
-criterion = lambda x: x.loss
 # lr scheduler
 total_steps = len(train_dataloader) * NUM_EPOCHS
 num_warmup_steps = int(WARMUP_FRACTION * total_steps)
@@ -131,15 +129,12 @@ lr_scheduler = get_linear_schedule_with_warmup(
 )
 
 def _criterion(outputs, inputs):
-    outputs = output_transform_fn(outputs)
-    loss = criterion(outputs)
-    return loss
+    return outputs.loss
 ```
 ## 增强GPT-2模型
 使用 HybridParallelPlugin 定义一个 booster（增强器）。根据设置的插件参数，booster会将一种或者多种并行策略注入到模型中。该例子中使用了管道并行，zero1，及半精度训练等优化。
 ```python
-booster_kwargs=dict(mixed_precision='fp16')
-booster = Booster(plugin=plugin, **booster_kwargs)
+booster = Booster(plugin=plugin)
 ```
 使用定义的 booster 来增强这些组件。
 ```python
@@ -166,6 +161,7 @@ def train_epoch(
 ):
     use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
+    print_flag = (not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_stage)
     total_step = len(train_dataloader)
 
     model.train()
@@ -174,7 +170,7 @@ def train_epoch(
     with tqdm(
         range(total_step),
         desc=f"Epoch [{epoch + 1}/{NUM_EPOCHS}]",
-        disable=not (coordinator.is_master() or is_pp_last_stage),
+        disable=not print_flag,
     ) as pbar:
         # Forward pass
         for _ in pbar:
