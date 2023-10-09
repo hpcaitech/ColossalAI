@@ -139,10 +139,10 @@ def run_forward_backward(
     booster: Booster,
 ):
 # run pipeline forward backward when enabling pp in hybrid parallel plugin
-output_dict = booster.execute_pipeline(
+    output_dict = booster.execute_pipeline(
     data_iter, model, criterion, optimizer, return_loss=True, return_outputs=True
 )
-loss, outputs = output_dict["loss"], output_dict["outputs"]
+    loss, outputs = output_dict["loss"], output_dict["outputs"]
 
 
 def train_epoch(

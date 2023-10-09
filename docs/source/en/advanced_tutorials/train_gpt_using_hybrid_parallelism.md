@@ -3,7 +3,7 @@
 Author: Hongxin Liu, Yongbin Li, Mingyan Jiang
 
 **Prerequisite:**
-- [parallellism plugin](../basics/booster_plugins.md)
+- [parallelism plugin](../basics/booster_plugins.md)
 - [booster API](../basics/booster_api.md)
 
 **Example Code**
@@ -138,7 +138,7 @@ def _criterion(outputs, inputs):
     loss = criterion(outputs)
     return loss
 ```
-## Boost GPT-2 Model
+## Boost the GPT-2 Model
 Define a booster with `HybridParallelPlugin`. Based on the configured plugin parameters, the booster will inject one or more parallel strategies into the model. In this example, pipeline parallelism, zero1, and mixed-precision training optimizations are utilized.
 ```python
 booster_kwargs=dict(mixed_precision='fp16')

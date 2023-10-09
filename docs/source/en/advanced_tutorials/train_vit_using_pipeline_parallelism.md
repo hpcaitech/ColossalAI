@@ -3,7 +3,7 @@
 Author: Hongxin Liu, Yongbin Li
 
 **Prerequisite:**
-- [parallellism plugin](../basics/booster_plugins.md)
+- [parallelism plugin](../basics/booster_plugins.md)
 - [booster API](../basics/booster_api.md)
 
 **Example Code**
@@ -110,8 +110,8 @@ def _criterion(outputs, inputs):
     loss = criterion(outputs)
     return loss
 ```
-## Boost VIT Model
-We begin by enhancing the model with colossalai's pipeline parallelism strategy. First, we define a `HybridParallelPlugin` object. `HybridParallelPlugin` encapsulates various parallelism strategies in colossalai. You can specify the use of pipeline parallelism by setting three parameters: pp_size, num_microbatches, and microbatch_size. For specific parameter settings, refer to the plugin-related documentation. Then, we initialize the booster with the `HybridParallelPlugin` object.
+## Boost the VIT Model
+We begin to enhance the model with colossalai's pipeline parallelism strategy. Firstly we define a `HybridParallelPlugin` object. `HybridParallelPlugin` encapsulates various parallelism strategies in colossalai. You can specify the use of pipeline parallelism by setting three parameters: `pp_size`, `num_microbatches`, and `microbatch_size`. For specific parameter settings, refer to the plugin-related documentation. Then, we initialize the booster with the `HybridParallelPlugin` object.
 ```python
 plugin = HybridParallelPlugin(
             tp_size=TP_SIZE,
@@ -125,14 +125,14 @@ plugin = HybridParallelPlugin(
 booster_kwargs=dict(mixed_precision='fp16')
 booster = Booster(plugin=plugin, **booster_kwargs)
 ```
-Next, we use booster.boost to inject the features encapsulated by the plugin into the model training components.
+Then, we use booster.boost to inject the features encapsulated by the plugin into the model training components.
 ```python
 model, optimizer, _criterion, train_dataloader, lr_scheduler = booster.boost(
         model=model, optimizer=optimizer, criterion=criterion, dataloader=train_dataloader, lr_scheduler=lr_scheduler
     )
 ```
 ## Training ViT using pipeline
-Finally, we can train the model using pipeline parallelism. First, we define a training function that describes the training process. It's important to note that when using pipeline parallelism, you need to call `booster.execute_pipeline` to perform the model training. This function will invoke the scheduler to manage the model's forward and backward operations.
+Finally, we can train the model using pipeline parallelism. Now, we define a training function that describes the training process. It's important to note that when using pipeline parallelism, you need to call `booster.execute_pipeline` to perform the model training. This function will invoke the scheduler to manage the model's forward and backward operations.
 ```python
 def run_forward_backward(
     model: nn.Module,
@@ -142,10 +142,10 @@ def run_forward_backward(
     booster: Booster,
 ):
 # run pipeline forward backward when enabling pp in hybrid parallel plugin
-output_dict = booster.execute_pipeline(
+    output_dict = booster.execute_pipeline(
     data_iter, model, criterion, optimizer, return_loss=True, return_outputs=True
 )
-loss, outputs = output_dict["loss"], output_dict["outputs"]
+    loss, outputs = output_dict["loss"], output_dict["outputs"]
 
 
 def train_epoch(

@@ -76,7 +76,7 @@ LEARNING_RATE = 2.4e-5
 WEIGHT_DECAY = 0.01
 WARMUP_FRACTION = 0.1
 ```
-获取数据集。您可以使用`plugin.prepare_dataloader`生成dataloader,也可以自定义生成dataloader。
+获取数据集。您可以使用`plugin.prepare_dataloader`生成dataloader,也可以自定义您的dataloader。
 ```python
 def tokenize_batch(batch, tokenizer: Optional[AutoTokenizer] = None, max_length: int = 2048):
     texts = [sample["sentence1"] + sample["sentence2"] for sample in batch]
@@ -138,8 +138,7 @@ def _criterion(outputs, inputs):
 ## 增强GPT-2模型
 使用 HybridParallelPlugin 定义一个 booster（增强器）。根据设置的插件参数，booster会将一种或者多种并行策略注入到模型中。该例子中使用了管道并行，zero1，及半精度训练等优化。
 ```python
-booster_kwargs={}
-booster_kwargs["mixed_precision"] = "fp16"
+booster_kwargs=dict(mixed_precision='fp16')
 booster = Booster(plugin=plugin, **booster_kwargs)
 ```
 使用定义的 booster 来增强这些组件。
