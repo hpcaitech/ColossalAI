@@ -1,10 +1,14 @@
 # Step By Step: Accelerate ViT Training With Colossal-AI (From Data Parallel to Hybrid Parallel)
 
-Author: Yuxuan Lou
+Author: Yuxuan Lou, Mingyan Jiang
+
+**Prerequisite:**
+- [parallellism plugin](../basics/booster_plugins.md)
+- [booster API](../basics/booster_api.md)
 
 **Example Code**
 
-- [Colossal-AI Examples ViT on Cifar10](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/image/vision_transformer)
+- [Colossal-AI Examples ViT on Cifar10](https://github.com/hpcaitech/ColossalAI/blob/main/examples/images/vit/vit_train_demo.py)
 
 **Related Paper**
 - [An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale](https://arxiv.org/pdf/2010.11929.pdf)

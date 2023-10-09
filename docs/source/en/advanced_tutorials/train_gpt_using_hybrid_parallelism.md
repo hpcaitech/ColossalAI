@@ -34,7 +34,6 @@ from typing import Callable, List, Union
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from data import GLUEDataBuilder
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from tqdm import tqdm
@@ -49,7 +48,7 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 ```
 ## Define Plugin
-Create a HybridParallelPlugin object and specify the desired parallelism strategies to be used.
+Create a `HybridParallelPlugin` object and specify the desired parallelism strategies to be used. In this example, both pipeline parallelism and ZeRO-1 are used simultaneously.
 ```python
 plugin = HybridParallelPlugin(
     tp_size=1,
@@ -64,7 +63,7 @@ plugin = HybridParallelPlugin(
 ```
 ## Define GPT-2's Training Components
 
-Before using mixed parallelism, you need to define the components used for training.
+Before using hybrid parallelism, you need to define the components used for training.
 
 Define hyperparameters
 ```python
@@ -80,7 +79,7 @@ we create a distributed environment.
 colossalai.launch_from_torch(config={}, seed=42)
 coordinator = DistCoordinator()
 ```
-Retrieve the dataset. You can use `plugin.prepare_dataloader` to generate a dataloader or customize your own dataloader.
+prepare the dataset. You can use `plugin.prepare_dataloader` to generate a dataloader or customize your own dataloader.
 ```python
 def tokenize_batch(batch, tokenizer: Optional[AutoTokenizer] = None, max_length: int = 2048):
     texts = [sample["sentence1"] + sample["sentence2"] for sample in batch]
@@ -142,10 +141,10 @@ def _criterion(outputs, inputs):
 ## Boost GPT-2 Model
 Define a booster with `HybridParallelPlugin`. Based on the configured plugin parameters, the booster will inject one or more parallel strategies into the model. In this example, pipeline parallelism, zero1, and mixed-precision training optimizations are utilized.
 ```python
-booster_kwargs["mixed_precision"] = "fp16"
+booster_kwargs=dict(mixed_precision='fp16')
 booster = Booster(plugin=plugin, **booster_kwargs)
 ```
-Boost these components with defined booster
+Boost these components with the defined booster.
 ```python
 model, optimizer, _criterion, _, lr_scheduler = booster.boost(
     model, optimizer, criterion=_criterion, lr_scheduler=lr_scheduler

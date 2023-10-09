@@ -43,7 +43,7 @@ from transformers import ViTConfig, ViTForImageClassification, ViTImageProcessor
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
@@ -70,6 +70,13 @@ coordinator = DistCoordinator()
 world_size = coordinator.world_size
 ```
 在训练之前您可以按照正常流程定义模型训练的相关组，如定义模型，数据加载器，优化器等。需要注意的是，当使用管道并行时，还需定义一个criterion函数，该函数的输入是模型前向的输入和输出，返回的是loss。
+获取数据集，`BeansDataset`定义在[data.py](https://github.com/hpcaitech/ColossalAI/blob/main/examples/images/vit/data.py)
+```python
+image_processor = ViTImageProcessor.from_pretrained(MODEL_PATH)
+train_dataset = BeansDataset(image_processor, TP_SIZE, split="train")
+eval_dataset = BeansDataset(image_processor, TP_SIZE, split="validation")
+num_labels = train_dataset.num_labels
+```
 定义模型：
 ```python
 config = ViTConfig.from_pretrained(MODEL_PATH)
@@ -92,35 +99,7 @@ lr_scheduler = CosineAnnealingWarmupLR(
         optimizer=optimizer, total_steps=(len(train_dataloader) * NUM_EPOCH), warmup_steps=num_warmup_steps
     )
 ```
-一般来说, 我们在大型数据集如 ImageNet 上训练 ViT。为了简单期间，我们在这里只使用 CIFAR-10, 因为本教程只是用于流水并行训练。
 
-```python
-def build_cifar(batch_size):
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(224, pad_if_needed=True),
-        transforms.AutoAugment(policy=transforms.AutoAugmentPolicy.CIFAR10),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ])
-    transform_test = transforms.Compose([
-        transforms.Resize(224),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ])
-
-    train_dataset = CIFAR10(root=os.environ['DATA'], train=True, download=True, transform=transform_train)
-    test_dataset = CIFAR10(root=os.environ['DATA'], train=False, transform=transform_test)
-    train_dataloader = get_dataloader(dataset=train_dataset, shuffle=True, batch_size=batch_size, pin_memory=True)
-    test_dataloader = get_dataloader(dataset=test_dataset, batch_size=batch_size, pin_memory=True)
-    return train_dataloader, test_dataloader
-```
-获取数据集
-```python
-image_processor = ViTImageProcessor.from_pretrained(MODEL_PATH)
-train_dataset = BeansDataset(image_processor, TP_SIZE, split="train")
-eval_dataset = BeansDataset(image_processor, TP_SIZE, split="validation")
-num_labels = train_dataset.num_labels
-```
 定义criterion函数：
 ```python
 def _criterion(outputs, inputs):
@@ -140,6 +119,7 @@ plugin = HybridParallelPlugin(
             precision="fp16",
             initial_scale=1,
         )
+booster_kwargs=dict(mixed_precision='fp16')
 booster = Booster(plugin=plugin, **booster_kwargs)
 ```
 接着我们使用`booster.boost`来将plugin所封装的特性注入到模型训练组件中。

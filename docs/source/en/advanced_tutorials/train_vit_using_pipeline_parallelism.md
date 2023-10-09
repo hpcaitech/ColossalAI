@@ -45,7 +45,7 @@ from transformers import ViTConfig, ViTForImageClassification, ViTImageProcessor
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
@@ -65,21 +65,28 @@ PP_SIZE = 2
 ```
 First, we create a distributed environment.
 ```python
-    # Launch ColossalAI
-    colossalai.launch_from_torch(config={}, seed=SEED)
-    coordinator = DistCoordinator()
-    world_size = coordinator.world_size
+# Launch ColossalAI
+colossalai.launch_from_torch(config={}, seed=SEED)
+coordinator = DistCoordinator()
+world_size = coordinator.world_size
 ```
-Before training, you can define the relevant components for model training according to the normal workflow, such as defining the model, data loaders, optimizers, and so on. It's important to note that when using pipeline parallelism, you also need to define a criterion function. This function takes the input and output of the model's forward pass as inputs and returns the loss.
+Before training, you can define the relevant components for model training according to the normal workflow, such as defining the model, data loader, optimizer, and so on. It's important to note that when using pipeline parallelism, you also need to define a criterion function. This function takes the input and output of the model's forward pass as inputs and returns the loss.
+prepare the dataset. `BeansDataset`is defined in [data.py](https://github.com/hpcaitech/ColossalAI/blob/main/examples/images/vit/data.py)
+```python
+image_processor = ViTImageProcessor.from_pretrained(MODEL_PATH)
+train_dataset = BeansDataset(image_processor, TP_SIZE, split="train")
+eval_dataset = BeansDataset(image_processor, TP_SIZE, split="validation")
+num_labels = train_dataset.num_labels
+```
 Define the model:
 ```python
-    config = ViTConfig.from_pretrained(MODEL_PATH)
-    config.num_labels = num_labels
-    config.id2label = {str(i): c for i, c in enumerate(train_dataset.label_names)}
-    config.label2id = {c: str(i) for i, c in enumerate(train_dataset.label_names)}
-    model = ViTForImageClassification.from_pretrained(
-        MODEL_PATH, config=config, ignore_mismatched_sizes=True
-    )
+config = ViTConfig.from_pretrained(MODEL_PATH)
+config.num_labels = num_labels
+config.id2label = {str(i): c for i, c in enumerate(train_dataset.label_names)}
+config.label2id = {c: str(i) for i, c in enumerate(train_dataset.label_names)}
+model = ViTForImageClassification.from_pretrained(
+    MODEL_PATH, config=config, ignore_mismatched_sizes=True
+)
 ```
 Define optimizer：
 ```python
@@ -96,33 +103,6 @@ lr_scheduler = CosineAnnealingWarmupLR(
 ```
 Generally, we train ViT on large dataset like Imagenet. For simplicity, we just use CIFAR-10 here, since this tutorial is just for pipeline training.
 
-```python
-def build_cifar(batch_size):
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(224, pad_if_needed=True),
-        transforms.AutoAugment(policy=transforms.AutoAugmentPolicy.CIFAR10),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ])
-    transform_test = transforms.Compose([
-        transforms.Resize(224),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ])
-
-    train_dataset = CIFAR10(root=os.environ['DATA'], train=True, download=True, transform=transform_train)
-    test_dataset = CIFAR10(root=os.environ['DATA'], train=False, transform=transform_test)
-    train_dataloader = get_dataloader(dataset=train_dataset, shuffle=True, batch_size=batch_size, pin_memory=True)
-    test_dataloader = get_dataloader(dataset=test_dataset, batch_size=batch_size, pin_memory=True)
-    return train_dataloader, test_dataloader
-```
-prepare the dataset.
-```python
-image_processor = ViTImageProcessor.from_pretrained(MODEL_PATH)
-train_dataset = BeansDataset(image_processor, TP_SIZE, split="train")
-eval_dataset = BeansDataset(image_processor, TP_SIZE, split="validation")
-num_labels = train_dataset.num_labels
-```
 Define the criterion function:
 ```python
 def _criterion(outputs, inputs):
@@ -131,7 +111,7 @@ def _criterion(outputs, inputs):
     return loss
 ```
 ## Boost VIT Model
-We begin by enhancing the model with colossalai's pipeline parallelism strategy. First, we define a HybridParallelPlugin object. HybridParallelPlugin encapsulates various parallelism strategies in colossalai. You can specify the use of pipeline parallelism by setting three parameters: pp_size, num_microbatches, and microbatch_size. For specific parameter settings, refer to the plugin-related documentation. Then, we initialize the booster with the HybridParallelPlugin object.
+We begin by enhancing the model with colossalai's pipeline parallelism strategy. First, we define a `HybridParallelPlugin` object. `HybridParallelPlugin` encapsulates various parallelism strategies in colossalai. You can specify the use of pipeline parallelism by setting three parameters: pp_size, num_microbatches, and microbatch_size. For specific parameter settings, refer to the plugin-related documentation. Then, we initialize the booster with the `HybridParallelPlugin` object.
 ```python
 plugin = HybridParallelPlugin(
             tp_size=TP_SIZE,
@@ -142,6 +122,7 @@ plugin = HybridParallelPlugin(
             precision="fp16",
             initial_scale=1,
         )
+booster_kwargs=dict(mixed_precision='fp16')
 booster = Booster(plugin=plugin, **booster_kwargs)
 ```
 Next, we use booster.boost to inject the features encapsulated by the plugin into the model training components.
@@ -151,7 +132,7 @@ model, optimizer, _criterion, train_dataloader, lr_scheduler = booster.boost(
     )
 ```
 ## Training ViT using pipeline
-Finally, we can train the model using pipeline parallelism. First, we define a training function that describes the training process. It's important to note that when using pipeline parallelism, you need to call booster.execute_pipeline to perform the model training. This function will invoke the scheduler to manage the model's forward and backward operations.
+Finally, we can train the model using pipeline parallelism. First, we define a training function that describes the training process. It's important to note that when using pipeline parallelism, you need to call `booster.execute_pipeline` to perform the model training. This function will invoke the scheduler to manage the model's forward and backward operations.
 ```python
 def run_forward_backward(
     model: nn.Module,
