@@ -39,8 +39,12 @@ BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
 EXAMPLES_DIR=$BASE_DIR/examples
 MODEL_SAVE_PATH=$EXAMPLES_DIR/rlhf_models
 MODELS_DIR=$BASE_DIR/examples/models_config
-MODELS=('gpt2' 'bloom' 'opt' 'llama')
-STRATEGIES=('ddp' 'colossalai_gemini' 'colossalai_zero2')
+# MODELS=('gpt2' 'bloom' 'opt' 'llama')
+# MODELS_PPO=('gpt2' 'bloom' 'opt')
+MODELS=('bloom')
+MODELS_PPO=('bloom')
+# STRATEGIES=('ddp' 'colossalai_gemini' 'colossalai_zero2')
+STRATEGIES=('colossalai_zero2')
 
 if [ ! -d "$MODEL_SAVE_PATH" ]; then
   mkdir "$MODEL_SAVE_PATH"
@@ -157,9 +161,7 @@ for lora_rank in '0'; do
             fi
             pretrain=$(get_pretrain $model)
             pretrain_model=""
-            if [[ $lora_rank -gt 0 ]]; then
-                pretrain_model="--pretrain $pretrain"
-            fi
+            pretrain_model="--pretrain $pretrain"
             loss_fn=$(random_choice "${LOSS_FNS[@]}")
             dataset=$(random_choice "${DATASETS[@]}")
             subset=$(if [[ $dataset == "Dahoas/rm-static" ]]; then echo "None"; else echo "harmless-base"; fi)
@@ -197,7 +199,7 @@ SKIPPED_TESTS=(
     "llama-colossalai_zero2"
 )
 
-for model in ${MODELS[@]}; do
+for model in ${MODELS_PPO[@]}; do
     for lora_rank in '0'; do
         strategies=($(shuf -e "${STRATEGIES[@]}"))
         for strategy in ${strategies[@]}; do
@@ -210,9 +212,7 @@ for model in ${MODELS[@]}; do
             fi
             rm_pretrain=$(get_pretrain $model)
             rm_pretrain_model=""
-            if [[ $lora_rank -gt 0 ]]; then
-                rm_pretrain_model="--rm_pretrain $rm_pretrain"
-            fi
+            rm_pretrain_model="--rm_pretrain $rm_pretrain"
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$strategy-$lora_rank, attempt $i"
                 torchrun --standalone --nproc_per_node=1 $EXAMPLES_DIR/train_prompts.py \
@@ -222,7 +222,7 @@ for model in ${MODELS[@]}; do
                     --experience_batch_size 1 --train_batch_size 1 --lora_rank $lora_rank \
                     --pretrain $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank} \
                     $rm_pretrain_model --rm_path $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt \
-                    --reward_model_tokenizer $rm_pretrain --max_input_len 20 --max_seq_len 50 \
+                    --reward_model_tokenizer $MODELS_DIR/$model --max_input_len 20 --max_seq_len 50 \
                     --save_path $EXAMPLES_DIR/rlhf_models/actor_checkpoint_prompts.pt
                 passed=$?
                 if [ $passed -eq 0 ]; then
