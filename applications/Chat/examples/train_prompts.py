@@ -14,15 +14,7 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import (
-    AutoConfig,
-    AutoTokenizer,
-    BloomConfig,
-    BloomModel,
-    BloomTokenizerFast,
-    GPT2Tokenizer,
-    LlamaTokenizer,
-)
+from transformers import AutoConfig, AutoTokenizer, BloomTokenizerFast, GPT2Tokenizer, LlamaTokenizer
 
 from colossalai.nn.optimizer import HybridAdam
 
@@ -108,14 +100,11 @@ def main(args):
         if args.model == "gpt2":
             critic = GPTCritic(pretrained="gpt2", lora_rank=args.lora_rank)
         elif args.model == "bloom":
-            config = BloomConfig()
-            config.dropout = 0.0
-            critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-            critic.model = BloomModel(config)
+            critic = BLOOMCritic(pretrained="bigscience/bloom-560m", lora_rank=args.lora_rank)
         elif args.model == "opt":
-            critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+            critic = OPTCritic(pretrained="facebook/opt-350m", lora_rank=args.lora_rank)
         elif args.model == "llama":
-            critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+            critic = LlamaCritic(pretrained=args.pretrain, lora_rank=args.lora_rank)
         else:
             raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
