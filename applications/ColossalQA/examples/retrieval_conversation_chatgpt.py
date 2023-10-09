@@ -24,6 +24,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    if not os.path.exists(args.sql_file_path):
+        os.makedirs(args.sql_file_path)
+
     # Setup openai key
     # Set env var OPENAI_API_KEY or load from a file
     openai_key = open(args.open_ai_key_path).read()
@@ -44,8 +47,8 @@ if __name__ == "__main__":
     print("Select files for constructing retriever")
     documents = []
     while True:
-        file = input("Select a file to load or enter Esc to exit:")
-        if file == "Esc":
+        file = input("Enter a file path or press Enter directory without input to exit:").strip()
+        if file == "":
             break
         data_name = input("Enter a short description of the data:")
         retriever_data = DocumentLoader([[file, data_name.replace(" ", "_")]]).all_data
@@ -70,7 +73,7 @@ if __name__ == "__main__":
     Human: {question}
     AI:"""
 
-    prompt_template_disambiguate = """You are aEsc helpful, respectful and honest assistant. You always follow the instruction.
+    prompt_template_disambiguate = """You are a helpful, respectful and honest assistant. You always follow the instruction.
     Please replace any ambiguous references in the given sentence with the specific names or entities mentioned in the chat history or just output the original sentence if no chat history is provided or if the sentence doesn't contain ambiguous references. Your output should be the disambiguated sentence itself (in the same line as "disambiguated sentence:") and contain nothing else.
 
     Here is an example:
@@ -78,8 +81,8 @@ if __name__ == "__main__":
     Human: I have a friend, Mike. Do you know him?
     AI: Yes, I know a person named Mike
 
-    sentence: What's his favorate food?
-    disambiguated sentence: What's Mike's favorate food?
+    sentence: What's his favorite food?
+    disambiguated sentence: What's Mike's favorite food?
     END OF EXAMPLE
 
     Chat history:
@@ -120,7 +123,6 @@ if __name__ == "__main__":
 
     while True:
         user_input = input("User: ")
-        print(f"User: {user_input}")
         if " end " in user_input:
             print("Agent: Happy to chat with you ：)")
             break

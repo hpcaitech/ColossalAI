@@ -98,7 +98,7 @@ Read comments under ./colossalqa/data_loader for more detail regarding supported
 
 ### Run The Script
 
-We provided scripts for Chinese document retrieval based conversation system, English document retrieval based conversation system, Bi-lingual document retrieval based conversation system and an experimental AI agent with document retrieval and SQL query functionality.
+We provided scripts for Chinese document retrieval based conversation system, English document retrieval based conversation system, Bi-lingual document retrieval based conversation system and an experimental AI agent with document retrieval and SQL query functionality. The Bi-lingual one is a high-level wrapper for the other two clases. We write different scripts for different languages because retrieval QA requires different embedding models, LLMs, prompts for different language setting. For now, we use LLaMa2 for English retrieval QA and ChatGLM2 for Chinese retrieval QA for better performance.
 
 To run the bi-lingual scripts.
 ```bash
@@ -113,19 +113,30 @@ python retrieval_conversation_universal.py \
 To run retrieval_conversation_en.py.
 ```bash
 python retrieval_conversation_en.py \
-    --data_path_en ../data/companies.txt \
-    --en_model_path /path/to/Llama-2-7b-hf \
-    --en_model_name llama \
+    --model_path /path/to/Llama-2-7b-hf \
+    --model_name llama \
     --sql_file_path /path/to/any/folder
 ```
 
 To run retrieval_conversation_zh.py.
 ```bash
 python retrieval_conversation_zh.py \
-    --data_path_zh /data/scratch/test_data_colossalqa/companies_zh.txt \
-    --zh_model_path /path/to/chatglm2-6b \
-    --zh_model_name chatglm2 \
+    --model_path /path/to/chatglm2-6b \
+    --model_name chatglm2 \
     --sql_file_path /path/to/any/folder
+```
+
+To run retrieval_conversation_chatgpt.py.
+```bash
+python retrieval_conversation_chatgpt.py \
+    --open_ai_key_path /path/to/plain/text/openai/key/file \
+    --sql_file_path /path/to/any/folder
+```
+
+To run conversation_agent_chatgpt.py.
+```bash
+python conversation_agent_chatgpt.py \
+    --open_ai_key_path /path/to/plain/text/openai/key/file
 ```
 
 After runing the script, it will ask you to provide the path to your data during the execution of the script. You can also pass a glob path to load multiple files at once. Please read this [guide](https://docs.python.org/3/library/glob.html) on how to define glob path. Follow the instruction and provide all files for your retrieval conversation system then type "ESC" to finish loading documents. If csv files are provided, please use "," as delimiter and "\"" as quotation mark. For json and jsonl files. The default format is
@@ -138,8 +149,21 @@ After runing the script, it will ask you to provide the path to your data during
   ]
 }
 ```
-
 For other formats, please refer to [this document](https://python.langchain.com/docs/modules/data_connection/document_loaders/json) on how to define schema for data loading. There are no other formatting constraints for loading documents type files. For loading table type files, we use pandas, please refer to [Pandas-Input/Output](https://pandas.pydata.org/pandas-docs/stable/reference/io.html) for file format details.
+
+We also support another kay-value mode that utilizes a user-defined key to calculate the embeddings of the vector store. If a query matches a specific key, the value corresponding to that key will be used to generate the prompt. For instance, in the document below, "My coupon isn't working." will be employed during indexing, whereas "Question: My coupon isn't working.\nAnswer: We apologize for ... apply it to?" will appear in the final prompt. This format is typically useful when the task involves carrying on a conversation with readily accessible conversation data, such as customer service, question answering.
+```python
+Document(page_content="My coupon isn't working.", metadata={'is_key_value_mapping': True, 'seq_num': 36, 'source': 'XXX.json', 'value': "Question: My coupon isn't working.\nAnswer:We apologize for the inconvenience. Can you please provide the coupon code and the product name or SKU you're trying to apply it to?"})
+```
+
+For now, we only support the key-value mode for json data files. You can run the script retrieval_conversation_en_customer_service.py by the following command.
+
+```bash
+python retrieval_conversation_en_customer_service.py \
+    --model_path /path/to/Llama-2-7b-hf \
+    --model_name llama \
+    --sql_file_path /path/to/any/folder
+```
 
 ## The Plan
 

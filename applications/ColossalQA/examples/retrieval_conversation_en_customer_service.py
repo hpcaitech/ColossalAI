@@ -2,6 +2,7 @@
 Script for English retrieval based conversation system backed by LLaMa2
 """
 import argparse
+import json
 import os
 
 from colossalqa.chain.retrieval_qa.base import RetrievalQA
@@ -24,8 +25,10 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
     if not os.path.exists(args.sql_file_path):
         os.makedirs(args.sql_file_path)
+
     # Vllm
     # Start the vllm server with
     # python -m vllm.entrypoints.api_server --model "/path to model/Llama-2-7b-hf" --swap-space 16 --disable-log-requests --host localhost --port 8077 --max-num-seqs 256 --gpu-memory-utilization 0.5
@@ -62,23 +65,52 @@ if __name__ == "__main__":
     # Load data to vector store
     print("Select files for constructing retriever")
     documents = []
-    while True:
-        file = input("Enter a file path or press Enter directory without input to exit:").strip()
-        if file == "":
-            break
-        data_name = input("Enter a short description of the data:")
-        separator = input(
-            "Enter a separator to force separating text into chunks, if no separator is given, the defaut separator is '\\n\\n'. Note that"
-            + "we use neural text spliter to split texts into chunks, the seperator only serves as a delimiter to force split long passage into"
-            + " chunks before passing to the neural network. Press ENTER directly to skip:"
-        )
-        separator = separator if separator != "" else "\n\n"
-        retriever_data = DocumentLoader([[file, data_name.replace(" ", "_")]]).all_data
 
-        # Split
-        text_splitter = NeuralTextSplitter(separator=separator.replace("\\n", "\n").replace("\\t", "\t"))
-        splits = text_splitter.split_documents(retriever_data)
-        documents.extend(splits)
+    # preprocess data
+    if not os.path.exists("../data/test_data/custom_service_preprocessed.json"):
+        if not os.path.exists("../data/test_data/custom_service.json"):
+            raise ValueError(
+                "custom_service.json not found, please download the data from HuggingFace Datasets: qgyd2021/e_commerce_customer_service"
+            )
+        data = json.load(open("../data/test_data/custom_service.json", "r", encoding="utf8"))
+        preprocessed = []
+        for row in data["rows"]:
+            preprocessed.append({"key": row["row"]["query"], "value": row["row"]["response"]})
+        data = {}
+        data["data"] = preprocessed
+        with open("../data/test_data/custom_service_preprocessed.json", "w", encoding="utf8") as f:
+            json.dump(data, f, ensure_ascii=False)
+
+    # define metadata function which is used to format the prompt with value in metadata instead of key,
+    # the later is langchain's default behavior
+    def metadata_func(data_sample, additional_fields):
+        """
+        metadata_func (Callable[Dict, Dict]): A function that takes in the JSON
+                object extracted by the jq_schema and the default metadata and returns
+                a dict of the updated metadata.
+
+        To use key-value format, the metadata_func should be defined as follows:
+            metadata = {'value': 'a string to be used to format the prompt', 'is_key_value_mapping': True}
+        """
+        metadata = {}
+        metadata["value"] = f"Question: {data_sample['key']}\nAnswer:{data_sample['value']}"
+        metadata["is_key_value_mapping"] = True
+        assert "value" not in additional_fields
+        assert "is_key_value_mapping" not in additional_fields
+        metadata.update(additional_fields)
+        return metadata
+
+    retriever_data = DocumentLoader(
+        [["../data/test_data/custom_service_preprocessed.json", "CustomerServiceDemo"]],
+        content_key="key",
+        metadata_func=metadata_func,
+    ).all_data
+
+    # Split
+    text_splitter = NeuralTextSplitter(separator="\n\n")
+    splits = text_splitter.split_documents(retriever_data)
+    documents.extend(splits)
+
     # Create retriever
     information_retriever.add_documents(docs=documents, cleanup="incremental", mode="by_source", embedding=embedding)
 
