@@ -168,21 +168,6 @@ def main():
             use_ep_inside=use_ep_inside,
             **mgr_dict,
         )
-    elif args.plugin == "zero2_tp":
-        dp_size = dist.get_world_size()
-        plugin = MoeHybridParallelPlugin(
-            tp_size=1,
-            pp_size=1,
-            zero_stage=2,
-            custom_policy=OpenMoeForCausalLMPolicy(),
-            enable_fused_normalization=args.use_kernel,
-            enable_jit_fused=args.use_kernel,
-        )
-        MOE_MANAGER.setup(
-            seed=42,
-            parallel="TP",
-            use_kernel_optim=args.use_kernel,
-        )
     elif args.plugin == "hybrid":
         dp_size = dist.get_world_size() // args.pp_size
         plugin = MoeHybridParallelPlugin(
@@ -244,7 +229,7 @@ def main():
     coordinator.print_on_master(f"Finish init booster")
 
     # Start finetuning
-    coordinator.print_on_master(f"Start finetuning")
+    coordinator.print_on_master(f"Start training")
     model.train()
     train_dataloader_iter = iter(dataloader)
     total_len = len(train_dataloader_iter) - 1
