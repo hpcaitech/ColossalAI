@@ -1,14 +1,11 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import torch
-import torch.distributed as dist
 from torch import Tensor, inf
-from torch.distributed import ProcessGroup, get_world_size
 from torch.nn import Module, Parameter
 from torch.optim import Optimizer
 
 from colossalai.interface import OptimizerWrapper
-from colossalai.tensor.d_tensor.api import is_distributed_tensor
 
 from .mixed_precision_mixin import BF16MixedPrecisionMixin, FP16MixedPrecisionMixin
 
@@ -50,7 +47,6 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
         hysteresis: int = 2,
         max_scale: float = 2**32,
         max_norm: float = 0.0,
-        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
     ):
         super().__init__(optim)
         if precision == "fp16":
@@ -75,8 +71,6 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
         self.max_norm = max_norm
         self.working_to_master_map: Dict[Parameter, Tensor] = {}
         self.master_to_working_map: Dict[Tensor, Parameter] = {}
-
-        self.tp_pg = tp_process_group
 
         # create master weights
         for group in self.optim.param_groups:
@@ -152,47 +146,17 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
         if len(param_gradient_pairs) == 0:
             return 0.0
 
-        tp_size = get_world_size(self.tp_pg) if self.tp_pg is not None else 1
-        norm_type = float(norm_type)
-
         # gradients used for norm calculation.
         gradients = [grad for param, grad in param_gradient_pairs]
 
-        if tp_size > 1 and norm_type != inf:
-            # grad_to_param_mapping is used to check which gradients are not distributed in tensor parallelism.
-            grad_to_param_mapping = {id(grad): param for param, grad in param_gradient_pairs}
-
         if norm_type == inf:
             total_norm = max(grad.data.abs().max() for grad in gradients)
-            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-            if tp_size > 1:
-                dist.all_reduce(tensor=total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.tp_pg)
 
-            total_norm = total_norm_cuda[0].item()
         else:
             total_norm_exponentiated = 0.0
             for grad in gradients:
-                grad_norm_exponentiated = grad.data.double().norm(norm_type) ** norm_type
-
-                # If 'tp_size' is greater than 1 and the parameter for the gradient is not a distributed tensor,
-                # it indicates that the parameter is not distributed across devices of the 'tp_group'.
-                # Consequently, there is no need to perform an 'all_reduce' operation for 'grad_norm'.
-                # However, we still perform the 'all_reduce' operation for the sake of good coding practices.
-                # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
-                if tp_size > 1:
-                    param_for_grad = grad_to_param_mapping[id(grad)]
-                    if is_distributed_tensor(param_for_grad) == False:
-                        grad_norm_exponentiated /= tp_size
-
-                total_norm_exponentiated += grad_norm_exponentiated.item()
-
-            total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
-            if tp_size > 1:
-                dist.all_reduce(
-                    tensor=total_norm_exponentiated_cuda, op=torch.distributed.ReduceOp.SUM, group=self.tp_pg
-                )
-
-            total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
+                total_norm_exponentiated += grad.data.double().norm(norm_type) ** norm_type
+            total_norm = total_norm_exponentiated ** (1.0 / norm_type)
 
         return total_norm
 

@@ -1,6 +1,5 @@
 # this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 import copy
-import ctypes
 from contextlib import contextmanager
 from functools import partial
 from typing import Dict, Iterator, List, Optional, Tuple
@@ -9,7 +8,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch import Tensor, inf
-from torch.distributed import ProcessGroup, get_world_size
+from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.mixed_precision_mixin import (
@@ -19,7 +18,6 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
 )
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
-from colossalai.tensor.d_tensor.api import is_distributed_tensor
 
 # from colossalai.tensor import ColoParameter, ProcessGroup
 from colossalai.utils.cuda import get_current_device
@@ -76,7 +74,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
-        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
         forced_dtype: Optional[torch.dtype] = None,
     ):
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
@@ -96,8 +93,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self.dp_pg = dp_process_group
         self._local_rank = dist.get_rank(group=self.dp_pg)
         self._world_size = dist.get_world_size(group=self.dp_pg)
-
-        self.tp_pg = tp_process_group
 
         # working and master params for mixed precision training
         self._working_param_groups = dict()
@@ -478,47 +473,25 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if len(gradients) == 0:
             return 0.0
 
-        tp_size = get_world_size(self.tp_pg) if self.tp_pg is not None else 1
-
         norm_type = float(norm_type)
         if norm_type == inf:
             total_norm = max(grad.data.abs().max() for grad in gradients)
+
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
             dist.all_reduce(total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.dp_pg)
-            if tp_size > 1:
-                dist.all_reduce(tensor=total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.tp_pg)
-
             total_norm = total_norm_cuda[0].item()
+
         else:
             total_norm_exponentiated = 0.0
             for grad in gradients:
                 grad_norm_exponentiated = grad.data.double().norm(norm_type) ** norm_type
-
-                # If 'tp_size' is greater than 1 and the parameter for the gradient is not a distributed tensor,
-                # it indicates that the parameter is not distributed across devices of the 'tp_group'.
-                # Consequently, there is no need to perform an 'all_reduce' operation for 'grad_norm'.
-                # However, we still perform the 'all_reduce' operation for the sake of good coding practices.
-                # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
-                if tp_size > 1:
-                    param_id_for_grad = self._grad_store.get_param_id_for_grad(grad)
-                    param_for_grad = ctypes.cast(param_id_for_grad, ctypes.py_object).value
-
-                    if is_distributed_tensor(param_for_grad) == False:
-                        grad_norm_exponentiated /= tp_size
-
-                total_norm_exponentiated += grad_norm_exponentiated.item()
+                total_norm_exponentiated += grad_norm_exponentiated
 
             # Sum across all model parallel GPUs.
             total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
             torch.distributed.all_reduce(
                 total_norm_exponentiated_cuda, op=torch.distributed.ReduceOp.SUM, group=self.dp_pg
             )
-
-            if tp_size > 1:
-                dist.all_reduce(
-                    tensor=total_norm_exponentiated_cuda, op=torch.distributed.ReduceOp.SUM, group=self.tp_pg
-                )
-
             total_norm = total_norm_exponentiated_cuda[0].item() ** (1.0 / norm_type)
 
         return total_norm
