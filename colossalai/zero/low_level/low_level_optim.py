@@ -314,6 +314,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                                     self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
                                 else:
                                     self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
+                    # sync extra zero group
                     else:
                         # record moe and non moe param
                         moe_list = []
