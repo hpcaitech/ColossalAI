@@ -124,7 +124,23 @@ pred = model.generate(**inputs,
 print(tokenizer.decode(pred.cpu()[0], skip_special_tokens=True)[len(input):])
 ```
 
-You can also download model weights from [🤗HuggingFace](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base) or [👾Modelscope](https://modelscope.cn/models/colossalai/Colossal-LLaMA-2-7b-base/summary).
+You can also load our model using modelscope, use the following code:
+```Python
+from modelscope import AutoModelForCausalLM, AutoTokenizer, snapshot_download
+model_dir = snapshot_download('colossalai/Colossal-LLaMA-2-7b-base', revision='v1.0.1')
+tokenizer = AutoTokenizer.from_pretrained(model_dir, device_map="auto", trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="auto", trust_remote_code=True).eval()
+generation_kwargs = {"max_new_tokens": 256, 
+                     "top_p": 0.95, 
+                     "temperature": 0.3
+                    }
+input = '离离原上草，'
+inputs = tokenizer(input, return_token_type_ids=False, return_tensors='pt')
+inputs = inputs.to('cuda:0')
+output = model.generate(**inputs, **generation_kwargs)
+print(tokenizer.decode(output.cpu()[0], skip_special_tokens=True)[len(input):])
+```
+You can download model weights from [🤗HuggingFace](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base) or [👾Modelscope](https://modelscope.cn/models/colossalai/Colossal-LLaMA-2-7b-base/summary).
 
 ## Usage
 ### Install
