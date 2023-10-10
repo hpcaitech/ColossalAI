@@ -16,7 +16,7 @@ class SamplingParams:
         top_k: int = -1,  # -1 is for all 
         ignore_eos: bool = False,
         max_new_tokens: int = 16,
-        stop_sequences: Optional[Union[str, List[str]]] = None  # 停止句子条件
+        stop_sequences: Optional[Union[str, List[str]]] = None  # conditions to stop generation
     ) -> None:
         self.do_sample = do_sample
         self.presence_penalty = presence_penalty

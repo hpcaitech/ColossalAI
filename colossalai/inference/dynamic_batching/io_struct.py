@@ -36,10 +36,8 @@ class Req:
         if self.sample_params.stop_sequences is not None:
             for stop_token_ids in self.sample_params.stop_sequences:
                 stop_len = len(stop_token_ids)
-                if stop_len > 0:
-                    if len(self.output_ids) >= stop_len:
-                        if all(self.output_ids[-(stop_len - i)] == stop_token_ids[i] for i in range(stop_len)):
-                            return True
+                if stop_len > 0 and len(self.output_ids) >= stop_len and all(self.output_ids[-(stop_len - i)] == stop_token_ids[i] for i in range(stop_len)):
+                    return True
         return False
 
     def __repr__(self):

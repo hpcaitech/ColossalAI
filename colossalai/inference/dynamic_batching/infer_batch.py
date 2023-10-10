@@ -1,6 +1,6 @@
 import collections
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List , Tuple
 
 import numpy as np
 import torch
@@ -65,7 +65,7 @@ class InferBatch:
         cache_manager: MemoryManager,
         vocab_size: int,
         max_total_len: int,
-    ):
+    ) -> 'InferBatch':
         input_lengths = []
         all_input_ids = []
         requests_idx_mapping = {}
@@ -76,6 +76,7 @@ class InferBatch:
         nopad_total_token_num = 0
         nopad_max_len_in_batch = 0
         nopad_b_loc = torch.empty((len(requests), max_total_len + 12), dtype=torch.long, device="cuda")
+        # to avoid memory leak , we pre-allocate 12 more space for each batch. 
         nopad_b_start_loc = torch.zeros(len(requests), dtype=torch.int32, device="cuda")
         for i, r in enumerate(requests):
             # request id -> idx in list mapping
@@ -126,7 +127,10 @@ class InferBatch:
         )
 
     @torch.no_grad()
-    def free_self(self):
+    def free_self(self) -> None:
+        """
+        Free the memory of the InferBatch itself
+        """
         remove_index = []
         for idx in range(len(self)):
             remove_index.append(
@@ -138,10 +142,13 @@ class InferBatch:
             )
         remove_index = torch.cat(remove_index, dim=-1)
         self.cache_manager.free(remove_index)
-        return
+        
 
     @torch.no_grad()
-    def filter(self, request_ids: List[int]):
+    def filter(self, request_ids: List[int]) -> 'InferBatch':
+        """
+        Filter finished batch and return a new InferBatch with left ones.
+        """
         if len(request_ids) == 0:
             raise ValueError("Batch must have at least one request")
         if len(request_ids) == len(self):
@@ -219,7 +226,10 @@ class InferBatch:
 
     @classmethod
     @torch.no_grad()
-    def merge(cls, batch1, batch2):
+    def merge(cls, batch1, batch2) -> 'InferBatch':
+        """
+        Return megerd new InferBatch
+        """
         requests = batch1.requests + batch2.requests
         requests_idx_mapping = {}
         new_batch_size = len(batch1) + len(batch2)
@@ -288,7 +298,7 @@ class InferBatch:
     def __len__(self):
         return len(self.requests)
 
-    def get_post_sample_tensors(self):
+    def get_post_sample_tensors(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         presence_penalties: List[float] = []
         frequency_penalties: List[float] = []
         temperatures: List[float] = []

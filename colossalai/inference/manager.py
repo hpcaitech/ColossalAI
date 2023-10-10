@@ -5,7 +5,7 @@ from .dynamic_batching.infer_batch import InferBatch
 from .dynamic_batching.io_struct import Batch, Req
 from .dynamic_batching.req_queue import ReqQueue
 from .dynamic_batching.sampling_params import SamplingParams
-from .dynamic_batching.stas import Stats
+from .dynamic_batching.stats import Stats
 from .tensor_parallel import TPInferEngine
 
 
@@ -42,8 +42,9 @@ class DynamicBatchManager:
         self.eos_id = eos_id
         self.has_wait_tokens = 0
         self.max_wait_tokens = 10
-
+        
         self.stats_tool = Stats(log_stats, log_stats_interval)
+        self.mem_usage_interval = log_stats_interval * 2
 
     def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str):
         """
@@ -74,7 +75,7 @@ class DynamicBatchManager:
             self._step()
             counter_count += 1
             if self.running_batch is not None:
-                if counter_count % 50 == 0:
+                if counter_count % self.mem_usage_interval == 0:
                     print(
                         "current batch size:",
                         len(self.running_batch.reqs),
