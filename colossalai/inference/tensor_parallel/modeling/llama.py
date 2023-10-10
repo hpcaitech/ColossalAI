@@ -113,10 +113,6 @@ class LlamaInferenceForwards:
                 # infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
                 infer_state.block_loc[:, infer_state.max_len_in_batch - 1] = infer_state.decode_mem_index
 
-            if batch_size == 2:
-                print("in decoding", infer_state.block_loc)
-                print(infer_state.max_len_in_batch)
-
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(
