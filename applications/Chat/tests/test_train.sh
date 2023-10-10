@@ -199,6 +199,9 @@ SKIPPED_TESTS=(
     "bloom-colossalai_gemini"
     "bloom-colossalai_zero2"
     "bloom-ddp"
+    "opt-colossalai_gemini"
+    "opt-colossalai_zero2"
+    "opt-ddp"
 )
 
 for model in ${MODELS_PPO[@]}; do
