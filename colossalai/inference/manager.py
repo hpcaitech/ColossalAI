@@ -187,7 +187,6 @@ class DynamicBatchManager:
 
         m_batch = InferBatch.merge(batch1, batch2)
         self.engine.cache[batch1.batch_id] = m_batch
-        print("merged_batch", m_batch)
         del batch1
         del batch2
 
@@ -239,6 +238,5 @@ def start_dynamic_batching(args, tp_engine, waiting_req_list):
         batch_manager.clean_up()
         raise
 
-    print("start dynamic batching process")
     batch_manager.loop_for_fwd()
     return
