@@ -122,7 +122,7 @@ pred = model.generate(**inputs,
 print(tokenizer.decode(pred.cpu()[0], skip_special_tokens=True)[len(input):])
 ```
 
-You can also download model weights from [🤗HuggingFace](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base).
+You can also download model weights from [🤗HuggingFace](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base) or [👾Modelscope](https://modelscope.cn/models/colossalai/Colossal-LLaMA-2-7b-base/summary).
 
 ## Usage
 ### Install
