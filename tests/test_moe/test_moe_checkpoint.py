@@ -1,5 +1,7 @@
+import importlib
 import os
 import shutil
+import sys
 
 import pytest
 import torch
@@ -11,8 +13,11 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from examples.language.openmoe.model.modeling_openmoe import OpenMoeForCausalLM
-from examples.language.openmoe.model.openmoe_policy import OpenMoeForCausalLMPolicy
+
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "examples/language/openmoe"))
+
+OpenMoeForCausalLM = importlib.import_module("model.modeling_openmoe").OpenMoeForCausalLM
+OpenMoeForCausalLMPolicy = importlib.import_module("model.openmoe_policy").OpenMoeForCausalLMPolicy
 
 
 def get_config():
