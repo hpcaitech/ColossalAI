@@ -13,7 +13,6 @@ import torch.nn as nn
 from datasets import load_dataset
 from torch import nn
 from torch_int.nn.bmm import BMM_S8T_S8N_F32T, BMM_S8T_S8N_S8T
-from torch_int.nn.fused import LayerNormQ
 from tqdm import tqdm
 from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.llama.configuration_llama import LlamaConfig
@@ -24,6 +23,7 @@ from transformers.models.llama.modeling_llama import (
     LlamaMLP,
     repeat_kv,
     rotate_half,
+    LlamaRotaryEmbedding,
 )
 from transformers.utils import add_start_docstrings_to_model_forward
 
@@ -32,6 +32,7 @@ from colossalai.kernel.triton import (
     smooth_llama_context_attn_fwd,
     smooth_token_attention_fwd,
 )
+import torch.nn.functional as F
 
 from .linear import W8A8B8O8Linear, W8A8BFP32O32LinearSiLU, W8A8BFP32OFP32Linear
 
@@ -59,16 +60,25 @@ class LLamaSmoothquantAttention(nn.Module):
         self.k_proj = W8A8B8O8Linear(hidden_size, hidden_size)
         self.v_proj = W8A8B8O8Linear(hidden_size, hidden_size)
         self.q_proj = W8A8B8O8Linear(hidden_size, hidden_size)
-        self.out_proj = W8A8BFP32OFP32Linear(hidden_size, hidden_size)
+        self.o_proj = W8A8BFP32OFP32Linear(hidden_size, hidden_size)
 
         self.register_buffer("q_output_scale", torch.tensor([1.0]))
         self.register_buffer("k_output_scale", torch.tensor([1.0]))
         self.register_buffer("v_output_scale", torch.tensor([1.0]))
         self.register_buffer("q_rotary_output_scale", torch.tensor([1.0]))
         self.register_buffer("k_rotary_output_scale", torch.tensor([1.0]))
-        # self.register_buffer("qk_output_scale", torch.tensor([1.0]))
-        self.register_buffer("attn_output_scale", torch.tensor([1.0]))
+        self.register_buffer("out_input_scale", torch.tensor([1.0]))
+        self.register_buffer("attn_input_scale", torch.tensor([1.0]))
 
+        self._init_rope()
+        self.num_key_value_heads = num_heads
+    def _init_rope(self):
+        self.rotary_emb = LlamaRotaryEmbedding(
+            self.head_dim,
+            max_position_embeddings=2048,
+            base=10000.0,
+        )
+            
     @staticmethod
     def pack(
         module: LlamaAttention,
@@ -81,6 +91,8 @@ class LLamaSmoothquantAttention(nn.Module):
         out_input_scale: float,
     ):
         int8_module = LLamaSmoothquantAttention(module.hidden_size, module.num_heads)
+        # self.register_buffer("attn_input_scale", torch.tensor([1.0]))
+        int8_module.attn_input_scale = torch.tensor(attn_input_scale)
 
         int8_module.q_output_scale = torch.tensor(q_output_scale)
         int8_module.k_output_scale = torch.tensor(k_output_scale)
@@ -89,21 +101,17 @@ class LLamaSmoothquantAttention(nn.Module):
         int8_module.q_rotary_output_scale = torch.tensor(q_rotary_output_scale)
         int8_module.k_rotary_output_scale = torch.tensor(k_rotary_output_scale)
 
-        # q_output_scale = q_output_scale * module.scaling
-        # module.q_proj.weight *= module.scaling
-        # module.q_proj.bias *= module.scaling
         int8_module.q_proj = W8A8B8O8Linear.from_float(module.q_proj, attn_input_scale, q_output_scale)
         int8_module.k_proj = W8A8B8O8Linear.from_float(module.k_proj, attn_input_scale, k_output_scale)
         int8_module.v_proj = W8A8B8O8Linear.from_float(module.v_proj, attn_input_scale, v_output_scale)
         int8_module.o_proj = W8A8BFP32OFP32Linear.from_float(module.o_proj, out_input_scale)
-        # # print("qout_scale k out scale:", q_output_scale, k_output_scale)
-        # int8_module.qk_bmm = BMM_S8T_S8N_F32T.from_scale(q_output_scale, k_output_scale)
 
-        # # alpha = s_prob * s_v / s_out, where s_prob = 1 / 127
-        # int8_module.pv_bmm = BMM_S8T_S8N_S8T.from_scale(1.0 / 127, v_output_scale, out_input_scale)
 
-        # int8_module.qk_output_scale = torch.tensor(q_output_scale * k_output_scale)
-        int8_module.attn_output_scale = torch.tensor(out_input_scale)
+        # int8_module.q_proj = module.q_proj
+        # int8_module.k_proj = module.k_proj
+        # int8_module.v_proj = module.v_proj
+        # int8_module.o_proj = module.o_proj
+        int8_module.out_input_scale = torch.tensor(out_input_scale)
 
         return int8_module
 
@@ -122,8 +130,8 @@ class LLamaSmoothquantAttention(nn.Module):
         use_cache: bool = False,
         padding_mask: Optional[torch.LongTensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        bsz, seq_len, _ = hidden_states.size()
-        # get query proj
+        bsz, q_len, _ = hidden_states.size()
+
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
         value_states = self.v_proj(hidden_states)
@@ -147,17 +155,22 @@ class LLamaSmoothquantAttention(nn.Module):
         )
 
         if past_key_value is None:
-            proj_shape = (bsz * seq_len, -1, self.head_dim)
+            proj_shape = (bsz*q_len, self.num_heads, self.head_dim)
 
             query_states = query_states.view(*proj_shape)
             key_states = key_states.view(*proj_shape)
             value_states = value_states.view(*proj_shape)
 
-            # attn_output = torch.empty(bsz * seq_len, self.num_heads, self.head_dim, dtype=torch.float32, device="cuda")
+            # attn_output = torch.empty(bsz*q_len, self.num_heads, self.head_dim, dtype=torch.float16, device="cuda")
             attn_output = torch.empty_like(query_states)
 
-            b_start_loc = torch.arange(start=0, end=bsz * seq_len, step=seq_len, dtype=torch.int, device="cuda")
-            b_seq_len = torch.full([bsz], seq_len, dtype=torch.int, device="cuda")
+            b_start_loc = torch.zeros((bsz,), dtype=torch.int32, device="cuda")
+            b_seq_len = torch.ones((bsz,), dtype=torch.int32, device="cuda")
+
+            b_seq_len[0] = q_len
+
+            for i in range(1, bsz):
+                b_start_loc[i] = b_start_loc[i - 1] + b_seq_len[i - 1]
 
             smooth_llama_context_attn_fwd(
                 query_states,
@@ -167,23 +180,22 @@ class LLamaSmoothquantAttention(nn.Module):
                 self.q_rotary_output_scale.item(),
                 self.k_rotary_output_scale.item(),
                 self.v_output_scale.item(),
-                self.attn_output_scale.item(),
+                self.out_input_scale.item(),
                 b_start_loc,
                 b_seq_len,
-                seq_len,
+                q_len,
             )
-
             if use_cache:
                 past_key_value = (
-                    key_states.view(bsz, seq_len, -1, self.head_dim),
-                    value_states.view(bsz, seq_len, -1, self.head_dim),
+                    key_states.view(bsz, q_len, -1, self.head_dim),
+                    value_states.view(bsz, q_len, -1, self.head_dim),
                 )
         else:
-            total_seq_len = past_key_value[0].shape[1] + seq_len
-            key_states = torch.cat([past_key_value[0], key_states.view(bsz, seq_len, -1, self.head_dim)], dim=1)
-            value_states = torch.cat([past_key_value[1], value_states.view(bsz, seq_len, -1, self.head_dim)], dim=1)
+            total_seq_len = past_key_value[0].shape[1] + q_len
+            key_states = torch.cat([past_key_value[0], key_states.view(bsz, q_len, -1, self.head_dim)], dim=1)
+            value_states = torch.cat([past_key_value[1], value_states.view(bsz, q_len, -1, self.head_dim)], dim=1)
 
-            proj_shape = (bsz * seq_len, -1, self.head_dim)
+            proj_shape = (bsz * q_len, -1, self.head_dim)
             kv_shape = (bsz * total_seq_len, -1, self.head_dim)
             query_states = query_states.view(*proj_shape)
             key_states = key_states.view(*kv_shape)
@@ -193,7 +205,7 @@ class LLamaSmoothquantAttention(nn.Module):
             b_start_loc = torch.arange(
                 start=0, end=bsz * total_seq_len, step=total_seq_len, dtype=torch.int, device="cuda"
             )
-            b_seq_len = torch.full([bsz], seq_len, dtype=torch.int, device="cuda") * total_seq_len
+            b_seq_len = torch.full([bsz], q_len, dtype=torch.int, device="cuda") * total_seq_len
             block_loc = torch.arange(total_seq_len, dtype=torch.int, device="cuda").expand(bsz, -1)
             smooth_token_attention_fwd(
                 query_states,
@@ -214,99 +226,41 @@ class LLamaSmoothquantAttention(nn.Module):
                     key_states.view(bsz, total_seq_len, -1, self.head_dim),
                     value_states.view(bsz, total_seq_len, -1, self.head_dim),
                 )
-            # if use_cache:
-            #     past_key_value = (key_states, value_states)
 
-            # if use_cache:
-        #     if past_key_value is not None:
-        #         # reuse k, v, self_attention
-        #         key_states = self._shape(key_states, -1, bsz)
-        #         value_states = self._shape(value_states, -1, bsz)
-        #         key_states = torch.cat([past_key_value[0], key_states], dim=2)
-        #         value_states = torch.cat([past_key_value[1], value_states], dim=2)
-        #     else:
-        #         # self_attention
-        #         key_states = self._shape(key_states, -1, bsz)
-        #         value_states = self._shape(value_states, -1, bsz)
+        attn_output = attn_output.view(bsz, q_len, self.num_heads * self.head_dim)
+        attn_output = self.o_proj(attn_output)
 
-        # if use_cache:
-        #     if past_key_value is not None:
-        #         # reuse k, v, self_attention
-        #         key_states = self._shape(key_states, -1, bsz)
-        #         value_states = self._shape(value_states, -1, bsz)
-        #         key_states = torch.cat([past_key_value[0], key_states], dim=2)
-        #         value_states = torch.cat([past_key_value[1], value_states], dim=2)
-        #     else:
-        #         # self_attention
-        #         key_states = self._shape(key_states, -1, bsz)
-        #         value_states = self._shape(value_states, -1, bsz)
+        if not output_attentions:
+            attn_weights = None
 
-        #     past_key_value = (key_states, value_states)
+        return attn_output, attn_weights, past_key_value
 
-        # proj_shape = (bsz * self.num_heads, -1, self.head_dim)
 
-        # query_states = self._shape(query_states, seq_len, bsz).view(*proj_shape)
-        # key_states = key_states.view(*proj_shape)
-        # value_states = value_states.view(*proj_shape)
+class LlamaLayerNormQ(torch.nn.Module):
+    def __init__(self, dim, eps=1e-5):
+        super().__init__()
+        self.input_scale = 1.0
+        self.variance_epsilon = eps
+        self.register_buffer('weight', torch.ones(dim, dtype=torch.float32))
 
-        # src_len = key_states.size(1)
-        # print("q states:", query_states.shape, query_states.device, query_states.is_contiguous(), query_states.dtype)
-        # print("key states:", key_states.shape, key_states.device, key_states.is_contiguous(), key_states.dtype)
+    def forward(self, x):
 
-        # attn_weights = self.qk_bmm(query_states, key_states)
+        input_dtype = x.dtype
+        hidden_states = x.to(torch.float32)
+        ln_output_fp = torch.nn.functional.layer_norm(
+            x, x.shape[-1:], self.weight, None, self.variance_epsilon)
+        ln_output_int8 = ln_output_fp.round().clamp(-128, 127).to(torch.int8)
+        return ln_output_int8
 
-        # if attn_weights.size() != (bsz * self.num_heads, seq_len, src_len):
-        #     raise ValueError(
-        #         f"Attention weights should be of size {(bsz * self.num_heads, seq_len, src_len)}, but is"
-        #         f" {attn_weights.size()}"
-        #     )
 
-        # if attention_mask is not None:
-        #     if attention_mask.size() != (bsz, 1, seq_len, src_len):
-        #         raise ValueError(
-        #             f"Attention mask should be of size {(bsz, 1, seq_len, src_len)}, but is {attention_mask.size()}"
-        #         )
-        #     attn_weights = attn_weights.view(bsz, self.num_heads, seq_len, src_len) + attention_mask
-        #     attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
-        #     attn_weights = attn_weights.view(bsz * self.num_heads, seq_len, src_len)
-
-        # attn_probs = nn.functional.softmax(attn_weights, dim=-1)
-
-        # if output_attentions:
-        #     # this operation is a bit awkward, but it's required to
-        #     # make sure that attn_weights keeps its gradient.
-        #     # In order to do so, attn_weights have to be reshaped
-        #     # twice and have to be reused in the following
-        #     attn_probs_reshaped = attn_probs.view(bsz, self.num_heads, seq_len, src_len)
-        #     attn_probs = attn_probs_reshaped.view(bsz * self.num_heads, seq_len, src_len)
-        # else:
-        #     attn_probs_reshaped = None
-
-        # # (A_row V_row)_row = (A_row V_col ^T)_row
-        # attn_probs.mul_(127).round_()
-        # attn_probs = attn_probs.to(torch.int8)
-
-        # value_states = value_states.transpose(1, 2).contiguous()
-        # attn_output = self.pv_bmm(attn_probs, value_states)
-
-        # if attn_output.size() != (bsz * self.num_heads, seq_len, self.head_dim):
-        #     raise ValueError(
-        #         f"`attn_output` should be of size {(bsz, self.num_heads, seq_len, self.head_dim)}, but is"
-        #         f" {attn_output.size()}"
-        #     )
-
-        # attn_output = attn_output.view(bsz, self.num_heads, seq_len, self.head_dim)
-        # attn_output = attn_output.transpose(1, 2)
-
-        # Use the `embed_dim` from the config (stored in the class) rather than `hidden_state` because `attn_output` can be
-        # partitioned aross GPUs when using tensor-parallelism.
-        # attn_output = attn_output.reshape(bsz, seq_len, self.num_heads * self.head_dim).contiguous()
-
-        attn_output = attn_output.view(bsz, seq_len, self.num_heads * self.head_dim)
-        attn_output = self.out_proj(attn_output)
-
-        return attn_output, None, past_key_value
-
+    @staticmethod
+    def from_float(module: torch.nn.LayerNorm, output_scale: float):
+        assert module.weight.shape[0] == module.weight.numel()
+        # assert module.bias.shape[0] == module.bias.numel()
+        q_module = LlamaLayerNormQ(module.weight.shape[0], module.variance_epsilon )
+        q_module.weight = module.weight / output_scale
+        # q_module.bias = module.bias / output_scale
+        return q_module
 
 class LlamaSmoothquantMLP(nn.Module):
     def __init__(self, intermediate_size, hidden_size):
@@ -355,9 +309,9 @@ class LlamaSmoothquantDecoderLayer(nn.Module):
         self.self_attn = LLamaSmoothquantAttention(config.hidden_size, config.num_attention_heads)
 
         self.mlp = LlamaSmoothquantMLP(config.intermediate_size, config.hidden_size)
-        self.input_layernorm = LayerNormQ(config.hidden_size, eps=config.rms_norm_eps)
+        self.input_layernorm = LlamaLayerNormQ(config.hidden_size, eps=config.rms_norm_eps)
 
-        self.post_attention_layernorm = LayerNormQ(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = LlamaLayerNormQ(config.hidden_size, eps=config.rms_norm_eps)
 
     @staticmethod
     def pack(
@@ -375,6 +329,8 @@ class LlamaSmoothquantDecoderLayer(nn.Module):
     ):
         config = module.self_attn.config
         int8_decoder_layer = LlamaSmoothquantDecoderLayer(config)
+
+        int8_decoder_layer.input_layernorm = LlamaLayerNormQ.from_float(module.input_layernorm,  attn_input_scale)
         int8_decoder_layer.self_attn = LLamaSmoothquantAttention.pack(
             module.self_attn,
             attn_input_scale,
@@ -386,6 +342,13 @@ class LlamaSmoothquantDecoderLayer(nn.Module):
             out_input_scale,
         )
 
+
+        # int8_decoder_layer.input_layernorm = module.input_layernorm
+        # int8_decoder_layer.self_attn = module.self_attn
+
+
+        int8_decoder_layer.post_attention_layernorm = LlamaLayerNormQ.from_float(module.post_attention_layernorm,  gate_input_scale)
+
         int8_decoder_layer.mlp = LlamaSmoothquantMLP.pack(
             module.mlp,
             gate_input_scale,
@@ -393,9 +356,9 @@ class LlamaSmoothquantDecoderLayer(nn.Module):
             down_input_scale,
         )
 
-        int8_decoder_layer.input_layernorm = LayerNormQ(config.hidden_size, eps=config.rms_norm_eps)
+        # int8_decoder_layer.post_attention_layernorm = module.post_attention_layernorm
+        # int8_decoder_layer.mlp = module.mlp
 
-        int8_decoder_layer.post_attention_layernorm = LayerNormQ(config.hidden_size, eps=config.rms_norm_eps)
 
         return int8_decoder_layer
 
@@ -439,6 +402,7 @@ class LlamaSmoothquantDecoderLayer(nn.Module):
             use_cache=use_cache,
             padding_mask=padding_mask,
         )
+        hidden_states = residual + hidden_states
 
         # Fully Connected
         residual = hidden_states

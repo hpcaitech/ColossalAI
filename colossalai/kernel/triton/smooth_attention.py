@@ -73,7 +73,7 @@ if HAS_TRITON:
             + offs_d[None, :] * stride_qd
         )
         q = tl.load(load_p_ptrs, mask=offs_m[:, None] < cur_batch_seq_len, other=0.0)
-        q = q.to(tl.float32) * q_input_scale
+        q = q.to(tl.float16) * q_input_scale.to(tl.float16)
 
         k_ptrs = K + offs_n[None, :] * stride_kbs + cur_head * stride_kh + offs_d[:, None] * stride_kd
         v_ptrs = V + offs_n[:, None] * stride_vbs + cur_head * stride_vh + offs_d[None, :] * stride_vd
@@ -95,7 +95,7 @@ if HAS_TRITON:
                 mask=(start_n + offs_n[None, :]) < cur_batch_seq_len,
                 other=0.0,
             )
-            k = k.to(tl.float32) * k_input_scale
+            k = k.to(tl.float16) * k_input_scale.to(tl.float16)
 
             qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
             qk += tl.dot(q, k)
@@ -131,13 +131,13 @@ if HAS_TRITON:
                 other=0.0,
             )
 
-            v = v.to(tl.float32) * v_input_scale
+            v = v.to(tl.float16) * v_input_scale.to(tl.float16)
             p = p.to(v.dtype)
             acc += tl.dot(p, v)
             # update m_i and l_i
             l_i = l_i_new
             m_i = m_i_new
-        acc = (acc / pv_output_scale).to(tl.int8)
+        acc = (acc / pv_output_scale.to(tl.float16)).to(tl.int8)
         off_o = (
             (cur_batch_start_index + offs_m[:, None]) * stride_obs + cur_head * stride_oh + offs_d[None, :] * stride_od
         )
@@ -145,24 +145,27 @@ if HAS_TRITON:
         tl.store(out_ptrs, acc, mask=offs_m[:, None] < cur_batch_seq_len)
         return
 
+
+
     @torch.no_grad()
     def smooth_llama_context_attn_fwd(
         q, k, v, o, q_input_scale, k_input_scale, v_input_scale, pv_output_scale, b_start_loc, b_seq_len, max_input_len
     ):
-        BLOCK = 32
+
+        BLOCK = 128
         # shape constraints
         Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
         assert Lq == Lk, "context process only supports equal query, key, value length"
         assert Lk == Lv, "context process only supports equal query, key, value length"
         assert Lk in {16, 32, 64, 128}
-
+        BLOCK_N = 128
         sm_scale = 1.0 / math.sqrt(Lk)
         batch, head = b_seq_len.shape[0], q.shape[1]
         grid = (batch, head, triton.cdiv(max_input_len, BLOCK))
 
         tmp = torch.empty((batch, head, max_input_len + 256), device=q.device, dtype=torch.float32)
         num_warps = 4 if Lk <= 64 else 8
-        # num_warps = 4
+
         _context_flash_attention_kernel[grid](
             q,
             k,
@@ -245,7 +248,7 @@ if HAS_TRITON:
 
         for start_mark in range(0, block_mask, 1):
             q = tl.load(Q + off_q + start_mark)
-            q = q.to(tl.float32) * q_input_scale
+            q = q.to(tl.float16) * q_input_scale.to(tl.float16)
             offs_n_new = current_batch_start_index + offs_n
             k_loc = tl.load(
                 kv_cache_loc + kv_cache_loc_b_stride * current_batch + kv_cache_loc_s_stride * offs_n_new,
@@ -254,7 +257,7 @@ if HAS_TRITON:
             )
             off_k = k_loc[:, None] * k_batch_stride + current_head * k_head_stride + offs_d[None, :] * k_head_dim_stride
             k = tl.load(K + off_k, mask=offs_n_new[:, None] < current_batch_end_index, other=0.0)
-            k = k.to(tl.float32) * k_input_scale
+            k = k.to(tl.float16) * k_input_scale.to(tl.float16)
             att_value = tl.sum(q[None, :] * k, 1)
             att_value *= sm_scale
             off_o = current_head * attn_head_stride + (current_batch_in_all_start_index + offs_n) * attn_batch_stride
@@ -308,7 +311,7 @@ if HAS_TRITON:
         for start_mark in range(0, block_mask, 1):
             alibi_m = tl.load(alibi + current_head)
             q = tl.load(Q + off_q + start_mark)
-            q = q.to(tl.float32) * q_input_scale
+            q = q.to(tl.float16) * q_input_scale.to(tl.float16)
 
             offs_n_new = current_batch_start_index + offs_n
             k_loc = tl.load(
@@ -318,7 +321,7 @@ if HAS_TRITON:
             )
             off_k = k_loc[:, None] * k_batch_stride + current_head * k_head_stride + offs_d[None, :] * k_head_dim_stride
             k = tl.load(K + off_k, mask=offs_n_new[:, None] < current_batch_end_index, other=0.0)
-            k = k.to(tl.float32) * k_input_scale
+            k = k.to(tl.float16) * k_input_scale.to(tl.float16)
             att_value = tl.sum(q[None, :] * k, 1)
             att_value *= sm_scale
             att_value -= alibi_m * (current_batch_seq_len - 1 - offs_n)
@@ -531,10 +534,10 @@ if HAS_TRITON:
                 mask=(start_n + offs_n[:, None]) < current_batch_seq_len,
                 other=0.0,
             )
-            v_value = v_value.to(tl.float32) * v_input_scale
+            v_value = v_value.to(tl.float16) * v_input_scale.to(tl.float16)
             acc += tl.sum(p_value[:, None] * v_value, 0)
 
-        acc = (acc / pv_output_scale).to(tl.int8)
+        acc = (acc / pv_output_scale.to(tl.float16)).to(tl.int8)
         off_o = (
             current_batch * attn_out_batch_stride
             + current_head * attn_out_head_stride
