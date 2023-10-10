@@ -252,7 +252,7 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
                 # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
                 if tp_size > 1:
                     param_for_grad = grad_to_param_mapping[id(grad)]
-                    if is_distributed_tensor(param_for_grad) == False:
+                    if not is_distributed_tensor(param_for_grad):
                         grad_norm_exponentiated /= tp_size
 
                 # If 'pp_size' is greater than 1 and the gradient belongs to shared parameters,
@@ -398,7 +398,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
                 # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
                 if tp_size > 1:
                     param_for_grad = grad_to_param_mapping[id(grad)]
-                    if is_distributed_tensor(param_for_grad) == False:
+                    if not is_distributed_tensor(param_for_grad):
                         grad_norm_exponentiated /= tp_size
 
                 # If 'pp_size' is greater than 1 and the gradient belongs to shared parameters,
@@ -531,7 +531,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
                     param_id_for_grad = self._grad_store.get_param_id_for_grad(grad)
                     param_for_grad = ctypes.cast(param_id_for_grad, ctypes.py_object).value
 
-                    if is_distributed_tensor(param_for_grad) == False:
+                    if not is_distributed_tensor(param_for_grad):
                         grad_norm_exponentiated /= tp_size
 
                 # If 'pp_size' is greater than 1 and the gradient belongs to shared parameters,
