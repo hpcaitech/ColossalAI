@@ -189,11 +189,14 @@ echo "[Test]: testing RLHF ..."
 #  - gpt2-ddp: RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation
 #  - llama-*: These tests can be passed locally, skipped for long execution time
 #  - *-gemini: Gemini plugin does not support `from_pretrained` yet
+#  - skip bloom colossalai_gemini as it leads to OOM
+
 SKIPPED_TESTS=(
     "gpt2-ddp"
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
+    "bloom-colossalai_gemini"
 )
 
 for model in ${MODELS_PPO[@]}; do
