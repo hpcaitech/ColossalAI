@@ -58,9 +58,7 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
         dist.barrier()
 
         new_bert_model = BertForSequenceClassification.from_pretrained(pretrained_path)
-        check_state_dict_equal(
-            bert_model.state_dict(only_rank_0=False, dtype=torch.float32), new_bert_model.state_dict(), False
-        )
+        check_state_dict_equal(bert_model.state_dict(only_rank_0=False), new_bert_model.state_dict(), False)
 
 
 @clear_cache_before_run()

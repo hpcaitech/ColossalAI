@@ -60,7 +60,7 @@ def exam_torch_load_from_gemini(shard: bool, model_name: str):
 
         # Add prefix to get aligned with pytorch parameter names.
         check_state_dict_equal(
-            model.state_dict(only_rank_0=False, prefix="module.module.", dtype=torch.float32),
+            model.state_dict(only_rank_0=False, prefix="module.module."),
             new_model.state_dict(),
             False,
         )
@@ -125,7 +125,7 @@ def exam_gemini_load_from_torch(shard: bool, model_name: str):
 
         # Add prefix to get aligned with pytorch parameter names.
         check_state_dict_equal(
-            new_model.state_dict(only_rank_0=False, prefix="module.module.", dtype=torch.float32),
+            new_model.state_dict(only_rank_0=False, prefix="module.module."),
             model.state_dict(),
             False,
         )
