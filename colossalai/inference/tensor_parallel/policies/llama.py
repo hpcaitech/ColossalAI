@@ -3,11 +3,12 @@ from functools import partial
 import torch
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
 
-from colossalai.shardformer.layer import VocabParallelEmbedding1D
-from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
+
 # import colossalai
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
 
+from ..modeling._utils import init_to_get_rotary
 from ..modeling.llama import LlamaInferenceForwards, get_llama_vllm_rmsnorm_forward
 
 try:
@@ -50,38 +51,38 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=ColCaiQuantLinear,
-                        kwargs={'split_num': 1},
+                        kwargs={"split_num": 1},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=ColCaiQuantLinear,
-                        kwargs={'split_num': 1},
+                        kwargs={"split_num": 1},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=ColCaiQuantLinear,
-                        kwargs={'split_num': 1},
+                        kwargs={"split_num": 1},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=RowCaiQuantLinear,
-                        kwargs={'split_num': 1},
+                        kwargs={"split_num": 1},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.gate_proj",
                         target_module=ColCaiQuantLinear,
-                        kwargs={'split_num': 1},
+                        kwargs={"split_num": 1},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.up_proj",
                         target_module=ColCaiQuantLinear,
-                        kwargs={'split_num': 1},
+                        kwargs={"split_num": 1},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.down_proj",
                         target_module=RowCaiQuantLinear,
-                        kwargs={'split_num': 1},
-                    )
+                        kwargs={"split_num": 1},
+                    ),
                 ],
             )
 
@@ -117,3 +118,7 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
             )
 
         return policy
+
+    def postprocess(self):
+        init_to_get_rotary(self.model.model)
+        return self.model

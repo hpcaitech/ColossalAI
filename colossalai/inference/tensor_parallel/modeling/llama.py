@@ -5,12 +5,9 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
-from colossalai.kernel.triton import (
-    copy_kv_cache_to_dest,
-    llama_context_attn_fwd,
-    rotary_embedding_fwd,
-    token_attention_fwd,
-)
+from colossalai.kernel.triton import llama_context_attn_fwd, rotary_embedding_fwd, token_attention_fwd
+
+from ._utils import copy_kv_to_mem_cache
 
 try:
     from vllm import layernorm_ops, pos_encoding_ops
@@ -44,12 +41,6 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
-
-
-def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
-    copy_kv_cache_to_dest(key_buffer, context_mem_index, mem_manager.key_buffer[layer_id])
-    copy_kv_cache_to_dest(value_buffer, context_mem_index, mem_manager.value_buffer[layer_id])
-    return
 
 
 class LlamaInferenceForwards:
@@ -285,11 +276,6 @@ class LlamaInferenceForwards:
         rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
         rotary_embedding_fwd(key_states.view(-1, self.num_heads, self.head_dim), cos, sin)
 
-        def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
-            copy_kv_cache_to_dest(key_buffer, context_mem_index, mem_manager.key_buffer[layer_id])
-            copy_kv_cache_to_dest(value_buffer, context_mem_index, mem_manager.value_buffer[layer_id])
-            return
-
         query_states = query_states.reshape(-1, self.num_heads, self.head_dim)
         key_states = key_states.reshape(-1, self.num_heads, self.head_dim)
         value_states = value_states.reshape(-1, self.num_heads, self.head_dim)
@@ -298,7 +284,7 @@ class LlamaInferenceForwards:
             # first token generation
 
             # copy key and value calculated in current step to memory manager
-            _copy_kv_to_mem_cache(
+            copy_kv_to_mem_cache(
                 infer_state.decode_layer_id,
                 key_states,
                 value_states,
@@ -331,7 +317,7 @@ class LlamaInferenceForwards:
             else:
                 # if decode is not contiguous, use triton kernel to copy key and value cache
                 # k, v shape: [batch_size, num_heads, head_dim/embed_size_per_head
-                _copy_kv_to_mem_cache(
+                copy_kv_to_mem_cache(
                     infer_state.decode_layer_id,
                     key_states,
                     value_states,

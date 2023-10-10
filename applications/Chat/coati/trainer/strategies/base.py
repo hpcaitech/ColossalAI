@@ -110,8 +110,8 @@ class Strategy(ABC):
         """
         return model
 
-    def save_model(self, model: nn.Module, path: str, only_rank0: bool = True, **kwargs) -> None:
-        self.booster.save_model(model, path, shard=not only_rank0, **kwargs)
+    def save_model(self, model: nn.Module, path: str, shard: bool = False, **kwargs) -> None:
+        self.booster.save_model(model, path, shard=shard, **kwargs)
 
     def load_model(self, model: nn.Module, path: str, strict: bool = True) -> None:
         self.booster.load_model(model, path, strict)
