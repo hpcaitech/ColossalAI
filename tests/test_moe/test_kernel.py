@@ -23,7 +23,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     local_rank = dist.get_rank()
 
-    MOE_MANAGER.setup(42)    # MOE environment initialization
+    MOE_MANAGER.setup(42, parallel="EP")    # MOE environment initialization
     MOE_MANAGER.reset_loss()
     torch.manual_seed(rs + local_rank)    # set each process has different random seed
 
@@ -34,7 +34,6 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
                       intermediate_size=hidden_size * 2,
                       num_experts=NUM_EXPERTS,
                       top_k=topk,
-                      expert_parallel="EP",
                       capacity_factor_train=1.0)
     layer = layer.to(get_current_device())
     if data_type == torch.float16:

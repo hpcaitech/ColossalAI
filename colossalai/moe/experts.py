@@ -1,3 +1,5 @@
+import math
+from contextlib import nullcontext
 from typing import Callable, Optional, Tuple
 
 import torch
@@ -7,6 +9,7 @@ from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_activation
+from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.moe_tensor.api import get_ep_size, set_moe_tensor_info
 
 if HAS_TRITON:
@@ -36,12 +39,16 @@ class BaseMLPExperts(nn.Module):
         activation: Optional[Callable] = None,
         drop_rate: float = 0,
         gated: bool = False,
+        use_kernel: bool = False,
     ):
         super().__init__()
         assert expert_parallel in ["EP", "TP", None]
         self.expert_parallel = expert_parallel
         self.num_total_experts = num_experts
         self.gated = gated
+        self.use_kernel = use_kernel
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
 
         # get expert parallel info
         if expert_parallel is not None:
@@ -73,6 +80,24 @@ class BaseMLPExperts(nn.Module):
             for param in self.parameters():
                 set_moe_tensor_info(param, self.moe_info)
 
+        # init param
+        self.reset_parameters()
+
+    @torch.no_grad()
+    def reset_parameters(self):
+        # expert param should be different
+        if self.expert_parallel is not None:
+            seed_ctx = Randomizer(MOE_MANAGER.seed).fork_rng(enable_cpu=True)
+        else:
+            seed_ctx = Randomizer(42).fork_rng(enable_cpu=True)
+        with seed_ctx:
+            if self.gated:
+                torch.nn.init.normal_(self.wi_gate, std=math.sqrt(0.1 / self.hidden_size))
+                torch.nn.init.normal_(self.wi_up, std=math.sqrt(0.1 / self.hidden_size))
+            else:
+                torch.nn.init.normal_(self.wi, std=math.sqrt(0.1 / self.hidden_size))
+            torch.nn.init.normal_(self.wo, std=math.sqrt(0.1 / self.intermediate_size))
+
     def forward(self, x: torch.Tensor, param_slice: Tuple[slice] = (slice(None),)) -> torch.Tensor:
         """
         Args:
@@ -91,7 +116,7 @@ class BaseMLPExperts(nn.Module):
         x = x.reshape(e, -1, h)
 
         if self.gated:
-            if HAS_TRITON and self.act_name == "swiglu":
+            if self.use_kernel and HAS_TRITON and self.act_name == "swiglu":
                 x = LlamaActCombine.apply(
                     torch.bmm(x, self.wi_gate[param_slice]),
                     torch.bmm(x, self.wi_up[param_slice]),
@@ -123,7 +148,9 @@ class EPMLPExperts(BaseMLPExperts):
         activation=None,
         drop_rate: float = 0,
         gated: bool = False,
+        use_kernel: bool = False,
     ):
+        # TODO: This class can be aborted
         super().__init__(
             num_experts,
             hidden_size,
@@ -132,6 +159,7 @@ class EPMLPExperts(BaseMLPExperts):
             activation,
             drop_rate,
             gated,
+            use_kernel,
         )
 
 
@@ -149,7 +177,9 @@ class TPMLPExperts(BaseMLPExperts):
         activation: str = None,
         drop_rate: float = 0,
         gated: bool = False,
+        use_kernel: bool = False,
     ):
+        # TODO: This class can be aborted
         super().__init__(
             num_experts,
             hidden_size,
@@ -158,6 +188,7 @@ class TPMLPExperts(BaseMLPExperts):
             activation,
             drop_rate,
             gated,
+            use_kernel,
         )
 
 

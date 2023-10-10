@@ -41,8 +41,8 @@ class MoeManager(metaclass=SingletonMeta):
 
     def setup(self,
               seed: int,
-              use_kernel_optim: bool = True,
-              parallel: bool = None,
+              use_kernel_optim: bool = False,
+              parallel: str = None,
               mode: str = "dynamic",
               max_ep_size: int = 8,
               fixed_dp_size: int = 0,
