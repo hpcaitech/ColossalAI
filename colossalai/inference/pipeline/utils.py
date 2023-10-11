@@ -1,4 +1,4 @@
-from typing import List, Optional, Set
+from typing import Set
 
 import torch.nn as nn
 
@@ -30,6 +30,6 @@ def get_suffix_name(suffix: str, name: str):
         suffix (str): The suffix of the suffix module
         name (str): The name of the current module
     """
-    point = '' if suffix is '' else '.'
-    suffix_name = suffix + f'[{name}]' if name.isdigit() else suffix + f'{point}{name}'
+    point = "" if suffix is "" else "."
+    suffix_name = suffix + f"[{name}]" if name.isdigit() else suffix + f"{point}{name}"
     return suffix_name
