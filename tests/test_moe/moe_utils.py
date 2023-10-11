@@ -14,16 +14,13 @@ from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_rank, get_ep_s
 
 class MoeModel(nn.Module):
 
-    def __init__(self, checkpoint: bool = False, expert_parallel: str = "EP"):
+    def __init__(self, checkpoint: bool = False):
 
         class TestSubModule(CheckpointModule):
 
             def __init__(self):
                 super().__init__(checkpoint)
-                self.moe = SparseMLP(num_experts=8,
-                                     expert_parallel=expert_parallel,
-                                     hidden_size=16,
-                                     intermediate_size=32)
+                self.moe = SparseMLP(num_experts=8, hidden_size=16, intermediate_size=32)
                 self.proj = nn.Linear(16, 4)
 
             def _forward(self, x):
@@ -127,7 +124,7 @@ def sync_local_from_ep(local_model: SparseMLP, ep_model: SparseMLP, assert_grad_
     """Sync the parameters of tp model from ep model
 
     Args:
-        tp_model (MoeModule)
+        local_model (MoeModule)
         ep_model (MoeModule)
     """
     for (local_name, local_param), (ep_name, ep_param) in zip(local_model.named_parameters(),

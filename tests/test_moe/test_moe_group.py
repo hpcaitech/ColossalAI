@@ -59,7 +59,7 @@ def run_moe_init(expert_cls):
 
 def _run_test(rank, world_size, port, expert_cls):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    MOE_MANAGER.setup(seed=42)
+    MOE_MANAGER.setup(seed=42, parallel="EP")
     run_moe_init(expert_cls)
 
 
