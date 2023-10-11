@@ -1,5 +1,6 @@
 import time
 from typing import List
+import asyncio
 
 from .dynamic_batching.infer_batch import InferBatch
 from .dynamic_batching.io_struct import Batch, Req
@@ -62,6 +63,7 @@ class DynamicBatchManager:
         """
         prompt_ids = self.tokenizer.encode(input_ids)
         prompt_len = len(prompt_ids)
+        print(prompt_ids)
         if prompt_len > self.engine.max_input_len:
             raise ValueError(
                 f"the input prompt token len {prompt_len} is too long > {self.engine.max_input_len}"
@@ -104,7 +106,7 @@ class DynamicBatchManager:
             if self.running_batch is None:
                 time.sleep(0.1)  # 10ms
 
-    def _set_tokenizer(self, tokenizer, tokenizer_name, trust_remote_code: bool = False, use_fast:bool = True,):
+    def _set_tokenizer(self, tokenizer=None, tokenizer_name: str = "", trust_remote_code: bool = False, use_fast:bool = True,):
         if tokenizer is not None:
             self.tokenizer = tokenizer 
         else:
@@ -118,10 +120,10 @@ class DynamicBatchManager:
                 tokenizer_name = _FAST_LLAMA_TOKENIZER  
         
             try: 
-                self.tokenizer = AutoTokenizer(tokenizer_name, use_fast=use_fast,trust_remote_code=trust_remote_code)
+                self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=use_fast,trust_remote_code=trust_remote_code)
             except TypeError as e:
                 use_fast = False
-                self.tokenizer = AutoTokenizer(tokenizer_name, use_fast=use_fast,trust_remote_code=trust_remote_code)
+                self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=use_fast,trust_remote_code=trust_remote_code)
 
 
     def _step(self):
@@ -264,14 +266,19 @@ class DynamicBatchManager:
         Process the output of a batch.
         """
         for req in finished_reqs:
-            #output = self.tokenizer.decode(req.output_ids)
-            output =req.output_ids
+            output = self.tokenizer.decode(req.output_ids)
             yield output, req.request_id, req.output_metadata_list 
 
     def clean_up(self):
         # this logic should be implemented in the future.
         pass
 
+    def generate(self,request_id,prompt_id,sampling_params):
+        """
+        Generate the output of a request.
+        """
+        self.add_input(request_id,prompt_id,sampling_params)
+        return self.loop_for_fwd()
 
 def start_dynamic_batching(args, tp_engine, waiting_req_list):
     try:
@@ -289,5 +296,4 @@ def start_dynamic_batching(args, tp_engine, waiting_req_list):
         batch_manager.clean_up()
         raise
 
-    generator = batch_manager.loop_for_fwd()
-    return batch_manager,generator
+    return batch_manager

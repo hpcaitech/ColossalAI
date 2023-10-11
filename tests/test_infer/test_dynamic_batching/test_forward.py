@@ -42,15 +42,17 @@ def run():
     waiting_list.append(req2)
     waiting_list.append(req3)
     waiting_list.append(req4)
-
+    
     llama_config = LlamaConfig(num_hidden_layers=2, bos_token_id=0, eos_token_id=1, vocab_size=1200, hidden_size=1024)
-    model = LlamaForCausalLM(llama_config)
+    model = LlamaForCausalLM.from_pretrained('/mnt/vepfs/lczyh/models/llama-7b-hf/')
     model = model.half()
 
     shard_config = ShardConfig(enable_tensor_parallelism=True if TP_SIZE > 1 else False, inference_only=True)
 
     infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    manager, result_generator = start_dynamic_batching(arg, tp_engine=infer_engine, waiting_req_list=waiting_list)
+    manager = start_dynamic_batching(arg, tp_engine=infer_engine, waiting_req_list=waiting_list)
+    manager._set_tokenizer(tokenizer_name = model.__class__.__name__)
+    result_generator = manager.loop_for_fwd()
     for result in result_generator:
         print(result)
 
