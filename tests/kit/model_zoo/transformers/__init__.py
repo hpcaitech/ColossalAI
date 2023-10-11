@@ -10,3 +10,4 @@ from .sam import *
 from .t5 import *
 from .vit import *
 from .whisper import *
+from .falcon import *

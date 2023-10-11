@@ -147,6 +147,22 @@ _POLICY_LIST = {
     "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
         file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
     ),
+    # Falcon
+    "transformers.models.falcon.modeling_falcon.FalconModel": PolicyLocation(
+        file_name="falcon", class_name="FalconModelPolicy"
+    ),
+    "transformers.models.falcon.modeling_falcon.FalconForCausalLM": PolicyLocation(
+        file_name="falcon", class_name="FalconForCausalLMPolicy"
+    ),
+    "transformers.models.falcon.modeling_falcon.FalconForSequenceClassification": PolicyLocation(
+        file_name="falcon", class_name="FalconForSequenceClassificationPolicy"
+    ),
+    "transformers.models.falcon.modeling_falcon.FalconForTokenClassification": PolicyLocation(
+        file_name="falcon", class_name="FalconForTokenClassificationPolicy"
+    ),
+    "transformers.models.falcon.modeling_falcon.FalconForQuestionAnswering": PolicyLocation(
+        file_name="falcon", class_name="FalconForQuestionAnsweringPolicy"
+    ),
 }
 
 _INFER_POLICY_LIST = {
