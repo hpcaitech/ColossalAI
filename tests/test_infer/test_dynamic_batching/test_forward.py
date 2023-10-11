@@ -50,7 +50,11 @@ def run():
     shard_config = ShardConfig(enable_tensor_parallelism=True if TP_SIZE > 1 else False, inference_only=True)
 
     infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    start_dynamic_batching(arg, tp_engine=infer_engine, waiting_req_list=waiting_list)
+    manager, result_generator = start_dynamic_batching(arg, tp_engine=infer_engine, waiting_req_list=waiting_list)
+    for result in result_generator:
+        print(result)
+
+
 
 
 def check_dynamic_forward(rank, world_size, port):
