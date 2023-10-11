@@ -77,6 +77,7 @@ class CPUAdam(NVMeOptimizer):
         super(CPUAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)
         self.adamw_mode = adamw_mode
         cpu_adam = CPUAdamBuilder().load()
+        # if you find yourself stuck here, make sure that you install colossalai with CUDA_EXT=1 specification
         self.cpu_adam_op = cpu_adam.CPUAdamOptimizer(lr, betas[0], betas[1], eps, weight_decay, adamw_mode)
 
     def torch_adam_update(
