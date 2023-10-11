@@ -20,9 +20,8 @@ from colossalai.moe.manager import MOE_MANAGER
 
 
 class RandomDataset(Dataset):
-    def __init__(
-        self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000
-    ):
+
+    def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000):
         self.num_samples = num_samples
         self.max_length = max_length
         self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length))
@@ -52,9 +51,7 @@ def fsdp_main(rank, world_size, args):
         max_length=args.seq_length,
         num_samples=args.batch_size * (args.warmup + args.active) * dp_size,
     )
-    sampler = DistributedSampler(
-        dataset, rank=rank, num_replicas=world_size, shuffle=False
-    )
+    sampler = DistributedSampler(dataset, rank=rank, num_replicas=world_size, shuffle=False)
     train_kwargs = {"batch_size": args.batch_size, "sampler": sampler}
     train_loader = torch.utils.data.DataLoader(dataset, **train_kwargs)
     torch.cuda.set_device(rank)
@@ -64,7 +61,9 @@ def fsdp_main(rank, world_size, args):
     setattr(config, "router_z_loss_factor", 0.1)
     setattr(config, "label_smoothing", 0.1)
     setattr(config, "z_loss_factor", 0.1)
+    torch.set_default_dtype(torch.float16)
     model = OpenMoeForCausalLM(config)
+    torch.set_default_dtype(torch.float32)
     auto_wrap_policy = functools.partial(
         transformer_auto_wrap_policy,
         transformer_layer_cls={
@@ -114,9 +113,7 @@ def fsdp_main(rank, world_size, args):
 
     performance_evaluator.on_fit_end()
     if dist.get_rank() == 0:
-        print(
-            f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB"
-        )
+        print(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
 
 
 if __name__ == "__main__":

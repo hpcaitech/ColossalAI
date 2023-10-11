@@ -51,7 +51,6 @@ class SparseMLP(nn.Module):
         min_capacity: int = 4,
         noisy_policy: Optional[str] = None,
         drop_tks: bool = True,
-        expert_parallel: str = "EP",
         hidden_size: int = 2048,
         intermediate_size: int = 2048,
         activation: str = None,
@@ -59,14 +58,16 @@ class SparseMLP(nn.Module):
     ):
         super().__init__()
         self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
         self.num_experts = num_experts
         self.use_kernel = MOE_MANAGER.use_kernel_optim
-        self.expert_parallel = expert_parallel
-        assert expert_parallel in [
+        self.expert_parallel = MOE_MANAGER.get_parallel()
+        self.gated = gated
+        assert self.expert_parallel in [
             "EP",
             "TP",
             None,
-        ], f"Unsupported expert parallel type {expert_parallel}"
+        ], f"Unsupported expert parallel type {self.expert_parallel}"
 
         # moe router
         noisy_func = get_noise_generator(noisy_policy, num_experts)
@@ -80,23 +81,29 @@ class SparseMLP(nn.Module):
         )
 
         # moe experts
-        expert_cls = get_expert_class(expert_parallel)
-        self.experts: BaseMLPExperts = expert_cls(
-            num_experts=num_experts,
-            hidden_size=hidden_size,
-            intermediate_size=intermediate_size,
-            activation=activation,
-            gated=gated,
-        )
-        if expert_parallel is not None:
+        expert_cls = get_expert_class(self.expert_parallel)
+        self.experts: BaseMLPExperts = expert_cls(num_experts=num_experts,
+                                                  hidden_size=hidden_size,
+                                                  intermediate_size=intermediate_size,
+                                                  activation=activation,
+                                                  gated=gated,
+                                                  use_kernel=self.use_kernel)
+        if self.expert_parallel is not None:
             self.ep_group = get_ep_group(self.experts)
             self.ep_size = get_ep_size(self.experts)
         else:
             self.ep_group = None
         self.num_local_experts = self.experts.num_local_experts
 
+        # gate
         self.gate_weight = torch.nn.Parameter(torch.empty(num_experts, self.hidden_size))
-        nn.init.trunc_normal_(self.gate_weight, std=math.sqrt(0.1 / self.hidden_size))
+
+        # init param
+        self.reset_parameters()
+
+    @torch.no_grad()
+    def reset_parameters(self):
+        torch.nn.init.normal_(self.gate_weight, std=math.sqrt(0.1 / self.hidden_size))
 
     def forward(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -171,7 +178,7 @@ class SparseMLP(nn.Module):
         expert_output = AllToAll.apply(expert_output, self.ep_group)
         return expert_output
 
-    def _tp_process(self, dispatch_data: torch.Tensor) -> torch.Tensor:
+    def _tp_process(self, dispatch_data: torch.Tensor, use_overlap: bool = False) -> torch.Tensor:
         """
         TP with overlap.
 
@@ -191,6 +198,13 @@ class SparseMLP(nn.Module):
         Returns:
             torch.Tensor: (num_experts, capacity, hidden_size)
         """
+        if use_overlap == False:
+            expert_in, _ = AllGather.apply(dispatch_data, self.ep_group)
+            expert_out = self.experts(expert_in)
+            expert_out, _ = ReduceScatter.apply(expert_out, self.ep_group)
+            return expert_out
+
+        # TODO: there is accuracy problem in overlap
         chunk_num = 4
         chunk_size = dispatch_data.shape[0] // chunk_num
         out = torch.empty_like(dispatch_data)

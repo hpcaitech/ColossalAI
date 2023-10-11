@@ -41,8 +41,8 @@ class MoeManager(metaclass=SingletonMeta):
 
     def setup(self,
               seed: int,
-              use_kernel_optim: bool = True,
-              parallel: bool = None,
+              use_kernel_optim: bool = False,
+              parallel: str = None,
               mode: str = "dynamic",
               max_ep_size: int = 8,
               fixed_dp_size: int = 0,
@@ -140,6 +140,11 @@ class MoeManager(metaclass=SingletonMeta):
 
         if not (ep_size in self.parallel_info_dict):
             self.parallel_info_dict[ep_size] = get_moe_info(ep_size, dp_size, pp_size, ep_inside=self.use_ep_inside)
+            if dist.get_rank() == 0:
+                if self.use_ep_inside:
+                    print(f"MoE Parallel: pp {pp_size}, dp {dp_size}, ep {ep_size}")
+                else:
+                    print(f"MoE Parallel: pp {pp_size}, ep {ep_size}, dp {dp_size}")
 
         return num_local_experts, self.parallel_info_dict[ep_size]
 
