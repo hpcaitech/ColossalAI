@@ -6,7 +6,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
-from colossalai.moe._operation import AllGather, AllToAll, MoeCombine, MoeDispatch, ReduceScatter, TPOverlap
+from colossalai.moe._operation import AllGather, AllToAll, MoeCombine, MoeDispatch, ReduceScatter
 from colossalai.moe.experts import BaseMLPExperts, get_expert_class
 from colossalai.moe.load_balance import LoadBalancer
 from colossalai.moe.manager import MOE_MANAGER
@@ -233,7 +233,47 @@ class SparseMLP(nn.Module):
             expert_out = ReduceScatter.apply(partial_expert_out, self.ep_group, False)[0]
             return expert_out
         else:
-            return TPOverlap.apply(self.experts, dispatch_data, self.ep_group)
+            NUM_CHUNK = 4
+            NUM_STAGES = 4
+
+            assert dispatch_data.shape[0] % NUM_CHUNK == 0, \
+                "arbitrary chunk num is not supported yet, please use chunk num that can divide num_experts"
+            chunk_size = dispatch_data.shape[0] // NUM_CHUNK
+            chunk_data = torch.split(dispatch_data, chunk_size, dim=0)
+            output = torch.empty_like(dispatch_data)
+
+            def get_chunk_slice(idx: int, chunk_size: int) -> Tuple[slice]:
+                return (slice(idx * chunk_size, (idx + 1) * chunk_size), )
+
+            expert_in, in_handle, input_indices = None, None, None
+            partial_expert_out, data_indices = None, None
+            expert_out, out_handle, output_indices = None, None, None
+
+            for i in range(NUM_CHUNK + NUM_STAGES - 1):
+                if out_handle is not None:
+                    out_handle.wait()
+                    output[output_indices] = expert_out
+                    expert_out, out_handle, output_indices = None, None, None
+
+                # reduce scatter last output
+                if partial_expert_out is not None:
+                    output_indices = data_indices
+                    expert_out, out_handle = ReduceScatter.apply(partial_expert_out, self.ep_group, True)
+                    partial_expert_out = None
+
+                # compute
+                if in_handle is not None:
+                    in_handle.wait()
+                    data_indices = input_indices
+                    partial_expert_out = self.experts(expert_in, input_indices)
+                    expert_in, in_handle, input_indices = None, None, None
+
+                # all gather next input
+                if 0 <= i < NUM_CHUNK:
+                    input_indices = get_chunk_slice(i, chunk_size)
+                    expert_in, in_handle = AllGather.apply(chunk_data[i].contiguous(), self.ep_group, True)
+
+            return output
 
 
 def apply_load_balance(model: nn.Module, optim: Any) -> None:
