@@ -66,6 +66,7 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
 
         booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
         check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict(), False)
+    torch.cuda.empty_cache()
 
 
 def run_dist(rank, world_size, port):
