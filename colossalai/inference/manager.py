@@ -224,20 +224,20 @@ class DynamicBatchManager:
 
 
 def start_dynamic_batching(args, tp_engine, waiting_req_list):
-    try:
-        batch_manager = DynamicBatchManager(
-            tp_engine=tp_engine,
-            max_total_token_num=args.max_total_token_num,
-            batch_max_tokens=args.batch_max_tokens,
-            eos_id=args.eos_id,
-            log_stats=not args.disable_log_stats,
-            log_stats_interval=args.log_stats_interval,
-            waiting_req_list=waiting_req_list,
-        )
+    # try:
+    batch_manager = DynamicBatchManager(
+        tp_engine=tp_engine,
+        max_total_token_num=args.max_total_token_num,
+        batch_max_tokens=args.batch_max_tokens,
+        eos_id=args.eos_id,
+        log_stats=not args.disable_log_stats,
+        log_stats_interval=args.log_stats_interval,
+        waiting_req_list=waiting_req_list,
+    )
 
-    except Exception:
-        batch_manager.clean_up()
-        raise
+    # except Exception:
+    #     batch_manager.clean_up()
+    #     raise
 
     batch_manager.loop_for_fwd()
     return
