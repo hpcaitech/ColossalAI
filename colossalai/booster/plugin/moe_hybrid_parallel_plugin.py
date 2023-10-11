@@ -1,9 +1,10 @@
 import random
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, OrderedDict, Tuple
 
 import numpy as np
 import torch
 import torch.distributed as dist
+from torch.distributed import ProcessGroup
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
@@ -15,8 +16,8 @@ from colossalai.booster.plugin.hybrid_parallel_plugin import (
     HybridParallelModule,
     HybridParallelNaiveOptimizer,
     HybridParallelPlugin,
-    HybridParallelZeroOptimizer,
     get_param_info,
+    init_pipeline_optimizer,
 )
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
@@ -25,8 +26,44 @@ from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.policies.base_policy import Policy
+from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 PP_AXIS, DP_AXIS, TP_AXIS = 0, 1, 2
+
+
+class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
+
+    def __init__(
+            self,
+            optimizer: Optimizer,
+            model: Module,
+            use_pipeline: bool,
+            param_info: OrderedDict,
+            initial_scale: int = 2**16,    # grad scaler config
+            min_scale: int = 1,
+            growth_factor: float = 2.,
+            backoff_factor: float = .5,
+            growth_interval: int = 2000,
+            hysteresis: int = 2,
+            max_scale: int = 2**24,
+            clip_grad_norm: float = 0.0,    # grad clipping
+            verbose: bool = False,
+            reduce_bucket_size: int = 1024 * 1024,    # communication
+            communication_dtype: Optional[torch.dtype] = None,
+            overlap_communication: bool = True,
+            partition_grad: bool = False,    # stage 2 flag
+            cpu_offload: bool = False,    # cpu offload
+            dp_process_group: Optional[ProcessGroup] = None,    # the dp pg for comm
+            tp_process_group: Optional[ProcessGroup] = None,    # if using tp
+            forced_dtype: Optional[torch.dtype] = None,
+            extra_dp_process_group: Optional[ProcessGroup] = None):
+        self.param_info = param_info
+        if use_pipeline:
+            init_pipeline_optimizer(optimizer, model)
+        super().__init__(optimizer, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
+                         hysteresis, max_scale, clip_grad_norm, verbose, reduce_bucket_size, communication_dtype,
+                         overlap_communication, partition_grad, cpu_offload, dp_process_group, tp_process_group,
+                         forced_dtype, extra_dp_process_group)
 
 
 class MoeHybridParallelPlugin(HybridParallelPlugin):
