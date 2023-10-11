@@ -357,7 +357,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             self._sync_unpartitioned_grad(non_moe_grad_list, flat_grads_per_rank, group_id)
 
                         # sync moe param only in zero group
-                        if self.extra_dp_pg is not None and len(moe_grad_list) > 0:
+                        if len(moe_grad_list) > 0:
                             flat_grads = []
                             for grad_list in moe_grad_list:
                                 flat_grads.append(_flatten_dense_tensors(grad_list))
