@@ -32,10 +32,10 @@ class AllGather(torch.autograd.Function):
             outputs: Tensor
             handle: Optional[Callable], if overlap is True
         """
-        # print(in)
+        assert ctx is not None or not overlap
+
         if ctx is not None:
             ctx.comm_grp = group
-            ctx.overlap = overlap
 
         comm_size = dist.get_world_size(group)
         if comm_size == 1:
@@ -49,9 +49,6 @@ class AllGather(torch.autograd.Function):
             return outputs, None
         else:
             handle = dist.all_gather(buffer_list, inputs, group=group, async_op=True)
-            if ctx is None and overlap:
-                global WORLD_HANDLE_ALLGATHER
-                WORLD_HANDLE_ALLGATHER = handle
             return outputs, handle
 
     @staticmethod
@@ -77,10 +74,10 @@ class ReduceScatter(torch.autograd.Function):
             outputs: Tensor
             handle: Optional[Callable], if overlap is True
         """
+        assert ctx is not None or not overlap
 
         if ctx is not None:
             ctx.comm_grp = group
-            ctx.overlap = overlap
 
         comm_size = dist.get_world_size(group)
         if comm_size == 1:
@@ -97,9 +94,6 @@ class ReduceScatter(torch.autograd.Function):
             return outputs, None
         else:
             handle = dist.reduce_scatter(outputs, buffer_list, group=group, async_op=True)
-            if ctx is None and overlap:
-                global WORLD_HANDLE_REDUCESCATTER
-                WORLD_HANDLE_REDUCESCATTER = handle
             return outputs, handle
 
     @staticmethod
