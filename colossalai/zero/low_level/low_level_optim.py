@@ -332,7 +332,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         # divide them into different groups
                         moe_grad_list = []
                         non_moe_grad_list = []
-                        for rank, grad_list in self._bucket_store._grad_in_bucket.items():
+                        for grad_list in self._bucket_store._grad_in_bucket.values():
                             non_moe_cur_grad = []
                             moe_cur_grad = []
                             for i in range(len(grad_list)):
