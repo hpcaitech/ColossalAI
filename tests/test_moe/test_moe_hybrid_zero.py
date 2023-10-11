@@ -17,7 +17,6 @@ def run_fwd_bwd(model, data, label, criterion, optimizer, enable_autocast=False)
     with torch.cuda.amp.autocast(enabled=enable_autocast):
         if criterion:
             y = model(data)
-            print(y)
             loss = criterion(y, label)
         else:
             loss = model(data, label)
