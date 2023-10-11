@@ -31,7 +31,6 @@ from ._utils import (
 )
 from .bookkeeping import BucketStore, GradientStore, ParameterStore
 
-
 class LowLevelZeroFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
     def __init__(
         self,
@@ -148,7 +147,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             self._working_param_groups[group_id] = group_params
 
             master_param_current_rank = self._create_master_param_current_rank(group_params)
-
             self._master_param_groups_of_current_rank[group_id] = master_param_current_rank
 
             # need to replace the params in the `params` field in the optimizer
@@ -216,16 +214,13 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 else:
                     padding_param = param.data.view(-1)
                 splited_params = padding_param.split(padding_param.numel() // self._world_size)
-                
+
                 # use fp32 when master_weights is True
                 if self._master_weights is True:
-                    splited_param_current_rank = splited_params[self._local_rank].detach().float().to(device)  
+                    splited_param_current_rank = splited_params[self._local_rank].detach().float().to(device)
                 else:
-                    splited_param_current_rank = splited_params[self._local_rank] 
-                
+                    splited_param_current_rank = splited_params[self._local_rank]
                 params_current_rank.append(splited_param_current_rank)
-                # should also link the splited_param to param when master_weights is False
-                # or the grad cannot be found in step() method
                 self._param_store.link_master_and_working_param(splited_param_current_rank, param)
                 
         return params_current_rank
@@ -422,9 +417,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # and should not be updated
         real_working_params = dict()
         real_master_params = dict()
-
         grad_index = 0 if self._partition_grads else self._local_rank
-
         for group_id in range(self.num_param_groups):
             master_params = self._master_param_groups_of_current_rank[group_id]
             real_working_params[group_id] = []
@@ -437,9 +430,14 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 grads = self._grad_store.get_partitioned_gradients_by_param_id(group_id, id(working_param))
                 if len(grads) > 0:
                     real_working_params[group_id].append(working_param)
-                    grad = grads[grad_index].to(splited_param.dtype).to(splited_param.device)
-                    splited_param.grad = grad
-                    grad_partition_groups.append(grad)
+                    # no need to copy fp32 grad if master_weights is False
+                    if self._master_weights:
+                        grad = grads[grad_index].to(splited_param.dtype).to(splited_param.device)
+                        splited_param.grad = grad
+                        grad_partition_groups.append(grad)
+                    else:
+                        splited_param.grad = grads[grad_index]
+                        grad_partition_groups.append(grads[grad_index])
                     real_master_params[group_id].append(splited_param)
 
             # compute norm
@@ -458,7 +456,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # update the parameters
         self.optim.step()
-
+        
         # release the grad
         grad_partition_groups = []
         for group_id in range(self.num_param_groups):
