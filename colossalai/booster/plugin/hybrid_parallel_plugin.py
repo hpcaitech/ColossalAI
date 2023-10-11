@@ -380,9 +380,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.stage_manager = None
         self.schedule = None
         self.custom_policy = custom_policy
-        self.num_microbatches = num_microbatches
         self.pp_style = pp_style
-        self.num_model_chunks = num_model_chunks
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
             assert (
@@ -390,11 +388,11 @@ class HybridParallelPlugin(PipelinePluginBase):
             ), "num_microbatches or microbatch_size must be specified when using pipeline parallelism"
             assert self.zero_stage <= 1, "zero stage must be 0 or 1 when using pipeline parallelism"
             self.stage_manager = PipelineStageManager(
-                self.pg_mesh, PP_AXIS, is_virtual=True, num_model_chunks=self.num_model_chunks
+                self.pg_mesh, PP_AXIS, is_virtual=True, num_model_chunks=num_model_chunks
             )
 
             if self.pp_style == "interleaved":
-                assert self.num_model_chunks > 1, "number of model chunks must be > 1 when using interleaved"
+                assert num_model_chunks > 1, "number of model chunks must be > 1 when using interleaved"
                 self.schedule = InterleavedSchedule(
                     stage_manager=self.stage_manager,
                     num_microbatches=num_microbatches,

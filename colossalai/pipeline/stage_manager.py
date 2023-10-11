@@ -34,9 +34,10 @@ class PipelineStageManager:
         # the next rank of the last rank is rank0
         next_coord = coord[: self.pipeline_axis] + (coord[self.pipeline_axis] + 1,) + coord[self.pipeline_axis + 1 :]
         self.next_rank = self.pg_mesh.ravel(next_coord, self.pg_mesh.shape, mode="wrap")
-        # number of layer chunks in each stage for interleaved pipeline, with each device has discontinuous layers
+        # for interleaved pipeline parallel, each device is responsible for multiple chunk of layers
         self.num_model_chunks = num_model_chunks
         self.model_chunk_id = 0
+        self.layers = Optional[List[List[int]]]
 
         # init p2p process groups
         stages = list(range(self.num_stages))
@@ -153,3 +154,17 @@ class PipelineStageManager:
             ProcessGroup: Process group of the given stages.
         """
         return self.pg_mesh.get_group_along_axis(self.pipeline_axis, stages)
+
+    def set_interleaved_model_chunk_id(self, model_chunk_id: int):
+        """For interleaved pipeline parallel, set the model chunk id for the device at the current stage.
+        Args:
+            model_chunk_id (int): the id of the current model chunk for the device.
+        """
+        self.model_chunk_id = model_chunk_id
+
+    def set_interleaved_device_layers(self, layers: List[List[int]]):
+        """For interleaved pipeline parallel, set the layer chunks for the device.
+        Args:
+            layers (List[List[int]]): list of layer chunks for the device.
+        """
+        self.layers = layers

@@ -275,7 +275,7 @@ class BertPolicy(Policy):
                 }
             # for interleaved, stage index for each forward is chosen in scheduler
             else:
-                self.scheduler.layers = stage_index
+                stage_manager.set_interleaved_device_layers(stage_index)
                 method_replacement = {
                     "forward": partial(new_forward, stage_manager=stage_manager, shard_config=self.shard_config)
                 }
