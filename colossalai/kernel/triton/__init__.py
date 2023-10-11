@@ -2,7 +2,6 @@ try:
     import triton
 
     HAS_TRITON = True
-
 except ImportError:
     HAS_TRITON = False
     print("Triton is not installed. Please install Triton to use Triton kernels.")
