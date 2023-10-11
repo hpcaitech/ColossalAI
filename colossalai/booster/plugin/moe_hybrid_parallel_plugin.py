@@ -189,11 +189,13 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             if use_ep_inside:
                 self.pg_mesh_moe = ProcessGroupMesh(self.pp_size, extra_dp_size, ep_size)
                 self.extra_dp_group = self.pg_mesh_moe.get_group_along_axis(1)
-                print(f"Zero Parallel: pp {self.pp_size}, outer_dp {extra_dp_size}, inner_dp {ep_size}")
+                if dist.get_rank() == 0:
+                    print(f"Zero Parallel: pp {self.pp_size}, outer_dp {extra_dp_size}, inner_dp {ep_size}")
             else:
                 self.pg_mesh_moe = ProcessGroupMesh(self.pp_size, ep_size, extra_dp_size)
                 self.extra_dp_group = self.pg_mesh_moe.get_group_along_axis(2)
-                print(f"Zero Parallel: pp {self.pp_size}, outer_dp {ep_size}, inner_dp {extra_dp_size}")
+                if dist.get_rank() == 0:
+                    print(f"Zero Parallel: pp {self.pp_size}, outer_dp {ep_size}, inner_dp {extra_dp_size}")
         else:
             self.extra_dp_group = None
 
