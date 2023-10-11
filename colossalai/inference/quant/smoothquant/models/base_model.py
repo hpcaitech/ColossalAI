@@ -1,6 +1,9 @@
+# Adapted from AutoGPTQ: https://github.com/PanQiWei/AutoGPTQ
+
 import os
+import types
+import warnings
 from abc import abstractmethod
-from logging import getLogger
 from os.path import isdir, isfile, join
 from typing import Dict, List, Optional, Union
 
@@ -15,8 +18,8 @@ from transformers.modeling_utils import no_init_weights
 from transformers.utils.generic import ContextManagers
 from transformers.utils.hub import PushToHubMixin, cached_file
 
-logger = getLogger(__name__)
-
+from ....tensor_parallel.batch_infer_state import BatchInferState
+from ....tensor_parallel.kvcache_manager import MemoryManager
 
 CPU = device("cpu")
 CUDA_0 = device("cuda:0")
@@ -67,6 +70,8 @@ def simple_dispatch_model(model, device_map):
 
 
 class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
+    layer_type: str = None
+
     def __init__(self, model: PreTrainedModel, quantized: bool = False):
         super().__init__()
 
@@ -74,10 +79,60 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
         self.model_type = self.model.config.model_type
         self._quantized = quantized
         self.config = self.model.config
+        self.cache_manager = None
+        self.max_total_token_num = 0
 
     @property
     def quantized(self):
         return self._quantized
+
+    def init_cache_manager(self, max_total_token_num=2048):
+        if self.config.model_type == "llama":
+            head_num = self.config.num_key_value_heads
+            layer_num = self.config.num_hidden_layers
+            head_dim = self.config.hidden_size // head_num
+
+        self.cache_manager = MemoryManager(max_total_token_num, torch.int8, head_num, head_dim, layer_num)
+        self.max_total_token_num = max_total_token_num
+
+    def init_batch_state(self, max_output_len=256, **kwargs):
+        input_ids = kwargs["input_ids"]
+        batch_size = len(input_ids)
+
+        seq_start_indexes = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
+        seq_lengths = torch.zeros(batch_size, dtype=torch.int32, device="cuda")
+        start_index = 0
+        max_len_in_batch = -1
+
+        for i in range(batch_size):
+            seq_len = len(input_ids[i])
+            seq_lengths[i] = seq_len
+            seq_start_indexes[i] = start_index
+            start_index += seq_len
+            max_len_in_batch = seq_len if seq_len > max_len_in_batch else max_len_in_batch
+
+        if "max_total_token_num" in kwargs.keys():
+            max_total_token_num = kwargs["max_total_token_num"]
+            self.init_cache_manager(max_total_token_num)
+
+        if "max_new_tokens" in kwargs.keys():
+            max_output_len = kwargs["max_new_tokens"]
+
+        if batch_size * (max_len_in_batch + max_output_len) > self.max_total_token_num:
+            max_total_token_num = batch_size * (max_len_in_batch + max_output_len)
+            warnings.warn(f"reset max tokens to {max_total_token_num}")
+            self.init_cache_manager(max_total_token_num)
+
+        block_loc = torch.empty((batch_size, max_len_in_batch + max_output_len), dtype=torch.long, device="cuda")
+        batch_infer_state = BatchInferState(batch_size, max_len_in_batch)
+        batch_infer_state.seq_len = seq_lengths.to("cuda")
+        batch_infer_state.start_loc = seq_start_indexes.to("cuda")
+        batch_infer_state.block_loc = block_loc
+        batch_infer_state.decode_layer_id = 0
+        batch_infer_state.past_key_values_len = 0
+        batch_infer_state.is_context_stage = True
+        batch_infer_state.set_cache_manager(self.cache_manager)
+        return batch_infer_state
 
     @abstractmethod
     @torch.inference_mode()
@@ -97,6 +152,13 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
 
     def generate(self, **kwargs):
         """shortcut for model.generate"""
+
+        batch_infer_state = self.init_batch_state(**kwargs)
+        if self.config.model_type == "llama":
+            setattr(self.model.model, "infer_state", batch_infer_state)
+
+        batch_infer_state.is_context_stage = True
+
         with torch.inference_mode():
             return self.model.generate(**kwargs)
 
@@ -104,14 +166,10 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
         """shortcut for model.prepare_inputs_for_generation"""
         return self.model.prepare_inputs_for_generation(*args, **kwargs)
 
-    @classmethod
-    def make_smooth_model(cls, model):
-        raise NotImplementedError("not implememented smooth model")
-
     def save_quantized(
         self,
         save_dir: str,
-        model_file_base_name: str = None,
+        model_basename: str,
         use_safetensors: bool = False,
         safetensors_metadata: Optional[Dict[str, str]] = None,
     ):
@@ -123,7 +181,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
 
         self.model.to(CPU)
 
-        model_base_name = model_file_base_name or f"smooth-"
+        model_base_name = model_basename  # or f"smooth-"
         if use_safetensors:
             model_save_name = model_base_name + ".safetensors"
             state_dict = self.model.state_dict()
@@ -133,7 +191,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
             elif not isinstance(safetensors_metadata, dict):
                 raise TypeError("safetensors_metadata must be a dictionary.")
             else:
-                logger.debug(f"Received safetensors_metadata: {safetensors_metadata}")
+                print(f"Received safetensors_metadata: {safetensors_metadata}")
                 new_safetensors_metadata = {}
                 converted_keys = False
                 for key, value in safetensors_metadata.items():
@@ -147,13 +205,13 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
                                 f"safetensors_metadata: both keys and values must be strings and an error occured when trying to convert them: {e}"
                             )
                         if new_key in new_safetensors_metadata:
-                            logger.warning(
+                            print(
                                 f"After converting safetensors_metadata keys to strings, the key '{new_key}' is duplicated. Ensure that all your metadata keys are strings to avoid overwriting."
                             )
                         new_safetensors_metadata[new_key] = new_value
                 safetensors_metadata = new_safetensors_metadata
                 if converted_keys:
-                    logger.debug(
+                    print(
                         f"One or more safetensors_metadata keys or values had to be converted to str(). Final safetensors_metadata: {safetensors_metadata}"
                     )
 
@@ -176,7 +234,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
         **kwargs,
     ):
         """alias of save_quantized"""
-        logger.warning("you are using save_pretrained, which will re-direct to save_quantized.")
+        warnings.warn("you are using save_pretrained, which will re-direct to save_quantized.")
         self.save_quantized(save_dir, use_safetensors, safetensors_metadata)
 
     @classmethod
@@ -267,7 +325,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
                     model.seqlen = model_config[key]
                     break
         else:
-            logger.warning("can't get model's sequence length from model config, will set to 4096.")
+            warnings.warn("can't get model's sequence length from model config, will set to 4096.")
             model.seqlen = 4096
         model.eval()
 
@@ -277,12 +335,12 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
     def from_quantized(
         cls,
         model_name_or_path: Optional[str],
+        model_basename: Optional[str] = None,
         device_map: Optional[Union[str, Dict[str, Union[int, str]]]] = None,
         max_memory: Optional[dict] = None,
         device: Optional[Union[str, int]] = None,
         low_cpu_mem_usage: bool = False,
         torch_dtype: Optional[torch.dtype] = None,
-        model_basename: Optional[str] = None,
         use_safetensors: bool = False,
         trust_remote_code: bool = False,
         **kwargs,
@@ -360,46 +418,30 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
 
         init_contexts = [no_init_weights()]
         if low_cpu_mem_usage:
-            init_contexts.append(accelerate.init_empty_weights(include_buffers=False))
+            init_contexts.append(accelerate.init_empty_weights(include_buffers=True))
 
         with ContextManagers(init_contexts):
             model = AutoModelForCausalLM.from_config(
                 config, trust_remote_code=trust_remote_code, torch_dtype=torch_dtype
             )
-            cls.make_smooth_model(model)
+            if config.model_type == "llama":
+                from .llama import LlamaSmoothquantDecoderLayer, init_to_get_rotary, llama_model_forward
+
+                llama_config = model.config
+
+                for i, layer in enumerate(model.model.layers):
+                    model.model.layers[i] = LlamaSmoothquantDecoderLayer(llama_config)
+
+                model.model.forward = types.MethodType(llama_model_forward, model.model)
+                cos, sin = init_to_get_rotary(llama_config)
+                model.model.register_buffer("_cos_cached", cos)
+                model.model.register_buffer("_sin_cached", sin)
             model.tie_weights()
 
-        # == step3: load checkpoint and dispatch == #
-        if isinstance(device_map, str) and device_map not in ["auto", "balanced", "balanced_low_0", "sequential"]:
-            raise ValueError(
-                "If passing a string for `device_map`, please choose 'auto', 'balanced', 'balanced_low_0' or "
-                "'sequential'."
-            )
-        if isinstance(device_map, dict):
-            max_memory = None
-        else:
-            if device is None and not device_map and not max_memory:
-                device_map = "auto"
-            if device is not None:
-                device = torch.device(device)
-                if not max_memory and not device_map:
-                    device_map = {"": device.index if device.type == "cuda" else device.type}
-            if not isinstance(device_map, dict) and device_map != "sequential":
-                max_memory = accelerate.utils.get_balanced_memory(
-                    model=model,
-                    max_memory=max_memory,
-                    no_split_module_classes=[cls.layer_type],
-                    low_zero=(device_map == "balanced_low_0"),
-                )
-        if not isinstance(device_map, dict):
-            device_map = accelerate.infer_auto_device_map(
-                model, max_memory=max_memory, no_split_module_classes=[cls.layer_type]
-            )
-
         accelerate.utils.modeling.load_checkpoint_in_model(
-            model, checkpoint=model_save_name, device_map=device_map, offload_state_dict=True, offload_buffers=True
+            model, checkpoint=model_save_name, offload_state_dict=True, offload_buffers=True
         )
-        model = simple_dispatch_model(model, device_map)
+        model = model.to("cuda")
 
         # == step4: set seqlen == #
         model_config = model.config.to_dict()
@@ -410,7 +452,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
                     model.seqlen = model_config[key]
                     break
         else:
-            logger.warning("can't get model's sequence length from model config, will set to 4096.")
+            warnings.warn("can't get model's sequence length from model config, will set to 4096.")
             model.seqlen = 4096
 
         return cls(
