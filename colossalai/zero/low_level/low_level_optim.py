@@ -431,13 +431,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 if len(grads) > 0:
                     real_working_params[group_id].append(working_param)
                     # no need to copy fp32 grad if master_weights is False
-                    if self._master_weights:
-                        grad = grads[grad_index].to(splited_param.dtype).to(splited_param.device)
-                        splited_param.grad = grad
-                        grad_partition_groups.append(grad)
-                    else:
-                        splited_param.grad = grads[grad_index]
-                        grad_partition_groups.append(grads[grad_index])
+                    grad = grads[grad_index].to(splited_param.dtype).to(splited_param.device) if self._master_weights else grads[grad_index]
+                    splited_param.grad = grad
+                    grad_partition_groups.append(grad)
                     real_master_params[group_id].append(splited_param)
 
             # compute norm
