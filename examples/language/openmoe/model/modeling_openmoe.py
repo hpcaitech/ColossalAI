@@ -360,19 +360,17 @@ class OpenMoeDecoderLayer(nn.Module):
         self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         if self.moe:
-            self.mlp = SparseMLP(
-                num_experts=config.num_experts,
-                top_k=config.topk,
-                capacity_factor_train=config.capacity_factor_train,
-                capacity_factor_eval=config.capacity_factor_eval,
-                min_capacity=config.min_capacity,
-                noisy_policy=config.noisy_policy,
-                drop_tks=config.drop_tks,
-                expert_parallel=MOE_MANAGER.get_parallel() if MOE_MANAGER.is_initialized else config.expert_parallel,
-                hidden_size=config.hidden_size,
-                intermediate_size=config.intermediate_size,
-                activation=config.hidden_act,
-                gated=config.gated)
+            self.mlp = SparseMLP(num_experts=config.num_experts,
+                                 top_k=config.topk,
+                                 capacity_factor_train=config.capacity_factor_train,
+                                 capacity_factor_eval=config.capacity_factor_eval,
+                                 min_capacity=config.min_capacity,
+                                 noisy_policy=config.noisy_policy,
+                                 drop_tks=config.drop_tks,
+                                 hidden_size=config.hidden_size,
+                                 intermediate_size=config.intermediate_size,
+                                 activation=config.hidden_act,
+                                 gated=config.gated)
             self.pre_extra_mlp_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.extra_mlp = OpenMoeMLP(config)
         else:

@@ -16,10 +16,11 @@ DIM = 16
 
 def run_test(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    MOE_MANAGER.setup(42)    # MOE initialization
-
-    ep_model = SparseMLP(num_experts=4, expert_parallel="EP", hidden_size=DIM, intermediate_size=DIM)
-    local_model = SparseMLP(num_experts=4, expert_parallel=None, hidden_size=DIM, intermediate_size=DIM)
+    MOE_MANAGER.setup(42, parallel=None)
+    local_model = SparseMLP(num_experts=4, hidden_size=DIM, intermediate_size=DIM)
+    MOE_MANAGER.__init__()
+    MOE_MANAGER.setup(42, parallel="EP")    # MOE initialization
+    ep_model = SparseMLP(num_experts=4, hidden_size=DIM, intermediate_size=DIM)
     ep_model = ep_model.to(get_current_device())
     local_model = local_model.to(get_current_device())
 
