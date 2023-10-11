@@ -1,7 +1,8 @@
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 import torch
 import torch.distributed as dist
+import torch.nn as nn
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.distributed import ProcessGroup
@@ -9,8 +10,6 @@ from torch.distributed import ProcessGroup
 from colossalai.moe.manager import MOE_MANAGER
 
 MOE_KERNEL = None
-WORLD_HANDLE_ALLGATHER = None
-WORLD_HANDLE_REDUCESCATTER = None
 
 
 def load_moe():
@@ -18,6 +17,64 @@ def load_moe():
     from colossalai.kernel.op_builder import MOEBuilder
 
     MOE_KERNEL = MOEBuilder().load()
+
+
+class TPOverlap(torch.autograd.Function):
+
+    @staticmethod
+    def forward(
+        ctx: Any,
+        experts: nn.Module,
+        dispatch_data: Tensor,
+        group: ProcessGroup,
+    ) -> Tensor:
+
+        NUM_CHUNK = 1
+        NUM_STAGES = 4
+        ctx.save_for_backward(experts, dispatch_data)
+
+        assert dispatch_data.shape[0] % NUM_CHUNK == 0, \
+            "arbitrary chunk num is not supported yet, please use chunk num that can divide num_experts"
+        chunk_size = dispatch_data.shape[0] // NUM_CHUNK
+        chunk_data = torch.split(dispatch_data, chunk_size, dim=0)
+        output = torch.empty_like(dispatch_data)
+
+        def get_chunk_slice(idx: int, chunk_size: int) -> Tuple[slice]:
+            return (slice(idx * chunk_size, (idx + 1) * chunk_size), )
+
+        expert_in, in_handle, input_indices = None, None, None
+        partial_expert_out, data_indices = None, None
+        expert_out, out_handle, output_indices = None, None, None
+
+        for i in range(NUM_CHUNK + NUM_STAGES - 1):
+            if out_handle is not None:
+                out_handle.wait()
+                output[output_indices] = expert_out
+                expert_out, out_handle, output_indices = None, None, None
+
+            # reduce scatter last output
+            if partial_expert_out is not None:
+                output_indices = data_indices
+                expert_out, out_handle = ReduceScatter.apply(partial_expert_out, group, True)
+                partial_expert_out = None
+
+            # compute
+            if in_handle is not None:
+                in_handle.wait()
+                data_indices = input_indices
+                partial_expert_out = experts(expert_in, input_indices)
+                expert_in, in_handle, input_indices = None, None, None
+
+            # all gather next input
+            if 0 <= i < NUM_CHUNK:
+                input_indices = get_chunk_slice(i, chunk_size)
+                expert_in, in_handle = AllGather.apply(chunk_data[i].contiguous(), group, True)
+
+        return output
+
+    @staticmethod
+    def backward(ctx: Any, grad_outputs: Tensor) -> Tuple[Tensor, None, None]:
+        raise NotImplementedError()
 
 
 class AllGather(torch.autograd.Function):
@@ -28,14 +85,20 @@ class AllGather(torch.autograd.Function):
         inputs: Tensor,
         group: Optional[ProcessGroup] = None,
         overlap: bool = False,
-    ) -> Tensor:
+    ) -> Tuple[Tensor, Optional[Callable]]:
+        """
+        Returns:
+            outputs: Tensor
+            handle: Optional[Callable], if overlap is True
+        """
+
         if ctx is not None:
             ctx.comm_grp = group
             ctx.overlap = overlap
 
         comm_size = dist.get_world_size(group)
         if comm_size == 1:
-            return inputs.unsqueeze(0)
+            return inputs.unsqueeze(0), None
 
         buffer_shape = (comm_size,) + inputs.shape
         outputs = torch.empty(buffer_shape, dtype=inputs.dtype, device=inputs.device)
@@ -51,11 +114,7 @@ class AllGather(torch.autograd.Function):
             return outputs, handle
 
     @staticmethod
-    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None]:
-        global WORLD_HANDLE_REDUCESCATTER
-        if WORLD_HANDLE_REDUCESCATTER is not None:
-            WORLD_HANDLE_REDUCESCATTER.wait()
-            WORLD_HANDLE_REDUCESCATTER = None
+    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None, None]:
         return (
             ReduceScatter.forward(None, grad_outputs[0], ctx.comm_grp, ctx.overlap)[0],
             None,
@@ -71,14 +130,20 @@ class ReduceScatter(torch.autograd.Function):
         inputs: Tensor,
         group: Optional[ProcessGroup] = None,
         overlap: bool = False,
-    ) -> Tensor:
+    ) -> Tuple[Tensor, Optional[Callable]]:
+        """
+        Returns:
+            outputs: Tensor
+            handle: Optional[Callable], if overlap is True
+        """
+
         if ctx is not None:
             ctx.comm_grp = group
             ctx.overlap = overlap
 
         comm_size = dist.get_world_size(group)
         if comm_size == 1:
-            return inputs.squeeze(0)
+            return inputs.squeeze(0), None
 
         if not inputs.is_contiguous():
             inputs = inputs.contiguous()
@@ -97,11 +162,7 @@ class ReduceScatter(torch.autograd.Function):
             return outputs, handle
 
     @staticmethod
-    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None]:
-        global WORLD_HANDLE_ALLGATHER
-        if WORLD_HANDLE_ALLGATHER is not None:
-            WORLD_HANDLE_ALLGATHER.wait()
-            WORLD_HANDLE_ALLGATHER = None
+    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None, None]:
         return (
             AllGather.forward(None, grad_outputs[0], ctx.comm_grp, ctx.overlap)[0],
             None,

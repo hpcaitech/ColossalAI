@@ -6,7 +6,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
-from colossalai.moe._operation import AllGather, AllToAll, MoeCombine, MoeDispatch, ReduceScatter
+from colossalai.moe._operation import AllGather, AllToAll, MoeCombine, MoeDispatch, ReduceScatter, TPOverlap
 from colossalai.moe.experts import BaseMLPExperts, get_expert_class
 from colossalai.moe.load_balance import LoadBalancer
 from colossalai.moe.manager import MOE_MANAGER
@@ -206,19 +206,20 @@ class SparseMLP(nn.Module):
         expert_output = AllToAll.apply(expert_output, self.ep_group)
         return expert_output
 
-    def _tp_process(self, dispatch_data: torch.Tensor, use_overlap: bool = False) -> torch.Tensor:
+    def _tp_process(self,
+                    dispatch_data: torch.Tensor,
+                    overlap: bool = True
+                    ) -> torch.Tensor:
         """
-        TP with overlap.
-
-        origin:
+        without overlap:
                    |    C    |
         |     A    |         |    R    |
 
-        overlap:
+        with overlap:
               |    C1   ||    C2   ||    C3   ||    C4   |
         | A1 || A2 |     | R1 | A3 || R2 | A4 || R3 |     | R4 |
 
-        C is computation, A is all gather, R is reduce scatter.
+        where C is computation, A is all gather, R is reduce scatter.
 
         Args:
             dispatch_data (torch.Tensor): (num_experts, capacity, hidden_size)
@@ -226,65 +227,13 @@ class SparseMLP(nn.Module):
         Returns:
             torch.Tensor: (num_experts, capacity, hidden_size)
         """
-        if use_overlap == False:
-            expert_in, _ = AllGather.apply(dispatch_data, self.ep_group)
-            expert_out = self.experts(expert_in)
-            expert_out, _ = ReduceScatter.apply(expert_out, self.ep_group)
+        if not overlap:
+            expert_in = AllGather.apply(dispatch_data, self.ep_group, False)[0]
+            partial_expert_out = self.experts(expert_in)
+            expert_out = ReduceScatter.apply(partial_expert_out, self.ep_group, False)[0]
             return expert_out
-
-        # TODO: there is accuracy problem in overlap
-        chunk_num = 4
-        chunk_size = dispatch_data.shape[0] // chunk_num
-        out = torch.empty_like(dispatch_data)
-        in_data = None
-        in_handle = None
-        out_data = None
-        out_handle = None
-
-        # backward compatibility for async op
-        torch.cuda.synchronize()
-
-        def get_chunk_slice(idx: int, gap: int) -> Tuple[slice]:
-            return (slice(idx * gap, (idx + 1) * gap),)
-
-        for i in range(chunk_num):
-            cur_chunk_slice = get_chunk_slice(i, chunk_size)
-
-            # if first, all gather
-            if i == 0:
-                d = dispatch_data[cur_chunk_slice].contiguous()
-                expert_in, _ = AllGather.apply(d, self.ep_group)
-            else:
-                expert_in = in_data
-
-            # async communication while compute
-            if i != 0:
-                # reduce scatter last out
-                out_data, out_handle = ReduceScatter.apply(out_data, self.ep_group, True)
-            if i != chunk_num - 1:
-                # all gather next in
-                next_d = dispatch_data[get_chunk_slice(i + 1, chunk_size)].contiguous()
-                in_data, in_handle = AllGather.apply(next_d, self.ep_group, True)
-
-            # compute
-            expert_out = self.experts(expert_in, cur_chunk_slice)
-
-            # sync handle
-            if i != 0:
-                out_handle.wait()
-                out[get_chunk_slice(i - 1, chunk_size)] = out_data
-            if i != chunk_num - 1:
-                in_handle.wait()
-            out_data = expert_out
-
-            # store out for last loop
-            if i == chunk_num - 1:
-                out_data, _ = ReduceScatter.apply(out_data, self.ep_group)
-                out[cur_chunk_slice] = out_data
-
-            # sync for async op
-            torch.cuda.synchronize()
-        return out
+        else:
+            return TPOverlap.apply(self.experts, dispatch_data, self.ep_group)
 
 
 def apply_load_balance(model: nn.Module, optim: Any) -> None:
