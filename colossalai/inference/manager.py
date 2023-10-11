@@ -8,11 +8,8 @@ from .dynamic_batching.sampling_params import SamplingParams
 from .dynamic_batching.stats import Stats
 from .tensor_parallel import TPInferEngine
 
-<<<<<<< HEAD
-=======
 from transformers import AutoTokenizer
 _FAST_LLAMA_TOKENIZER = "hf-internal-testing/llama-tokenizer"
->>>>>>> pr4890
 
 class DynamicBatchManager:
     def __init__(
@@ -90,14 +87,9 @@ class DynamicBatchManager:
         The main loop for a dynamic batching process.
         """
         counter_count = 0
-<<<<<<< HEAD
-        while self.running_batch is not None or self.req_queue.waiting_req_list:
-            self._step()
-=======
         #self.running_batch is not None or self.req_queue.waiting_req_list
         while True:
             yield from self._step()
->>>>>>> pr4890
             counter_count += 1
             if self.running_batch is not None:
                 if counter_count % self.mem_usage_interval == 0:
@@ -112,8 +104,6 @@ class DynamicBatchManager:
             if self.running_batch is None:
                 time.sleep(0.1)  # 10ms
 
-<<<<<<< HEAD
-=======
     def _set_tokenizer(self, tokenizer, tokenizer_name, trust_remote_code: bool = False, use_fast:bool = True,):
         if tokenizer is not None:
             self.tokenizer = tokenizer 
@@ -134,7 +124,6 @@ class DynamicBatchManager:
                 self.tokenizer = AutoTokenizer(tokenizer_name, use_fast=use_fast,trust_remote_code=trust_remote_code)
 
 
->>>>>>> pr4890
     def _step(self):
         """
         Logic for handling requests
@@ -145,22 +134,14 @@ class DynamicBatchManager:
             if new_batch is not None:
                 self.stats_tool.count_prompt_tokens(new_batch)
                 self.running_batch = new_batch
-<<<<<<< HEAD
-                self._prefill_batch(self.running_batch)
-=======
                 yield from self._prefill_batch(self.running_batch)
->>>>>>> pr4890
                 self._filter_runing_batch()
                 self.has_wait_tokens = 0
             return
 
         if self.has_wait_tokens < self.max_wait_tokens:
             self.stats_tool.count_output_tokens(self.running_batch)
-<<<<<<< HEAD
-            self._decode_batch(self.running_batch)
-=======
             yield from self._decode_batch(self.running_batch)
->>>>>>> pr4890
             self._filter_runing_batch()
             self.has_wait_tokens += 1
             return
@@ -168,23 +149,11 @@ class DynamicBatchManager:
             new_mini_batch = self.req_queue.generate_new_batch(self.running_batch)
             if new_mini_batch is not None:
                 self.stats_tool.count_prompt_tokens(new_mini_batch)
-<<<<<<< HEAD
-                self._prefill_batch(new_mini_batch)
-=======
                 yield from self._prefill_batch(new_mini_batch)
->>>>>>> pr4890
                 if not new_mini_batch.is_clear():
                     self._merge_batch(self.running_batch, new_mini_batch)
                     self.running_batch.merge(new_mini_batch)
                 self.has_wait_tokens = 0
-<<<<<<< HEAD
-            else:
-                self.stats_tool.count_output_tokens(self.running_batch)
-                self._decode_batch(self.running_batch)
-                self._filter_runing_batch()
-                self.has_wait_tokens += 1
-
-=======
                 
             else:
                 self.stats_tool.count_output_tokens(self.running_batch)
@@ -192,7 +161,6 @@ class DynamicBatchManager:
                 self._filter_runing_batch()
                 self.has_wait_tokens += 1
          
->>>>>>> pr4890
         return
 
     def _init_batch(self, batch: Batch, dtype="fp16"):
@@ -228,12 +196,8 @@ class DynamicBatchManager:
         req_to_out_token_id = ans
         self._add_token_id_to_req(batch, req_to_out_token_id)
         has_new_finished_req = batch.mark_finished_req(self.eos_id)
-<<<<<<< HEAD
-        self._handle_finish_req(batch, has_new_finished_req)
-=======
         yield from self._handle_finish_req(batch, has_new_finished_req)
         
->>>>>>> pr4890
         # delete finished reqs
 
     def _decode_batch(self, batch: Batch):
@@ -244,11 +208,7 @@ class DynamicBatchManager:
         req_to_out_token_id = ans
         self._add_token_id_to_req(batch, req_to_out_token_id)
         has_new_finished_req = batch.mark_finished_req(self.eos_id)
-<<<<<<< HEAD
-        self._handle_finish_req(batch, has_new_finished_req)
-=======
         yield from self._handle_finish_req(batch, has_new_finished_req)
->>>>>>> pr4890
 
     def _filter_batch(self, batch: Batch):
         batch_id = batch.batch_id
@@ -280,20 +240,13 @@ class DynamicBatchManager:
 
     def _handle_finish_req(self, batch: Batch, has_new_finished_req):
         if has_new_finished_req:
-<<<<<<< HEAD
-            batch.filter_finished()
-=======
             finished_reqs=batch.filter_finished()
->>>>>>> pr4890
             if batch.is_clear():
                 self._remove_batch(batch)
             else:
                 self._filter_batch(batch)
-<<<<<<< HEAD
-=======
             yield from self._output_process(finished_reqs)
 
->>>>>>> pr4890
 
     def _filter_runing_batch(self):
         if self.running_batch is not None and self.running_batch.is_clear():
@@ -306,8 +259,6 @@ class DynamicBatchManager:
             req.output_metadata_list.append(new_gen_metadata)
         return
 
-<<<<<<< HEAD
-=======
     def _output_process(self, finished_reqs: List[Req]):
         """
         Process the output of a batch.
@@ -317,32 +268,12 @@ class DynamicBatchManager:
             output =req.output_ids
             yield output, req.request_id, req.output_metadata_list 
 
->>>>>>> pr4890
     def clean_up(self):
         # this logic should be implemented in the future.
         pass
 
 
 def start_dynamic_batching(args, tp_engine, waiting_req_list):
-<<<<<<< HEAD
-    # try:
-    batch_manager = DynamicBatchManager(
-        tp_engine=tp_engine,
-        max_total_token_num=args.max_total_token_num,
-        batch_max_tokens=args.batch_max_tokens,
-        eos_id=args.eos_id,
-        log_stats=not args.disable_log_stats,
-        log_stats_interval=args.log_stats_interval,
-        waiting_req_list=waiting_req_list,
-    )
-
-    # except Exception:
-    #     batch_manager.clean_up()
-    #     raise
-
-    batch_manager.loop_for_fwd()
-    return
-=======
     try:
         batch_manager = DynamicBatchManager(
             tp_engine=tp_engine,
@@ -360,4 +291,3 @@ def start_dynamic_batching(args, tp_engine, waiting_req_list):
 
     generator = batch_manager.loop_for_fwd()
     return batch_manager,generator
->>>>>>> pr4890
