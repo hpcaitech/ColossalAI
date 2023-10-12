@@ -5,7 +5,13 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
-from colossalai.kernel.triton import llama_context_attn_fwd, rotary_embedding_fwd, token_attention_fwd
+from colossalai.kernel.triton import (
+    llama2_context_attn_fwd,
+    llama_context_attn_fwd,
+    rotary_embedding_fwd,
+    token_attention_fwd,
+)
+from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
 
 from ._utils import copy_kv_to_mem_cache
 
@@ -138,6 +144,7 @@ class LlamaInferenceForwards:
             seq_len = infer_state.seq_len
             infer_state.position_cos = torch.index_select(self._cos_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
             infer_state.position_sin = torch.index_select(self._sin_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
+            infer_state.other_kv_index = infer_state.block_loc[0, seq_length_with_past - 1].item()
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
@@ -261,8 +268,8 @@ class LlamaInferenceForwards:
         # key_states_transposed [bs, num_heads, seq_len, head_dim/embed_size_per_head]
 
         query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
-        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
-        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
+        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim)
+        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim)
 
         # NOTE might want to revise
         #   need some way to record the length of past key values cache
@@ -274,11 +281,11 @@ class LlamaInferenceForwards:
         # print("shape ", cos.shape, query_states.view(-1, self.num_heads, self.head_dim).shape, )
 
         rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
-        rotary_embedding_fwd(key_states.view(-1, self.num_heads, self.head_dim), cos, sin)
+        rotary_embedding_fwd(key_states.view(-1, self.num_key_value_heads, self.head_dim), cos, sin)
 
         query_states = query_states.reshape(-1, self.num_heads, self.head_dim)
-        key_states = key_states.reshape(-1, self.num_heads, self.head_dim)
-        value_states = value_states.reshape(-1, self.num_heads, self.head_dim)
+        key_states = key_states.reshape(-1, self.num_key_value_heads, self.head_dim)
+        value_states = value_states.reshape(-1, self.num_key_value_heads, self.head_dim)
 
         if infer_state.is_context_stage:
             # first token generation
@@ -294,15 +301,26 @@ class LlamaInferenceForwards:
 
             attn_output = torch.empty_like(query_states)
 
-            llama_context_attn_fwd(
-                query_states,
-                key_states,
-                value_states,
-                attn_output,
-                infer_state.start_loc,
-                infer_state.seq_len,
-                infer_state.cache_manager.past_key_values_length,
-            )
+            if self.num_key_value_groups == 1:
+                llama_context_attn_fwd(
+                    query_states,
+                    key_states,
+                    value_states,
+                    attn_output,
+                    infer_state.start_loc,
+                    infer_state.seq_len,
+                    infer_state.cache_manager.past_key_values_length,
+                )
+            else:
+                llama2_context_attn_fwd(
+                    query_states,
+                    key_states,
+                    value_states,
+                    attn_output,
+                    infer_state.start_loc,
+                    infer_state.seq_len,
+                    infer_state.cache_manager.past_key_values_length,
+                )
         else:
             if infer_state.decode_is_contiguous:
                 # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
@@ -330,17 +348,29 @@ class LlamaInferenceForwards:
             # (batch_size, seqlen, nheads, headdim)
             attn_output = torch.empty_like(query_states)
 
-            token_attention_fwd(
-                query_states,
-                infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
-                infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
-                attn_output,
-                infer_state.block_loc,
-                infer_state.start_loc,
-                infer_state.seq_len,
-                infer_state.cache_manager.past_key_values_length,
-            )
-
+            if self.num_key_value_groups == 1:
+                token_attention_fwd(
+                    query_states,
+                    infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+                    infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+                    attn_output,
+                    infer_state.block_loc,
+                    infer_state.start_loc,
+                    infer_state.seq_len,
+                    infer_state.cache_manager.past_key_values_length,
+                )
+            else:
+                Llama2TokenAttentionForwards.token_attn(
+                    query_states,
+                    infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+                    infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+                    attn_output,
+                    infer_state.block_loc,
+                    infer_state.start_loc,
+                    infer_state.seq_len,
+                    infer_state.cache_manager.past_key_values_length,
+                    infer_state.other_kv_index,
+                )
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
         attn_output = self.o_proj(attn_output)
