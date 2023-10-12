@@ -245,6 +245,7 @@ class GeminiPlugin(DPPluginBase):
         chunk_config_dict (dict, optional): chunk configuration dictionary.
         chunk_init_device (torch.device, optional): device to initialize the chunk.
         placement_policy (str, optional): "static" and "auto". Defaults to "static".
+        enable_gradient_accumulation (bool, optional): Whether to enable gradient accumulation. When set to True, gradient will be stored after doing backward pass. Defaults to False.
         shard_param_frac (float, optional): fraction of parameters to be sharded. Only for "static" placement.
             If `shard_param_frac` is 1.0, it's equal to zero-3. If `shard_param_frac` is 0.0, it's equal to zero-2. Defaults to 1.0.
         offload_optim_frac (float, optional): fraction of optimizer states to be offloaded. Only for "static" placement.
@@ -291,6 +292,7 @@ class GeminiPlugin(DPPluginBase):
         chunk_config_dict: Optional[dict] = None,
         chunk_init_device: Optional[torch.device] = None,
         placement_policy: str = "static",
+        enable_gradient_accumulation: bool = False,
         shard_param_frac: float = 1.0,  # only for static placement
         offload_optim_frac: float = 0.0,  # only for static placement
         offload_param_frac: float = 0.0,  # only for static placement
@@ -323,6 +325,7 @@ class GeminiPlugin(DPPluginBase):
             chunk_config_dict=chunk_config_dict,
             chunk_init_device=(chunk_init_device or get_current_device()),
             placement_policy=placement_policy,
+            enable_gradient_accumulation=enable_gradient_accumulation,
             shard_param_frac=shard_param_frac,
             offload_optim_frac=offload_optim_frac,
             offload_param_frac=offload_param_frac,

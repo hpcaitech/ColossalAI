@@ -59,6 +59,7 @@ class GeminiDDP(ModelWrapper):
         chunk_config_dict: Optional[dict] = None,
         chunk_init_device: torch.device = torch.device("cpu"),
         placement_policy: str = "static",
+        enable_gradient_accumulation: bool = False,
         shard_param_frac: float = 1.0,  # only for static placement
         offload_optim_frac: float = 0.0,  # only for static placement
         offload_param_frac: float = 0.0,  # only for static placement
@@ -115,6 +116,7 @@ class GeminiDDP(ModelWrapper):
         self.scatter_after_inference = scatter_after_inference
         self.mixed_precision = mixed_precision
         self.dp_process_group = process_group or _get_default_group()
+        self.enable_gradient_accumulation = enable_gradient_accumulation
 
         self.reuse_fp16_chunk = master_weights
         self.master_weights = master_weights
