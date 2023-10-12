@@ -1,6 +1,7 @@
 import pytest
 import torch
 import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
@@ -21,21 +22,18 @@ PLACEMENT_CONFIGS = [
 ]
 
 
-def check_grad(model: GeminiDDP, torch_model: torch.nn.Module, no_sync: bool = False):
-    if no_sync:
-        for (n, p0), (_, p1) in zip(model.named_parameters(), torch_model.named_parameters()):
-            grad = p0.grad.to(p1.grad.dtype)
-            assert_close(grad, p1.grad, rtol=1e-3, atol=1e-4, msg=f"{n}, gemini_grad: {grad}, torch_grad: {p1.grad}")
-    else:
-        chunk_manager = model.chunk_manager
-        param_list = [p for p in model.parameters()]
-        chunk_list = chunk_manager.get_chunks(param_list)
-        for chunk in chunk_list:
-            chunk_manager.access_chunk(chunk)
+def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
+    chunk_manager = model.chunk_manager
+    param_list = [p for p in model.parameters()]
+    chunk_list = chunk_manager.get_chunks(param_list)
+    for chunk in chunk_list:
+        chunk_manager.access_chunk(chunk)
 
-        for (n, p0), (_, p1) in zip(model.named_parameters(), torch_model.named_parameters()):
-            grad = p0.to(p1.grad.dtype)
-            assert_close(grad, p1.grad, rtol=1e-3, atol=1e-3, msg=f"{n}, gemini_grad: {grad}, torch_grad: {p1.grad}")
+    for (n, p0), (_, p1) in zip(model.named_parameters(), torch_model.named_parameters()):
+        # after backward, gradient is placed at parameters chunks
+        assert_close(
+            p0, p1.grad.to(p0.dtype), rtol=1e-3, atol=1e-3, msg=f"{n}, gemini_grad: {p0}, torch_grad: {p1.grad}"
+        )
 
 
 @parameterize("placement_config", PLACEMENT_CONFIGS)
@@ -59,12 +57,15 @@ def exam_gemini_grad_acc(placement_config, keep_gathered: bool, use_grad_checkpo
     config_dict, *_ = search_chunk_configuration(gemini_model, search_range_m=1, search_interval=100)
     config_dict[world_size]["chunk_size"] = 5000
     config_dict[world_size]["keep_gathered"] = keep_gathered
-    gemini_model = GeminiDDP(gemini_model, config_dict, init_device, pin_memory=True, **placement_config)
+    gemini_model = GeminiDDP(
+        gemini_model, config_dict, init_device, pin_memory=True, enable_gradient_accumulation=True, **placement_config
+    )
     optimizer = HybridAdam(gemini_model.parameters(), lr=1e-3)
     gemini_optim = GeminiOptimizer(optimizer, gemini_model, initial_scale=1)
 
     rank = dist.get_rank()
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
+    torch_model = DDP(torch_model)
 
     set_seed(rank)
     accum_iter = 4
@@ -84,16 +85,18 @@ def exam_gemini_grad_acc(placement_config, keep_gathered: bool, use_grad_checkpo
         gemini_loss = gemini_loss / accum_iter
         gemini_optim.backward(gemini_loss)
 
-        assert torch.allclose(
-            torch_loss, gemini_loss, rtol=1e-3, atol=1e-5
-        ), f"torch_loss: {torch_loss}, gemini_loss: {gemini_loss}"
+        print(i, torch_loss, gemini_loss)
+        assert torch.allclose(torch_loss, gemini_loss, rtol=1e-3, atol=1e-5)
 
         if (i + 1) % accum_iter == 0:
             torch_optim.step()
             gemini_optim.step()
-            break
+            continue
 
         check_grad(gemini_model, torch_model)
+
+        if i == accum_iter:
+            break
 
     # check updated param
     torch_dict = torch_model.state_dict()
