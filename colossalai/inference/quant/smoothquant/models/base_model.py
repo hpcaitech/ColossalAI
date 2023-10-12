@@ -4,15 +4,19 @@ import os
 import types
 import warnings
 from abc import abstractmethod
+from functools import partial
 from os.path import isdir, isfile, join
 from typing import Dict, List, Optional, Union
 
 import accelerate
+import numpy as np
 import torch
 import torch.nn as nn
 import transformers
+from datasets import load_dataset
 from safetensors.torch import save_file as safe_save
 from torch import device
+from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedModel
 from transformers.modeling_utils import no_init_weights
 from transformers.utils.generic import ContextManagers
@@ -22,51 +26,8 @@ from ....tensor_parallel.batch_infer_state import BatchInferState
 from ....tensor_parallel.kvcache_manager import MemoryManager
 
 CPU = device("cpu")
-CUDA_0 = device("cuda:0")
 
 SUPPORTED_MODELS = ["llama"]
-
-
-def get_module_by_name_suffix(model, module_name: str):
-    for name, module in model.named_modules():
-        if name.endswith(module_name):
-            return module
-
-
-def simple_dispatch_model(model, device_map):
-    from accelerate.hooks import AlignDevicesHook, add_hook_to_module
-
-    if "" in device_map:
-        d = device_map[""]
-        model = model.to(torch.device(d))
-        model.hf_device_map = device_map
-        return model
-
-    tied_params = accelerate.utils.modeling.find_tied_parameters(model)
-    if set(device_map.values()) == {"cpu"} or set(device_map.values()) == {"cpu", "disk"}:
-        main_device = "cpu"
-    else:
-        main_device = [d for d in device_map.values() if d not in ["cpu", "disk"]][0]
-
-    cpu_offload_group = [(n, d) for n, d in device_map.items() if d == "cpu"]
-    prev_hook = None
-    for idx, (n, d) in enumerate(cpu_offload_group):
-        m = get_module_by_name_suffix(model, n)
-        _, prev_hook = accelerate.cpu_offload_with_hook(m, execution_device=main_device, prev_module_hook=prev_hook)
-    # set first cpu offload module's prev_module_hook to the last cpu offload module's hook
-    if len(cpu_offload_group) > 1:
-        get_module_by_name_suffix(model, cpu_offload_group[0][0])._hf_hook.prev_module_hook = prev_hook
-
-    for n, d in device_map.items():
-        m = get_module_by_name_suffix(model, n)
-        if d != "cpu":
-            d = torch.device(d)
-            hook = AlignDevicesHook(d, io_same_device=True, place_submodules=True)
-            add_hook_to_module(m, hook)
-    accelerate.utils.modeling.retie_parameters(model, tied_params)
-    model.hf_device_map = device_map
-
-    return model
 
 
 class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
@@ -165,6 +126,84 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
     def prepare_inputs_for_generation(self, *args, **kwargs):
         """shortcut for model.prepare_inputs_for_generation"""
         return self.model.prepare_inputs_for_generation(*args, **kwargs)
+
+    def collect_act_scales(self, model, tokenizer, dataset_path, device, num_samples=512, seq_len=512):
+        dataset = load_dataset("json", data_files=dataset_path, split="train")
+        dataset = dataset.shuffle(seed=42)
+
+        for i in tqdm(range(num_samples)):
+            input_ids = tokenizer(
+                dataset["rows"][0][i]["row"]["text"], return_tensors="pt", max_length=seq_len, truncation=True
+            ).input_ids.to(device)
+            model(input_ids)
+
+    def collect_act_dict(self, model, tokenizer, dataset_path, act_dict, device, num_samples=512, seq_len=512):
+        pbar = tqdm(range(num_samples))
+        dataset = load_dataset("json", data_files=dataset_path, split="train")
+        dataset = dataset.shuffle(seed=42)
+        for i in pbar:
+            input_ids = tokenizer(
+                dataset["rows"][0][i]["row"]["text"],
+                return_tensors="pt",
+                max_length=seq_len,
+                truncation=True,
+            ).input_ids.to(device)
+            model(input_ids)
+            mean_scale = np.mean([v["input"] for v in act_dict.values()])
+            pbar.set_description(f"Mean input scale: {mean_scale:.2f}")
+
+    def get_act_scales(self, model, tokenizer, dataset_path, num_samples=512, seq_len=512):
+        model.eval()
+        device = next(model.parameters()).device
+        act_scales = {}
+
+        def stat_tensor(name, tensor):
+            hidden_dim = tensor.shape[-1]
+            tensor = tensor.view(-1, hidden_dim).abs().detach()
+            comming_max = torch.max(tensor, dim=0)[0].float().cpu()
+            if name in act_scales:
+                act_scales[name] = torch.max(act_scales[name], comming_max)
+            else:
+                act_scales[name] = comming_max
+
+        def stat_input_hook(m, x, y, name):
+            if isinstance(x, tuple):
+                x = x[0]
+            stat_tensor(name, x)
+
+        hooks = []
+        for name, m in model.named_modules():
+            if isinstance(m, nn.Linear):
+                hooks.append(m.register_forward_hook(partial(stat_input_hook, name=name)))
+
+        self.collect_act_scales(model, tokenizer, dataset_path, device, num_samples, seq_len)
+
+        for h in hooks:
+            h.remove()
+
+        return act_scales
+
+    @torch.no_grad()
+    def smooth_ln_fcs(self, ln, fcs, act_scales, alpha=0.5):
+        if not isinstance(fcs, list):
+            fcs = [fcs]
+        for fc in fcs:
+            assert isinstance(fc, nn.Linear)
+            assert ln.weight.numel() == fc.in_features == act_scales.numel()
+
+        device, dtype = fcs[0].weight.device, fcs[0].weight.dtype
+        act_scales = act_scales.to(device=device, dtype=dtype)
+        weight_scales = torch.cat([fc.weight.abs().max(dim=0, keepdim=True)[0] for fc in fcs], dim=0)
+        weight_scales = weight_scales.max(dim=0)[0].clamp(min=1e-5)
+
+        scales = (act_scales.pow(alpha) / weight_scales.pow(1 - alpha)).clamp(min=1e-5).to(device).to(dtype)
+
+        ln.weight.div_(scales)
+        if hasattr(ln, "bias"):
+            ln.bias.div_(scales)
+
+        for fc in fcs:
+            fc.weight.mul_(scales.view(1, -1))
 
     def save_quantized(
         self,

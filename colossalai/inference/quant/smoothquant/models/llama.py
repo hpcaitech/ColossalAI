@@ -7,14 +7,11 @@ from collections import defaultdict
 from functools import partial
 from typing import List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from datasets import load_dataset
 from torch import nn
 from torch_int.nn.bmm import BMM_S8T_S8N_F32T, BMM_S8T_S8N_S8T
-from tqdm import tqdm
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.llama.configuration_llama import LlamaConfig
@@ -756,7 +753,7 @@ class SmoothLlamaForCausalLM(BaseSmoothForCausalLM):
     def __init__(self, model: PreTrainedModel, quantized: bool = False):
         super().__init__(model, quantized)
 
-    def quantized(
+    def get_act_dict(
         self,
         tokenizer,
         dataset_path,
@@ -764,7 +761,7 @@ class SmoothLlamaForCausalLM(BaseSmoothForCausalLM):
         seq_len=512,
     ):
         llama_model = self.model
-        llama_config = llama_model.config
+        llama_model.config
 
         llama_model.eval()
         device = next(llama_model.parameters()).device
@@ -798,23 +795,37 @@ class SmoothLlamaForCausalLM(BaseSmoothForCausalLM):
             if isinstance(m, torch.nn.Linear):
                 hooks.append(m.register_forward_hook(partial(stat_io_hook, name=name)))
 
-        print("Collecting activation scales...")
-        pbar = tqdm(range(num_samples))
-        dataset = load_dataset("json", data_files=dataset_path, split="train")
-        dataset = dataset.shuffle(seed=42)
-        for i in pbar:
-            input_ids = tokenizer(
-                dataset["rows"][0][i]["row"]["text"],
-                return_tensors="pt",
-                max_length=seq_len,
-                truncation=True,
-            ).input_ids.to(device)
-            llama_model(input_ids)
-            mean_scale = np.mean([v["input"] for v in act_dict.values()])
-            pbar.set_description(f"Mean input scale: {mean_scale:.2f}")
+        self.collect_act_dict(llama_model, tokenizer, dataset_path, act_dict, device, num_samples, seq_len)
+
         for hook in hooks:
             hook.remove()
+        return act_dict
 
+    def smooth_fn(self, scales, alpha=0.5):
+        model = self.model
+        for name, module in model.named_modules():
+            if isinstance(module, LlamaDecoderLayer):
+                attn_ln = module.input_layernorm
+                qkv = [module.self_attn.q_proj, module.self_attn.k_proj, module.self_attn.v_proj]
+                qkv_input_scales = scales[name + ".self_attn.q_proj"]
+                self.smooth_ln_fcs(attn_ln, qkv, qkv_input_scales, alpha)
+
+    def quantized(
+        self,
+        tokenizer,
+        dataset_path,
+        num_samples=512,
+        seq_len=512,
+        alpha=0.5,
+    ):
+        llama_model = self.model
+        llama_config = llama_model.config
+
+        act_scales = self.get_act_scales(llama_model, tokenizer, dataset_path, num_samples, seq_len)
+
+        self.smooth_fn(act_scales, alpha)
+
+        act_dict = self.get_act_dict(tokenizer, dataset_path, num_samples, seq_len)
         decoder_layer_scales = []
 
         for idx in range(llama_config.num_hidden_layers):
