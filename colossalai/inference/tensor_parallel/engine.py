@@ -73,12 +73,14 @@ class TPInferEngine:
             model.config.num_hidden_layers if hasattr(model.config, "num_hidden_layers") else model.config.num_layers
         )
         self.layer_num = num_hidden_layers
-        self.multi_query_group_num = (
-            model.config.multi_query_group_num if hasattr(model.config, "multi_query_group_num") else 0
-        )
-        self.multi_query_group_num = (
-            model.config.num_key_value_heads if hasattr(model.config, "num_key_value_heads") else 0
-        )
+
+        self.multi_query_group_num = 0
+
+        if hasattr(model.config, "multi_query_group_num"):
+            self.multi_query_group_num = model.config.multi_query_group_num
+
+        if hasattr(model.config, "num_key_value_heads"):
+            self.multi_query_group_num = model.config.num_key_value_heads
 
         self.tp_size = -1  # to be set with given shard config in self.prepare_shard_config
         self.cache_manager = None
