@@ -92,7 +92,7 @@ class BucketStore(BaseStore):
 
     def get_flatten_grad(self) -> Tensor:
         """Return the flattened gradients slices in the bucket, the data orginization of the flattened tensor:
-        [grad0_rank0, grad1_rank0, ..., grad_1_rank0, grad1_rank1, ....]
+        [grad0_rank0, grad1_rank0, ..., grad_0_rank1, grad1_rank1, ....]
 
         Returns:
             Tensor: the flattened gradients slices in the bucket
