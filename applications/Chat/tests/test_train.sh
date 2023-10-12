@@ -92,7 +92,7 @@ SKIPPED_TESTS=(
 )
 
 GRAD_CKPTS=('' '--grad_checkpoint')
-for lora_rank in '0'; do
+for lora_rank in $(echo 0); do
     for model in ${MODELS[@]}; do
         strategies=($(shuf -e "${STRATEGIES[@]}"))
         for strategy in ${strategies[@]}; do
@@ -145,7 +145,7 @@ SKIPPED_TESTS=(
 
 LOSS_FNS=('log_sig' 'log_exp')
 DATASETS=('Anthropic/hh-rlhf' 'Dahoas/rm-static')
-for lora_rank in '0'; do
+for lora_rank in $(echo 0); do
     for model in ${MODELS[@]}; do
         strategies=($(shuf -e "${STRATEGIES[@]}"))
         for strategy in ${strategies[@]}; do
@@ -205,7 +205,7 @@ SKIPPED_TESTS=(
 )
 
 for model in ${MODELS_PPO[@]}; do
-    for lora_rank in '0'; do
+    for lora_rank in $(echo 0); do
         strategies=($(shuf -e "${STRATEGIES[@]}"))
         for strategy in ${strategies[@]}; do
             if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy-$lora_rank " ]]; then
