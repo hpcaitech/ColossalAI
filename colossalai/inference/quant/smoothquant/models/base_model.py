@@ -92,6 +92,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
         batch_infer_state.past_key_values_len = 0
         batch_infer_state.is_context_stage = True
         batch_infer_state.set_cache_manager(self.cache_manager)
+        batch_infer_state.cache_manager.free_all()
         return batch_infer_state
 
     @abstractmethod
@@ -116,8 +117,6 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
         batch_infer_state = self.init_batch_state(**kwargs)
         if self.config.model_type == "llama":
             setattr(self.model.model, "infer_state", batch_infer_state)
-
-        batch_infer_state.is_context_stage = True
 
         with torch.inference_mode():
             return self.model.generate(**kwargs)
