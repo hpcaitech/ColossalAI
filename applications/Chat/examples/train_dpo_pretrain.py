@@ -113,8 +113,6 @@ def main(args):
         eval_dataset, shuffle=(eval_sampler is None), sampler=eval_sampler, batch_size=args.batch_size
     )
 
-    # NOTE: For small models like opt-1.3b, reward model and initial model are not required to be parallelized.
-
     lr_scheduler = CosineAnnealingLR(actor_optim, args.max_epoch * len(train_dataset))
     strategy_dict = strategy.prepare(dict(model=actor, optimizer=actor_optim, lr_scheduler=lr_scheduler))
     actor = strategy_dict["model"]

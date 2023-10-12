@@ -123,16 +123,24 @@ class DPOTrainer(SLTrainer):
             # print(action_mask[0])
             # set the mask value correspond to the first padding token to 1
 
-            actor_chosen_logits = self.actor(chosen_input_ids, chosen_attention_mask)["logits"]
-            actor_reject_logits = self.actor(reject_input_ids, reject_attention_mask)["logits"]
-            chosen_mask = action_mask[:, 1:]  # action_mask[:, 1:]*(chosen_input_ids[:,1:]!=self.tokenizer.pad_token_id)
-            reject_mask = action_mask[:, 1:]  # action_mask[:, 1:]*(reject_input_ids[:,1:]!=self.tokenizer.pad_token_id)
+            actor_chosen_logits = self.actor(chosen_input_ids, chosen_attention_mask)["logits"].to(torch.float32)
+            actor_reject_logits = self.actor(reject_input_ids, reject_attention_mask)["logits"].to(torch.float32)
+            chosen_mask = (chosen_attention_mask * action_mask)[
+                :, 1:
+            ]  # action_mask[:, 1:]  # action_mask[:, 1:]*(chosen_input_ids[:,1:]!=self.tokenizer.pad_token_id)
+            reject_mask = (chosen_attention_mask * action_mask)[
+                :, 1:
+            ]  # action_mask[:, 1:]  # action_mask[:, 1:]*(reject_input_ids[:,1:]!=self.tokenizer.pad_token_id)
             logprob_actor_chosen = calc_masked_log_probs(actor_chosen_logits, chosen_input_ids, chosen_mask)
             logprob_actor_reject = calc_masked_log_probs(actor_reject_logits, reject_input_ids, reject_mask)
             if not self.disable_reference:
                 with torch.no_grad():
-                    ref_chosen_logits = self.ref_model(chosen_input_ids, chosen_attention_mask)["logits"]
-                    ref_reject_logits = self.ref_model(reject_input_ids, reject_attention_mask)["logits"]
+                    ref_chosen_logits = self.ref_model(chosen_input_ids, chosen_attention_mask)["logits"].to(
+                        torch.float32
+                    )
+                    ref_reject_logits = self.ref_model(reject_input_ids, reject_attention_mask)["logits"].to(
+                        torch.float32
+                    )
                     logprob_ref_chosen = calc_masked_log_probs(ref_chosen_logits, chosen_input_ids, chosen_mask)
                     logprob_ref_reject = calc_masked_log_probs(ref_reject_logits, reject_input_ids, reject_mask)
             else:

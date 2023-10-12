@@ -20,7 +20,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 4
 torchrun --standalone --rdzv_endpoint="localhost:12355" --nproc_per_node=4 train_prompts_dpo.py \
     --dataset Anthropic/hh-rlhf \
     --strategy colossalai_zero2 \
-    --batch_size 30 \
+    --batch_size 25 \
     --max_epoch 2 \
     --save_path '/home/lcyab/data/Anthropic_rlhf/actor/dpo_v0' \
     --pretrain 'gpt2' \
