@@ -44,7 +44,7 @@ def run():
     waiting_list.append(req4)
     
     llama_config = LlamaConfig(num_hidden_layers=2, bos_token_id=0, eos_token_id=1, vocab_size=1200, hidden_size=1024)
-    model = LlamaForCausalLM.from_pretrained(llama_config)
+    model = LlamaForCausalLM(llama_config)
     model = model.half()
 
     shard_config = ShardConfig(enable_tensor_parallelism=True if TP_SIZE > 1 else False, inference_only=True)

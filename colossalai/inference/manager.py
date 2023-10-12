@@ -63,7 +63,6 @@ class DynamicBatchManager:
         """
         prompt_ids = self.tokenizer.encode(input_ids)
         prompt_len = len(prompt_ids)
-        print(prompt_ids)
         if prompt_len > self.engine.max_input_len:
             raise ValueError(
                 f"the input prompt token len {prompt_len} is too long > {self.engine.max_input_len}"
@@ -84,14 +83,15 @@ class DynamicBatchManager:
                 req.aborted = True
         return
 
-    def loop_for_fwd(self):
+    async def loop_for_fwd(self):
         """
         The main loop for a dynamic batching process.
         """
         counter_count = 0
         #self.running_batch is not None or self.req_queue.waiting_req_list
         while True:
-            yield from self._step()
+            async for item in self._step():
+                yield item
             counter_count += 1
             if self.running_batch is not None:
                 if counter_count % self.mem_usage_interval == 0:
@@ -261,7 +261,7 @@ class DynamicBatchManager:
             req.output_metadata_list.append(new_gen_metadata)
         return
 
-    def _output_process(self, finished_reqs: List[Req]):
+    async def _output_process(self, finished_reqs: List[Req]):
         """
         Process the output of a batch.
         """
@@ -273,12 +273,12 @@ class DynamicBatchManager:
         # this logic should be implemented in the future.
         pass
 
-    def generate(self,request_id,prompt_id,sampling_params):
+    async def generate(self,request_id,prompt_id,sampling_params):
         """
         Generate the output of a request.
         """
         self.add_input(request_id,prompt_id,sampling_params)
-        return self.loop_for_fwd()
+    
 
 def start_dynamic_batching(args, tp_engine, waiting_req_list):
     try:
@@ -295,5 +295,13 @@ def start_dynamic_batching(args, tp_engine, waiting_req_list):
     except Exception:
         batch_manager.clean_up()
         raise
+    
+    batch_manager._set_tokenizer(tokenizer_name = tp_engine.model.__class__.__name__)
+    prod_task = asyncio.create_task(batch_manager.add_input(4,sampling_params=SamplingParams(),input_ids="hello world"))
+
+    asyncio.run(prod_task)
+    
+    for item in batch_manager.loop_for_fwd():
+        print(item)
 
     return batch_manager
