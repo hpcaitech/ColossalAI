@@ -4,7 +4,7 @@ from .sampling_params import SamplingParams
 
 
 class Req:
-    def __init__(self, request_id, prompt_ids, sample_params: SamplingParams):
+    def __init__(self, request_id, prompt_ids, sample_params: SamplingParams, prompts: str):
         self.request_id = request_id
         self.prompt_ids = prompt_ids
         self.input_len = len(prompt_ids)
@@ -14,6 +14,7 @@ class Req:
         self.output_metadata_list = []
         self.has_generate_finished = False
         self.aborted = False
+        self.prompts = prompts
 
     def to_rpc_obj(self):
         return {
