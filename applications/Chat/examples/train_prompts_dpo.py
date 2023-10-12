@@ -52,8 +52,8 @@ def main(args):
         if args.model == "gpt2":
             config = AutoConfig.from_pretrained(args.pretrain)
             config.embd_pdrop = 0.000
-            config.attn_pdrop = 0.0001
-            config.resid_pdrop = 0.0001
+            config.attn_pdrop = 0.000
+            config.resid_pdrop = 0.000
             actor = GPTActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
         elif args.model == "bloom":
             config = AutoConfig.from_pretrained(args.pretrain)
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
     parser.add_argument("--disable_reference", type=bool, default=False)
-    parser.add_argument("--lr", type=float, default=1e-6)
+    parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--beta", type=float, default=0.1)
     parser.add_argument("--log_dir", default="logs", type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
