@@ -83,11 +83,12 @@ union AVX_Data {
 
 #endif
 
-#define STEP(SPAN)                                                \
-  void Step_##SPAN(float *_params, float *grads, float *_exp_avg, \
-                   float *_exp_avg_sq, size_t _param_size,        \
-                   bool param_half_precision = false,             \
-                   bool grad_half_precision = false, float loss_scale = -1);
+#define STEP(SPAN)                                                            \
+  void Step_##SPAN(                                                           \
+      float *_params, float *grads, float *_exp_avg, float *_exp_avg_sq,      \
+      size_t _param_size, bool param_half_precision = false,                  \
+      bool grad_half_precision = false, bool momentum_half_precision = false, \
+      bool variance_half_precision = false, float loss_scale = -1);
 
 class Adam_Optimizer {
  public:
