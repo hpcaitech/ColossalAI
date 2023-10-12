@@ -26,24 +26,23 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
     chunk_manager = model.chunk_manager
     param_list = [p for p in model.parameters()]
     chunk_list = chunk_manager.get_chunks(param_list)
-    for chunk in chunk_list:
-        chunk_manager.access_chunk(chunk)
+    chunk_list = [chunk.grad_chunk for chunk in chunk_list]
 
-    for (n, p0), (_, p1) in zip(model.named_parameters(), torch_model.named_parameters()):
-        # after backward, gradient is placed at parameters chunks
-        assert_close(
-            p0, p1.grad.to(p0.dtype), rtol=1e-3, atol=1e-3, msg=f"{n}, gemini_grad: {p0}, torch_grad: {p1.grad}"
-        )
+    for p0, p1 in zip(model.parameters(), torch_model.parameters()):
+        assert_close(p0, p1.grad, rtol=1e-3, atol=5e-5)
 
 
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("keep_gathered", [False, True])
 @parameterize("model_name", ["gpt2"])
 @parameterize("use_grad_checkpoint", [False, True])
-def exam_gemini_grad_acc(placement_config, keep_gathered: bool, use_grad_checkpoint: bool, model_name: str):
+@parameterize("master_weights", [True, False])
+def exam_gemini_grad_acc(
+    placement_config, keep_gathered: bool, model_name: str, use_grad_checkpoint: bool, master_weights: bool
+):
     init_device = get_current_device()
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
-    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
+    model_builder, train_dataloader, _, _, criterion = get_components_func()
 
     set_seed(42)
     gemini_model = model_builder(use_grad_checkpoint)
@@ -58,7 +57,13 @@ def exam_gemini_grad_acc(placement_config, keep_gathered: bool, use_grad_checkpo
     config_dict[world_size]["chunk_size"] = 5000
     config_dict[world_size]["keep_gathered"] = keep_gathered
     gemini_model = GeminiDDP(
-        gemini_model, config_dict, init_device, pin_memory=True, enable_gradient_accumulation=True, **placement_config
+        gemini_model,
+        config_dict,
+        init_device,
+        pin_memory=True,
+        enable_gradient_accumulation=True,
+        master_weights=master_weights,
+        **placement_config,
     )
     optimizer = HybridAdam(gemini_model.parameters(), lr=1e-3)
     gemini_optim = GeminiOptimizer(optimizer, gemini_model, initial_scale=1)

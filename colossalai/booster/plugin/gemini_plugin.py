@@ -258,7 +258,7 @@ class GeminiPlugin(DPPluginBase):
         warmup_non_model_data_ratio (float, optional): ratio of expected non-model data memory during warmup. Only for "auto" placement. Defaults to 0.8.
         steady_cuda_cap_ratio (float, optional): ratio of allowed cuda capacity for model data during steady state. Only for "auto" placement. Defaults to 0.9.
         precision (str, optional): precision. Support 'fp16' and 'bf16'. Defaults to 'fp16'.
-        master_weights (bool, optional): master weights. Defaults to True.
+        master_weights (bool, optional): Whether to keep fp32 master parameter weights in optimizer. Defaults to True.
         pin_memory (bool, optional): use pin memory on CPU. Defaults to False.
         force_outputs_fp32 (bool, optional): force outputs are fp32. Defaults to False.
         strict_ddp_mode (bool, optional): use strict ddp mode (only use dp without other parallelism). Defaults to False.

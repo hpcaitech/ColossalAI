@@ -116,10 +116,14 @@ class GeminiDDP(ModelWrapper):
         self.scatter_after_inference = scatter_after_inference
         self.mixed_precision = mixed_precision
         self.dp_process_group = process_group or _get_default_group()
-        self.enable_gradient_accumulation = enable_gradient_accumulation
 
         self.reuse_fp16_chunk = master_weights
         self.master_weights = master_weights
+
+        self.enable_gradient_accumulation = enable_gradient_accumulation
+        if self.enable_gradient_accumulation:
+            self.reuse_fp16_chunk = False
+        self.accumulating_grads = False  # Whether model is accumulating gradients
 
         self._logger = get_dist_logger()
 
@@ -329,7 +333,10 @@ class GeminiDDP(ModelWrapper):
                 )
             grad_chunk = chunk
             if not self.reuse_fp16_chunk:
-                grad_chunk = self.chunk_manager.init_grad_chunk(chunk)
+                if not self.accumulating_grads:
+                    grad_chunk = self.chunk_manager.init_grad_chunk(chunk)
+                else:
+                    grad_chunk = chunk.grad_chunk
                 # hold -> compute -> hold after bwd
                 grad_chunk.tensor_trans_state(p, TensorState.COMPUTE)
                 grad_chunk.tensor_trans_state(p, TensorState.HOLD_AFTER_BWD)
@@ -338,7 +345,12 @@ class GeminiDDP(ModelWrapper):
                 chunk.tensor_trans_state(p, TensorState.HOLD)
 
             grad_chunk.tensor_trans_state(p, TensorState.READY_FOR_REDUCE)
-            grad_chunk.copy_tensor_to_chunk_slice(p, grad, update_ptr=self.reuse_fp16_chunk)
+            if not self.accumulating_grads:
+                grad_chunk.copy_tensor_to_chunk_slice(p, grad, update_ptr=self.reuse_fp16_chunk)
+            else:
+                grad_chunk.add_tensor_to_chunk_slice(p, grad)
+                if self.enable_gradient_accumulation:
+                    self.accumulating_grads = True
             reduced = self.chunk_manager.reduce_chunk(grad_chunk)
             if reduced:
                 if not self.reuse_fp16_chunk:
