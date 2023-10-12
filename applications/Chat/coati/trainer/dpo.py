@@ -113,26 +113,39 @@ class DPOTrainer(SLTrainer):
             # print(self.tokenizer.batch_decode(batch[0], skip_special_tokens=True))
             # exit()
             chosen_input_ids, chosen_attention_mask, reject_input_ids, reject_attention_mask = batch
+            # print(chosen_input_ids[0])
+            # print('\n\n')
+            print(self.tokenizer.batch_decode(chosen_input_ids, skip_special_tokens=False)[0])
+            print("\n\n")
+            # print(chosen_attention_mask[0])
+            # print('\n\n')
             chosen_input_ids = chosen_input_ids.to(torch.cuda.current_device())
             chosen_attention_mask = chosen_attention_mask.to(torch.cuda.current_device())
             reject_input_ids = reject_input_ids.to(torch.cuda.current_device())
             reject_attention_mask = reject_attention_mask.to(torch.cuda.current_device())
-            action_mask = chosen_input_ids != reject_input_ids
+            chosen_mask = chosen_attention_mask.clone()
+            reject_mask = reject_attention_mask.clone()
+            first_diff_position = torch.argmax((chosen_input_ids != reject_input_ids).float(), dim=1)
+            for i in range(chosen_mask.size(0)):
+                chosen_mask[i, : first_diff_position[i]] = 0
+                reject_mask[i, : first_diff_position[i]] = 0
+
             # print(chosen_input_ids[0])
             # print(reject_input_ids[0])
-            # print(action_mask[0])
             # set the mask value correspond to the first padding token to 1
 
             actor_chosen_logits = self.actor(chosen_input_ids, chosen_attention_mask)["logits"].to(torch.float32)
             actor_reject_logits = self.actor(reject_input_ids, reject_attention_mask)["logits"].to(torch.float32)
-            chosen_mask = (chosen_attention_mask * action_mask)[
-                :, 1:
-            ]  # action_mask[:, 1:]  # action_mask[:, 1:]*(chosen_input_ids[:,1:]!=self.tokenizer.pad_token_id)
-            reject_mask = (chosen_attention_mask * action_mask)[
-                :, 1:
-            ]  # action_mask[:, 1:]  # action_mask[:, 1:]*(reject_input_ids[:,1:]!=self.tokenizer.pad_token_id)
-            logprob_actor_chosen = calc_masked_log_probs(actor_chosen_logits, chosen_input_ids, chosen_mask)
-            logprob_actor_reject = calc_masked_log_probs(actor_reject_logits, reject_input_ids, reject_mask)
+
+            print(self.tokenizer.batch_decode(chosen_input_ids * chosen_mask, skip_special_tokens=False)[0])
+            print("\n\n")
+            # print(chosen_mask[0])
+            # print('\n\n')
+            logprob_actor_chosen = calc_masked_log_probs(actor_chosen_logits, chosen_input_ids, chosen_mask[:, 1:])
+            print(logprob_actor_chosen[0])
+            print("\n\n")
+            exit()
+            logprob_actor_reject = calc_masked_log_probs(actor_reject_logits, reject_input_ids, reject_mask[:, 1:])
             if not self.disable_reference:
                 with torch.no_grad():
                     ref_chosen_logits = self.ref_model(chosen_input_ids, chosen_attention_mask)["logits"].to(
@@ -141,8 +154,8 @@ class DPOTrainer(SLTrainer):
                     ref_reject_logits = self.ref_model(reject_input_ids, reject_attention_mask)["logits"].to(
                         torch.float32
                     )
-                    logprob_ref_chosen = calc_masked_log_probs(ref_chosen_logits, chosen_input_ids, chosen_mask)
-                    logprob_ref_reject = calc_masked_log_probs(ref_reject_logits, reject_input_ids, reject_mask)
+                    logprob_ref_chosen = calc_masked_log_probs(ref_chosen_logits, chosen_input_ids, chosen_mask[:, 1:])
+                    logprob_ref_reject = calc_masked_log_probs(ref_reject_logits, reject_input_ids, reject_mask[:, 1:])
             else:
                 logprob_ref_chosen = None
                 logprob_ref_reject = None
@@ -166,14 +179,16 @@ class DPOTrainer(SLTrainer):
                 self.writer.add_scalar("train/loss", loss, self.num_train_step)
                 self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
                 self.writer.add_scalar(
-                    "train/chosen_rewards", masked_mean(chosen_rewards, chosen_mask).mean(), self.num_train_step
+                    "train/chosen_rewards", masked_mean(chosen_rewards, chosen_mask[:, 1:]).mean(), self.num_train_step
                 )
                 self.writer.add_scalar(
-                    "train/rejected_rewards", masked_mean(rejected_rewards, reject_mask).mean(), self.num_train_step
+                    "train/rejected_rewards",
+                    masked_mean(rejected_rewards, reject_mask[:, 1:]).mean(),
+                    self.num_train_step,
                 )
                 self.writer.add_scalar(
                     "train/accuracy",
-                    masked_mean(reward_accuracies, chosen_mask * reject_mask).mean(),
+                    masked_mean(reward_accuracies, chosen_mask[:, 1:] * reject_mask[:, 1:]).mean(),
                     self.num_train_step,
                 )
             self.num_train_step += 1
