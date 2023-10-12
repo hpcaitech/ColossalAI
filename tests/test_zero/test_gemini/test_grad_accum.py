@@ -1,6 +1,7 @@
 import pytest
 import torch
 import torch.distributed as dist
+from apex import amp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
@@ -27,19 +28,25 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
     param_list = [p for p in model.parameters()]
     chunk_list = chunk_manager.get_chunks(param_list)
     chunk_list = [chunk.grad_chunk for chunk in chunk_list]
+    for chunk in chunk_list:
+        chunk_manager.access_chunk(chunk)
 
     for p0, p1 in zip(model.parameters(), torch_model.parameters()):
         assert_close(p0, p1.grad, rtol=1e-3, atol=5e-5)
+
+    for chunk in chunk_list:
+        chunk_manager.release_chunk(chunk)
 
 
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("keep_gathered", [False, True])
 @parameterize("model_name", ["gpt2"])
 @parameterize("use_grad_checkpoint", [False, True])
-@parameterize("master_weights", [True, False])
+@parameterize("master_weights", [False, True])
 def exam_gemini_grad_acc(
     placement_config, keep_gathered: bool, model_name: str, use_grad_checkpoint: bool, master_weights: bool
 ):
+    print(placement_config, keep_gathered, use_grad_checkpoint, master_weights, flush=True)
     init_device = get_current_device()
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, _, _, criterion = get_components_func()
@@ -69,48 +76,51 @@ def exam_gemini_grad_acc(
     gemini_optim = GeminiOptimizer(optimizer, gemini_model, initial_scale=1)
 
     rank = dist.get_rank()
+    amp_config = dict(
+        opt_level="O2", keep_batchnorm_fp32=False, loss_scale=1, min_loss_scale=1, max_loss_scale=1, master_weights=True
+    )
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
-    torch_model = DDP(torch_model)
+    torch_model, torch_optim = amp.initialize(torch_model, torch_optim, **amp_config)
+    torch_model = DDP(torch_model, device_ids=[rank])
 
     set_seed(rank)
     accum_iter = 4
     for i, (input_ids, label) in enumerate(train_dataloader):
-        input_ids, label = input_ids.cuda(), label.cuda()
+        delay_unscale = False if (i + 1) % accum_iter == 0 else True
 
-        torch_model.train()
-        gemini_model.train()
+        input_ids, label = input_ids.cuda(), label.cuda()
 
         set_seed(42 + rank)
         torch_loss = run_fwd(torch_model, input_ids, label, criterion)
         torch_loss = torch_loss / accum_iter
-        torch_loss.backward()
+        with amp.scale_loss(torch_loss, torch_optim, delay_unscale=delay_unscale) as scaled_loss:
+            scaled_loss.backward()
 
         set_seed(42 + rank)
         gemini_loss = run_fwd(gemini_model, input_ids, label, criterion)
         gemini_loss = gemini_loss / accum_iter
         gemini_optim.backward(gemini_loss)
 
-        print(i, torch_loss, gemini_loss)
         assert torch.allclose(torch_loss, gemini_loss, rtol=1e-3, atol=1e-5)
+
+        check_grad(gemini_model, torch_model)
 
         if (i + 1) % accum_iter == 0:
             torch_optim.step()
             gemini_optim.step()
-            continue
+            torch_optim.zero_grad()
 
-        check_grad(gemini_model, torch_model)
+            # check updated param
+            torch_dict = torch_model.state_dict()
+            gemini_dict = gemini_model.state_dict(only_rank_0=False)
+
+            for key, value in gemini_dict.items():
+                torch_key = "module." + key
+                torch_value = torch_dict[torch_key].to(value.device).to(value.dtype)
+                assert_close(value, torch_value, rtol=1e-3, atol=2e-3)
 
         if i == accum_iter:
             break
-
-    # check updated param
-    torch_dict = torch_model.state_dict()
-    gemini_dict = gemini_model.state_dict(only_rank_0=False)
-
-    for key, value in gemini_dict.items():
-        torch_key = "module." + key
-        torch_value = torch_dict[torch_key].to(device=value.device, dtype=value.dtype)
-        assert_close(value, torch_value, rtol=1e-3, atol=2e-3)
 
 
 def run_dist(rank, world_size, port):

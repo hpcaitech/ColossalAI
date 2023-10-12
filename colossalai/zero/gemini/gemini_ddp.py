@@ -304,6 +304,8 @@ class GeminiDDP(ModelWrapper):
                 f"{error_str}",
             )
         self._setup_grads_ptr()
+        if self.enable_gradient_accumulation and not self.accumulating_grads:
+            self.accumulating_grads = True  # Turn on the state of gradient accumulation.
         self._logger.debug(
             f"comp cuda demand time: {self.gemini_manager._comp_cuda_demand_time}, layout time: {self.gemini_manager._layout_time}, evict time: {self.gemini_manager._evict_time}, CPU->CUDA vol: {self.gemini_manager._h2d_volume}B, CUDA->CPU vol: {self.gemini_manager._d2h_volume}"
         )
@@ -336,6 +338,7 @@ class GeminiDDP(ModelWrapper):
                 if not self.accumulating_grads:
                     grad_chunk = self.chunk_manager.init_grad_chunk(chunk)
                 else:
+                    self.chunk_manager.access_chunk(chunk.grad_chunk)
                     grad_chunk = chunk.grad_chunk
                 # hold -> compute -> hold after bwd
                 grad_chunk.tensor_trans_state(p, TensorState.COMPUTE)
@@ -349,8 +352,6 @@ class GeminiDDP(ModelWrapper):
                 grad_chunk.copy_tensor_to_chunk_slice(p, grad, update_ptr=self.reuse_fp16_chunk)
             else:
                 grad_chunk.add_tensor_to_chunk_slice(p, grad)
-                if self.enable_gradient_accumulation:
-                    self.accumulating_grads = True
             reduced = self.chunk_manager.reduce_chunk(grad_chunk)
             if reduced:
                 if not self.reuse_fp16_chunk:
