@@ -212,7 +212,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             with torch.no_grad():
                 if padding_size > 0:
                     padding_param = torch.nn.functional.pad(param.data.view(-1), [0, padding_size])
-                    param.data = padding_param[: param.numel()].view(param.shape)
+                    if self._master_weights is True:
+                        param.data = padding_param[: param.numel()].view(param.shape)
                 else:
                     padding_param = param.data.view(-1)
                 splited_params = padding_param.split(padding_param.numel() // self._world_size)
