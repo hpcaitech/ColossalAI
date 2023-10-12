@@ -35,7 +35,8 @@ SOFTWARE
 void Adam_Optimizer::Step_1(float *_params, float *grads, float *_exp_avg,
                             float *_exp_avg_sq, size_t _param_size,
                             bool param_half_precision, bool grad_half_precision,
-                            float loss_scale) {
+                            bool momentum_half_precision,
+                            bool variance_half_precision, float loss_scale) {
   size_t rounded_size = 0;
 
   float betta1_minus1 = 1 - _betta1;
@@ -45,12 +46,20 @@ void Adam_Optimizer::Step_1(float *_params, float *grads, float *_exp_avg,
 
   __half *params_cast_h = NULL;
   __half *grads_cast_h = NULL;
+  __half *momentum_cast_h = NULL;
+  __half *variance_cast_h = NULL;
 
   if (param_half_precision) {
     params_cast_h = reinterpret_cast<__half *>(_params);
   }
   if (grad_half_precision) {
     grads_cast_h = reinterpret_cast<__half *>(grads);
+  }
+  if (momentum_half_precision) {
+    momentum_cast_h = reinterpret_cast<__half *>(_exp_avg);
+  }
+  if (variance_half_precision) {
+    variance_cast_h = reinterpret_cast<__half *>(_exp_avg_sq);
   }
 
 #if defined(__AVX512__) or defined(__AVX256__) or defined(__AVX2__)
@@ -98,10 +107,18 @@ void Adam_Optimizer::Step_1(float *_params, float *grads, float *_exp_avg,
         grad_4.data = SIMD_DIV(grad_4.data, loss_scale_vec.data);
       }
       AVX_Data momentum_4;
-      momentum_4.data = SIMD_LOAD(_exp_avg + i);
+      if (momentum_half_precision) {
+        momentum_4.data = SIMD_LOAD_HALF(momentum_cast_h + i);
+      } else {
+        momentum_4.data = SIMD_LOAD(_exp_avg + i);
+      }
 
       AVX_Data variance_4;
-      variance_4.data = SIMD_LOAD(_exp_avg_sq + i);
+      if (variance_half_precision) {
+        variance_4.data = SIMD_LOAD_HALF(variance_cast_h + i);
+      } else {
+        variance_4.data = SIMD_LOAD(_exp_avg_sq + i);
+      }
 
       AVX_Data param_4;
       if (param_half_precision) {
@@ -135,8 +152,16 @@ void Adam_Optimizer::Step_1(float *_params, float *grads, float *_exp_avg,
       } else {
         SIMD_STORE(_params + i, param_4.data);
       }
-      SIMD_STORE(_exp_avg + i, momentum_4.data);
-      SIMD_STORE(_exp_avg_sq + i, variance_4.data);
+      if (momentum_half_precision) {
+        SIMD_STORE_HALF((float *)(momentum_cast_h + i), momentum_4.data);
+      } else {
+        SIMD_STORE(_exp_avg + i, momentum_4.data);
+      }
+      if (variance_half_precision) {
+        SIMD_STORE_HALF((float *)(variance_cast_h + i), variance_4.data);
+      } else {
+        SIMD_STORE(_exp_avg_sq + i, variance_4.data);
+      }
     }
   }
 #endif
@@ -154,8 +179,10 @@ void Adam_Optimizer::Step_1(float *_params, float *grads, float *_exp_avg,
         }
         float param =
             param_half_precision ? (float)params_cast_h[k] : _params[k];
-        float momentum = _exp_avg[k];
-        float variance = _exp_avg_sq[k];
+        float momentum =
+            momentum_half_precision ? (float)momentum_cast_h[k] : _exp_avg[k];
+        float variance = variance_half_precision ? (float)variance_cast_h[k]
+                                                 : _exp_avg_sq[k];
         if (_weight_decay > 0 && !_adamw_mode) {
           grad = param * _weight_decay + grad;
         }
@@ -178,8 +205,14 @@ void Adam_Optimizer::Step_1(float *_params, float *grads, float *_exp_avg,
           params_cast_h[k] = (__half)param;
         else
           _params[k] = param;
-        _exp_avg[k] = momentum;
-        _exp_avg_sq[k] = variance;
+        if (momentum_half_precision)
+          momentum_cast_h[k] = (__half)(momentum);
+        else
+          _exp_avg[k] = momentum;
+        if (variance_half_precision)
+          variance_cast_h[k] = (__half)(variance);
+        else
+          _exp_avg_sq[k] = variance;
       }
     }
   }
@@ -188,16 +221,25 @@ void Adam_Optimizer::Step_1(float *_params, float *grads, float *_exp_avg,
 void Adam_Optimizer::Step_4(float *_params, float *grads, float *_exp_avg,
                             float *_exp_avg_sq, size_t _param_size,
                             bool param_half_precision, bool grad_half_precision,
-                            float loss_scale) {
+                            bool momentum_half_precision,
+                            bool variance_half_precision, float loss_scale) {
   size_t rounded_size = 0;
 
   __half *params_cast_h = NULL;
   __half *grads_cast_h = NULL;
+  __half *momentum_cast_h = NULL;
+  __half *variance_cast_h = NULL;
   if (param_half_precision) {
     params_cast_h = reinterpret_cast<__half *>(_params);
   }
   if (grad_half_precision) {
     grads_cast_h = reinterpret_cast<__half *>(grads);
+  }
+  if (momentum_half_precision) {
+    momentum_cast_h = reinterpret_cast<__half *>(_exp_avg);
+  }
+  if (variance_half_precision) {
+    variance_cast_h = reinterpret_cast<__half *>(_exp_avg_sq);
   }
 
 #if defined(__AVX512__) or defined(__AVX256__) or defined(__AVX2__)
@@ -255,8 +297,18 @@ void Adam_Optimizer::Step_4(float *_params, float *grads, float *_exp_avg,
           grad_4[j].data = SIMD_DIV(grad_4[j].data, loss_scale_vec.data);
         }
 
-        momentum_4[j].data = SIMD_LOAD(_exp_avg + i + SIMD_WIDTH * j);
-        variance_4[j].data = SIMD_LOAD(_exp_avg_sq + i + SIMD_WIDTH * j);
+        if (momentum_half_precision) {
+          momentum_4[j].data =
+              SIMD_LOAD_HALF(momentum_cast_h + i + SIMD_WIDTH * j);
+        } else {
+          momentum_4[j].data = SIMD_LOAD(_exp_avg + i + SIMD_WIDTH * j);
+        }
+        if (variance_half_precision) {
+          variance_4[j].data =
+              SIMD_LOAD_HALF(variance_cast_h + i + SIMD_WIDTH * j);
+        } else {
+          variance_4[j].data = SIMD_LOAD(_exp_avg_sq + i + SIMD_WIDTH * j);
+        }
 
         if (param_half_precision) {
           param_4[j].data = SIMD_LOAD_HALF(params_cast_h + i + SIMD_WIDTH * j);
@@ -291,8 +343,18 @@ void Adam_Optimizer::Step_4(float *_params, float *grads, float *_exp_avg,
         } else {
           SIMD_STORE(_params + i + SIMD_WIDTH * j, param_4[j].data);
         }
-        SIMD_STORE(_exp_avg + i + SIMD_WIDTH * j, momentum_4[j].data);
-        SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH * j, variance_4[j].data);
+        if (momentum_half_precision) {
+          SIMD_STORE_HALF((float *)(momentum_cast_h + i + SIMD_WIDTH * j),
+                          momentum_4[j].data);
+        } else {
+          SIMD_STORE(_exp_avg + i + SIMD_WIDTH * j, momentum_4[j].data);
+        }
+        if (variance_half_precision) {
+          SIMD_STORE_HALF((float *)(variance_cast_h + i + SIMD_WIDTH * j),
+                          variance_4[j].data);
+        } else {
+          SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH * j, variance_4[j].data);
+        }
       }
     }
   }
@@ -302,23 +364,36 @@ void Adam_Optimizer::Step_4(float *_params, float *grads, float *_exp_avg,
                                  : _params + rounded_size),
            (grad_half_precision ? (float *)(grads_cast_h + rounded_size)
                                 : grads + rounded_size),
-           (_exp_avg + rounded_size), (_exp_avg_sq + rounded_size),
+           (momentum_half_precision ? (float *)(momentum_cast_h + rounded_size)
+                                    : _exp_avg + rounded_size),
+           (variance_half_precision ? (float *)(variance_cast_h + rounded_size)
+                                    : _exp_avg_sq + rounded_size),
            (_param_size - rounded_size), param_half_precision,
-           grad_half_precision, loss_scale);
+           grad_half_precision, momentum_half_precision,
+           variance_half_precision, loss_scale);
 }
 
 void Adam_Optimizer::Step_8(float *_params, float *grads, float *_exp_avg,
                             float *_exp_avg_sq, size_t _param_size,
                             bool param_half_precision, bool grad_half_precision,
-                            float loss_scale) {
+                            bool momentum_half_precision,
+                            bool variance_half_precision, float loss_scale) {
   size_t rounded_size = 0;
   __half *params_cast_h = NULL;
   __half *grads_cast_h = NULL;
+  __half *momentum_cast_h = NULL;
+  __half *variance_cast_h = NULL;
   if (param_half_precision) {
     params_cast_h = reinterpret_cast<__half *>(_params);
   }
   if (grad_half_precision) {
     grads_cast_h = reinterpret_cast<__half *>(grads);
+  }
+  if (momentum_half_precision) {
+    momentum_cast_h = reinterpret_cast<__half *>(_exp_avg);
+  }
+  if (variance_half_precision) {
+    variance_cast_h = reinterpret_cast<__half *>(_exp_avg_sq);
   }
 #if defined(__AVX512__) or defined(__AVX256__) or defined(__AVX2__)
   AVX_Data betta1_4;
@@ -375,8 +450,18 @@ void Adam_Optimizer::Step_8(float *_params, float *grads, float *_exp_avg,
           grad_4[j].data = SIMD_DIV(grad_4[j].data, loss_scale_vec.data);
         }
 
-        momentum_4[j].data = SIMD_LOAD(_exp_avg + i + SIMD_WIDTH * j);
-        variance_4[j].data = SIMD_LOAD(_exp_avg_sq + i + SIMD_WIDTH * j);
+        if (momentum_half_precision) {
+          momentum_4[j].data =
+              SIMD_LOAD_HALF(momentum_cast_h + i + SIMD_WIDTH * j);
+        } else {
+          momentum_4[j].data = SIMD_LOAD(_exp_avg + i + SIMD_WIDTH * j);
+        }
+        if (variance_half_precision) {
+          variance_4[j].data =
+              SIMD_LOAD_HALF(variance_cast_h + i + SIMD_WIDTH * j);
+        } else {
+          variance_4[j].data = SIMD_LOAD(_exp_avg_sq + i + SIMD_WIDTH * j);
+        }
 
         if (param_half_precision) {
           param_4[j].data = SIMD_LOAD_HALF(params_cast_h + i + SIMD_WIDTH * j);
@@ -412,8 +497,18 @@ void Adam_Optimizer::Step_8(float *_params, float *grads, float *_exp_avg,
           SIMD_STORE(_params + i + SIMD_WIDTH * j, param_4[j].data);
         }
 
-        SIMD_STORE(_exp_avg + i + (SIMD_WIDTH * j), momentum_4[j].data);
-        SIMD_STORE(_exp_avg_sq + i + (SIMD_WIDTH * j), variance_4[j].data);
+        if (momentum_half_precision) {
+          SIMD_STORE_HALF((float *)(momentum_cast_h + i + SIMD_WIDTH * j),
+                          momentum_4[j].data);
+        } else {
+          SIMD_STORE(_exp_avg + i + SIMD_WIDTH * j, momentum_4[j].data);
+        }
+        if (variance_half_precision) {
+          SIMD_STORE_HALF((float *)(variance_cast_h + i + SIMD_WIDTH * j),
+                          variance_4[j].data);
+        } else {
+          SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH * j, variance_4[j].data);
+        }
       }
     }
   }
@@ -423,9 +518,13 @@ void Adam_Optimizer::Step_8(float *_params, float *grads, float *_exp_avg,
                                  : _params + rounded_size),
            (grad_half_precision ? (float *)(grads_cast_h + rounded_size)
                                 : grads + rounded_size),
-           (_exp_avg + rounded_size), (_exp_avg_sq + rounded_size),
+           (momentum_half_precision ? (float *)(momentum_cast_h + rounded_size)
+                                    : _exp_avg + rounded_size),
+           (variance_half_precision ? (float *)(variance_cast_h + rounded_size)
+                                    : _exp_avg_sq + rounded_size),
            (_param_size - rounded_size), param_half_precision,
-           grad_half_precision, loss_scale);
+           grad_half_precision, momentum_half_precision,
+           variance_half_precision, loss_scale);
 }
 
 void Adam_Optimizer::step(size_t step, float lr, float beta1, float beta2,
@@ -447,7 +546,9 @@ void Adam_Optimizer::step(size_t step, float lr, float beta1, float beta2,
   this->update_state(lr, epsilon, weight_decay, bias_correction);
   this->Step_8(params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr,
                params_c.numel(), (params.options().dtype() == at::kHalf),
-               (grads.options().dtype() == at::kHalf), loss_scale);
+               (grads.options().dtype() == at::kHalf),
+               (exp_avg.options().dtype() == at::kHalf),
+               (exp_avg_sq.options().dtype() == at::kHalf), loss_scale);
 }
 
 namespace py = pybind11;
