@@ -42,7 +42,7 @@ class PolicyLoss(nn.Module):
         skip = False
         # log_probs = log_probs + 1e-6
         # old_log_probs = old_log_probs + 1e-6
-        ratio_ = ((log_probs - old_log_probs)*action_mask).exp()
+        ratio_ = ((log_probs - old_log_probs) * action_mask).exp()
         # if masked_mean(ratio_, action_mask).max()>50.0:
         #     skip = True
         ratio = ratio_.clamp(0.0, 10.0)
@@ -75,9 +75,63 @@ class ValueLoss(nn.Module):
         values_clipped = old_values + (values - old_values).clamp(-self.clip_eps, self.clip_eps)
         surr1 = (values_clipped - returns) ** 2
         surr2 = (values - returns) ** 2
-        loss = torch.max(surr1, surr2)/torch.sum(action_mask)
+        loss = torch.max(surr1, surr2) / torch.sum(action_mask)
         loss = torch.sum(loss * action_mask)
         return 0.5 * loss
+
+
+class DpoLoss(nn.Module):
+    """
+    Dpo loss
+    Details: https://arxiv.org/pdf/2305.18290.pdf
+    """
+
+    def __init__(self, beta: float = 0.1):
+        super().__init__()
+        self.beta = beta
+
+    def forward(
+        self,
+        logprob_actor_chosen: torch.Tensor,
+        logprob_actor_reject: torch.Tensor,
+        logprob_ref_chosen: torch.Tensor,
+        logprob_ref_reject: torch.Tensor,
+    ):
+        """Compute the DPO loss for a batch of policy and reference model log probabilities.
+
+        # adapted from https://github.com/huggingface/trl/blob/main/trl/trainer/dpo_trainer.py#L328
+
+        Args:
+            logprob_actor_chosen: Log probabilities of the policy model for the chosen responses. Shape: (batch_size,)
+            logprob_actor_reject: Log probabilities of the policy model for the rejected responses. Shape: (batch_size,)
+            logprob_ref_chosen: Log probabilities of the reference model for the chosen responses. Shape: (batch_size,)
+            logprob_ref_reject: Log probabilities of the reference model for the rejected responses. Shape: (batch_size,)
+
+        Returns:
+            A tuple of three tensors: (losses, chosen_rewards, rejected_rewards).
+            The losses tensor contains the DPO loss for each example in the batch.
+            The chosen_rewards and rejected_rewards tensors contain the rewards for the chosen and rejected responses, respectively.
+        """
+
+        if logprob_ref_chosen is not None and logprob_ref_reject is not None:
+            ref_logratios = logprob_ref_chosen - logprob_ref_reject
+        else:
+            ref_logratios = 0.0
+        pi_logratios = logprob_actor_chosen - logprob_actor_reject
+
+        logits = pi_logratios - ref_logratios
+
+        losses = -torch.nn.functional.logsigmoid(self.beta * logits)
+        if logprob_ref_chosen is not None:
+            chosen_rewards = self.beta * (logprob_actor_chosen - logprob_ref_chosen).detach()
+        else:
+            chosen_rewards = self.beta * logprob_actor_chosen.detach()
+        if logprob_ref_reject is not None:
+            rejected_rewards = self.beta * (logprob_actor_reject - logprob_ref_reject).detach()
+        else:
+            rejected_rewards = self.beta * logprob_actor_reject.detach()
+
+        return losses, chosen_rewards, rejected_rewards
 
 
 class LogSigLoss(nn.Module):

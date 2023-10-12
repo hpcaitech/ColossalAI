@@ -1,6 +1,6 @@
 from .base import Actor, Critic, RewardModel
 from .lora import LoRAModule, convert_to_lora_module
-from .loss import LogExpLoss, LogSigLoss, PolicyLoss, ValueLoss
+from .loss import DpoLoss, LogExpLoss, LogSigLoss, PolicyLoss, ValueLoss
 
 __all__ = [
     "Actor",
@@ -12,4 +12,5 @@ __all__ = [
     "LogExpLoss",
     "LoRAModule",
     "convert_to_lora_module",
+    "DpoLoss",
 ]

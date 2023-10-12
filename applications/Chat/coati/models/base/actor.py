@@ -28,6 +28,10 @@ class Actor(LoRAModule):
         **model_kwargs,
     ) -> torch.Tensor:
         """Returns model output."""
-        output = self.model(input_ids, attention_mask=attention_mask, **model_kwargs)
+        get_loss = model_kwargs.pop("calculate_loss", False)
+        if get_loss:
+            # for pretrain
+            output = self.model(input_ids, labels=input_ids, attention_mask=attention_mask, **model_kwargs)
+        else:
+            output = self.model(input_ids, attention_mask=attention_mask, **model_kwargs)
         return output
-    

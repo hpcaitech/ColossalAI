@@ -1,0 +1,1 @@
+{"_wandb": {"runtime": 9}, "global_step": 9, "_timestamp": 1696990782.417483, "train/loss": 0.6884765625, "train/lr": 8.999999408842996e-06, "train/chosen_rewards": 0.0292510986328125, "train/rejected_rewards": 0.0157318115234375, "train/accuracy": 0.17596566677093506, "_runtime": 9.820436000823975, "_step": 9}

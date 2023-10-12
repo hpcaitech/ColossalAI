@@ -159,7 +159,7 @@ class SupervisedDataset(Dataset):
         tokenizer: PreTrainedTokenizer,
         max_datasets_size: Optional[int] = None,
         max_length: int = 512,
-        prompt_dict: Optional[Dict[str, str]] = PROMPT_DICT
+        prompt_dict: Optional[Dict[str, str]] = PROMPT_DICT,
     ):
         super().__init__()
         logger.info("Loading data...")
@@ -197,3 +197,19 @@ class SupervisedDataset(Dataset):
             return dict(input_ids=self.input_ids[idx], labels=self.labels[idx], attention_mask=self.attention_mask[idx])
         else:
             return dict(input_ids=self.input_ids[idx], labels=self.labels[idx])
+
+
+class DPOPretrainDataset(Dataset):
+    """Dataset for dpo pretrain."""
+
+    def __init__(self, rw_dataseet: Dataset):
+        super().__init__()
+        self.rw_dataset = rw_dataseet
+
+    def __len__(self):
+        length = len(self.rw_dataset)
+        return length
+
+    def __getitem__(self, idx):
+        chosen_input_ids, chosen_attention_mask, _, _ = self.rw_dataset[idx]
+        return chosen_input_ids, chosen_attention_mask
