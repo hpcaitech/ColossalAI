@@ -1,4 +1,5 @@
 import pytest
+import asyncio
 import torch
 from packaging import version
 from transformers import LlamaForCausalLM
@@ -8,7 +9,7 @@ import colossalai
 from dataclasses import dataclass
 from colossalai.inference.dynamic_batching.io_struct import Req
 from colossalai.inference.dynamic_batching.sampling_params import SamplingParams
-from colossalai.inference.manager import start_dynamic_batching
+from colossalai.inference.manager import start_dynamic_batching,process_data
 from colossalai.inference.tensor_parallel import TPInferEngine
 from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
@@ -44,7 +45,7 @@ def run():
     waiting_list.append(req4)
     
     llama_config = LlamaConfig(num_hidden_layers=2, bos_token_id=0, eos_token_id=1, vocab_size=1200, hidden_size=1024)
-    model = LlamaForCausalLM.from_pretrained(llama_config)
+    model = LlamaForCausalLM(llama_config)
     model = model.half()
 
     shard_config = ShardConfig(enable_tensor_parallelism=True if TP_SIZE > 1 else False, inference_only=True)
@@ -52,11 +53,13 @@ def run():
     infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
     manager = start_dynamic_batching(arg, tp_engine=infer_engine, waiting_req_list=waiting_list)
     manager._set_tokenizer(tokenizer_name = model.__class__.__name__)
-    result_generator = manager.loop_for_fwd()
-    for result in result_generator:
-        print(result)
+    asyncio.run(test(manager))
 
-
+async def test(manager):
+    asyncio.create_task(process_data(manager))
+    await asyncio.sleep(5)
+    await manager.add_req(4, [0, 0, 10, 10, 10], SamplingParams())
+    await asyncio.sleep(5)
 
 
 def check_dynamic_forward(rank, world_size, port):
