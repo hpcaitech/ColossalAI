@@ -97,8 +97,8 @@ def int8_rotary_embedding_fwd(q, cos, sin, input_scale, output_scale):
 
     _rotary_kernel[grid](
         q,
-        input_scale.item(),
-        output_scale.item(),
+        input_scale,
+        output_scale,
         cos,
         sin,
         q.stride(0),

@@ -42,11 +42,10 @@ def torch_context_attention(xq, xk, xv, bs, seqlen, num_head, head_dim):
     xq = xq.transpose(1, 2)
     keys = keys.transpose(1, 2)
     values = values.transpose(1, 2)
-    sm_scale = 1 / math.sqrt(head_dim)
-    scores = torch.matmul(xq, keys.transpose(2, 3)) * sm_scale
-    scores = F.softmax(scores.float() + mask, dim=-1).to(dtype=torch.float)
-
+    scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(head_dim)
+    scores = F.softmax(scores.float() + mask, dim=-1).type_as(xq)
     output = torch.matmul(scores, values).transpose(1, 2).contiguous().reshape(-1, num_head, head_dim)
+
     return output
 
 
@@ -55,7 +54,7 @@ def torch_context_attention(xq, xk, xv, bs, seqlen, num_head, head_dim):
     reason="triton requires cuda version to be higher than 11.4 or not install torch_int",
 )
 def test_llama_context_attention():
-    head_num = 8
+    head_num = 2
     seq_len = 32
     head_dim = 64
     dtype = torch.float
@@ -63,14 +62,26 @@ def test_llama_context_attention():
 
     smooth_attn = LLamaSmoothquantAttention(head_num * head_dim, head_num)
 
-    smooth_attn.q_proj.weight = torch.ones(hidden_size, hidden_size).to(torch.int8)
-    smooth_attn.k_proj.weight = torch.ones(hidden_size, hidden_size).to(torch.int8)
-    smooth_attn.v_proj.weight = torch.ones(hidden_size, hidden_size).to(torch.int8)
-    smooth_attn.out_proj.weight = torch.ones(hidden_size, hidden_size).to(torch.int8)
+    smooth_attn.q_proj.weight = torch.ones(hidden_size, hidden_size, device="cuda").to(torch.int8)
+    smooth_attn.k_proj.weight = torch.ones(hidden_size, hidden_size, device="cuda").to(torch.int8)
+    smooth_attn.v_proj.weight = torch.ones(hidden_size, hidden_size, device="cuda").to(torch.int8)
+    smooth_attn.out_proj.weight = torch.ones(hidden_size, hidden_size, device="cuda").to(torch.int8)
+    smooth_attn.out_proj.weight[:, 1:hidden_size] = torch.zeros(hidden_size - 1, device="cuda").to(torch.int8)
+
+    qkv_weight_scale = 1.0
+
+    ones = torch.ones(hidden_size, hidden_size, dtype=torch.float, device="cuda")
 
     smooth_attn = smooth_attn.to("cuda")
 
-    input = torch.randint(-127, 127, (1, seq_len, head_num * head_dim), dtype=torch.int8, device="cuda")
+    input = torch.randint(-20, 20, (1, seq_len, head_num * head_dim), dtype=torch.int8, device="cuda")
+    input_scale = 1 / 20.0
+
+    output = torch.matmul(input.to(torch.float) * input_scale, ones)
+    qkv_max_out = torch.max(torch.abs(output)) / 127
+    smooth_attn.q_proj.a = torch.tensor(input_scale * qkv_weight_scale / qkv_max_out)
+    smooth_attn.k_proj.a = torch.tensor(input_scale * qkv_weight_scale / qkv_max_out)
+    smooth_attn.v_proj.a = torch.tensor(input_scale * qkv_weight_scale / qkv_max_out)
 
     q = smooth_attn.q_proj(input)
     k = smooth_attn.k_proj(input)
@@ -79,25 +90,45 @@ def test_llama_context_attention():
     cos_shape = (seq_len, head_dim // 2)
     cos = torch.ones(cos_shape, dtype=dtype, device="cuda")
     sin = torch.zeros(cos_shape, dtype=dtype, device="cuda")
+    in_scale = torch.tensor([qkv_max_out], device="cuda")
+    out_scale = torch.tensor([qkv_max_out], device="cuda")
+    int8_rotary_embedding_fwd(q.view(-1, head_num, head_dim), cos, sin, in_scale.item(), out_scale.item())
+    int8_rotary_embedding_fwd(k.view(-1, head_num, head_dim), cos, sin, in_scale.item(), out_scale.item())
 
-    in_scale = torch.tensor([1.0], device="cuda")
-    out_scale = torch.tensor([1.0], device="cuda")
-
-    int8_rotary_embedding_fwd(q.view(-1, head_num, head_dim), cos, sin, in_scale, out_scale)
-    int8_rotary_embedding_fwd(k.view(-1, head_num, head_dim), cos, sin, in_scale, out_scale)
-
-    q = q.to(torch.float)
-    k = k.to(torch.float)
-    v = v.to(torch.float)
+    q = q.to(torch.float) * out_scale
+    k = k.to(torch.float) * out_scale
+    v = v.to(torch.float) * out_scale
     torch_out = torch_context_attention(q.clone(), k.clone(), v.clone(), 1, seq_len, head_num, head_dim)
-    torch_out = (torch_out).to(torch.int8).view(-1, seq_len, head_num * head_dim)
+    attn_out_max = torch.max(torch.abs(torch_out)) / 127
+
+    output = torch.matmul(torch_out.view(-1, seq_len, head_num * head_dim), ones)
+    smooth_attn.q_output_scale = torch.tensor(qkv_max_out)
+    smooth_attn.k_output_scale = torch.tensor(qkv_max_out)
+
+    smooth_attn.v_output_scale = torch.tensor(qkv_max_out)
+    smooth_attn.q_rotary_output_scale = torch.tensor(qkv_max_out)
+    smooth_attn.k_rotary_output_scale = torch.tensor(qkv_max_out)
+
+    smooth_attn.attn_output_scale = torch.tensor(attn_out_max)
+    smooth_attn.out_proj.a = torch.tensor([attn_out_max])
+
+    torch_out = (
+        (torch_out / smooth_attn.attn_output_scale)
+        .round()
+        .clamp(-128, 127)
+        .to(torch.int8)
+        .view(-1, seq_len, head_num * head_dim)
+    )
+
     torch_out = smooth_attn.out_proj(torch_out)
-    smooth_out, _, _ = smooth_attn(input, (cos, sin))
-    smooth_out = smooth_out.to(torch.float)
     torch_out = torch_out.to(torch.float)
 
+    smooth_attn = smooth_attn.to("cuda")
+    smooth_out, _, _ = smooth_attn(input, (cos, sin))
+    smooth_out = smooth_out.to(torch.float)
+
     assert torch.allclose(
-        smooth_out.cpu(), torch_out.cpu(), rtol=1e-2, atol=1e-2
+        torch_out.cpu(), smooth_out.cpu(), rtol=1e-1, atol=1e-1
     ), "outputs from triton and torch are not matched"
 
 

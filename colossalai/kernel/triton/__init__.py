@@ -16,6 +16,7 @@ if HAS_TRITON:
     from .int8_rotary_embedding_kernel import int8_rotary_embedding_fwd
     from .rms_norm import rmsnorm_forward
     from .rotary_embedding_kernel import rotary_embedding_fwd
+    from .smooth_attention import smooth_llama_context_attn_fwd, smooth_token_attention_fwd
     from .softmax import softmax
     from .token_attention_kernel import token_attention_fwd
 
@@ -30,4 +31,6 @@ if HAS_TRITON:
         "token_attention_fwd",
         "gptq_fused_linear_triton",
         "int8_rotary_embedding_fwd",
+        "smooth_llama_context_attn_fwd",
+        "smooth_token_attention_fwd",
     ]
