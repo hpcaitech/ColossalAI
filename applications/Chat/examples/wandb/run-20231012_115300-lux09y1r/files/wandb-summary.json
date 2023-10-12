@@ -1,1 +1,0 @@
-{"global_step": 999, "_timestamp": 1697083908.3344584, "train/loss": 0.6882935166358948, "train/lr": 0.0009997532470151782, "train/chosen_rewards": -5.055627822875977, "train/rejected_rewards": -6.966080188751221, "train/accuracy": 0.6022937893867493, "_runtime": 1127.6980333328247, "_step": 999, "_wandb": {"runtime": 1124}}

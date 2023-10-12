@@ -24,4 +24,4 @@ torchrun --standalone --rdzv_endpoint="localhost:12355" --nproc_per_node=4 train
     --max_epoch 2 \
     --save_path '/home/lcyab/data/Anthropic_rlhf/actor/dpo_v0' \
     --pretrain 'gpt2' \
-    --use_wandb
+    # --use_wandb

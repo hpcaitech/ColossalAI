@@ -51,9 +51,9 @@ def main(args):
 
         if args.model == "gpt2":
             config = AutoConfig.from_pretrained(args.pretrain)
-            config.embd_pdrop = 0.000
-            config.attn_pdrop = 0.000
-            config.resid_pdrop = 0.000
+            config.embd_pdrop = 0.0
+            config.attn_pdrop = 0.0
+            config.resid_pdrop = 0.0
             actor = GPTActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
         elif args.model == "bloom":
             config = AutoConfig.from_pretrained(args.pretrain)
@@ -194,7 +194,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default=None, help="path to the prompt dataset")
-    parser.add_argument("--max_datasets_size", type=int, default=50000)
+    parser.add_argument("--max_datasets_size", type=int, default=50)
     parser.add_argument(
         "--strategy",
         choices=["ddp", "colossalai_gemini", "colossalai_zero2"],
