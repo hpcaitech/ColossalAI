@@ -31,6 +31,7 @@ from ._utils import (
 )
 from .bookkeeping import BucketStore, GradientStore, ParameterStore
 
+
 class LowLevelZeroFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
     def __init__(
         self,
@@ -211,6 +212,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             with torch.no_grad():
                 if padding_size > 0:
                     padding_param = torch.nn.functional.pad(param.data.view(-1), [0, padding_size])
+                    param.data = padding_param[: param.numel()].view(param.shape)
                 else:
                     padding_param = param.data.view(-1)
                 splited_params = padding_param.split(padding_param.numel() // self._world_size)
@@ -222,7 +224,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     splited_param_current_rank = splited_params[self._local_rank]
                 params_current_rank.append(splited_param_current_rank)
                 self._param_store.link_master_and_working_param(splited_param_current_rank, param)
-                
+
         return params_current_rank
 
     ###########################
@@ -395,7 +397,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     ####################
     # Update Parameter #
     ####################
-    
+
     def step(self, closure=None):
         assert closure is None, "closure is not supported by step()"
         if not self.require_grad_sync:
@@ -431,7 +433,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 if len(grads) > 0:
                     real_working_params[group_id].append(working_param)
                     # no need to copy fp32 grad if master_weights is False
-                    grad = grads[grad_index].to(splited_param.dtype).to(splited_param.device) if self._master_weights else grads[grad_index]
+                    grad = (
+                        grads[grad_index].to(splited_param.dtype).to(splited_param.device)
+                        if self._master_weights
+                        else grads[grad_index]
+                    )
                     splited_param.grad = grad
                     grad_partition_groups.append(grad)
                     real_master_params[group_id].append(splited_param)
@@ -452,7 +458,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # update the parameters
         self.optim.step()
-        
+
         # release the grad
         grad_partition_groups = []
         for group_id in range(self.num_param_groups):
