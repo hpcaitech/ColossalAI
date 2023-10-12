@@ -756,12 +756,11 @@ class SmoothLlamaForCausalLM(BaseSmoothForCausalLM):
     def get_act_dict(
         self,
         tokenizer,
-        dataset_path,
+        dataset,
         num_samples=512,
         seq_len=512,
     ):
         llama_model = self.model
-        llama_model.config
 
         llama_model.eval()
         device = next(llama_model.parameters()).device
@@ -795,7 +794,7 @@ class SmoothLlamaForCausalLM(BaseSmoothForCausalLM):
             if isinstance(m, torch.nn.Linear):
                 hooks.append(m.register_forward_hook(partial(stat_io_hook, name=name)))
 
-        self.collect_act_dict(llama_model, tokenizer, dataset_path, act_dict, device, num_samples, seq_len)
+        self.collect_act_dict(llama_model, tokenizer, dataset, act_dict, device, num_samples, seq_len)
 
         for hook in hooks:
             hook.remove()
@@ -813,7 +812,7 @@ class SmoothLlamaForCausalLM(BaseSmoothForCausalLM):
     def quantized(
         self,
         tokenizer,
-        dataset_path,
+        dataset,
         num_samples=512,
         seq_len=512,
         alpha=0.5,
@@ -821,11 +820,11 @@ class SmoothLlamaForCausalLM(BaseSmoothForCausalLM):
         llama_model = self.model
         llama_config = llama_model.config
 
-        act_scales = self.get_act_scales(llama_model, tokenizer, dataset_path, num_samples, seq_len)
+        act_scales = self.get_act_scales(llama_model, tokenizer, dataset, num_samples, seq_len)
 
         self.smooth_fn(act_scales, alpha)
 
-        act_dict = self.get_act_dict(tokenizer, dataset_path, num_samples, seq_len)
+        act_dict = self.get_act_dict(tokenizer, dataset, num_samples, seq_len)
         decoder_layer_scales = []
 
         for idx in range(llama_config.num_hidden_layers):

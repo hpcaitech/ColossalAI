@@ -13,7 +13,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import transformers
-from datasets import load_dataset
 from safetensors.torch import save_file as safe_save
 from torch import device
 from tqdm import tqdm
@@ -22,8 +21,8 @@ from transformers.modeling_utils import no_init_weights
 from transformers.utils.generic import ContextManagers
 from transformers.utils.hub import PushToHubMixin, cached_file
 
-from ....tensor_parallel.batch_infer_state import BatchInferState
-from ....tensor_parallel.kvcache_manager import MemoryManager
+from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
+from colossalai.inference.tensor_parallel.kvcache_manager import MemoryManager
 
 CPU = device("cpu")
 
@@ -127,32 +126,20 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
         """shortcut for model.prepare_inputs_for_generation"""
         return self.model.prepare_inputs_for_generation(*args, **kwargs)
 
-    def collect_act_scales(self, model, tokenizer, dataset_path, device, num_samples=512, seq_len=512):
-        dataset = load_dataset("json", data_files=dataset_path, split="train")
-        dataset = dataset.shuffle(seed=42)
-
-        for i in tqdm(range(num_samples)):
-            input_ids = tokenizer(
-                dataset["rows"][0][i]["row"]["text"], return_tensors="pt", max_length=seq_len, truncation=True
-            ).input_ids.to(device)
+    def collect_act_scales(self, model, tokenizer, dataset, device, num_samples=512, seq_len=512):
+        for text in tqdm(dataset):
+            input_ids = tokenizer(text, return_tensors="pt", max_length=seq_len, truncation=True).input_ids.to(device)
             model(input_ids)
 
-    def collect_act_dict(self, model, tokenizer, dataset_path, act_dict, device, num_samples=512, seq_len=512):
-        pbar = tqdm(range(num_samples))
-        dataset = load_dataset("json", data_files=dataset_path, split="train")
-        dataset = dataset.shuffle(seed=42)
-        for i in pbar:
-            input_ids = tokenizer(
-                dataset["rows"][0][i]["row"]["text"],
-                return_tensors="pt",
-                max_length=seq_len,
-                truncation=True,
-            ).input_ids.to(device)
+    def collect_act_dict(self, model, tokenizer, dataset, act_dict, device, num_samples=512, seq_len=512):
+        pbar = tqdm(dataset)
+        for text in pbar:
+            input_ids = tokenizer(text, return_tensors="pt", max_length=seq_len, truncation=True).input_ids.to(device)
             model(input_ids)
             mean_scale = np.mean([v["input"] for v in act_dict.values()])
             pbar.set_description(f"Mean input scale: {mean_scale:.2f}")
 
-    def get_act_scales(self, model, tokenizer, dataset_path, num_samples=512, seq_len=512):
+    def get_act_scales(self, model, tokenizer, dataset, num_samples=512, seq_len=512):
         model.eval()
         device = next(model.parameters()).device
         act_scales = {}
@@ -176,7 +163,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
             if isinstance(m, nn.Linear):
                 hooks.append(m.register_forward_hook(partial(stat_input_hook, name=name)))
 
-        self.collect_act_scales(model, tokenizer, dataset_path, device, num_samples, seq_len)
+        self.collect_act_scales(model, tokenizer, dataset, device, num_samples, seq_len)
 
         for h in hooks:
             h.remove()
