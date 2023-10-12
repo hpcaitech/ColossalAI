@@ -70,7 +70,7 @@ def test_llama_mlp():
         x.to(torch.float),
     )
 
-    smooth_mlp.down_proj_input_scale = max_inter.item() / 127
+    smooth_mlp.down_proj_input_scale = torch.tensor(max_inter.item() / 127)
     smooth_mlp.gate_proj.a = torch.tensor(1 / hidden_size)
     smooth_mlp.up_proj.a = torch.tensor(1 / 127)
     smooth_mlp.down_proj.a = torch.tensor(1 / 127 * (max_inter.item() / 127))
