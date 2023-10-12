@@ -245,10 +245,7 @@ class LLamaSmoothquantAttention(nn.Module):
         attn_output = attn_output.view(bsz, q_len, self.num_heads * self.head_dim)
         attn_output = self.o_proj(attn_output)
 
-        if not output_attentions:
-            attn_weights = None
-
-        return attn_output, attn_weights, past_key_value
+        return attn_output, None, None
 
 
 class LlamaLayerNormQ(torch.nn.Module):
@@ -259,8 +256,6 @@ class LlamaLayerNormQ(torch.nn.Module):
         self.register_buffer("weight", torch.ones(dim, dtype=torch.float32))
 
     def forward(self, x):
-        x.dtype
-        x.to(torch.float32)
         ln_output_fp = torch.nn.functional.layer_norm(x, x.shape[-1:], self.weight, None, self.variance_epsilon)
         ln_output_int8 = ln_output_fp.round().clamp(-128, 127).to(torch.int8)
         return ln_output_int8
@@ -424,15 +419,7 @@ class LlamaSmoothquantDecoderLayer(nn.Module):
         hidden_states = self.mlp(hidden_states)
         hidden_states = residual + hidden_states
 
-        outputs = (hidden_states,)
-
-        if output_attentions:
-            outputs += (self_attn_weights,)
-
-        if use_cache:
-            outputs += (present_key_value,)
-
-        return outputs
+        return hidden_states, None, None
 
 
 class LlamaApplyRotary(nn.Module):
