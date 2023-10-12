@@ -54,7 +54,7 @@ class DynamicBatchManager:
         self._set_tokenizer(tokenizer_name=self.model)
 
 
-    async def add_req(self, request_id, prompt_ids: List[int], sampling_params: SamplingParams, prompts: str):
+    async def add_req(self, request_id, prompt_ids: List[int], sampling_params: SamplingParams, prompts: str = ""):
 
         """
         Add new request to req queue, during initialization all requests are held in waiting list.
