@@ -19,6 +19,7 @@ class DynamicBatchManager:
         max_total_token_num,
         batch_max_tokens,
         eos_id,
+        model,
         log_stats=True,
         log_stats_interval=10,
         running_batch: Batch = None,
@@ -30,6 +31,7 @@ class DynamicBatchManager:
                 batch_max_tokens : max tokens of one batch, default to (max input + output len) * num_requests
                 running_max_req_size : max request size of running batch, equals to MAX_BATCH_SIZE of tp engine
                 eos_id : The end token of a seq
+                model: the model weight dir path, the app will load config, weights and tokenizer from this dir
                 log_stats : whether to log stats
                 log_stats_interval : log stats interval
                 running_batch : running batch
@@ -45,31 +47,32 @@ class DynamicBatchManager:
         self.eos_id = eos_id
         self.has_wait_tokens = 0
         self.max_wait_tokens = 10
+        self.model = model
         
         self.stats_tool = Stats(log_stats, log_stats_interval)
         self.mem_usage_interval = log_stats_interval * 2
+        self._set_tokenizer(tokenizer_name=self.model)
 
-    def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str):
+    def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompts: str):
         """
         Add new request to req queue, during initialization all requests are held in waiting list.
         """
-        req = Req(request_id, prompt_ids, sampling_params)
+        req = Req(request_id, prompt_ids, sampling_params, prompts)
         self.req_queue.append(req)
         return
 
-    def add_input(self, request_id, sampling_params, input_ids):
+    def add_input(self, request_id, sampling_params, prompts):
         """
         Encode and Add new input to req queue. support one sequence input for now.
         """
-        prompt_ids = self.tokenizer.encode(input_ids)
+        prompt_ids = self.tokenizer.encode(prompts)
         prompt_len = len(prompt_ids)
-        print(prompt_ids)
         if prompt_len > self.engine.max_input_len:
             raise ValueError(
                 f"the input prompt token len {prompt_len} is too long > {self.engine.max_input_len}"
             )
         sampling_params.stop_sentences_to_token_ids(self.tokenizer)
-        self.add_req(prompt_ids, sampling_params, request_id)
+        self.add_req(prompt_ids, sampling_params, request_id, prompts)
         return
      
     def abort(self, request_id):
@@ -90,7 +93,7 @@ class DynamicBatchManager:
         """
         counter_count = 0
         #self.running_batch is not None or self.req_queue.waiting_req_list
-        while True:
+        while self.running_batch is not None or self.req_queue.waiting_req_list:
             yield from self._step()
             counter_count += 1
             if self.running_batch is not None:
@@ -267,17 +270,17 @@ class DynamicBatchManager:
         """
         for req in finished_reqs:
             output = self.tokenizer.decode(req.output_ids)
-            yield output, req.request_id, req.output_metadata_list 
+            yield req.prompts+ output
 
     def clean_up(self):
         # this logic should be implemented in the future.
         pass
 
-    def generate(self,request_id,prompt_id,sampling_params):
+    def generate(self,prompts,sampling_params,request_id):
         """
         Generate the output of a request.
         """
-        self.add_input(request_id,prompt_id,sampling_params)
+        self.add_input(request_id,sampling_params,prompts)
         return self.loop_for_fwd()
 
 def start_dynamic_batching(args, tp_engine, waiting_req_list):
@@ -287,6 +290,7 @@ def start_dynamic_batching(args, tp_engine, waiting_req_list):
             max_total_token_num=args.max_total_token_num,
             batch_max_tokens=args.batch_max_tokens,
             eos_id=args.eos_id,
+            model=args.model,
             log_stats=not args.disable_log_stats,
             log_stats_interval=args.log_stats_interval,
             waiting_req_list=waiting_req_list,
