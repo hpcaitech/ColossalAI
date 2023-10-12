@@ -10,7 +10,6 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import nn
 from torch_int.nn.bmm import BMM_S8T_S8N_F32T, BMM_S8T_S8N_S8T
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutputWithPast
