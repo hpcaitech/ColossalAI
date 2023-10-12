@@ -79,10 +79,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         overlap_communication: bool = False,
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
-        master_weights: bool = True,  # master weights
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
         tp_process_group: Optional[ProcessGroup] = None,  # if using tp
         forced_dtype: Optional[torch.dtype] = None,
+        master_weights: bool = True,  # master weights
     ):
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
         self._dtype = self.optim.param_groups[0]["params"][0].dtype
