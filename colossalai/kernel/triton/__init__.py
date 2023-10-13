@@ -9,7 +9,7 @@ except ImportError:
 
 # There may exist import error even if we have triton installed.
 if HAS_TRITON:
-    from .context_attention import bloom_context_attn_fwd, llama_context_attn_fwd
+    from .context_attention import bloom_context_attn_fwd, llama2_context_attn_fwd, llama_context_attn_fwd
     from .copy_kv_cache_dest import copy_kv_cache_to_dest
     from .fused_layernorm import layer_norm
     from .gptq_triton import gptq_fused_linear_triton
@@ -20,6 +20,7 @@ if HAS_TRITON:
 
     __all__ = [
         "llama_context_attn_fwd",
+        "llama2_context_attn_fwd",
         "bloom_context_attn_fwd",
         "softmax",
         "layer_norm",
