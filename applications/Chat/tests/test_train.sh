@@ -78,6 +78,11 @@ random_choice() {
     echo ${arr[$idx]}
 }
 
+DATA_DIRECTORY="/data/scratch/github_actions/chat"
+if [ ! -d "$DATA_DIRECTORY" ]; then
+  echo "$DATA_DIRECTORY does not exist."
+fi
+
 echo "[Test]: testing sft ..."
 
 # FIXME: This is a hack to skip tests that are not working

@@ -194,7 +194,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default=None, help="path to the prompt dataset")
-    parser.add_argument("--max_datasets_size", type=int, default=50)
+    parser.add_argument("--max_datasets_size", type=int, default=50000)
     parser.add_argument(
         "--strategy",
         choices=["ddp", "colossalai_gemini", "colossalai_zero2"],

@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 from coati.models.base import Actor
 from coati.models.loss import DpoLoss
-from coati.models.utils import calc_masked_log_probs, masked_mean
+from coati.models.utils import calc_masked_log_probs
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
@@ -115,8 +115,8 @@ class DPOTrainer(SLTrainer):
             chosen_input_ids, chosen_attention_mask, reject_input_ids, reject_attention_mask = batch
             # print(chosen_input_ids[0])
             # print('\n\n')
-            print(self.tokenizer.batch_decode(chosen_input_ids, skip_special_tokens=False)[0])
-            print("\n\n")
+            # print(self.tokenizer.batch_decode(chosen_input_ids, skip_special_tokens=False)[0])
+            # print("\n\n")
             # print(chosen_attention_mask[0])
             # print('\n\n')
             chosen_input_ids = chosen_input_ids.to(torch.cuda.current_device())
@@ -127,41 +127,45 @@ class DPOTrainer(SLTrainer):
             reject_mask = reject_attention_mask.clone()
             first_diff_position = torch.argmax((chosen_input_ids != reject_input_ids).float(), dim=1)
             for i in range(chosen_mask.size(0)):
-                chosen_mask[i, : first_diff_position[i]] = 0
-                reject_mask[i, : first_diff_position[i]] = 0
+                chosen_mask[i, : first_diff_position[i]] = False
+                reject_mask[i, : first_diff_position[i]] = False
 
             # print(chosen_input_ids[0])
             # print(reject_input_ids[0])
             # set the mask value correspond to the first padding token to 1
 
-            actor_chosen_logits = self.actor(chosen_input_ids, chosen_attention_mask)["logits"].to(torch.float32)
-            actor_reject_logits = self.actor(reject_input_ids, reject_attention_mask)["logits"].to(torch.float32)
+            actor_chosen_logits = self.actor(chosen_input_ids, chosen_attention_mask)["logits"]
+            actor_reject_logits = self.actor(reject_input_ids, reject_attention_mask)["logits"]
 
-            print(self.tokenizer.batch_decode(chosen_input_ids * chosen_mask, skip_special_tokens=False)[0])
-            print("\n\n")
+            # print(self.tokenizer.batch_decode(chosen_input_ids * chosen_mask, skip_special_tokens=False)[0])
+            # print("\n\n")
             # print(chosen_mask[0])
             # print('\n\n')
             logprob_actor_chosen = calc_masked_log_probs(actor_chosen_logits, chosen_input_ids, chosen_mask[:, 1:])
-            print(logprob_actor_chosen[0])
-            print("\n\n")
-            exit()
+            # print(logprob_actor_chosen[0])
+            # print("\n\n")
             logprob_actor_reject = calc_masked_log_probs(actor_reject_logits, reject_input_ids, reject_mask[:, 1:])
             if not self.disable_reference:
                 with torch.no_grad():
-                    ref_chosen_logits = self.ref_model(chosen_input_ids, chosen_attention_mask)["logits"].to(
-                        torch.float32
-                    )
-                    ref_reject_logits = self.ref_model(reject_input_ids, reject_attention_mask)["logits"].to(
-                        torch.float32
-                    )
+                    ref_chosen_logits = self.ref_model(chosen_input_ids, chosen_attention_mask)["logits"]
+                    ref_reject_logits = self.ref_model(reject_input_ids, reject_attention_mask)["logits"]
                     logprob_ref_chosen = calc_masked_log_probs(ref_chosen_logits, chosen_input_ids, chosen_mask[:, 1:])
                     logprob_ref_reject = calc_masked_log_probs(ref_reject_logits, reject_input_ids, reject_mask[:, 1:])
             else:
                 logprob_ref_chosen = None
                 logprob_ref_reject = None
-
+            # print(logprob_ref_chosen[0])
+            # print("\n\n")
+            # exit()
             losses, chosen_rewards, rejected_rewards = self.actor_loss_fn(
-                logprob_actor_chosen, logprob_actor_reject, logprob_ref_chosen, logprob_ref_reject
+                logprob_actor_chosen.sum(-1) / chosen_mask[:, 1:].float().sum(-1),
+                logprob_actor_reject.sum(-1) / reject_mask[:, 1:].float().sum(-1),
+                logprob_ref_chosen.sum(-1) / chosen_mask[:, 1:].float().sum(-1)
+                if logprob_ref_chosen is not None
+                else None,
+                logprob_ref_reject.sum(-1) / reject_mask[:, 1:].float().sum(-1)
+                if logprob_ref_reject is not None
+                else None,
             )
             # print(chosen_rewards[0])
             # print(rejected_rewards[0])
@@ -169,26 +173,25 @@ class DPOTrainer(SLTrainer):
             reward_accuracies = (chosen_rewards > rejected_rewards).float()
 
             loss = losses.mean()
-
             self.strategy.backward(loss, self.actor, self.optimizer)
             self.strategy.optimizer_step(self.optimizer)
             self.optimizer.zero_grad()
             self.actor_scheduler.step()
+            # print((losses*loss_mask)[0])
+            # exit()
 
             if self.writer:
                 self.writer.add_scalar("train/loss", loss, self.num_train_step)
                 self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
-                self.writer.add_scalar(
-                    "train/chosen_rewards", masked_mean(chosen_rewards, chosen_mask[:, 1:]).mean(), self.num_train_step
-                )
+                self.writer.add_scalar("train/chosen_rewards", chosen_rewards.mean(), self.num_train_step)
                 self.writer.add_scalar(
                     "train/rejected_rewards",
-                    masked_mean(rejected_rewards, reject_mask[:, 1:]).mean(),
+                    rejected_rewards.mean(),
                     self.num_train_step,
                 )
                 self.writer.add_scalar(
                     "train/accuracy",
-                    masked_mean(reward_accuracies, chosen_mask[:, 1:] * reject_mask[:, 1:]).mean(),
+                    reward_accuracies.mean(),
                     self.num_train_step,
                 )
             self.num_train_step += 1
