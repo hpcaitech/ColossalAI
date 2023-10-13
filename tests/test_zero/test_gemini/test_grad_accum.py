@@ -38,7 +38,6 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 
     # Compare gradients.
     for p0, p1 in zip(model.parameters(), torch_model.parameters()):
-        print(p0, p1.grad)
         assert_close(p0, p1.grad, rtol=1e-3, atol=5e-5)
 
     # Release gradient chunks and move them to gradient device.

@@ -93,6 +93,19 @@ model, optimizer, criterion, train_dataloader, _ = booster.boost(model=model,
                                                                     dataloader=train_dataloader)
 ```
 
+目前支持`no_sync()`方法的插件包括 `TorchDDPPlugin` 和 `LowLevelZeroPlugin`（需要设置参数`stage`为1）. `GeminiPlugin` 不支持 `no_sync()` 方法, 但是它可以通过和`pytorch`类似的方式来使用同步的梯度累积。以下是 `GeminiPlugin` 进行梯度累积的代码片段:
+<!--- doc-test-ignore-start -->
+```python
+    output = gemini_model(input)
+    train_loss = criterion(output, label)
+    train_loss = train_loss / GRADIENT_ACCUMULATION
+    booster.backward(train_loss, gemini_optimizer)
+
+    if idx % (GRADIENT_ACCUMULATION - 1) == 0:
+        gemini_optimizer.step() # zero_grad is automatically done
+```
+<!--- doc-test-ignore-end -->
+
 ### 步骤 5. 使用booster训练
 使用booster构建一个普通的训练循环，验证梯度累积。 `param_by_iter` 记录分布训练的信息。
 ```python

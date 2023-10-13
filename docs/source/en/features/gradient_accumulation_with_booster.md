@@ -126,6 +126,19 @@ for idx, (img, label) in enumerate(train_dataloader):
 
 ```
 
+Currently the plugins supporting `no_sync()` method include `TorchDDPPlugin` and `LowLevelZeroPlugin` set to stage 1. `GeminiPlugin` doesn't support `no_sync()` method, but it can also enable synchronized gradient accumulation in a torch-like way. Following is the code snippet of enabling gradient accumulation for `GeminiPlugin`:
+<!--- doc-test-ignore-start -->
+```python
+    output = gemini_model(input)
+    train_loss = criterion(output, label)
+    train_loss = train_loss / GRADIENT_ACCUMULATION
+    booster.backward(train_loss, gemini_optimizer)
+
+    if idx % (GRADIENT_ACCUMULATION - 1) == 0:
+        gemini_optimizer.step() # zero_grad is automatically done
+```
+<!--- doc-test-ignore-end -->
+
 ### Step 6. Invoke Training Scripts
 To verify gradient accumulation, we can just check the change of parameter values. When gradient accumulation is set, parameters are only updated in the last step. You can run the script using this command:
 ```shell
