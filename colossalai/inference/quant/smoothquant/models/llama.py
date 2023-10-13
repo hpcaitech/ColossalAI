@@ -1,5 +1,3 @@
-# Code modified from smoothquant: https://github.com/mit-han-lab/smoothquant
-
 import math
 import os
 import types
@@ -92,7 +90,7 @@ class LLamaSmoothquantAttention(nn.Module):
         out_input_scale: float,
     ):
         int8_module = LLamaSmoothquantAttention(module.hidden_size, module.num_heads)
-        # self.register_buffer("attn_input_scale", torch.tensor([1.0]))
+
         int8_module.attn_input_scale = torch.tensor([attn_input_scale])
 
         int8_module.q_output_scale = torch.tensor([q_output_scale])
@@ -107,10 +105,6 @@ class LLamaSmoothquantAttention(nn.Module):
         int8_module.v_proj = W8A8B8O8Linear.from_float(module.v_proj, attn_input_scale, v_output_scale)
         int8_module.o_proj = W8A8BFP32OFP32Linear.from_float(module.o_proj, out_input_scale)
 
-        # int8_module.q_proj = module.q_proj
-        # int8_module.k_proj = module.k_proj
-        # int8_module.v_proj = module.v_proj
-        # int8_module.o_proj = module.o_proj
         int8_module.out_input_scale = torch.tensor([out_input_scale])
 
         return int8_module
@@ -259,10 +253,8 @@ class LlamaLayerNormQ(torch.nn.Module):
     @staticmethod
     def from_float(module: torch.nn.LayerNorm, output_scale: float):
         assert module.weight.shape[0] == module.weight.numel()
-        # assert module.bias.shape[0] == module.bias.numel()
         q_module = LlamaLayerNormQ(module.weight.shape[0], module.variance_epsilon)
         q_module.weight = module.weight / output_scale
-        # q_module.bias = module.bias / output_scale
         return q_module
 
 
@@ -346,9 +338,6 @@ class LlamaSmoothquantDecoderLayer(nn.Module):
             out_input_scale,
         )
 
-        # int8_decoder_layer.input_layernorm = module.input_layernorm
-        # int8_decoder_layer.self_attn = module.self_attn
-
         int8_decoder_layer.post_attention_layernorm = LlamaLayerNormQ.from_float(
             module.post_attention_layernorm, gate_input_scale
         )
@@ -359,9 +348,6 @@ class LlamaSmoothquantDecoderLayer(nn.Module):
             up_input_scale,
             down_input_scale,
         )
-
-        # int8_decoder_layer.post_attention_layernorm = module.post_attention_layernorm
-        # int8_decoder_layer.mlp = module.mlp
 
         return int8_decoder_layer
 
@@ -641,8 +627,6 @@ def llama_model_forward(
             infer_state.decode_is_contiguous = False
             alloc_mem = infer_state.cache_manager.alloc(batch_size)
             infer_state.decode_mem_index = alloc_mem
-            # infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
-            # infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
             infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
 
     if position_ids is None:
@@ -673,11 +657,7 @@ def llama_model_forward(
     hidden_states = inputs_embeds
 
     if self.gradient_checkpointing and self.training:
-        if use_cache:
-            logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-            )
-            use_cache = False
+        raise NotImplementedError("not implement gradient_checkpointing and training options ")
 
     if past_key_values_length == 0:
         position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(
@@ -701,20 +681,17 @@ def llama_model_forward(
 
         past_key_value = past_key_values[idx] if past_key_values is not None else None
 
-        if self.gradient_checkpointing and self.training:
-            raise NotImplementedError("not implement gradient_checkpointing and training options ")
-        else:
-            layer_outputs = decoder_layer(
-                hidden_states,
-                rotary_emb=(position_cos, position_sin),
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_value=past_key_value,
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                padding_mask=padding_mask,
-                infer_state=infer_state,
-            )
+        layer_outputs = decoder_layer(
+            hidden_states,
+            rotary_emb=(position_cos, position_sin),
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            padding_mask=padding_mask,
+            infer_state=infer_state,
+        )
 
         hidden_states = layer_outputs[0]
         infer_state.decode_layer_id += 1
@@ -836,13 +813,12 @@ class SmoothLlamaForCausalLM(BaseSmoothForCausalLM):
             scale_dict["q_rotary_output_scale"] = (
                 act_dict[f"model.layers.{idx}.self_attn.q_apply_rotary"]["output"] / 127
             )
-
             scale_dict["k_rotary_output_scale"] = (
                 act_dict[f"model.layers.{idx}.self_attn.k_apply_rotary"]["output"] / 127
             )
 
             scale_dict["out_input_scale"] = act_dict[f"model.layers.{idx}.self_attn.o_proj"]["input"] / 127
-            # mlp scales
+
             scale_dict["gate_input_scale"] = act_dict[f"model.layers.{idx}.mlp.gate_proj"]["input"] / 127
             scale_dict["up_input_scale"] = act_dict[f"model.layers.{idx}.mlp.up_proj"]["input"] / 127
             scale_dict["down_input_scale"] = act_dict[f"model.layers.{idx}.mlp.down_proj"]["input"] / 127

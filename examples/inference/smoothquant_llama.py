@@ -2,6 +2,7 @@ import argparse
 import os
 
 import torch
+from datasets import load_dataset
 from transformers import LlamaTokenizer
 
 from colossalai.inference.quant.smoothquant.models.llama import SmoothLlamaForCausalLM
@@ -47,13 +48,15 @@ def main():
     if not os.path.exists(dataset_path):
         print(f"Cannot find the dataset at {args.dataset_path}")
         raise FileNotFoundError
+    dataset = dataset = load_dataset("json", data_files=dataset_path, split="train")
 
+    model.quantized(tokenizer, dataset, num_samples=num_samples, seq_len=seq_len)
     model = model.cuda()
-    model.quantized(tokenizer, dataset_path, num_samples=num_samples, seq_len=seq_len)
 
     model.save_quantized(output_path, model_basename="llama-7b")
 
     model = SmoothLlamaForCausalLM.from_quantized(output_path, model_basename="llama-7b")
+    model = model.cuda()
 
     generate_kwargs = dict(max_new_tokens=16, do_sample=False, use_cache=True)
     input_tokens = tokenizer(["today is "], return_tensors="pt").to("cuda")
