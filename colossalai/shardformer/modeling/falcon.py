@@ -271,7 +271,16 @@ class FalconPipelineForwards:
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
+
         use_cache = use_cache if use_cache is not None else self.config.use_cache
+        if use_cache:
+            logger.warning_once("use_cache=True is not supported for pipeline models at the moment.")
+            use_cache = False
+
+        if past_key_values is not None:
+            logger.warning_once("past_key_values is not supported for pipeline models at the moment.")
+            past_key_values = None
+            
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if past_key_values is None:
