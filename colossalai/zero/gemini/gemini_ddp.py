@@ -338,39 +338,9 @@ class GeminiDDP(ModelWrapper):
                 if not self.accumulating_grads:
                     grad_chunk = self.chunk_manager.init_grad_chunk(chunk)
                 else:
+                    assert chunk.grad_chunk is not None
                     if chunk.grad_chunk not in self.chunk_manager.accessed_chunks:
-                        # Make a backup for gradient accumulated before.
-                        # Here backup gradients should be multiplied, since it will be divided after gradient reduction.
-                        if chunk.grad_chunk.is_gathered:
-                            accumulated_grad = chunk.grad_chunk.cuda_global_chunk.clone().detach().mul_(chunk.pg_size)
-                            accumulated_grad_gathered = True
-                        else:
-                            if chunk.grad_chunk.cuda_shard is not None:
-                                accumulated_grad = chunk.grad_chunk.cuda_shard.clone().detach().mul_(chunk.pg_size)
-                            else:
-                                accumulated_grad = (
-                                    chunk.grad_chunk.cpu_shard.to(get_current_device())
-                                    .clone()
-                                    .detach()
-                                    .mul_(chunk.pg_size)
-                                )
-                            accumulated_grad_gathered = False
-
-                        # Reset grad_chunk, and chunk.grad_chunk will be accessed.
-                        grad_chunk = self.chunk_manager.init_grad_chunk(chunk)
-                        grad_chunk.cuda_global_chunk.zero_()
-
-                        # Add backup gradients to grad_chunk.
-                        if accumulated_grad_gathered:
-                            grad_chunk.cuda_global_chunk.add_(accumulated_grad)
-                        else:
-                            grad_chunk.cuda_global_chunk[grad_chunk.shard_begin : grad_chunk.shard_end].add_(
-                                accumulated_grad
-                            )
-
-                        # Release accumulated_grad
-                        free_storage(accumulated_grad)
-                        accumulated_grad = None
+                        grad_chunk = self.chunk_manager.rearrange_accumulated_grad_chunk(chunk)
                     else:
                         grad_chunk = chunk.grad_chunk
 

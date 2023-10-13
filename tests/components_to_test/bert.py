@@ -52,7 +52,6 @@ def get_training_components():
             hidden_dropout_prob=0.0,
             attention_probs_dropout_prob=0.0,
         )
-        print("building BertForSequenceClassification model")
 
         # adapting huggingface BertForSequenceClassification for single unittest calling interface
         class ModelAdaptor(BertForSequenceClassification):
