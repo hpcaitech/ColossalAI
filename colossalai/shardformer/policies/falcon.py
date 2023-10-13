@@ -3,11 +3,13 @@ from functools import partial
 from typing import Callable, Dict, List
 
 from torch import Tensor, nn
+from torch.nn import Module
 
 import colossalai.shardformer.layer as col_nn
 
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 from ..modeling.falcon import (
+    FalconPipelineForwards,
     build_falcon_alibi_tensor_fn, 
     get_tp_falcon_decoder_layer_forward,
     get_falcon_flash_attention_forward
@@ -147,11 +149,52 @@ class FalconPolicy(Policy):
                 policy=policy,
                 target_key=FalconAttention,
             )
-        print(policy)
         return policy
 
     def postprocess(self):
         return self.model
+
+
+    def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
+        """If under pipeline parallel setting, replacing the original forward method of huggingface
+        to customized forward method, and add this changing to policy."""
+        if self.pipeline_stage_manager:
+            stage_manager = self.pipeline_stage_manager
+            if self.model.__class__.__name__ == "FalconModel":
+                module = self.model
+            else:
+                module = self.model.transformer
+
+            layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replacement = {
+                "forward": partial(
+                    new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
+                )
+            }
+            self.append_or_create_method_replacement(
+                description=method_replacement, policy=policy, target_key=model_cls
+            )
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        assert self.pipeline_stage_manager is not None
+        if self.model.__class__.__name__ == "FalconModel":
+            module = self.model
+        else:
+            module = self.model.transformer
+        stage_manager = self.pipeline_stage_manager
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
+        if stage_manager.is_first_stage():
+            held_layers.append(module.word_embeddings)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.h[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.ln_f)
+
+        return held_layers
+
 
 class FalconModelPolicy(FalconPolicy):
     def __init__(self) -> None:
@@ -159,7 +202,24 @@ class FalconModelPolicy(FalconPolicy):
 
     def module_policy(self):
         policy = super().module_policy()
+
+        from transformers.models.falcon.modeling_falcon import FalconModel
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(
+                model_cls=FalconModel, new_forward=FalconPipelineForwards.falcon_model_forward, policy=policy
+            )
         return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """
+        get pipeline layers for current stage
+        """
+        held_layers = super().get_held_layers()
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """no shared params in falcon model"""
+        return []
     
 class FalconForCausalLMPolicy(FalconPolicy):
     def __init__(self) -> None:
@@ -179,7 +239,32 @@ class FalconForCausalLMPolicy(FalconPolicy):
                 policy=policy,
                 target_key=FalconForCausalLM,
             )
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(
+                model_cls=FalconForCausalLM, new_forward=FalconPipelineForwards.falcon_for_causal_lm_forward, policy=policy
+            )
         return policy
+    
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        stage_manager = self.pipeline_stage_manager
+        held_layers = super().get_held_layers()
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.lm_head)
+        return held_layers
+    
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        falcon_model = self.model
+        if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
+            if id(falcon_model.transformer.word_embeddings.weight) == id(falcon_model.lm_head.weight):
+                # tie weights
+                return [
+                    {
+                        0: falcon_model.transformer.word_embeddings.weight,
+                        self.pipeline_stage_manager.num_stages - 1: falcon_model.lm_head.weight,
+                    }
+                ]
+        return []
     
 class FalconForSequenceClassificationPolicy(FalconPolicy):
     def __init__(self) -> None:
@@ -199,7 +284,26 @@ class FalconForSequenceClassificationPolicy(FalconPolicy):
                 policy=policy,
                 target_key=FalconForSequenceClassification,
             )
+
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(
+                model_cls=FalconForSequenceClassification,
+                new_forward=FalconPipelineForwards.falcon_for_sequence_classification_forward,
+                policy=policy,
+            )
         return policy
+    
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        stage_manager = self.pipeline_stage_manager
+        held_layers = super().get_held_layers()
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.score)
+        return held_layers
+    
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in falcon for sequence classification model"""
+        return []
     
 class FalconForTokenClassificationPolicy(FalconPolicy):
     def __init__(self) -> None:
@@ -225,7 +329,26 @@ class FalconForTokenClassificationPolicy(FalconPolicy):
                 policy=policy,
                 target_key=FalconForTokenClassification,
             )
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(
+                model_cls=FalconForTokenClassification,
+                new_forward=FalconPipelineForwards.falcon_for_token_classification_forward,
+                policy=policy,
+            )
         return policy
+    
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        stage_manager = self.pipeline_stage_manager
+        held_layers = super().get_held_layers()
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.dropout)
+            held_layers.append(self.model.classifier)
+        return held_layers
+    
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in falcon for token classification model"""
+        return []
     
 class FalconForQuestionAnsweringPolicy(FalconPolicy):
     def __init__(self) -> None:
@@ -245,4 +368,22 @@ class FalconForQuestionAnsweringPolicy(FalconPolicy):
                 policy=policy,
                 target_key=FalconForQuestionAnswering,
             )
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(
+                model_cls=FalconForQuestionAnswering,
+                new_forward=FalconPipelineForwards.falcon_for_question_answering_forward,
+                policy=policy,
+            )
         return policy
+    
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        held_layers = super().get_held_layers()
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage():
+            held_layers.append(self.model.qa_outputs)
+        return held_layers
+    
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in falcon for question answering model"""
+        return []

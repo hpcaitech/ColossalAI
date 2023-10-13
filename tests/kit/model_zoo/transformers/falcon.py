@@ -68,8 +68,15 @@ loss_fn_for_classification = lambda x: x.loss
 loss_fn_for_question_answering = lambda x: x.loss
 
 config = transformers.FalconConfig(
-    num_hidden_layers=2, num_attention_heads=4, vocab_size=250880, hidden_dropout=0, attention_dropout=0, hidden_size=64, multi_query=False,
-    new_decoder_architecture=True
+    num_hidden_layers=2, 
+    num_attention_heads=4, 
+    vocab_size=250880, 
+    hidden_dropout=0, 
+    attention_dropout=0, 
+    hidden_size=64, 
+    multi_query=False,
+    new_decoder_architecture=True, 
+    pad_token_id = -1
 )
 
 model_zoo.register(
