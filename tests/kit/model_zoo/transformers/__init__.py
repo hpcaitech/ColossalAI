@@ -4,6 +4,7 @@ from .blip2 import *
 from .bloom import *
 from .chatglm2 import *
 from .gpt import *
+from .gptj import *
 from .llama import *
 from .opt import *
 from .sam import *
