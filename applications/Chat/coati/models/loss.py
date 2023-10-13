@@ -117,7 +117,9 @@ class DpoLoss(nn.Module):
             ref_logratios = logprob_ref_chosen - logprob_ref_reject
         else:
             ref_logratios = 0.0
+        # print("logprob_actor_chosen")
         # print(logprob_actor_chosen[0])
+        # print('\n\n')
         # print(logprob_ref_chosen[0])
 
         pi_logratios = logprob_actor_chosen - logprob_actor_reject

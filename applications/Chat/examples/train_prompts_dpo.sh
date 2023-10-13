@@ -24,4 +24,5 @@ torchrun --standalone --rdzv_endpoint="localhost:12355" --nproc_per_node=4 train
     --max_epoch 2 \
     --save_path '/home/lcyab/data/Anthropic_rlhf/actor/dpo_v0' \
     --pretrain '/home/lcyab/data/Anthropic_rlhf/actor/ppo_pretrain_v0' \
+    --accumulation_steps 2 \
     --use_wandb

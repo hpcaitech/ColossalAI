@@ -139,7 +139,9 @@ def main(args):
     # NOTE: For small models like opt-1.3b, reward model and initial model are not required to be parallelized.
     ref_model = strategy.prepare(ref_model)
 
-    lr_scheduler = CosineAnnealingLR(actor_optim, args.max_epoch * len(train_dataset), eta_min=1e-8)
+    lr_scheduler = CosineAnnealingLR(
+        actor_optim, args.max_epoch * len(train_dataset) / args.accumulation_steps, eta_min=1e-8
+    )
     strategy_dict = strategy.prepare(dict(model=actor, optimizer=actor_optim, lr_scheduler=lr_scheduler))
     actor = strategy_dict["model"]
     actor_optim = strategy_dict["optimizer"]
@@ -166,6 +168,7 @@ def main(args):
         tokenizer=tokenizer,
         max_epochs=args.max_epoch,
         beta=args.beta,
+        accumulation_steps=args.accumulation_steps,
         disable_reference=args.disable_reference,
     )
 
@@ -194,7 +197,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default=None, help="path to the prompt dataset")
-    parser.add_argument("--max_datasets_size", type=int, default=50000)
+    parser.add_argument("--max_datasets_size", type=int, default=500000)
     parser.add_argument(
         "--strategy",
         choices=["ddp", "colossalai_gemini", "colossalai_zero2"],
@@ -209,11 +212,12 @@ if __name__ == "__main__":
     parser.add_argument("--need_optim_ckpt", type=bool, default=False)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--max_epoch", type=int, default=1)
+    parser.add_argument("--accumulation_steps", type=int, default=1)
     parser.add_argument("--max_len", type=int, default=700)
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
     parser.add_argument("--disable_reference", type=bool, default=False)
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--beta", type=float, default=0.1)
     parser.add_argument("--log_dir", default="logs", type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")

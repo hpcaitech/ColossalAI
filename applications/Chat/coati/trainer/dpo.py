@@ -54,6 +54,7 @@ class DPOTrainer(SLTrainer):
         tokenizer: PreTrainedTokenizerBase,
         max_epochs: int = 1,
         beta: float = 0.1,
+        accumulation_steps: int = 1,
         disable_reference: bool = False,
     ) -> None:
         super().__init__(strategy=strategy, max_epochs=max_epochs, model=actor, optimizer=actor_optim)
@@ -64,6 +65,7 @@ class DPOTrainer(SLTrainer):
         self.tokenizer = tokenizer
         self.actor_loss_fn = DpoLoss(beta)
         self.num_train_step = 0
+        self.accumulation_steps = accumulation_steps
         self.disable_reference = disable_reference
         self.device = get_current_device()
 
@@ -168,16 +170,15 @@ class DPOTrainer(SLTrainer):
                 else None,
             )
             # print(chosen_rewards[0])
-            # print(rejected_rewards[0])
             # exit()
             reward_accuracies = (chosen_rewards > rejected_rewards).float()
 
             loss = losses.mean()
             self.strategy.backward(loss, self.actor, self.optimizer)
-            self.strategy.optimizer_step(self.optimizer)
-            self.optimizer.zero_grad()
-            self.actor_scheduler.step()
-            # print((losses*loss_mask)[0])
+            if self.num_train_step % self.accumulation_steps == self.accumulation_steps - 1:
+                self.strategy.optimizer_step(self.optimizer)
+                self.optimizer.zero_grad()
+                self.actor_scheduler.step()
             # exit()
 
             if self.writer:
@@ -199,4 +200,78 @@ class DPOTrainer(SLTrainer):
         step_bar.close()
 
     def _eval(self, epoch: int):
-        """There is no evaluation stage for online learning model"""
+        """
+        Args:
+            epoch int: the number of current epoch
+        """
+        self.actor.eval()
+        self.ref_model.eval()
+        step_bar = trange(
+            len(self.eval_dataloader),
+            desc=f"Epoch {epoch + 1}/{self.max_epochs}",
+            disable=not is_rank_0(),
+        )
+        eval_chosen_reward = []
+        eval_rejected_reward = []
+        eval_loss = []
+        eval_accuracy = []
+        with torch.no_grad():
+            for i, batch in enumerate(self.eval_dataloader):
+                # print(self.tokenizer.batch_decode(batch[0], skip_special_tokens=True))
+                # exit()
+                chosen_input_ids, chosen_attention_mask, reject_input_ids, reject_attention_mask = batch
+                chosen_input_ids = chosen_input_ids.to(torch.cuda.current_device())
+                chosen_attention_mask = chosen_attention_mask.to(torch.cuda.current_device())
+                reject_input_ids = reject_input_ids.to(torch.cuda.current_device())
+                reject_attention_mask = reject_attention_mask.to(torch.cuda.current_device())
+                chosen_mask = chosen_attention_mask.clone()
+                reject_mask = reject_attention_mask.clone()
+                first_diff_position = torch.argmax((chosen_input_ids != reject_input_ids).float(), dim=1)
+                for i in range(chosen_mask.size(0)):
+                    chosen_mask[i, : first_diff_position[i]] = False
+                    reject_mask[i, : first_diff_position[i]] = False
+
+                actor_chosen_logits = self.actor(chosen_input_ids, chosen_attention_mask)["logits"]
+                actor_reject_logits = self.actor(reject_input_ids, reject_attention_mask)["logits"]
+                logprob_actor_chosen = calc_masked_log_probs(actor_chosen_logits, chosen_input_ids, chosen_mask[:, 1:])
+                logprob_actor_reject = calc_masked_log_probs(actor_reject_logits, reject_input_ids, reject_mask[:, 1:])
+                if not self.disable_reference:
+                    ref_chosen_logits = self.ref_model(chosen_input_ids, chosen_attention_mask)["logits"]
+                    ref_reject_logits = self.ref_model(reject_input_ids, reject_attention_mask)["logits"]
+                    logprob_ref_chosen = calc_masked_log_probs(ref_chosen_logits, chosen_input_ids, chosen_mask[:, 1:])
+                    logprob_ref_reject = calc_masked_log_probs(ref_reject_logits, reject_input_ids, reject_mask[:, 1:])
+                else:
+                    logprob_ref_chosen = None
+                    logprob_ref_reject = None
+                losses, chosen_rewards, rejected_rewards = self.actor_loss_fn(
+                    logprob_actor_chosen.sum(-1) / chosen_mask[:, 1:].float().sum(-1),
+                    logprob_actor_reject.sum(-1) / reject_mask[:, 1:].float().sum(-1),
+                    logprob_ref_chosen.sum(-1) / chosen_mask[:, 1:].float().sum(-1)
+                    if logprob_ref_chosen is not None
+                    else None,
+                    logprob_ref_reject.sum(-1) / reject_mask[:, 1:].float().sum(-1)
+                    if logprob_ref_reject is not None
+                    else None,
+                )
+                reward_accuracies = (chosen_rewards > rejected_rewards).float()
+
+                loss = losses.mean()
+                eval_chosen_reward.append(chosen_rewards.mean().item())
+                eval_rejected_reward.append(rejected_rewards.mean().item())
+                eval_loss.append(loss.item())
+                eval_accuracy.append(reward_accuracies.mean().item())
+                step_bar.update()
+        if self.writer:
+            self.writer.add_scalar("eval/loss", sum(eval_loss) / len(eval_loss), epoch)
+            self.writer.add_scalar("eval/chosen_rewards", sum(eval_chosen_reward) / len(eval_chosen_reward), epoch)
+            self.writer.add_scalar(
+                "eval/rejected_rewards",
+                sum(eval_rejected_reward) / len(eval_rejected_reward),
+                epoch,
+            )
+            self.writer.add_scalar(
+                "eval/accuracy",
+                sum(eval_accuracy) / len(eval_accuracy),
+                epoch,
+            )
+        step_bar.close()
