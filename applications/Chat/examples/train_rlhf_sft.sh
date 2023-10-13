@@ -19,12 +19,11 @@ torchrun --standalone --nproc_per_node=1 train_rlhf_sft.py \
     --pretrain "gpt2" \
     --model 'gpt2' \
     --strategy colossalai_zero2 \
-    --save_path '/home/lcyab/data/Anthropic_rlhf/actor/pretrain_v3' \
-    --dataset "/home/lcyab/data/Anthropic_rlhf/pretrain_data.json" \
+    --save_path '/path/to/actor/pretrain_checkpoint' \
+    --dataset "/path/to/pretrain_data.json" \
     --batch_size 4 \
     --accumulation_steps 8 \
     --lr 2e-5 \
     --max_datasets_size 60000 \
     --max_epochs 1 \
     --use_wandb
-

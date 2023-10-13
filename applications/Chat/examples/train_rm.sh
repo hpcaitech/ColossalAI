@@ -21,8 +21,7 @@ torchrun --standalone --nproc_per_node=2 --nnodes=1 train_reward_model.py \
     --strategy colossalai_zero2 \
     --loss_fn 'log_sig' \
     --dataset 'Anthropic/hh-rlhf' \
-    --save_path '/home/lcyab/data/Anthropic_rlhf/reward_model_v2_1' \
+    --save_path '/path/to/reward_model_checkpoint' \
     --use_wandb \
     --batch_size 16 \
     --max_epochs 10
-
