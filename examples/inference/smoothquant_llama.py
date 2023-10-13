@@ -48,7 +48,7 @@ def main():
     if not os.path.exists(dataset_path):
         print(f"Cannot find the dataset at {args.dataset_path}")
         raise FileNotFoundError
-    dataset = dataset = load_dataset("json", data_files=dataset_path, split="train")
+    dataset = load_dataset("json", data_files=dataset_path, split="train")
 
     model.quantized(tokenizer, dataset, num_samples=num_samples, seq_len=seq_len)
     model = model.cuda()

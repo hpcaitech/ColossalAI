@@ -1,7 +1,6 @@
 # Adapted from AutoGPTQ: https://github.com/PanQiWei/AutoGPTQ
 
 import os
-import types
 import warnings
 from abc import abstractmethod
 from functools import partial
@@ -101,10 +100,6 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
         if self.quantized:
             raise EnvironmentError("can't execute quantize because the model is quantized.")
 
-    def to(self, device: Union[str, torch.device]):
-        self.model.to(device)
-        return self
-
     def forward(self, *args, **kwargs):
         return self.model(*args, **kwargs)
 
@@ -187,6 +182,10 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
 
         for fc in fcs:
             fc.weight.mul_(scales.view(1, -1))
+
+    @classmethod
+    def create_quantized_model(model):
+        raise NotImplementedError("Not implement create_quantized_model method")
 
     def save_quantized(
         self,
@@ -446,21 +445,10 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
             model = AutoModelForCausalLM.from_config(
                 config, trust_remote_code=trust_remote_code, torch_dtype=torch_dtype
             )
-            if config.model_type == "llama":
-                from .llama import LlamaSmoothquantDecoderLayer, init_to_get_rotary, llama_model_forward
-
-                llama_config = model.config
-
-                for i, layer in enumerate(model.model.layers):
-                    model.model.layers[i] = LlamaSmoothquantDecoderLayer(llama_config)
-
-                model.model.forward = types.MethodType(llama_model_forward, model.model)
-                cos, sin = init_to_get_rotary(llama_config)
-                model.model.register_buffer("_cos_cached", cos)
-                model.model.register_buffer("_sin_cached", sin)
+            cls.create_quantized_model(model)
             model.tie_weights()
 
-        # == step3: load checkpoint of to quantized-model == #
+        # == step3: load checkpoint to quantized-model == #
         accelerate.utils.modeling.load_checkpoint_in_model(
             model, checkpoint=model_save_name, offload_state_dict=True, offload_buffers=True
         )

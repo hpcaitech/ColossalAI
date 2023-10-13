@@ -23,6 +23,7 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.utils import add_start_docstrings_to_model_forward
 
+from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import (
     copy_kv_cache_to_dest,
     int8_rotary_embedding_fwd,
@@ -30,7 +31,6 @@ from colossalai.kernel.triton import (
     smooth_token_attention_fwd,
 )
 
-from ....tensor_parallel.batch_infer_state import BatchInferState
 from .base_model import BaseSmoothForCausalLM
 from .linear import W8A8B8O8Linear, W8A8BFP32O32LinearSiLU, W8A8BFP32OFP32Linear
 
@@ -784,6 +784,16 @@ class SmoothLlamaForCausalLM(BaseSmoothForCausalLM):
                 qkv = [module.self_attn.q_proj, module.self_attn.k_proj, module.self_attn.v_proj]
                 qkv_input_scales = scales[name + ".self_attn.q_proj"]
                 self.smooth_ln_fcs(attn_ln, qkv, qkv_input_scales, alpha)
+
+    def create_quantized_model(model):
+        llama_config = model.config
+        for i, layer in enumerate(model.model.layers):
+            model.model.layers[i] = LlamaSmoothquantDecoderLayer(llama_config)
+
+        model.model.forward = types.MethodType(llama_model_forward, model.model)
+        cos, sin = init_to_get_rotary(llama_config)
+        model.model.register_buffer("_cos_cached", cos)
+        model.model.register_buffer("_sin_cached", sin)
 
     def quantized(
         self,
