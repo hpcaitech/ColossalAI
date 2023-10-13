@@ -48,7 +48,7 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("keep_gathered", [False, True])
-@parameterize("model_name", ["gpt2"])
+@parameterize("model_name", ["gpt2", "bert"])
 @parameterize("use_grad_checkpoint", [False, True])
 @parameterize("master_weights", [False, True])
 def exam_gemini_grad_acc(
