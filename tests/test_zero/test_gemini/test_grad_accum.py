@@ -49,12 +49,11 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("keep_gathered", [False, True])
 @parameterize("model_name", ["gpt2"])
-@parameterize("use_grad_checkpoint", [False])  # TODO(Baizhou): debug for gradient checkpointing case
+@parameterize("use_grad_checkpoint", [False, True])
 @parameterize("master_weights", [False, True])
 def exam_gemini_grad_acc(
     placement_config, keep_gathered: bool, model_name: str, use_grad_checkpoint: bool, master_weights: bool
 ):
-    # print(placement_config, keep_gathered, use_grad_checkpoint, master_weights, flush=True)
     init_device = get_current_device()
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, _, _, criterion = get_components_func()
@@ -97,7 +96,6 @@ def exam_gemini_grad_acc(
     accum_iter = 4
     for i, (input_ids, label) in enumerate(train_dataloader):
         delay_unscale = False if (i + 1) % accum_iter == 0 else True
-
         input_ids, label = input_ids.cuda(), label.cuda()
 
         set_seed(42 + rank)
