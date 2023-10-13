@@ -1,3 +1,5 @@
+# modified from torch-int: https://github.com/Guangxuan-Xiao/torch-int/blob/main/torch_int/nn/linear.py
+
 import torch
 from torch_int._CUDA import linear_a8_w8_b8_o8, linear_a8_w8_bfp32_ofp32
 from torch_int.functional.quantization import quantize_per_tensor_absmax
