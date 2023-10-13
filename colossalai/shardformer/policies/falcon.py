@@ -7,7 +7,11 @@ from torch import Tensor, nn
 import colossalai.shardformer.layer as col_nn
 
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
-from ..modeling.falcon import build_falcon_alibi_tensor_fn, get_tp_falcon_decoder_layer_forward
+from ..modeling.falcon import (
+    build_falcon_alibi_tensor_fn, 
+    get_tp_falcon_decoder_layer_forward,
+    get_falcon_flash_attention_forward
+)
 __all__ = [
     "FalconPolicy"
 ]
@@ -30,7 +34,7 @@ class FalconPolicy(Policy):
         return self.model
     
     def module_policy(self):
-        from transformers.models.falcon.modeling_falcon import FalconModel, FalconDecoderLayer
+        from transformers.models.falcon.modeling_falcon import FalconModel, FalconDecoderLayer, FalconAttention
 
         if not self.model.config.new_decoder_architecture and self.model.config.multi_query:
             warnings.warn("Falcon dosen't support tensor parallelism when (not new_decoder_architecture and multi_query) is True, will ignore the tensor parallelism flag.")
@@ -135,6 +139,15 @@ class FalconPolicy(Policy):
                 target_key=FalconDecoderLayer,
             )
 
+        if self.shard_config.enable_flash_attention:
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_falcon_flash_attention_forward()
+                },
+                policy=policy,
+                target_key=FalconAttention,
+            )
+        print(policy)
         return policy
 
     def postprocess(self):

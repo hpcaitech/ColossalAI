@@ -135,3 +135,88 @@ def get_tp_falcon_decoder_layer_forward():
         return outputs  # hidden_states, present, attentions
     
     return forward
+
+def get_falcon_flash_attention_forward():
+    try:
+        from xformers.ops import memory_efficient_attention as me_attention
+    except:
+        raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
+    from transformers.models.falcon.modeling_falcon import FalconAttention
+    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
+
+    def forward(
+        self: FalconAttention,
+        hidden_states: torch.Tensor,
+        alibi: Optional[torch.Tensor],
+        attention_mask: torch.Tensor,
+        layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        use_cache: bool = False,
+        output_attentions: bool = False,
+    ):
+        fused_qkv = self.query_key_value(hidden_states)  # [batch_size, seq_length, 3 x hidden_size]
+        num_kv_heads = self.num_heads if self.new_decoder_architecture else self.num_kv_heads
+        # 3 x [batch_size, seq_length, num_heads, head_dim]
+        (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
+
+        batch_size, query_length, _, _ = query_layer.shape
+
+        query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, query_length, self.head_dim)
+        key_layer = key_layer.transpose(1, 2).reshape(
+            batch_size * num_kv_heads,
+            query_length,
+            self.head_dim,
+        )
+        value_layer = value_layer.transpose(1, 2).reshape(batch_size * num_kv_heads, query_length, self.head_dim)
+
+
+        past_kv_length = 0 if layer_past is None else layer_past[0].shape[1]
+        query_layer, key_layer = self.maybe_rotary(query_layer, key_layer, past_kv_length)
+
+
+        if layer_past is not None:
+            past_key, past_value = layer_past
+            # concatenate along seq_length dimension:
+            #  - key: [batch_size * self.num_heads, kv_length, head_dim]
+            #  - value: [batch_size * self.num_heads, kv_length, head_dim]
+            key_layer = torch.cat((past_key, key_layer), dim=1)
+            value_layer = torch.cat((past_value, value_layer), dim=1)
+
+        _, kv_length, _ = key_layer.shape
+        if use_cache:
+            present = (key_layer, value_layer)
+        else:
+            present = None
+
+        attention_mask_float = (attention_mask * 1.0).masked_fill(attention_mask, float("-1e9")).to(query_layer.dtype)
+
+        query_layer_ = query_layer.reshape(batch_size, self.num_heads, -1, self.head_dim).transpose(1, 2).contiguous()
+        key_layer_ = key_layer.reshape(batch_size, num_kv_heads, -1, self.head_dim).transpose(1, 2).contiguous()
+        value_layer_ = value_layer.reshape(batch_size, num_kv_heads, -1, self.head_dim).transpose(1, 2).contiguous()
+
+        if alibi is not None:
+            attention_mask_float = (
+                attention_mask_float + alibi.view(batch_size, self.num_heads, 1, kv_length) * self.beta
+            )
+ 
+        batch_size, src_len = query_layer_.size()[0], query_layer_.size()[1]
+        tgt_len = key_layer_.size()[1]
+        attention_mask_float = attention_mask_float.expand(
+            batch_size, self.num_heads, src_len, tgt_len
+        ).contiguous()
+        context_layer = me_attention(
+            query_layer_,
+            key_layer_,
+            value_layer_,
+            attn_bias=attention_mask_float,
+            scale=self.inv_norm_factor,
+            p=self.attention_dropout.p,
+        )
+        batch_size, seq_length, _, _ = context_layer.shape
+        context_layer = context_layer.reshape(batch_size, seq_length, -1)
+        
+        output_tensor = self.dense(context_layer)
+
+        return output_tensor, present
+
+    return forward
