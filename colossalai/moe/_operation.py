@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -26,11 +26,11 @@ class AllGather(torch.autograd.Function):
         inputs: Tensor,
         group: Optional[ProcessGroup] = None,
         overlap: bool = False,
-    ) -> Tuple[Tensor, Optional[Callable]]:
+    ) -> Tuple[Tensor, Optional[Work]]:
         """
         Returns:
             outputs: Tensor
-            handle: Optional[Callable], if overlap is True
+            handle: Optional[Work], if overlap is True
         """
         assert ctx is not None or not overlap
 
@@ -68,11 +68,11 @@ class ReduceScatter(torch.autograd.Function):
         inputs: Tensor,
         group: Optional[ProcessGroup] = None,
         overlap: bool = False,
-    ) -> Tuple[Tensor, Optional[Callable]]:
+    ) -> Tuple[Tensor, Optional[Work]]:
         """
         Returns:
             outputs: Tensor
-            handle: Optional[Callable], if overlap is True
+            handle: Optional[Work], if overlap is True
         """
         assert ctx is not None or not overlap
 
@@ -111,20 +111,38 @@ class AllToAll(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx: Any, inputs: Tensor, group: Optional[ProcessGroup] = None) -> Tensor:
+    def forward(
+        ctx: Any,
+        inputs: Tensor,
+        group: Optional[ProcessGroup] = None,
+        overlap: bool = False,
+    ) -> Tuple[Tensor, Optional[Work]]:
+        """
+        Returns:
+            outputs: Tensor
+            handle: Optional[Work], if overlap is True
+        """
         if ctx is not None:
             ctx.comm_grp = group
         if not inputs.is_contiguous():
             inputs = inputs.contiguous()
         if dist.get_world_size(group) == 1:
-            return inputs
+            return inputs, None
         output = torch.empty_like(inputs)
-        dist.all_to_all_single(output, inputs, group=group)
-        return output
+        if not overlap:
+            dist.all_to_all_single(output, inputs, group=group)
+            return output, None
+        else:
+            handle = dist.all_to_all_single(output, inputs, group=group, async_op=True)
+            return output, handle
 
     @staticmethod
-    def backward(ctx: Any, *grad_outputs: Tensor) -> Tuple[Tensor, None]:
-        return AllToAll.forward(None, *grad_outputs, ctx.comm_grp), None
+    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None, None]:
+        return (
+            AllToAll.forward(None, grad_outputs[0], ctx.comm_grp)[0],
+            None,
+            None,
+        )
 
 
 class MoeDispatch(torch.autograd.Function):
