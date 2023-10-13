@@ -14,7 +14,6 @@ import torch
 import torch.nn as nn
 import transformers
 from safetensors.torch import save_file as safe_save
-from torch import device
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedModel
 from transformers.modeling_utils import no_init_weights
@@ -23,8 +22,6 @@ from transformers.utils.hub import PushToHubMixin, cached_file
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.inference.tensor_parallel.kvcache_manager import MemoryManager
-
-CPU = device("cpu")
 
 SUPPORTED_MODELS = ["llama"]
 
@@ -204,7 +201,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
         if not self.quantized:
             raise EnvironmentError("can only save quantized model, please execute .quantize first.")
 
-        self.model.to(CPU)
+        self.model.to("cpu")
 
         model_base_name = model_basename  # or f"smooth-"
         if use_safetensors:
@@ -431,7 +428,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
 
         model_save_name = resolved_archive_file
 
-        # == step2: convert model to gptq-model (replace Linear with QuantLinear) == #
+        # == step2: convert model to quantized-model (replace Linear) == #
         def skip(*args, **kwargs):
             pass
 
@@ -463,10 +460,10 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
                 model.model.register_buffer("_sin_cached", sin)
             model.tie_weights()
 
+        # == step3: load checkpoint of to quantized-model == #
         accelerate.utils.modeling.load_checkpoint_in_model(
             model, checkpoint=model_save_name, offload_state_dict=True, offload_buffers=True
         )
-        model = model.to("cuda")
 
         # == step4: set seqlen == #
         model_config = model.config.to_dict()
