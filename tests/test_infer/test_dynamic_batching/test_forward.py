@@ -27,12 +27,20 @@ class args:
     max_total_token_num: int
     batch_max_tokens: int
     eos_id: int
+    model: str
     disable_log_stats: bool
     log_stats_interval: int
 
 
 def run():
-    arg = args(max_total_token_num=42, batch_max_tokens=42, eos_id=0, disable_log_stats=False, log_stats_interval=10)
+    arg = args(
+        max_total_token_num=42,
+        batch_max_tokens=42,
+        eos_id=0,
+        model="llama",
+        disable_log_stats=False,
+        log_stats_interval=10,
+    )
     sampling_params = SamplingParams()
 
     req1 = Req(0, [0, 0, 10, 6, 8], sampling_params)
@@ -54,7 +62,6 @@ def run():
 
     infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
     manager = start_dynamic_batching(arg, tp_engine=infer_engine, waiting_req_list=waiting_list)
-    manager._set_tokenizer(tokenizer_name=model.__class__.__name__)
     asyncio.run(test(manager))
 
 

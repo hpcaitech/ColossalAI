@@ -54,7 +54,7 @@ class DynamicBatchManager:
         self.mem_usage_interval = log_stats_interval * 2
         self._set_tokenizer(tokenizer_name=self.model)
 
-    async def add_req(self, request_id, prompt_ids: List[int], sampling_params: SamplingParams, prompts: str):
+    async def add_req(self, request_id, prompt_ids: List[int], sampling_params: SamplingParams, prompts: str = ""):
         """
         Add new request to req queue, during initialization all requests are held in waiting list.
         """
@@ -315,8 +315,6 @@ def start_dynamic_batching(args, tp_engine, waiting_req_list):
         )
 
     except Exception:
-        batch_manager.clean_up()
-        raise
+        raise RuntimeError("Failed to start dynamic batching")
 
-    batch_manager._set_tokenizer(tokenizer_name=tp_engine.model.__class__.__name__)
     return batch_manager
