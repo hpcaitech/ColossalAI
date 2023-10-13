@@ -480,7 +480,6 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             partition_grad=partition_grad,
             cpu_offload=cpu_offload,
             dp_process_group=dp_process_group,
-            tp_process_group=tp_process_group,
             forced_dtype=forced_dtype,
         )
 
