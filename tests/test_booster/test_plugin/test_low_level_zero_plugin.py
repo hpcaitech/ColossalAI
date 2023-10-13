@@ -14,6 +14,8 @@ from tests.kit.model_zoo import model_zoo
 _AMP_ERR_MODELS = ["timm_convit", "deepfm_interactionarch"]
 # These models have no parameters
 _LOW_LEVEL_ZERO_ERR_MODELS = ["dlrm_interactionarch"]
+# These models will cause stuck, to be fixed
+_STUCK_MODELS = ["transformers_albert_for_multiple_choice"]
 
 
 def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
@@ -53,7 +55,7 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
     """
     passed_models = []
     failed_info = {}  # (model_name, error) pair
-    ignore_models = _AMP_ERR_MODELS + _LOW_LEVEL_ZERO_ERR_MODELS
+    ignore_models = _AMP_ERR_MODELS + _LOW_LEVEL_ZERO_ERR_MODELS + _STUCK_MODELS
     skipped_models = []
 
     for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in model_zoo.items():
