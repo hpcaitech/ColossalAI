@@ -56,7 +56,6 @@ class DynamicBatchManager:
         """
         req = Req(request_id, prompt_ids, sampling_params, prompts)
         self.req_queue.append(req)
-        print("len(self.req_queue): ", len(self.req_queue))
         return
 
 <<<<<<< HEAD
@@ -95,11 +94,6 @@ class DynamicBatchManager:
         counter_count = 0
         #self.running_batch is not None or self.req_queue.waiting_req_list
         while self.running_batch is not None or self.req_queue.waiting_req_list:
-            if self.running_batch is not None : 
-                print("len(self.running_batch): ", len(self.running_batch))
-            else:
-                print("len(self.running_batch): ", 0)
-            print("len(self.req_queue.waiting_req_list): ", len(self.req_queue.waiting_req_list))
             yield from self._step()
             counter_count += 1
             if self.running_batch is not None:

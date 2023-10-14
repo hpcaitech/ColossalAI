@@ -13,6 +13,8 @@ from colossalai.testing import free_port
 
 from colossalai.inference.manager import start_dynamic_batching
 from colossalai.inference.dynamic_batching.ray_init_config  import EngineArgsClass, RooterArgsClass
+from colossalai.inference.dynamic_batching.sampling_params import SamplingParams
+from typing import List
 
 ray_serve_logger = logging.getLogger("ray.serve")
 
@@ -64,7 +66,7 @@ class Worker:
 
         return True
 
-    def generate(self, request_id, prompt, sampling_params) -> str:
+    def generate(self, request_id: str, prompt: str, sampling_params: SamplingParams) -> str:
         
         ray_serve_logger.info(f"text: {prompt}")
 
@@ -77,6 +79,19 @@ class Worker:
         assert final_output is not None
         ray_serve_logger.info(f"Generated text: {final_output}")
         return final_output
+    
+    def add_input(self, request_id: str, prompt: str, sampling_params: SamplingParams):
+        self.start_dynamic_batching.add_input(request_id, sampling_params, prompt)
+        
+    def abort(self,request_id: str):
+        self.start_dynamic_batching.abort(request_id)
+        
+    def step(self):
+        self.start_dynamic_batching._step()
+        
+    def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompt: str):
+        self.start_dynamic_batching.add_req(prompt_ids, sampling_params, request_id, prompt)
+        
 
 class Driver:
     def __init__(self, router_config: RooterArgsClass, engine_config: EngineArgsClass):
@@ -109,7 +124,19 @@ class Driver:
         _ = ray.get(init_rets)
 
     # set batch wait delay in seconds and maximum number of sequences in a batch
-    def generate(self, request_id, prompt, sampling_params):
+    def generate(self, request_id: str, prompt: str, sampling_params: SamplingParams):
         results = ray.get([w.generate.remote(request_id, prompt, sampling_params) for w in self.workers])
         text_res = results[0]  # get any one of the copies
         return text_res
+    
+    def add_input(self, request_id: str, prompt: str, sampling_params: SamplingParams):
+        ray.get([w.add_input.remote(request_id, sampling_params, prompt) for w in self.workers])
+        
+    def abort(self,request_id: str):
+        ray.get([w.abort.remote(request_id) for w in self.workers])
+        
+    def step(self):
+        ray.get([w._step.remote() for w in self.workers])
+        
+    def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompt: str):
+        ray.get([w.add_req.remote(prompt_ids, sampling_params, request_id, prompt) for w in self.workers])
