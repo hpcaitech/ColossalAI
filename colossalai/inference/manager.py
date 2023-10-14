@@ -8,8 +8,6 @@ from .dynamic_batching.sampling_params import SamplingParams
 from .dynamic_batching.stats import Stats
 from .tensor_parallel import TPInferEngine
 
-from transformers import AutoTokenizer
-_FAST_LLAMA_TOKENIZER = "hf-internal-testing/llama-tokenizer"
 
 class DynamicBatchManager:
     def __init__(
@@ -114,26 +112,6 @@ class DynamicBatchManager:
             if self.running_batch is None:
                 time.sleep(0.1)  # 10ms
 
-    def _set_tokenizer(self, tokenizer=None, tokenizer_name: str = "", trust_remote_code: bool = False, use_fast:bool = True,):
-        if tokenizer is not None:
-            self.tokenizer = tokenizer 
-        else:
-            if "llama" in tokenizer_name.lower() and use_fast == True:
-                print(
-                "For some LLaMA-based models, initializing the fast tokenizer may "
-                "take a long time. To eliminate the initialization time, consider "
-                f"using '{_FAST_LLAMA_TOKENIZER}' instead of the original "
-                "tokenizer. This is done automatically in Colossalai.")
-                
-                tokenizer_name = _FAST_LLAMA_TOKENIZER  
-        
-            try: 
-                self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=use_fast,trust_remote_code=trust_remote_code)
-            except TypeError as e:
-                use_fast = False
-                self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=use_fast,trust_remote_code=trust_remote_code)
-
-
     def _step(self):
         """
         Logic for handling requests
@@ -144,14 +122,14 @@ class DynamicBatchManager:
             if new_batch is not None:
                 self.stats_tool.count_prompt_tokens(new_batch)
                 self.running_batch = new_batch
-                yield from self._prefill_batch(self.running_batch)
+                self._prefill_batch(self.running_batch)
                 self._filter_runing_batch()
                 self.has_wait_tokens = 0
             return
 
         if self.has_wait_tokens < self.max_wait_tokens:
             self.stats_tool.count_output_tokens(self.running_batch)
-            yield from self._decode_batch(self.running_batch)
+            self._decode_batch(self.running_batch)
             self._filter_runing_batch()
             self.has_wait_tokens += 1
             return
@@ -159,18 +137,17 @@ class DynamicBatchManager:
             new_mini_batch = self.req_queue.generate_new_batch(self.running_batch)
             if new_mini_batch is not None:
                 self.stats_tool.count_prompt_tokens(new_mini_batch)
-                yield from self._prefill_batch(new_mini_batch)
+                self._prefill_batch(new_mini_batch)
                 if not new_mini_batch.is_clear():
                     self._merge_batch(self.running_batch, new_mini_batch)
                     self.running_batch.merge(new_mini_batch)
                 self.has_wait_tokens = 0
-                
             else:
                 self.stats_tool.count_output_tokens(self.running_batch)
-                yield from self._decode_batch(self.running_batch)
+                self._decode_batch(self.running_batch)
                 self._filter_runing_batch()
                 self.has_wait_tokens += 1
-         
+
         return
 
     def _init_batch(self, batch: Batch, dtype="fp16"):
@@ -206,8 +183,7 @@ class DynamicBatchManager:
         req_to_out_token_id = ans
         self._add_token_id_to_req(batch, req_to_out_token_id)
         has_new_finished_req = batch.mark_finished_req(self.eos_id)
-        yield from self._handle_finish_req(batch, has_new_finished_req)
-        
+        self._handle_finish_req(batch, has_new_finished_req)
         # delete finished reqs
 
     def _decode_batch(self, batch: Batch):
@@ -218,7 +194,7 @@ class DynamicBatchManager:
         req_to_out_token_id = ans
         self._add_token_id_to_req(batch, req_to_out_token_id)
         has_new_finished_req = batch.mark_finished_req(self.eos_id)
-        yield from self._handle_finish_req(batch, has_new_finished_req)
+        self._handle_finish_req(batch, has_new_finished_req)
 
     def _filter_batch(self, batch: Batch):
         batch_id = batch.batch_id
@@ -250,13 +226,11 @@ class DynamicBatchManager:
 
     def _handle_finish_req(self, batch: Batch, has_new_finished_req):
         if has_new_finished_req:
-            finished_reqs=batch.filter_finished()
+            batch.filter_finished()
             if batch.is_clear():
                 self._remove_batch(batch)
             else:
                 self._filter_batch(batch)
-            yield from self._output_process(finished_reqs)
-
 
     def _filter_runing_batch(self):
         if self.running_batch is not None and self.running_batch.is_clear():
