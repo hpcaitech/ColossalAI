@@ -1,0 +1,15 @@
+engine_config:
+  model: /home/lccd/share/model_data/models--decapoda-research--llama-7b-hf/snapshots/5f98eefcc80e437ef68d457ad7bf167c2c6a1348
+  tensor_parallel_size: 2
+  max_batch_size: 4
+  max_input_len: 128
+  max_output_len: 32
+# config for app router deployment
+# Resources assigned to each model replica. This should correspond to Ray AIR ScalingConfig?
+router_config:
+  max_total_token_num: 42
+  batch_max_tokens: 42
+  eos_id: 0
+  disable_log_stats: False
+  log_stats_interval: 10
+  model: /home/lccd/share/model_data/models--decapoda-research--llama-7b-hf/snapshots/5f98eefcc80e437ef68d457ad7bf167c2c6a1348

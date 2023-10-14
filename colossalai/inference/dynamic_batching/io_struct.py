@@ -4,7 +4,7 @@ from .sampling_params import SamplingParams
 
 
 class Req:
-    def __init__(self, request_id, prompt_ids, sample_params: SamplingParams):
+    def __init__(self, request_id, prompt_ids, sample_params: SamplingParams, prompts: str):
         self.request_id = request_id
         self.prompt_ids = prompt_ids
         self.input_len = len(prompt_ids)
@@ -14,6 +14,7 @@ class Req:
         self.output_metadata_list = []
         self.has_generate_finished = False
         self.aborted = False
+        self.prompts = prompts
 
     def to_rpc_obj(self):
         return {
@@ -102,17 +103,21 @@ class Batch:
                 has_new_finish = True
         return has_new_finish
 
-    def filter_finished(self):
+    def filter_finished(self)->List[Req]:
         """
         Filter finished requests from the batch, the finished ones will be removed from 'reqs'.
         """
         # TODO: the logic of return should be defined here.
         unfinished_req = []
+        finished_req = []
         for req in self.reqs:
             if not req.has_generate_finished:
-                unfinished_req.append(req)
+                unfinished_req.append(req)   
+            else:
+                finished_req.append(req)             
         self.reqs = unfinished_req
         self.id_to_reqs = {req.request_id: req for req in self.reqs}
+        return finished_req
 
     def is_clear(self):
         return len(self.reqs) == 0
