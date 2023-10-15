@@ -1,12 +1,15 @@
 from copy import deepcopy
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
 from torch import Tensor, nn
 from torch.distributed import ProcessGroup
 
+from colossalai.cluster import ProcessGroupMesh
 from colossalai.moe.experts import BaseMLPExperts
+from colossalai.moe.manager import MOE_MANAGER
+from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 
 class LoadBalancer:
@@ -15,7 +18,8 @@ class LoadBalancer:
         self,
         experts: BaseMLPExperts,
         gate: nn.Parameter,
-        local_expert_num: float,
+        local_expert_num: int,
+        expert_num: int,
         ep_group: ProcessGroup,
         dp_group: ProcessGroup,
         tolerance: Optional[float] = 0.1,
@@ -24,24 +28,28 @@ class LoadBalancer:
     ) -> None:
         self.experts: BaseMLPExperts = experts
         self.gate: nn.Parameter = gate
-        self.ep_group: ProcessGroup = ep_group
-        self.dp_group: ProcessGroup = dp_group
+        self.moe_ep_group: ProcessGroup = ep_group
+        self.moe_dp_group: ProcessGroup = dp_group
         self.tolerance = tolerance
         self.beam_width = beam_width
         self.group_swap_factor = group_swap_factor
         self.local_expert_num = local_expert_num
+        self.expert_num = expert_num
         self.local_load = None
+        # TODO: use a global process group mesh
+        pp_size = 1 if MOE_MANAGER.pp_size is None else MOE_MANAGER.pp_size
+        global_dp_group = ProcessGroupMesh(pp_size, dist.get_world_size() // pp_size)
+        self.global_dp_group = global_dp_group.get_group_along_axis(1)
 
     def _clear_load(self) -> None:
         self.local_load = None
 
     def _sync_load(self) -> Tensor:
-        # all gather load between ep group
-        new_load = [torch.zeros_like(self.local_load) for _ in range(dist.get_world_size(self.ep_group))]
-        dist.all_gather(new_load, self.local_load, group=self.ep_group)
-        new_load = torch.cat(new_load, dim=0)
+        new_load = self.local_load.clone().detach()
+        # all reduce load between ep group
+        dist.all_reduce(new_load, group=self.moe_ep_group)
         # all reduce load between dp group
-        dist.all_reduce(new_load, group=self.dp_group)
+        dist.all_reduce(new_load, group=self.moe_dp_group)
         return new_load
 
     @staticmethod
@@ -170,12 +178,14 @@ class LoadBalancer:
 
     def _load_to_list(self, load: Tensor) -> List:
         load_len = len(load)
+        assert load_len % self.local_expert_num == 0
         load_list = []
-        for _ in range(load_len):
-            tmp_list = []
-            for j in range(self.local_expert_num):
-                tmp_list.append(float(load[j]))
-            load_list.append(tmp_list)
+        tmp_list = []
+        for i in range(len(load)):
+            tmp_list.append(float(load[i]))
+            if (i + 1) % self.local_expert_num == 0:
+                load_list.append(tmp_list)
+                tmp_list = []
         return load_list
 
     def _search_balance(
@@ -243,44 +253,126 @@ class LoadBalancer:
         else:
             return swap_list
 
-    def _swap_expert(self, swap_list: List) -> None:
-        local_rank = dist.get_rank(self.ep_group)
+    @staticmethod
+    def _swap_expert_single_tensor(
+        weight: nn.Parameter,
+        expert_idx: int,
+        comm_group: ProcessGroup,
+        send_first: bool,
+        comm_rank: int,
+        working_weight: nn.Parameter = None,
+    ):
+        # exchange weight
+        local_weight = weight.data[expert_idx]
+        new_weight = torch.empty_like(local_weight)
+        if send_first:
+            dist.send(local_weight, dst=comm_rank, group=comm_group)
+            dist.recv(new_weight, src=comm_rank, group=comm_group)
+        else:
+            dist.recv(new_weight, src=comm_rank, group=comm_group)
+            dist.send(local_weight, dst=comm_rank, group=comm_group)
+        weight.data[expert_idx] = new_weight
+        if working_weight is not None:
+            working_weight.data[expert_idx] = new_weight.to(working_weight.device).to(working_weight.dtype)
+
+    def _swap_expert_param_and_optim(
+        self,
+        weight: nn.Parameter,
+        expert_idx: int,
+        comm_group: ProcessGroup,
+        send_first: bool,
+        comm_rank: int,
+        optim: LowLevelZeroOptimizer,
+    ):
+        # need to update master and working param if master param exists
+        # else just update working param
+        if weight in optim.optim.state:
+            master_weight_ptr = weight
+            working_weight_ptr = None
+        else:
+            master_weight_ptr = optim._param_store.working_to_master_param[id(weight)]
+            working_weight_ptr = master_weight_ptr
+        exp_avg_ptr = optim.optim.state[master_weight_ptr]['exp_avg']
+        exp_avg_sq_ptr = optim.optim.state[master_weight_ptr]['exp_avg_sq']
+
+        # exchange weight
+        self._swap_expert_single_tensor(master_weight_ptr, expert_idx, comm_group, send_first, comm_rank,
+                                        working_weight_ptr)
+        # exchange optim
+        self._swap_expert_single_tensor(exp_avg_ptr, expert_idx, comm_group, send_first, comm_rank)
+        self._swap_expert_single_tensor(exp_avg_sq_ptr, expert_idx, comm_group, send_first, comm_rank)
+
+    def gather_global_dp_group(self, data: Tensor) -> Tensor:
+        data_list = [torch.zeros_like(data) for _ in range(dist.get_world_size(self.global_dp_group))]
+        dist.all_gather(data_list, data, group=self.global_dp_group)
+        data_list = torch.cat(data_list, dim=0)
+        return data_list
+
+    def _swap_moe_param(self, swap_list: List, optim: LowLevelZeroOptimizer) -> None:
+        # get all experts weights
+        local_rank = dist.get_rank(self.moe_ep_group)
+        if self.experts.gated:
+            weight_list = [self.experts.wi_up, self.experts.wi_gate]
+        else:
+            weight_list = [self.experts.wi]
+        weight_list.append(self.experts.wo)
+
+        # gate optim should be obtained first
+        local_range = slice(local_rank * self.local_expert_num, (local_rank + 1) * self.local_expert_num)
+        local_gate_shape = self.gate[local_range].shape
+        # get master weight and optim
+        master_gate_weight = optim._param_store.working_to_master_param[id(self.gate)]
+        gate_exp_avg = optim.optim.state[master_gate_weight]['exp_avg']
+        gate_exp_avg_sq = optim.optim.state[master_gate_weight]['exp_avg_sq']
+        # gather
+        global_master_gate_weight = self.gather_global_dp_group(master_gate_weight.view(local_gate_shape))
+        global_gate_exp_avg = self.gather_global_dp_group(gate_exp_avg.view(local_gate_shape))
+        global_gate_exp_avg_sq = self.gather_global_dp_group(gate_exp_avg_sq.view(local_gate_shape))
+        assert self.gate.shape == global_master_gate_weight.shape == global_gate_exp_avg.shape == global_gate_exp_avg_sq.shape
+
         for swap in swap_list:
             source_group, source_idx, target_group, target_idx = swap
             # exchange expert
-            if local_rank == source_group:
-                local_expert = self.experts[source_idx]
-                new_expert = torch.empty_like(local_expert)
-                dist.send(local_expert, dst=target_group, group=self.ep_group)
-                dist.recv(new_expert, src=target_group, group=self.ep_group)
-                self.experts[source_idx] = new_expert
-            elif local_rank == target_group:
-                local_expert = self.experts[target_idx]
-                new_expert = torch.empty_like(local_expert)
-                dist.recv(new_expert, src=source_group, group=self.ep_group)
-                dist.send(local_expert, dst=source_group, group=self.ep_group)
-                self.experts[target_idx] = new_expert
+            if local_rank in [source_group, target_group]:
+                for weight in weight_list:
+                    if local_rank == source_group:
+                        self._swap_expert_param_and_optim(weight, source_idx, self.moe_ep_group, True, target_group,
+                                                          optim)
+                    elif local_rank == target_group:
+                        self._swap_expert_param_and_optim(weight, target_idx, self.moe_ep_group, False, source_group,
+                                                          optim)
             # exchange gate
             source_expert_pos = source_group * self.local_expert_num + source_idx
             target_expert_pos = target_group * self.local_expert_num + target_idx
-            self.gate.data[source_expert_pos], self.gate.data[target_expert_pos] = self.gate.data[
-                target_expert_pos], self.gate.data[source_expert_pos]
+            for gate in [self.gate, global_master_gate_weight, global_gate_exp_avg, global_gate_exp_avg_sq]:
+                origin_source = gate.data[source_expert_pos].clone().detach()
+                origin_target = gate.data[target_expert_pos].clone().detach()
+                gate.data[source_expert_pos], gate.data[target_expert_pos] = origin_target, origin_source
+
+        # update gate
+        master_gate_weight.data.copy_(global_master_gate_weight[local_range].data.view(-1))
+        gate_exp_avg.data.copy_(global_gate_exp_avg[local_range].data.view(-1))
+        gate_exp_avg_sq.data.copy_(global_gate_exp_avg_sq[local_range].data.view(-1))
 
     @torch.no_grad()
     def update_load(self, load: Tensor) -> None:
+        if len(load) != self.expert_num:
+            padding_size = self.expert_num - len(load)
+            padding = torch.zeros(padding_size, dtype=load.dtype, device=load.device)
+            load = torch.cat((load, padding), dim=0)
         if self.local_load is None:
             self.local_load = load
         else:
             self.local_load += load
 
     @torch.no_grad()
-    def balance_load(self) -> None:
+    def balance_load(self, optim: LowLevelZeroOptimizer) -> None:
         # prepare load
         load = self._sync_load()
         load = self._load_to_list(load)
         # search balance
         swap_list = self._search_balance(load)
         # swap expert and gate
-        self._swap_expert(swap_list)
+        self._swap_moe_param(swap_list, optim)
         # clear load
         self._clear_load()

@@ -49,7 +49,7 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
                       beam_width=8,
                       group_swap_factor=0.4)
     zero_model = MoeModel(checkpoint=True)
-    zero_optimizer = torch.optim.Adam(zero_model.parameters())
+    zero_optimizer = torch.optim.Adam(zero_model.parameters(), lr=1)
     plugin = LowLevelZeroPlugin(stage=stage, precision="fp32")
     booster = Booster(plugin=plugin)
     zero_model, zero_optimizer, _, _, _ = booster.boost(zero_model, zero_optimizer)
@@ -59,42 +59,42 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
     torch_model = MoeModel(checkpoint=True)
     for zero_param, torch_param in zip(zero_model.parameters(), torch_model.parameters()):
         torch_param.data.copy_(zero_param.data)
-    torch_optimizer = torch.optim.Adam(torch_model.parameters())
+    torch_optimizer = torch.optim.Adam(torch_model.parameters(), lr=1)
     torch_model = torch_model.cuda()
     grad_handler = MoeGradientHandler(torch_model)
 
     # run to update expert load
     data = torch.randn(16, 4).cuda() / (local_rank + 1)
     label = torch.randint(0, 4, (16,)).cuda()
+
+    # run torch model twice
     run_fwd_bwd(torch_model, data, label, criterion, None)
     grad_handler.handle_gradient()
+    torch_optimizer.step()
+    torch_optimizer.zero_grad()
+    run_fwd_bwd(torch_model, data, label, criterion, None)
+    grad_handler.handle_gradient()
+
+    # get optim and load status in zero model
+    run_fwd_bwd(zero_model, data, label, criterion, zero_optimizer)
+    zero_optimizer.step()
+    zero_optimizer.zero_grad()
     with torch.no_grad():
-        zero_model(data)
+        origin_out = zero_model(data)
 
     # load balance
-    apply_load_balance(zero_model)
+    apply_load_balance(zero_model, zero_optimizer)
 
     # run again to test
-    run_fwd_bwd(zero_model, data, label, criterion, zero_optimizer)
+    zero_out = run_fwd_bwd(zero_model, data, label, criterion, zero_optimizer)
+    torch.allclose(origin_out, zero_out)
 
-    for (zero_name, zero_param), (torch_name, torch_param) in zip(zero_model.module.named_parameters(),
-                                                                  torch_model.named_parameters()):
-        assert zero_name == torch_name
-        zero_grad_list = zero_optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(zero_param))
-        if hasattr(zero_param, "moe_info"):
-            assert len(zero_grad_list) == 0
-            assert torch.allclose(zero_param.grad, torch_param.grad)
-        else:
-            assert len(zero_grad_list) > 0
-            torch_grad_list = split_ddp_grad(torch_param.grad, world_size)
-            if stage == 2:
-                torch_grad_list = torch_grad_list[local_rank:local_rank + 1]
-            assert len(zero_grad_list) == len(torch_grad_list)
-            for zero_grad, torch_grad in zip(zero_grad_list, torch_grad_list):
-                assert torch.allclose(zero_grad, torch_grad), f"{zero_name} {zero_grad} {torch_grad}"
-
-    torch_optimizer.zero_grad()
-    zero_optimizer.zero_grad()
+    # assert optim
+    torch_optimizer.step()
+    torch_out = run_fwd_bwd(torch_model, data, label, criterion, None)
+    zero_optimizer.step()
+    zero_out = run_fwd_bwd(zero_model, data, label, criterion, zero_optimizer)
+    assert torch.allclose(zero_out, torch_out), f"zero_out:{zero_out}\ntorch_out{torch_out}"
 
 
 def run_dist(rank, world_size, port):
@@ -103,7 +103,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [2])
+@pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
 def test_moe_zero_optim(world_size):
     spawn(run_dist, world_size)

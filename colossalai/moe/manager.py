@@ -27,6 +27,7 @@ class MoeManager(metaclass=SingletonMeta):
         self.mode = None
         self.use_kernel_optim = False
         self.use_ep_inside = None
+        self.pp_size = None
 
         # load balance param
         self.load_balance = None

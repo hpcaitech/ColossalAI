@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -110,6 +110,7 @@ class SparseMLP(nn.Module):
                 experts=self.experts,
                 gate=self.gate_weight,
                 local_expert_num=self.num_local_experts,
+                expert_num=self.num_experts,
                 ep_group=self.ep_group,
                 dp_group=self.dp_group,
                 tolerance=MOE_MANAGER.tolerance,
@@ -286,7 +287,7 @@ class SparseMLP(nn.Module):
         return out
 
 
-def apply_load_balance(model: nn.Module) -> None:
+def apply_load_balance(model: nn.Module, optim: Any) -> None:
     """
     apply load balance to every experts in the model
     """
@@ -295,7 +296,7 @@ def apply_load_balance(model: nn.Module) -> None:
         for _, sub_module in module.named_children():
             if isinstance(sub_module, SparseMLP):
                 if sub_module.enable_load_balance == True:
-                    sub_module.load_balancer.balance_load()
+                    sub_module.load_balancer.balance_load(optim)
             _apply_recursive(sub_module)
 
     _apply_recursive(model)
