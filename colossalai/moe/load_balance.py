@@ -9,7 +9,7 @@ from torch.distributed import ProcessGroup
 from colossalai.moe.experts import BaseMLPExperts
 
 
-class LoadBalance:
+class LoadBalancer:
 
     def __init__(
         self,
@@ -284,34 +284,3 @@ class LoadBalance:
         self._swap_expert(swap_list)
         # clear load
         self._clear_load()
-
-
-data = [[9.2, 8.3], [2.3, 10.0], [6.1, 7.2], [5.3, 3.2]]
-data = [
-    [10, 397, 479, 661],
-    [447, 654, 552, 312],
-    [769, 339, 780, 705],
-    [491, 562, 837, 434],
-    [509, 291, 626, 851],
-    [539, 484, 538, 406],
-    [541, 660, 160, 498],
-]
-result, swap_list = LoadBalance()._search_balance(
-    data=data,
-    tolerance=0.1,
-    beam_width=8,
-    group_swap_factor=0.4,
-    return_swapped_data=True,
-)
-if result:
-    print("Balanced Lists:")
-    for sublist in result:
-        print(f"{sublist} sum: {sum(sublist)}")
-else:
-    print("Unable to balance lists within the specified constraints.")
-print(f"Swap List:\n{swap_list}")
-swap_dict = {i: 0 for i in range(len(data))}
-for swap in swap_list:
-    swap_dict[swap[0]] += 1
-    swap_dict[swap[2]] += 1
-print(f"Swap Dict:\n{swap_dict}")

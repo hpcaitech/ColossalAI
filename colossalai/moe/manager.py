@@ -28,6 +28,12 @@ class MoeManager(metaclass=SingletonMeta):
         self.use_kernel_optim = False
         self.use_ep_inside = None
 
+        # load balance param
+        self.load_balance = None
+        self.tolerance = None
+        self.beam_width = None
+        self.group_swap_factor = None
+
         self.has_setup = False
         self._parallel_info_dict = dict()
 
@@ -39,16 +45,22 @@ class MoeManager(metaclass=SingletonMeta):
     def is_initialized(self):
         return self.has_setup
 
-    def setup(self,
-              seed: int,
-              use_kernel_optim: bool = False,
-              parallel: str = None,
-              mode: str = "dynamic",
-              max_ep_size: int = 8,
-              fixed_dp_size: int = 0,
-              fixed_ep_size: int = 0,
-              fixed_pp_size: int = 0,
-              use_ep_inside: bool = True) -> None:
+    def setup(
+        self,
+        seed: int,
+        use_kernel_optim: bool = False,
+        parallel: str = None,
+        mode: str = "dynamic",
+        max_ep_size: int = 8,
+        fixed_dp_size: int = 0,
+        fixed_ep_size: int = 0,
+        fixed_pp_size: int = 0,
+        use_ep_inside: bool = True,
+        enable_load_balance: bool = False,
+        tolerance: float = 0.1,
+        beam_width: int = 8,
+        group_swap_factor: float = 0.4,
+    ) -> None:
         """
         Setup MoE distributed context.
 
@@ -90,6 +102,12 @@ class MoeManager(metaclass=SingletonMeta):
         # Enabling kernel optimization may raise error in some cases
         # Users can close kernel optimization manually
         self.use_kernel_optim = use_kernel_optim
+
+        # update load balance
+        self.load_balance = enable_load_balance
+        self.tolerance = tolerance
+        self.beam_width = beam_width
+        self.group_swap_factor = group_swap_factor
 
         self.has_setup = True
 
