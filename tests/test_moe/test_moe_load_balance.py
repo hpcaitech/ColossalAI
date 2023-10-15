@@ -51,7 +51,7 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
         group_swap_factor=0.4,
     )
     zero_model = MoeModel(checkpoint=True)
-    zero_optimizer = torch.optim.Adam(zero_model.parameters(), lr=1)
+    zero_optimizer = torch.optim.Adam(zero_model.parameters())
     plugin = LowLevelZeroPlugin(stage=stage, precision="fp32")
     booster = Booster(plugin=plugin)
     zero_model, zero_optimizer, _, _, _ = booster.boost(zero_model, zero_optimizer)
@@ -61,7 +61,7 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
     torch_model = MoeModel(checkpoint=True)
     for zero_param, torch_param in zip(zero_model.parameters(), torch_model.parameters()):
         torch_param.data.copy_(zero_param.data)
-    torch_optimizer = torch.optim.Adam(torch_model.parameters(), lr=1)
+    torch_optimizer = torch.optim.Adam(torch_model.parameters())
     torch_model = torch_model.cuda()
     grad_handler = MoeGradientHandler(torch_model)
 
@@ -119,4 +119,4 @@ def test_moe_zero_optim(world_size):
 
 
 if __name__ == "__main__":
-    test_moe_zero_optim(world_size=2)
+    test_moe_zero_optim(world_size=4)
