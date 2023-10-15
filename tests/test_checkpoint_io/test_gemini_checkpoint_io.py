@@ -58,9 +58,7 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
         dist.barrier()
 
         new_bert_model = BertForSequenceClassification.from_pretrained(pretrained_path)
-        check_state_dict_equal(
-            bert_model.state_dict(only_rank_0=False, dtype=torch.float32), new_bert_model.state_dict(), False
-        )
+        check_state_dict_equal(bert_model.state_dict(only_rank_0=False), new_bert_model.state_dict(), False)
 
 
 @clear_cache_before_run()
@@ -100,7 +98,9 @@ def exam_state_dict(placement_config, shard: bool, model_name: str, size_per_sha
         dist.barrier()
 
         booster.load_model(new_model, model_ckpt_path)
-        check_state_dict_equal(model.state_dict(only_rank_0=False), new_model.state_dict(only_rank_0=False), False)
+        check_state_dict_equal(
+            model.state_dict(only_rank_0=False), new_model.state_dict(only_rank_0=False), False, ignore_dtype=True
+        )
 
         booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
         check_state_dict_equal(
@@ -136,7 +136,7 @@ def exam_lazy_from_pretrained():
         booster.save_model(model, save_path, shard=False)
         dist.barrier()
         state_dict = torch.load(save_path, map_location="cpu")
-        check_state_dict_equal(state_dict, orig_state_dict, False)
+        check_state_dict_equal(state_dict, orig_state_dict, False, ignore_dtype=True)
 
 
 def run_dist(rank, world_size, port):

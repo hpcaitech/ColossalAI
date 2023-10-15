@@ -64,7 +64,6 @@
       "label": "Advanced Tutorials",
       "collapsed": true,
       "items": [
-        "advanced_tutorials/train_vit_using_pipeline_parallelism",
         "advanced_tutorials/train_vit_with_hybrid_parallelism",
         "advanced_tutorials/train_gpt_using_hybrid_parallelism",
         "advanced_tutorials/meet_gemini",

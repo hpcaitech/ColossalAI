@@ -53,16 +53,6 @@ def output_transform_fn(x):
         return dict(output=x)
 
 
-def output_transform_fn(x):
-    if isinstance(x, KeyedTensor):
-        output = dict()
-        for key in x.keys():
-            output[key] = x[key]
-        return output
-    else:
-        return dict(output=x)
-
-
 def get_ebc():
     # EmbeddingBagCollection
     eb1_config = EmbeddingBagConfig(name="t1", embedding_dim=SHAPE, num_embeddings=SHAPE, feature_names=["f1"])

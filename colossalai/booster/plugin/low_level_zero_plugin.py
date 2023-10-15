@@ -226,7 +226,7 @@ class LowLevelZeroPlugin(DPPluginBase):
     ```
 
     Args:
-        strage (int, optional): ZeRO stage. Defaults to 1.
+        stage (int, optional): ZeRO stage. Defaults to 1.
         precision (str, optional): precision. Support 'fp16', 'bf16' and 'fp32'. Defaults to 'fp16'.
         initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
         min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
@@ -262,6 +262,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         communication_dtype: Optional[torch.dtype] = None,
         overlap_communication: bool = True,
         cpu_offload: bool = False,
+        master_weights: bool = True,
         verbose: bool = False,
     ) -> None:
         super().__init__()
@@ -272,18 +273,19 @@ class LowLevelZeroPlugin(DPPluginBase):
         self.precision = precision
         self.zero_optim_kwargs = dict(
             initial_scale=initial_scale,
+            min_scale=min_scale,
             growth_factor=growth_factor,
             backoff_factor=backoff_factor,
             growth_interval=growth_interval,
             hysteresis=hysteresis,
-            min_scale=min_scale,
             max_scale=max_scale,
             clip_grad_norm=max_norm,
             reduce_bucket_size=reduce_bucket_size_in_m * 1024 * 1024,
             communication_dtype=communication_dtype,
             overlap_communication=overlap_communication,
-            cpu_offload=cpu_offload,
             partition_grad=(stage == 2),
+            cpu_offload=cpu_offload,
+            master_weights=master_weights,
         )
         self.verbose = verbose
 

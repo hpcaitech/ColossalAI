@@ -44,12 +44,6 @@ We've tested compatibility on some famous models, following models may not be su
 
 - `timm.models.convit_base`
 - dlrm and deepfm models in `torchrec`
-- `diffusers.VQModel`
-- `transformers.AlbertModel`
-- `transformers.AlbertForPreTraining`
-- `transformers.BertModel`
-- `transformers.BertForPreTraining`
-- `transformers.GPT2DoubleHeadsModel`
 
 Compatibility problems will be fixed in the future.
 

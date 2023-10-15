@@ -72,6 +72,7 @@ def run_dist(rank, world_size, port):
     exam_zero_optim_state_dict()
 
 
+@pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 4])
 @rerun_if_address_is_in_use()

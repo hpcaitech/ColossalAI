@@ -44,7 +44,7 @@ BF16_IGNORED_KEYS = [
 
 
 def check_param(model: GeminiDDP, torch_model: torch.nn.Module, dtype: torch.dtype):
-    zero_dict = model.state_dict(only_rank_0=False, dtype=dtype)
+    zero_dict = model.state_dict(only_rank_0=False)
     torch_dict = torch_model.state_dict()
 
     for key, value in torch_dict.items():
