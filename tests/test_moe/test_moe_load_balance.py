@@ -42,12 +42,14 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
     criterion = torch.nn.CrossEntropyLoss()
 
     MOE_MANAGER.__init__()
-    MOE_MANAGER.setup(seed=42,
-                      parallel="EP",
-                      enable_load_balance=True,
-                      tolerance=0.1,
-                      beam_width=8,
-                      group_swap_factor=0.4)
+    MOE_MANAGER.setup(
+        seed=42,
+        parallel="EP",
+        enable_load_balance=True,
+        tolerance=0.1,
+        beam_width=8,
+        group_swap_factor=0.4,
+    )
     zero_model = MoeModel(checkpoint=True)
     zero_optimizer = torch.optim.Adam(zero_model.parameters(), lr=1)
     plugin = LowLevelZeroPlugin(stage=stage, precision="fp32")
@@ -98,7 +100,14 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(
+        config=dict(),
+        rank=rank,
+        world_size=world_size,
+        host="localhost",
+        port=port,
+        backend="nccl",
+    )
     run_zero_optim_test(rank, world_size, stage=1)
 
 
@@ -109,5 +118,5 @@ def test_moe_zero_optim(world_size):
     spawn(run_dist, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_moe_zero_optim(world_size=2)
