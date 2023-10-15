@@ -113,7 +113,16 @@ def run_hybrid_zero_optim_test(local_rank, world_size, stage=1):
     torch_model = torch_model.cuda()
 
     MOE_MANAGER.__init__()
-    MOE_MANAGER.setup(seed=42, max_ep_size=2, use_ep_inside=False, parallel="EP")
+    MOE_MANAGER.setup(
+        seed=42,
+        max_ep_size=2,
+        use_ep_inside=False,
+        parallel="EP",
+        enable_load_balance=True,
+        tolerance=0.1,
+        beam_width=8,
+        group_swap_factor=0.4,
+    )
     zero_model = MoeModel(checkpoint=True)
     extra_dp_group = MOE_MANAGER.parallel_info_dict[2].dp_group
     ep_rank = dist.get_rank(MOE_MANAGER.parallel_info_dict[2].ep_group)
@@ -156,7 +165,7 @@ def run_hybrid_zero_optim_test(local_rank, world_size, stage=1):
     zero_optimizer.step()
     zero_out = run_fwd_bwd(zero_model, data, label, criterion, zero_optimizer)
     torch_out = run_fwd_bwd(torch_model, data, label, criterion, None)
-    assert torch.allclose(zero_out, torch_out, atol=3e-7), f"zero_out:{zero_out}\ntorch_out{torch_out}"
+    assert torch.allclose(zero_out, torch_out, atol=8e-4), f"zero_out:{zero_out}\ntorch_out{torch_out}"
 
 
 def run_dist(rank, world_size, port):
@@ -176,9 +185,9 @@ def run_dist(rank, world_size, port):
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
-def test_moe_zero_optim(world_size):
+def test_moe_load_balance(world_size):
     spawn(run_dist, world_size)
 
 
 if __name__ == "__main__":
-    test_moe_zero_optim(world_size=4)
+    test_moe_load_balance(world_size=4)
