@@ -24,12 +24,12 @@ def test_ray_dist(path: str):
     sampling_params = SamplingParams()
     
     async def get_result(request_id, prompt, sampling_params):
-        return await driver.generate(request_id, prompt, sampling_params)
+        return await driver.async_generate(request_id, prompt, sampling_params)
     
     for test_async in [True, False]:
         if test_async: 
             print("test_async: ", test_async)
-            result = get_result(request_id, prompt, sampling_params)                       
+            result = asyncio.run(get_result(request_id, prompt, sampling_params))                     
             print("result: ", result)
         else:
             print("test_async: ", test_async)
