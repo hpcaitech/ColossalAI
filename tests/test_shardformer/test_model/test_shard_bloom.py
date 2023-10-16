@@ -35,6 +35,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     bloom = unwrap_model(org_model, "BloomModel", "transformer")
     sharded_bloom = unwrap_model(sharded_model, "BloomModel", "transformer")
 
+    norm_layer_for_check = ["word_embeddings_layernorm", "h[0].input_layernorm"]
     row_layer_for_check = ["h[0].self_attention.query_key_value", "word_embeddings"]
     col_layer_for_check = ["h[0].self_attention.dense"]
 
@@ -51,8 +52,21 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         col_layer_grads = get_grad_tensors_for_check(
             bloom, sharded_bloom, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False
         )
+
+        norm_layer_grads = get_grad_tensors_for_check(
+            bloom,
+            sharded_bloom,
+            norm_layer_for_check,
+            tp_group,
+            atol=atol,
+            rtol=rtol,
+            dim=1,
+            verbose=False,
+        )
+
         grads_to_check.update(col_layer_grads)
         grads_to_check.update(row_layer_grads)
+        grads_to_check.update(norm_layer_grads)
 
     # optimizer executes step
     org_optimizer.step()

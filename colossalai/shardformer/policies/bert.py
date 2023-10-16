@@ -32,6 +32,14 @@ __all__ = [
 
 
 class BertPolicy(Policy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        if self.shard_config.enable_fused_normalization:
+            self.Norm = col_nn.FusedLayerNorm
+        else:
+            self.Norm = col_nn.LayerNorm
+
     def config_sanity_check(self):
         pass
 
@@ -140,34 +148,35 @@ class BertPolicy(Policy):
                 target_key=BertModel,
             )
 
-        # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            # Handle bert layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="attention.output.LayerNorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="output.LayerNorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=BertLayer,
-            )
-            # handle embedding layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="LayerNorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    )
-                ],
-                policy=policy,
-                target_key=BertEmbeddings,
-            )
+        # Handle bert layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="attention.output.LayerNorm",
+                    target_module=self.Norm,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+                SubModuleReplacementDescription(
+                    suffix="output.LayerNorm",
+                    target_module=self.Norm,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+            ],
+            policy=policy,
+            target_key=BertLayer,
+        )
+
+        # handle embedding layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="LayerNorm",
+                    target_module=self.Norm,
+                )
+            ],
+            policy=policy,
+            target_key=BertEmbeddings,
+        )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
@@ -219,7 +228,7 @@ class BertPolicy(Policy):
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="transform.LayerNorm",
-                    target_module=col_nn.FusedLayerNorm,
+                    target_module=self.Norm,
                 ),
                 policy=base_policy,
                 target_key=BertLMPredictionHead,
@@ -288,8 +297,8 @@ class BertPolicy(Policy):
 
 # BertModel
 class BertModelPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         policy = super().module_policy()
@@ -313,8 +322,8 @@ class BertModelPolicy(BertPolicy):
 
 # BertForPreTraining
 class BertForPreTrainingPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         policy = super().module_policy()
@@ -355,8 +364,8 @@ class BertForPreTrainingPolicy(BertPolicy):
 
 # BertLMHeadModel
 class BertLMHeadModelPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         policy = super().module_policy()
@@ -396,8 +405,8 @@ class BertLMHeadModelPolicy(BertPolicy):
 
 # BertForMaskedLM
 class BertForMaskedLMPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         policy = super().module_policy()
@@ -437,8 +446,8 @@ class BertForMaskedLMPolicy(BertPolicy):
 
 # BertForSequenceClassification
 class BertForSequenceClassificationPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForSequenceClassification
@@ -484,8 +493,8 @@ class BertForSequenceClassificationPolicy(BertPolicy):
 
 # BertForTokenClassification
 class BertForTokenClassificationPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForTokenClassification
@@ -531,8 +540,8 @@ class BertForTokenClassificationPolicy(BertPolicy):
 
 # BertForNextSentencePrediction
 class BertForNextSentencePredictionPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         policy = super().module_policy()
@@ -564,8 +573,8 @@ class BertForNextSentencePredictionPolicy(BertPolicy):
 
 # BertForMultipleChoice
 class BertForMultipleChoicePolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForMultipleChoice
@@ -610,8 +619,8 @@ class BertForMultipleChoicePolicy(BertPolicy):
 
 
 class BertForQuestionAnsweringPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForQuestionAnswering

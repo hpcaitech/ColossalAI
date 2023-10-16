@@ -21,6 +21,14 @@ from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDe
 
 
 class BloomPolicy(Policy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        if self.shard_config.enable_fused_normalization:
+            self.Norm = col_nn.FusedLayerNorm
+        else:
+            self.Norm = col_nn.LayerNorm
+
     def config_sanity_check(self):
         pass
 
@@ -97,38 +105,39 @@ class BloomPolicy(Policy):
             )
 
         # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            # handle bloom model
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="ln_f",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="word_embeddings_layernorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=BloomModel,
-            )
+        # handle bloom model
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="ln_f",
+                    target_module=self.Norm,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="word_embeddings_layernorm",
+                    target_module=self.Norm,
+                ),
+            ],
+            policy=policy,
+            target_key=BloomModel,
+        )
 
-            # handle bloom block
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="input_layernorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="post_attention_layernorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=BloomBlock,
-            )
+        # handle bloom block
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="input_layernorm",
+                    target_module=self.Norm,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+                SubModuleReplacementDescription(
+                    suffix="post_attention_layernorm",
+                    target_module=self.Norm,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+            ],
+            policy=policy,
+            target_key=BloomBlock,
+        )
 
         if use_sequence_parallel:
             self.append_or_create_method_replacement(
@@ -225,8 +234,8 @@ class BloomPolicy(Policy):
 
 
 class BloomModelPolicy(BloomPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         policy = super().module_policy()
@@ -251,6 +260,9 @@ class BloomModelPolicy(BloomPolicy):
 
 
 class BloomForCausalLMPolicy(BloomPolicy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
     def module_policy(self):
         from transformers.models.bloom.modeling_bloom import BloomForCausalLM
 
@@ -294,6 +306,9 @@ class BloomForCausalLMPolicy(BloomPolicy):
 
 
 class BloomForSequenceClassificationPolicy(BloomPolicy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
     def module_policy(self):
         from transformers.models.bloom.modeling_bloom import BloomForSequenceClassification
 
@@ -330,6 +345,9 @@ class BloomForSequenceClassificationPolicy(BloomPolicy):
 
 
 class BloomForTokenClassificationPolicy(BloomPolicy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
     def module_policy(self):
         from transformers.models.bloom.modeling_bloom import BloomForTokenClassification
 
@@ -374,6 +392,9 @@ class BloomForTokenClassificationPolicy(BloomPolicy):
 
 
 class BloomForQuestionAnsweringPolicy(BloomPolicy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
     # No head sharding as the output features is only 2
     def module_policy(self):
         from transformers.models.bloom.modeling_bloom import BloomForQuestionAnswering

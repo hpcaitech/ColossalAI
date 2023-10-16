@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
 
-from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, RMSNorm, VocabParallelEmbedding1D
 
 from ..modeling.llama import LlamaPipelineForwards, get_llama_flash_attention_forward
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -15,6 +15,14 @@ __all__ = ["LlamaPolicy", "LlamaForCausalLMPolicy", "LlamaForSequenceClassificat
 
 
 class LlamaPolicy(Policy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        if self.shard_config.enable_fused_normalization:
+            self.Norm = FusedRMSNorm
+        else:
+            self.Norm = RMSNorm
+
     def config_sanity_check(self):
         pass
 
@@ -93,30 +101,29 @@ class LlamaPolicy(Policy):
             )
 
         # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="input_layernorm",
-                        target_module=FusedRMSNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="post_attention_layernorm",
-                        target_module=FusedRMSNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=LlamaDecoderLayer,
-            )
-
-            self.append_or_create_submodule_replacement(
-                description=SubModuleReplacementDescription(
-                    suffix="norm",
-                    target_module=FusedRMSNorm,
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="input_layernorm",
+                    target_module=self.Norm,
                 ),
-                policy=policy,
-                target_key=LlamaModel,
-            )
+                SubModuleReplacementDescription(
+                    suffix="post_attention_layernorm",
+                    target_module=self.Norm,
+                ),
+            ],
+            policy=policy,
+            target_key=LlamaDecoderLayer,
+        )
+
+        self.append_or_create_submodule_replacement(
+            description=SubModuleReplacementDescription(
+                suffix="norm",
+                target_module=self.Norm,
+            ),
+            policy=policy,
+            target_key=LlamaModel,
+        )
 
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
@@ -174,8 +181,8 @@ class LlamaPolicy(Policy):
 
 
 class LlamaModelPolicy(LlamaPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         policy = super().module_policy()
@@ -199,6 +206,9 @@ class LlamaModelPolicy(LlamaPolicy):
 
 
 class LlamaForCausalLMPolicy(LlamaPolicy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
     def module_policy(self):
         from transformers import LlamaForCausalLM
 
@@ -251,6 +261,9 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
 
 
 class LlamaForSequenceClassificationPolicy(LlamaPolicy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
     def module_policy(self):
         from transformers import LlamaForSequenceClassification
 

@@ -20,6 +20,20 @@ __all__ = ["ChatGLMPolicy", "ChatGLMModelPolicy", "ChatGLMForConditionalGenerati
 
 
 class ChatGLMPolicy(Policy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        if self.shard_config.enable_fused_normalization:
+            if self.model.config.rmsnorm:
+                self.Norm = col_nn.FusedRMSNorm
+            else:
+                self.Norm = col_nn.FusedLayerNorm
+        else:
+            if self.model.config.rmsnorm:
+                self.Norm = col_nn.RMSNorm
+            else:
+                self.Norm = col_nn.LayerNorm
+
     def config_sanity_check(self):
         pass
 
@@ -96,52 +110,31 @@ class ChatGLMPolicy(Policy):
             )
 
         # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            if not self.model.config.rmsnorm:
-                self.append_or_create_submodule_replacement(
-                    description=[
-                        SubModuleReplacementDescription(suffix="input_layernorm", target_module=col_nn.FusedLayerNorm),
-                        SubModuleReplacementDescription(
-                            suffix="post_attention_layernorm", target_module=col_nn.FusedLayerNorm
-                        ),
-                    ],
-                    policy=policy,
-                    target_key=GLMBlock,
-                )
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="input_layernorm",
+                    target_module=self.Norm,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+                SubModuleReplacementDescription(
+                    suffix="post_attention_layernorm",
+                    target_module=self.Norm,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+            ],
+            policy=policy,
+            target_key=GLMBlock,
+        )
 
-                if self.model.config.post_layer_norm:
-                    self.append_or_create_submodule_replacement(
-                        description=[
-                            SubModuleReplacementDescription(
-                                suffix="encoder.final_layernorm", target_module=col_nn.FusedLayerNorm
-                            )
-                        ],
-                        policy=policy,
-                        target_key=ChatGLMModel,
-                    )
-
-            else:
-                self.append_or_create_submodule_replacement(
-                    description=[
-                        SubModuleReplacementDescription(suffix="input_layernorm", target_module=col_nn.FusedRMSNorm),
-                        SubModuleReplacementDescription(
-                            suffix="post_attention_layernorm", target_module=col_nn.FusedRMSNorm
-                        ),
-                    ],
-                    policy=policy,
-                    target_key=GLMBlock,
-                )
-
-                if self.model.config.post_layer_norm:
-                    self.append_or_create_submodule_replacement(
-                        description=[
-                            SubModuleReplacementDescription(
-                                suffix="encoder.final_layernorm", target_module=col_nn.FusedRMSNorm
-                            )
-                        ],
-                        policy=policy,
-                        target_key=ChatGLMModel,
-                    )
+        if self.model.config.post_layer_norm:
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(suffix="encoder.final_layernorm", target_module=self.Norm)
+                ],
+                policy=policy,
+                target_key=ChatGLMModel,
+            )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
@@ -224,8 +217,8 @@ class ChatGLMPolicy(Policy):
 
 
 class ChatGLMModelPolicy(ChatGLMPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         pass
@@ -247,6 +240,9 @@ class ChatGLMModelPolicy(ChatGLMPolicy):
 
 
 class ChatGLMForConditionalGenerationPolicy(ChatGLMModelPolicy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
     def module_policy(self):
         policy = super().module_policy()
 

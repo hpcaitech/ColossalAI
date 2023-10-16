@@ -27,15 +27,13 @@ class ModelSharder(object):
 
     def __init__(self, model: nn.Module, policy: Policy, shard_config: ShardConfig = None) -> None:
         self.model = model
-        self.policy = get_autopolicy(self.model, shard_config.inference_only) if policy is None else policy
         self.shard_config = shard_config
+        self.policy = get_autopolicy(self.model, shard_config) if policy is None else policy
 
     def shard(self) -> List[Dict[int, Tensor]]:
         r"""
         Shard the model according to the policy
         """
-        self.policy.set_model(self.model)
-        self.policy.set_shard_config(self.shard_config)
         self._preprocess()
         # get shared params before release unheld layers, this avoid misjudgement of shared params (None is None)
         shared_params = self.policy.get_shared_params()
@@ -196,7 +194,7 @@ class ModelSharder(object):
 
             try:
                 replace_layer = target_module.from_native_module(
-                    native_sub_module, self.shard_config.tensor_parallel_process_group, **kwargs
+                    native_sub_module, process_group=self.shard_config.tensor_parallel_process_group, **kwargs
                 )
             except Exception as e:
                 raise RuntimeError(

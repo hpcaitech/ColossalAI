@@ -11,6 +11,7 @@ from torch.nn import Module
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
+from ..layer.normalization import BaseLayerNorm
 from ..layer.parallel_module import ParallelModule
 from ..shard.shard_config import ShardConfig
 
@@ -29,7 +30,7 @@ class SubModuleReplacementDescription:
         ignore_if_not_exist (bool): if the submodule does not exist, ignore it or raise an exception
     """
     suffix: str
-    target_module: ParallelModule
+    target_module: Union[ParallelModule, BaseLayerNorm]
     kwargs: Dict[str, Any] = None
     ignore_if_not_exist: bool = False
 
@@ -70,27 +71,9 @@ class Policy(ABC):
     If you want to define your own policy, you can inherit from this class and overwrite the methods you want to modify.
     """
 
-    def __init__(self) -> None:
-        self.shard_config: Optional[ShardConfig] = None
-        self.model: Optional[Module] = None
-
-    def set_model(self, model: nn.Module) -> None:
-        r"""
-        Set model as an attribute of the Policy object so that we can access the model's attributes.
-
-        Args:
-            model (:class:`nn.Module`): The model to be perform
-        """
-        self.model = model
-
-    def set_shard_config(self, shard_config: ShardConfig) -> None:
-        r"""
-        Set shard config as an attribute of the Policy object.
-
-        Args:
-            shard_config (:class:`ShardConfig`): The shard config to be perform
-        """
-        self.shard_config = shard_config
+    def __init__(self, model: Optional[Module] = None, shard_config: Optional[ShardConfig] = None) -> None:
+        self.model: Optional[Module] = model
+        self.shard_config: Optional[ShardConfig] = shard_config
         self.config_sanity_check()
 
     @property
