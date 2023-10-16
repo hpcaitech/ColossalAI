@@ -50,9 +50,9 @@ SOFTWARE
 #define SIMD_DIV(x, y) _mm512_div_ps(x, y)
 #define SIMD_LOAD_HALF(x) \
   _mm512_cvtph_ps(_mm256_loadu_si256((const __m256i *)(x)))
-#define SIMD_STORE_HALF(x, d) \
-  _mm256_store_ps(            \
-      x, _mm256_castsi256_ps(_mm512_cvtps_ph(d, _MM_FROUND_TO_NEAREST_INT)))
+#define SIMD_STORE_HALF(x, d)                                         \
+  _mm256_storeu_ps((float *)(x), _mm256_castsi256_ps(_mm512_cvtps_ph( \
+                                     d, _MM_FROUND_TO_NEAREST_INT)))
 
 #elif defined(__AVX256__) or defined(__AVX2__)
 #define SIMD_WIDTH 8
@@ -66,9 +66,9 @@ SOFTWARE
 #define SIMD_SQRT(x) _mm256_sqrt_ps(x)
 #define SIMD_DIV(x, y) _mm256_div_ps(x, y)
 #define SIMD_LOAD_HALF(x) _mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)(x)))
-#define SIMD_STORE_HALF(x, d) \
-  _mm_store_ps(               \
-      x, _mm_castsi128_ps(_mm256_cvtps_ph(d, _MM_FROUND_TO_NEAREST_INT)))
+#define SIMD_STORE_HALF(x, d)                                   \
+  _mm_storeu_ps((float *)(x), _mm_castsi128_ps(_mm256_cvtps_ph( \
+                                  d, _MM_FROUND_TO_NEAREST_INT)))
 
 #endif
 
@@ -83,11 +83,12 @@ union AVX_Data {
 
 #endif
 
-#define STEP(SPAN)                                                \
-  void Step_##SPAN(float *_params, float *grads, float *_exp_avg, \
-                   float *_exp_avg_sq, size_t _param_size,        \
-                   bool param_half_precision = false,             \
-                   bool grad_half_precision = false, float loss_scale = -1);
+#define STEP(SPAN)                                                            \
+  void Step_##SPAN(                                                           \
+      float *_params, float *grads, float *_exp_avg, float *_exp_avg_sq,      \
+      size_t _param_size, bool param_half_precision = false,                  \
+      bool grad_half_precision = false, bool momentum_half_precision = false, \
+      bool variance_half_precision = false, float loss_scale = -1);
 
 class Adam_Optimizer {
  public:
@@ -138,6 +139,24 @@ class Adam_Optimizer {
     if (bias_correction == 1) {
       _bias_correction1 = 1 - _betta1_t;
       _bias_correction2 = 1 / sqrt(1 - _betta2_t);
+    }
+  }
+
+  inline void simd_load(bool is_half, float *ptr, __half *h_ptr,
+                        AVX_Data &data) {
+    if (is_half) {
+      data.data = SIMD_LOAD_HALF(h_ptr);
+    } else {
+      data.data = SIMD_LOAD(ptr);
+    }
+  }
+
+  inline void simd_store(bool is_half, float *ptr, __half *h_ptr,
+                         AVX_Data &data) {
+    if (is_half) {
+      SIMD_STORE_HALF(h_ptr, data.data);
+    } else {
+      SIMD_STORE(ptr, data.data);
     }
   }
 

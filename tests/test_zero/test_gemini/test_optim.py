@@ -70,12 +70,14 @@ def check_param(model: GeminiDDP, torch_model: torch.nn.Module, dtype: torch.dty
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("model_name", TEST_MODELS)
 @parameterize("mixed_precision", [torch.half, torch.bfloat16])
-def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dtype):
+@parameterize("master_weights", [True, False])
+def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dtype, master_weights: bool):
     set_seed(42)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
     torch_model = model_builder().cuda()
+    # apex no master weights leads to nan, so we don't use it
     amp_config = dict(opt_level="O2", keep_batchnorm_fp32=False, loss_scale=128)
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
@@ -90,7 +92,9 @@ def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dt
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]["chunk_size"] = 5000
     config_dict[world_size]["keep_gathered"] = False
-    model = GeminiDDP(model, config_dict, **placement_config, mixed_precision=mixed_precision)
+    model = GeminiDDP(
+        model, config_dict, **placement_config, mixed_precision=mixed_precision, master_weights=master_weights
+    )
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = GeminiOptimizer(optimizer, model, initial_scale=128)
@@ -109,12 +113,15 @@ def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dt
 
         torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
         loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
-        assert_close(torch_loss, loss, rtol=rtol, atol=atol)
+        # as no master weights leads to error accumulation, we don't check the loss
+        if master_weights:
+            assert_close(torch_loss, loss, rtol=rtol, atol=atol)
 
         zero_optim.step()
         torch_optim.step()
 
-        check_param(model, torch_model, mixed_precision)
+        if master_weights:
+            check_param(model, torch_model, mixed_precision)
 
 
 @parameterize("placement_config", PLACEMENT_CONFIGS)
