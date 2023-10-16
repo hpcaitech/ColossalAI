@@ -59,7 +59,7 @@ class DynamicBatchManager:
         self.req_queue.append(req)
         return
 
-<<<<<<< HEAD
+
     def add_input(self, request_id, sampling_params, prompts):
         """
         Encode and Add new input to req queue. support one sequence input for now.
@@ -71,13 +71,7 @@ class DynamicBatchManager:
         sampling_params.stop_sentences_to_token_ids(self.tokenizer)
         self.add_req(prompt_ids, sampling_params, request_id, prompts)
         return
-<<<<<<< HEAD
-     
-=======
->>>>>>> 78cd937f... Revert "[inference] Async dynamic batching  (#4894)" (#4909)
-=======
 
->>>>>>> cd843ac8... fix code style
     def abort(self, request_id):
         if self.running_batch is not None:
             for req in self.running_batch.reqs:
@@ -246,7 +240,7 @@ class DynamicBatchManager:
             req.output_metadata_list.append(new_gen_metadata)
         return
 
-<<<<<<< HEAD
+
     def _output_process(self, finished_reqs: List[Req]):
         """
         Process the output of a batch.
@@ -255,18 +249,11 @@ class DynamicBatchManager:
             output = self.tokenizer.decode(req.output_ids)
             yield req.prompts + output
 
-=======
->>>>>>> 78cd937f... Revert "[inference] Async dynamic batching  (#4894)" (#4909)
     def clean_up(self):
         # this logic should be implemented in the future.
         pass
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-    def generate(self,prompts,sampling_params,request_id):
-=======
     def generate(self, prompts, sampling_params, request_id):
->>>>>>> cd843ac8... fix code style
         """
         Generate the output of a request.
         """
@@ -294,24 +281,3 @@ def start_dynamic_batching(args, tp_engine, waiting_req_list):
         raise
 
     return batch_manager
-=======
-
-def start_dynamic_batching(args, tp_engine, waiting_req_list):
-    # try:
-    batch_manager = DynamicBatchManager(
-        tp_engine=tp_engine,
-        max_total_token_num=args.max_total_token_num,
-        batch_max_tokens=args.batch_max_tokens,
-        eos_id=args.eos_id,
-        log_stats=not args.disable_log_stats,
-        log_stats_interval=args.log_stats_interval,
-        waiting_req_list=waiting_req_list,
-    )
-
-    # except Exception:
-    #     batch_manager.clean_up()
-    #     raise
-
-    batch_manager.loop_for_fwd()
-    return
->>>>>>> 78cd937f... Revert "[inference] Async dynamic batching  (#4894)" (#4909)
