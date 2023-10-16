@@ -37,7 +37,11 @@ class Req:
         if self.sample_params.stop_sequences is not None:
             for stop_token_ids in self.sample_params.stop_sequences:
                 stop_len = len(stop_token_ids)
-                if stop_len > 0 and len(self.output_ids) >= stop_len and all(self.output_ids[-(stop_len - i)] == stop_token_ids[i] for i in range(stop_len)):
+                if (
+                    stop_len > 0
+                    and len(self.output_ids) >= stop_len
+                    and all(self.output_ids[-(stop_len - i)] == stop_token_ids[i] for i in range(stop_len))
+                ):
                     return True
         return False
 
@@ -103,7 +107,7 @@ class Batch:
                 has_new_finish = True
         return has_new_finish
 
-    def filter_finished(self)->List[Req]:
+    def filter_finished(self) -> List[Req]:
         """
         Filter finished requests from the batch, the finished ones will be removed from 'reqs'.
         """
@@ -112,9 +116,9 @@ class Batch:
         finished_req = []
         for req in self.reqs:
             if not req.has_generate_finished:
-                unfinished_req.append(req)   
+                unfinished_req.append(req)
             else:
-                finished_req.append(req)             
+                finished_req.append(req)
         self.reqs = unfinished_req
         self.id_to_reqs = {req.request_id: req for req in self.reqs}
         return finished_req

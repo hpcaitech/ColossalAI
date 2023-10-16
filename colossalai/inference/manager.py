@@ -1,13 +1,14 @@
 import time
 from typing import List
 
+from .dynamic_batching.get_tokenizer import get_tokenizer
 from .dynamic_batching.infer_batch import InferBatch
 from .dynamic_batching.io_struct import Batch, Req
 from .dynamic_batching.req_queue import ReqQueue
 from .dynamic_batching.sampling_params import SamplingParams
 from .dynamic_batching.stats import Stats
 from .tensor_parallel import TPInferEngine
-from .dynamic_batching.get_tokenizer import get_tokenizer
+
 
 class DynamicBatchManager:
     def __init__(
@@ -45,7 +46,7 @@ class DynamicBatchManager:
         self.has_wait_tokens = 0
         self.max_wait_tokens = 10
         self.model = model
-        
+
         self.stats_tool = Stats(log_stats, log_stats_interval)
         self.mem_usage_interval = log_stats_interval * 2
         self.tokenizer = get_tokenizer(tokenizer_name=self.model)
@@ -65,13 +66,11 @@ class DynamicBatchManager:
         prompt_ids = self.tokenizer.encode(prompts)
         prompt_len = len(prompt_ids)
         if prompt_len > self.engine.max_input_len:
-            raise ValueError(
-                f"the input prompt token len {prompt_len} is too long > {self.engine.max_input_len}"
-            )
+            raise ValueError(f"the input prompt token len {prompt_len} is too long > {self.engine.max_input_len}")
         sampling_params.stop_sentences_to_token_ids(self.tokenizer)
         self.add_req(prompt_ids, sampling_params, request_id, prompts)
         return
-     
+
     def abort(self, request_id):
         if self.running_batch is not None:
             for req in self.running_batch.reqs:
@@ -89,7 +88,7 @@ class DynamicBatchManager:
         The main loop for a dynamic batching process.
         """
         counter_count = 0
-        #self.running_batch is not None or self.req_queue.waiting_req_list
+        # self.running_batch is not None or self.req_queue.waiting_req_list
         while self.running_batch is not None or self.req_queue.waiting_req_list:
             yield from self._step()
             counter_count += 1
@@ -136,13 +135,13 @@ class DynamicBatchManager:
                     self._merge_batch(self.running_batch, new_mini_batch)
                     self.running_batch.merge(new_mini_batch)
                 self.has_wait_tokens = 0
-                
+
             else:
                 self.stats_tool.count_output_tokens(self.running_batch)
                 yield from self._decode_batch(self.running_batch)
                 self._filter_runing_batch()
                 self.has_wait_tokens += 1
-         
+
         return
 
     def _init_batch(self, batch: Batch, dtype="fp16"):
@@ -179,7 +178,7 @@ class DynamicBatchManager:
         self._add_token_id_to_req(batch, req_to_out_token_id)
         has_new_finished_req = batch.mark_finished_req(self.eos_id)
         yield from self._handle_finish_req(batch, has_new_finished_req)
-        
+
         # delete finished reqs
 
     def _decode_batch(self, batch: Batch):
@@ -222,13 +221,12 @@ class DynamicBatchManager:
 
     def _handle_finish_req(self, batch: Batch, has_new_finished_req):
         if has_new_finished_req:
-            finished_reqs=batch.filter_finished()
+            finished_reqs = batch.filter_finished()
             if batch.is_clear():
                 self._remove_batch(batch)
             else:
                 self._filter_batch(batch)
             yield from self._output_process(finished_reqs)
-
 
     def _filter_runing_batch(self):
         if self.running_batch is not None and self.running_batch.is_clear():
@@ -253,12 +251,13 @@ class DynamicBatchManager:
         # this logic should be implemented in the future.
         pass
 
-    def generate(self,prompts,sampling_params,request_id):
+    def generate(self, prompts, sampling_params, request_id):
         """
         Generate the output of a request.
         """
-        self.add_input(request_id,sampling_params,prompts)
+        self.add_input(request_id, sampling_params, prompts)
         return self.loop_for_fwd()
+
 
 def start_dynamic_batching(args, tp_engine, waiting_req_list):
     try:
