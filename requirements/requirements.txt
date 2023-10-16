@@ -12,3 +12,4 @@ torch>=1.12
 safetensors
 einops
 pydantic
+ray
