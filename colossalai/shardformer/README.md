@@ -235,15 +235,28 @@ class SubModuleReplacementDescription:
 
 
 class Policy(ABC):
+    r"""
+    The base class for all the policies. For each different model, it should have a different policy class,
+    like BertPolicy for Bert Model or OPTPolicy for OPT model.
 
-    def __init__(self)
-        self.model = None
+    Shardformer has provided many built-in sharding policies for the mainstream models. You can use the
+    built-in policies by setting `policy = None`, which is already the default argument for `Shardformer.optimize`.
+    If you want to define your own policy, you can inherit from this class and overwrite the methods you want to modify.
+    """
 
-    def set_model(self, model: nn.Module) -> None:
+    def __init__(self, model: Optional[Module] = None, shard_config: Optional[ShardConfig] = None) -> None:
         """
-        Set model as an attribute of the Policy object so that we can access the model's attributes.
+        Initialize a Policy object.
+
+        This method sets the model and shard configuration for the policy and performs a configuration sanity check.
+
+        Args:
+            model (Optional[Module]): The model to be used with this policy.
+            shard_config (Optional[ShardConfig]): The sharding configuration for the policy.
         """
-        self.model = model
+        self.model: Optional[Module] = model
+        self.shard_config: Optional[ShardConfig] = shard_config
+        self.config_sanity_check()
 
     @abstractmethod
     def preprocess(self) -> nn.Module:

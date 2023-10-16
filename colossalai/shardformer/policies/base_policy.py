@@ -72,6 +72,15 @@ class Policy(ABC):
     """
 
     def __init__(self, model: Optional[Module] = None, shard_config: Optional[ShardConfig] = None) -> None:
+        """
+        Initialize a Policy object.
+
+        This method sets the model and shard configuration for the policy and performs a configuration sanity check.
+
+        Args:
+            model (Optional[Module]): The model to be used with this policy.
+            shard_config (Optional[ShardConfig]): The sharding configuration for the policy.
+        """
         self.model: Optional[Module] = model
         self.shard_config: Optional[ShardConfig] = shard_config
         self.config_sanity_check()
