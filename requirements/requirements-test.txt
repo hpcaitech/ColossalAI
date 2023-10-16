@@ -19,4 +19,5 @@ ninja
 flash_attn==2.0.5
 datasets
 pydantic
+ray
 #auto-gptq now not support torch1.12
