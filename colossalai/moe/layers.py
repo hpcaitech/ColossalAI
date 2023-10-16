@@ -188,7 +188,10 @@ class SparseMLP(nn.Module):
         expert_out = self.experts(expert_in)
         return expert_out
 
-    def _ep_process(self, dispatch_data: torch.Tensor) -> torch.Tensor:
+    def _ep_process(self,
+                    dispatch_data: torch.Tensor,
+                    overlap: bool = True
+                    ) -> torch.Tensor:
         """
         Expert Parallel
 
@@ -198,13 +201,53 @@ class SparseMLP(nn.Module):
         Returns:
             torch.Tensor: (num_experts, capacity, hidden_size)
         """
-        expert_input = AllToAll.apply(dispatch_data, self.ep_group)
-        input_shape = expert_input.shape
-        expert_input = expert_input.reshape(self.ep_size, self.num_local_experts, -1, self.hidden_size)
-        expert_output = self.experts(expert_input)
-        expert_output = expert_output.reshape(input_shape)
-        expert_output = AllToAll.apply(expert_output, self.ep_group)
-        return expert_output
+        if not overlap:
+            expert_input = AllToAll.apply(dispatch_data, self.ep_group)
+            expert_input = expert_input.reshape(self.ep_size, self.num_local_experts, -1, self.hidden_size)
+            expert_output = self.experts(expert_input)
+            expert_output = AllToAll.apply(expert_output, self.ep_group)
+            return expert_output
+
+        else:
+            NUM_CHUNK = 4
+            NUM_STAGES = 4
+
+            assert dispatch_data.shape[1] % NUM_CHUNK == 0, \
+                "arbitrary chunk num is not supported yet"
+            chunk_size = dispatch_data.shape[1] // NUM_CHUNK
+
+            input_shape = (self.ep_size, self.num_local_experts, -1, self.hidden_size)
+            dispatch_data = dispatch_data.reshape(*input_shape)
+            chunk_data = torch.split(dispatch_data, chunk_size, dim=2)
+            output = torch.empty_like(dispatch_data)
+
+            expert_in, in_handle = None, None
+            partial_expert_out = None
+            expert_out, out_handle, offset = None, None, 0
+
+            for i in range(NUM_CHUNK + NUM_STAGES - 1):
+                if out_handle is not None:
+                    out_handle.wait()
+                    output[:, :, offset:offset + chunk_size, :] = expert_out
+                    offset += chunk_size
+                    expert_out, out_handle = None, None
+
+                # reduce scatter last output
+                if partial_expert_out is not None:
+                    expert_out, out_handle = AllToAll.apply(partial_expert_out, self.ep_group, True)
+                    partial_expert_out = None
+
+                # compute
+                if in_handle is not None:
+                    in_handle.wait()
+                    partial_expert_out = self.experts(expert_in)
+                    expert_in, in_handle = None, None
+
+                # all gather next input
+                if 0 <= i < NUM_CHUNK:
+                    expert_in, in_handle = AllToAll.apply(chunk_data[i].contiguous(), self.ep_group, True)
+
+            return output
 
     def _tp_process(self,
                     dispatch_data: torch.Tensor,
@@ -233,7 +276,7 @@ class SparseMLP(nn.Module):
             expert_out = ReduceScatter.apply(partial_expert_out, self.ep_group, False)[0]
             return expert_out
         else:
-            NUM_CHUNK = 4
+            NUM_CHUNK = 2
             NUM_STAGES = 4
 
             assert dispatch_data.shape[0] % NUM_CHUNK == 0, \
