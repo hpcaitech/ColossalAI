@@ -11,6 +11,9 @@
   - [Local English Retrieval QA + Chat](examples/retrieval_conversation_en.py)
   - [Local Bi-lingual Retrieval QA + Chat](examples/retrieval_conversation_universal.py)
   - [Experimental AI Agent Based on Chatgpt + Chat](examples/conversation_agent_chatgpt.py)
+- Use cases
+  - [English customer service chatbot](examples/retrieval_conversation_en_customer_service.py)
+  - [Chinese customer service intent classification](examples/retrieval_intent_classification_zh_customer_service.py)
 
 **As Colossal-AI is undergoing some major updates, this project will be actively maintained to stay in line with the Colossal-AI project.**
 

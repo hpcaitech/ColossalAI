@@ -1,6 +1,6 @@
-'''
+"""
 All custom prompt templates are defined here.
-'''
+"""
 
 from langchain.prompts.prompt import PromptTemplate
 
@@ -38,6 +38,15 @@ _ZH_RETRIEVAL_QA_PROMPT = """你是一个善于解答用户问题的AI助手。�
 
 用户: {question}
 AI:"""
+
+_ZH_RETRIEVAL_CLASSIFICATION_USE_CASE = """使用提供的参考案例判断客户遇到的故障所属的故障原因分类。
+
+背景信息:
+{context}
+
+客服记录:
+{question}
+故障原因分类："""
 
 _ZH_DISAMBIGUATION_PROMPT = """你是一个乐于助人、恭敬而诚实的助手。你总是按照指示去做。
 请用聊天记录中提到的具体名称或实体名称替换给定句子中的任何模糊或有歧义的指代，如果没有提供聊天记录或句子中不包含模糊或有歧义的指代，则只输出原始句子。您的输出应该是消除歧义的句子本身(与“消除歧义的句子:”在同一行中)，并且不包含任何其他内容。
@@ -91,18 +100,16 @@ PROMPT_RETRIEVAL_QA_EN = PromptTemplate(
     template=_EN_RETRIEVAL_QA_PROMPT, input_variables=["question", "chat_history", "context"]
 )
 
-PROMPT_DISAMBIGUATE_EN = PromptTemplate(
-    template=_EN_DISAMBIGUATION_PROMPT, input_variables=["chat_history", "input"]
-)
+PROMPT_DISAMBIGUATE_EN = PromptTemplate(template=_EN_DISAMBIGUATION_PROMPT, input_variables=["chat_history", "input"])
 
-SUMMARY_PROMPT_ZH = PromptTemplate(
-    input_variables=["summary", "new_lines"], template=_CUSTOM_SUMMARIZER_TEMPLATE_ZH
-)
+SUMMARY_PROMPT_ZH = PromptTemplate(input_variables=["summary", "new_lines"], template=_CUSTOM_SUMMARIZER_TEMPLATE_ZH)
 
-PROMPT_DISAMBIGUATE_ZH = PromptTemplate(
-        template=_ZH_DISAMBIGUATION_PROMPT, input_variables=["chat_history", "input"]
-    )
+PROMPT_DISAMBIGUATE_ZH = PromptTemplate(template=_ZH_DISAMBIGUATION_PROMPT, input_variables=["chat_history", "input"])
 
 PROMPT_RETRIEVAL_QA_ZH = PromptTemplate(
     template=_ZH_RETRIEVAL_QA_PROMPT, input_variables=["question", "chat_history", "context"]
+)
+
+PROMPT_RETRIEVAL_CLASSIFICATION_USE_CASE_ZH = PromptTemplate(
+    template=_ZH_RETRIEVAL_CLASSIFICATION_USE_CASE, input_variables=["question", "context"]
 )
