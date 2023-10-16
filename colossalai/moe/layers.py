@@ -300,4 +300,3 @@ def apply_load_balance(model: nn.Module, optim: Any) -> None:
             _apply_recursive(sub_module)
 
     _apply_recursive(model)
-    dist.barrier()

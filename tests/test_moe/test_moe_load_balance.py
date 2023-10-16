@@ -54,7 +54,7 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
     )
     zero_model = MoeModel(checkpoint=True)
     zero_optimizer = torch.optim.Adam(zero_model.parameters())
-    plugin = LowLevelZeroPlugin(stage=stage, precision="fp32")
+    plugin = LowLevelZeroPlugin(stage=stage, precision="bf16", verbose=True)
     booster = Booster(plugin=plugin)
     zero_model, zero_optimizer, _, _, _ = booster.boost(zero_model, zero_optimizer)
 
@@ -64,11 +64,11 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
     for zero_param, torch_param in zip(zero_model.parameters(), torch_model.parameters()):
         torch_param.data.copy_(zero_param.data)
     torch_optimizer = torch.optim.Adam(torch_model.parameters())
-    torch_model = torch_model.cuda()
+    torch_model = torch_model.cuda().bfloat16()
     grad_handler = MoeGradientHandler(torch_model)
 
     # run to update expert load
-    data = torch.randn(16, 4).cuda() / (local_rank + 1)
+    data = torch.randn(16, 4).cuda().bfloat16() / 1000 / (local_rank + 1)
     label = torch.randint(0, 4, (16,)).cuda()
 
     # run torch model twice
