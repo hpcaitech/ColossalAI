@@ -10,7 +10,7 @@ from transformers.models.llama.configuration_llama import LlamaConfig
 import colossalai
 from colossalai.inference.dynamic_batching.io_struct import Req
 from colossalai.inference.dynamic_batching.sampling_params import SamplingParams
-from colossalai.inference.manager import process_data, start_dynamic_batching
+from colossalai.inference.manager import start_dynamic_batching
 from colossalai.inference.tensor_parallel import TPInferEngine
 from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
@@ -32,7 +32,7 @@ class args:
     log_stats_interval: int
 
 
-def run():
+async def run():
     arg = args(
         max_total_token_num=42,
         batch_max_tokens=42,
@@ -62,7 +62,20 @@ def run():
 
     infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
     manager = start_dynamic_batching(arg, tp_engine=infer_engine, waiting_req_list=waiting_list)
-    asyncio.run(test(manager))
+    ans = await manager.generate(request_id=4, sampling_params=sampling_params, prompt_id="i am a")
+    await asyncio.sleep(5)
+    await out(ans)
+    p = await manager.generate(request_id=5, sampling_params=sampling_params, prompt_id="i am a")
+    await asyncio.sleep(5)
+    await out(p)
+    p = await manager.generate(request_id=6, sampling_params=sampling_params, prompt_id="i am a")
+    await asyncio.sleep(5)
+    await out(p)
+
+
+async def out(generator):
+    async for a in generator:
+        print(a)
 
 
 async def test(manager):
@@ -74,7 +87,7 @@ async def test(manager):
 
 def check_dynamic_forward(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    run()
+    asyncio.run(run())
 
 
 @pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")

@@ -43,14 +43,14 @@ class DynamicBatchManager:
         running_max_req_size = self.engine.max_batch_size if self.engine is not None else 2
         self.req_queue = ReqQueue(max_total_token_num, batch_max_tokens, running_max_req_size, waiting_req_list)
         # all the inputs should be put into req_queue: waiting req list
-
+        self.output_queue = asyncio.Queue()
         self.running_batch: Batch = running_batch
         self.eos_id = eos_id
         self.has_wait_tokens = 0
         self.max_wait_tokens = 10
         self.model = model
-
         self.stats_tool = Stats(log_stats, log_stats_interval)
+        self.is_running = False
         self.mem_usage_interval = log_stats_interval * 2
         self._set_tokenizer(tokenizer_name=self.model)
 
@@ -71,7 +71,7 @@ class DynamicBatchManager:
         if prompt_len > self.engine.max_input_len:
             raise ValueError(f"the input prompt token len {prompt_len} is too long > {self.engine.max_input_len}")
         sampling_params.stop_sentences_to_token_ids(self.tokenizer)
-        self.add_req(request_id, prompt_ids, sampling_params, prompts)
+        await self.add_req(request_id, prompt_ids, sampling_params, prompts)
         return
 
     def abort(self, request_id):
@@ -92,24 +92,26 @@ class DynamicBatchManager:
         """
         counter_count = 0
         # self.running_batch is not None or self.req_queue.waiting_req_list
-        while True:
-            if self.running_batch is not None or self.req_queue.waiting_req_list:
-                async for result in self._step():
-                    yield result
-            else:
-                # need to wait for new requests
-                await asyncio.sleep(0.1)
-                continue
-            counter_count += 1
-            if self.running_batch is not None:
-                if counter_count % self.mem_usage_interval == 0:
-                    print(
-                        "current batch size:",
-                        len(self.running_batch.reqs),
-                        "token used ratio:",
-                        self.running_batch.calcu_used_tokens() / self.max_total_token_num,
-                    )
-                self.stats_tool.print_stats()
+        try:
+            while True:
+                if self.running_batch is not None or self.req_queue.waiting_req_list:
+                    await self._step()
+                    counter_count += 1
+                else:
+                    # need to wait for new requests
+                    await asyncio.sleep(0.1)
+                    continue
+            # if self.running_batch is not None:
+            #     if counter_count % self.mem_usage_interval == 0:
+            #         print(
+            #             "current batch size:",
+            #             len(self.running_batch.reqs),
+            #             "token used ratio:",
+            #             self.running_batch.calcu_used_tokens() / self.max_total_token_num,
+            #         )
+            #     self.stats_tool.print_stats()
+        except Exception as e:
+            print("error in fwd", e)
 
     def _set_tokenizer(
         self, tokenizer=None, tokenizer_name: str = "", trust_remote_code: bool = False, use_fast: bool = True
@@ -141,21 +143,20 @@ class DynamicBatchManager:
         """
         Logic for handling requests
         """
-
         if self.running_batch is None:
             new_batch = self.req_queue.generate_new_batch(self.running_batch)
+            print("new_batch", new_batch)
             if new_batch is not None:
                 self.stats_tool.count_prompt_tokens(new_batch)
                 self.running_batch = new_batch
-                async for item in self._prefill_batch(self.running_batch):
-                    yield item
+                await self._prefill_batch(self.running_batch)
                 self._filter_runing_batch()
                 self.has_wait_tokens = 0
             return
 
         if self.has_wait_tokens < self.max_wait_tokens:
             self.stats_tool.count_output_tokens(self.running_batch)
-            self._decode_batch(self.running_batch)
+            await self._decode_batch(self.running_batch)
             self._filter_runing_batch()
             self.has_wait_tokens += 1
             return
@@ -163,8 +164,7 @@ class DynamicBatchManager:
             new_mini_batch = self.req_queue.generate_new_batch(self.running_batch)
             if new_mini_batch is not None:
                 self.stats_tool.count_prompt_tokens(new_mini_batch)
-                async for item in self._prefill_batch(new_mini_batch):
-                    yield item
+                await self._prefill_batch(new_mini_batch)
                 if not new_mini_batch.is_clear():
                     self._merge_batch(self.running_batch, new_mini_batch)
                     self.running_batch.merge(new_mini_batch)
@@ -172,8 +172,7 @@ class DynamicBatchManager:
 
             else:
                 self.stats_tool.count_output_tokens(self.running_batch)
-                async for item in self._decode_batch(self.running_batch):
-                    yield item
+                await self._decode_batch(self.running_batch)
                 self._filter_runing_batch()
                 self.has_wait_tokens += 1
 
@@ -206,14 +205,12 @@ class DynamicBatchManager:
         For all batches, no matter it is a new batch or a mini batch, we need to do prefill first.
         """
         self._init_batch(batch)
-
         # TODO: figure out if cache and batch id is needed
         ans = self.engine._prefill_batch(batch.batch_id)
         req_to_out_token_id = ans
         self._add_token_id_to_req(batch, req_to_out_token_id)
         has_new_finished_req = batch.mark_finished_req(self.eos_id)
-        async for item in self._handle_finish_req(batch, has_new_finished_req):
-            yield item
+        await self._handle_finish_req(batch, has_new_finished_req)
         # delete finished reqs
 
     async def _decode_batch(self, batch: Batch):
@@ -224,8 +221,7 @@ class DynamicBatchManager:
         req_to_out_token_id = ans
         self._add_token_id_to_req(batch, req_to_out_token_id)
         has_new_finished_req = batch.mark_finished_req(self.eos_id)
-        async for item in self._handle_finish_req(batch, has_new_finished_req):
-            yield item
+        await self._handle_finish_req(batch, has_new_finished_req)
 
     def _filter_batch(self, batch: Batch):
         batch_id = batch.batch_id
@@ -262,8 +258,7 @@ class DynamicBatchManager:
                 self._remove_batch(batch)
             else:
                 self._filter_batch(batch)
-            async for item in self._output_process(finished_reqs):
-                yield item
+            await self._output_process(finished_reqs)
 
     def _filter_runing_batch(self):
         if self.running_batch is not None and self.running_batch.is_clear():
@@ -282,23 +277,34 @@ class DynamicBatchManager:
         """
         for req in finished_reqs:
             output = self.tokenizer.decode(req.output_ids)
-            yield req.prompts + output
+            # print(output)
+            await self.output_queue.put((req.request_id, req.prompts, output))
 
     def clean_up(self):
         # this logic should be implemented in the future.
         pass
 
-    async def generate(self, request_id, prompt_id, sampling_params):
+    async def async_generator(self):
+        while True:
+            if self.output_queue.empty():
+                break
+            item = await self.output_queue.get()
+            yield item
+
+    async def generate(self, request_id, sampling_params, prompt_id):
         """
         Generate the output of a request.
         """
 
-        await self.add_input(request_id, prompt_id, sampling_params)
+        await self.add_input(request_id, sampling_params, prompt_id)
 
+        if not self.is_running:
+            self.is_running = True
+            asyncio.create_task(self.loop_for_fwd())
 
-async def process_data(dbm):
-    async for data in dbm.loop_for_fwd():
-        print(data)
+        gen = self.async_generator()
+        print(gen)
+        return gen
 
 
 def start_dynamic_batching(args, tp_engine, waiting_req_list):
