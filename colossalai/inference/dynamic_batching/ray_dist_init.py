@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import os
+from typing import List
 
 import ray
 import ray.util.collective as collective
@@ -7,18 +9,16 @@ import torch
 from transformers import AutoModelForCausalLM
 
 import colossalai
+from colossalai.inference.dynamic_batching.get_tokenizer import get_tokenizer
+from colossalai.inference.dynamic_batching.ray_init_config import EngineArgsClass, RooterArgsClass
+from colossalai.inference.dynamic_batching.sampling_params import SamplingParams
+from colossalai.inference.manager import start_dynamic_batching
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
 from colossalai.shardformer import ShardConfig
 from colossalai.testing import free_port
 
-from colossalai.inference.manager import start_dynamic_batching
-from colossalai.inference.dynamic_batching.ray_init_config  import EngineArgsClass, RooterArgsClass
-from colossalai.inference.dynamic_batching.sampling_params import SamplingParams
-from colossalai.inference.dynamic_batching.get_tokenizer import get_tokenizer
-from typing import List
-import asyncio
-
 ray_serve_logger = logging.getLogger("ray.serve")
+
 
 def log_cuda_info(scope_name: str):
     ray_serve_logger.info(f" {scope_name}: ray.get_gpu_ids(): {ray.get_gpu_ids()}")
@@ -32,9 +32,18 @@ def log_cuda_info(scope_name: str):
     else:
         ray_serve_logger.info(f" {scope_name}: cuda is not available!")
 
+
 @ray.remote(num_gpus=1)
 class Worker:
-    def __init__(self, model_path: str, tensor_parallel_size: int, max_batch_size: int, max_input_len: int, max_output_len: int, router_config: RooterArgsClass):
+    def __init__(
+        self,
+        model_path: str,
+        tensor_parallel_size: int,
+        max_batch_size: int,
+        max_input_len: int,
+        max_output_len: int,
+        router_config: RooterArgsClass,
+    ):
         log_cuda_info("Worker.init")
         self.tensor_parallel_size = tensor_parallel_size
         self.model_path = model_path
@@ -44,7 +53,6 @@ class Worker:
         self.router_config = router_config
 
     def setup(self, world_size, rank, port):
-        
         # initialize a ray collective group, otherwise colossalai distributed env won't be built successfully
         collective.init_collective_group(world_size, rank, "nccl", "default")
         # initialize and set distributed environment
@@ -53,7 +61,7 @@ class Worker:
         log_cuda_info("Worker.setup")
 
         # Load model
-        self.tokenizer = get_tokenizer(tokenizer_name = self.model_path)
+        self.tokenizer = get_tokenizer(tokenizer_name=self.model_path)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.model = AutoModelForCausalLM.from_pretrained(
@@ -69,7 +77,6 @@ class Worker:
         return True
 
     def generate(self, request_id: str, prompt: str, sampling_params: SamplingParams) -> str:
-        
         ray_serve_logger.info(f"text: {prompt}")
 
         results_generator = self.start_dynamic_batching.generate(prompt, sampling_params, request_id)
@@ -81,19 +88,19 @@ class Worker:
         assert final_output is not None
         ray_serve_logger.info(f"Generated text: {final_output}")
         return final_output
-    
+
     def add_input(self, request_id: str, prompt: str, sampling_params: SamplingParams):
         self.start_dynamic_batching.add_input(request_id, sampling_params, prompt)
-        
-    def abort(self,request_id: str):
+
+    def abort(self, request_id: str):
         self.start_dynamic_batching.abort(request_id)
-        
+
     def step(self):
         self.start_dynamic_batching._step()
-        
+
     def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompt: str):
         self.start_dynamic_batching.add_req(prompt_ids, sampling_params, request_id, prompt)
-        
+
 
 class Driver:
     def __init__(self, router_config: RooterArgsClass, engine_config: EngineArgsClass):
@@ -112,7 +119,12 @@ class Driver:
         for i in range(self.num_workers):
             worker_name = "worker_idx_{}".format(i)
             w = Worker.options(name=worker_name).remote(
-                model_path, self.num_workers, engine_config.max_batch_size, engine_config.max_input_len, engine_config.max_output_len, router_config
+                model_path,
+                self.num_workers,
+                engine_config.max_batch_size,
+                engine_config.max_input_len,
+                engine_config.max_output_len,
+                router_config,
             )
             self.workers.append(w)
             init_rets.append(w.setup.remote(self.num_workers, i, available_port))
@@ -130,23 +142,23 @@ class Driver:
         results = ray.get([w.generate.remote(request_id, prompt, sampling_params) for w in self.workers])
         text_res = results[0]  # get any one of the copies
         return text_res
-    
+
     async def async_generate(self, request_id: str, prompt: str, sampling_params: SamplingParams):
         all_outputs = []
         for worker in self.workers:
             all_outputs.append(worker.generate.remote(request_id, prompt, sampling_params))
         all_outputs = await asyncio.gather(*all_outputs)
-        text_res = all_outputs[0]# get any one of the copies
+        text_res = all_outputs[0]  # get any one of the copies
         return text_res
-    
+
     def add_input(self, request_id: str, prompt: str, sampling_params: SamplingParams):
         ray.get([w.add_input.remote(request_id, sampling_params, prompt) for w in self.workers])
-        
-    def abort(self,request_id: str):
+
+    def abort(self, request_id: str):
         ray.get([w.abort.remote(request_id) for w in self.workers])
-        
+
     def step(self):
         ray.get([w._step.remote() for w in self.workers])
-        
+
     def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompt: str):
         ray.get([w.add_req.remote(prompt_ids, sampling_params, request_id, prompt) for w in self.workers])
