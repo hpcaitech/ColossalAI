@@ -183,22 +183,6 @@ def main(args):
             use_wandb=args.use_wandb,
         )
 
-    # if args.lora_rank > 0 and args.merge_lora_weights:
-    #     from coati.models.lora import LORA_MANAGER
-
-    #     # NOTE: set model to eval to merge LoRA weights
-    #     LORA_MANAGER.merge_weights = True
-    #     actor.eval()
-
-    # for i, batch in enumerate(train_dataloader):
-    #     input_id, attn, _, __ = batch
-    #     logits = actor(input_id.to(torch.cuda.current_device()), attn.to(torch.cuda.current_device()))['logits']
-    #     loss = logits.mean()
-    #     strategy.backward(loss, actor, actor_optim)
-    #     strategy.optimizer_step(actor_optim)
-    #     actor_optim.zero_grad()
-    #     actor_lr_scheduler.step()
-
     # save model checkpoint after fitting
     strategy.save_pretrained(actor, path=args.save_path)
     # save optimizer checkpoint on all ranks

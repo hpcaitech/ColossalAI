@@ -101,14 +101,20 @@ for model in ${MODELS[@]}; do
                 echo "[Test]: Skipped $model-$strategy"
                 continue
             fi
+            pretrain=$(get_pretrain $model)
+            pretrain_model=""
+            if [[ $lora_rank -gt 0 ]]; then
+                pretrain_model="--pretrain $pretrain"
+            fi
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$strategy-$lora_rank, attempt $i"
                 torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_dpo_pretrain.py \
                     --dataset "Anthropic/hh-rlhf" \
                     --strategy $strategy \
+                    --model $model \
                     --batch_size 2 \
                     --save_path $EXAMPLES_DIR/dpo_pretrain \
-                    --pretrain $MODELS_DIR/$model \
+                    $pretrain_model \
                     --lora_rank $lora_rank \
                     --save_path $EXAMPLES_DIR/rlhf_models/actor_checkpoint_prompts.pt
                 passed=$?
@@ -143,6 +149,11 @@ for model in ${MODELS[@]}; do
                 echo "[Test]: Skipped $model-$strategy"
                 continue
             fi
+            pretrain=$(get_pretrain $model)
+            pretrain_model=""
+            if [[ $lora_rank -gt 0 ]]; then
+                pretrain_model="--pretrain $pretrain"
+            fi
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$strategy-$lora_rank, attempt $i"
                 torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_prompts_dpo.py \
@@ -150,8 +161,9 @@ for model in ${MODELS[@]}; do
                     --strategy $strategy \
                     --batch_size 2 \
                     --max_epoch 2 \
+                    --model $model \
                     --save_path $EXAMPLES_DIR/dpo \
-                    --pretrain $MODELS_DIR/$model \
+                    $pretrain_model \
                     --accumulation_steps 2
                 passed=$?
                 if [ $passed -eq 0 ]; then
