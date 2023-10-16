@@ -5,6 +5,9 @@ import uuid
 from colossalai.inference.dynamic_batching.ray_dist_init import Driver
 from colossalai.inference.dynamic_batching.ray_init_config import RayInitConfig
 from colossalai.inference.dynamic_batching.sampling_params import SamplingParams
+import colossalai
+import pytest
+from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 
 
 def test_ray_dist(path: str):
@@ -16,8 +19,7 @@ def test_ray_dist(path: str):
     engine_config = config.engine_config_data
     model = engine_config.model
     if model is None or not os.path.exists(model):
-        raise ValueError("Model path not provided or invalid path!")
-
+        return
     driver = Driver(router_config=router_config, engine_config=engine_config)
     prompt = "Introduce some landmarks in Beijing"
 
@@ -38,6 +40,16 @@ def test_ray_dist(path: str):
             result = driver.generate(request_id, prompt, sampling_params)
             print("result: ", result)
 
+def check_dynamic_batching_manager(rank, world_size, port):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    test_ray_dist()
+
+
+@pytest.mark.dist
+@rerun_if_address_is_in_use()
+@clear_cache_before_run()
+def test_dynamic_batching_manager():
+    spawn(check_dynamic_batching_manager, 1)
 
 if __name__ == "__main__":
     path = "config.yaml"
