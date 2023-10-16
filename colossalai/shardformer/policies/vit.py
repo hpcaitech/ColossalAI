@@ -20,6 +20,9 @@ __all__ = ["ViTPolicy", "ViTModelPolicy", "ViTForImageClassificationPolicy", "Vi
 
 
 class ViTPolicy(Policy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
     def config_sanity_check(self):
         pass
 
@@ -159,8 +162,8 @@ class ViTPolicy(Policy):
 
 # ViTModel
 class ViTModelPolicy(ViTPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         from transformers.models.vit.modeling_vit import ViTModel
@@ -186,6 +189,9 @@ class ViTModelPolicy(ViTPolicy):
 
 # ViTForImageClassification
 class ViTForImageClassificationPolicy(ViTPolicy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
     def module_policy(self):
         from transformers.models.vit.modeling_vit import ViTForImageClassification, ViTModel
 
@@ -227,8 +233,8 @@ class ViTForImageClassificationPolicy(ViTPolicy):
 
 # ViTForMaskedImageModeling
 class ViTForMaskedImageModelingPolicy(ViTPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def module_policy(self):
         from transformers.models.vit.modeling_vit import ViTForMaskedImageModeling, ViTModel

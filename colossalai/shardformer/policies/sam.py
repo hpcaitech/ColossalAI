@@ -7,6 +7,14 @@ __all__ = ["SamPolicy", "SamModelPolicy"]
 
 
 class SamPolicy(Policy):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        if self.shard_config.enable_fused_normalization:
+            self.Norm = col_nn.FusedLayerNorm
+        else:
+            self.Norm = col_nn.LayerNorm
+
     def config_sanity_check(self):
         pass
 
@@ -151,58 +159,57 @@ class SamPolicy(Policy):
             )
 
         # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            # Handle SamVisionLayer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="layer_norm1",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="layer_norm2",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=SamVisionLayer,
-            )
+        # Handle SamVisionLayer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="layer_norm1",
+                    target_module=self.Norm,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="layer_norm2",
+                    target_module=self.Norm,
+                ),
+            ],
+            policy=policy,
+            target_key=SamVisionLayer,
+        )
 
-            # Handle SamTwoWayAttentionBlock
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="layer_norm1",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="layer_norm2",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="layer_norm3",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="layer_norm4",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=SamTwoWayAttentionBlock,
-            )
+        # Handle SamTwoWayAttentionBlock
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="layer_norm1",
+                    target_module=self.Norm,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="layer_norm2",
+                    target_module=self.Norm,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="layer_norm3",
+                    target_module=self.Norm,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="layer_norm4",
+                    target_module=self.Norm,
+                ),
+            ],
+            policy=policy,
+            target_key=SamTwoWayAttentionBlock,
+        )
 
-            # Handle SamTwoWayTransformer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="layer_norm_final_attn",
-                        target_module=col_nn.FusedLayerNorm,
-                    )
-                ],
-                policy=policy,
-                target_key=SamTwoWayTransformer,
-            )
+        # Handle SamTwoWayTransformer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="layer_norm_final_attn",
+                    target_module=self.Norm,
+                )
+            ],
+            policy=policy,
+            target_key=SamTwoWayTransformer,
+        )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
@@ -229,5 +236,5 @@ class SamPolicy(Policy):
 
 # SamModel
 class SamModelPolicy(SamPolicy):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)

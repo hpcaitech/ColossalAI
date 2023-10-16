@@ -532,7 +532,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     ############################
 
     # this method is used to sync gradient manually
-    def sync_grad(self):
+    def _sync_grad(self):
         for group_id in range(self.num_param_groups):
             param_group = self._working_param_groups[group_id]
             for param in param_group:
@@ -545,7 +545,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # if not overlapping communication (no reduction hook is attached) when zero1
         # we need to manually reduce these gradients
         if not partition_grad and not self._overlap_communication:
-            self.sync_grad()
+            self._sync_grad()
         else:
             self._run_reduction()
 
