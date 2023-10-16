@@ -4,7 +4,7 @@ import os
 import ray
 import ray.util.collective as collective
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM
 
 import colossalai
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
@@ -14,7 +14,9 @@ from colossalai.testing import free_port
 from colossalai.inference.manager import start_dynamic_batching
 from colossalai.inference.dynamic_batching.ray_init_config  import EngineArgsClass, RooterArgsClass
 from colossalai.inference.dynamic_batching.sampling_params import SamplingParams
+from colossalai.inference.dynamic_batching.get_tokenizer import get_tokenizer
 from typing import List
+import asyncio
 
 ray_serve_logger = logging.getLogger("ray.serve")
 
@@ -51,7 +53,7 @@ class Worker:
         log_cuda_info("Worker.setup")
 
         # Load model
-        self.tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+        self.tokenizer = get_tokenizer(tokenizer_name = self.model_path)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.model = AutoModelForCausalLM.from_pretrained(
@@ -127,6 +129,14 @@ class Driver:
     def generate(self, request_id: str, prompt: str, sampling_params: SamplingParams):
         results = ray.get([w.generate.remote(request_id, prompt, sampling_params) for w in self.workers])
         text_res = results[0]  # get any one of the copies
+        return text_res
+    
+    async def async_generate(self, request_id: str, prompt: str, sampling_params: SamplingParams):
+        all_outputs = []
+        for worker in self.workers:
+            all_outputs.append(worker.generate.remote(request_id, prompt, sampling_params))
+        all_outputs = await asyncio.gather(*all_outputs)
+        text_res = all_outputs[0]# get any one of the copies
         return text_res
     
     def add_input(self, request_id: str, prompt: str, sampling_params: SamplingParams):

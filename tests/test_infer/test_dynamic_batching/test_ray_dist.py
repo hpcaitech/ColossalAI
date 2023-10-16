@@ -23,7 +23,10 @@ def test_ray_dist(path: str):
     
     sampling_params = SamplingParams()
     
-    print("result: ", prompt + driver.generate(request_id, prompt, sampling_params))
+    result_generator = driver.generate(request_id, prompt, sampling_params)
+                                        
+    for result in result_generator:
+        print("result: ", result)
     
 if __name__ == "__main__":
     path = "config.yaml"
