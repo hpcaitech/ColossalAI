@@ -1,7 +1,6 @@
 from typing import Any, Callable, List, Optional, Union
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 from transformers import BloomForCausalLM, LlamaForCausalLM
 from transformers.generation import GenerationConfig
@@ -74,9 +73,14 @@ class TPInferEngine:
             model.config.num_hidden_layers if hasattr(model.config, "num_hidden_layers") else model.config.num_layers
         )
         self.layer_num = num_hidden_layers
-        self.multi_query_group_num = (
-            model.config.multi_query_group_num if hasattr(model.config, "multi_query_group_num") else 0
-        )
+
+        self.multi_query_group_num = 0
+
+        if hasattr(model.config, "multi_query_group_num"):
+            self.multi_query_group_num = model.config.multi_query_group_num
+
+        if hasattr(model.config, "num_key_value_heads"):
+            self.multi_query_group_num = model.config.num_key_value_heads
 
         self.tp_size = -1  # to be set with given shard config in self.prepare_shard_config
         self.cache_manager = None
@@ -97,6 +101,7 @@ class TPInferEngine:
         assert self.tp_size >= 1, "TP size not initialized without providing a valid ShardConfig"
         assert self.head_num % self.tp_size == 0, f"Cannot shard {self.head_num} heads with tp size {self.tp_size}"
         self.head_num //= self.tp_size  # update sharded number of heads
+
         if self.multi_query_group_num:
             # NOTE the logic of MQA tensor parallelism should be specified.
             assert (
@@ -116,13 +121,15 @@ class TPInferEngine:
 
     def _post_init_gptq_buffer(self, model: nn.Module) -> None:
         from colossalai.inference.quant.gptq.cai_gptq import CaiQuantLinear
+
         HAS_GPTQ_CUDA = False
         try:
             from colossalai.kernel.op_builder.gptq import GPTQBuilder
+
             gptq_cuda = GPTQBuilder().load()
             HAS_GPTQ_CUDA = True
         except ImportError:
-            warnings.warn('CUDA gptq is not installed')
+            warnings.warn("CUDA gptq is not installed")
             HAS_GPTQ_CUDA = False
 
         for name, submodule in model.named_modules():
@@ -130,8 +137,9 @@ class TPInferEngine:
                 self.max_dq_buffer_size = max(self.max_dq_buffer_size, submodule.qweight.numel() * 8)
 
                 if self.use_act_order:
-                    self.max_inner_outer_dim = max(self.max_inner_outer_dim, submodule.infeatures,
-                                                   submodule.outfeatures)
+                    self.max_inner_outer_dim = max(
+                        self.max_inner_outer_dim, submodule.infeatures, submodule.outfeatures
+                    )
                 self.bits = submodule.bits
         if not (HAS_GPTQ_CUDA and self.bits == 4):
             return
@@ -141,15 +149,16 @@ class TPInferEngine:
             max_input_len = self.max_input_len
         # The temp_state buffer is required to reorder X in the act-order case.
         # The temp_dq buffer is required to dequantize weights when using cuBLAS, typically for the prefill.
-        self.gptq_temp_state_buffer = torch.zeros((max_input_len, self.max_inner_outer_dim),
-                                                  dtype=torch.float16,
-                                                  device=torch.cuda.current_device())
-        self.gptq_temp_dq_buffer = torch.zeros((1, self.max_dq_buffer_size),
-                                               dtype=torch.float16,
-                                               device=torch.cuda.current_device())
+        self.gptq_temp_state_buffer = torch.zeros(
+            (max_input_len, self.max_inner_outer_dim), dtype=torch.float16, device=torch.cuda.current_device()
+        )
+        self.gptq_temp_dq_buffer = torch.zeros(
+            (1, self.max_dq_buffer_size), dtype=torch.float16, device=torch.cuda.current_device()
+        )
 
-        gptq_cuda.prepare_buffers(torch.device(torch.cuda.current_device()), self.gptq_temp_state_buffer,
-                                  self.gptq_temp_dq_buffer)
+        gptq_cuda.prepare_buffers(
+            torch.device(torch.cuda.current_device()), self.gptq_temp_state_buffer, self.gptq_temp_dq_buffer
+        )
         # Using the default from exllama repo here.
         matmul_recons_thd = 8
         matmul_fused_remap = False

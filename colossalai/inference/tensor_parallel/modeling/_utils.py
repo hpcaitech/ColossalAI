@@ -45,7 +45,7 @@ def init_to_get_rotary(self, base=10000, use_elem=False):
     base = float(base)
 
     # NTK  ref: https://www.reddit.com/r/LocalLLaMA/comments/14lz7j5/ntkaware_scaled_rope_allows_llama_models_to_have/
-    ntk_alpha = float(os.environ.get("INFER_NTK_ALPHA", None))
+    ntk_alpha = os.environ.get("INFER_NTK_ALPHA", None)
 
     if ntk_alpha is not None:
         ntk_alpha = float(ntk_alpha)

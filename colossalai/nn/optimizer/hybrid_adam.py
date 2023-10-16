@@ -108,9 +108,6 @@ class HybridAdam(CPUAdam):
                 target_device = p.device
                 if len(state) == 0:
                     state["step"] = 0
-
-                    # FIXME(ver217): CPU adam kernel only supports fp32 states now
-                    assert p.dtype is torch.float, "HybridAdam only support fp32 parameters"
                     # gradient momentums
                     state["exp_avg"] = torch.zeros_like(p, device=target_device)
                     # gradient variances
@@ -125,7 +122,8 @@ class HybridAdam(CPUAdam):
                     assert state["exp_avg"].device.type == "cpu", "exp_avg should stay on cpu"
                     assert state["exp_avg_sq"].device.type == "cpu", "exp_avg should stay on cpu"
                     self._pre_update(p, "exp_avg", "exp_avg_sq")
-                    if p.grad.dtype is torch.bfloat16:
+                    # FIXME(ver217): CPU adam kernel only supports fp32 states now
+                    if p.grad.dtype is torch.bfloat16 or p.dtype is not torch.float:
                         # cpu adam kernel does not support bf16 now
                         bias_correction1 = 1 - beta1 ** state["step"]
                         bias_correction2 = 1 - beta2 ** state["step"]
