@@ -11,7 +11,7 @@ from coati.models.opt import OPTActor
 from coati.trainer import DPOTrainer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from datasets import load_dataset
-from torch.optim import Adam
+from torch.optim import RMSprop
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
@@ -39,6 +39,10 @@ def main(args):
         # configure model
         # TODO: add support for llama
         if args.model == "gpt2":
+            config = AutoConfig.from_pretrained(args.pretrain)
+            config.embd_pdrop = 0.0
+            config.attn_pdrop = 0.0
+            config.resid_pdrop = 0.0
             ref_model = GPTActor(pretrained=args.pretrain)
         elif args.model == "bloom":
             ref_model = BLOOMActor(pretrained=args.pretrain)
@@ -47,7 +51,7 @@ def main(args):
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
-        ref_model.to(torch.cuda.current_device())
+        ref_model.to(torch.bfloat16).to(torch.cuda.current_device())
 
         if args.model == "gpt2":
             config = AutoConfig.from_pretrained(args.pretrain)
@@ -58,14 +62,14 @@ def main(args):
         elif args.model == "bloom":
             config = AutoConfig.from_pretrained(args.pretrain)
             # TODO: find a proper hyperparameter setting for BLOOM
-            config.attention_dropout = 0.0001
-            config.hidden_dropout = 0.0001
+            config.attention_dropout = 0.000
+            config.hidden_dropout = 0.000
             actor = BLOOMActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
         elif args.model == "opt":
             config = AutoConfig.from_pretrained(args.pretrain)
             # TODO: find a proper hyperparameter setting for OPT
-            config.attention_dropout = 0.0001
-            config.dropout = 0.0001
+            config.attention_dropout = 0.000
+            config.dropout = 0.000
             config.layerdrop = 0.000
             actor = OPTActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
         elif args.model == "llama":
@@ -74,13 +78,13 @@ def main(args):
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
-        actor.to(torch.cuda.current_device())
+        actor.to(torch.bfloat16).to(torch.cuda.current_device())
 
     # configure optimizer
     if args.strategy.startswith("colossalai"):
         actor_optim = HybridAdam(actor.parameters(), lr=args.lr)
     else:
-        actor_optim = Adam(actor.parameters(), lr=args.lr)
+        actor_optim = RMSprop(actor.parameters(), lr=args.lr)
 
     # configure tokenizer
     if args.model == "gpt2":
@@ -171,20 +175,30 @@ def main(args):
         accumulation_steps=args.accumulation_steps,
         disable_reference=args.disable_reference,
     )
+    with torch.autograd.set_detect_anomaly(True):
+        trainer.fit(
+            train_preference_dataloader=train_dataloader,
+            eval_preference_dataloader=eval_dataloader,
+            log_dir=args.log_dir,
+            use_wandb=args.use_wandb,
+        )
 
-    trainer.fit(
-        train_preference_dataloader=train_dataloader,
-        eval_preference_dataloader=eval_dataloader,
-        log_dir=args.log_dir,
-        use_wandb=args.use_wandb,
-    )
+    # if args.lora_rank > 0 and args.merge_lora_weights:
+    #     from coati.models.lora import LORA_MANAGER
 
-    if args.lora_rank > 0 and args.merge_lora_weights:
-        from coati.models.lora import LORA_MANAGER
+    #     # NOTE: set model to eval to merge LoRA weights
+    #     LORA_MANAGER.merge_weights = True
+    #     actor.eval()
 
-        # NOTE: set model to eval to merge LoRA weights
-        LORA_MANAGER.merge_weights = True
-        actor.eval()
+    # for i, batch in enumerate(train_dataloader):
+    #     input_id, attn, _, __ = batch
+    #     logits = actor(input_id.to(torch.cuda.current_device()), attn.to(torch.cuda.current_device()))['logits']
+    #     loss = logits.mean()
+    #     strategy.backward(loss, actor, actor_optim)
+    #     strategy.optimizer_step(actor_optim)
+    #     actor_optim.zero_grad()
+    #     actor_lr_scheduler.step()
+
     # save model checkpoint after fitting
     strategy.save_pretrained(actor, path=args.save_path)
     # save optimizer checkpoint on all ranks
@@ -197,7 +211,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default=None, help="path to the prompt dataset")
-    parser.add_argument("--max_datasets_size", type=int, default=500000)
+    parser.add_argument("--max_datasets_size", type=int, default=1000)
     parser.add_argument(
         "--strategy",
         choices=["ddp", "colossalai_gemini", "colossalai_zero2"],
@@ -217,7 +231,7 @@ if __name__ == "__main__":
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
     parser.add_argument("--disable_reference", type=bool, default=False)
-    parser.add_argument("--lr", type=float, default=1e-5)
+    parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--beta", type=float, default=0.1)
     parser.add_argument("--log_dir", default="logs", type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")

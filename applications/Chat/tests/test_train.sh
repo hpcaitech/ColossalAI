@@ -83,6 +83,89 @@ if [ ! -d "$DATA_DIRECTORY" ]; then
   echo "$DATA_DIRECTORY does not exist."
 fi
 
+echo "[Test]: testing Pretrain ..."
+SKIPPED_TESTS=(
+    "llama-ddp"
+    "llama-colossalai_gemini"
+    "llama-colossalai_zero2"
+)
+
+for model in ${MODELS[@]}; do
+    for lora_rank in '0'; do
+        strategies=($(shuf -e "${STRATEGIES[@]}"))
+        for strategy in ${strategies[@]}; do
+            if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy-$lora_rank " ]]; then
+                echo "[Test]: Skipped $model-$strategy-$lora_rank"
+                continue
+            elif [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy " ]]; then
+                echo "[Test]: Skipped $model-$strategy"
+                continue
+            fi
+            for i in $(seq $NUM_RETRY); do
+                echo "[Test]: $model-$strategy-$lora_rank, attempt $i"
+                torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_dpo_pretrain.py \
+                    --dataset "Anthropic/hh-rlhf" \
+                    --strategy $strategy \
+                    --batch_size 2 \
+                    --save_path $EXAMPLES_DIR/dpo_pretrain \
+                    --pretrain $MODELS_DIR/$model \
+                    --lora_rank $lora_rank \
+                    --save_path $EXAMPLES_DIR/rlhf_models/actor_checkpoint_prompts.pt
+                passed=$?
+                if [ $passed -eq 0 ]; then
+                    break
+                fi
+            done
+            if [ $passed -ne 0 ]; then
+                echo "[Test]: Failed to train Pretrain $model-$strategy-$lora_rank"
+                exit 1
+            fi
+        done
+    done
+done
+
+
+echo "[Test]: testing dpo ..."
+SKIPPED_TESTS=(
+    "llama-ddp"
+    "llama-colossalai_gemini"
+    "llama-colossalai_zero2"
+)
+
+for model in ${MODELS[@]}; do
+    for lora_rank in '0'; do
+        strategies=($(shuf -e "${STRATEGIES[@]}"))
+        for strategy in ${strategies[@]}; do
+            if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy-$lora_rank " ]]; then
+                echo "[Test]: Skipped $model-$strategy-$lora_rank"
+                continue
+            elif [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$strategy " ]]; then
+                echo "[Test]: Skipped $model-$strategy"
+                continue
+            fi
+            for i in $(seq $NUM_RETRY); do
+                echo "[Test]: $model-$strategy-$lora_rank, attempt $i"
+                torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_prompts_dpo.py \
+                    --dataset Anthropic/hh-rlhf \
+                    --strategy $strategy \
+                    --batch_size 2 \
+                    --max_epoch 2 \
+                    --save_path $EXAMPLES_DIR/dpo \
+                    --pretrain $MODELS_DIR/$model \
+                    --accumulation_steps 2
+                passed=$?
+                if [ $passed -eq 0 ]; then
+                    break
+                fi
+            done
+            if [ $passed -ne 0 ]; then
+                echo "[Test]: Failed to train Pretrain $model-$strategy-$lora_rank"
+                exit 1
+            fi
+        done
+    done
+done
+
 echo "[Test]: testing sft ..."
 
 # FIXME: This is a hack to skip tests that are not working
@@ -201,11 +284,7 @@ SKIPPED_TESTS=(
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
-    "bloom-colossalai_gemini"
-    "bloom-colossalai_zero2"
     "bloom-ddp"
-    "opt-colossalai_gemini"
-    "opt-colossalai_zero2"
     "opt-ddp"
 )
 
@@ -225,7 +304,7 @@ for model in ${MODELS_PPO[@]}; do
             rm_pretrain_model="--rm_pretrain $rm_pretrain"
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$strategy-$lora_rank, attempt $i"
-                torchrun --standalone --nproc_per_node=1 $EXAMPLES_DIR/train_prompts.py \
+                torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_prompts.py \
                     --prompt_dataset $PROMPT_DATASET --pretrain_dataset $PRETRAIN_DATASET --max_datasets_size 32 \
                     --strategy $strategy --model $model --tokenizer $MODELS_DIR/$model \
                     --num_episodes 1 --num_collect_steps 1 --num_update_steps 1 --lr 1e-8 \
