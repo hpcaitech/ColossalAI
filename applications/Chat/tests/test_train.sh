@@ -84,7 +84,8 @@ if [ ! -d "$DATA_DIRECTORY" ]; then
 fi
 
 echo "[Test]: testing dpo ..."
-# skill all gemini tests since gemini strategy doesn't support bf16
+# skill all gemini/zero2 tests since RTX3080 doesn't support bf16 and may lead to gradient overflow
+# those tests can pass on A100 with large batch size (~20 to 30)
 SKIPPED_TESTS=(
     "llama-ddp"
     "llama-colossalai_gemini"
@@ -92,6 +93,9 @@ SKIPPED_TESTS=(
     "gpt2-colossalai_gemini"
     "bloom-colossalai_gemini"
     "opt-colossalai_gemini"
+    "gpt2-colossalai_zero2"
+    "bloom-colossalai_zero2"
+    "opt-colossalai_zero2"
 )
 
 for model in ${MODELS[@]}; do

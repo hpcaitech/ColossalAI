@@ -134,6 +134,7 @@ class DPOTrainer(SLTrainer):
             logprob_actor_chosen = calc_masked_log_probs(actor_chosen_logits, chosen_input_ids, chosen_mask[:, 1:])
 
             logprob_actor_reject = calc_masked_log_probs(actor_reject_logits, reject_input_ids, reject_mask[:, 1:])
+
             if not self.disable_reference:
                 with torch.no_grad():
                     ref_all_logits = self.ref_model(
