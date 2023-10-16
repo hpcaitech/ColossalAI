@@ -50,7 +50,7 @@ class BaseLayerNorm(ABC):
             sp_partial_derived (bool): Whether this module's gradients are partially derived in sequence parallelism.
 
         Returns:
-            nn.Module: The specific layer normalization module or its derivative.
+            nn.Module: The specific layer normalization module.
 
         Raises:
             AssertionError: If the provided module is not an instance of the supported layer normalization type.
@@ -79,7 +79,7 @@ class RMSNorm(BaseLayerNorm):
             sp_partial_derived (bool): Whether this module's gradients are partially derived in sequence parallelism.
 
         Returns:
-            nn.Module: The RMSNorm module or its derivative.
+            nn.Module: The RMSNorm module.
         """
 
         LazyInitContext.materialize(module)
@@ -115,7 +115,7 @@ class LayerNorm(BaseLayerNorm):
             sp_partial_derived (bool): Whether this module's gradients are partially derived in sequence parallelism.
 
         Returns:
-            nn.Module: The LayerNorm module or its derivative.
+            nn.Module: The LayerNorm module.
 
         Raises:
             AssertionError: If the provided module is not an instance of nn.LayerNorm.
