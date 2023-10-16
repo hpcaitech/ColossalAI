@@ -7,9 +7,7 @@ from .dynamic_batching.req_queue import ReqQueue
 from .dynamic_batching.sampling_params import SamplingParams
 from .dynamic_batching.stats import Stats
 from .tensor_parallel import TPInferEngine
-
-from transformers import AutoTokenizer
-_FAST_LLAMA_TOKENIZER = "hf-internal-testing/llama-tokenizer"
+from .dynamic_batching.get_tokenizer import get_tokenizer
 
 class DynamicBatchManager:
     def __init__(
@@ -50,7 +48,7 @@ class DynamicBatchManager:
         
         self.stats_tool = Stats(log_stats, log_stats_interval)
         self.mem_usage_interval = log_stats_interval * 2
-        self._set_tokenizer(tokenizer_name=self.model)
+        self.tokenizer = get_tokenizer(tokenizer_name=self.model)
 
     def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompts: str):
         """
@@ -110,26 +108,6 @@ class DynamicBatchManager:
 
             if self.running_batch is None:
                 time.sleep(0.1)  # 10ms
-
-    def _set_tokenizer(self, tokenizer=None, tokenizer_name: str = "", trust_remote_code: bool = False, use_fast:bool = True,):
-        if tokenizer is not None:
-            self.tokenizer = tokenizer 
-        else:
-            if "llama" in tokenizer_name.lower() and use_fast == True:
-                print(
-                "For some LLaMA-based models, initializing the fast tokenizer may "
-                "take a long time. To eliminate the initialization time, consider "
-                f"using '{_FAST_LLAMA_TOKENIZER}' instead of the original "
-                "tokenizer. This is done automatically in Colossalai.")
-                
-                tokenizer_name = _FAST_LLAMA_TOKENIZER  
-        
-            try: 
-                self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=use_fast,trust_remote_code=trust_remote_code)
-            except TypeError as e:
-                use_fast = False
-                self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=use_fast,trust_remote_code=trust_remote_code)
-
 
     def _step(self):
         """
