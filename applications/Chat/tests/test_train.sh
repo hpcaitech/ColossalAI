@@ -151,10 +151,7 @@ for model in ${MODELS[@]}; do
                 continue
             fi
             pretrain=$(get_pretrain $model)
-            pretrain_model=""
-            if [[ $lora_rank -gt 0 ]]; then
-                pretrain_model="--pretrain $pretrain"
-            fi
+            pretrain_model="--pretrain $pretrain"
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$strategy-$lora_rank, attempt $i"
                 torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_prompts_dpo.py \
