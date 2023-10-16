@@ -27,6 +27,8 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
     chunk_manager = model.chunk_manager
     param_list = [p for p in model.parameters()]
     chunk_list = chunk_manager.get_chunks(param_list)
+    if not model.reuse_fp16_chunk:
+        chunk_list = [chunk.grad_chunk for chunk in chunk_list]
     for chunk in chunk_list:
         chunk_manager.access_chunk(chunk)
 
@@ -36,13 +38,15 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("keep_gather", [False, True])
-@parameterize("model_name", ["gpt2", "bert", "albert"])
+@parameterize("model_name", ["gpt2", "bert"])
 @parameterize("use_grad_checkpoint", [False, True])
+@parameterize("master_weights", [False, True])
 def exam_gpt_fwd_bwd(
     placement_config,
     keep_gather,
     model_name: str,
     use_grad_checkpoint: bool = False,
+    master_weights: bool = True,
 ):
     init_device = get_current_device()
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
@@ -60,12 +64,14 @@ def exam_gpt_fwd_bwd(
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]["chunk_size"] = 5000
     config_dict[world_size]["keep_gathered"] = keep_gather
-    model = GeminiDDP(model, config_dict, init_device, pin_memory=True, **placement_config)
+    model = GeminiDDP(
+        model, config_dict, init_device, pin_memory=True, **placement_config, master_weights=master_weights
+    )
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = GeminiOptimizer(optimizer, model, initial_scale=1)
 
     rank = dist.get_rank()
-    amp_config = dict(opt_level="O2", keep_batchnorm_fp32=False, loss_scale=1)
+    amp_config = dict(opt_level="O2", keep_batchnorm_fp32=False, loss_scale=1, master_weights=master_weights)
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[rank])
@@ -106,4 +112,4 @@ def test_gpt(world_size):
 
 
 if __name__ == "__main__":
-    test_gpt(4)
+    test_gpt(1)

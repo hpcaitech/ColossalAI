@@ -78,7 +78,11 @@ def exam_grad_clipping(placement_config, model_name: str):
         init_device = None
 
     model = GeminiDDP(
-        model, chunk_config_dict=config_dict, chunk_init_device=init_device, pin_memory=True, **placement_config
+        model,
+        chunk_config_dict=config_dict,
+        chunk_init_device=init_device,
+        pin_memory=True,
+        **placement_config,
     )
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
