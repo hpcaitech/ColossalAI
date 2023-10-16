@@ -1,9 +1,9 @@
 import os
-from typing import Dict
 import uuid
 from colossalai.inference.dynamic_batching.ray_init_config import RayInitConfig
 from colossalai.inference.dynamic_batching.ray_dist_init import Driver
 from colossalai.inference.dynamic_batching.sampling_params import SamplingParams
+import asyncio
 
 def test_ray_dist(path: str):
     print(f"Using yaml file {path}")
@@ -23,10 +23,19 @@ def test_ray_dist(path: str):
     
     sampling_params = SamplingParams()
     
-    result_generator = driver.generate(request_id, prompt, sampling_params)
-                                        
-    for result in result_generator:
-        print("result: ", result)
+    async def get_result(request_id, prompt, sampling_params):
+        return await driver.generate(request_id, prompt, sampling_params)
+    
+    for test_async in [True, False]:
+        if test_async: 
+            print("test_async: ", test_async)
+            result = get_result(request_id, prompt, sampling_params)                       
+            print("result: ", result)
+        else:
+            print("test_async: ", test_async)
+            result = driver.generate(request_id, prompt, sampling_params)                          
+            print("result: ", result)
+    
     
 if __name__ == "__main__":
     path = "config.yaml"
