@@ -12,6 +12,7 @@ class PipelineStageManager:
     Args:
         pg_mesh (ProcessGroupMesh): Process group mesh.
         pipeline_axis (int): The axis along which the pipeline is constructed.
+        is_virtual (bool): Whether to use circle p2p communication, it will make the first and last stage communicate with each other.
 
     Attributes:
         num_stages (int): Number of stages in the pipeline.
@@ -24,6 +25,7 @@ class PipelineStageManager:
         self.prev_rank: Optional[Tuple[int, ...]] = None
         self.next_rank: Optional[Tuple[int, ...]] = None
         self.p2p_groups: Dict[Tuple[int, int], ProcessGroup] = {}
+
         # init prev and next coord
         coord = self.pg_mesh.coordinate()
         # the prev rank of rank0 is the last rank

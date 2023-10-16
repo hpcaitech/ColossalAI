@@ -38,7 +38,6 @@ def run_llama_test(test_config):
         enable_tensor_parallelism=True if test_config["tp_size"] > 1 else False, inference_only=True
     )
     infer_engine = TPInferEngine(model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    init_to_get_rotary(model.model, base=10000)
     generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
 
     input_tokens = {
