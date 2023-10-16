@@ -111,6 +111,7 @@ for model in ${MODELS[@]}; do
                 torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_dpo_pretrain.py \
                     --dataset "Anthropic/hh-rlhf" \
                     --strategy $strategy \
+                    --max_datasets_size 200 \
                     --model $model \
                     --batch_size 2 \
                     --save_path $EXAMPLES_DIR/dpo_pretrain \
@@ -159,6 +160,7 @@ for model in ${MODELS[@]}; do
                 torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_prompts_dpo.py \
                     --dataset Anthropic/hh-rlhf \
                     --strategy $strategy \
+                    --max_datasets_size 200 \
                     --batch_size 2 \
                     --max_epoch 2 \
                     --model $model \
