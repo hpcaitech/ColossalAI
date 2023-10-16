@@ -29,7 +29,7 @@ class LoadBalancer:
         self.experts: BaseMLPExperts = experts
         self.gate: nn.Parameter = gate
         self.moe_ep_group: ProcessGroup = ep_group
-        self.moe_ep_ranks = dist.get_process_group_ranks(self.moe_ep_group)
+        self.moe_ep_ranks = MOE_MANAGER.parallel_info_dict[dist.get_world_size(self.moe_ep_group)].ep_group_ranks
         self.moe_dp_group: ProcessGroup = dp_group
         self.tolerance = tolerance
         self.beam_width = beam_width
