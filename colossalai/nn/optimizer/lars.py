@@ -5,10 +5,7 @@ from typing import Iterable
 import torch
 from torch.optim import Optimizer
 
-from colossalai.registry import OPTIMIZERS
 
-
-@OPTIMIZERS.register_module
 class Lars(Optimizer):
     r"""Implements the LARS optimizer from `"Large batch training of convolutional networks"
     <https://arxiv.org/pdf/1708.03888.pdf>`_.
@@ -23,27 +20,19 @@ class Lars(Optimizer):
     """
 
     def __init__(
-            self,
-            params: Iterable[torch.nn.Parameter],
-            lr=1e-3,
-            momentum=0,
-            eeta=1e-3,
-            weight_decay=0,
-            epsilon=0.0
+        self, params: Iterable[torch.nn.Parameter], lr=1e-3, momentum=0, eeta=1e-3, weight_decay=0, epsilon=0.0
     ) -> None:
         if not isinstance(lr, float) or lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
         if momentum < 0.0:
             raise ValueError("Invalid momentum value: {}".format(momentum))
         if weight_decay < 0.0:
-            raise ValueError(
-                "Invalid weight_decay value: {}".format(weight_decay))
+            raise ValueError("Invalid weight_decay value: {}".format(weight_decay))
         if eeta <= 0 or eeta > 1:
             raise ValueError("Invalid eeta value: {}".format(eeta))
         if epsilon < 0:
             raise ValueError("Invalid epsilon value: {}".format(epsilon))
-        defaults = dict(lr=lr, momentum=momentum,
-                        weight_decay=weight_decay, eeta=eeta, epsilon=epsilon, lars=True)
+        defaults = dict(lr=lr, momentum=momentum, weight_decay=weight_decay, eeta=eeta, epsilon=epsilon, lars=True)
 
         super().__init__(params, defaults)
 
@@ -61,14 +50,14 @@ class Lars(Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
-            weight_decay = group['weight_decay']
-            momentum = group['momentum']
-            eeta = group['eeta']
-            lr = group['lr']
-            lars = group['lars']
-            eps = group['epsilon']
+            weight_decay = group["weight_decay"]
+            momentum = group["momentum"]
+            eeta = group["eeta"]
+            lr = group["lr"]
+            lars = group["lars"]
+            eps = group["epsilon"]
 
-            for p in group['params']:
+            for p in group["params"]:
                 if p.grad is None:
                     continue
                 decayed_grad = p.grad
@@ -79,7 +68,7 @@ class Lars(Optimizer):
                     trust_ratio = torch.where(
                         w_norm > 0 and g_norm > 0,
                         eeta * w_norm / (g_norm + weight_decay * w_norm + eps),
-                        torch.ones_like(w_norm)
+                        torch.ones_like(w_norm),
                     )
                     trust_ratio.clamp_(0.0, 50)
                     scaled_lr *= trust_ratio.item()
@@ -89,11 +78,10 @@ class Lars(Optimizer):
 
                 if momentum != 0:
                     param_state = self.state[p]
-                    if 'momentum_buffer' not in param_state:
-                        buf = param_state['momentum_buffer'] = torch.clone(
-                            decayed_grad).detach()
+                    if "momentum_buffer" not in param_state:
+                        buf = param_state["momentum_buffer"] = torch.clone(decayed_grad).detach()
                     else:
-                        buf = param_state['momentum_buffer']
+                        buf = param_state["momentum_buffer"]
                         buf.mul_(momentum).add_(decayed_grad)
                     decayed_grad = buf
 

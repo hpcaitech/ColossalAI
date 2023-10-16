@@ -1,9 +1,8 @@
-# Gradient Accumulation (Latest)
+# Gradient Accumulation
 
 Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 
 **Prerequisite**
-- [Define Your Configuration](../basics/define_your_config.md)
 - [Training Booster](../basics/booster_api.md)
 
 ## Introduction
@@ -103,10 +102,12 @@ for idx, (img, label) in enumerate(train_dataloader):
             with sync_context:
                 output = model(img)
                 train_loss = criterion(output, label)
+                train_loss = train_loss / GRADIENT_ACCUMULATION
                 booster.backward(train_loss, optimizer)
         else:
             output = model(img)
             train_loss = criterion(output, label)
+            train_loss = train_loss / GRADIENT_ACCUMULATION
             booster.backward(train_loss, optimizer)
             optimizer.step()
             optimizer.zero_grad()

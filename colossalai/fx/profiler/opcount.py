@@ -173,8 +173,11 @@ def norm_flop_counter(affine_arg_index: int, input_arg_index: int) -> Callable:
         # Inputs[0] contains the shape of the input.
         input_shape = inputs[input_arg_index].shape
 
-        has_affine = inputs[affine_arg_index].shape is not None if hasattr(inputs[affine_arg_index],
-                                                                           'shape') else inputs[affine_arg_index]
+        has_affine = (
+            inputs[affine_arg_index].shape is not None
+            if hasattr(inputs[affine_arg_index], "shape")
+            else inputs[affine_arg_index]
+        )
         assert 2 <= len(input_shape) <= 5, input_shape
         # 5 is just a rough estimate
         flop = reduce(operator.mul, input_shape) * (5 if has_affine else 4)
@@ -188,7 +191,7 @@ def batchnorm_flop_jit(inputs: List[Any], outputs: List[Any], training: bool = N
         training = inputs[-3]
     assert isinstance(training, bool), "Signature of aten::batch_norm has changed!"
     if training:
-        return norm_flop_counter(1, 0)(inputs, outputs)    # pyre-ignore
+        return norm_flop_counter(1, 0)(inputs, outputs)  # pyre-ignore
     has_affine = inputs[1].shape is not None
     input_shape = reduce(operator.mul, inputs[0].shape)
     return input_shape * (2 if has_affine else 1)
@@ -218,15 +221,16 @@ def elementwise_flop_counter(input_scale: float = 1, output_scale: float = 0) ->
 
 def zero_flop_jit(*args):
     """
-        Count flops for zero flop layers.
+    Count flops for zero flop layers.
     """
     return 0
 
 
-if version.parse(torch.__version__) >= version.parse('1.12.0') and version.parse(
-        torch.__version__) < version.parse('2.0.0'):
+if version.parse(torch.__version__) >= version.parse("1.12.0") and version.parse(torch.__version__) < version.parse(
+    "2.0.0"
+):
     flop_mapping = {
-    # gemm, gemv and dot
+        # gemm, gemv and dot
         aten.mm.default: matmul_flop_jit,
         aten.mv.default: matmul_flop_jit,
         aten.dot.default: matmul_flop_jit,
@@ -234,13 +238,11 @@ if version.parse(torch.__version__) >= version.parse('1.12.0') and version.parse
         aten.addmm.default: addmm_flop_jit,
         aten.bmm.default: bmm_flop_jit,
         aten.baddbmm.default: baddbmm_flop_jit,
-
-    # convolution
+        # convolution
         aten.convolution.default: conv_flop_jit,
         aten._convolution.default: conv_flop_jit,
         aten.convolution_backward.default: conv_backward_flop_jit,
-
-    # normalization
+        # normalization
         aten.native_batch_norm.default: batchnorm_flop_jit,
         aten.native_batch_norm_backward.default: batchnorm_flop_jit,
         aten.cudnn_batch_norm.default: batchnorm_flop_jit,
@@ -249,8 +251,7 @@ if version.parse(torch.__version__) >= version.parse('1.12.0') and version.parse
         aten.native_layer_norm_backward.default: norm_flop_counter(2, 0),
         aten.native_group_norm.default: norm_flop_counter(2, 0),
         aten.native_group_norm_backward.default: norm_flop_counter(2, 0),
-
-    # pooling
+        # pooling
         aten.avg_pool1d.default: elementwise_flop_counter(1, 0),
         aten.avg_pool2d.default: elementwise_flop_counter(1, 0),
         aten.avg_pool2d_backward.default: elementwise_flop_counter(0, 1),
@@ -275,7 +276,7 @@ if version.parse(torch.__version__) >= version.parse('1.12.0') and version.parse
     }
 
     elementwise_flop_aten = [
-    # basic op
+        # basic op
         aten.add.Tensor,
         aten.add_.Tensor,
         aten.div.Tensor,
@@ -296,8 +297,7 @@ if version.parse(torch.__version__) >= version.parse('1.12.0') and version.parse
         aten.exp.default,
         aten.sin.default,
         aten.cos.default,
-
-    # activation op
+        # activation op
         aten.hardswish.default,
         aten.hardswish_.default,
         aten.hardswish_backward.default,
@@ -320,8 +320,7 @@ if version.parse(torch.__version__) >= version.parse('1.12.0') and version.parse
         aten.tanh.default,
         aten.tanh_backward.default,
         aten.threshold_backward.default,
-
-    # dropout
+        # dropout
         aten.native_dropout.default,
         aten.native_dropout_backward.default,
     ]
@@ -362,7 +361,7 @@ if version.parse(torch.__version__) >= version.parse('1.12.0') and version.parse
         aten.zero_.default,
         aten.zeros_like.default,
         aten.fill_.Scalar,
-        aten.stack.default
+        aten.stack.default,
     ]  # yapf: disable
 
     for op in zero_flop_aten:

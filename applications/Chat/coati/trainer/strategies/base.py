@@ -4,7 +4,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from coati.replay_buffer import ReplayBuffer
+from coati.experience_buffer import ExperienceBuffer
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
@@ -19,7 +19,7 @@ _BoostArgSpec = Union[nn.Module, Tuple[nn.Module, Optimizer], Dict]
 
 class Strategy(ABC):
     """
-        Base class for training strategies.
+    Base class for training strategies.
     """
 
     def __init__(self, plugin_initializer: Callable[..., Optional[Plugin]] = lambda: None) -> None:
@@ -45,7 +45,7 @@ class Strategy(ABC):
         pass
 
     @abstractmethod
-    def setup_dataloader(self, replay_buffer: ReplayBuffer, pin_memory: bool = False) -> DataLoader:
+    def setup_dataloader(self, data_buffer: ExperienceBuffer, pin_memory: bool = False) -> DataLoader:
         pass
 
     def model_init_context(self):
@@ -79,24 +79,22 @@ class Strategy(ABC):
                     model, optimizer = arg
                 except ValueError:
                     raise RuntimeError(f'Expect (model, optimizer) pair, got a tuple with size "{len(arg)}"')
-                model, optimizer, *_ = self.booster.boost(model=model,
-                                                          optimizer=optimizer)
+                model, optimizer, *_ = self.booster.boost(model=model, optimizer=optimizer)
                 rets.append((model, optimizer))
             elif isinstance(arg, Dict):
                 model, optimizer, criterion, dataloader, lr_scheduler = self.booster.boost(**arg)
-                boost_result = dict(model=model,
-                                    optimizer=optimizer,
-                                    criterion=criterion,
-                                    dataloader=dataloader,
-                                    lr_scheduler=lr_scheduler)
+                boost_result = dict(
+                    model=model,
+                    optimizer=optimizer,
+                    criterion=criterion,
+                    dataloader=dataloader,
+                    lr_scheduler=lr_scheduler,
+                )
                 # remove None values
-                boost_result = {
-                    key: value
-                    for key, value in boost_result.items() if value is not None
-                }
+                boost_result = {key: value for key, value in boost_result.items() if value is not None}
                 rets.append(boost_result)
             else:
-                raise RuntimeError(f'Type {type(arg)} is not supported')
+                raise RuntimeError(f"Type {type(arg)} is not supported")
 
         return rets[0] if len(rets) == 1 else rets
 
@@ -112,23 +110,13 @@ class Strategy(ABC):
         """
         return model
 
-    def save_model(self,
-                   model: nn.Module,
-                   path: str,
-                   only_rank0: bool = True,
-                   **kwargs
-                   ) -> None:
-        self.booster.save_model(model, path, shard=not only_rank0, **kwargs)
+    def save_model(self, model: nn.Module, path: str, shard: bool = False, **kwargs) -> None:
+        self.booster.save_model(model, path, shard=shard, **kwargs)
 
     def load_model(self, model: nn.Module, path: str, strict: bool = True) -> None:
         self.booster.load_model(model, path, strict)
 
-    def save_optimizer(self,
-                       optimizer: Optimizer,
-                       path: str,
-                       only_rank0: bool = False,
-                       **kwargs
-                       ) -> None:
+    def save_optimizer(self, optimizer: Optimizer, path: str, only_rank0: bool = False, **kwargs) -> None:
         self.booster.save_optimizer(optimizer, path, shard=not only_rank0, **kwargs)
 
     def load_optimizer(self, optimizer: Optimizer, path: str) -> None:
@@ -139,11 +127,9 @@ class Strategy(ABC):
         return DistributedSampler(dataset, 1, 0)
 
     @abstractmethod
-    def save_pretrained(self,
-                        model: nn.Module,
-                        path: str,
-                        only_rank0: bool = True,
-                        tokenizer: Optional[PreTrainedTokenizerBase] = None) -> None:
+    def save_pretrained(
+        self, model: nn.Module, path: str, only_rank0: bool = True, tokenizer: Optional[PreTrainedTokenizerBase] = None
+    ) -> None:
         pass
 
     @abstractmethod

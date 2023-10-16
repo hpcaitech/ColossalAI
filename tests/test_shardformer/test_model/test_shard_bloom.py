@@ -3,92 +3,200 @@ import torch
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
-from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
-from colossalai.testing import (
-    assert_hf_output_close,
-    clear_cache_before_run,
-    parameterize,
-    rerun_if_address_is_in_use,
-    spawn,
-)
+from colossalai.shardformer.layer.utils import Randomizer
+from colossalai.tensor.d_tensor.api import clear_layout_converter
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
-from tests.test_shardformer.test_model._utils import build_model, run_forward
+from tests.test_shardformer.test_model._utils import (
+    build_model_from_hybrid_plugin,
+    check_all_grad_tensors,
+    check_loss,
+    check_output_hidden_state,
+    check_weight,
+    get_grad_tensors_for_check,
+    run_forward_backward_with_hybrid_plugin,
+    unwrap_model,
+)
 
 
-def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):
-    # check forward
-    org_output, org_loss, shard_output, shard_loss = run_forward(org_model, sharded_model, data_gen_fn,
-                                                                 output_transform_fn, loss_fn)
-    assert_hf_output_close(org_output, shard_output, ignore_keys=['past_key_values'])
+def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
+    org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
+        model_fn, loss_fn, test_config
+    )
 
-    # do backward
-    org_loss.backward()
-    shard_loss.backward()
+    org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
+        org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
+    )
 
-    assert torch.allclose(org_loss, shard_loss,
-                          atol=1e-5), f"shard model loss is not equal to orgin model loss\n{org_loss}\n{shard_loss}"
+    stage_manager = booster.plugin.stage_manager
+    tp_group = booster.plugin.tp_group
 
     # unwrap model
-    if org_model.__class__.__name__ == 'BloomModel':
-        bloom = org_model
-        sharded_bloom = sharded_model
-    else:
-        bloom = org_model.transformer
-        sharded_bloom = sharded_model.transformer
+    bloom = unwrap_model(org_model, "BloomModel", "transformer")
+    sharded_bloom = unwrap_model(sharded_model, "BloomModel", "transformer")
 
-    # check attention grad
-    org_grad = bloom.h[0].self_attention.query_key_value.weight.grad
-    shard_grad = sharded_bloom.h[0].self_attention.query_key_value.weight.grad
-    shard_weight = sharded_bloom.h[0].self_attention.query_key_value.weight
+    row_layer_for_check = ["h[0].self_attention.query_key_value", "word_embeddings"]
+    col_layer_for_check = ["h[0].self_attention.dense"]
 
-    if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
-        shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
-        torch.distributed.all_gather(shard_grad_list, shard_grad)
-        all_shard_grad = torch.cat(shard_grad_list, dim=0)
-    else:
-        all_shard_grad = shard_grad
+    # Save gradient tensors for comparison between the original model and the sharded model.
+    grads_to_check = {}
+    if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
+        if test_config["precision"] == "fp32":
+            atol, rtol = 1e-6, 1e-5
+        else:
+            atol, rtol = 5e-3, 5e-3
+        row_layer_grads = get_grad_tensors_for_check(
+            bloom, sharded_bloom, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0, verbose=False
+        )
+        col_layer_grads = get_grad_tensors_for_check(
+            bloom, sharded_bloom, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False
+        )
+        grads_to_check.update(col_layer_grads)
+        grads_to_check.update(row_layer_grads)
 
-    assert torch.allclose(org_grad, all_shard_grad,
-                          atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
+    # optimizer executes step
+    org_optimizer.step()
+    sharded_optimizer.step()
 
-    # check embedding weights
-    org_grad = bloom.word_embeddings.weight.grad
-    shard_grad = sharded_bloom.word_embeddings.weight.grad
-    shard_weight = sharded_bloom.word_embeddings.weight
+    # check last hidden state & loss
+    if stage_manager is None or stage_manager.is_last_stage():
+        if test_config["precision"] == "fp32":
+            atol, rtol = 1e-5, 1e-3
+        else:
+            atol, rtol = 5e-3, 5e-3
+        if org_model.__class__.__name__ == "BloomModel":
+            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
 
-    if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
-        shard_grad_list = [torch.zeros([*shard_grad.shape]).to('cuda') for _ in range(2)]
-        torch.distributed.all_gather(shard_grad_list, shard_grad)
-        all_shard_grad = torch.cat(shard_grad_list, dim=0)
-    else:
-        all_shard_grad = shard_grad
+        check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
-    assert torch.allclose(org_grad, all_shard_grad,
-                          atol=1e-5), f"shard model grad is not equal to orgin model grad\n{org_grad}\n{all_shard_grad}"
+    if stage_manager is None or stage_manager.is_first_stage():
+        if test_config["precision"] == "fp32":
+            atol, rtol = 1e-4, 1e-3
+        else:
+            atol, rtol = 5e-3, 5e-3
+        check_weight(bloom, sharded_bloom, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False)
+
+    # check grads
+    check_all_grad_tensors(grads_to_check)
+
+    torch.cuda.empty_cache()
 
 
-@parameterize('enable_fused_normalization', [True, False])
-@parameterize('enable_tensor_parallelism', [True, False])
-def run_bloom_test(enable_fused_normalization, enable_tensor_parallelism):
-    sub_model_zoo = model_zoo.get_sub_registry('transformers_bloom')
+@parameterize(
+    "test_config",
+    [
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "num_microbatches": 4,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 4,
+            "enable_all_optimization": False,
+            "use_lazy_init": False,
+            "precision": "fp32",
+        },
+        {"tp_size": 4, "pp_size": 1, "enable_all_optimization": True, "use_lazy_init": False, "precision": "fp32"},
+        {"tp_size": 2, "pp_size": 1, "enable_all_optimization": True, "use_lazy_init": False, "precision": "fp32"},
+        {
+            "tp_size": 2,
+            "pp_size": 1,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "zero_stage": 2,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "zero_stage": 1,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+    ],
+)
+def run_bloom_test(test_config):
+    sub_model_zoo = model_zoo.get_sub_registry("transformers_bloom")
+
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism)
-        check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
+        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+
+    clear_layout_converter()
+    Randomizer.reset_index()
+    torch.cuda.empty_cache()
+
+
+@parameterize(
+    "test_config",
+    [
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "num_microbatches": 4,
+            "enable_all_optimization": False,
+            "use_lazy_init": False,
+            "precision": "fp32",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "num_microbatches": 4,
+            "enable_all_optimization": False,
+            "use_lazy_init": False,
+            "precision": "fp16",
+            "zero_stage": 1,
+            "initial_scale": 1,
+        },
+    ],
+)
+def run_bloom_3d_test(test_config):
+    sub_model_zoo = model_zoo.get_sub_registry("transformers_bloom")
+
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+
+    clear_layout_converter()
+    Randomizer.reset_index()
     torch.cuda.empty_cache()
 
 
 def check_bloom(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_bloom_test()
+
+
+def check_bloom_3d(rank, world_size, port):
+    disable_existing_loggers()
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    run_bloom_3d_test()
 
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_bloom():
-    spawn(check_bloom, 2)
+    spawn(check_bloom, 4)
+
+
+@pytest.mark.largedist
+@rerun_if_address_is_in_use()
+@clear_cache_before_run()
+def test_bloom_3d():
+    spawn(check_bloom_3d, 8)
 
 
 if __name__ == "__main__":
     test_bloom()
+    test_bloom_3d()

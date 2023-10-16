@@ -14,7 +14,7 @@ from colossalai.tensor.sharding_spec import ShardingSpecException
 
 from .strategy_generator import StrategyGenerator
 
-__all__ = ['BinaryElementwiseStrategyGenerator']
+__all__ = ["BinaryElementwiseStrategyGenerator"]
 
 
 class BinaryElementwiseStrategyGenerator(StrategyGenerator):
@@ -26,36 +26,37 @@ class BinaryElementwiseStrategyGenerator(StrategyGenerator):
     """
 
     def validate(self) -> bool:
-        assert len(self.op_data) == 3, \
-            f'BinaryElementwiseStrategyGenerator only accepts three operation data (input, other and output), but got {len(self.op_data)}'
+        assert (
+            len(self.op_data) == 3
+        ), f"BinaryElementwiseStrategyGenerator only accepts three operation data (input, other and output), but got {len(self.op_data)}"
         for name, op_data in self.op_data.items():
             if not isinstance(op_data.data, (torch.Tensor, int, float)):
-                raise TypeError(f'The operation data {name} is not a torch.Tensor/int/float.')
+                raise TypeError(f"The operation data {name} is not a torch.Tensor/int/float.")
 
     def update_compute_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
-        shape = strategy.sharding_specs[self.op_data['input']].get_sharded_shape_per_device()
+        shape = strategy.sharding_specs[self.op_data["input"]].get_sharded_shape_per_device()
 
         # since elementwise ops are not compute-intensive,
         # we approximate the backward compute cost
         # to be twice the fwd compute cost
         fwd_compute_cost = reduce(operator.mul, shape)
         bwd_compute_cost = fwd_compute_cost * 2
-        compute_cost = TrainCycleItem(fwd=fwd_compute_cost,
-                                      bwd=bwd_compute_cost,
-                                      total=fwd_compute_cost + bwd_compute_cost)
+        compute_cost = TrainCycleItem(
+            fwd=fwd_compute_cost, bwd=bwd_compute_cost, total=fwd_compute_cost + bwd_compute_cost
+        )
         strategy.compute_cost = compute_cost
 
     def update_memory_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         # all input, output and outputs have the same shape
-        shape = strategy.sharding_specs[self.op_data['input']].get_sharded_shape_per_device()
+        strategy.sharding_specs[self.op_data["input"]].get_sharded_shape_per_device()
 
         # compute fwd memory cost in bytes
         # as the elementwise ops are not memory-intensive
         # we approximate the fwd memory cost to be the output
         # and the backward memory cost to be grad of input and other
-        input_bytes = self._compute_size_in_bytes(strategy, 'input')
-        other_bytes = self._compute_size_in_bytes(strategy, 'other')
-        output_bytes = self._compute_size_in_bytes(strategy, 'output')
+        input_bytes = self._compute_size_in_bytes(strategy, "input")
+        other_bytes = self._compute_size_in_bytes(strategy, "other")
+        output_bytes = self._compute_size_in_bytes(strategy, "output")
         fwd_memory_cost = MemoryCost(activation=output_bytes)
         bwd_memory_cost = MemoryCost(activation=input_bytes + other_bytes)
         total_memory_cost = MemoryCost(activation=input_bytes + other_bytes + output_bytes)
@@ -66,7 +67,7 @@ class BinaryElementwiseStrategyGenerator(StrategyGenerator):
     def enumerate_all_possible_output(self, mesh_dim_0, mesh_dim_1):
         # we check for the output logical shape to get the number of dimensions
         dim_partition_list = []
-        dim_size = len(self.op_data['output'].logical_shape)
+        dim_size = len(self.op_data["output"].logical_shape)
 
         # enumerate all the 2D sharding cases
         sharding_list_2d = enumerate_all_possible_2d_sharding(mesh_dim_0, mesh_dim_1, dim_size)
@@ -86,21 +87,22 @@ class BinaryElementwiseStrategyGenerator(StrategyGenerator):
 
         # convert these dim partition dict to sharding strategy
         for dim_partition_dict in dim_partition_list:
-            dim_partition_dict_mapping = dict(input=dim_partition_dict,
-                                              other=dim_partition_dict,
-                                              output=dim_partition_dict)
+            dim_partition_dict_mapping = dict(
+                input=dim_partition_dict, other=dim_partition_dict, output=dim_partition_dict
+            )
 
             try:
                 sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
                 communication_action_mapping = {}
 
                 # get name
-                sharding_seq = sharding_spec_mapping['input'].sharding_sequence
-                name = f'{sharding_seq} = {sharding_seq} <binary-elementwise-op> {sharding_seq}'
+                sharding_seq = sharding_spec_mapping["input"].sharding_sequence
+                name = f"{sharding_seq} = {sharding_seq} <binary-elementwise-op> {sharding_seq}"
                 sharding_strategy = self.get_sharding_strategy(
                     name=name,
                     sharding_spec_mapping=sharding_spec_mapping,
-                    communication_action_mapping=communication_action_mapping)
+                    communication_action_mapping=communication_action_mapping,
+                )
                 strategy_list.append(sharding_strategy)
             except ShardingSpecException:
                 continue

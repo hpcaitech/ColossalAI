@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 
-from colossalai.nn import CheckpointModule
+from colossalai.legacy.nn import CheckpointModule
 
 from .registry import non_distributed_component_funcs
 from .utils.dummy_data_generator import DummyDataGenerator
@@ -29,16 +29,14 @@ class NetWithRepeatedlyComputedLayers(CheckpointModule):
 
 
 class DummyDataLoader(DummyDataGenerator):
-
     def generate(self):
         data = torch.rand(16, 5)
         label = torch.randint(low=0, high=2, size=(16,))
         return data, label
 
 
-@non_distributed_component_funcs.register(name='repeated_computed_layers')
+@non_distributed_component_funcs.register(name="repeated_computed_layers")
 def get_training_components():
-
     def model_builder(checkpoint=False):
         return NetWithRepeatedlyComputedLayers(checkpoint)
 

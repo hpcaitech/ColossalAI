@@ -1,5 +1,6 @@
+import argparse
 import gzip
-import random
+from contextlib import nullcontext
 from functools import partial
 from time import time
 
@@ -8,20 +9,17 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import tqdm
-from packaging import version
-
-from colossalai.nn import HybridAdam
 from palm_pytorch import PaLM
 from palm_pytorch.autoregressive_wrapper import AutoregressiveWrapper
 from torch.utils.data import DataLoader, Dataset
 
 import colossalai
-from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
-from colossalai.utils import MultiTimer, get_current_device
-from colossalai.zero import ColoInitContext, GeminiAdamOptimizer, ZeroDDP
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.lazy import LazyInitContext
+from colossalai.logging import disable_existing_loggers, get_dist_logger
+from colossalai.nn import HybridAdam
+from colossalai.utils import get_current_device
 
 # constants
 
@@ -36,38 +34,27 @@ SEQ_LEN = 1024
 
 
 def parse_args():
-    parser = colossalai.get_default_parser()
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--distplan",
         type=str,
-        default='colossalai',
+        default="colossalai",
         help="The distributed plan [colossalai, pytorch].",
     )
     parser.add_argument(
-        "--tp_degree",
-        type=int,
-        default=1,
-        help="Tensor Parallelism Degree. Valid when using colossalai as dist plan.",
+        "--offload_optim_frac",
+        type=float,
+        default=1.0,
+        help="Fraction of optimizer states to be offloaded. This is only used for gemini.",
     )
     parser.add_argument(
-        "--placement",
+        "-p",
+        "--plugin",
         type=str,
-        default='cpu',
-        help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
+        default="torch_ddp",
+        choices=["torch_ddp", "torch_ddp_fp16", "gemini", "low_level_zero"],
+        help="plugin to use",
     )
-    parser.add_argument(
-        "--shardinit",
-        type=bool,
-        default=False,
-        help=
-        "Shard the tensors when init the model to shrink peak memory size on the assigned device. Valid when using colossalai as dist plan.",
-    )
-    parser.add_argument('-p',
-                        '--plugin',
-                        type=str,
-                        default='torch_ddp',
-                        choices=['torch_ddp', 'torch_ddp_fp16', 'gemini', 'low_level_zero'],
-                        help="plugin to use")
     parser.add_argument(
         "--batch_size",
         type=int,
@@ -111,51 +98,6 @@ def get_model_size(model: nn.Module):
     return total_numel
 
 
-
-
-# Parameter Sharding Strategies for Tensor Parallelism
-def split_param_single_dim_tp1d(dim: int, param: ColoParameter, pg: ProcessGroup):
-    spec = (ShardSpec([dim], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    param.set_tensor_spec(*spec)
-
-
-def split_param_row_tp1d(param: ColoParameter, pg: ProcessGroup):
-    split_param_single_dim_tp1d(0, param, pg)
-
-
-def split_param_col_tp1d(param: ColoParameter, pg: ProcessGroup):
-    split_param_single_dim_tp1d(-1, param, pg)
-
-
-# Tensor Parallel
-def tensor_parallelize(model: torch.nn.Module, pg: ProcessGroup):
-    """tensor_parallelize
-    Sharding the Model Parameters.
-    Args:
-        model (torch.nn.Module): a torch module to be sharded
-    """
-    for mn, module in model.named_modules():
-        for pn, param in module.named_parameters(recurse=False):
-            if hasattr(param, 'visited'):
-                continue
-            param.set_dist_spec(ReplicaSpec())
-            if 'net.0' in mn:
-                split_param_col_tp1d(param, pg)    # column slice
-            elif 'to_q' in mn:
-                split_param_col_tp1d(param, pg)    # column slice
-            elif 'to_kv' in mn:
-                split_param_row_tp1d(param, pg)    # row slice
-            elif 'to_out' in mn:
-                split_param_row_tp1d(param, pg)    # row slice
-            elif '1.1' in mn:
-                split_param_col_tp1d(param, pg)    # column slice
-            elif '1.2' in mn:
-                split_param_row_tp1d(param, pg)    # row slice
-            else:
-                param.set_dist_spec(ReplicaSpec())
-            param.visited = True
-
-
 args = parse_args()
 if args.distplan not in ["colossalai", "pytorch"]:
     raise TypeError(f"{args.distplan} is error")
@@ -183,7 +125,6 @@ print("generate dataset ready!")
 
 
 class TextSamplerDataset(Dataset):
-
     def __init__(self, data, seq_len):
         super().__init__()
         self.data = data
@@ -191,7 +132,7 @@ class TextSamplerDataset(Dataset):
 
     def __getitem__(self, index):
         rand_start = torch.randint(0, self.data.size(0) - self.seq_len, (1,))
-        full_seq = self.data[rand_start:rand_start + self.seq_len + 1].long()
+        full_seq = self.data[rand_start : rand_start + self.seq_len + 1].long()
         return full_seq.cuda()
 
     def __len__(self):
@@ -207,27 +148,22 @@ if args.distplan == "colossalai":
     # instantiate GPT-like decoder model
 
     booster_kwargs = {}
-    if args.plugin == 'torch_ddp_fp16':
-        booster_kwargs['mixed_precision'] = 'fp16'
-    if args.plugin.startswith('torch_ddp'):
+    if args.plugin == "torch_ddp_fp16":
+        booster_kwargs["mixed_precision"] = "fp16"
+    if args.plugin.startswith("torch_ddp"):
         plugin = TorchDDPPlugin()
-    elif args.plugin == 'gemini':
-        plugin = GeminiPlugin(placement_policy=args.placement, strict_ddp_mode=True, initial_scale=2 ** 5)
-    elif args.plugin == 'low_level_zero':
-        plugin = LowLevelZeroPlugin(initial_scale=2 ** 5)
+    elif args.plugin == "gemini":
+        plugin = GeminiPlugin(offload_optim_frac=args.offload_optim_frac, initial_scale=2**5)
+    elif args.plugin == "low_level_zero":
+        plugin = LowLevelZeroPlugin(initial_scale=2**5)
     logger.info(f"plugin: {plugin}")
     booster = Booster(plugin=plugin, **booster_kwargs)
 
-    default_pg = ProcessGroup(tp_degree=args.tp_degree)
-    default_dist_spec = ShardSpec([-1], [args.tp_degree]) if args.shardinit else None
-    ctx = ColoInitContext(device='cpu', default_dist_spec=default_dist_spec, default_pg=default_pg)
+    ctx = LazyInitContext(default_device=get_current_device()) if args.plugin == "gemini" else nullcontext()
 
     with ctx:
         model = PaLM(num_tokens=50304, dim=4096, depth=64)
         model = AutoregressiveWrapper(model, max_seq_len=SEQ_LEN)
-
-    pg = default_pg
-    tensor_parallelize(model, pg)
 
     # optimizer
 
@@ -248,7 +184,6 @@ get_tflops_func = partial(get_tflops, numel, args.batch_size, SEQ_LEN)
 model.train()
 tflops_list = []
 for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10.0, desc="training"):
-
     if args.distplan == "colossalai":
         optimizer.zero_grad()
         start = time()
@@ -297,12 +232,12 @@ logger.info(f"Median TFLOPS is {tflops_list[median_index]:.3f}")
 #         loss = model(next(val_loader))
 #         print(f"validation loss: {loss.item()}")
 
-    # if i % GENERATE_EVERY == 0:
-    #     model.eval()
-    #     inp = random.choice(val_dataset)[:-1]
-    #     prime = decode_tokens(inp)
-    #     print(f"%s \n\n %s", (prime, "*" * 100))
+# if i % GENERATE_EVERY == 0:
+#     model.eval()
+#     inp = random.choice(val_dataset)[:-1]
+#     prime = decode_tokens(inp)
+#     print(f"%s \n\n %s", (prime, "*" * 100))
 
-    #     sample = model.generate(inp[None, ...], GENERATE_LENGTH)
-    #     output_str = decode_tokens(sample[0])
-    #     print(output_str)
+#     sample = model.generate(inp[None, ...], GENERATE_LENGTH)
+#     output_str = decode_tokens(sample[0])
+#     print(output_str)

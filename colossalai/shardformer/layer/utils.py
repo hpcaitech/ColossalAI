@@ -3,7 +3,6 @@ from contextlib import contextmanager
 import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
-from torch.distributed.distributed_c10d import _get_global_rank
 
 
 class Randomizer:
@@ -29,8 +28,6 @@ class Randomizer:
     _INDEX = 0
 
     def __init__(self, seed: int):
-        # TODO: remove colossalai.context.random
-
         self.seed = seed
 
         # Handle CUDA rng state
@@ -123,6 +120,13 @@ class Randomizer:
         Randomizer._INDEX += 1
 
     @staticmethod
+    def reset_index():
+        """
+        Reset the index to zero.
+        """
+        Randomizer._INDEX = 0
+
+    @staticmethod
     def is_randomizer_index_synchronized(process_group: ProcessGroup = None):
         """
         Return whether the randomizer index is synchronized across processes.
@@ -167,10 +171,9 @@ class Randomizer:
             Randomizer._INDEX = index_tensor.item()
 
 
-def create_randomizer_with_offset(seed: int,
-                                  process_group: ProcessGroup = None,
-                                  offset_by_rank: bool = True,
-                                  offset_by_index: bool = True):
+def create_randomizer_with_offset(
+    seed: int, process_group: ProcessGroup = None, offset_by_rank: bool = True, offset_by_index: bool = True
+):
     """
     Create a randomizer with an offset. The offset is equal to the rank of the process and the index of the randomizer.
 
@@ -192,9 +195,11 @@ def create_randomizer_with_offset(seed: int,
     if offset_by_index:
         # check if the randomizer index is synchronized
         is_synchronized = Randomizer.is_randomizer_index_synchronized(process_group)
-        assert is_synchronized, ("We detect that the randomizer index is not synchronized across processes."
-                                 "This is not allowed when we want to create a randomizer with offset by index."
-                                 "Please call Randomizer.synchronize_index() first.")
+        assert is_synchronized, (
+            "We detect that the randomizer index is not synchronized across processes."
+            "This is not allowed when we want to create a randomizer with offset by index."
+            "Please call Randomizer.synchronize_index() first."
+        )
 
         base_seed += Randomizer.index()
         Randomizer.increment_index()

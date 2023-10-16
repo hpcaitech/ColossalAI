@@ -14,11 +14,9 @@ from .runtime import runtime_asyn_offload_apply_pass, runtime_syn_offload_apply_
 from .util import GlobalRuntimeInfo, compute_act_peak_mem, compute_max_param_mem, compute_total_param_mem
 
 
-def memory_optimize(model: torch.nn.Module,
-                    inps: Dict[str, torch.Tensor],
-                    memory_budget: float = -1.0,
-                    solver_name: str = 'asyn'):
-
+def memory_optimize(
+    model: torch.nn.Module, inps: Dict[str, torch.Tensor], memory_budget: float = -1.0, solver_name: str = "asyn"
+):
     model = model.cpu().half()
     tracer = ColoTracer()
     assert is_compatible_with_meta()
@@ -40,13 +38,13 @@ def memory_optimize(model: torch.nn.Module,
         f"act_peak_mem={act_peak_mem:.3f} MB | max_param_mem={max_param_mem:.3f} MB | total_param_mem={total_param_mem:.3f}"
     )
 
-    if solver_name == 'syn':
+    if solver_name == "syn":
         gm = runtime_syn_offload_apply_pass(gm, region_manager.region_list)
-    elif solver_name == 'asyn':
+    elif solver_name == "asyn":
         gm = runtime_asyn_offload_apply_pass(gm, region_manager.region_list)
     else:
         raise TypeError(f"Unknown solver name {solver_name}!")
 
     gm.recompile()
-    optimized_model = BaseOffloadModule(gm, region_manager, solver_name == 'syn')
+    optimized_model = BaseOffloadModule(gm, region_manager, solver_name == "syn")
     return optimized_model

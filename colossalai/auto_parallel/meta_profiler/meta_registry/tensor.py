@@ -2,7 +2,6 @@ from typing import Callable, List, Tuple
 
 import torch
 
-from colossalai._analyzer._subclasses.flop_tensor import flop_mapping
 from colossalai._analyzer.fx.node_util import compute_size_in_bytes
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, OperationDataType, TrainCycleItem
 
@@ -37,15 +36,19 @@ def tensor_related_metainfo(bwd_mem_out_factor: float = 1, bwd_mem_tmp_factor: f
         # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
         fwd_mem_cost = MemoryCost(activation=compute_size_in_bytes(outputs) * 2, parameter=0, temp=0, buffer=0)
 
-        bwd_mem_cost = MemoryCost(activation=compute_size_in_bytes(outputs) * bwd_mem_out_factor,
-                                  parameter=0,
-                                  temp=compute_size_in_bytes(outputs) * bwd_mem_tmp_factor,
-                                  buffer=0)
+        bwd_mem_cost = MemoryCost(
+            activation=compute_size_in_bytes(outputs) * bwd_mem_out_factor,
+            parameter=0,
+            temp=compute_size_in_bytes(outputs) * bwd_mem_tmp_factor,
+            buffer=0,
+        )
 
-        total_mem_cost = MemoryCost(activation=fwd_mem_cost.activation + bwd_mem_cost.activation,
-                                    parameter=fwd_mem_cost.parameter + bwd_mem_cost.parameter,
-                                    temp=fwd_mem_cost.temp + bwd_mem_cost.temp,
-                                    buffer=fwd_mem_cost.buffer + bwd_mem_cost.buffer)
+        total_mem_cost = MemoryCost(
+            activation=fwd_mem_cost.activation + bwd_mem_cost.activation,
+            parameter=fwd_mem_cost.parameter + bwd_mem_cost.parameter,
+            temp=fwd_mem_cost.temp + bwd_mem_cost.temp,
+            buffer=fwd_mem_cost.buffer + bwd_mem_cost.buffer,
+        )
 
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
 
@@ -66,14 +69,24 @@ def tensor_related_metainfo(bwd_mem_out_factor: float = 1, bwd_mem_tmp_factor: f
 
 # register torch.Tensor related metainfo
 # (0, 0)
-meta_register.register([torch.tensor, torch.Tensor.to, torch.Tensor.unsqueeze, torch.unsqueeze,
-                        torch.arange])(tensor_related_metainfo(0, 0))
+meta_register.register([torch.tensor, torch.Tensor.to, torch.Tensor.unsqueeze, torch.unsqueeze, torch.arange])(
+    tensor_related_metainfo(0, 0)
+)
 
 # (1, 0)
-meta_register.register([
-    torch.Tensor.flatten, torch.flatten, torch.Tensor.transpose, torch.transpose, torch.Tensor.permute, torch.permute,
-    torch.Tensor.split, torch.split, torch.Tensor.view
-])(tensor_related_metainfo(1, 0))
+meta_register.register(
+    [
+        torch.Tensor.flatten,
+        torch.flatten,
+        torch.Tensor.transpose,
+        torch.transpose,
+        torch.Tensor.permute,
+        torch.permute,
+        torch.Tensor.split,
+        torch.split,
+        torch.Tensor.view,
+    ]
+)(tensor_related_metainfo(1, 0))
 
 # (1, 1)
 meta_register.register([torch.Tensor.type, torch.Tensor.contiguous])(tensor_related_metainfo(1, 1))

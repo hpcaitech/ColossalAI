@@ -1,10 +1,8 @@
 import operator
-from typing import Any, Callable, Dict, Optional, Set, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 import torch
-import torch.nn as nn
-from torch.fx import Graph, Node, Proxy, Tracer
-from torch.fx.graph import _Namespace
+from torch.fx import Node, Proxy
 from torch.utils._pytree import tree_map
 
 from colossalai._analyzer._subclasses import MetaTensor
@@ -32,7 +30,7 @@ class ColoProxy(Proxy):
     def __torch_function__(cls, orig_method, types, args=(), kwargs=None):
         kwargs = {} if kwargs is None else kwargs
         if orig_method in cls._func_dispatch:
-            impl = cls._func_dispatch.pop(orig_method)    # avoid recursion
+            impl = cls._func_dispatch.pop(orig_method)  # avoid recursion
             proxy = impl(*args, **kwargs)
             cls._func_dispatch[orig_method] = impl
             return proxy
@@ -72,7 +70,7 @@ class ColoProxy(Proxy):
         return ColoAttribute(self, k, getattr(self._meta_data, k, None))
 
     def __setitem__(self, key, value):
-        proxy = self.tracer.create_proxy('call_function', operator.setitem, (self, key, value), {})
+        proxy = self.tracer.create_proxy("call_function", operator.setitem, (self, key, value), {})
         proxy.meta_data = self._meta_data
         return proxy
 
@@ -89,7 +87,6 @@ class ColoProxy(Proxy):
 
 
 class ColoAttribute(ColoProxy):
-
     def __init__(self, root, attr: str, data=None):
         self.root = root
         self.attr = attr
@@ -102,11 +99,11 @@ class ColoAttribute(ColoProxy):
         # the node for attributes is added lazily, since most will just be method calls
         # which do not rely on the getitem call
         if self._node is None:
-            self._node = self.tracer.create_proxy('call_function', getattr, (self.root, self.attr), {}).node
+            self._node = self.tracer.create_proxy("call_function", getattr, (self.root, self.attr), {}).node
         return self._node
 
     def __call__(self, *args, **kwargs):
-        return self.tracer.create_proxy('call_method', self.attr, (self.root,) + args, kwargs)
+        return self.tracer.create_proxy("call_method", self.attr, (self.root,) + args, kwargs)
 
     def __repr__(self):
         return f"ColoAttribute({self.node.name}, attr={self.attr})"

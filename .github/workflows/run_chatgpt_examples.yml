@@ -28,9 +28,8 @@ jobs:
       - name: Checkout ColossalAI
         uses: actions/checkout@v2
 
-      - name: Install ColossalAI and ChatGPT
+      - name: Install ChatGPT
         run: |
-          pip install -e .
           cd applications/Chat
           pip install -v .
           pip install -r examples/requirements.txt
@@ -43,10 +42,12 @@ jobs:
         run: |
           cd applications/Chat
           rm -rf ~/.cache/colossalai
-          ./examples/test_ci.sh
+          ./tests/test_inference.sh
+          ./tests/test_benchmarks.sh
+          ./tests/test_train.sh
         env:
           NCCL_SHM_DISABLE: 1
           MAX_JOBS: 8
           SFT_DATASET: /data/scratch/github_actions/chat/data.json
-          PROMPT_PATH: /data/scratch/github_actions/chat/prompts_en.jsonl
+          PROMPT_DATASET: /data/scratch/github_actions/chat/prompts_en.jsonl
           PRETRAIN_DATASET: /data/scratch/github_actions/chat/alpaca_data.json

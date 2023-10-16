@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from typing import Callable, List, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -9,17 +9,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from torch.distributed import ProcessGroup
-from torch.nn.parameter import Parameter
 
+from colossalai.lazy import LazyInitContext
 from colossalai.nn import init as init
 from colossalai.nn.layer.utils import divide
-from colossalai.tensor.d_tensor.api import shard_colwise, shard_rowwise, sharded_tensor_to_param
+from colossalai.tensor.d_tensor.api import (
+    is_distributed_tensor,
+    shard_colwise,
+    shard_rowwise,
+    sharded_tensor_to_existing_param,
+)
 
 from ._operation import gather_forward_split_backward, reduce_forward
 from .parallel_module import ParallelModule
 from .utils import create_randomizer_with_offset
 
-__all__ = ['Embedding1D', 'VocabParallelEmbedding1D']
+__all__ = ["Embedding1D", "VocabParallelEmbedding1D"]
 
 
 class Embedding1D(ParallelModule):
@@ -52,17 +57,20 @@ class Embedding1D(ParallelModule):
     `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_
     """
 
-    def __init__(self,
-                 num_embeddings: int,
-                 embedding_dim: int,
-                 padding_idx: int = None,
-                 dtype: torch.dtype = None,
-                 device: torch.device = None,
-                 process_group: ProcessGroup = None,
-                 gather_output: bool = True,
-                 weight_initializer: Callable = init.normal_(),
-                 *args,
-                 **kwargs):
+    def __init__(
+        self,
+        num_embeddings: int,
+        embedding_dim: int,
+        padding_idx: int = None,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+        process_group: ProcessGroup = None,
+        gather_output: bool = True,
+        weight: Optional[nn.Parameter] = None,
+        weight_initializer: Callable = init.normal_(),
+        *args,
+        **kwargs,
+    ):
         super().__init__()
 
         self.num_embeddings = num_embeddings
@@ -74,27 +82,33 @@ class Embedding1D(ParallelModule):
         self.embed_kwargs = kwargs
         self.gather_output = gather_output
 
-        # Parameters.
-        factory_kwargs = {'device': device, 'dtype': dtype}
-        weight = torch.empty((num_embeddings, self.embedding_dim), **factory_kwargs)
-        sharded_weight = shard_colwise(weight, process_group)
-        self.weight = sharded_tensor_to_param(sharded_weight)
-
         # offset the seed with randomizer index and rank
         seed = torch.random.initial_seed()
         self.randomizer = create_randomizer_with_offset(seed, process_group=self.process_group)
 
-        with self.randomizer.fork_rng(enable_cpu=True):
-            self.reset_parameters(weight_initializer)
+        # Parameters.
+        if weight is None:
+            factory_kwargs = {"device": device, "dtype": dtype}
+            self.weight = nn.Parameter(torch.empty((num_embeddings, self.embedding_dim), **factory_kwargs))
+        else:
+            weight.data = weight.data.to(device=device, dtype=dtype)
+            self.weight = weight
+        if not is_distributed_tensor(self.weight):
+            sharded_weight = shard_colwise(self.weight.data, process_group)
+            sharded_tensor_to_existing_param(sharded_weight, self.weight)
+
+        if weight is None:
+            with self.randomizer.fork_rng(enable_cpu=True):
+                self.reset_parameters(weight_initializer)
 
     @staticmethod
-    def from_native_module(module: nn.Embedding,
-                           process_group: Union[ProcessGroup, List[ProcessGroup]] = None,
-                           *args,
-                           **kwargs) -> "Embedding1D":
+    def from_native_module(
+        module: nn.Embedding, process_group: Union[ProcessGroup, List[ProcessGroup]] = None, *args, **kwargs
+    ) -> "Embedding1D":
         r"""
         Build a 1D parallelized Embedding from a native nn.Embedding module.
         """
+        LazyInitContext.materialize(module)
         # get the attributes
         num_embedding = module.num_embeddings
         embedding_dim = module.embedding_dim
@@ -110,23 +124,21 @@ class Embedding1D(ParallelModule):
         if sparse:
             raise NotImplementedError("The Embedding1D module does not support sparse embedding yet.")
 
-        embedding = Embedding1D(num_embeddings=num_embedding,
-                                embedding_dim=embedding_dim,
-                                padding_idx=padding_idx,
-                                process_group=process_group,
-                                dtype=dtype,
-                                device=device,
-                                max_norm=max_norm,
-                                norm_type=norm_type,
-                                scale_grad_by_freq=scale_grad_by_freq,
-                                sparse=sparse,
-                                *args,
-                                **kwargs)
-
-        # copy the weight
-        with torch.no_grad():
-            sharded_weight = shard_colwise(module.weight.data, process_group)
-            embedding.weight.copy_(sharded_weight)
+        embedding = Embedding1D(
+            num_embeddings=num_embedding,
+            embedding_dim=embedding_dim,
+            padding_idx=padding_idx,
+            process_group=process_group,
+            dtype=dtype,
+            device=device,
+            max_norm=max_norm,
+            norm_type=norm_type,
+            scale_grad_by_freq=scale_grad_by_freq,
+            sparse=sparse,
+            weight=module.weight,
+            *args,
+            **kwargs,
+        )
 
         return embedding
 
@@ -142,7 +154,6 @@ class Embedding1D(ParallelModule):
 
     def forward(self, input_: Tensor) -> Tensor:
         output_parallel = F.embedding(input_, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
-
         if self.gather_output:
             output = gather_forward_split_backward(output_parallel, dim=-1, process_group=self.process_group)
             return output
@@ -180,20 +191,22 @@ class VocabParallelEmbedding1D(ParallelModule):
     `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
-    def __init__(self,
-                 num_embeddings: int,
-                 embedding_dim: int,
-                 padding_idx: int = None,
-                 dtype: torch.dtype = None,
-                 device: torch.device = None,
-                 process_group: ProcessGroup = None,
-                 weight_initializer: Callable = init.normal_(),
-                 *args,
-                 **kwargs):
+    def __init__(
+        self,
+        num_embeddings: int,
+        embedding_dim: int,
+        padding_idx: int = None,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+        process_group: ProcessGroup = None,
+        weight: Optional[nn.Parameter] = None,
+        weight_initializer: Callable = init.normal_(),
+        *args,
+        **kwargs,
+    ):
         super().__init__()
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
-        self.padding_idx = padding_idx
         self.embed_args = args
         self.embed_kwargs = kwargs
         self.process_group = process_group
@@ -206,23 +219,35 @@ class VocabParallelEmbedding1D(ParallelModule):
         self.vocab_start_index = tensor_parallel_rank * self.num_embeddings_per_partition
         self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
 
-        # parameter
-        factory_kwargs = {'device': device, 'dtype': dtype}
-        weight = torch.empty((num_embeddings, self.embedding_dim), **factory_kwargs)
-        sharded_weight = shard_rowwise(weight, process_group)
-        self.weight = sharded_tensor_to_param(sharded_weight)
+        # padding index
+        self.padding_idx = self._select_padding_idx(padding_idx)
 
         # offset the seed with randomizer index and rank
         seed = torch.random.initial_seed()
         self.randomizer = create_randomizer_with_offset(seed, process_group=self.process_group)
-        self.reset_parameters(weight_initializer)
+
+        # parameter
+        if weight is None:
+            factory_kwargs = {"device": device, "dtype": dtype}
+            self.weight = nn.Parameter(torch.empty((num_embeddings, self.embedding_dim), **factory_kwargs))
+        else:
+            weight.data = weight.data.to(device=device, dtype=dtype)
+            self.weight = weight
+        if not is_distributed_tensor(self.weight):
+            sharded_weight = shard_rowwise(self.weight.data, process_group)
+            sharded_tensor_to_existing_param(sharded_weight, self.weight)
+
+        if weight is None:
+            self.reset_parameters(weight_initializer)
 
     @staticmethod
-    def from_native_module(module: nn.Embedding, process_group: Union[ProcessGroup, List[ProcessGroup]], *args,
-                           **kwargs) -> ParallelModule:
+    def from_native_module(
+        module: nn.Embedding, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
+    ) -> ParallelModule:
         r"""
         Convert a native pytorch embedding module to a parallel module.
         """
+        LazyInitContext.materialize(module)
         # get the origin attributes
         num_embeddings = module.num_embeddings
         embedding_dim = module.embedding_dim
@@ -231,23 +256,20 @@ class VocabParallelEmbedding1D(ParallelModule):
 
         # ensure only one process group is used
         if isinstance(process_group, (list, tuple)):
-            assert len(process_group) == 1, \
-                f'Expected only one process group, got {len(process_group)}.'
+            assert len(process_group) == 1, f"Expected only one process group, got {len(process_group)}."
             process_group = process_group[0]
 
         # create the parallel module
-        vocab_embedding_1d = VocabParallelEmbedding1D(num_embeddings=num_embeddings,
-                                                      embedding_dim=embedding_dim,
-                                                      padding_idx=padding_idx,
-                                                      device=device,
-                                                      process_group=process_group,
-                                                      *args,
-                                                      **kwargs)
-        with torch.no_grad():
-            # shard and slice the weight along the vocabulary(num_embeddings) dimension
-            # the shape of the weight is (num_embeddings, embedding_dim)
-            shard_weight = shard_rowwise(module.weight.data, process_group)
-            vocab_embedding_1d.weight.data.copy_(shard_weight)
+        vocab_embedding_1d = VocabParallelEmbedding1D(
+            num_embeddings=num_embeddings,
+            embedding_dim=embedding_dim,
+            padding_idx=padding_idx,
+            device=device,
+            process_group=process_group,
+            weight=module.weight,
+            *args,
+            **kwargs,
+        )
 
         return vocab_embedding_1d
 
@@ -258,10 +280,22 @@ class VocabParallelEmbedding1D(ParallelModule):
             self._fill_padding_idx_with_zero()
 
     def _fill_padding_idx_with_zero(self) -> None:
-        if self.padding_idx is not None and \
-                self.padding_idx >= self.vocab_start_index and self.padding_idx < self.vocab_end_index:
+        if (
+            self.padding_idx is not None
+            and self.padding_idx >= self.vocab_start_index
+            and self.padding_idx < self.vocab_end_index
+        ):
             with torch.no_grad():
                 self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
+
+    def _select_padding_idx(self, padding_idx: int):
+        # select padding index according to the rank
+        if padding_idx is None:
+            return None
+        elif padding_idx < self.vocab_end_index and padding_idx >= self.vocab_start_index:
+            return padding_idx - self.vocab_start_index
+        else:
+            return None
 
     def forward(self, input_: Tensor) -> Tensor:
         # Build the mask.
@@ -270,11 +304,12 @@ class VocabParallelEmbedding1D(ParallelModule):
         masked_input = input_.clone() - self.vocab_start_index
         masked_input[input_mask] = 0
 
-        output_parallel = F.embedding(masked_input, self.weight, self.padding_idx, *self.embed_args,
-                                      **self.embed_kwargs)
+        output_parallel = F.embedding(
+            masked_input, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs
+        )
 
         # Mask the output embedding.
-        output_parallel[input_mask, :] = 0.
+        output_parallel[input_mask, :] = 0.0
         # Reduce across all the model parallel GPUs.
         output = reduce_forward(output_parallel, self.process_group)
         return output

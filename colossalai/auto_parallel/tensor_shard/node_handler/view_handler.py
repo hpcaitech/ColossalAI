@@ -7,7 +7,7 @@ from .node_handler import NodeHandler
 from .registry import operator_registry
 from .strategy import StrategyGenerator, ViewGenerator
 
-__all__ = ['ViewHandler']
+__all__ = ["ViewHandler"]
 
 
 @operator_registry.register(torch.Tensor.reshape)
@@ -38,7 +38,7 @@ class ViewHandler(NodeHandler):
         physical_input_operand = OperationData(name=str(self.node.args[0]), type=data_type, data=input_data)
 
         target_shape = self.node._meta_data.shape
-        physical_shape_operand = OperationData(name='tgt_shape', type=OperationDataType.ARG, data=target_shape)
+        physical_shape_operand = OperationData(name="tgt_shape", type=OperationDataType.ARG, data=target_shape)
 
         output_data = self.node._meta_data
         physical_output_operand = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=output_data)
@@ -46,7 +46,7 @@ class ViewHandler(NodeHandler):
         mapping = {
             "input": physical_input_operand,
             "tgt_shape": physical_shape_operand,
-            "output": physical_output_operand
+            "output": physical_output_operand,
         }
 
         return mapping

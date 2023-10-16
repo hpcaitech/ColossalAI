@@ -27,9 +27,12 @@ We also provide various training strategies:
 
 We only support `torchrun` to launch now. E.g.
 
-```shell
+```bash
 # run OPT-125M with no lora (lora_rank=0) on single-node single-GPU with min batch size
-torchrun --standalone --nproc_per_node 1 benchmark_opt_lora_dummy.py --model 125m --critic_model 125m --strategy ddp --experience_batch_size 1 --train_batch_size 1 --lora_rank 0
+torchrun --standalone --nproc_per_node 1 benchmark_opt_lora_dummy.py \
+    --model 125m --critic_model 125m --strategy ddp \
+    --experience_batch_size 1 --train_batch_size 1 --lora_rank 0
 # run Actor (OPT-1.3B) and Critic (OPT-350M) with lora_rank=4 on single-node 4-GPU
-torchrun --standalone --nproc_per_node 4 benchmark_opt_lora_dummy.py --model 1.3b --critic_model 350m --strategy colossalai_zero2 --lora_rank 4
+torchrun --standalone --nproc_per_node 4 benchmark_opt_lora_dummy.py \
+    --model 1.3b --critic_model 350m --strategy colossalai_zero2 --lora_rank 4
 ```

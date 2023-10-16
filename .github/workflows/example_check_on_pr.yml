@@ -21,8 +21,8 @@ jobs:
       anyChanged: ${{ steps.setup-matrix.outputs.anyChanged }}
     name: Detect changed example files
     concurrency:
-      group: ${{ github.head_ref }}
-      cancel-in-progress: false
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-detect-change
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v3
         with:
@@ -81,14 +81,14 @@ jobs:
       options: --gpus all --rm -v /data/scratch/examples-data:/data/
     timeout-minutes: 10
     concurrency:
-      group: ${{ github.head_ref }}
-      cancel-in-progress: false
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-run-example-${{ matrix.directory }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v3
 
       - name: Install Colossal-AI
         run: |
-          pip install -v .
+          CUDA_EXT=1 pip install -v .
 
       - name: Test the example
         run: |

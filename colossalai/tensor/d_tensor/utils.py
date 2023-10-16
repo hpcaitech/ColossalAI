@@ -7,7 +7,7 @@ from colossalai.tensor.d_tensor.layout import Layout
 
 
 def get_comm_cost(layout: Layout, comm_spec: CommSpec, forward_only: bool = False) -> Dict[str, float]:
-    '''
+    """
     This method is used to compute the communication cost for a given layout and comm_spec.
 
     For all_gather, all2all, and all_reduce operation, the formula provided in DeviceMesh with alpha-beta model is used to
@@ -18,7 +18,7 @@ def get_comm_cost(layout: Layout, comm_spec: CommSpec, forward_only: bool = Fals
         comm_spec: the comm_spec to instruct the communication operation.
         forward_only: if it is True, we will just count the forward communication cost.
             If it is False, we will count both forward and backward communication cost.
-    '''
+    """
     comm_size = reduce(operator.mul, layout.get_sharded_shape_per_device(), 1)
     device_mesh = layout.device_mesh
     comm_pattern = comm_spec.comm_pattern

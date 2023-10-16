@@ -2,11 +2,9 @@ from typing import List
 
 from torch.optim.lr_scheduler import MultiStepLR as _MultiStepLR
 
-from colossalai.registry import LR_SCHEDULERS
 from .delayed import WarmupScheduler
 
 
-@LR_SCHEDULERS.register_module
 class MultiStepLR(_MultiStepLR):
     """Decays the learning rate of each parameter group by gamma once the
     number of epoch reaches one of the milestones. Notice that such decay can
@@ -22,17 +20,18 @@ class MultiStepLR(_MultiStepLR):
             the schedule is started from the beginning or When last_epoch=-1, sets initial lr as lr.
     """
 
-    def __init__(self,
-                 optimizer,
-                 total_steps: int,
-                 milestones: List[int] = None,
-                 gamma: float = 0.1,
-                 last_epoch: int = -1,
-                 **kwargs):
+    def __init__(
+        self,
+        optimizer,
+        total_steps: int,
+        milestones: List[int] = None,
+        gamma: float = 0.1,
+        last_epoch: int = -1,
+        **kwargs,
+    ):
         super().__init__(optimizer, milestones, gamma=gamma, last_epoch=last_epoch)
 
 
-@LR_SCHEDULERS.register_module
 class MultiStepWarmupLR(WarmupScheduler):
     """Multistep learning rate scheduler with warmup.
 
@@ -47,16 +46,18 @@ class MultiStepWarmupLR(WarmupScheduler):
             the schedule is started from the beginning or When last_epoch=-1, sets initial lr as lr.
     """
 
-    def __init__(self,
-                 optimizer,
-                 total_steps: int,
-                 warmup_steps: int = 0,
-                 milestones: List[int] = None,
-                 gamma: float = 0.1,
-                 last_epoch: int = -1,
-                 **kwargs):
+    def __init__(
+        self,
+        optimizer,
+        total_steps: int,
+        warmup_steps: int = 0,
+        milestones: List[int] = None,
+        gamma: float = 0.1,
+        last_epoch: int = -1,
+        **kwargs,
+    ):
         if len(milestones) == 0:
-            raise ValueError('milestones cannot be empty')
+            raise ValueError("milestones cannot be empty")
         milestones = [v - warmup_steps for v in milestones if v >= warmup_steps]
         base_scheduler = _MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
         super().__init__(optimizer, warmup_steps, base_scheduler, last_epoch=last_epoch)
