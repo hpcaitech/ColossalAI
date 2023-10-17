@@ -98,6 +98,7 @@ class ReduceScatter(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None, None]:
+        # TODO: support async backward
         return (
             AllGather.forward(None, grad_outputs[0], ctx.comm_grp, False)[0],
             None,

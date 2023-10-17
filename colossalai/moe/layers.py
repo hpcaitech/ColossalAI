@@ -1,3 +1,4 @@
+import dataclasses
 import math
 from typing import Any, Optional, Tuple
 
@@ -209,43 +210,57 @@ class SparseMLP(nn.Module):
             return expert_output
 
         else:
+            @dataclasses.dataclass
+            class Capsule():
+                data: torch.Tensor
+                handle: Any = None
+
             NUM_CHUNK = 2
             NUM_STAGES = 4
 
             assert dispatch_data.shape[1] % NUM_CHUNK == 0, \
                 "arbitrary chunk num is not supported yet"
             chunk_size = dispatch_data.shape[1] // NUM_CHUNK
-
             input_shape = (self.ep_size, self.num_local_experts, -1, self.hidden_size)
             dispatch_data = dispatch_data.reshape(*input_shape)
             chunk_data = torch.split(dispatch_data, chunk_size, dim=2)
             output = torch.empty_like(dispatch_data)
 
-            expert_in, in_handle = None, None
-            partial_expert_out = None
-            expert_out, out_handle, offset = None, None, 0
+            offset = 0
+            _expert_in, expert_in, _expert_out, expert_out = None, None, None, None
 
             for i in range(NUM_CHUNK + NUM_STAGES - 1):
-                if out_handle is not None:
-                    out_handle.wait()
-                    output[:, :, offset:offset + chunk_size, :] = expert_out
+                if expert_out is not None:
+                    expert_out.handle.wait()
+                    output[:, :, offset:offset + chunk_size, :] = expert_out.data
                     offset += chunk_size
-                    expert_out, out_handle = None, None
+                    expert_out = None
 
-                # reduce scatter last output
-                if partial_expert_out is not None:
-                    expert_out, out_handle = AllToAll.apply(partial_expert_out, self.ep_group, True)
-                    partial_expert_out = None
+                # all2all last output
+                if _expert_out is not None:
+                    expert_out = Capsule(
+                        *AllToAll.apply(_expert_out.data, self.ep_group, True),
+                    )
+                    _expert_out = None
+
+                # all2all next input
+                if 0 <= i < NUM_CHUNK:
+                    _expert_in = Capsule(
+                        *AllToAll.apply(chunk_data[i].contiguous(), self.ep_group, True)
+                    )
 
                 # compute
-                if in_handle is not None:
-                    in_handle.wait()
-                    partial_expert_out = self.experts(expert_in)
-                    expert_in, in_handle = None, None
+                if expert_in is not None:
+                    expert_in.handle.wait()
+                    _expert_out = Capsule(
+                        data=self.experts(expert_in.data),
+                        handle=None
+                    )
+                    expert_in = None
 
-                # all gather next input
-                if 0 <= i < NUM_CHUNK:
-                    expert_in, in_handle = AllToAll.apply(chunk_data[i].contiguous(), self.ep_group, True)
+                if _expert_in is not None:
+                    expert_in = _expert_in
+                    _expert_in = None
 
             return output
 
@@ -272,10 +287,16 @@ class SparseMLP(nn.Module):
         """
         if not overlap:
             expert_in = AllGather.apply(dispatch_data, self.ep_group, False)[0]
-            partial_expert_out = self.experts(expert_in)
-            expert_out = ReduceScatter.apply(partial_expert_out, self.ep_group, False)[0]
+            expert_out = self.experts(expert_in)
+            expert_out = ReduceScatter.apply(expert_out, self.ep_group, False)[0]
             return expert_out
         else:
+            @dataclasses.dataclass
+            class Capsule():
+                data: torch.Tensor
+                handle: Any
+                indices: Tuple
+
             NUM_CHUNK = 2
             NUM_STAGES = 4
 
@@ -288,33 +309,41 @@ class SparseMLP(nn.Module):
             def get_chunk_slice(idx: int, chunk_size: int) -> Tuple[slice]:
                 return (slice(idx * chunk_size, (idx + 1) * chunk_size), )
 
-            expert_in, in_handle, input_indices = None, None, None
-            partial_expert_out, data_indices = None, None
-            expert_out, out_handle, output_indices = None, None, None
+            _expert_in, expert_in, _expert_out, expert_out = None, None, None, None
 
             for i in range(NUM_CHUNK + NUM_STAGES - 1):
-                if out_handle is not None:
-                    out_handle.wait()
-                    output[output_indices] = expert_out
-                    expert_out, out_handle, output_indices = None, None, None
+                if expert_out is not None:
+                    expert_out.handle.wait()
+                    output[expert_out.indices] = expert_out.data
+                    expert_out = None
 
                 # reduce scatter last output
-                if partial_expert_out is not None:
-                    output_indices = data_indices
-                    expert_out, out_handle = ReduceScatter.apply(partial_expert_out, self.ep_group, True)
-                    partial_expert_out = None
-
-                # compute
-                if in_handle is not None:
-                    in_handle.wait()
-                    data_indices = input_indices
-                    partial_expert_out = self.experts(expert_in, input_indices)
-                    expert_in, in_handle, input_indices = None, None, None
+                if _expert_out is not None:
+                    expert_out = Capsule(
+                        *ReduceScatter.apply(_expert_out.data, self.ep_group, True),
+                        indices=_expert_out.indices
+                    )
+                    _expert_out = None
 
                 # all gather next input
                 if 0 <= i < NUM_CHUNK:
-                    input_indices = get_chunk_slice(i, chunk_size)
-                    expert_in, in_handle = AllGather.apply(chunk_data[i].contiguous(), self.ep_group, True)
+                    _expert_in = Capsule(
+                        *AllGather.apply(chunk_data[i].contiguous(), self.ep_group, True),
+                        indices=get_chunk_slice(i, chunk_size)
+                    )
+
+                # compute
+                if expert_in is not None:
+                    expert_in.handle.wait()
+                    _expert_out = Capsule(
+                        self.experts(expert_in.data, expert_in.indices),
+                        handle=None, indices=expert_in.indices
+                    )
+                    expert_in = None
+
+                if _expert_in is not None:
+                    expert_in = _expert_in
+                    _expert_in = None
 
             return output
 
