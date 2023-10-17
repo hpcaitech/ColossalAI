@@ -27,16 +27,20 @@ def run_async_engine(path: str):
 
     prompt = "Introduce some landmarks in Beijing"
 
-    request_id = str(uuid.uuid4().hex)
     sampling_params = SamplingParams()
+    asyncio.run(asy_for_loop_test(engine, prompt, sampling_params))
 
-    async def get_result(request_id, prompt, sampling_params):
-        results = engine.generate(request_id, prompt, sampling_params)
-        async for result in results:
-            print("result: ", result)
-            return result
 
-    asyncio.run(get_result(request_id, prompt, sampling_params))
+async def get_result(engine, prompt, sampling_params):
+    request_id = str(uuid.uuid4().hex)
+    results = engine.generate(request_id, prompt, sampling_params)
+    async for result in results:
+        print("result: ", result)
+
+
+async def asy_for_loop_test(engine, prompt, sampling_params):
+    for i in range(1):
+        await get_result(engine, prompt, sampling_params)
 
 
 def check_async_engine(rank, world_size, port):

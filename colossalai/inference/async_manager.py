@@ -59,7 +59,7 @@ class Async_DynamicBatchManager:
         self.req_queue.append(req)
         return
 
-    def add_input(self, request_id, sampling_params, prompts):
+    def add_input(self, request_id, prompts, sampling_params):
         """
         Encode and Add new input to req queue. support one sequence input for now.
         """
@@ -270,7 +270,7 @@ class Async_DynamicBatchManager:
 
 def start_dynamic_batching(args, tp_engine, waiting_req_list):
     try:
-        batch_manager = DynamicBatchManager(
+        batch_manager = Async_DynamicBatchManager(
             tp_engine=tp_engine,
             max_total_token_num=args.max_total_token_num,
             batch_max_tokens=args.batch_max_tokens,

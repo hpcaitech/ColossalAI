@@ -179,3 +179,11 @@ class RequestOutput:
         self.prompt = prompt
         self.prompt_token_ids = prompt_token_ids
         self.outputs = outputs
+
+    def __repr__(self) -> str:
+        return (
+            f"RequestOutput(request_id={self.request_id}, "
+            f"prompt={self.prompt!r}, "
+            f"prompt_token_ids={self.prompt_token_ids}, "
+            f"outputs={self.outputs}, "
+        )
