@@ -100,7 +100,7 @@ class Worker:
 
     def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompt: str):
         self.start_dynamic_batching.add_req(prompt_ids, sampling_params, request_id, prompt)
-        
+
     def is_running(self):
         return self.start_dynamic_batching.is_running()
 
@@ -166,11 +166,11 @@ class Driver:
         ray.get([w.abort.remote(request_id) for w in self.workers])
 
     def step(self):
-        ray.get([w._step.remote() for w in self.workers])
+        ray.get([w.step.remote() for w in self.workers])
 
     def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompt: str):
         ray.get([w.add_req.remote(prompt_ids, sampling_params, request_id, prompt) for w in self.workers])
-        
+
     def is_running(self):
         results = ray.get([w.is_running.remote() for w in self.workers])
         return any(results)

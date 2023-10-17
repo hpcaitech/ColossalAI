@@ -70,14 +70,14 @@ class Async_Engine:
         self.driver.step()
 
     def _has_requests_in_progress(self):
-        return self.driver.has_requests_in_progress()
+        return self.driver.is_running()
 
     async def run_loop_fwd(self):
         has_requests_in_progress = self._has_requests_in_progress()
         while True:
             if not has_requests_in_progress:
-                await self._request_tracker.wait_for_requests()
-            has_requests_in_progress = await self._step()
+                await self._request_tracker.wait_for_new_requests()
+            self._step()
             await asyncio.sleep(0)
 
     @property
