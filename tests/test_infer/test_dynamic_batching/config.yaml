@@ -1,5 +1,5 @@
 engine_config:
-  model: MODEL_PATH
+  model: "/mnt/vepfs/lczyh/models/llama-7b-hf"
   tensor_parallel_size: 2
   max_batch_size: 4
   max_input_len: 128
@@ -12,4 +12,4 @@ router_config:
   eos_id: 0
   disable_log_stats: False
   log_stats_interval: 10
-  model: MODEL_PATH
+  model: "/mnt/vepfs/lczyh/models/llama-7b-hf"
