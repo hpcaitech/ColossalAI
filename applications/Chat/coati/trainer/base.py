@@ -51,6 +51,8 @@ class SLTrainer(ABC):
     def fit(self, *args, **kwargs):
         self._before_fit(*args, **kwargs)
         for epoch in tqdm.trange(self.max_epochs, desc="Epochs", disable=not is_rank_0()):
+            if epoch == 0:
+                self._eval(epoch)
             self._train(epoch)
             self._eval(epoch)
 
@@ -199,8 +201,9 @@ class OnPolicyTrainer(ABC):
                     # save optimizer checkpoint on all ranks
                     if args.need_optim_ckpt:
                         self.strategy.save_optimizer(
-                            self.actor_optim, "actor_optim_checkpoint_prompts_%d.pt" % (torch.cuda.current_device()), only_rank0=False
+                            self.actor_optim,
+                            "actor_optim_checkpoint_prompts_%d.pt" % (torch.cuda.current_device()),
+                            only_rank0=False,
                         )
 
                     self.strategy.save_checkpoint(episode)
-

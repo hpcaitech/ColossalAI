@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 from coati.models.base import Actor
@@ -8,13 +8,16 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import trange
-from transformers import PreTrainedTokenizerBase
+from transformers import PreTrainedTokenizerBase, pipeline
 
+from colossalai.logging import DistributedLogger
 from colossalai.utils import get_current_device
 
 from .base import SLTrainer
 from .strategies import Strategy
 from .utils import is_rank_0
+
+logger = DistributedLogger("dpo")
 
 
 class DPOTrainer(SLTrainer):
@@ -48,14 +51,14 @@ class DPOTrainer(SLTrainer):
         self,
         strategy: Strategy,
         actor: Actor,
-        ref_model: Actor,
+        ref_model: Any,
         actor_optim: Optimizer,
         actor_lr_scheduler: _LRScheduler,
         tokenizer: PreTrainedTokenizerBase,
         max_epochs: int = 1,
         beta: float = 0.1,
         accumulation_steps: int = 1,
-        disable_reference: bool = False,
+        disable_reference: bool = True,
     ) -> None:
         super().__init__(strategy=strategy, max_epochs=max_epochs, model=actor, optimizer=actor_optim)
 
@@ -104,7 +107,6 @@ class DPOTrainer(SLTrainer):
             epoch int: the number of current epoch
         """
         self.model.train()
-        self.ref_model.eval()
         step_bar = trange(
             len(self.train_dataloader),
             desc=f"Epoch {epoch + 1}/{self.max_epochs}",
@@ -136,6 +138,7 @@ class DPOTrainer(SLTrainer):
             logprob_actor_reject = calc_masked_log_probs(actor_reject_logits, reject_input_ids, reject_mask[:, 1:])
 
             if not self.disable_reference:
+                self.ref_model.eval()
                 with torch.no_grad():
                     ref_all_logits = self.ref_model(
                         torch.cat([chosen_input_ids, reject_input_ids]),
@@ -154,6 +157,8 @@ class DPOTrainer(SLTrainer):
                 logprob_actor_reject,
                 logprob_ref_chosen if logprob_ref_chosen is not None else None,
                 logprob_ref_reject if logprob_ref_reject is not None else None,
+                chosen_mask,
+                reject_mask,
             )
             reward_accuracies = (chosen_rewards > rejected_rewards).float()
 
@@ -191,7 +196,6 @@ class DPOTrainer(SLTrainer):
             epoch int: the number of current epoch
         """
         self.model.eval()
-        self.ref_model.eval()
         step_bar = trange(
             len(self.eval_dataloader),
             desc=f"Epoch {epoch + 1}/{self.max_epochs}",
@@ -201,6 +205,7 @@ class DPOTrainer(SLTrainer):
         eval_rejected_reward = []
         eval_loss = []
         eval_accuracy = []
+        self.model.eval()
         with torch.no_grad():
             for i, batch in enumerate(self.eval_dataloader):
                 chosen_input_ids_, chosen_attention_mask_, reject_input_ids_, reject_attention_mask_ = batch
@@ -208,6 +213,20 @@ class DPOTrainer(SLTrainer):
                 chosen_attention_mask = chosen_attention_mask_.to(torch.cuda.current_device())
                 reject_input_ids = reject_input_ids_.to(torch.cuda.current_device())
                 reject_attention_mask = reject_attention_mask_.to(torch.cuda.current_device())
+                if i == 0 and is_rank_0():
+                    # sequences = generate(self.model.module, chosen_input_ids[:3,:20], self.tokenizer, **{'do_sample':True, 'max_length':100})
+                    generator = pipeline(
+                        "text-generation",
+                        model=self.model.module.model,
+                        tokenizer=self.tokenizer,
+                        device=torch.cuda.current_device(),
+                    )
+                    sequences = generator(
+                        "Human: what are some pranks i can play on a nerd at school?\nAssistant:",
+                        **{"do_sample": True, "max_length": 200},
+                    )
+                    logger.info(f"testing generation...\n{sequences}")
+
                 chosen_mask = chosen_attention_mask.clone()
                 reject_mask = reject_attention_mask.clone()
                 first_diff_position = torch.argmax((chosen_input_ids != reject_input_ids).float(), dim=1)
@@ -224,9 +243,12 @@ class DPOTrainer(SLTrainer):
                 actor_reject_logits = actor_all_logits[batch_size:]
 
                 logprob_actor_chosen = calc_masked_log_probs(actor_chosen_logits, chosen_input_ids, chosen_mask[:, 1:])
+                # logprob_actor_chosen =  torch.clamp(logprob_actor_chosen, min=-4)  # gradient clip
 
                 logprob_actor_reject = calc_masked_log_probs(actor_reject_logits, reject_input_ids, reject_mask[:, 1:])
+                # logprob_actor_reject =  torch.clamp(logprob_actor_reject, min=-4)  # gradient clip
                 if not self.disable_reference:
+                    self.ref_model.eval()
                     with torch.no_grad():
                         ref_all_logits = self.ref_model(
                             torch.cat([chosen_input_ids, reject_input_ids]),
@@ -249,6 +271,8 @@ class DPOTrainer(SLTrainer):
                     logprob_actor_reject,
                     logprob_ref_chosen if logprob_ref_chosen is not None else None,
                     logprob_ref_reject if logprob_ref_reject is not None else None,
+                    chosen_mask,
+                    reject_mask,
                 )
                 reward_accuracies = (chosen_rewards > rejected_rewards).float()
 

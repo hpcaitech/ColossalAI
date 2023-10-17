@@ -96,6 +96,8 @@ class DpoLoss(nn.Module):
         logprob_actor_reject: torch.Tensor,
         logprob_ref_chosen: torch.Tensor,
         logprob_ref_reject: torch.Tensor,
+        chosen_mask: torch.Tensor,
+        reject_mask: torch.Tensor,
     ):
         """Compute the DPO loss for a batch of policy and reference model log probabilities.
 
@@ -113,12 +115,12 @@ class DpoLoss(nn.Module):
             The chosen_rewards and rejected_rewards tensors contain the rewards for the chosen and rejected responses, respectively.
         """
         if logprob_ref_chosen is not None and logprob_ref_reject is not None:
-            ref_logratios = logprob_ref_chosen - logprob_ref_reject
+            ref_logratios = logprob_ref_chosen.sum(-1) - logprob_ref_reject.sum(-1)
         else:
-            ref_logratios = torch.zeros_like(logprob_actor_chosen)
+            ref_logratios = 0.0
 
-        pi_logratios = logprob_actor_chosen - logprob_actor_reject
-        logits = pi_logratios.sum(-1) - ref_logratios.sum(-1)
+        pi_logratios = logprob_actor_chosen.sum(-1) - logprob_actor_reject.sum(-1)
+        logits = pi_logratios - ref_logratios
         losses = -torch.nn.functional.logsigmoid(self.beta * logits)
         if logprob_ref_chosen is not None:
             chosen_rewards = self.beta * (logprob_actor_chosen - logprob_ref_chosen).sum(-1).detach()

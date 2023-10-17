@@ -119,6 +119,7 @@ for model in ${MODELS[@]}; do
                     --max_datasets_size 200 \
                     --batch_size 2 \
                     --max_epoch 2 \
+                    --max_len 50 \
                     --model $model \
                     --save_path $EXAMPLES_DIR/dpo \
                     $pretrain_model \

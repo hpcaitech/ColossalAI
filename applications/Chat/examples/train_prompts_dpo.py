@@ -218,7 +218,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_len", type=int, default=300)
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
-    parser.add_argument("--disable_reference", type=bool, default=True)
+    parser.add_argument("--disable_reference", type=bool, default=False)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--beta", type=float, default=0.1)
     parser.add_argument("--log_dir", default="logs", type=str)
