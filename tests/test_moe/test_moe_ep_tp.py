@@ -21,20 +21,22 @@ def run_test(rank: int,
     assert batch_size % world_size == 0
 
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    MOE_MANAGER.setup(seed)    # MOE initialization
 
-    ep_model = SparseMLP(num_experts=num_experts,
-                         expert_parallel="EP",
-                         hidden_size=dim,
-                         intermediate_size=dim * 2)
-    tp_model = SparseMLP(num_experts=num_experts,
-                         expert_parallel="TP",
-                         hidden_size=dim,
-                         intermediate_size=dim * 2)
+    MOE_MANAGER.__init__()
+    MOE_MANAGER.setup(seed, parallel=None)
     local_model = SparseMLP(num_experts=num_experts,
-                            expert_parallel=None,
                             hidden_size=dim,
                             intermediate_size=dim * 2)
+    MOE_MANAGER.__init__()
+    MOE_MANAGER.setup(seed, parallel="EP")
+    ep_model = SparseMLP(num_experts=num_experts,
+                         hidden_size=dim,
+                         intermediate_size=dim * 2)
+    MOE_MANAGER.__init__()
+    MOE_MANAGER.setup(seed, parallel="TP")
+    tp_model = SparseMLP(num_experts=num_experts,
+                         hidden_size=dim,
+                         intermediate_size=dim * 2)
     ep_model = ep_model.to(get_current_device())
     tp_model = tp_model.to(get_current_device())
     local_model = local_model.to(get_current_device())

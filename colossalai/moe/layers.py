@@ -202,14 +202,14 @@ class SparseMLP(nn.Module):
             torch.Tensor: (num_experts, capacity, hidden_size)
         """
         if not overlap:
-            expert_input = AllToAll.apply(dispatch_data, self.ep_group)
+            expert_input = AllToAll.apply(dispatch_data, self.ep_group, False)[0]
             expert_input = expert_input.reshape(self.ep_size, self.num_local_experts, -1, self.hidden_size)
             expert_output = self.experts(expert_input)
-            expert_output = AllToAll.apply(expert_output, self.ep_group)
+            expert_output = AllToAll.apply(expert_output, self.ep_group, False)[0]
             return expert_output
 
         else:
-            NUM_CHUNK = 4
+            NUM_CHUNK = 2
             NUM_STAGES = 4
 
             assert dispatch_data.shape[1] % NUM_CHUNK == 0, \
