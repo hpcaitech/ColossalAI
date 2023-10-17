@@ -1,5 +1,5 @@
 engine_config:
-  model: /home/lccd/share/model_data/models--bigscience--bloom-560m/snapshots/4f42c91d806a19ae1a46af6c3fb5f4990d884cd6
+  model: MODEL_PATH
   tensor_parallel_size: 2
   max_batch_size: 4
   max_input_len: 128
@@ -12,4 +12,4 @@ router_config:
   eos_id: 0
   disable_log_stats: False
   log_stats_interval: 10
-  model: /home/lccd/share/model_data/models--bigscience--bloom-560m/snapshots/4f42c91d806a19ae1a46af6c3fb5f4990d884cd6
+  model: MODEL_PATH

@@ -101,7 +101,7 @@ class Worker:
     def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompt: str):
         self.start_dynamic_batching.add_req(prompt_ids, sampling_params, request_id, prompt)
         
-    def is_running(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompt: str):
+    def is_running(self):
         return self.start_dynamic_batching.is_running()
 
 
