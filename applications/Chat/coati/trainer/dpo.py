@@ -215,21 +215,22 @@ class DPOTrainer(SLTrainer):
                 reject_attention_mask = reject_attention_mask_.to(torch.cuda.current_device())
                 if i == 0 and is_rank_0():
                     # sequences = generate(self.model.module, chosen_input_ids[:3,:20], self.tokenizer, **{'do_sample':True, 'max_length':100})
-                    try:
-                        with_headmodel = self.model.module.model
-                    except AttributeError:
-                        with_headmodel = self.model.module.module.model
-                    generator = pipeline(
-                        "text-generation",
-                        model=with_headmodel,
-                        tokenizer=self.tokenizer,
-                        device=torch.cuda.current_device(),
-                    )
-                    sequences = generator(
-                        "Human: what are some pranks i can play on a nerd at school?\nAssistant:",
-                        **{"do_sample": True, "max_length": 200, "temperature": 0.75},
-                    )
-                    logger.info(f"testing generation...\n{sequences}")
+                    with torch.no_grad():
+                        try:
+                            with_headmodel = self.model.module.model
+                        except AttributeError:
+                            with_headmodel = self.model.module.module.model
+                        generator = pipeline(
+                            "text-generation",
+                            model=with_headmodel,
+                            tokenizer=self.tokenizer,
+                            device=torch.cuda.current_device(),
+                        )
+                        sequences = generator(
+                            "Human: what are some pranks i can play on a nerd at school?\nAssistant:",
+                            **{"do_sample": True, "max_length": 200, "temperature": 0.75},
+                        )
+                        logger.info(f"testing generation...\n{sequences}")
 
                 chosen_mask = chosen_attention_mask.clone()
                 reject_mask = reject_attention_mask.clone()
