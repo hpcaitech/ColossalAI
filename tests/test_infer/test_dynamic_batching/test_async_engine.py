@@ -44,7 +44,7 @@ def run_ray_dist(path: str):
             print("result: ", result)
 
 
-def check_ray_dist(rank, world_size, port):
+def check_async_engine(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_ray_dist(PATH)
 
@@ -52,9 +52,9 @@ def check_ray_dist(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
-def test_ray_dist():
-    spawn(check_ray_dist, 1)
+def test_async_engine():
+    spawn(check_async_engine, 1)
 
 
 if __name__ == "__main__":
-    test_ray_dist()
+    test_async_engine()

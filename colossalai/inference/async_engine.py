@@ -54,13 +54,14 @@ class Async_Engine:
 
     def __init__(
         self,
-        driver: Driver = None,
+        router_config,
+        engine_config,
         start_engine_loop: bool = True,
     ) -> None:
-        self.driver = driver
+        self.driver = Driver(router_config=router_config, engine_config=engine_config)
         self.background_loop = None
         self.start_engine_loop = start_engine_loop
-        self._request_tracker = None
+        self._request_tracker = RequestTracker()
 
     def _step(self):
         """
@@ -86,6 +87,8 @@ class Async_Engine:
     def start_background_loop(self):
         if self.is_running:
             raise RuntimeError("Background loop is already running.")
+
+        self._request_tracker.init_event()
 
         self.background_loop_unshielded = asyncio.get_event_loop().create_task(self.run_loop_fwd())
         self.background_loop = asyncio.shield(self.background_loop_unshielded)
