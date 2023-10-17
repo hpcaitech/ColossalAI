@@ -373,7 +373,7 @@ class GeminiDDP(ModelWrapper):
                 if chunk.l2_norm_flag:
                     grad_chunk.set_l2_norm()
                 self.chunk_manager.move_chunk(grad_chunk, self.grads_device[p], force_copy=True)
-                if not self.master_weights:
+                if not (self.master_weights) or (self.enable_gradient_accumulation):
                     self.chunk_manager.move_chunk(chunk, self.grads_device[p], force_copy=True)
         return empty_grad
 

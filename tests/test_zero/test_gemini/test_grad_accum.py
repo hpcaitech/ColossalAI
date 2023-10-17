@@ -114,10 +114,6 @@ def exam_gemini_grad_acc(
         check_grad(gemini_model, torch_model)
 
         if (i + 1) % accum_iter == 0:
-            # TODO(Baizhou): Delete following two lines after cpu_adam for fp16 has been merged into main branch (auto policy put gradients in cpu).
-            if placement_config["placement_policy"] == "auto":
-                break
-
             torch_optim.step()
             gemini_optim.step()
             torch_optim.zero_grad()
