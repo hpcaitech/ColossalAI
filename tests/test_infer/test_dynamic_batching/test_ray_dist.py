@@ -35,11 +35,18 @@ def run_ray_dist(path: str):
         if test_async:
             print("test_async: ", test_async)
             result = asyncio.run(get_result(request_id, prompt, sampling_params))
+            assert result is not None    
             print("result: ", result)
         else:
             print("test_async: ", test_async)
             result = driver.generate(request_id, prompt, sampling_params)
+            assert result is not None
             print("result: ", result)
+    
+    is_running = None
+    is_running = driver.is_running()
+    assert is_running is not None    
+    print("is_running: ", is_running)
 
 def check_ray_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
