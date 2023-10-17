@@ -35,14 +35,11 @@ def print_perf_stats(latency_set, config, bs, warmup=3):
 
 
 def run_llama_test(args):
-    print("enter into run llama test ...")
     llama_model_path = args.path
     max_batch_size = args.batch_size
     max_input_len = args.input_len
     max_output_len = args.output_len
     
-    print("max_batch_size: " + str(max_batch_size))
-
     tokenizer = LlamaTokenizer.from_pretrained(llama_model_path)
     tokenizer.pad_token_id = tokenizer.unk_token_id
     model = LlamaForCausalLM.from_pretrained(llama_model_path, pad_token_id=tokenizer.eos_token_id)
@@ -60,10 +57,6 @@ def run_llama_test(args):
 
     iters = 10
     times = []
-    
-    warmup = 3
-    for i in range(warmup):
-        pass
 
     for i in range(iters):
         torch.cuda.synchronize()
