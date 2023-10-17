@@ -19,10 +19,11 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 4
 # the args satisfied: train_batch_size = num_collect_steps * experience_batch_size
 torchrun --standalone --rdzv_endpoint="localhost:12355" --nproc_per_node=4 train_prompts_dpo.py \
     --dataset Anthropic/hh-rlhf \
-    --strategy colossalai_zero2 \
-    --batch_size 15 \
-    --max_epoch 5 \
-    --max_datasets_size 10000 \
+    --strategy ddp \
+    --batch_size 32 \
+    --max_epoch 2 \
+    --lr 1e-6 \
+    --max_datasets_size 50 \
     --save_path '/home/lcyab/data/Anthropic_rlhf/actor/dpo_v0' \
     --pretrain '/home/lcyab/data/Anthropic_rlhf/actor/ppo_pretrain_v0' \
     --accumulation_steps 2 \

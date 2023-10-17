@@ -11,7 +11,7 @@ from coati.models.opt import OPTActor
 from coati.trainer import DPOTrainer
 from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from datasets import load_dataset
-from torch.optim import RMSprop
+from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
@@ -87,7 +87,7 @@ def main(args):
     if args.strategy.startswith("colossalai"):
         actor_optim = HybridAdam(actor.parameters(), lr=args.lr)
     else:
-        actor_optim = RMSprop(actor.parameters(), lr=args.lr)
+        actor_optim = Adam(actor.parameters(), lr=args.lr)
 
     # configure tokenizer
     if args.model == "gpt2":
@@ -155,17 +155,6 @@ def main(args):
     actor_optim = strategy_dict["optimizer"]
     actor_lr_scheduler = strategy_dict["lr_scheduler"]
 
-    """
-    strategy: Strategy,
-    actor: Actor,
-    ref_model: Actor,
-    actor_optim: Optimizer,
-    actor_lr_scheduler: _LRScheduler,
-    tokenizer: PreTrainedTokenizerBase,
-    max_epoch: int = 1,
-    beta: float = 0.1,
-    disable_reference: bool = False
-    """
     # configure trainer
     trainer = DPOTrainer(
         strategy,
@@ -219,7 +208,7 @@ if __name__ == "__main__":
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
     parser.add_argument("--disable_reference", type=bool, default=False)
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--lr", type=float, default=1e-6)
     parser.add_argument("--beta", type=float, default=0.1)
     parser.add_argument("--log_dir", default="logs", type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
