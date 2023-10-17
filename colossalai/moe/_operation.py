@@ -26,7 +26,7 @@ class AllGather(torch.autograd.Function):
         inputs: Tensor,
         group: Optional[ProcessGroup] = None,
         overlap: bool = False,
-    ) -> Tuple[Tensor, Optional[Work]]:
+    ) -> Tuple[Tensor, Any]:
         """
         Returns:
             outputs: Tensor
@@ -68,7 +68,7 @@ class ReduceScatter(torch.autograd.Function):
         inputs: Tensor,
         group: Optional[ProcessGroup] = None,
         overlap: bool = False,
-    ) -> Tuple[Tensor, Optional[Work]]:
+    ) -> Tuple[Tensor, Any]:
         """
         Returns:
             outputs: Tensor
@@ -116,7 +116,7 @@ class AllToAll(torch.autograd.Function):
         inputs: Tensor,
         group: Optional[ProcessGroup] = None,
         overlap: bool = False,
-    ) -> Tuple[Tensor, Optional[Work]]:
+    ) -> Tuple[Tensor, Any]:
         """
         Returns:
             outputs: Tensor
