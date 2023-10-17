@@ -263,6 +263,7 @@ class GeminiOptimizer(OptimizerWrapper):
         self.zero_grad()
         if self.module.master_weights:
             self._update_fp16_params()
+        self.module.accumulating_grads = False
         return ret
 
     def clip_grad_norm(self, model: torch.nn.Module, max_norm: float, norm_type: float = 2.0):
