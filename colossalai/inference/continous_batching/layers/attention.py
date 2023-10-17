@@ -1,3 +1,8 @@
+"""This code is adapted from vllm.model_executor.layers.attention.py
+https://github.com/vllm-project/vllm/blob/2d1e86f1b15396119321cfb3a77acde72b0c08ee/vllm/model_executor/layers/attention.py
+Add multistream optimization
+"""
+
 """Multi-head attention."""
 from typing import List, Optional
 
