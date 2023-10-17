@@ -38,20 +38,23 @@ def main(args):
     with strategy.model_init_context():
         # configure model
         # TODO: add support for llama
-        if args.model == "gpt2":
-            config = AutoConfig.from_pretrained(args.pretrain)
-            config.embd_pdrop = 0.0
-            config.attn_pdrop = 0.0
-            config.resid_pdrop = 0.0
-            ref_model = GPTActor(pretrained=args.pretrain)
-        elif args.model == "bloom":
-            ref_model = BLOOMActor(pretrained=args.pretrain)
-        elif args.model == "opt":
-            ref_model = OPTActor(pretrained=args.pretrain)
-        else:
-            raise ValueError(f'Unsupported actor model "{args.model}"')
+        if not args.disable_reference:
+            if args.model == "gpt2":
+                config = AutoConfig.from_pretrained(args.pretrain)
+                config.embd_pdrop = 0.0
+                config.attn_pdrop = 0.0
+                config.resid_pdrop = 0.0
+                ref_model = GPTActor(pretrained=args.pretrain)
+            elif args.model == "bloom":
+                ref_model = BLOOMActor(pretrained=args.pretrain)
+            elif args.model == "opt":
+                ref_model = OPTActor(pretrained=args.pretrain)
+            else:
+                raise ValueError(f'Unsupported actor model "{args.model}"')
 
-        ref_model.to(torch.bfloat16).to(torch.cuda.current_device())
+            ref_model.to(torch.bfloat16).to(torch.cuda.current_device())
+        else:
+            ref_model = None
 
         if args.model == "gpt2":
             config = AutoConfig.from_pretrained(args.pretrain)
@@ -141,7 +144,8 @@ def main(args):
     )
 
     # NOTE: For small models like opt-1.3b, reward model and initial model are not required to be parallelized.
-    ref_model = strategy.prepare(ref_model)
+    if not args.disable_reference:
+        ref_model = strategy.prepare(ref_model)
 
     lr_scheduler = CosineAnnealingLR(
         actor_optim, args.max_epoch * len(train_dataset) / args.accumulation_steps, eta_min=1e-8
@@ -195,7 +199,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default=None, help="path to the prompt dataset")
-    parser.add_argument("--max_datasets_size", type=int, default=1000)
+    parser.add_argument("--max_datasets_size", type=int, default=10000)
     parser.add_argument(
         "--strategy",
         choices=["ddp", "colossalai_gemini", "colossalai_zero2"],
@@ -211,10 +215,10 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--max_epoch", type=int, default=1)
     parser.add_argument("--accumulation_steps", type=int, default=1)
-    parser.add_argument("--max_len", type=int, default=700)
+    parser.add_argument("--max_len", type=int, default=300)
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
-    parser.add_argument("--disable_reference", type=bool, default=False)
+    parser.add_argument("--disable_reference", type=bool, default=True)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--beta", type=float, default=0.1)
     parser.add_argument("--log_dir", default="logs", type=str)
