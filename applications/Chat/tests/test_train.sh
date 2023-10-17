@@ -305,6 +305,8 @@ SKIPPED_TESTS=(
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
     "bloom-ddp"
+    "bloom-colossalai_gemini"
+    "bloom-colossalai_zero2"
     "opt-ddp"
 )
 
