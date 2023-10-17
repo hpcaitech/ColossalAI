@@ -3,6 +3,7 @@ from typing import Any, Optional, Tuple
 import torch
 import torch.distributed as dist
 from torch import Tensor
+from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.distributed import ProcessGroup
 
 from colossalai.moe.manager import MOE_MANAGER
@@ -130,31 +131,42 @@ class AllToAll(torch.autograd.Function):
 
 class MoeDispatch(torch.autograd.Function):
     @staticmethod
+    @custom_fwd
     def forward(ctx, tokens, mask, dest_idx, ec):
         s = tokens.size(0)
         h = tokens.size(1)
+        dtype = tokens.dtype
 
         if MOE_KERNEL is None:
             load_moe()
-
+        if tokens.dtype != torch.float32:
+            tokens = tokens.to(torch.float32)
         expert_input = MOE_KERNEL.dispatch_forward(s, ec, h, tokens, mask, dest_idx)
-
+        if expert_input.dtype != dtype:
+            expert_input = expert_input.to(dtype)
         ctx.save_for_backward(mask, dest_idx)
         ctx.s = s
         ctx.h = h
         ctx.ec = ec
+        ctx.dtype = dtype
 
         return expert_input
 
     @staticmethod
+    @custom_bwd
     def backward(ctx, output_grad):
         mask, dest_idx = ctx.saved_tensors
+        if output_grad.dtype != torch.float32:
+            output_grad = output_grad.to(torch.float32)
         d_tokens = MOE_KERNEL.dispatch_backward(ctx.s, ctx.ec, ctx.h, output_grad, mask, dest_idx)
+        if d_tokens.dtype != ctx.dtype:
+            d_tokens = d_tokens.to(ctx.dtype)
         return d_tokens, None, None, None
 
 
 class MoeCombine(torch.autograd.Function):
     @staticmethod
+    @custom_fwd
     def forward(ctx, expert_tokens, logits, mask, dest_idx, ec):
         assert logits.dtype == torch.float32
 
@@ -162,32 +174,36 @@ class MoeCombine(torch.autograd.Function):
         e = logits.size(1)
         c = ec // e
         h = expert_tokens.size(-1)
+        dtype = expert_tokens.dtype
 
-        fp16_flag = expert_tokens.dtype == torch.float16
-        cb_input = expert_tokens.to(torch.float32) if fp16_flag else expert_tokens
+        if expert_tokens.dtype != torch.float32:
+            expert_tokens = expert_tokens.to(torch.float32)
         if MOE_KERNEL is None:
             load_moe()
-        ctokens = MOE_KERNEL.combine_forward(s, e, c, h, cb_input, logits, mask, dest_idx)
-        output = ctokens.to(torch.float16) if fp16_flag else ctokens
+        output = MOE_KERNEL.combine_forward(s, e, c, h, expert_tokens, logits, mask, dest_idx)
+        if output.dtype != dtype:
+            output = output.to(dtype)
 
         ctx.save_for_backward(expert_tokens, logits, mask, dest_idx)
         ctx.s = s
         ctx.e = e
         ctx.c = c
         ctx.h = h
-        ctx.fp16_flag = fp16_flag
+        ctx.dtype = dtype
 
         return output
 
     @staticmethod
+    @custom_bwd
     def backward(ctx, tokens_grad):
         expert_tokens, logits, mask, dest_idx = ctx.saved_tensors
+        if tokens_grad.dtype != torch.float32:
+            tokens_grad = tokens_grad.to(torch.float32)
 
-        cb_grad = (tokens_grad.to(torch.float32) if tokens_grad.dtype is torch.float16 else tokens_grad)
-        cb_input = expert_tokens.to(torch.float32) if ctx.fp16_flag else expert_tokens
-        d_expert, d_logits = MOE_KERNEL.combine_backward(ctx.s, ctx.e, ctx.c, ctx.h, cb_grad, cb_input, logits, mask,
-                                                         dest_idx)
-        d_expert = d_expert.to(torch.float16) if ctx.fp16_flag else d_expert
+        d_expert, d_logits = MOE_KERNEL.combine_backward(ctx.s, ctx.e, ctx.c, ctx.h, tokens_grad, expert_tokens, logits,
+                                                         mask, dest_idx)
+        if d_expert.dtype != ctx.dtype:
+            d_expert = d_expert.to(ctx.dtype)
 
         return d_expert, d_logits, None, None, None
 

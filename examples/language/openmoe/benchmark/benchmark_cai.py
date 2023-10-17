@@ -1,3 +1,4 @@
+import json
 import os
 
 import torch
@@ -7,7 +8,7 @@ from model.modeling_openmoe import OpenMoeForCausalLM
 from model.openmoe_policy import OpenMoeForCausalLMPolicy
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from transformers import Adafactor
+from transformers import T5Tokenizer
 from transformers.models.llama import LlamaConfig
 from utils import PerformanceEvaluator, get_model_numel
 
@@ -17,6 +18,7 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
+from colossalai.moe.layers import apply_load_balance
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import skip_init
 from colossalai.utils import get_current_device
@@ -41,11 +43,36 @@ def load_ckpt(repo_name: str, model: OpenMoeForCausalLM, booster: Booster):
 
 class RandomDataset(Dataset):
 
-    def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 256384):
+    def __init__(self,
+                 num_samples: int = 1000,
+                 max_length: int = 2048,
+                 vocab_size: int = 256384,
+                 tokenizer: T5Tokenizer = None):
         self.num_samples = num_samples
         self.max_length = max_length
-        self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device())
-        self.attention_mask = torch.ones_like(self.input_ids)
+        if os.path.exists("./mock_data.json"):
+            self.input_ids = []
+            self.attention_mask = []
+            with open("./mock_data.json", 'r') as f:
+                data = json.load(f)
+            for v in data.values():
+                d = v["text"]
+                encode = tokenizer("<pad>" + d,
+                                   return_tensors="pt",
+                                   add_special_tokens=False,
+                                   max_length=max_length,
+                                   truncation=True,
+                                   padding="max_length")
+                self.input_ids.append(encode["input_ids"])
+                self.attention_mask.append(encode["attention_mask"])
+            self.input_ids = torch.cat(self.input_ids, dim=0).to(get_current_device())
+            self.attention_mask = torch.cat(self.attention_mask, dim=0).to(get_current_device())
+            repeat_times = num_samples // self.input_ids.shape[0] + 1
+            self.input_ids = self.input_ids.repeat(repeat_times, 1)[:num_samples]
+            self.attention_mask = self.attention_mask.repeat(repeat_times, 1)[:num_samples]
+        else:
+            self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device())
+            self.attention_mask = torch.ones_like(self.input_ids)
 
     def __len__(self):
         return self.num_samples
@@ -103,6 +130,8 @@ def parse_args():
     # bench
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--active", type=int, default=20)
+    # load balance
+    parser.add_argument("--load_balance", action="store_true")
     args = parser.parse_args()
     return args
 
@@ -116,8 +145,14 @@ def main():
 
     # Set plugin
     booster_kwargs = {}
-    hybrid_dict = {"tp_size": 1, "custom_policy": OpenMoeForCausalLMPolicy(), "enable_fused_normalization": args.use_kernel, "enable_jit_fused": args.use_kernel}
-    mgr_dict = {"seed": 42, "use_kernel_optim": args.use_kernel}
+    hybrid_dict = {
+        "tp_size": 1,
+        "custom_policy": OpenMoeForCausalLMPolicy(),
+        "enable_fused_normalization": args.use_kernel,
+        "enable_jit_fused": args.use_kernel,
+        "precision": "bf16"
+    }
+    mgr_dict = {"seed": 42, "use_kernel_optim": args.use_kernel, "enable_load_balance": args.load_balance}
     if args.plugin == "zero":
         dp_size = dist.get_world_size()
         plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
@@ -203,14 +238,16 @@ def main():
     model.gradient_checkpointing_enable()
 
     # Prepare tokenizer and dataloader
+    tokenizer = T5Tokenizer.from_pretrained("google/umt5-small")
     dataset = RandomDataset(
         num_samples=args.batch_size * (args.warmup + args.active + 1) * dp_size,
         max_length=args.seq_length,
+        tokenizer=tokenizer,
     )
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size)
 
     # Set optimizer
-    optimizer = Adafactor(model.parameters(), weight_decay=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), weight_decay=0.01, lr=1e-5)
 
     model_numel = get_model_numel(model)
     performance_evaluator = PerformanceEvaluator(
@@ -264,6 +301,9 @@ def main():
             optimizer.step()
             optimizer.zero_grad()
             performance_evaluator.on_step_end(exmaple_data["input_ids"])
+            if (step == args.warmup // 2) and args.load_balance:
+                apply_load_balance(model, optimizer)
+                coordinator.print_on_master(f"Apply load balance")
     performance_evaluator.on_fit_end()
 
 
