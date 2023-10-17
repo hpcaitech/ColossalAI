@@ -258,7 +258,9 @@ class DynamicBatchManager:
         """
         self.add_input(request_id, sampling_params, prompts)
         return self.loop_for_fwd()
-
+    
+    def is_running(self):
+        return self.running_batch is not None or self.req_queue.waiting_req_list 
 
 def start_dynamic_batching(args, tp_engine, waiting_req_list):
     try:
