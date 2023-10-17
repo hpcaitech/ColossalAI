@@ -152,7 +152,12 @@ class Driver:
         return text_res
 
     def add_input(self, request_id: str, prompt: str, sampling_params: SamplingParams):
-        ray.get([w.add_input.remote(request_id, sampling_params, prompt) for w in self.workers])
+        ray.get(
+            [
+                w.add_input.remote(request_id=request_id, prompt=prompt, sampling_params=sampling_params)
+                for w in self.workers
+            ]
+        )
 
     def abort(self, request_id: str):
         ray.get([w.abort.remote(request_id) for w in self.workers])

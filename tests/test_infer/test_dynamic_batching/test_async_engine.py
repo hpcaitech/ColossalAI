@@ -5,7 +5,7 @@ import uuid
 import pytest
 
 import colossalai
-from colossalai.inference.dynamic_batching.ray_dist_init import Driver
+from colossalai.inference.async_engine import Async_Engine
 from colossalai.inference.dynamic_batching.ray_init_config import RayInitConfig
 from colossalai.inference.dynamic_batching.sampling_params import SamplingParams
 from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
@@ -13,7 +13,7 @@ from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_us
 PATH = "config.yaml"
 
 
-def run_ray_dist(path: str):
+def run_async_engine(path: str):
     print(f"Using yaml file {path}")
     if not os.path.exists(path):
         raise FileNotFoundError(f"Invalid yaml file path {path}")
@@ -23,30 +23,25 @@ def run_ray_dist(path: str):
     model = engine_config.model
     if model is None or not os.path.exists(model):
         return
-    driver = Driver(router_config=router_config, engine_config=engine_config)
+    engine = Async_Engine(router_config=router_config, engine_config=engine_config)
+
     prompt = "Introduce some landmarks in Beijing"
 
     request_id = str(uuid.uuid4().hex)
     sampling_params = SamplingParams()
-    print("sampling_params: ", sampling_params)
 
     async def get_result(request_id, prompt, sampling_params):
-        return await driver.async_generate(request_id, prompt, sampling_params)
+        results = engine.generate(request_id, prompt, sampling_params)
+        async for result in results:
+            print("result: ", result)
+            return result
 
-    for test_async in [True, False]:
-        if test_async:
-            print("test_async: ", test_async)
-            result = asyncio.run(get_result(request_id, prompt, sampling_params))
-            print("result: ", result)
-        else:
-            print("test_async: ", test_async)
-            result = driver.generate(request_id, prompt, sampling_params)
-            print("result: ", result)
+    asyncio.run(get_result(request_id, prompt, sampling_params))
 
 
 def check_async_engine(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    run_ray_dist(PATH)
+    run_async_engine(PATH)
 
 
 @pytest.mark.dist

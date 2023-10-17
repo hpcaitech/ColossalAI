@@ -24,8 +24,8 @@ class RequestTracker:
     def add_request(self, request_id: str):
         """Add a request to be sent to the engine on the next background
         loop iteration."""
-        if request_id in self._requests:
-            raise KeyError(f"Request {request_id} already exists.")
+        # if request_id in self._requests:
+        #     raise KeyError(f"Request {request_id} already exists.")
 
         self._requests.put_nowait(request_id)
 
@@ -102,6 +102,9 @@ class Async_Engine:
         The only exposed func, adding new request and return a async generator that yields the existing results.
         """
         try:
+            if not self.is_running:
+                self.start_background_loop()
+
             await self.add_request(request_id, prompt, sampling_params)
 
             stream = await self.driver.async_generate(request_id, prompt, sampling_params)

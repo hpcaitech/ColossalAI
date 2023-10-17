@@ -63,6 +63,7 @@ class DynamicBatchManager:
         """
         Encode and Add new input to req queue. support one sequence input for now.
         """
+        print("promptssssss", prompts)
         prompt_ids = self.tokenizer.encode(prompts)
         prompt_len = len(prompt_ids)
         if prompt_len > self.engine.max_input_len:
