@@ -45,6 +45,13 @@ class RequestTracker:
     async def wait_for_new_requests(self):
         await self.new_requests_event.wait()
 
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> RequestOutput:
+        result = await self._finished_requests.get()
+        return result
+
 
 class Async_Engine:
 
@@ -112,12 +119,8 @@ class Async_Engine:
                 self.start_background_loop()
 
             await self.add_request(request_id, prompt, sampling_params)
-            for request_output in request_outputs:
-                self._request_tracker.process_request_output(request_output, verbose=self.log_requests)
 
-            stream = await self.driver.async_generate(request_id, prompt, sampling_params)
-
-            async for request_output in stream:
+            async for request_output in self._request_tracker:
                 yield request_output
 
         except (Exception, asyncio.CancelledError) as e:
