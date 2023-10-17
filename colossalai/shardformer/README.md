@@ -127,6 +127,7 @@ We will follow this roadmap to develop Shardformer:
 | whisper |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [ ] | [x] |  [ ] |  [ ] |
 | sam |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
 | blip2 |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
+| falcon |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [ ] | [x] |  [ ] |  [ ] |
 | roberta |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | albert |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | ernie |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
