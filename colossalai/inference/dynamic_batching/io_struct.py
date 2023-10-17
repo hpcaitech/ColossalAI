@@ -156,3 +156,26 @@ class BatchStrOut:
 class AbortReq:
     def __init__(self, req_id):
         self.req_id = req_id
+
+
+class RequestOutput:
+    """The output data of a request to the LLM.
+
+    Args:
+        request_id: The unique ID of the request.
+        prompt: The prompt string of the request.
+        prompt_token_ids: The token IDs of the prompt.
+        outputs: The output sequences of the request.
+    """
+
+    def __init__(
+        self,
+        request_id: str,
+        prompt: str,
+        prompt_token_ids: List[int],
+        outputs,
+    ) -> None:
+        self.request_id = request_id
+        self.prompt = prompt
+        self.prompt_token_ids = prompt_token_ids
+        self.outputs = outputs

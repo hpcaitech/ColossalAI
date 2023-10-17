@@ -2,6 +2,7 @@ import asyncio
 
 from colossalai.inference.dynamic_batching.ray_dist_init import Driver
 
+from .dynamic_batching.io_struct import RequestOutput
 from .dynamic_batching.sampling_params import SamplingParams
 
 
@@ -12,7 +13,7 @@ class RequestTracker:
 
     def __init__(self) -> None:
         self._requests: asyncio.Queue[str] = asyncio.Queue()
-        self._finished_requests: asyncio.Queue[str] = asyncio.Queue()
+        self._finished_requests: asyncio.Queue[RequestOutput] = asyncio.Queue()
         self.new_requests_event = None
 
     def __contains__(self, item):
@@ -28,7 +29,6 @@ class RequestTracker:
         #     raise KeyError(f"Request {request_id} already exists.")
 
         self._requests.put_nowait(request_id)
-
         self.new_requests_event.set()
 
     def abort_request(self, request_id: str, *, verbose: bool = False) -> None:
@@ -36,8 +36,11 @@ class RequestTracker:
         if verbose:
             logger.info(f"Aborted request {request_id}.")
 
-        self._finished_requests.put_nowait(request_id)
         return
+
+    def process_request_output(self, request_output: RequestOutput) -> None:
+        """Process a request output from the engine."""
+        self._finished_requests.put_nowait(request_output)
 
     async def wait_for_new_requests(self):
         await self.new_requests_event.wait()
@@ -67,7 +70,10 @@ class Async_Engine:
         """
         Logic for handling requests
         """
-        self.driver.step()
+        request_outputs = self.driver.step()
+        if request_outputs is not None:
+            for request_output in request_outputs:
+                self._request_tracker.process_request_output(request_output)
 
     def _has_requests_in_progress(self):
         return self.driver.is_running()
@@ -106,6 +112,8 @@ class Async_Engine:
                 self.start_background_loop()
 
             await self.add_request(request_id, prompt, sampling_params)
+            for request_output in request_outputs:
+                self._request_tracker.process_request_output(request_output, verbose=self.log_requests)
 
             stream = await self.driver.async_generate(request_id, prompt, sampling_params)
 
