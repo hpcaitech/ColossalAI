@@ -202,7 +202,7 @@ class SparseMLP(nn.Module):
         Returns:
             torch.Tensor: (num_experts, capacity, hidden_size)
         """
-        if not overlap:
+        if not overlap or dist.get_world_size(self.ep_group) == 1:
             expert_input = AllToAll.apply(dispatch_data, self.ep_group, False)[0]
             expert_input = expert_input.reshape(self.ep_size, self.num_local_experts, -1, self.hidden_size)
             expert_output = self.experts(expert_input)
@@ -285,7 +285,7 @@ class SparseMLP(nn.Module):
         Returns:
             torch.Tensor: (num_experts, capacity, hidden_size)
         """
-        if not overlap:
+        if not overlap or dist.get_world_size(self.ep_group) == 1:
             expert_in = AllGather.apply(dispatch_data, self.ep_group, False)[0]
             expert_out = self.experts(expert_in)
             expert_out = ReduceScatter.apply(expert_out, self.ep_group, False)[0]
