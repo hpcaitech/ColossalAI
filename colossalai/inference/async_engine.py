@@ -35,7 +35,6 @@ class RequestTracker:
         """Abort a request during next background loop iteration."""
         if verbose:
             logger.info(f"Aborted request {request_id}.")
-
         return
 
     def add_stop(self):

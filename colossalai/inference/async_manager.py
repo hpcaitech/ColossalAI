@@ -62,7 +62,7 @@ class Async_DynamicBatchManager:
         """
         Encode and Add new input to req queue. support one sequence input for now.
         """
-        print("promptssssss", prompts)
+        print("prompt", prompts)
         prompt_ids = self.tokenizer.encode(prompts)
         prompt_len = len(prompt_ids)
         if prompt_len > self.engine.max_input_len:
@@ -81,7 +81,6 @@ class Async_DynamicBatchManager:
             if req.request_id == request_id:
                 req.has_generate_finished = True
                 req.aborted = True
-        return
 
     def _step(self):
         """
@@ -227,7 +226,7 @@ class Async_DynamicBatchManager:
         outputs = []
         for req in finished_reqs:
             output = self.tokenizer.decode(req.output_ids)
-            outputs.append(RequestOutput(req.request_id, req.prompt_ids, req.prompts, output))
+            outputs.append(RequestOutput(req.request_id, req.prompts, req.prompt_ids, output))
         return outputs
 
     def clean_up(self):
