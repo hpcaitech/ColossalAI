@@ -90,7 +90,7 @@ torchrun --standalone --nproc_per_node $NUM_GPU \
     --zero_stage 2 \
     --load_balance
 
-echo -e "\n\n EP-ZERO-2 \n\n"
+echo -e "\n\n EP-ZERO-2 + Overlap \n\n"
 torchrun --standalone --nproc_per_node $NUM_GPU \
     $example_dir/benchmark/benchmark_cai.py \
     --model_name $MODEL \
