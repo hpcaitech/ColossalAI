@@ -12,7 +12,7 @@ from ..modeling._utils import init_to_get_rotary
 from ..modeling.llama import LlamaInferenceForwards, get_llama_vllm_rmsnorm_forward
 
 try:
-    from lightllm.models.llama.triton_kernel import rmsnorm_forward as lightllm_rmsnorm_forward
+    from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward as lightllm_rmsnorm_forward
     HAS_TRITON_RMSNORM = True
 except:
     print("you should install triton from https://github.com/openai/triton")
