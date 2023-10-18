@@ -345,4 +345,5 @@ def apply_load_balance(model: nn.Module, optim: Any) -> None:
                     sub_module.load_balancer.balance_load(optim)
             _apply_recursive(sub_module)
 
+    torch.cuda.empty_cache()
     _apply_recursive(model)
