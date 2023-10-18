@@ -31,7 +31,7 @@ class PyTorchProcessGroupDict(metaclass=SingletonMeta):
         return self.dict[processgroup_key]
 
 
-PYTORCHPGDICT_ = PyTorchProcessGroupDict()
+PYTORCHPGDICT_ = None
 
 
 class ProcessGroup:
@@ -59,6 +59,9 @@ class ProcessGroup:
         if not torch.distributed.is_initialized():
             self.is_init = False
             return
+        global PYTORCHPGDICT_
+        if PYTORCHPGDICT_ is None:
+            PYTORCHPGDICT_ = PyTorchProcessGroupDict()
 
         assert torch.distributed.is_initialized(), f"ProcessGroup must be used after distributed initialized"
 
