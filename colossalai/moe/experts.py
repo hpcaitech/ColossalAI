@@ -97,7 +97,12 @@ class BaseMLPExperts(nn.Module):
                 torch.nn.init.normal_(self.wi, std=math.sqrt(0.1 / self.hidden_size))
             torch.nn.init.normal_(self.wo, std=math.sqrt(0.1 / self.intermediate_size))
 
-    def forward(self, x: torch.Tensor, param_slice: Tuple[slice] = (slice(None),)) -> torch.Tensor:
+    def forward(
+            self,
+            x: torch.Tensor,
+            param_slice: Tuple[slice] = (slice(None),),
+            use_sparse: bool = True,
+    ) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): The input tensor of shape (num_groups, num_experts, capacity, hidden_size)
@@ -114,6 +119,16 @@ class BaseMLPExperts(nn.Module):
         inshape = x.shape
         x = x.reshape(e, -1, h)
 
+        if use_sparse:
+            seq_len = x.shape[1]
+            with torch.no_grad():
+                mask = x[:, :, 0] != 0.0
+                mask = torch.sum(mask, dim=-1)
+            x_list = []
+            for i in range(e):
+                x_list.append(x[i, :mask[i]])
+            x = x_list
+
         if self.gated:
             x_gate = [torch.mm(x[i], self.wi_gate[param_slice][i]) for i in range(e)]
             x_up = [torch.mm(x[i], self.wi_up[param_slice][i]) for i in range(e)]
@@ -126,6 +141,10 @@ class BaseMLPExperts(nn.Module):
             x = [self.act(x[i]) for i in range(e)]
         x = [self.drop(x[i]) for i in range(e)]
         x = [torch.mm(x[i], self.wo[param_slice][i]) for i in range(e)]
+
+        if use_sparse:
+            for i in range(e):
+                x[i] = torch.nn.functional.pad(x[i], (0, 0, 0, seq_len - x[i].shape[0]), mode="constant", value=0)
 
         x = torch.cat([x[i].unsqueeze(0) for i in range(e)], dim=0)
         x = x.reshape(inshape)
