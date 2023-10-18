@@ -6,7 +6,7 @@ from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
-from colossalai.kernel.triton.context_attention import llama2_context_attn_fwd
+# from colossalai.kernel.triton.context_attention import llama2_context_attn_fwd
 from colossalai.kernel.triton.rotary_embedding_kernel import Llama2Forwards
 from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
 from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
@@ -19,6 +19,14 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
 )
 
 from ._utils import copy_kv_to_mem_cache
+
+try:
+    from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import context_attention_fwd as lightllm_llama2_context_attention_fwd
+    print("found lightllm installation for inference")
+    HAS_LIGHTLLM_KERNEL = True
+except:
+    print("please install lightllm from source to run inference: ")
+    HAS_LIGHTLLM_KERNEL = False
 
 
 # This func is same as Llama model init_to_get_rotary, we should move them into _utils.py
@@ -474,7 +482,7 @@ class ChatGLM2InferenceForwards:
             attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
 
             # NOTE: no bug in context attn fwd (del it )
-            llama2_context_attn_fwd(
+            lightllm_llama2_context_attention_fwd(
                 query_layer,
                 key_layer,
                 value_layer,

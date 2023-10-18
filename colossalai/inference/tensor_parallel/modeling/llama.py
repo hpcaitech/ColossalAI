@@ -6,7 +6,7 @@ from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecode
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import (
-    llama2_context_attn_fwd,
+    # llama2_context_attn_fwd,
     llama_context_attn_fwd,
     rotary_embedding_fwd,
     token_attention_fwd,
@@ -29,14 +29,13 @@ except:
     )
     HAS_VLLM_KERNERL = False
 
-# try:
-#     from lightllm.models.llama.triton_kernel.token_attention_nopad_att1 import token_att_fwd
-#     print("found lightllm installation for inference")
-#     HAS_LIGHTLLM_KERNEL = True
-    
-# except:
-#     print("please install lightllm from source to run inference: ")
-#     HAS_LIGHTLLM_KERNEL = False
+try:
+    from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import context_attention_fwd as lightllm_llama2_context_attention_fwd
+    print("found lightllm installation for inference")
+    HAS_LIGHTLLM_KERNEL = True
+except:
+    print("please install lightllm from source to run inference: ")
+    HAS_LIGHTLLM_KERNEL = False
     
 
 def rotate_half(x):
@@ -321,7 +320,7 @@ class LlamaInferenceForwards:
                     infer_state.cache_manager.past_key_values_length,
                 )
             else:
-                llama2_context_attn_fwd(
+                lightllm_llama2_context_attention_fwd(
                     query_states,
                     key_states,
                     value_states,
