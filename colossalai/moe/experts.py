@@ -119,7 +119,7 @@ class BaseMLPExperts(nn.Module):
         inshape = x.shape
         x = x.reshape(e, -1, h)
 
-        if use_sparse:
+        if self.use_kernel and use_sparse:
             seq_len = x.shape[1]
             with torch.no_grad():
                 mask = x[:, :, 0] != 0.0
@@ -142,7 +142,7 @@ class BaseMLPExperts(nn.Module):
         x = [self.drop(x[i]) for i in range(e)]
         x = [torch.mm(x[i], self.wo[param_slice][i]) for i in range(e)]
 
-        if use_sparse:
+        if self.use_kernel and use_sparse:
             for i in range(e):
                 x[i] = torch.nn.functional.pad(x[i], (0, 0, 0, seq_len - x[i].shape[0]), mode="constant", value=0)
 
