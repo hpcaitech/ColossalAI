@@ -14,9 +14,9 @@ PATH = "config.yaml"
 
 
 def run_async_engine(path: str):
-    print(f"Using yaml file {path}")
     if not os.path.exists(path):
         raise FileNotFoundError(f"Invalid yaml file path {path}")
+
     config = RayInitConfig.from_yaml_path(path)
     engine_config = config.engine_config_data
     model = engine_config.model
@@ -32,7 +32,7 @@ async def get_result(engine, prompt, sampling_params):
     request_id = str(uuid.uuid4().hex)
     results = engine.generate(request_id, prompt, sampling_params)
     async for result in results:
-        print("result: ", result)
+        assert result is not None
 
 
 async def asy_for_loop_test(config, prompt, sampling_params):

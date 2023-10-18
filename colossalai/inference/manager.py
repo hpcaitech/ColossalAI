@@ -59,11 +59,10 @@ class DynamicBatchManager:
         self.req_queue.append(req)
         return
 
-    def add_input(self, request_id, sampling_params, prompts):
+    def add_input(self, request_id, prompts, sampling_params):
         """
         Encode and Add new input to req queue. support one sequence input for now.
         """
-        print("promptssssss", prompts)
         prompt_ids = self.tokenizer.encode(prompts)
         prompt_len = len(prompt_ids)
         if prompt_len > self.engine.max_input_len:
@@ -258,9 +257,10 @@ class DynamicBatchManager:
         """
         self.add_input(request_id, sampling_params, prompts)
         return self.loop_for_fwd()
-    
+
     def is_running(self):
-        return self.running_batch is not None or self.req_queue.waiting_req_list 
+        return self.running_batch is not None or self.req_queue.waiting_req_list
+
 
 def start_dynamic_batching(args, tp_engine, waiting_req_list):
     try:

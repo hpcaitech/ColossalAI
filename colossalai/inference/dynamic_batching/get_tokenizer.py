@@ -1,6 +1,11 @@
+"""
+Motivated by VllM, This module is trying to resolve the tokenizer issue.
+license: MIT, see LICENSE for more details.
+"""
+
 from transformers import AutoTokenizer
 
-_FAST_LLAMA_TOKENIZER = "/home/lccd/share/llama-tokenizer"
+_FAST_LLAMA_TOKENIZER = "hf-internal-testing/llama-tokenizer"
 
 
 def get_tokenizer(
