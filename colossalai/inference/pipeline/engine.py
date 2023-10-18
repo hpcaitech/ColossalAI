@@ -7,8 +7,8 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
 
-from .microbatch_manager import MicroBatchManager
 from .kvcache_manager import MemoryManager
+from .microbatch_manager import MicroBatchManager
 
 
 class PPInferEngine:
@@ -62,15 +62,15 @@ class PPInferEngine:
         num_beams: int = 1,
     ) -> None:
         assert pp_model or (model and model_policy), "Either pp_model or model with model_policy should be provided."
-        assert dtype in ['fp16', 'fp32', 'bf16'], "dtype should be one of 'fp16', 'fp32', 'bf16'"
-        
+        assert dtype in ["fp16", "fp32", "bf16"], "dtype should be one of 'fp16', 'fp32', 'bf16'"
+
         max_output_len = max(max_output_len, max_input_len + new_length)
 
         self.pp_size = pp_size
-        if dtype == 'fp16':
+        if dtype == "fp16":
             self.dtype = torch.float16
             model.half()
-        elif dtype == 'bf16':
+        elif dtype == "bf16":
             self.dtype = torch.bfloat16
             model.to(torch.bfloat16)
         else:
@@ -78,9 +78,18 @@ class PPInferEngine:
         self.pg_mesh = ProcessGroupMesh(pp_size)
         self.stage_manager = PipelineStageManager(self.pg_mesh, 0, True)
         self.model = pp_model or self._shardformer(model, model_policy)
-        self.cache_manager_list = [self._init_manager(max_batch_size, max_input_len, max_output_len)]*(micro_batch_buffer_size or pp_size)
-        self.mb_manager = MicroBatchManager(self.stage_manager.stage, new_length, micro_batch_size,
-                                            micro_batch_buffer_size or pp_size, max_input_len, max_output_len, self.cache_manager_list)
+        self.cache_manager_list = [self._init_manager(max_batch_size, max_input_len, max_output_len)] * (
+            micro_batch_buffer_size or pp_size
+        )
+        self.mb_manager = MicroBatchManager(
+            self.stage_manager.stage,
+            new_length,
+            micro_batch_size,
+            micro_batch_buffer_size or pp_size,
+            max_input_len,
+            max_output_len,
+            self.cache_manager_list,
+        )
         self.verbose = verbose
         self.schedule = GenerateSchedule(self.stage_manager, self.mb_manager, verbose)
 
@@ -111,15 +120,11 @@ class PPInferEngine:
         head_dim = self.model.config.hidden_size // self.model.config.num_attention_heads
         head_num = self.model.config.num_attention_heads
         num_hidden_layers = (
-            self.model.config.num_hidden_layers if hasattr(self.model.config, "num_hidden_layers") else self.model.config.num_layers
+            self.model.config.num_hidden_layers
+            if hasattr(self.model.config, "num_hidden_layers")
+            else self.model.config.num_layers
         )
         layer_num = num_hidden_layers // self.pp_size
 
-        cache_manager = MemoryManager(
-            max_total_token_num,
-            self.dtype,
-            head_num,
-            head_dim,
-            layer_num
-        )
+        cache_manager = MemoryManager(max_total_token_num, self.dtype, head_num, head_dim, layer_num)
         return cache_manager

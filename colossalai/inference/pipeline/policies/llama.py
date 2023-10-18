@@ -1,9 +1,15 @@
 from functools import partial
 from typing import List
-from torch.nn import Module
 
 import torch
-from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm, LlamaForCausalLM
+from torch.nn import Module
+from transformers.models.llama.modeling_llama import (
+    LlamaAttention,
+    LlamaDecoderLayer,
+    LlamaForCausalLM,
+    LlamaModel,
+    LlamaRMSNorm,
+)
 
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
 
@@ -108,9 +114,9 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
 
         if self.pipeline_stage_manager:
             # set None as default
-            self.set_pipeline_forward(model_cls=LlamaForCausalLM,
-                                      new_forward=LlamaInferenceForwards.llama_causal_lm_forward,
-                                      policy=policy)
+            self.set_pipeline_forward(
+                model_cls=LlamaForCausalLM, new_forward=LlamaInferenceForwards.llama_causal_lm_forward, policy=policy
+            )
         infer_forward = None
         if HAS_TRITON_RMSNORM:
             infer_forward = get_triton_rmsnorm_forward()
@@ -129,7 +135,7 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
     def postprocess(self):
         init_to_get_rotary(self.model.model)
         return self.model
-    
+
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage."""
         stage_manager = self.pipeline_stage_manager

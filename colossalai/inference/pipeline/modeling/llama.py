@@ -1,14 +1,18 @@
 from typing import List, Optional, Tuple
 
 import torch
-from transformers.modeling_outputs import BaseModelOutputWithPast
-from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
+from transformers.models.llama.modeling_llama import (
+    LlamaAttention,
+    LlamaDecoderLayer,
+    LlamaForCausalLM,
+    LlamaModel,
+    LlamaRMSNorm,
+)
 from transformers.utils import logging
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
-from colossalai.pipeline.stage_manager import PipelineStageManager
-
 from colossalai.kernel.triton import llama_context_attn_fwd, rotary_embedding_fwd, token_attention_fwd
+from colossalai.pipeline.stage_manager import PipelineStageManager
 
 from ._utils import copy_kv_to_mem_cache
 
@@ -71,45 +75,45 @@ class LlamaInferenceForwards:
         stage_index: Optional[List[int]] = None,
     ):
         r"""
-            Args:
-                labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-                    Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
-                    config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
-                    (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+        Args:
+            labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+                Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+                config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+                (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
 
-            Returns:
+        Returns:
 
-            Example:
+        Example:
 
-            ```python
-            >>> from transformers import AutoTokenizer, LlamaForCausalLM
+        ```python
+        >>> from transformers import AutoTokenizer, LlamaForCausalLM
 
-            >>> model = LlamaForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
-            >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
+        >>> model = LlamaForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
+        >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
 
-            >>> prompt = "Hey, are you consciours? Can you talk to me?"
-            >>> inputs = tokenizer(prompt, return_tensors="pt")
+        >>> prompt = "Hey, are you consciours? Can you talk to me?"
+        >>> inputs = tokenizer(prompt, return_tensors="pt")
 
-            >>> # Generate
-            >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
-            >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-            "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
-            ```"""
+        >>> # Generate
+        >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
+        >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+        "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
+        ```"""
         logger = logging.get_logger(__name__)
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
         # If is first stage and after warmup, go throught lm_head first
         if stage_manager.is_first_stage() and hidden_states is not None:
             lm_logits = self.lm_head(hidden_states)
-            return {'logits': lm_logits}
+            return {"logits": lm_logits}
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = LlamaInferenceForwards.llama_model_forward(
@@ -239,7 +243,6 @@ class LlamaInferenceForwards:
             infer_state.position_cos = torch.index_select(self._cos_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
             infer_state.position_sin = torch.index_select(self._sin_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
 
-
         # embed positions
         if attention_mask is None:
             attention_mask = torch.ones(
@@ -251,8 +254,8 @@ class LlamaInferenceForwards:
         )
 
         # decoder layers
-        all_hidden_states = () if output_hidden_states else None
-        all_self_attns = () if output_attentions else None
+        () if output_hidden_states else None
+        () if output_attentions else None
         next_decoder_cache = () if use_cache else None
 
         infer_state.decode_layer_id = 0
@@ -278,7 +281,7 @@ class LlamaInferenceForwards:
 
             if use_cache:
                 next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
-        
+
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
         next_cache = next_decoder_cache if use_cache else None
@@ -299,8 +302,7 @@ class LlamaInferenceForwards:
         #     attentions=all_self_attns,
         # )
         # print(f"[After] rank:{torch.distributed.get_rank()}\n->{infer_state}")
-        return {'hidden_states': hidden_states, 'past_key_values': next_cache}
-
+        return {"hidden_states": hidden_states, "past_key_values": next_cache}
 
     @staticmethod
     def llama_decoder_layer_forward(

@@ -2,9 +2,9 @@
 from dataclasses import dataclass
 
 import torch
+from transformers.tokenization_utils_base import BatchEncoding
 
 from .kvcache_manager import MemoryManager
-from transformers.tokenization_utils_base import BatchEncoding
 
 
 @dataclass
@@ -63,7 +63,7 @@ class BatchInferState:
         max_input_len: int,
         max_output_len: int,
         cache_manager: MemoryManager,
-    ):  
+    ):
         if not isinstance(batch, (BatchEncoding, dict, list, torch.Tensor)):
             raise TypeError(f"batch type {type(batch)} is not supported in prepare_batch_state")
 
@@ -106,15 +106,15 @@ class BatchInferState:
                 start_index += curr_seq_len
                 max_len_in_batch = curr_seq_len if curr_seq_len > max_len_in_batch else max_len_in_batch
         block_loc = torch.zeros((batch_size, max_input_len + max_output_len), dtype=torch.long, device="cuda")
-        
+
         return cls(
             batch_size=batch_size,
             max_len_in_batch=max_len_in_batch,
-            seq_len=seq_lengths.to('cuda'),
-            start_loc = seq_start_indexes.to("cuda"),
-            block_loc = block_loc,
-            decode_layer_id = 0,
-            past_key_values_len = 0,
-            is_context_stage = True,
+            seq_len=seq_lengths.to("cuda"),
+            start_loc=seq_start_indexes.to("cuda"),
+            block_loc=block_loc,
+            decode_layer_id=0,
+            past_key_values_len=0,
+            is_context_stage=True,
             cache_manager=cache_manager,
         )
