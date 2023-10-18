@@ -21,6 +21,8 @@ _supported_models = [
     "BloomForCausalLM",
     "ChatGLMModel",
     "ChatGLMForConditionalGeneration",
+    "LlamaGPTQForCausalLM",
+    "BloomGPTQForCausalLM",
 ]
 
 
@@ -213,11 +215,14 @@ class TPInferEngine:
         ), "Discrepancy between the tp size of TPInferEngine and the tp size of shard config"
         model_name = model.__class__.__name__
         assert model_name in self.supported_models, f"Unsupported model cls {model_name} for TP inference."
-        policy = get_autopolicy(model, inference_only=True)
-        self.model, _ = shardformer.optimize(model, policy)
 
         if self.shard_config.inference_gptq:
-            self._post_init_gptq_buffer(model)
+            policy = get_autopolicy(model.model, inference_only=True)
+            self.model, _ = shardformer.optimize(model.model, policy)
+            self._post_init_gptq_buffer(self.model)
+        else:
+            policy = get_autopolicy(model, inference_only=True)
+            self.model, _ = shardformer.optimize(model, policy)
 
         self.model = self.model.cuda()
 
