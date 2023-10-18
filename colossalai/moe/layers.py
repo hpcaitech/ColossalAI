@@ -66,6 +66,7 @@ class SparseMLP(nn.Module):
         self.use_kernel = MOE_MANAGER.use_kernel_optim
         self.expert_parallel = MOE_MANAGER.get_parallel()
         self.gated = gated
+        self.overlap = MOE_MANAGER.overlap_alltoall
         assert self.expert_parallel in [
             "EP",
             "TP",
@@ -164,9 +165,9 @@ class SparseMLP(nn.Module):
 
         # expert_output: (num_groups, num_experts, capacity, hidden_size)
         if self.expert_parallel == "EP":
-            expert_output = self._ep_process(dispatch_data)
+            expert_output = self._ep_process(dispatch_data, overlap=self.overlap)
         elif self.expert_parallel == "TP":
-            expert_output = self._tp_process(dispatch_data)
+            expert_output = self._tp_process(dispatch_data, overlap=self.overlap)
         elif self.expert_parallel is None:
             expert_output = self._local_process(dispatch_data)
         else:
@@ -190,7 +191,7 @@ class SparseMLP(nn.Module):
         expert_out = self.experts(expert_in)
         return expert_out
 
-    def _ep_process(self, dispatch_data: torch.Tensor, overlap: bool = True) -> torch.Tensor:
+    def _ep_process(self, dispatch_data: torch.Tensor, overlap: bool = False) -> torch.Tensor:
         """
         Expert Parallel
 
@@ -214,7 +215,7 @@ class SparseMLP(nn.Module):
                 data: torch.Tensor
                 handle: Any = None
 
-            NUM_CHUNK = 2
+            NUM_CHUNK = 4
             NUM_STAGES = 4
 
             assert dispatch_data.shape[1] % NUM_CHUNK == 0, \
@@ -256,7 +257,7 @@ class SparseMLP(nn.Module):
 
             return output
 
-    def _tp_process(self, dispatch_data: torch.Tensor, overlap: bool = True) -> torch.Tensor:
+    def _tp_process(self, dispatch_data: torch.Tensor, overlap: bool = False) -> torch.Tensor:
         """
         without overlap:
                    |    C    |
@@ -287,7 +288,7 @@ class SparseMLP(nn.Module):
                 handle: Any
                 indices: Tuple
 
-            NUM_CHUNK = 2
+            NUM_CHUNK = 4
             NUM_STAGES = 4
 
             assert dispatch_data.shape[0] % NUM_CHUNK == 0, \
@@ -347,3 +348,4 @@ def apply_load_balance(model: nn.Module, optim: Any) -> None:
 
     torch.cuda.empty_cache()
     _apply_recursive(model)
+    torch.cuda.empty_cache()

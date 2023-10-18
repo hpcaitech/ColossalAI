@@ -34,6 +34,7 @@ class MoeManager(metaclass=SingletonMeta):
         self.tolerance = None
         self.beam_width = None
         self.group_swap_factor = None
+        self.overlap_alltoall = None
 
         self.has_setup = False
         self._parallel_info_dict = dict()
@@ -61,6 +62,7 @@ class MoeManager(metaclass=SingletonMeta):
         tolerance: float = 0.1,
         beam_width: int = 8,
         group_swap_factor: float = 0.4,
+        overlap_alltoall: bool = False,
     ) -> None:
         """
         Setup MoE distributed context.
@@ -109,7 +111,7 @@ class MoeManager(metaclass=SingletonMeta):
         self.tolerance = tolerance
         self.beam_width = beam_width
         self.group_swap_factor = group_swap_factor
-
+        self.overlap_alltoall = overlap_alltoall
         self.has_setup = True
 
     def get_info(self, num_experts: int, use_tp: bool = False) -> Tuple[int, MoeParallelInfo]:

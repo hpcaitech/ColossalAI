@@ -2,10 +2,10 @@
 
 set -xue
 
-NUM_GPU=4
+NUM_GPU=8
 MODEL="8b"
 SEQ_LENGTH=2048
-WARMUP=8
+WARMUP=20
 ACTIVE=4
 
 # HACK: make model importable
@@ -16,18 +16,9 @@ else
     export PYTHONPATH=$example_dir:$PYTHONPATH
 fi
 
-# zero
-torchrun --standalone --nproc_per_node $NUM_GPU \
-    $example_dir/benchmark/benchmark_cai.py \
-    --model_name $MODEL \
-    --batch_size 4 \
-    --seq_length $SEQ_LENGTH \
-    --warmup $WARMUP \
-    --active $ACTIVE \
-    --plugin zero \
-    --use_kernel
 
 # ep
+echo -e "\n\n EP \n\n"
 torchrun --standalone --nproc_per_node $NUM_GPU \
     $example_dir/benchmark/benchmark_cai.py \
     --model_name $MODEL \
@@ -36,9 +27,56 @@ torchrun --standalone --nproc_per_node $NUM_GPU \
     --warmup $WARMUP \
     --active $ACTIVE \
     --plugin ep \
-    --use_kernel
+    --use_kernel \
+    --zero_stage 2 \
+    --load_balance
+
+echo -e "\n\n EP + Overlap \n\n"
+torchrun --standalone --nproc_per_node $NUM_GPU \
+    $example_dir/benchmark/benchmark_cai.py \
+    --model_name $MODEL \
+    --batch_size 12 \
+    --seq_length $SEQ_LENGTH \
+    --warmup $WARMUP \
+    --active $ACTIVE \
+    --plugin ep \
+    --use_kernel \
+    --zero_stage 2 \
+    --load_balance \
+    --overlap_alltoall
+
 
 # ep_zero
+echo -e "\n\n EP-ZERO \n\n"
+torchrun --standalone --nproc_per_node $NUM_GPU \
+    $example_dir/benchmark/benchmark_cai.py \
+    --model_name $MODEL \
+    --batch_size 16 \
+    --seq_length $SEQ_LENGTH \
+    --warmup $WARMUP \
+    --active $ACTIVE \
+    --plugin ep_zero \
+    --use_kernel \
+    --extra_dp_size 2 \
+    --zero_stage 1 \
+    --load_balance
+
+echo -e "\n\n EP-ZERO + Overlap \n\n"
+torchrun --standalone --nproc_per_node $NUM_GPU \
+    $example_dir/benchmark/benchmark_cai.py \
+    --model_name $MODEL \
+    --batch_size 16 \
+    --seq_length $SEQ_LENGTH \
+    --warmup $WARMUP \
+    --active $ACTIVE \
+    --plugin ep_zero \
+    --use_kernel \
+    --extra_dp_size 2 \
+    --zero_stage 1 \
+    --load_balance \
+    --overlap_alltoall
+
+echo -e "\n\n EP-ZERO-2 \n\n"
 torchrun --standalone --nproc_per_node $NUM_GPU \
     $example_dir/benchmark/benchmark_cai.py \
     --model_name $MODEL \
@@ -48,9 +86,11 @@ torchrun --standalone --nproc_per_node $NUM_GPU \
     --active $ACTIVE \
     --plugin ep_zero \
     --use_kernel \
-    --extra_dp_size 2
+    --extra_dp_size 2 \
+    --zero_stage 2 \
+    --load_balance
 
-# zero_ep
+echo -e "\n\n EP-ZERO-2 \n\n"
 torchrun --standalone --nproc_per_node $NUM_GPU \
     $example_dir/benchmark/benchmark_cai.py \
     --model_name $MODEL \
@@ -58,9 +98,12 @@ torchrun --standalone --nproc_per_node $NUM_GPU \
     --seq_length $SEQ_LENGTH \
     --warmup $WARMUP \
     --active $ACTIVE \
-    --plugin zero_ep \
+    --plugin ep_zero \
     --use_kernel \
-    --extra_dp_size 2
+    --extra_dp_size 2 \
+    --zero_stage 2 \
+    --load_balance \
+    --overlap_alltoall
 
 # hybrid
 torchrun --standalone --nproc_per_node $NUM_GPU \
