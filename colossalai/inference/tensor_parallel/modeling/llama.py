@@ -29,6 +29,15 @@ except:
     )
     HAS_VLLM_KERNERL = False
 
+# try:
+#     from lightllm.models.llama.triton_kernel.token_attention_nopad_att1 import token_att_fwd
+#     print("found lightllm installation for inference")
+#     HAS_LIGHTLLM_KERNEL = True
+    
+# except:
+#     print("please install lightllm from source to run inference: ")
+#     HAS_LIGHTLLM_KERNEL = False
+    
 
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
@@ -371,6 +380,7 @@ class LlamaInferenceForwards:
                     infer_state.cache_manager.past_key_values_length,
                     infer_state.other_kv_index,
                 )
+                
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
         attn_output = self.o_proj(attn_output)
