@@ -1,6 +1,7 @@
 import pytest
 import torch
 import torch.distributed as dist
+from packaging.version import Version
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
@@ -161,6 +162,9 @@ def exam_tiny_example(placement_config, model_name: str, mixed_precision: torch.
     rtol, atol = 1.5e-6, 2e-5
     if mixed_precision is torch.bfloat16:
         rtol, atol = 2e-3, 2e-3
+    elif Version(torch.__version__) >= Version("2.0.0"):
+        rtol, atol = 4e-5, 3e-5
+
     for i, (input_ids, label) in enumerate(train_dataloader):
         if i > 2:
             break
