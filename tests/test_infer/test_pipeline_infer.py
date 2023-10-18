@@ -4,8 +4,8 @@ import torch.distributed as dist
 import transformers
 
 import colossalai
-from colossalai.inference import CaiInferEngine
-from colossalai.inference.cai_engine.policies import LlamaModelInferPolicy
+from colossalai.inference.pipeline import PPInferEngine
+from colossalai.inference.pipeline.policies import LlamaModelInferPolicy
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 
@@ -26,7 +26,7 @@ for k, v in inputs.items():
 def pipeline_inference_test(pp_size, new_length, micro_batch_size):
     model = transformers.LlamaForCausalLM(transformers.LlamaConfig(num_hidden_layers=4))
 
-    engine = CaiInferEngine(pp_size=pp_size,
+    engine = PPInferEngine(pp_size=pp_size,
                            model=model,
                            model_policy=LlamaModelInferPolicy(),
                            new_length=new_length,

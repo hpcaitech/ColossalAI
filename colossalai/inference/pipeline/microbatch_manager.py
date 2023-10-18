@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Dict, Tuple
-from ..tensor_parallel.batch_infer_state import BatchInferState
-from ..tensor_parallel.kvcache_manager import MemoryManager
+from .batch_infer_state import BatchInferState
+from .kvcache_manager import MemoryManager
 import torch
 
 __all__ = "MicroBatchManager"

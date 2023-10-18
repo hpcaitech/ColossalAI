@@ -7,11 +7,11 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
 
-from ..pipeline import MicroBatchManager
+from .microbatch_manager import MicroBatchManager
 from .kvcache_manager import MemoryManager
 
 
-class CaiInferEngine:
+class PPInferEngine:
     """
     PPInferEngine is a class that handles the pipeline parallel inference.
 
