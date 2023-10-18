@@ -6,7 +6,6 @@ from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecode
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import (
-    # llama2_context_attn_fwd,
     llama_context_attn_fwd,
     rotary_embedding_fwd,
     token_attention_fwd,

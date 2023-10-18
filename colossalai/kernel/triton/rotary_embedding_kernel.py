@@ -4,6 +4,7 @@ import triton
 import triton.language as tl
 
 
+# adapted from https://github.com/ModelTC/lightllm/blob/5c559dd7981ed67679a08a1e09a88fb4c1550b3a/lightllm/models/llama/triton_kernel/rotary_emb.py#L8
 @triton.jit
 def _rotary_kernel(
     q,
