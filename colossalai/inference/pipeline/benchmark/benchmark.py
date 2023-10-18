@@ -119,8 +119,9 @@ if __name__ == "__main__":
         model=model,
         model_policy=LlamaModelInferPolicy(),
         verbose=True,
+        max_batch_size=args.batch_size,
         max_input_len=args.seq_len,
-        max_output_len=args.new_length,
+        max_output_len=args.seq_len + args.new_length + 256,
     )
     data = data_gen(args.batch_size, args.seq_len)
 
