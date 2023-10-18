@@ -155,7 +155,7 @@ def main():
     mgr_dict = {"seed": 42, "use_kernel_optim": args.use_kernel, "enable_load_balance": args.load_balance}
     if args.plugin == "zero":
         dp_size = dist.get_world_size()
-        plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
+        plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2, verbose=True, precision="bf16")
         MOE_MANAGER.setup(
             parallel=None,
             **mgr_dict,
@@ -169,6 +169,7 @@ def main():
         )
         MOE_MANAGER.setup(
             parallel="EP",
+            max_ep_size=dp_size,
             **mgr_dict,
         )
     elif args.plugin == "ep_zero":
