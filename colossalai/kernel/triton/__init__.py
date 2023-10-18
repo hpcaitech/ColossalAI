@@ -14,7 +14,6 @@ if HAS_TRITON:
     from .fused_layernorm import layer_norm
     from .gptq_triton import gptq_fused_linear_triton
     from .int8_rotary_embedding_kernel import int8_rotary_embedding_fwd
-    from .rotary_embedding_kernel import rotary_embedding_fwd
     from .smooth_attention import smooth_llama_context_attn_fwd, smooth_token_attention_fwd
     from .softmax import softmax
     from .token_attention_kernel import token_attention_fwd
@@ -25,7 +24,6 @@ if HAS_TRITON:
         "softmax",
         "layer_norm",
         "copy_kv_cache_to_dest",
-        "rotary_embedding_fwd",
         "token_attention_fwd",
         "gptq_fused_linear_triton",
         "int8_rotary_embedding_fwd",

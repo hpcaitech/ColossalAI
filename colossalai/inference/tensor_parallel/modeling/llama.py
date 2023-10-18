@@ -7,7 +7,6 @@ from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecode
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import (
     llama_context_attn_fwd,
-    rotary_embedding_fwd,
     token_attention_fwd,
 )
 from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
@@ -16,7 +15,6 @@ from ._utils import copy_kv_to_mem_cache
 
 try:
     from vllm import layernorm_ops, pos_encoding_ops
-
     rms_norm = layernorm_ops.rms_norm
     rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
     HAS_VLLM_KERNERL = True
@@ -30,6 +28,7 @@ except:
 
 try:
     from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import context_attention_fwd as lightllm_llama2_context_attention_fwd
+    from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd as llama_rotary_embedding_fwd
     print("found lightllm installation for inference")
     HAS_LIGHTLLM_KERNEL = True
 except:
@@ -287,8 +286,8 @@ class LlamaInferenceForwards:
         cos, sin = infer_state.position_cos, infer_state.position_sin
         # print("shape ", cos.shape, query_states.view(-1, self.num_heads, self.head_dim).shape, )
 
-        rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
-        rotary_embedding_fwd(key_states.view(-1, self.num_key_value_heads, self.head_dim), cos, sin)
+        llama_rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
+        llama_rotary_embedding_fwd(key_states.view(-1, self.num_key_value_heads, self.head_dim), cos, sin)
 
         query_states = query_states.reshape(-1, self.num_heads, self.head_dim)
         key_states = key_states.reshape(-1, self.num_key_value_heads, self.head_dim)
