@@ -53,7 +53,7 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, input_, weight, bias, process_group, async_grad_allreduce):
-        ctx.save_for_backward(input_, weight)
+        ctx.save_for_backward(input_, weight, bias)
         ctx.use_bias = bias is not None
         ctx.process_group = process_group
         ctx.async_grad_allreduce = async_grad_allreduce
@@ -66,8 +66,12 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, weight = ctx.saved_tensors
+        input, weight, bias = ctx.saved_tensors
         use_bias = ctx.use_bias
+
+        # In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias.
+        weight = weight.view(weight.shape)
+        bias = bias.view(bias.shape)
 
         total_input = input
         grad_input = grad_output.matmul(weight.T)
@@ -100,7 +104,7 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, input_, weight, bias, process_group, async_grad_allreduce):
-        ctx.save_for_backward(input_, weight)
+        ctx.save_for_backward(input_, weight, bias)
         ctx.use_bias = bias is not None
         ctx.process_group = process_group
         ctx.async_grad_allreduce = async_grad_allreduce
@@ -113,8 +117,12 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, weight = ctx.saved_tensors
+        input, weight, bias = ctx.saved_tensors
         use_bias = ctx.use_bias
+
+        # In order to be hooked into Gemini's '__torch_function__', adding a view operation to bias.
+        if use_bias:
+            bias.view(bias.shape)
 
         total_input = input
         grad_input = grad_output.matmul(weight)

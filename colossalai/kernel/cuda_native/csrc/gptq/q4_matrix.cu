@@ -184,7 +184,7 @@ __global__ void reconstruct_kernel
     int column = RECONS_THREADS_X * blockIdx.x + threadIdx.x;
     int row = (RECONS_THREADS_Y * blockIdx.y + threadIdx.y) * 8;
     if (column >= width) return;
-
+    
     // Views
 
     MatrixView_q4_column w_(w, height, width);

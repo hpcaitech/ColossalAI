@@ -21,6 +21,7 @@ from colossalai.checkpoint_io.utils import (
 )
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.utils import get_current_device
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.memory_tracer import MemStats
@@ -317,7 +318,8 @@ class GeminiPlugin(DPPluginBase):
         max_scale: float = 2**32,
         max_norm: float = 0.0,
         norm_type: float = 2.0,
-        verbose: bool = False,
+        use_tp_pipeline: bool = False,
+        verbose: bool = False
     ) -> None:
         super().__init__()
         assert precision in SUPPORTED_PRECISION, f"precision {precision} is not supported"
@@ -355,6 +357,7 @@ class GeminiPlugin(DPPluginBase):
             max_norm=max_norm,
             norm_type=norm_type,
         )
+        self.use_tp_pipeline = use_tp_pipeline
         self.verbose = verbose
 
     def support_no_sync(self) -> bool:
@@ -391,6 +394,16 @@ class GeminiPlugin(DPPluginBase):
             # model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
 
             # wrap the model with Gemini
+
+            if self.use_tp_pipeline:
+                try:
+                    shard_config = ShardConfig(enable_tensor_parallelism=True, enable_fused_normalization=False)
+                    shardformer = ShardFormer(shard_config)
+                    model, _ = shardformer.optimize(model)
+                    optimizer.param_groups[0]["params"] = model.parameters()
+                except NotImplementedError as e:
+                    print(f"Auto policy for {model.__class__} is not implemented yet\n.")
+
             model = GeminiDDP(model, **self.gemini_config, verbose=self.verbose)
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):

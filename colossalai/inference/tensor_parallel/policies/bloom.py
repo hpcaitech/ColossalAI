@@ -4,6 +4,7 @@ import torch
 from torch.nn import LayerNorm
 
 import colossalai.shardformer.layer as col_nn
+from colossalai.shardformer.modeling.bloom import build_bloom_alibi_tensor_fn
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
 from colossalai.shardformer.policies.bloom import BloomForCausalLMPolicy
 
@@ -39,36 +40,33 @@ class BloomModelInferPolicy(BloomForCausalLMPolicy):
         policy = super().module_policy()
         if self.shard_config.inference_gptq:
             from colossalai.inference.quant.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
-
-            policy[BloomBlock] = ModulePolicyDescription(
-                attribute_replacement={
-                    "self_attention.hidden_size": self.model.config.hidden_size
-                    // self.shard_config.tensor_parallel_size,
-                    "self_attention.split_size": self.model.config.hidden_size
-                    // self.shard_config.tensor_parallel_size,
-                    "self_attention.num_heads": self.model.config.n_head // self.shard_config.tensor_parallel_size,
-                },
-                sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="self_attention.query_key_value",
-                        target_module=ColCaiQuantLinear,
-                        kwargs={"split_num": 3},
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="self_attention.dense", target_module=RowCaiQuantLinear, kwargs={"split_num": 1}
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="self_attention.attention_dropout",
-                        target_module=col_nn.DropoutForParallelInput,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="mlp.dense_h_to_4h", target_module=ColCaiQuantLinear, kwargs={"split_num": 1}
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="mlp.dense_4h_to_h", target_module=RowCaiQuantLinear, kwargs={"split_num": 1}
-                    ),
-                ],
-            )
+            policy[BloomBlock] = ModulePolicyDescription(attribute_replacement={
+                "self_attention.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                "self_attention.split_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                "self_attention.num_heads": self.model.config.n_head // self.shard_config.tensor_parallel_size,
+            },
+                                                         sub_module_replacement=[
+                                                             SubModuleReplacementDescription(
+                                                                 suffix="self_attention.query_key_value",
+                                                                 target_module=ColCaiQuantLinear,
+                                                                 kwargs={'split_num': 3}),
+                                                             SubModuleReplacementDescription(
+                                                                 suffix="self_attention.dense",
+                                                                 target_module=RowCaiQuantLinear,
+                                                                 kwargs={'split_num': 1}),
+                                                             SubModuleReplacementDescription(
+                                                                 suffix="self_attention.attention_dropout",
+                                                                 target_module=col_nn.DropoutForParallelInput,
+                                                             ),
+                                                             SubModuleReplacementDescription(
+                                                                 suffix="mlp.dense_h_to_4h",
+                                                                 target_module=ColCaiQuantLinear,
+                                                                 kwargs={'split_num': 1}),
+                                                             SubModuleReplacementDescription(
+                                                                 suffix="mlp.dense_4h_to_h",
+                                                                 target_module=RowCaiQuantLinear,
+                                                                 kwargs={'split_num': 1}),
+                                                         ])
         # NOTE set inference mode to shard config
         self.shard_config._infer()
 

@@ -318,6 +318,7 @@ class GeminiDDP(ModelWrapper):
         self._post_backward()
 
     def backward_by_grad(self, tensor, grad):
+        self._pre_backward()
         with self.param_op_hook.switch_to_backward(), ColoParamOpHookManager.use_hooks(self.param_op_hook):
             torch.autograd.backward(tensor, grad)
         self._post_backward()
