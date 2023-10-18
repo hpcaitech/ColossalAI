@@ -23,6 +23,7 @@ except ImportError:
 
 if HAS_TRITON:
 
+    # this function is adapted from https://github.com/ModelTC/lightllm/blob/5c559dd7981ed67679a08a1e09a88fb4c1550b3a/lightllm/models/llama/triton_kernel/token_attention_nopad_att1.py#L9
     @triton.jit
     def _token_attn_1_kernel(
         Q,
@@ -211,6 +212,7 @@ if HAS_TRITON:
             )
         return
 
+    # this function is modified from https://github.com/ModelTC/lightllm/blob/5c559dd7981ed67679a08a1e09a88fb4c1550b3a/lightllm/models/llama/triton_kernel/token_attention_nopad_softmax.py#L8
     @triton.jit
     def _token_attn_softmax_fwd(
         softmax_logics,
@@ -252,6 +254,7 @@ if HAS_TRITON:
         )
         return
 
+    # this function is modified from https://github.com/ModelTC/lightllm/blob/5c559dd7981ed67679a08a1e09a88fb4c1550b3a/lightllm/models/llama/triton_kernel/token_attention_nopad_softmax.py#L36
     @torch.no_grad()
     def token_attn_softmax_fwd(softmax_logics, kv_cache_start_loc, kv_cache_seqlen, softmax_prob_out, max_kv_cache_len):
         BLOCK_SIZE = triton.next_power_of_2(max_kv_cache_len)
@@ -277,6 +280,7 @@ if HAS_TRITON:
         )
         return
 
+    # this function is modified from https://github.com/ModelTC/lightllm/blob/5c559dd7981ed67679a08a1e09a88fb4c1550b3a/lightllm/models/llama/triton_kernel/token_attention_nopad_reduceV.py#L8
     @triton.jit
     def _token_attn_2_kernel(
         Prob,
@@ -342,6 +346,7 @@ if HAS_TRITON:
         tl.store(out_ptrs, acc)
         return
 
+    # this function is modifed from https://github.com/ModelTC/lightllm/blob/5c559dd7981ed67679a08a1e09a88fb4c1550b3a/lightllm/models/llama/triton_kernel/token_attention_nopad_reduceV.py#L47
     @torch.no_grad()
     def token_attn_fwd_2(prob, v, attn_out, kv_cache_loc, kv_cache_start_loc, kv_cache_seqlen, max_kv_cache_len):
         if triton.__version__ >= "2.1.0":
