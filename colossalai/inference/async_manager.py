@@ -86,7 +86,7 @@ class Async_DynamicBatchManager:
         """
         Logic for handling requests
         """
-
+        has_new_finished = False
         if self.running_batch is None:
             new_batch = self.req_queue.generate_new_batch(self.running_batch)
             if new_batch is not None:
@@ -96,30 +96,31 @@ class Async_DynamicBatchManager:
                 self._filter_runing_batch()
                 self.has_wait_tokens = 0
 
-        if self.has_wait_tokens < self.max_wait_tokens:
-            self.stats_tool.count_output_tokens(self.running_batch)
-            has_new_finished, outputs = self._decode_batch(self.running_batch)
-            self._filter_runing_batch()
-            self.has_wait_tokens += 1
         else:
-            new_mini_batch = self.req_queue.generate_new_batch(self.running_batch)
-            if new_mini_batch is not None:
-                self.stats_tool.count_prompt_tokens(new_mini_batch)
-                has_new_finished, outputs = self._prefill_batch(new_mini_batch)
-                if not new_mini_batch.is_clear():
-                    self._merge_batch(self.running_batch, new_mini_batch)
-                    self.running_batch.merge(new_mini_batch)
-                self.has_wait_tokens = 0
-
-            else:
+            if self.has_wait_tokens < self.max_wait_tokens:
                 self.stats_tool.count_output_tokens(self.running_batch)
                 has_new_finished, outputs = self._decode_batch(self.running_batch)
                 self._filter_runing_batch()
                 self.has_wait_tokens += 1
 
+            else:
+                new_mini_batch = self.req_queue.generate_new_batch(self.running_batch)
+                if new_mini_batch is not None:
+                    self.stats_tool.count_prompt_tokens(new_mini_batch)
+                    has_new_finished, outputs = self._prefill_batch(new_mini_batch)
+                    if not new_mini_batch.is_clear():
+                        self._merge_batch(self.running_batch, new_mini_batch)
+                        self.running_batch.merge(new_mini_batch)
+                    self.has_wait_tokens = 0
+
+                else:
+                    self.stats_tool.count_output_tokens(self.running_batch)
+                    has_new_finished, outputs = self._decode_batch(self.running_batch)
+                    self._filter_runing_batch()
+                    self.has_wait_tokens += 1
+
         if has_new_finished:
             return outputs
-
         return None
 
     def _init_batch(self, batch: Batch, dtype="fp16"):
