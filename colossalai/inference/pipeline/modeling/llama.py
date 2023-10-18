@@ -410,7 +410,6 @@ class LlamaInferenceForwards:
                 infer_state.seq_len,
                 infer_state.cache_manager.past_key_values_length,
             )
-            # print(f"[After prefill] rank:{torch.distributed.get_rank()}, {infer_state}")
 
         else:
             if infer_state.decode_is_contiguous:
@@ -439,7 +438,6 @@ class LlamaInferenceForwards:
             # (batch_size, seqlen, nheads, headdim)
             attn_output = torch.empty_like(query_states)
 
-            # print(f"rank:{torch.distributed.get_rank()}, {infer_state}")
             token_attention_fwd(
                 query_states,
                 infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],

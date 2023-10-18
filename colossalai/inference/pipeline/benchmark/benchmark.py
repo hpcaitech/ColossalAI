@@ -119,7 +119,7 @@ if __name__ == "__main__":
         model=model,
         model_policy=LlamaModelInferPolicy(),
         verbose=True,
-        max_batch_size=args.batch_size,
+        max_batch_size=args.mb_size,
         max_input_len=args.seq_len,
         max_output_len=args.seq_len + args.new_length + 256,
     )
