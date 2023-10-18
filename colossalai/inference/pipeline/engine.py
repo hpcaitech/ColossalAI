@@ -1,5 +1,3 @@
-from typing import Callable, List, Optional, Set, Union
-
 import torch
 import torch.nn as nn
 
@@ -13,7 +11,7 @@ from .microbatch_manager import MicroBatchManager
 
 
 class PPInferEngine:
-    '''
+    """
     PPInferEngine is a class that handles the pipeline parallel inference.
 
     Args:
@@ -41,12 +39,12 @@ class PPInferEngine:
     output = engine.inference([tokenized_input])
     ```
 
-    '''
+    """
 
     def __init__(
         self,
         pp_size: int,
-        dtype: str = 'fp16',
+        dtype: str = "fp16",
         pp_model: nn.Module = None,
         model: nn.Module = None,
         model_policy: Policy = None,
@@ -54,7 +52,7 @@ class PPInferEngine:
         micro_batch_size: int = 1,
         micro_batch_buffer_size: int = None,
         verbose: bool = False,
-    # TODO: implement early_stopping, and various gerneration options
+        # TODO: implement early_stopping, and various gerneration options
         early_stopping: bool = False,
         do_sample: bool = False,
         num_beams: int = 1,
@@ -63,15 +61,16 @@ class PPInferEngine:
         self.pp_size = pp_size
         self.pg_mesh = ProcessGroupMesh(pp_size)
         self.stage_manager = PipelineStageManager(self.pg_mesh, 0, True)
-        self.mb_manager = MicroBatchManager(self.stage_manager.stage, new_length, micro_batch_size,
-                                            micro_batch_buffer_size or pp_size)
+        self.mb_manager = MicroBatchManager(
+            self.stage_manager.stage, new_length, micro_batch_size, micro_batch_buffer_size or pp_size
+        )
         self.verbose = verbose
         self.schedule = GenerateSchedule(self.stage_manager, self.mb_manager, verbose)
 
-        assert dtype in ['fp16', 'fp32', 'bf16'], "dtype should be one of 'fp16', 'fp32', 'bf16'"
-        if dtype == 'fp16':
+        assert dtype in ["fp16", "fp32", "bf16"], "dtype should be one of 'fp16', 'fp32', 'bf16'"
+        if dtype == "fp16":
             model.half()
-        elif dtype == 'bf16':
+        elif dtype == "bf16":
             model.to(torch.bfloat16)
         self.model = pp_model or self._shardformer(model, model_policy)
 

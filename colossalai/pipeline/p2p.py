@@ -167,7 +167,7 @@ def _p2p_comm(
     group: ProcessGroup,
     comm_dtype: torch.dtype = torch.float16,
 ):
-    """ 
+    """
     Send and recv tensor using P2P communication, used when pipeline size is 2 to solve the race communication.
 
     Agrs:
@@ -176,7 +176,7 @@ def _p2p_comm(
         peer (int): rank of the peer
         group (ProcessGroup): process group
         comm_dtype (torch.dtype): dtype of the tensor to be sent
-    
+
     Returns:
         torch.Tensor: tensor received from previous stage
     """
@@ -302,7 +302,9 @@ class PipelineP2PCommunication:
         cur_rank = self.stage_manager.get_rank()
         _send_object(input_object, cur_rank, prev_rank, self.stage_manager.get_p2p_process_group(cur_rank, prev_rank))
 
-    def p2p_communicate(self, output_object: Any, recv_pre: bool, peer: int = None, comm_dtype: torch.dtype = torch.float16) -> None:
+    def p2p_communicate(
+        self, output_object: Any, recv_pre: bool, peer: int = None, comm_dtype: torch.dtype = torch.float16
+    ) -> None:
         """
         Sends the input tensor to the next stage in pipeline, using `P2Pop` in torch.
 
@@ -313,5 +315,7 @@ class PipelineP2PCommunication:
         if peer is None:
             peer = self.stage_manager.get_next_rank()
         cur_rank = self.stage_manager.get_rank()
-        recv_tensor = _p2p_comm(output_object, recv_pre, peer, self.stage_manager.get_p2p_process_group(cur_rank, peer), comm_dtype)
+        recv_tensor = _p2p_comm(
+            output_object, recv_pre, peer, self.stage_manager.get_p2p_process_group(cur_rank, peer), comm_dtype
+        )
         return recv_tensor
