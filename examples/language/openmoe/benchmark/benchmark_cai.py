@@ -266,13 +266,6 @@ def main():
     train_dataloader_iter = iter(dataloader)
     total_len = len(train_dataloader_iter) - 1
     exmaple_data = next(train_dataloader_iter)
-    # from torch.profiler import ProfilerActivity
-    # with torch.profiler.profile(
-    #     activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-    #     schedule=torch.profiler.schedule(wait=0, warmup=args.warmup, active=1, repeat=1),
-    #     on_trace_ready=torch.profiler.tensorboard_trace_handler("./log"),
-    #     with_stack=True,
-    # ) as prof:
     with tqdm(range(total_len), disable=not coordinator.is_master()) as pbar:
         for step in pbar:
             performance_evaluator.on_step_start(step)
@@ -306,7 +299,6 @@ def main():
             if (step == args.warmup // 2) and args.load_balance:
                 coordinator.print_on_master(f"Apply load balance")
                 apply_load_balance(model, optimizer)
-                # prof.step()
     performance_evaluator.on_fit_end()
 
 
