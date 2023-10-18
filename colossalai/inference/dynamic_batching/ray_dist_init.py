@@ -161,7 +161,7 @@ class Driver:
         ray.get([w.abort.remote(request_id) for w in self.workers])
 
     def step(self):
-        results = ray.get([w._step.remote() for w in self.workers])
+        results = ray.get([w.step.remote() for w in self.workers])
         outputs = results[0]  # get any one of the copies
         return outputs
 

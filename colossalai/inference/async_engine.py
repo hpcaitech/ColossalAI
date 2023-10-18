@@ -79,6 +79,7 @@ class Async_Engine:
         Logic for handling requests
         """
         request_outputs = self.driver.step()
+        print(request_outputs)
         if request_outputs is not None:
             for request_output in request_outputs:
                 print(request_output)
@@ -107,6 +108,7 @@ class Async_Engine:
 
         self.background_loop_unshielded = asyncio.get_event_loop().create_task(self.run_loop_fwd())
         self.background_loop = asyncio.shield(self.background_loop_unshielded)
+        print("start successfully")
 
     async def add_request(self, request_id: str, prompt: str, sampling_params: SamplingParams):
         self.driver.add_input(request_id, prompt, sampling_params)
