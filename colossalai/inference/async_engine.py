@@ -38,6 +38,9 @@ class RequestTracker:
 
         return
 
+    def add_stop(self):
+        self._finished_requests.put_nowait(StopIteration)
+
     def process_request_output(self, request_output: RequestOutput) -> None:
         """Process a request output from the engine."""
         self._finished_requests.put_nowait(request_output)
@@ -50,7 +53,9 @@ class RequestTracker:
 
     async def __anext__(self) -> RequestOutput:
         result = await self._finished_requests.get()
-        print("result of ", result)
+        # print("result of ", result)
+        if result is StopIteration:
+            raise StopAsyncIteration
         return result
 
 
@@ -79,11 +84,10 @@ class Async_Engine:
         Logic for handling requests
         """
         request_outputs = self.driver.step()
-        print(request_outputs)
         if request_outputs is not None:
             for request_output in request_outputs:
-                print(request_output)
                 self._request_tracker.process_request_output(request_output)
+            self._request_tracker.add_stop()
 
     def _has_requests_in_progress(self):
         return self.driver.is_running()
@@ -108,7 +112,6 @@ class Async_Engine:
 
         self.background_loop_unshielded = asyncio.get_event_loop().create_task(self.run_loop_fwd())
         self.background_loop = asyncio.shield(self.background_loop_unshielded)
-        print("start successfully")
 
     async def add_request(self, request_id: str, prompt: str, sampling_params: SamplingParams):
         self.driver.add_input(request_id, prompt, sampling_params)
@@ -131,29 +134,3 @@ class Async_Engine:
             # If there is an exception or coroutine is cancelled, abort the request.
             self._request_tracker.abort_request(request_id)
             raise e
-
-
-#     def generate(self, request_id: str, prompt: str, sampling_params: SamplingParams):
-#         results = ray.get([w.generate.remote(request_id, prompt, sampling_params) for w in self.workers])
-#         text_res = results[0]  # get any one of the copies
-#         return text_res
-
-#     async def async_generate(self, request_id: str, prompt: str, sampling_params: SamplingParams):
-#         all_outputs = []
-#         for worker in self.workers:
-#             all_outputs.append(worker.generate.remote(request_id, prompt, sampling_params))
-#         all_outputs = await asyncio.gather(*all_outputs)
-#         text_res = all_outputs[0]# get any one of the copies
-#         return text_res
-
-#     def add_input(self, request_id: str, prompt: str, sampling_params: SamplingParams):
-#         ray.get([w.add_input.remote(request_id, sampling_params, prompt) for w in self.workers])
-
-#     def abort(self,request_id: str):
-#         ray.get([w.abort.remote(request_id) for w in self.workers])
-
-#     def step(self):
-#         ray.get([w._step.remote() for w in self.workers])
-
-#     def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompt: str):
-#         ray.get([w.add_req.remote(prompt_ids, sampling_params, request_id, prompt) for w in self.workers])

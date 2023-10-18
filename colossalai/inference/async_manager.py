@@ -1,4 +1,3 @@
-import time
 from typing import List
 
 from .dynamic_batching.get_tokenizer import get_tokenizer
@@ -83,28 +82,6 @@ class Async_DynamicBatchManager:
                 req.has_generate_finished = True
                 req.aborted = True
         return
-
-    def loop_for_fwd(self):
-        """
-        The main loop for a dynamic batching process.
-        """
-        counter_count = 0
-        # self.running_batch is not None or self.req_queue.waiting_req_list
-        while self.running_batch is not None or self.req_queue.waiting_req_list:
-            self._step()
-            counter_count += 1
-            if self.running_batch is not None:
-                if counter_count % self.mem_usage_interval == 0:
-                    print(
-                        "current batch size:",
-                        len(self.running_batch.reqs),
-                        "token used ratio:",
-                        self.running_batch.calcu_used_tokens() / self.max_total_token_num,
-                    )
-                self.stats_tool.print_stats()
-
-            if self.running_batch is None:
-                time.sleep(0.1)  # 10ms
 
     def _step(self):
         """

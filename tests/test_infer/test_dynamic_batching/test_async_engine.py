@@ -18,17 +18,14 @@ def run_async_engine(path: str):
     if not os.path.exists(path):
         raise FileNotFoundError(f"Invalid yaml file path {path}")
     config = RayInitConfig.from_yaml_path(path)
-    router_config = config.router_config_data
     engine_config = config.engine_config_data
     model = engine_config.model
     if model is None or not os.path.exists(model):
         return
-    engine = Async_Engine(router_config=router_config, engine_config=engine_config)
 
     prompt = "Introduce some landmarks in Beijing"
-
     sampling_params = SamplingParams()
-    asyncio.run(asy_for_loop_test(engine, prompt, sampling_params))
+    asyncio.run(asy_for_loop_test(config, prompt, sampling_params))
 
 
 async def get_result(engine, prompt, sampling_params):
@@ -38,8 +35,12 @@ async def get_result(engine, prompt, sampling_params):
         print("result: ", result)
 
 
-async def asy_for_loop_test(engine, prompt, sampling_params):
-    for i in range(1):
+async def asy_for_loop_test(config, prompt, sampling_params):
+    router_config = config.router_config_data
+    engine_config = config.engine_config_data
+    engine = Async_Engine(router_config=router_config, engine_config=engine_config)
+    for i in range(10):
+        print("in for loop", i)
         await get_result(engine, prompt, sampling_params)
 
 
