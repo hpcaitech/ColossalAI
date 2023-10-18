@@ -35,7 +35,7 @@ def data_gen():
 output_transform_fn = lambda x: x
 
 # define loss funciton
-loss_fn_blip2_model = lambda x: x.loss
+loss_fn_blip2_model = lambda x: x["loss"]
 
 config = transformers.Blip2Config()
 config.vision_config.patch_size = 14

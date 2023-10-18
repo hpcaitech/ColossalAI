@@ -42,9 +42,9 @@ if HAS_LLAMA:
     output_transform_fn = lambda x: x
 
     # function to get the loss
-    loss_fn = lambda output: output.last_hidden_state.mean()
-    loss_fn_for_casual_lm = lambda output: output.loss
-    loss_fn_for_seq_classification = lambda output: output.logits.mean()
+    loss_fn = lambda output: output["last_hidden_state"].mean()
+    loss_fn_for_casual_lm = lambda output: output["loss"]
+    loss_fn_for_seq_classification = lambda output: output["logits"].mean()
 
     config = LlamaConfig(
         num_hidden_layers=4,
