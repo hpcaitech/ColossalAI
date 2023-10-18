@@ -9,8 +9,6 @@ from torch.distributed import ProcessGroup
 from colossalai.moe.manager import MOE_MANAGER
 
 MOE_KERNEL = None
-WORLD_HANDLE_ALLGATHER = None
-WORLD_HANDLE_REDUCESCATTER = None
 
 
 def load_moe():
@@ -27,14 +25,20 @@ class AllGather(torch.autograd.Function):
         inputs: Tensor,
         group: Optional[ProcessGroup] = None,
         overlap: bool = False,
-    ) -> Tensor:
+    ) -> Tuple[Tensor, Any]:
+        """
+        Returns:
+            outputs: Tensor
+            handle: Optional[Work], if overlap is True
+        """
+        assert ctx is not None or not overlap
+
         if ctx is not None:
             ctx.comm_grp = group
-            ctx.overlap = overlap
 
         comm_size = dist.get_world_size(group)
         if comm_size == 1:
-            return inputs.unsqueeze(0)
+            return inputs.unsqueeze(0), None
 
         buffer_shape = (comm_size,) + inputs.shape
         outputs = torch.empty(buffer_shape, dtype=inputs.dtype, device=inputs.device)
@@ -44,19 +48,12 @@ class AllGather(torch.autograd.Function):
             return outputs, None
         else:
             handle = dist.all_gather(buffer_list, inputs, group=group, async_op=True)
-            if ctx is None and overlap:
-                global WORLD_HANDLE_ALLGATHER
-                WORLD_HANDLE_ALLGATHER = handle
             return outputs, handle
 
     @staticmethod
-    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None]:
-        global WORLD_HANDLE_REDUCESCATTER
-        if WORLD_HANDLE_REDUCESCATTER is not None:
-            WORLD_HANDLE_REDUCESCATTER.wait()
-            WORLD_HANDLE_REDUCESCATTER = None
+    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None, None]:
         return (
-            ReduceScatter.forward(None, grad_outputs[0], ctx.comm_grp, ctx.overlap)[0],
+            ReduceScatter.forward(None, grad_outputs[0], ctx.comm_grp, False)[0],
             None,
             None,
         )
@@ -69,14 +66,20 @@ class ReduceScatter(torch.autograd.Function):
         inputs: Tensor,
         group: Optional[ProcessGroup] = None,
         overlap: bool = False,
-    ) -> Tensor:
+    ) -> Tuple[Tensor, Any]:
+        """
+        Returns:
+            outputs: Tensor
+            handle: Optional[Work], if overlap is True
+        """
+        assert ctx is not None or not overlap
+
         if ctx is not None:
             ctx.comm_grp = group
-            ctx.overlap = overlap
 
         comm_size = dist.get_world_size(group)
         if comm_size == 1:
-            return inputs.squeeze(0)
+            return inputs.squeeze(0), None
 
         if not inputs.is_contiguous():
             inputs = inputs.contiguous()
@@ -89,19 +92,13 @@ class ReduceScatter(torch.autograd.Function):
             return outputs, None
         else:
             handle = dist.reduce_scatter(outputs, buffer_list, group=group, async_op=True)
-            if ctx is None and overlap:
-                global WORLD_HANDLE_REDUCESCATTER
-                WORLD_HANDLE_REDUCESCATTER = handle
             return outputs, handle
 
     @staticmethod
-    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None]:
-        global WORLD_HANDLE_ALLGATHER
-        if WORLD_HANDLE_ALLGATHER is not None:
-            WORLD_HANDLE_ALLGATHER.wait()
-            WORLD_HANDLE_ALLGATHER = None
+    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None, None]:
+        # TODO: support async backward
         return (
-            AllGather.forward(None, grad_outputs[0], ctx.comm_grp, ctx.overlap)[0],
+            AllGather.forward(None, grad_outputs[0], ctx.comm_grp, False)[0],
             None,
             None,
         )
@@ -113,20 +110,38 @@ class AllToAll(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx: Any, inputs: Tensor, group: Optional[ProcessGroup] = None) -> Tensor:
+    def forward(
+        ctx: Any,
+        inputs: Tensor,
+        group: Optional[ProcessGroup] = None,
+        overlap: bool = False,
+    ) -> Tuple[Tensor, Any]:
+        """
+        Returns:
+            outputs: Tensor
+            handle: Optional[Work], if overlap is True
+        """
         if ctx is not None:
             ctx.comm_grp = group
         if not inputs.is_contiguous():
             inputs = inputs.contiguous()
         if dist.get_world_size(group) == 1:
-            return inputs
+            return inputs, None
         output = torch.empty_like(inputs)
-        dist.all_to_all_single(output, inputs, group=group)
-        return output
+        if not overlap:
+            dist.all_to_all_single(output, inputs, group=group)
+            return output, None
+        else:
+            handle = dist.all_to_all_single(output, inputs, group=group, async_op=True)
+            return output, handle
 
     @staticmethod
-    def backward(ctx: Any, *grad_outputs: Tensor) -> Tuple[Tensor, None]:
-        return AllToAll.forward(None, *grad_outputs, ctx.comm_grp), None
+    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None, None]:
+        return (
+            AllToAll.forward(None, grad_outputs[0], ctx.comm_grp)[0],
+            None,
+            None,
+        )
 
 
 class MoeDispatch(torch.autograd.Function):
