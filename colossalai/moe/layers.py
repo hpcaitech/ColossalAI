@@ -147,6 +147,7 @@ class SparseMLP(nn.Module):
             with torch.no_grad():
                 # TODO: optimize computation
                 expert_load = torch.topk(gate_output, k=self.topk, dim=-1)[1]
+                # TODO: bincount introduces synchronize, fix it
                 expert_load = torch.bincount(expert_load.view(-1))
                 self.load_balancer.update_load(expert_load)
 
@@ -189,10 +190,7 @@ class SparseMLP(nn.Module):
         expert_out = self.experts(expert_in)
         return expert_out
 
-    def _ep_process(self,
-                    dispatch_data: torch.Tensor,
-                    overlap: bool = True
-                    ) -> torch.Tensor:
+    def _ep_process(self, dispatch_data: torch.Tensor, overlap: bool = True) -> torch.Tensor:
         """
         Expert Parallel
 
@@ -210,6 +208,7 @@ class SparseMLP(nn.Module):
             return expert_output
 
         else:
+
             @dataclasses.dataclass
             class Capsule():
                 data: torch.Tensor
@@ -238,24 +237,17 @@ class SparseMLP(nn.Module):
 
                 # all2all last output
                 if _expert_out is not None:
-                    expert_out = Capsule(
-                        *AllToAll.apply(_expert_out.data, self.ep_group, True),
-                    )
+                    expert_out = Capsule(*AllToAll.apply(_expert_out.data, self.ep_group, True),)
                     _expert_out = None
 
                 # all2all next input
                 if 0 <= i < NUM_CHUNK:
-                    _expert_in = Capsule(
-                        *AllToAll.apply(chunk_data[i].contiguous(), self.ep_group, True)
-                    )
+                    _expert_in = Capsule(*AllToAll.apply(chunk_data[i].contiguous(), self.ep_group, True))
 
                 # compute
                 if expert_in is not None:
                     expert_in.handle.wait()
-                    _expert_out = Capsule(
-                        data=self.experts(expert_in.data),
-                        handle=None
-                    )
+                    _expert_out = Capsule(data=self.experts(expert_in.data), handle=None)
                     expert_in = None
 
                 if _expert_in is not None:
@@ -264,10 +256,7 @@ class SparseMLP(nn.Module):
 
             return output
 
-    def _tp_process(self,
-                    dispatch_data: torch.Tensor,
-                    overlap: bool = True
-                    ) -> torch.Tensor:
+    def _tp_process(self, dispatch_data: torch.Tensor, overlap: bool = True) -> torch.Tensor:
         """
         without overlap:
                    |    C    |
@@ -291,6 +280,7 @@ class SparseMLP(nn.Module):
             expert_out = ReduceScatter.apply(expert_out, self.ep_group, False)[0]
             return expert_out
         else:
+
             @dataclasses.dataclass
             class Capsule():
                 data: torch.Tensor
@@ -307,7 +297,7 @@ class SparseMLP(nn.Module):
             output = torch.empty_like(dispatch_data)
 
             def get_chunk_slice(idx: int, chunk_size: int) -> Tuple[slice]:
-                return (slice(idx * chunk_size, (idx + 1) * chunk_size), )
+                return (slice(idx * chunk_size, (idx + 1) * chunk_size),)
 
             _expert_in, expert_in, _expert_out, expert_out = None, None, None, None
 
@@ -319,26 +309,21 @@ class SparseMLP(nn.Module):
 
                 # reduce scatter last output
                 if _expert_out is not None:
-                    expert_out = Capsule(
-                        *ReduceScatter.apply(_expert_out.data, self.ep_group, True),
-                        indices=_expert_out.indices
-                    )
+                    expert_out = Capsule(*ReduceScatter.apply(_expert_out.data, self.ep_group, True),
+                                         indices=_expert_out.indices)
                     _expert_out = None
 
                 # all gather next input
                 if 0 <= i < NUM_CHUNK:
-                    _expert_in = Capsule(
-                        *AllGather.apply(chunk_data[i].contiguous(), self.ep_group, True),
-                        indices=get_chunk_slice(i, chunk_size)
-                    )
+                    _expert_in = Capsule(*AllGather.apply(chunk_data[i].contiguous(), self.ep_group, True),
+                                         indices=get_chunk_slice(i, chunk_size))
 
                 # compute
                 if expert_in is not None:
                     expert_in.handle.wait()
-                    _expert_out = Capsule(
-                        self.experts(expert_in.data, expert_in.indices),
-                        handle=None, indices=expert_in.indices
-                    )
+                    _expert_out = Capsule(self.experts(expert_in.data, expert_in.indices),
+                                          handle=None,
+                                          indices=expert_in.indices)
                     expert_in = None
 
                 if _expert_in is not None:
