@@ -6,7 +6,6 @@ from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
-# from colossalai.kernel.triton.context_attention import llama2_context_attn_fwd
 from colossalai.kernel.triton.rotary_embedding_kernel import Llama2Forwards
 from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
 from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
