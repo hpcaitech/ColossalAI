@@ -134,26 +134,6 @@ class Driver:
         collective.create_collective_group(self.workers, **_options)
         _ = ray.get(init_rets)
 
-    # set batch wait delay in seconds and maximum number of sequences in a batch
-    # def generate(self, request_id: str, prompt: str, sampling_params: SamplingParams):
-    #     results = ray.get([w.generate.remote(request_id, prompt, sampling_params) for w in self.workers])
-    #     text_res = results[0]  # get any one of the copies
-    #     return text_res
-
-    # async def async_generate(self, request_id: str, prompt: str, sampling_params: SamplingParams):
-
-    #     async def async_get(worker, request_id, prompt, sampling_params):
-    #         out = await worker.generate_stream.remote(request_id, prompt, sampling_params)
-    #         print("async_get out: ", out)
-    #         return out
-
-    #     all_outputs = []
-    #     for worker in self.workers:
-    #         all_outputs.append()
-    #     all_outputs = await asyncio.gather(*all_outputs)
-    #     text_res = all_outputs[0]  # get any one of the copies
-    #     return text_res
-
     def add_input(self, request_id: str, prompt: str, sampling_params: SamplingParams):
         ray.get([w.add_input.remote(request_id, prompt, sampling_params) for w in self.workers])
 

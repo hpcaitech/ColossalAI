@@ -1,3 +1,5 @@
+# Adapted from https://github.com/ModelTC/lightllm
+
 import time
 from typing import List
 
@@ -51,7 +53,7 @@ class DynamicBatchManager:
         self.mem_usage_interval = log_stats_interval * 2
         self.tokenizer = get_tokenizer(tokenizer_name=self.model)
 
-    def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompts: str):
+    def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompts: str = ""):
         """
         Add new request to req queue, during initialization all requests are held in waiting list.
         """

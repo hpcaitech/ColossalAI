@@ -1,10 +1,12 @@
+# Adapted from https://github.com/ModelTC/lightllm
+
 from typing import Dict, List, Tuple
 
 from .sampling_params import SamplingParams
 
 
 class Req:
-    def __init__(self, request_id, prompt_ids, sample_params: SamplingParams, prompts: str):
+    def __init__(self, request_id, prompt_ids, sample_params: SamplingParams, prompts: str = ""):
         self.request_id = request_id
         self.prompt_ids = prompt_ids
         self.input_len = len(prompt_ids)
@@ -47,26 +49,6 @@ class Req:
 
     def __repr__(self):
         return f"request_id(n={self.request_id}, " f"prompt_ids={self.prompt_ids}, "
-
-
-class ReqDetokenizationState:
-    def __init__(
-        self,
-        request_id: str,
-        prompt_ids: List[int],
-        max_output_len: int,
-        ignore_eos: bool,
-    ) -> None:
-        self.request_id = request_id
-        self.prompt_ids = prompt_ids
-        self.output_ids = []
-        self.output_tokens = []
-        self.output_str = ""
-        self.sub_texts = []
-        self.current_sub_text = []
-        self.max_output_len = max_output_len
-        self.ignore_eos = ignore_eos
-        self.gen_metadata = {}
 
 
 class Batch:

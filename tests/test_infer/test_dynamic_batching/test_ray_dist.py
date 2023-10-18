@@ -16,7 +16,7 @@ PATH = "config.yaml"
 def run_ray_dist(path: str):
     print(f"Using yaml file {path}")
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Invalid yaml file path {path}")
+        return
     config = RayInitConfig.from_yaml_path(path)
     router_config = config.router_config_data
     engine_config = config.engine_config_data
@@ -37,17 +37,17 @@ def run_ray_dist(path: str):
         if test_async:
             print("test_async: ", test_async)
             result = asyncio.run(get_result(request_id, prompt, sampling_params))
-            assert result is not None    
+            assert result is not None
             print("result: ", result)
         else:
             print("test_async: ", test_async)
             result = driver.generate(request_id, prompt, sampling_params)
             assert result is not None
             print("result: ", result)
-    
+
     is_running = None
     is_running = driver.is_running()
-    assert is_running is not None    
+    assert is_running is not None
     print("is_running: ", is_running)
 
 

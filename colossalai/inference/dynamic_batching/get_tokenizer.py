@@ -1,5 +1,6 @@
 """
-Motivated by VllM, This module is trying to resolve the tokenizer issue.
+Motivated by VllM (https://github.com/vllm-project/vllm), This module is trying to resolve the tokenizer issue.
+
 license: MIT, see LICENSE for more details.
 """
 

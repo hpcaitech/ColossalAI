@@ -1,15 +1,16 @@
+# Adapted from https://github.com/ModelTC/lightllm
+
 import collections
 from dataclasses import dataclass
-from typing import Dict, List , Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
 
 from colossalai.inference.tensor_parallel import MemoryManager
 
+
 # make batch infer state an attr of InferBatch
-
-
 class InferSamplingParams:
     def __init__(
         self,
@@ -65,7 +66,7 @@ class InferBatch:
         cache_manager: MemoryManager,
         vocab_size: int,
         max_total_len: int,
-    ) -> 'InferBatch':
+    ) -> "InferBatch":
         input_lengths = []
         all_input_ids = []
         requests_idx_mapping = {}
@@ -76,7 +77,7 @@ class InferBatch:
         nopad_total_token_num = 0
         nopad_max_len_in_batch = 0
         nopad_b_loc = torch.empty((len(requests), max_total_len + 12), dtype=torch.long, device="cuda")
-        # to avoid memory leak , we pre-allocate 12 more space for each batch. 
+        # to avoid memory leak , we pre-allocate 12 more space for each batch.
         nopad_b_start_loc = torch.zeros(len(requests), dtype=torch.int32, device="cuda")
         for i, r in enumerate(requests):
             # request id -> idx in list mapping
@@ -142,10 +143,9 @@ class InferBatch:
             )
         remove_index = torch.cat(remove_index, dim=-1)
         self.cache_manager.free(remove_index)
-        
 
     @torch.no_grad()
-    def filter(self, request_ids: List[int]) -> 'InferBatch':
+    def filter(self, request_ids: List[int]) -> "InferBatch":
         """
         Filter finished batch and return a new InferBatch with left ones.
         """
@@ -226,7 +226,7 @@ class InferBatch:
 
     @classmethod
     @torch.no_grad()
-    def merge(cls, batch1, batch2) -> 'InferBatch':
+    def merge(cls, batch1, batch2) -> "InferBatch":
         """
         Return megerd new InferBatch
         """

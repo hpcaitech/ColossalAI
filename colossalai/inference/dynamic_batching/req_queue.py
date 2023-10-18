@@ -1,3 +1,5 @@
+# Adapted from https://github.com/ModelTC/lightllm
+
 import uuid
 from typing import List
 
@@ -41,7 +43,7 @@ class ReqQueue:
         need_max_token_num = (left_out_len_array * size_array + cum_run_len_array).max()
         # NOTE: change here < to <=
         return need_max_token_num <= self.max_total_tokens and len(self.cache_len_list) <= self.running_max_req_size
-      
+
     def generate_new_batch(self, current_batch: Batch = None):
         if current_batch is not None and len(current_batch.reqs) >= self.running_max_req_size:
             return None

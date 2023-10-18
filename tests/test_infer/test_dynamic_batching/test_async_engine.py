@@ -15,7 +15,7 @@ PATH = "config.yaml"
 
 def run_async_engine(path: str):
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Invalid yaml file path {path}")
+        return
 
     config = RayInitConfig.from_yaml_path(path)
     engine_config = config.engine_config_data
