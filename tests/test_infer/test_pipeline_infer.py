@@ -4,8 +4,8 @@ import torch.distributed as dist
 import transformers
 
 import colossalai
-from colossalai.inference.pipeline.engine import PPInferEngine
-from colossalai.inference.pipeline.policy.gpt2_ppinfer import GPT2LMHeadModelPipelinePolicy
+from colossalai.inference import CaiInferEngine
+from colossalai.inference.cai_engine.policies import LlamaModelInferPolicy
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 
@@ -24,22 +24,21 @@ for k, v in inputs.items():
 
 
 def pipeline_inference_test(pp_size, new_length, micro_batch_size):
-    model = transformers.GPT2LMHeadModel(transformers.GPT2Config(n_layer=8))
-    engine = PPInferEngine(
-        pp_size=pp_size,
-        model=model,
-        model_policy=GPT2LMHeadModelPipelinePolicy(),
-        new_length=new_length,
-        micro_batch_size=micro_batch_size,
-    )
+    model = transformers.LlamaForCausalLM(transformers.LlamaConfig(num_hidden_layers=4))
+
+    engine = CaiInferEngine(pp_size=pp_size,
+                           model=model,
+                           model_policy=LlamaModelInferPolicy(),
+                           new_length=new_length,
+                           micro_batch_size=micro_batch_size)
     output = engine.inference([inputs])
     if dist.get_rank() == 0:
         assert len(output[0]) == new_length, f"{len(output)}, {new_length}"
 
 
-@parameterize("pp_size", [4])
-@parameterize("new_length", [4, 8, 16])
-@parameterize("micro_batch_size", [1, 4])
+@parameterize('pp_size', [2])
+@parameterize('new_length', [4, 8, 16])
+@parameterize('micro_batch_size', [1, 4])
 @clear_cache_before_run()
 def run_pipeline_inference_test(pp_size, new_length, micro_batch_size):
     pipeline_inference_test(pp_size, new_length, micro_batch_size)
@@ -55,7 +54,7 @@ def check_pipeline_inference(rank, world_size, port):
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_pipeline_inference():
-    spawn(check_pipeline_inference, nprocs=4)
+    spawn(check_pipeline_inference, nprocs=2)
 
 
 if __name__ == "__main__":

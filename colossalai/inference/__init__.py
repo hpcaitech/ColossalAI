@@ -1,3 +1,4 @@
-from .pipeline import PPInferEngine
+from .cai_engine import CaiInferEngine
 
-__all__ = ["PPInferEngine"]
+
+__all__ = ['CaiInferEngine']
