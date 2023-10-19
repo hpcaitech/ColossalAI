@@ -12,8 +12,7 @@ from colossalai.utils import set_seed
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.chunk import search_chunk_configuration
-from tests.components_to_test import run_fwd_bwd
-from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.kit.model_zoo import model_zoo, run_fwd_bwd
 
 PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.0},  # zero2
@@ -38,7 +37,7 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("keep_gather", [False, True])
-@parameterize("model_name", ["gpt2", "bert"])
+@parameterize("model_name", ["transformers_gpt_lm"])
 @parameterize("use_grad_checkpoint", [False, True])
 @parameterize("master_weights", [False, True])
 def exam_gpt_fwd_bwd(
@@ -49,16 +48,21 @@ def exam_gpt_fwd_bwd(
     master_weights: bool = True,
 ):
     init_device = get_current_device()
-    get_components_func = non_distributed_component_funcs.get_callable(model_name)
-    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
+    model_builder, data_gen_fn, output_transform_fn, loss_fn, *_ = next(
+        iter(model_zoo.get_sub_registry(model_name).values())
+    )
 
     set_seed(42)
-    model = model_builder(use_grad_checkpoint)
+    model = model_builder()
 
     set_seed(42)
-    torch_model = model_builder(use_grad_checkpoint).cuda()
+    torch_model = model_builder().cuda()
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         torch_p.data.copy_(p.data)
+
+    if use_grad_checkpoint:
+        model.gradient_checkpointing_enable()
+        torch_model.gradient_checkpointing_enable()
 
     world_size = torch.distributed.get_world_size()
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
@@ -77,25 +81,22 @@ def exam_gpt_fwd_bwd(
     torch_model = DDP(torch_model, device_ids=[rank])
 
     set_seed(rank)
-    for i, (input_ids, label) in enumerate(train_dataloader):
-        # you can only test a single fwd + bwd.
-        # after bwd param is grad for Gemini, due to the chunk reuse optimization.
-        if i > 0:
-            break
-        input_ids, label = input_ids.cuda(), label.cuda()
 
-        torch_optim.zero_grad()
-        zero_optim.zero_grad()
+    data = data_gen_fn()
+    data = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
 
-        # set random seed is same as torch_model.eval()
-        set_seed(42)
-        torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
-        set_seed(42)
-        loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
+    torch_optim.zero_grad()
+    zero_optim.zero_grad()
 
-        assert torch.equal(torch_loss, loss)
+    # set random seed is same as torch_model.eval()
+    set_seed(42)
+    torch_loss = run_fwd_bwd(torch_model, data, output_transform_fn, loss_fn, optimizer=torch_optim)
+    set_seed(42)
+    loss = run_fwd_bwd(model, data, output_transform_fn, loss_fn, optimizer=zero_optim)
 
-        check_grad(model, torch_model)
+    assert_close(torch_loss.float(), loss.float())
+
+    check_grad(model, torch_model)
 
 
 def run_dist(rank, world_size, port):

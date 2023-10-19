@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from ..registry import model_zoo
 from .base import CheckpointModule
@@ -28,8 +29,10 @@ def data_gen():
     return dict(x=torch.rand(16, 5))
 
 
-def loss_fn(x: torch.Tensor):
-    return x.sum()
+def loss_fn(x):
+    outputs = x["x"]
+    label = torch.randint(low=0, high=2, size=(16,), device=outputs.device)
+    return F.cross_entropy(x["x"], label)
 
 
 def output_transform(x: torch.Tensor):
