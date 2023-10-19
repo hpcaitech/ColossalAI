@@ -61,7 +61,6 @@ class TPInferEngine:
         self.max_input_len = max_input_len
         self.max_output_len = max_output_len
         self.max_total_token_num = self.max_batch_size * (self.max_input_len + self.max_output_len)
-
         # Constraints relatable with specs of devices and model
         # This may change into an optional arg in the future
         assert self.max_batch_size <= 64, "Max batch size exceeds the constraint"
@@ -380,7 +379,6 @@ class TPInferEngine:
         Forward is used in Dynamic Batching Manager
         """
         batch = self.cache.pop(batch_id)
-
         if is_prefill:
             input_ = torch.tensor(batch.all_input_ids).cuda()
         else:
