@@ -21,10 +21,9 @@ from ._utils import copy_kv_to_mem_cache
 try:
     from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import context_attention_fwd as lightllm_llama2_context_attention_fwd
     from lightllm.models.chatglm2.triton_kernel.rotary_emb import rotary_emb_fwd as chatglm2_rotary_emb_fwd
-    print("found lightllm installation for inference")
     HAS_LIGHTLLM_KERNEL = True
 except:
-    print("please install lightllm from source to run inference: ")
+    print("please install lightllm from source to run inference: https://github.com/ModelTC/lightllm")
     HAS_LIGHTLLM_KERNEL = False
 
 
