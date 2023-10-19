@@ -79,11 +79,12 @@ class Async_Engine:
         """
         request_outputs = self.driver.step()
         if request_outputs is not None:
+            print("request_outputs: ", request_outputs)
             for request_output in request_outputs:
                 self._request_tracker.process_request_output(request_output)
             self._request_tracker.add_stop()
 
-    def abort(self, request_id: str):
+    def abort_request(self, request_id: str):
         self.driver.abort(request_id)
 
     def _has_requests_in_progress(self):

@@ -14,7 +14,6 @@ PATH = "config.yaml"
 
 
 def run_ray_dist(path: str):
-    print(f"Using yaml file {path}")
     if not os.path.exists(path):
         return
     config = RayInitConfig.from_yaml_path(path)

@@ -42,7 +42,12 @@ class DynamicBatchManager:
         running_max_req_size = self.engine.max_batch_size if self.engine is not None else 2
         self.req_queue = ReqQueue(max_total_token_num, batch_max_tokens, running_max_req_size, waiting_req_list)
         # all the inputs should be put into req_queue: waiting req list
-
+        assert max_total_token_num >= self.engine.max_batch_size * (
+            self.engine.max_input_len + self.engine.max_output_len
+        ), "max_total_token_num should be greater than max_batch_size * (max_input_len+max_output_len)"
+        assert (
+            batch_max_tokens >= self.engine.max_input_len + self.engine.max_output_len
+        ), "batch_max_tokens should be greater than (max_input_len+max_output_len)"
         self.running_batch: Batch = running_batch
         self.eos_id = eos_id
         self.has_wait_tokens = 0
