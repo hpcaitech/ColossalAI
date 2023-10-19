@@ -361,16 +361,16 @@ class OpenMoeDecoderLayer(nn.Module):
         self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         if self.moe:
             self.mlp = SparseMLP(num_experts=config.num_experts,
-                                 top_k=config.topk,
-                                 capacity_factor_train=config.capacity_factor_train,
-                                 capacity_factor_eval=config.capacity_factor_eval,
-                                 min_capacity=config.min_capacity,
-                                 noisy_policy=config.noisy_policy,
-                                 drop_tks=config.drop_tks,
+                                 router_top_k=config.topk,
+                                 router_capacity_factor_train=config.capacity_factor_train,
+                                 router_capacity_factor_eval=config.capacity_factor_eval,
+                                 router_min_capacity=config.min_capacity,
+                                 router_noisy_policy=config.noisy_policy,
+                                 router_drop_tks=config.drop_tks,
                                  hidden_size=config.hidden_size,
                                  intermediate_size=config.intermediate_size,
-                                 activation=config.hidden_act,
-                                 gated=config.gated)
+                                 mlp_activation=config.hidden_act,
+                                 mlp_gated=config.gated)
             self.pre_extra_mlp_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.extra_mlp = OpenMoeMLP(config)
         else:

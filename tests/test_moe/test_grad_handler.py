@@ -16,17 +16,26 @@ DIM = 16
 
 
 def run_test(rank, world_size, port):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(
+        config=dict(),
+        rank=rank,
+        world_size=world_size,
+        host="localhost",
+        port=port,
+        backend="nccl",
+    )
 
     MOE_MANAGER.setup(42, parallel="EP")    # MOE initialization
     num_experts_list = [1, 2, 4]
     layer_list = []
     for num_experts in num_experts_list:
-        moe_layer = SparseMLP(hidden_size=DIM,
-                              intermediate_size=DIM * 4,
-                              num_experts=num_experts,
-                              top_k=1,
-                              noisy_policy="Jitter")
+        moe_layer = SparseMLP(
+            hidden_size=DIM,
+            intermediate_size=DIM * 4,
+            num_experts=num_experts,
+            router_top_k=1,
+            router_noisy_policy="Jitter",
+        )
         layer_list.append(moe_layer)
 
     model = nn.ModuleList(layer_list)
@@ -77,5 +86,5 @@ def test_grad_handler():
     spawn(run_test, 4)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_grad_handler()

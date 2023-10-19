@@ -33,14 +33,14 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     layer = SparseMLP(hidden_size=hidden_size,
                       intermediate_size=hidden_size * 2,
                       num_experts=NUM_EXPERTS,
-                      top_k=topk,
-                      capacity_factor_train=1.0)
+                      router_top_k=topk,
+                      router_capacity_factor_train=1.0)
     layer = layer.to(get_current_device())
     if data_type == torch.float16:
         layer = layer.half()
 
     # use matrix multiplication instead of COL_MOE_KERNEL in MOE dispatch and combine
-    layer.use_kernel = False
+    layer.enable_kernel = False
     old_out = layer(tokens)
     ech = old_out.shape
     grad = torch.randn(ech, device=get_current_device())
@@ -54,7 +54,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     tokens.grad.zero_()
     layer.gate_weight.grad.zero_()
 
-    layer.use_kernel = True
+    layer.enable_kernel = True
     new_out = layer(tokens)    # get outputs through colossal kernel
 
     if data_type == torch.float32:

@@ -15,18 +15,19 @@ if HAS_TRITON:
     from colossalai.kernel.triton.llama_act_combine_kernel import LlamaActCombine
 
 
-class BaseMLPExperts(nn.Module):
+class MLPExperts(nn.Module):
     """
     SparseMLP is a multi-layer perceptron with sparse expert parallel layers.
 
     Args:
         num_experts (int): The number of experts
-        forward: hidden_size --> intermediate_size --> hidden_size
-            hidden_size (int): The hidden size of MLP
-            intermediate_size (int): The intermediate size of MLP
-        expert_parallel (str, optional): The parallelism of experts. Now we have 'EP' and 'TP'.
+        hidden_size (int): The hidden size of MLP
+        intermediate_size (int): The intermediate size of MLP
+        expert_parallel (str, optional): The parallelism of experts. Now we have None, EP and TP.
         activation (optional): The activation function of MLP
         drop_rate (float, optional): The drop rate of MLP
+        gated (bool, optional): Whether to use gated MLP
+        use_kernel (bool, optional): Whether to use kernel optimization
     """
 
     def __init__(
@@ -36,9 +37,9 @@ class BaseMLPExperts(nn.Module):
         intermediate_size: int,
         expert_parallel: Optional[str] = None,
         activation: Optional[Callable] = None,
-        drop_rate: float = 0,
-        gated: bool = False,
-        use_kernel: bool = False,
+        drop_rate: Optional[float] = 0,
+        gated: Optional[bool] = False,
+        use_kernel: Optional[bool] = False,
     ):
         super().__init__()
         assert expert_parallel in ["EP", "TP", None]
@@ -104,6 +105,8 @@ class BaseMLPExperts(nn.Module):
             use_sparse: bool = True,
     ) -> torch.Tensor:
         """
+        forward: hidden_size --> intermediate_size --> hidden_size
+
         Args:
             x (torch.Tensor): The input tensor of shape (num_groups, num_experts, capacity, hidden_size)
 
@@ -151,81 +154,3 @@ class BaseMLPExperts(nn.Module):
         x = x.transpose(0, 1).contiguous()
         x = MoeOutGradScaler.apply(x, self.ep_size)
         return x
-
-
-class EPMLPExperts(BaseMLPExperts):
-    """
-    Use expert parallelism to split each expert evenly, which can deploy experts in
-    """
-
-    def __init__(
-        self,
-        num_experts: int,
-        hidden_size: int,
-        intermediate_size: int,
-        activation=None,
-        drop_rate: float = 0,
-        gated: bool = False,
-        use_kernel: bool = False,
-    ):
-        # TODO: This class can be aborted
-        super().__init__(
-            num_experts,
-            hidden_size,
-            intermediate_size,
-            "EP",
-            activation,
-            drop_rate,
-            gated,
-            use_kernel,
-        )
-
-
-class TPMLPExperts(BaseMLPExperts):
-    """Use tensor parallelism to split each expert evenly, which can deploy experts in
-    case that the number of experts can't be divide by maximum expert parallel size or
-    maximum expert parallel size can't be divide by the number of experts.
-    """
-
-    def __init__(
-        self,
-        num_experts: int,
-        hidden_size: int,
-        intermediate_size: int,
-        activation: str = None,
-        drop_rate: float = 0,
-        gated: bool = False,
-        use_kernel: bool = False,
-    ):
-        # TODO: This class can be aborted
-        super().__init__(
-            num_experts,
-            hidden_size,
-            intermediate_size,
-            "TP",
-            activation,
-            drop_rate,
-            gated,
-            use_kernel,
-        )
-
-
-def get_expert_class(name: str) -> BaseMLPExperts:
-    if name == "TP":
-        return TPMLPExperts
-    elif name == "EP":
-        return EPMLPExperts
-    elif name is None:
-        return BaseMLPExperts
-    else:
-        raise ValueError(f"Unknown expert class name: {name}")
-
-
-def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
-    mep_size = MOE_MANAGER.max_ep_size
-    if num_experts % mep_size == 0 or mep_size % num_experts == 0:
-        return EPMLPExperts(num_experts, d_model, d_ff, activation, drop_rate)
-    elif d_ff % mep_size == 0:
-        return TPMLPExperts(num_experts, d_model, d_ff, activation, drop_rate)
-    else:
-        raise NotImplementedError(f"Can not build {num_experts} experts in {mep_size} GPUS.")

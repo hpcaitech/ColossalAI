@@ -7,7 +7,7 @@ from torch import Tensor, nn
 from torch.distributed import ProcessGroup
 
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.moe.experts import BaseMLPExperts
+from colossalai.moe.experts import MLPExperts
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 
@@ -16,7 +16,7 @@ class LoadBalancer:
 
     def __init__(
         self,
-        experts: BaseMLPExperts,
+        experts: MLPExperts,
         gate: nn.Parameter,
         local_expert_num: int,
         expert_num: int,
@@ -26,7 +26,7 @@ class LoadBalancer:
         beam_width: Optional[int] = 8,
         group_swap_factor: Optional[float] = 0.4,
     ) -> None:
-        self.experts: BaseMLPExperts = experts
+        self.experts: MLPExperts = experts
         self.gate: nn.Parameter = gate
         self.moe_ep_group: ProcessGroup = ep_group
         self.moe_ep_ranks = MOE_MANAGER.parallel_info_dict[dist.get_world_size(self.moe_ep_group)].ep_group_ranks
