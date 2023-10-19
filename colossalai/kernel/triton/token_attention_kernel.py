@@ -16,6 +16,10 @@ try:
     from lightllm.models.llama2.triton_kernel.token_attention_nopad_att1 import token_att_fwd as lightllm_llama2_token_att_fwd
     from lightllm.models.llama2.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2 as lightllm_llama2_token_att_fwd2
     from lightllm.models.llama2.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd as lightllm_llama2_token_softmax_fwd
+    from lightllm.models.llama.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2 as lightllm_llama_token_att_fw2
+    from lightllm.models.llama.triton_kernel.token_attention_nopad_att1 import token_att_fwd as lightllm_llama_token_att_fwd
+    from lightllm.models.llama.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd as lightllm_llama_token_softmax_fwd
+    from lightllm.models.bloom.triton_kernel.token_attention_nopad_att1 import token_att_fwd as lightllm_bloom_token_att_fwd
     HAS_TRITON_TOKEN_ATTENTION = True
 except ImportError:
     print("unable to import lightllm kernels")
@@ -394,22 +398,33 @@ if HAS_TRITON:
 
         att_m_tensor = torch.empty((head_num, total_token_num), dtype=q.dtype, device="cuda")
 
-        token_attn_fwd_1(
-            q.view(calcu_shape1),
-            k,
-            att_m_tensor,
-            kv_cache_loc,
-            kv_cache_start_loc,
-            kv_cache_seq_len,
-            max_len_in_batch,
-            alibi=alibi,
-        )
+        if alibi is None:
+            lightllm_llama_token_att_fwd(
+                q.view(calcu_shape1),
+                k,
+                att_m_tensor,
+                kv_cache_loc,
+                kv_cache_start_loc,
+                kv_cache_seq_len,
+                max_len_in_batch,
+            )
+        else:
+            lightllm_bloom_token_att_fwd(
+                q.view(calcu_shape1),
+                k,
+                att_m_tensor,
+                alibi,
+                kv_cache_loc,
+                kv_cache_start_loc,
+                kv_cache_seq_len,
+                max_len_in_batch,
+            )
 
         prob = torch.empty_like(att_m_tensor)
 
-        token_attn_softmax_fwd(att_m_tensor, kv_cache_start_loc, kv_cache_seq_len, prob, max_len_in_batch)
+        lightllm_llama_token_softmax_fwd(att_m_tensor, kv_cache_start_loc, kv_cache_seq_len, prob, max_len_in_batch)
         att_m_tensor = None
-        token_attn_fwd_2(
+        lightllm_llama_token_att_fw2(
             prob, v, attn_out.view(calcu_shape1), kv_cache_loc, kv_cache_start_loc, kv_cache_seq_len, max_len_in_batch
         )
 
