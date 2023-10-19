@@ -13,7 +13,7 @@ from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
-# torch.cuda.empty_cache()
+torch.cuda.empty_cache()
 
 def print_perf_stats(latency_set, config, bs, warmup=3):
     # trim warmup queries
