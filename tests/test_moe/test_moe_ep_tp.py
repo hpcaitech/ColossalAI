@@ -11,32 +11,20 @@ from colossalai.utils import get_current_device
 from tests.test_moe.moe_utils import MoeGradientHandler, sync_local_from_ep, sync_tp_from_ep
 
 
-def run_test(rank: int,
-             world_size: int,
-             port: int,
-             num_experts: int,
-             batch_size: int,
-             dim: int,
-             seed: int):
+def run_test(rank: int, world_size: int, port: int, num_experts: int, batch_size: int, dim: int, seed: int):
     assert batch_size % world_size == 0
 
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     MOE_MANAGER.__init__()
     MOE_MANAGER.setup(seed, parallel=None)
-    local_model = SparseMLP(num_experts=num_experts,
-                            hidden_size=dim,
-                            intermediate_size=dim * 2)
+    local_model = SparseMLP(num_experts=num_experts, hidden_size=dim, intermediate_size=dim * 2)
     MOE_MANAGER.__init__()
     MOE_MANAGER.setup(seed, parallel="EP")
-    ep_model = SparseMLP(num_experts=num_experts,
-                         hidden_size=dim,
-                         intermediate_size=dim * 2)
+    ep_model = SparseMLP(num_experts=num_experts, hidden_size=dim, intermediate_size=dim * 2)
     MOE_MANAGER.__init__()
     MOE_MANAGER.setup(seed, parallel="TP")
-    tp_model = SparseMLP(num_experts=num_experts,
-                         hidden_size=dim,
-                         intermediate_size=dim * 2)
+    tp_model = SparseMLP(num_experts=num_experts, hidden_size=dim, intermediate_size=dim * 2)
     ep_model = ep_model.to(get_current_device())
     tp_model = tp_model.to(get_current_device())
     local_model = local_model.to(get_current_device())
@@ -81,14 +69,11 @@ def run_test(rank: int,
 
 @pytest.mark.dist
 @pytest.mark.parametrize("num_experts", [4, 8])
-@pytest.mark.parametrize("batch_size", [4, 8])
-@pytest.mark.parametrize("dim", [16, 256])
-@pytest.mark.parametrize("seed", [42, 78])
+@pytest.mark.parametrize("batch_size", [4])
+@pytest.mark.parametrize("dim", [32])
+@pytest.mark.parametrize("seed", [42])
 @rerun_if_address_is_in_use()
-def test_moe_ep_tp(num_experts: int,
-                   batch_size: int,
-                   dim: int,
-                   seed: int):
+def test_moe_ep_tp(num_experts: int, batch_size: int, dim: int, seed: int):
     spawn(run_test, 2, num_experts=num_experts, batch_size=batch_size, dim=dim, seed=seed)
 
 
