@@ -1,10 +1,12 @@
+# Adapted from https://github.com/ModelTC/lightllm
+
 from typing import Dict, List, Tuple
 
 from .sampling_params import SamplingParams
 
 
 class Req:
-    def __init__(self, request_id, prompt_ids, sample_params: SamplingParams, prompts: str):
+    def __init__(self, request_id, prompt_ids, sample_params: SamplingParams, prompts: str = ""):
         self.request_id = request_id
         self.prompt_ids = prompt_ids
         self.input_len = len(prompt_ids)
@@ -47,26 +49,6 @@ class Req:
 
     def __repr__(self):
         return f"request_id(n={self.request_id}, " f"prompt_ids={self.prompt_ids}, "
-
-
-class ReqDetokenizationState:
-    def __init__(
-        self,
-        request_id: str,
-        prompt_ids: List[int],
-        max_output_len: int,
-        ignore_eos: bool,
-    ) -> None:
-        self.request_id = request_id
-        self.prompt_ids = prompt_ids
-        self.output_ids = []
-        self.output_tokens = []
-        self.output_str = ""
-        self.sub_texts = []
-        self.current_sub_text = []
-        self.max_output_len = max_output_len
-        self.ignore_eos = ignore_eos
-        self.gen_metadata = {}
 
 
 class Batch:
@@ -156,3 +138,34 @@ class BatchStrOut:
 class AbortReq:
     def __init__(self, req_id):
         self.req_id = req_id
+
+
+class RequestOutput:
+    """The output data of a request to the LLM.
+
+    Args:
+        request_id: The unique ID of the request.
+        prompt: The prompt string of the request.
+        prompt_token_ids: The token IDs of the prompt.
+        outputs: The output sequences of the request.
+    """
+
+    def __init__(
+        self,
+        request_id: str,
+        prompt: str,
+        prompt_token_ids: List[int],
+        outputs,
+    ) -> None:
+        self.request_id = request_id
+        self.prompt = prompt
+        self.prompt_token_ids = prompt_token_ids
+        self.outputs = outputs
+
+    def __repr__(self) -> str:
+        return (
+            f"RequestOutput(request_id={self.request_id}, "
+            f"prompt={self.prompt!r}, "
+            f"prompt_token_ids={self.prompt_token_ids}, "
+            f"outputs={self.outputs}, "
+        )

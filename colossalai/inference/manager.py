@@ -1,3 +1,5 @@
+# Adapted from https://github.com/ModelTC/lightllm
+
 import time
 from typing import List
 
@@ -51,7 +53,7 @@ class DynamicBatchManager:
         self.mem_usage_interval = log_stats_interval * 2
         self.tokenizer = get_tokenizer(tokenizer_name=self.model)
 
-    def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompts: str):
+    def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompts: str = ""):
         """
         Add new request to req queue, during initialization all requests are held in waiting list.
         """
@@ -59,7 +61,7 @@ class DynamicBatchManager:
         self.req_queue.append(req)
         return
 
-    def add_input(self, request_id, sampling_params, prompts):
+    def add_input(self, request_id, prompts, sampling_params):
         """
         Encode and Add new input to req queue. support one sequence input for now.
         """
@@ -257,9 +259,10 @@ class DynamicBatchManager:
         """
         self.add_input(request_id, sampling_params, prompts)
         return self.loop_for_fwd()
-    
+
     def is_running(self):
-        return self.running_batch is not None or self.req_queue.waiting_req_list 
+        return self.running_batch is not None or self.req_queue.waiting_req_list
+
 
 def start_dynamic_batching(args, tp_engine, waiting_req_list):
     try:
