@@ -45,6 +45,7 @@ def run():
         log_stats=False,
         log_stats_interval=10,
         waiting_req_list=waiting_list,
+        model="llama",
     )
     before_add = len(dynamic_batch_manager.req_queue)
 
