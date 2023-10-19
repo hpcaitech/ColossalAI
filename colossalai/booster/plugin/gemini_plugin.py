@@ -6,6 +6,7 @@ from typing import Callable, Iterator, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
+import torch.distributed as dist
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
@@ -25,6 +26,7 @@ from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.utils import get_current_device
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.memory_tracer import MemStats
+from colossalai.cluster import ProcessGroupMesh
 
 from .dp_plugin_base import DPPluginBase
 
@@ -285,6 +287,8 @@ class GeminiPlugin(DPPluginBase):
         max_norm (float, optional): max_norm used for `clip_grad_norm`. You should notice that you shall not do
             clip_grad_norm by yourself when using ZeRO DDP. The ZeRO optimizer will take care of clip_grad_norm.
         norm_type (float, optional): norm_type used for `clip_grad_norm`.
+        use_tensor_parallel (bool, optional): Whether to use tensor parallelism strategy, which is implemented in Shardformer. Default to False.
+        tp_size (int, optional): If 'use_tensor_parallel' is set to true, please configure 'tp_size' which determines the size of the tensor parallel process group. Default to 1.
         verbose (bool, optional): verbose mode. Debug info including chunk search result will be printed. Defaults to False.
     """
 
@@ -318,7 +322,8 @@ class GeminiPlugin(DPPluginBase):
         max_scale: float = 2**32,
         max_norm: float = 0.0,
         norm_type: float = 2.0,
-        use_tp_pipeline: bool = False,
+        use_tensor_parallel: bool = False,
+        tp_size: int = 1,
         verbose: bool = False
     ) -> None:
         super().__init__()
@@ -357,7 +362,8 @@ class GeminiPlugin(DPPluginBase):
             max_norm=max_norm,
             norm_type=norm_type,
         )
-        self.use_tp_pipeline = use_tp_pipeline
+        self.use_tensor_parallel = use_tensor_parallel
+        self.tp_size = tp_size
         self.verbose = verbose
 
     def support_no_sync(self) -> bool:
@@ -394,17 +400,21 @@ class GeminiPlugin(DPPluginBase):
             # model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
 
             # wrap the model with Gemini
-
-            if self.use_tp_pipeline:
+            self.dp_group = None
+            if self.use_tensor_parallel:
                 try:
-                    shard_config = ShardConfig(enable_tensor_parallelism=True, enable_fused_normalization=False)
+                    dp_size = dist.get_world_size() // self.tp_size
+                    self.pg_mesh = ProcessGroupMesh(dp_size, self.tp_size)
+                    self.dp_group = self.pg_mesh.get_group_along_axis(0)
+                    self.tp_group = self.pg_mesh.get_group_along_axis(1)
+                    shard_config = ShardConfig(tensor_parallel_process_group = self.tp_group, enable_tensor_parallelism=True)
                     shardformer = ShardFormer(shard_config)
                     model, _ = shardformer.optimize(model)
                     optimizer.param_groups[0]["params"] = model.parameters()
                 except NotImplementedError as e:
-                    print(f"Auto policy for {model.__class__} is not implemented yet\n.")
+                    print(f"Tensor Parallelism policy for {model.__class__} is not implemented yet\n.")
 
-            model = GeminiDDP(model, **self.gemini_config, verbose=self.verbose)
+            model = GeminiDDP(model, **self.gemini_config, process_group=self.dp_group, verbose=self.verbose)
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer = GeminiOptimizer(
