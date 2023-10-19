@@ -421,6 +421,8 @@ if HAS_TRITON:
 class Llama2TokenAttentionForwards:
     @staticmethod
     @triton.jit
+    
+    # this function is adapted from 
     def _fwd_kernel(
         Logics,
         V,
