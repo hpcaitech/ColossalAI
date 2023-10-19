@@ -216,13 +216,13 @@ class TPInferEngine:
         model_name = model.__class__.__name__
         assert model_name in self.supported_models, f"Unsupported model cls {model_name} for TP inference."
 
+        model = model.model if self.shard_config.inference_gptq else model
+
+        policy = get_autopolicy(model, inference_only=True)
+        self.model, _ = shardformer.optimize(model, policy)
+
         if self.shard_config.inference_gptq:
-            policy = get_autopolicy(model.model, inference_only=True)
-            self.model, _ = shardformer.optimize(model.model, policy)
             self._post_init_gptq_buffer(self.model)
-        else:
-            policy = get_autopolicy(model, inference_only=True)
-            self.model, _ = shardformer.optimize(model, policy)
 
         self.model = self.model.cuda()
 
