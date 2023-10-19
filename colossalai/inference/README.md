@@ -67,7 +67,7 @@ flash-attention
 git clone https://github.com/ModelTC/lightllm 
 git checkout 28c1267cfca536b7b4f28e921e03de735b003039
 cd lightllm
-python3 setup.py develop
+pip3 install -e .
 ```
 
 ### Docker
@@ -87,7 +87,7 @@ pip install -e .
 git clone https://github.com/ModelTC/lightllm 
 git checkout 28c1267cfca536b7b4f28e921e03de735b003039
 cd lightllm
-python3 setup.py develop
+pip3 install -e .
 
 
 ```
