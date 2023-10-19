@@ -81,6 +81,7 @@ if HAS_TRITON:
                 num_stages=1,
             )
         else:
+            num_warps = 4  # modified from lightllm: lightllm/lightllm/models/llama/triton_kernel/token_attention_nopad_att1.py/#L64
             _token_attn_1_kernel[grid](
                 q,
                 k,
