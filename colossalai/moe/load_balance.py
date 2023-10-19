@@ -425,9 +425,9 @@ class LoadBalancer:
         swap_list = self._search_balance(load)
         if dist.get_rank() == 0:
             if len(swap_list) > 0:
-                print(f"Apply swap...")
+                print(f"[Load Balance] Applying expert swap...")
             else:
-                print(f"Invalid swap, continue...")
+                print(f"[Load Balance] Invalid swap, skip...")
         # swap expert and gate
         self._swap_moe_param(swap_list, optim)
         # clear load
