@@ -58,7 +58,7 @@ class DynamicBatchManager:
         self.mem_usage_interval = log_stats_interval * 2
         self.tokenizer = get_tokenizer(tokenizer_name=self.model)
 
-    def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompts: str = ""):
+    def add_req(self, request_id: str, prompt_ids: List[int], sampling_params: SamplingParams, prompts: str = ""):
         """
         Add new request to req queue, during initialization all requests are held in waiting list.
         """
@@ -75,7 +75,7 @@ class DynamicBatchManager:
         if prompt_len > self.engine.max_input_len:
             raise ValueError(f"the input prompt token len {prompt_len} is too long > {self.engine.max_input_len}")
         sampling_params.stop_sentences_to_token_ids(self.tokenizer)
-        self.add_req(prompt_ids, sampling_params, request_id, prompts)
+        self.add_req(request_id, prompt_ids, sampling_params, prompts)
         return
 
     def abort(self, request_id):
@@ -259,11 +259,11 @@ class DynamicBatchManager:
         # this logic should be implemented in the future.
         pass
 
-    def generate(self, prompts, sampling_params, request_id):
+    def generate(self, request_id, prompts, sampling_params):
         """
         Generate the output of a request.
         """
-        self.add_input(request_id, sampling_params, prompts)
+        self.add_input(request_id, prompts, sampling_params)
         return self.loop_for_fwd()
 
     def is_running(self):

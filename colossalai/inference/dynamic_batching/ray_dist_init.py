@@ -145,7 +145,7 @@ class Driver:
         outputs = results[0]  # get any one of the copies
         return outputs
 
-    def add_req(self, prompt_ids: List[int], sampling_params: SamplingParams, request_id: str, prompt: str):
+    def add_req(self, request_id: str, prompt_ids: List[int], sampling_params: SamplingParams, prompt: str):
         ray.get([w.add_req.remote(prompt_ids, sampling_params, request_id, prompt) for w in self.workers])
 
     def is_running(self):
