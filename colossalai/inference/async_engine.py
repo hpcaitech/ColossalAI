@@ -25,20 +25,15 @@ class RequestTracker:
     def add_request(self, request_id: str):
         """Add a request to be sent to the engine on the next background
         loop iteration."""
-        # if request_id in self._requests:
-        #     raise KeyError(f"Request {request_id} already exists.")
-
         self._requests.put_nowait(request_id)
-        self.new_requests_event.set()
-
-    def abort_request(self, request_id: str, *, verbose: bool = False) -> None:
-        """Abort a request during next background loop iteration."""
-        if verbose:
-            logger.info(f"Aborted request {request_id}.")
-        return
+        self.new_requests_event.set()  # NOTE: we may find a better way to clear this event
 
     def add_stop(self):
+        """
+        Add a StopIteration flag to stop async generator.
+        """
         self._finished_requests.put_nowait(StopIteration)
+        self.new_requests_event.clear()
 
     def process_request_output(self, request_output: RequestOutput) -> None:
         """Process a request output from the engine."""
@@ -61,10 +56,10 @@ class RequestTracker:
 class Async_Engine:
 
     """
-    loop: start listen
-    add req
-    remove req
-    generate--> return async generator
+    Use an engine to launch RAY Driver --> RAY Worker --> Async_Manager
+    Background loop: inference reqs in waiting list (Listen)
+    Request Tracker: manage incoming requests and restore finished ones
+    Generate: exposed func for add new input and return finished ones
     """
 
     def __init__(
@@ -87,6 +82,9 @@ class Async_Engine:
             for request_output in request_outputs:
                 self._request_tracker.process_request_output(request_output)
             self._request_tracker.add_stop()
+
+    def abort(self, request_id: str):
+        self.driver.abort(request_id)
 
     def _has_requests_in_progress(self):
         return self.driver.is_running()
@@ -131,5 +129,5 @@ class Async_Engine:
 
         except (Exception, asyncio.CancelledError) as e:
             # If there is an exception or coroutine is cancelled, abort the request.
-            self._request_tracker.abort_request(request_id)
+            self.abort_request(request_id)
             raise e
