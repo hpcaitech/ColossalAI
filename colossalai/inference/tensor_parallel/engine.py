@@ -400,9 +400,8 @@ class TPInferEngine:
             model = self.model.model
         elif isinstance(model, BloomForCausalLM):
             model = self.model.transformer
+        
         setattr(model, "infer_state", infer_state)
-
-        print("input_ shape", input_.shape)
         output = self.model.forward(input_ids=input_)
         logits = output.logits
         # bsz, seq_len, vocab_size

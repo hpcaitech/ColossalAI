@@ -119,7 +119,6 @@ class DynamicBatchManager:
 
         if self.running_batch is None:
             new_batch = self.req_queue.generate_new_batch(self.running_batch)
-            print(new_batch)
             if new_batch is not None:
                 self.stats_tool.count_prompt_tokens(new_batch)
                 self.running_batch = new_batch

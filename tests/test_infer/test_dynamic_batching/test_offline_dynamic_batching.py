@@ -53,7 +53,7 @@ def run():
     waiting_list.append(req3)
     waiting_list.append(req4)
 
-    llama_config = LlamaConfig(num_hidden_layers=2, bos_token_id=0, eos_token_id=1, vocab_size=1200, hidden_size=1024)
+    llama_config = LlamaConfig(num_hidden_layers=2, bos_token_id=0, eos_token_id=1, vocab_size=30000, hidden_size=1024)
     model = LlamaForCausalLM(llama_config)
     model = model.half()
 
@@ -62,9 +62,9 @@ def run():
     infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
     batch_manager = start_dynamic_batching(arg, tp_engine=infer_engine, waiting_req_list=waiting_list)
 
-    ans_gen = batch_manager.generate(request_id=5, prompts="你好", sampling_params=sampling_params)
+    ans_gen = batch_manager.generate(request_id=5, prompts="hello", sampling_params=sampling_params)
     for result in ans_gen:
-        print(result)
+        assert result is not None
 
 
 def check_dynamic_forward(rank, world_size, port):
