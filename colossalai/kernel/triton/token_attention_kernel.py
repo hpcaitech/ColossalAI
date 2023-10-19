@@ -83,7 +83,7 @@ class Llama2TokenAttentionForwards:
     @staticmethod
     @triton.jit
 
-    # this function is adapted from
+    # this function is adapted from https://github.com/ModelTC/lightllm/blob/5c559dd7981ed67679a08a1e09a88fb4c1550b3a/lightllm/models/llama2/triton_kernel/token_attention_nopad_softmax.py#L8
     def _fwd_kernel(
         Logics,
         V,
@@ -155,6 +155,7 @@ class Llama2TokenAttentionForwards:
         tl.store(out_ptrs, acc)
         return
 
+    # this function is adapted from https://github.com/ModelTC/lightllm/blob/5c559dd7981ed67679a08a1e09a88fb4c1550b3a/lightllm/models/llama2/triton_kernel/token_attention_nopad_softmax.py#L36
     @staticmethod
     @torch.no_grad()
     def token_softmax_reducev_fwd(logics, v, o, b_loc, b_start_loc, b_seq_len, max_input_len, other_kv_index):
