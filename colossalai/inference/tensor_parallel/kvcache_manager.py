@@ -1,7 +1,9 @@
-# Adapted from lightllm/common/mem_manager.py
-# of the ModelTC/lightllm GitHub repository
-# https://github.com/ModelTC/lightllm/blob/050af3ce65edca617e2f30ec2479397d5bb248c9/lightllm/common/mem_manager.py
-
+"""
+Refered/Modified from lightllm/common/mem_manager.py
+of the ModelTC/lightllm GitHub repository
+https://github.com/ModelTC/lightllm/blob/050af3ce65edca617e2f30ec2479397d5bb248c9/lightllm/common/mem_manager.py
+we slightly changed it to make it suitable for our colossal-ai shardformer TP-engine design.
+"""
 import torch
 from transformers.utils import logging
 
