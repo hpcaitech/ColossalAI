@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import pytest
 import torch
 from packaging import version
@@ -5,7 +7,6 @@ from transformers import LlamaForCausalLM
 from transformers.models.llama.configuration_llama import LlamaConfig
 
 import colossalai
-from dataclasses import dataclass
 from colossalai.inference.dynamic_batching.io_struct import Req
 from colossalai.inference.dynamic_batching.sampling_params import SamplingParams
 from colossalai.inference.manager import start_dynamic_batching
@@ -19,17 +20,26 @@ MAX_INPUT_LEN = 5
 MAX_OUTPUT_LEN = 16
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
 
+
 @dataclass
 class args:
     max_total_token_num: int
     batch_max_tokens: int
+    model: str
     eos_id: int
     disable_log_stats: bool
     log_stats_interval: int
 
 
 def run():
-    arg = args(max_total_token_num=42, batch_max_tokens=42, eos_id=0, disable_log_stats=False, log_stats_interval=10)
+    arg = args(
+        max_total_token_num=42,
+        model="llama",
+        batch_max_tokens=42,
+        eos_id=0,
+        disable_log_stats=False,
+        log_stats_interval=10,
+    )
     sampling_params = SamplingParams()
 
     req1 = Req(0, [0, 0, 10, 6, 8], sampling_params)
@@ -50,7 +60,11 @@ def run():
     shard_config = ShardConfig(enable_tensor_parallelism=True if TP_SIZE > 1 else False, inference_only=True)
 
     infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-    start_dynamic_batching(arg, tp_engine=infer_engine, waiting_req_list=waiting_list)
+    batch_manager = start_dynamic_batching(arg, tp_engine=infer_engine, waiting_req_list=waiting_list)
+
+    ans_gen = batch_manager.generate(request_id=5, prompt=[10, 10, 10], sampling_params=sampling_params)
+    for result in ans_gen:
+        print(result)
 
 
 def check_dynamic_forward(rank, world_size, port):

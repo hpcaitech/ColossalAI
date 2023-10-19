@@ -76,7 +76,7 @@ class LlamaInferenceForwards:
             batch_size, seq_length, _ = inputs_embeds.shape
         else:
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
-
+        print(batch_size, infer_state.seq_len)
         #  NOT READY FOR PRIME TIME
         #  dummy but work, revise it
         if infer_state.is_context_stage:
