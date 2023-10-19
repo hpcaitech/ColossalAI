@@ -11,6 +11,7 @@ except ImportError:
 
 if HAS_TRITON:
 
+    # adapted from https://github.com/ModelTC/lightllm/blob/5c559dd7981ed67679a08a1e09a88fb4c1550b3a/lightllm/common/triton_kernel/destindex_copy_kv.py
     @triton.jit
     def _fwd_copy_kv_cache_dest(
         kv_cache_ptr,
@@ -42,6 +43,7 @@ if HAS_TRITON:
         tl.store(o_ptrs, k, mask=offs_h[:, None] < head_num)
         return
 
+    # adepted from https://github.com/ModelTC/lightllm/blob/5c559dd7981ed67679a08a1e09a88fb4c1550b3a/lightllm/common/triton_kernel/destindex_copy_kv.py
     @torch.no_grad()
     def copy_kv_cache_to_dest(k_ptr, dest_index_ptr, out):
         seq_len = dest_index_ptr.shape[0]

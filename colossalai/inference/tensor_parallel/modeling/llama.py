@@ -5,12 +5,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
-from colossalai.kernel.triton import (
-    llama2_context_attn_fwd,
-    llama_context_attn_fwd,
-    rotary_embedding_fwd,
-    token_attention_fwd,
-)
+from colossalai.kernel.triton import llama_context_attn_fwd, token_attention_fwd
 from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
 
 from ._utils import copy_kv_to_mem_cache
@@ -28,6 +23,17 @@ except:
         "if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch"
     )
     HAS_VLLM_KERNERL = False
+
+try:
+    from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import (
+        context_attention_fwd as lightllm_llama2_context_attention_fwd,
+    )
+    from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd as llama_rotary_embedding_fwd
+
+    HAS_LIGHTLLM_KERNEL = True
+except:
+    print("please install lightllm from source to run inference: https://github.com/ModelTC/lightllm")
+    HAS_LIGHTLLM_KERNEL = False
 
 
 def rotate_half(x):
@@ -280,8 +286,8 @@ class LlamaInferenceForwards:
         cos, sin = infer_state.position_cos, infer_state.position_sin
         # print("shape ", cos.shape, query_states.view(-1, self.num_heads, self.head_dim).shape, )
 
-        rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
-        rotary_embedding_fwd(key_states.view(-1, self.num_key_value_heads, self.head_dim), cos, sin)
+        llama_rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
+        llama_rotary_embedding_fwd(key_states.view(-1, self.num_key_value_heads, self.head_dim), cos, sin)
 
         query_states = query_states.reshape(-1, self.num_heads, self.head_dim)
         key_states = key_states.reshape(-1, self.num_key_value_heads, self.head_dim)
@@ -312,7 +318,7 @@ class LlamaInferenceForwards:
                     infer_state.cache_manager.past_key_values_length,
                 )
             else:
-                llama2_context_attn_fwd(
+                lightllm_llama2_context_attention_fwd(
                     query_states,
                     key_states,
                     value_states,
@@ -371,6 +377,7 @@ class LlamaInferenceForwards:
                     infer_state.cache_manager.past_key_values_length,
                     infer_state.other_kv_index,
                 )
+
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
         attn_output = self.o_proj(attn_output)

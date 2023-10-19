@@ -4,7 +4,7 @@
 
 ## Introduction
 
-`Colossal Inference` is a module that contains colossal-ai designed inference framework, featuring high performance, steady and easy usability. `Colossal Inference` incorporated the advantages of the latest open-source inference systems, including TGI, vLLM, FasterTransformer, LightLLM and flash attention. while combining the design of Colossal AI, especially Shardformer, to reduce the learning curve for users.
+`Colossal Inference` is a module that contains colossal-ai designed inference framework, featuring high performance, steady and easy usability. `Colossal Inference` incorporated the advantages of the latest open-source inference systems, including LightLLM, TGI, vLLM, FasterTransformer and flash attention. while combining the design of Colossal AI, especially Shardformer, to reduce the learning curve for users.
 
 ## Design
 
@@ -62,6 +62,12 @@ triton==2.0.0.dev20221202
 vllm
 # for install flash-attention, please use commit hash: 67ae6fd74b4bc99c36b2ce524cf139c35663793c
 flash-attention
+
+# install lightllm since we depend on lightllm triton kernels
+git clone https://github.com/ModelTC/lightllm 
+git checkout 28c1267cfca536b7b4f28e921e03de735b003039
+cd lightllm
+pip3 install -e .
 ```
 
 ### Docker
@@ -72,6 +78,17 @@ You can use docker run to use docker container to set-up environment
 # env: python==3.8, cuda 11.6, pytorch == 1.13.1 triton==2.0.0.dev20221202, vllm kernels support, flash-attention-2 kernels support
 docker pull hpcaitech/colossalai-inference:v2
 docker run -it --gpus all --name ANY_NAME -v $PWD:/workspace -w /workspace hpcaitech/colossalai-inference:v2 /bin/bash
+
+# enter into docker container
+cd /path/to/CollossalAI
+pip install -e .
+
+# install lightllm
+git clone https://github.com/ModelTC/lightllm 
+git checkout 28c1267cfca536b7b4f28e921e03de735b003039
+cd lightllm
+pip3 install -e .
+
 
 ```
 

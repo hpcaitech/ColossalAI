@@ -5,7 +5,7 @@ import torch
 
 from .kvcache_manager import MemoryManager
 
-
+# adapted from: lightllm/server/router/model_infer/infer_batch.py
 @dataclass
 class BatchInferState:
     r"""
@@ -41,6 +41,7 @@ class BatchInferState:
     def set_cache_manager(self, manager: MemoryManager):
         self.cache_manager = manager
 
+    # adapted from: https://github.com/ModelTC/lightllm/blob/28c1267cfca536b7b4f28e921e03de735b003039/lightllm/common/infer_utils.py#L1
     @staticmethod
     def init_block_loc(
         b_loc: torch.Tensor, seq_len: torch.Tensor, max_len_in_batch: int, alloc_mem_index: torch.Tensor
