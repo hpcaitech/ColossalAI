@@ -13,13 +13,21 @@ except ImportError:
     print("please install triton from https://github.com/openai/triton")
 
 try:
-    from lightllm.models.llama2.triton_kernel.token_attention_nopad_att1 import token_att_fwd as lightllm_llama2_token_att_fwd
-    from lightllm.models.llama2.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2 as lightllm_llama2_token_att_fwd2
-    from lightllm.models.llama2.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd as lightllm_llama2_token_softmax_fwd
+    from lightllm.models.llama2.triton_kernel.token_attention_nopad_att1 import (
+        token_att_fwd as lightllm_llama2_token_att_fwd,
+    )
+    from lightllm.models.llama2.triton_kernel.token_attention_nopad_reduceV import (
+        token_att_fwd2 as lightllm_llama2_token_att_fwd2,
+    )
+    from lightllm.models.llama2.triton_kernel.token_attention_nopad_softmax import (
+        token_softmax_fwd as lightllm_llama2_token_softmax_fwd,
+    )
+    
     from lightllm.models.llama.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2 as lightllm_llama_token_att_fw2
     from lightllm.models.llama.triton_kernel.token_attention_nopad_att1 import token_att_fwd as lightllm_llama_token_att_fwd
     from lightllm.models.llama.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd as lightllm_llama_token_softmax_fwd
     from lightllm.models.bloom.triton_kernel.token_attention_nopad_att1 import token_att_fwd as lightllm_bloom_token_att_fwd
+
     HAS_TRITON_TOKEN_ATTENTION = True
 except ImportError:
     print("unable to import lightllm kernels")
@@ -74,8 +82,8 @@ if HAS_TRITON:
 class Llama2TokenAttentionForwards:
     @staticmethod
     @triton.jit
-    
-    # this function is adapted from 
+
+    # this function is adapted from
     def _fwd_kernel(
         Logics,
         V,
