@@ -67,9 +67,7 @@ if HAS_TRITON:
         lightllm_llama_token_att_fw2(
             prob, v, attn_out.view(calcu_shape1), kv_cache_loc, kv_cache_start_loc, kv_cache_seq_len, max_len_in_batch
         )
-
         prob = None
-
         return
 
 
