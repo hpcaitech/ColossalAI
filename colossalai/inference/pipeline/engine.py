@@ -24,20 +24,29 @@ class PPInferEngine:
         micro_batch_buffer_size (int): the buffer size for micro batch. Normally, it should be the same as the number of pipeline stages.
         new_length (int): the new length of the input sequence.
         early_stopping (bool): whether to stop early.
+        max_batch_size (int): the maximum batch size.
+        max_input_len (int): the maximum input length.
+        max_output_len (int): the maximum output length.
 
     Example:
 
     ```python
-    from colossalai.ppinference import PPInferEngine
-    from transformers import GPT2LMHeadModel, GPT2Tokenizer
+    from colossalai.inference import PPInferEngine
+    from colossalai.inference.pipeline.policies import LlamaModelInferPolicy
+    import colossalai
+    from transformers import LlamaForCausalLM, LlamaTokenizer
 
-    model = transformers.GPT2LMHeadModel.from_pretrained('gpt2')
-    # assume the model is infered with 4 pipeline stages
-    inferengine = PPInferEngine(pp_size=4, model=model, model_policy={Your own policy for pipeline sharding})
+    colossalai.launch_from_torch(config={})
 
-    input = ["Hello, my dog is cute, and I like"]
-    tokenized_input = tokenizer(input, return_tensors='pt')
-    output = engine.inference([tokenized_input])
+    model = LlamaForCausalLM.from_pretrained("/home/lczyh/share/models/llama-7b-hf")
+    tokenizer = LlamaTokenizer.from_pretrained("/home/lczyh/share/models/llama-7b-hf")
+    # assume the model is infered with 2 pipeline stages
+    inferengine = PPInferEngine(pp_size=2, model=model, model_policy=LlamaModelInferPolicy(), new_length=8)
+
+    input = ["Introduce a landmark in China ","Introduce a landmark in China "]
+    data = tokenizer(input, return_tensors='pt')
+    output = inferengine.inference([data.to('cuda').data])
+
     ```
 
     """
