@@ -18,32 +18,16 @@ fi
 
 
 # ep
-echo -e "\n\n EP \n\n"
+echo -e "\n\n Naive EP \n\n"
 torchrun --standalone --nproc_per_node $NUM_GPU \
     $example_dir/benchmark/benchmark_cai.py \
     --model_name $MODEL \
-    --batch_size 12 \
+    --batch_size 8 \
     --seq_length $SEQ_LENGTH \
     --warmup $WARMUP \
     --active $ACTIVE \
     --plugin ep \
-    --use_kernel \
-    --zero_stage 2 \
-    --load_balance
-
-echo -e "\n\n EP + Overlap \n\n"
-torchrun --standalone --nproc_per_node $NUM_GPU \
-    $example_dir/benchmark/benchmark_cai.py \
-    --model_name $MODEL \
-    --batch_size 12 \
-    --seq_length $SEQ_LENGTH \
-    --warmup $WARMUP \
-    --active $ACTIVE \
-    --plugin ep \
-    --use_kernel \
-    --zero_stage 2 \
-    --load_balance \
-    --overlap_alltoall
+    --zero_stage 2
 
 
 # ep_zero
@@ -75,6 +59,7 @@ torchrun --standalone --nproc_per_node $NUM_GPU \
     --zero_stage 1 \
     --load_balance \
     --overlap_alltoall
+
 
 # hybrid
 torchrun --standalone --nproc_per_node $NUM_GPU \
