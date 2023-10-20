@@ -2,10 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from colossalai.legacy.nn import CheckpointModule
-
-from .registry import non_distributed_component_funcs
-from .utils import DummyDataGenerator
+from ..registry import model_zoo
+from .base import CheckpointModule
 
 
 class SubNet(nn.Module):
@@ -32,20 +30,24 @@ class NestedNet(CheckpointModule):
         return x
 
 
-class DummyDataLoader(DummyDataGenerator):
-    def generate(self):
-        data = torch.rand(16, 5)
-        label = torch.randint(low=0, high=2, size=(16,))
-        return data, label
+def data_gen():
+    return dict(x=torch.rand(16, 5))
 
 
-@non_distributed_component_funcs.register(name="nested_model")
-def get_training_components():
-    def model_builder(checkpoint=False):
-        return NestedNet(checkpoint)
+def loss_fn(x):
+    outputs = x["x"]
+    label = torch.randint(low=0, high=2, size=(16,), device=outputs.device)
+    return F.cross_entropy(x["x"], label)
 
-    trainloader = DummyDataLoader()
-    testloader = DummyDataLoader()
 
-    criterion = torch.nn.CrossEntropyLoss()
-    return model_builder, trainloader, testloader, torch.optim.Adam, criterion
+def output_transform(x: torch.Tensor):
+    return dict(x=x)
+
+
+model_zoo.register(
+    name="custom_nested_model",
+    model_fn=NestedNet,
+    data_gen_fn=data_gen,
+    output_transform_fn=output_transform,
+    loss_fn=loss_fn,
+)
