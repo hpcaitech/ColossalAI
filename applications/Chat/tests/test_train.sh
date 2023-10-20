@@ -123,6 +123,8 @@ for model in ${MODELS[@]}; do
                     --max_len 50 \
                     --model $model \
                     --save_path $EXAMPLES_DIR/dpo \
+                    --dataset_cache_dir $EXAMPLES_DIR/tmp_cache_reward \
+                    --grad_checkpoint \
                     $pretrain_model \
                     --accumulation_steps 2
                 passed=$?
