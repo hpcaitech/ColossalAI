@@ -87,7 +87,6 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
         batch_infer_state.start_loc = seq_start_indexes.to("cuda")
         batch_infer_state.block_loc = block_loc
         batch_infer_state.decode_layer_id = 0
-        batch_infer_state.past_key_values_len = 0
         batch_infer_state.is_context_stage = True
         batch_infer_state.set_cache_manager(self.cache_manager)
         batch_infer_state.cache_manager.free_all()
