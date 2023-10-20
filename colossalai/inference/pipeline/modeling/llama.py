@@ -12,7 +12,7 @@ from transformers.models.llama.modeling_llama import (
 from transformers.utils import logging
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
-from colossalai.kernel.triton import llama_context_attn_fwd, rotary_embedding_fwd, token_attention_fwd
+from colossalai.kernel.triton import llama_context_attn_fwd, token_attention_fwd
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 from ._utils import copy_kv_to_mem_cache
@@ -30,6 +30,14 @@ except:
         "if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch"
     )
     HAS_VLLM_KERNERL = False
+
+try:
+    from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd as llama_rotary_embedding_fwd
+
+    HAS_LIGHTLLM_KERNEL = True
+except:
+    print("please install lightllm from source to run inference: https://github.com/ModelTC/lightllm")
+    HAS_LIGHTLLM_KERNEL = False
 
 
 def rotate_half(x):
@@ -363,8 +371,8 @@ class LlamaInferenceForwards:
 
         cos, sin = infer_state.position_cos, infer_state.position_sin
 
-        rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
-        rotary_embedding_fwd(key_states.view(-1, self.num_heads, self.head_dim), cos, sin)
+        llama_rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
+        llama_rotary_embedding_fwd(key_states.view(-1, self.num_heads, self.head_dim), cos, sin)
 
         query_states = query_states.reshape(-1, self.num_heads, self.head_dim)
         key_states = key_states.reshape(-1, self.num_heads, self.head_dim)

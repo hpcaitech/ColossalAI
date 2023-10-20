@@ -47,7 +47,7 @@ inferengine = PPInferEngine(pp_size=2, model=model, model_policy=LlamaModelInfer
 
 input = ["Introduce a landmark in China ","Introduce a landmark in China "]
 data = tokenizer(input, return_tensors='pt')
-output = inferengine.inference([data.to('cuda').data])
+output = inferengine.inference(data.to('cuda'))
 
 
 ```

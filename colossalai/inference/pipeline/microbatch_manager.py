@@ -3,8 +3,8 @@ from typing import Dict
 
 import torch
 
-from .batch_infer_state import BatchInferState
-from .kvcache_manager import MemoryManager
+from ..tensor_parallel.batch_infer_state import BatchInferState
+from ..tensor_parallel.kvcache_manager import MemoryManager
 
 __all__ = "MicroBatchManager"
 

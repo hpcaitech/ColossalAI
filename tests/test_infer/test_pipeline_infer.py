@@ -26,19 +26,21 @@ for k, v in inputs.items():
 def pipeline_inference_test(pp_size, new_length, micro_batch_size):
     model = transformers.LlamaForCausalLM(transformers.LlamaConfig(num_hidden_layers=4))
 
-    engine = PPInferEngine(pp_size=pp_size,
-                           model=model,
-                           model_policy=LlamaModelInferPolicy(),
-                           new_length=new_length,
-                           micro_batch_size=micro_batch_size)
-    output = engine.inference([inputs])
+    engine = PPInferEngine(
+        pp_size=pp_size,
+        model=model,
+        model_policy=LlamaModelInferPolicy(),
+        new_length=new_length,
+        micro_batch_size=micro_batch_size,
+    )
+    output = engine.inference(inputs)
     if dist.get_rank() == 0:
         assert len(output[0]) == new_length, f"{len(output)}, {new_length}"
 
 
-@parameterize('pp_size', [2])
-@parameterize('new_length', [4, 8, 16])
-@parameterize('micro_batch_size', [1, 4])
+@parameterize("pp_size", [2])
+@parameterize("new_length", [4, 8, 16])
+@parameterize("micro_batch_size", [1, 4])
 @clear_cache_before_run()
 def run_pipeline_inference_test(pp_size, new_length, micro_batch_size):
     pipeline_inference_test(pp_size, new_length, micro_batch_size)

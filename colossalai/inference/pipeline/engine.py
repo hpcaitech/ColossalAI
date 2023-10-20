@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from transformers.tokenization_utils_base import BatchEncoding
 
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.pipeline.schedule.generate import GenerateSchedule
@@ -7,7 +8,7 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
 
-from .kvcache_manager import MemoryManager
+from ..tensor_parallel.kvcache_manager import MemoryManager
 from .microbatch_manager import MicroBatchManager
 
 
@@ -38,7 +39,7 @@ class PPInferEngine:
 
     colossalai.launch_from_torch(config={})
 
-    model = LlamaForCausalLM.from_pretrained("/home/lczyh/share/models/llama-7b-hf")
+    model = LlamaForCausalLM.from_pretrained("your_path_to_model")
     tokenizer = LlamaTokenizer.from_pretrained("/home/lczyh/share/models/llama-7b-hf")
     # assume the model is infered with 2 pipeline stages
     inferengine = PPInferEngine(pp_size=2, model=model, model_policy=LlamaModelInferPolicy(), new_length=8)
@@ -103,7 +104,20 @@ class PPInferEngine:
         self.schedule = GenerateSchedule(self.stage_manager, self.mb_manager, verbose)
 
     def inference(self, input_list):
-        out, timestamp = self.schedule.generate_step(self.model, iter(input_list))
+        """
+        Args:
+            input_list (list): a list of input data, each element is a `BatchEncoding` or `dict`.
+
+        Returns:
+            out (list): a list of output data, each element is a list of token.
+            timestamp (float): the time cost of the inference, only return when verbose is `True`.
+        """
+        assert isinstance(
+            input_list, (BatchEncoding, dict)
+        ), f"Only accept BatchEncoding or dict as input, but get {input_list.__class__.__name__}."
+        if isinstance(input_list, BatchEncoding):
+            input_list = input_list.data
+        out, timestamp = self.schedule.generate_step(self.model, iter([input_list]))
         if self.verbose:
             return out, timestamp
         else:
