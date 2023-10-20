@@ -51,8 +51,6 @@ class SLTrainer(ABC):
     def fit(self, *args, **kwargs):
         self._before_fit(*args, **kwargs)
         for epoch in tqdm.trange(self.max_epochs, desc="Epochs", disable=not is_rank_0()):
-            if epoch == 0:
-                self._eval(epoch)
             self._train(epoch)
             self._eval(epoch)
 

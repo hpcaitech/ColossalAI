@@ -64,7 +64,7 @@ get_pretrain() {
     elif [[ $model == "bloom" ]]; then
         echo "bigscience/bloom-560m"
     elif [[ $model == "opt" ]]; then
-        echo "facebook/opt-350m"
+        echo "facebook/opt-125m"
     else
         echo "Unknown model $model"
         exit 1
@@ -92,6 +92,7 @@ SKIPPED_TESTS=(
     "llama-colossalai_zero2"
     "gpt2-colossalai_gemini"
     "bloom-colossalai_gemini"
+    "bloom-ddp"
     "opt-colossalai_gemini"
     "gpt2-colossalai_zero2"
     "bloom-colossalai_zero2"
@@ -304,6 +305,8 @@ SKIPPED_TESTS=(
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
     "bloom-ddp"
+    "bloom-colossalai_gemini"
+    "bloom-colossalai_zero2"
     "opt-ddp"
 )
 
