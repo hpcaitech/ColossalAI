@@ -114,20 +114,28 @@ class DpoLoss(nn.Module):
             The losses tensor contains the DPO loss for each example in the batch.
             The chosen_rewards and rejected_rewards tensors contain the rewards for the chosen and rejected responses, respectively.
         """
+        # print(logprob_ref_chosen)
+        # print(logprob_ref_reject)
         if logprob_ref_chosen is not None and logprob_ref_reject is not None:
-            ref_logratios = logprob_ref_chosen.sum(-1) - logprob_ref_reject.sum(-1)
+            # print(logprob_ref_chosen.size(), logprob_ref_reject.size())
+            if len(logprob_ref_chosen.shape) == 2:
+                ref_logratios = logprob_ref_chosen.sum(-1) - logprob_ref_reject.sum(-1)
+            else:
+                ref_logratios = logprob_ref_chosen.squeeze() - logprob_ref_reject.squeeze()
         else:
             ref_logratios = 0.0
 
         pi_logratios = logprob_actor_chosen.sum(-1) - logprob_actor_reject.sum(-1)
+        # print(pi_logratios)
+        # print(ref_logratios)
         logits = pi_logratios - ref_logratios
         losses = -torch.nn.functional.logsigmoid(self.beta * logits)
         if logprob_ref_chosen is not None:
-            chosen_rewards = self.beta * (logprob_actor_chosen - logprob_ref_chosen).sum(-1).detach()
+            chosen_rewards = self.beta * (logprob_actor_chosen.sum(-1) - logprob_ref_chosen.sum(-1)).detach()
         else:
             chosen_rewards = self.beta * logprob_actor_chosen.sum(-1).detach()
         if logprob_ref_reject is not None:
-            rejected_rewards = self.beta * (logprob_actor_reject - logprob_ref_reject).sum(-1).detach()
+            rejected_rewards = self.beta * (logprob_actor_reject.sum(-1) - logprob_ref_reject.sum(-1)).detach()
         else:
             rejected_rewards = self.beta * logprob_actor_reject.sum(-1).detach()
 

@@ -1,9 +1,12 @@
 import argparse
+import json
+import os
+import random
 import warnings
 
 import torch
 import torch.distributed as dist
-from coati.dataset import HhRlhfDataset, RmStaticDataset
+from coati.dataset import HhRlhfDatasetDPO
 from coati.models.bloom import BLOOMActor
 from coati.models.gpt import GPTActor
 from coati.models.llama import LlamaActor
@@ -49,6 +52,9 @@ def main(args):
                 ref_model = BLOOMActor(pretrained=args.pretrain)
             elif args.model == "opt":
                 ref_model = OPTActor(pretrained=args.pretrain)
+            elif args.model == "llama":
+                # Note: llama disable dropout by default
+                ref_model = LlamaActor(pretrained=args.pretrain)
             else:
                 raise ValueError(f'Unsupported actor model "{args.model}"')
 
@@ -61,23 +67,29 @@ def main(args):
             config.embd_pdrop = 0.0
             config.attn_pdrop = 0.0
             config.resid_pdrop = 0.0
-            actor = GPTActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
+            actor = GPTActor(
+                pretrained=args.pretrain, config=config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint
+            )
         elif args.model == "bloom":
             config = AutoConfig.from_pretrained(args.pretrain)
             # TODO: find a proper hyperparameter setting for BLOOM
             config.attention_dropout = 0.000
             config.hidden_dropout = 0.000
-            actor = BLOOMActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
+            actor = BLOOMActor(
+                pretrained=args.pretrain, config=config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint
+            )
         elif args.model == "opt":
             config = AutoConfig.from_pretrained(args.pretrain)
             # TODO: find a proper hyperparameter setting for OPT
             config.attention_dropout = 0.000
             config.dropout = 0.000
             config.layerdrop = 0.000
-            actor = OPTActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
+            actor = OPTActor(
+                pretrained=args.pretrain, config=config, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint
+            )
         elif args.model == "llama":
             # Note: llama disable dropout by default
-            actor = LlamaActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
+            actor = LlamaActor(pretrained=args.pretrain, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
@@ -113,20 +125,54 @@ def main(args):
     tokenizer.padding_side = "right"
 
     # prepare for data and dataset
-    if args.subset is not None:
-        data = load_dataset(args.dataset, data_dir=args.subset)
+    cache_train_dir = args.dataset_cache_dir.replace(".jsonl", "") + "_train.jsonl"
+    cache_eval_dir = args.dataset_cache_dir.replace(".jsonl", "") + "_eval.jsonl"
+    if not os.path.exists(cache_train_dir) or not os.path.exists(cache_eval_dir):
+        if args.subset is not None:
+            data = load_dataset(args.dataset, data_dir=args.subset)
+        else:
+            data = load_dataset(args.dataset)
+
+        # shuffle dataset
+        data["train"].shuffle(seed=42)
+        data["test"].shuffle(seed=42)
+
+        train_data = data["train"].select(range(min(args.max_datasets_size, len(data["train"]))))
+        eval_data = data["test"].select(range(min(args.max_datasets_size, len(data["test"]))))
     else:
-        data = load_dataset(args.dataset)
+        train_data = []
+        with open(cache_train_dir, "r", encoding="utf-8") as f:
+            for line in f.readlines():
+                train_data.append(json.loads(line))
+        # shuffle dataset
+        random.shuffle(train_data)
+        train_data = train_data[: min(args.max_datasets_size, len(train_data))]
+        eval_data = []
+        with open(cache_eval_dir, "r", encoding="utf-8") as f:
+            for line in f.readlines():
+                eval_data.append(json.loads(line))
+        # shuffle dataset
+        random.shuffle(eval_data)
 
-    train_data = data["train"].select(range(min(args.max_datasets_size, len(data["train"]))))
-    eval_data = data["test"].select(range(min(args.max_datasets_size, len(data["test"]))))
-
-    if args.dataset == "Dahoas/rm-static":
-        train_dataset = RmStaticDataset(train_data, tokenizer, args.max_len)
-        eval_dataset = RmStaticDataset(eval_data, tokenizer, args.max_len)
-    elif args.dataset == "Anthropic/hh-rlhf":
-        train_dataset = HhRlhfDataset(train_data, tokenizer, args.max_len)
-        eval_dataset = HhRlhfDataset(eval_data, tokenizer, args.max_len)
+    if args.dataset == "Anthropic/hh-rlhf":
+        train_dataset = HhRlhfDatasetDPO(
+            train_data,
+            args.model,
+            args.pretrain,
+            args.dataset_cache_dir + "_train.jsonl",
+            strategy,
+            tokenizer,
+            args.max_len,
+        )
+        eval_dataset = HhRlhfDatasetDPO(
+            eval_data,
+            args.model,
+            args.pretrain,
+            args.dataset_cache_dir + "_eval.jsonl",
+            strategy,
+            tokenizer,
+            args.max_len,
+        )
     else:
         raise ValueError(f'Unsupported dataset "{args.dataset}"')
 
@@ -204,13 +250,15 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--max_epoch", type=int, default=1)
     parser.add_argument("--accumulation_steps", type=int, default=1)
-    parser.add_argument("--max_len", type=int, default=300)
+    parser.add_argument("--max_len", type=int, default=400)
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
-    parser.add_argument("--disable_reference", type=bool, default=False)
+    parser.add_argument("--disable_reference", type=bool, default=True)
+    parser.add_argument("--dataset_cache_dir", type=str, default=None)
     parser.add_argument("--lr", type=float, default=1e-6)
     parser.add_argument("--beta", type=float, default=0.1)
     parser.add_argument("--log_dir", default="logs", type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
+    parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     args = parser.parse_args()
     main(args)

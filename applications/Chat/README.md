@@ -13,10 +13,14 @@
   - [Install the environment](#install-the-environment)
   - [Install the Transformers](#install-the-transformers)
 - [How to use?](#how-to-use)
-  - [Supervised datasets collection](#supervised-datasets-collection)
-  - [RLHF Training Stage1 - Supervised instructs tuning](#RLHF-training-stage1---supervised-instructs-tuning)
-  - [RLHF Training Stage2 - Training reward model](#RLHF-training-stage2---training-reward-model)
-  - [RLHF Training Stage3 - Training model with reinforcement learning by human feedback](#RLHF-training-stage3---training-model-with-reinforcement-learning-by-human-feedback)
+  - RLHF
+    - [Supervised datasets collection](#supervised-datasets-collection)
+    - [RLHF Training Stage1 - Supervised instructs tuning](#RLHF-training-stage1---supervised-instructs-tuning)
+    - [RLHF Training Stage2 - Training reward model](#RLHF-training-stage2---training-reward-model)
+    - [RLHF Training Stage3 - Training model with reinforcement learning by human feedback](#RLHF-training-stage3---training-model-with-reinforcement-learning-by-human-feedback)
+  - DPO
+    - [Finetune the model to fit the distribution of preference data](#dpo-stage-1-finetune-the-model-to-fit-the-distribution-of-preference-data)
+    - [Train model with dpo trainer](#dpo-stage-2-train-model-with-dpo-trainer)
   - [Inference Quantization and Serving - After Training](#inference-quantization-and-serving---after-training)
 - [Coati7B examples](#coati7b-examples)
   - [Generation](#generation)
@@ -192,6 +196,40 @@ You can run the `examples/train_prompts.sh` to start training PPO with human fee
   ```
 
 For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples).
+
+### DPO Stage 1: Finetune The Model to Fit the Distribution of Preference Data
+The first stage of DPO ensure that the chosen data of the preference dataset is within the distribution of the model as described in [DPO paper](https://arxiv.org/pdf/2305.18290.pdf). You can either use the script from stage one of RLHF training or finetune the model with next-token-prediction loss. For the later option, you can run the following script.
+
+```bash
+torchrun --standalone --nproc_per_node=4 train_dpo_pretrain.py \
+    --dataset Anthropic/hh-rlhf \
+    --strategy colossalai_zero2 \
+    --batch_size 10 \
+    --save_path '/path/to/ppo_pretrain_v0' \
+    --pretrain '/path/to/pretrain_model' \
+    --use_wandb
+```
+
+### DPO Stage 2: Train Model with Dpo Trainer
+In stage 2 of DPO, we maximize the probability that choosen data in the preference dataset is generated and minimize the probability that rejected data is generated. To start DPO training, use the following script. To save VRAM on running time, we calculate the proximate rewards of the chosen and rejected response in advance. Note that if dataset_cache_directory is provided, the approximate rewards will be save to jsonl files named '/path/to/a/filename_without_extension_train.jsonl' and '/path/to/a/filename_without_extension_eval.jsonl'. It is recommended to use caching.
+
+We observed a gradient overflow problem when the batch_size on each device is small (less than 5). It's recommendded to have a batch_size greater than 10 on each device. For hyper-parameter setting, the total batch size, should be around 40 and the learning rate should be 1e-6 according to the original [DPO paper](https://arxiv.org/pdf/2305.18290.pdf).
+```bash
+--nproc_per_node=2 train_prompts_dpo.py \
+    --dataset Anthropic/hh-rlhf \
+    --strategy colossalai_zero2 \
+    --batch_size 20 \
+    --model gpt2 \
+    --max_epoch 4 \
+    --lr 1e-6 \
+    --max_datasets_size 160000 \
+    --save_path '/path/to/checkpoint' \
+    --pretrain '/path/to/pretrain/model' \
+    --accumulation_steps 1 \
+    --dataset_cache_dir '/path/to/a/filename_without_extension' \
+    --grad_checkpoint \
+    --use_wandb
+```
 
 ### Inference Quantization and Serving - After Training
 
