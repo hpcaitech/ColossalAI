@@ -36,6 +36,23 @@ SUPPORTED_PRECISION = ["fp16", "bf16"]
 PRECISION_STR_TO_DTYPE = {"fp16": torch.half, "bf16": torch.bfloat16}
 
 
+def get_param_info(optim: Optimizer):
+    # Get a backup of necessary information of parameters for future use, which includes:
+    # 1. A mapping from integer param_id to param32 shape.
+
+    if optim is None:
+        return {}
+    param_info = {"id2shape": {}}
+    start_index = 0
+    for group in optim.param_groups:
+        for param_id, param in enumerate(group["params"], start_index):
+            original_shape = param.shape if isinstance(param, torch.Tensor) else None
+            param_info["id2shape"][param_id] = original_shape
+
+        start_index += len(group["params"])
+
+    return param_info
+
 class GeminiCheckpointIO(GeneralCheckpointIO):
     def __init__(self) -> None:
         super().__init__()
@@ -363,7 +380,7 @@ class GeminiPlugin(DPPluginBase):
             norm_type=norm_type,
         )
         self.use_tensor_parallel = use_tensor_parallel
-        self.tp_size = tp_size
+        self.tp_size = tp_size if self.use_tensor_parallel else 1
         self.verbose = verbose
 
     def support_no_sync(self) -> bool:
@@ -389,6 +406,7 @@ class GeminiPlugin(DPPluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
+        param_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
             # FIXME(ver217): gemini does not support sync bn
@@ -401,6 +419,7 @@ class GeminiPlugin(DPPluginBase):
 
             # wrap the model with Gemini
             self.dp_group = None
+            self.tp_group = None
             if self.use_tensor_parallel:
                 try:
                     dp_size = dist.get_world_size() // self.tp_size
@@ -410,7 +429,6 @@ class GeminiPlugin(DPPluginBase):
                     shard_config = ShardConfig(tensor_parallel_process_group = self.tp_group, enable_tensor_parallelism=True)
                     shardformer = ShardFormer(shard_config)
                     model, _ = shardformer.optimize(model)
-                    optimizer.param_groups[0]["params"] = model.parameters()
                 except NotImplementedError as e:
                     print(f"Tensor Parallelism policy for {model.__class__} is not implemented yet\n.")
 
@@ -418,7 +436,7 @@ class GeminiPlugin(DPPluginBase):
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer = GeminiOptimizer(
-                optimizer, model, **self.zero_optim_config, **self.optim_kwargs, verbose=self.verbose
+                optimizer, model, **self.zero_optim_config, **self.optim_kwargs, param_info=param_info, tp_group=self.tp_group, verbose=self.verbose
             )
 
         return model, optimizer, criterion, dataloader, lr_scheduler

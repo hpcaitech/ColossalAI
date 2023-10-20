@@ -9,6 +9,7 @@ import torch.distributed as dist
 from packaging.version import Version
 from torch.nn import Parameter
 from torch.optim import Optimizer
+from torch.distributed import ProcessGroup
 
 from colossalai.amp.naive_amp.mixed_precision_mixin import BF16MixedPrecisionMixin, FP16MixedPrecisionMixin
 from colossalai.checkpoint_io.utils import StateDictSharder
@@ -19,6 +20,7 @@ from colossalai.utils import disposable, get_current_device, is_ddp_ignored
 
 from .chunk import Chunk, ChunkManager
 from .gemini_ddp import GeminiDDP
+from colossalai.checkpoint_io.utils import search_tp_partition_dim
 
 __all__ = ["GeminiOptimizer", "GeminiAdamOptimizer"]
 
@@ -93,6 +95,8 @@ class GeminiOptimizer(OptimizerWrapper):
         max_scale: float = 2**32,
         max_norm: float = 0.0,
         norm_type: float = 2.0,
+        param_info: OrderedDict = None,
+        tp_group: ProcessGroup = None,
         verbose: bool = False,
         **defaults: Any,
     ):
@@ -109,6 +113,10 @@ class GeminiOptimizer(OptimizerWrapper):
         self.chunk16_set: Set[Chunk] = set()
         self.clipping_flag = max_norm > 0.0
         self.max_norm = max_norm
+        self.param_info = param_info
+        self.tp_group = tp_group
+        self.tp_size = dist.get_world_size(tp_group) if tp_group is not None else 1
+        self.tp_rank = dist.get_rank(tp_group)
         self.verbose = verbose
         self.param_groups_backup = list()
 
@@ -406,8 +414,8 @@ class GeminiOptimizer(OptimizerWrapper):
         param = self.id_to_real_params[param_id]
         fake_param = self.id_to_fake_params.get(param_id, None)
         chunk = self.chunk_manager.get_chunk(param)
-        process_group = chunk.torch_pg
-        rank = dist.get_rank(process_group)
+        dp_group = chunk.torch_pg
+        rank = dist.get_rank(dp_group)
         master_rank = 0
         collected_states = {}
 
@@ -415,9 +423,9 @@ class GeminiOptimizer(OptimizerWrapper):
         local_state_names = None
         if fake_param is not None:
             local_state_names = list(self.optim.state[fake_param].keys())
-        gathered_state_names = [None for _ in range(dist.get_world_size(process_group))]
+        gathered_state_names = [None for _ in range(dist.get_world_size(dp_group))]
         dist.barrier()
-        dist.all_gather_object(gathered_state_names, local_state_names)
+        dist.all_gather_object(gathered_state_names, local_state_names, dp_group)
         state_names = None
         for names in gathered_state_names:
             if names is not None:
@@ -439,6 +447,13 @@ class GeminiOptimizer(OptimizerWrapper):
         # If the chunk is kept gathered,
         # the parameteres are treated the same as that of those in strict DDP during training.
         # So states can be directly fetched from current device.
+        tp_shard_info = {}
+        current_shape = param.shape
+        original_shape = self.param_info["id2shape"][param_id]
+        partition_dim = search_tp_partition_dim(current_shape, original_shape, self.tp_size)
+        tp_shard_info["shared"] = (current_shape, original_shape, partition_dim)
+
+
         if chunk.keep_gathered:
             assert param_id in self.id_to_fake_params
             if is_collector:
@@ -450,8 +465,14 @@ class GeminiOptimizer(OptimizerWrapper):
                             states["step"], dtype=torch.float32, requires_grad=False
                         ).cpu()
                     else:
-                        state_tensor = states[state_name].detach().clone().to(torch.float32).cpu()
-                        collected_states[state_name] = torch.reshape(state_tensor, param.shape)
+                        state_tensor = states[state_name].detach().clone().to(torch.float32).cuda()
+                        state_tensor = state_tensor.view(current_shape)
+                        if partition_dim is not None:
+                            gather_tensor = [torch.zeros_like(state_tensor) for _ in range(self.tp_size)]
+                            dist.all_gather(gather_tensor, state_tensor, group=self.tp_group)
+                            state_tensor = torch.cat(gather_tensor, dim=partition_dim)
+                    
+                        collected_states[state_name] = torch.reshape(state_tensor, original_shape).cpu()
             return collected_states
 
         # Check whether the param with given id is managed by current process.
@@ -464,16 +485,21 @@ class GeminiOptimizer(OptimizerWrapper):
                     # To keep aligned with pytorch, state 'step' is stored as a pytorch tensor with type float32.
                     collected_states[state_name] = torch.tensor(0.0, dtype=torch.float32, requires_grad=False).cpu()
                 else:
+                    tensor_size = param.numel()
+                    if partition_dim is not None:
+                        tensor_size * self.tp_size
                     collected_states[state_name] = torch.zeros(
-                        param.numel(), dtype=torch.float32, requires_grad=False
+                        tensor_size, dtype=torch.float32, requires_grad=False
                     ).cpu()
 
         # Materials for gathering, including compacted state tensors, and the offset of shard inside each state.
-        compacted_states = self.pack_optimizer_states_to_tensor(param_id, state_names) if own_param else None
+        compacted_states = self.pack_optimizer_states_to_tensor(param_id, state_names, tp_shard_info) if own_param else None
         _, shard_offset, shard_size = self.get_offsets(param_id)
+        if partition_dim is not None:
+            shard_size = shard_size * self.tp_size
 
         # Collectors gather state shards through all_gathering.
-        gathered_state_shards = [None for _ in range(dist.get_world_size(process_group))]
+        gathered_state_shards = [None for _ in range(dist.get_world_size(dp_group))]
 
         dist.barrier()
         dist.all_gather_object(gathered_state_shards, [compacted_states, shard_offset, shard_size])
@@ -493,7 +519,7 @@ class GeminiOptimizer(OptimizerWrapper):
         if is_collector:
             for state_name, state_tensor in collected_states.items():
                 if state_tensor.numel() == param.numel():
-                    collected_states[state_name] = torch.reshape(state_tensor, param.shape)
+                    collected_states[state_name] = torch.reshape(state_tensor, original_shape)
 
         return collected_states
 
@@ -501,6 +527,7 @@ class GeminiOptimizer(OptimizerWrapper):
         self,
         param_id: int,
         state_names: list,
+        tp_shard_info: dict,
         device: torch.device = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ) -> torch.Tensor:
@@ -515,6 +542,11 @@ class GeminiOptimizer(OptimizerWrapper):
         states = self.optim.state[fake_param]
         shard_size = param_range[1] - param_range[0]
         compacted_size = 0
+
+        (current_shape, original_shape, partition_dim) = tp_shard_info["shared"]
+        if partition_dim is not None:
+            shard_size = shard_size * self.tp_size
+
         for name in state_names:
             if name == "step":
                 compacted_size += 1
@@ -533,6 +565,11 @@ class GeminiOptimizer(OptimizerWrapper):
                     compacted_states[next_state_offset] = state_tensor
                 next_state_offset += 1
             else:
+                if partition_dim is not None:
+                    gather_tensor = [torch.zeros(current_shape, dtype=state_tensor.dtype, device=state_tensor.device) for _ in range(self.tp_size)]
+                    dist.all_gather(gather_tensor, state_tensor, group=self.tp_group)
+                    state_tensor = torch.cat(gather_tensor, dim=partition_dim).view(original_shape)
+
                 assert state_tensor.numel() == shard_size
                 compacted_states[next_state_offset : next_state_offset + shard_size].copy_(state_tensor)
                 next_state_offset += shard_size
@@ -545,7 +582,7 @@ class GeminiOptimizer(OptimizerWrapper):
         collected_states: dict,
         state_names: list,
         shard_start: int,
-        shard_size: int,
+        shard_size: int
     ):
         """
         Given a tensor carrying compacted optimizer states,
@@ -644,7 +681,7 @@ class GeminiOptimizer(OptimizerWrapper):
         Load saved optimizer states into parameter with given id.
         """
 
-        def cast(param, state_range, value, key=None):
+        def cast(param, state_range, value, key=None, tp_shard_info=None):
             """
             Make a copy of the needed segment of value and cast it to device of param.
             """
@@ -658,6 +695,13 @@ class GeminiOptimizer(OptimizerWrapper):
                 ret_val = torch.zeros(
                     state_end - state_start, dtype=torch.float32, device=param.device, requires_grad=False
                 )
+                
+                (current_shape, _, partition_dim) = tp_shard_info["shard"]
+                if partition_dim is not None:
+                    slice_size = current_shape[partition_dim]
+                    value = value.split(slice_size, dim=partition_dim)[self.tp_rank]
+
+
                 ret_val.copy_(value.flatten()[state_start:state_end])
             return ret_val
 
@@ -668,8 +712,15 @@ class GeminiOptimizer(OptimizerWrapper):
 
         # Copy states assigned to param (and cast tensors to appropriate types).
         updated_states = dict()
+
+        tp_shard_info = {}
+        current_shape = self.id_to_real_params[param_id].shape
+        original_shape = self.param_info["id2shape"][param_id]
+        partition_dim = search_tp_partition_dim(current_shape, original_shape, self.tp_size)
+        tp_shard_info["shard"] = (current_shape, original_shape, partition_dim)
+        
         for k, v in saved_states.items():
-            updated_states[k] = cast(fake_param, state_range, v, k)
+            updated_states[k] = cast(fake_param, state_range, v, k, tp_shard_info)
             del v  # clean loaded states
         self.optim.state[fake_param].update(updated_states)
 

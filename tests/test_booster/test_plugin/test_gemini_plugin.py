@@ -47,7 +47,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, use_tensor_p
         optimizer.step()
 
     except Exception as e:
-        raise e
+        # raise e
         return repr(e)
 
 
@@ -57,7 +57,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, use_tensor_p
 
 @parameterize("subset", ["torchvision", "transformers", "diffusers"])
 @parameterize("init_method", ["none"])
-@parameterize("use_tensor_parallel", [True])
+@parameterize("use_tensor_parallel", [True, False])
 def check_gemini_plugin(subset: str, init_method: str = "none", use_tensor_parallel: bool = True, early_stop: bool = True):
     """check gemini plugin over model zoo
 
