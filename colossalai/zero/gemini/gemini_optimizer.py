@@ -105,7 +105,7 @@ class GeminiOptimizer(OptimizerWrapper):
         self.gemini_manager = module.gemini_manager
         self.chunk_manager: ChunkManager = self.gemini_manager.chunk_manager
         self.param_to_range: Dict[Parameter, Tuple[int, int]] = dict()
-        self.param_to_chunk32: Dict[Parameter, Chunk] = dict()
+        self.param_to_chunk16: Dict[Parameter, Chunk] = dict()
         self.chunk16_set: Set[Chunk] = set()
         self.clipping_flag = max_norm > 0.0
         self.max_norm = max_norm
@@ -130,7 +130,7 @@ class GeminiOptimizer(OptimizerWrapper):
             else:
                 ddp_param_list.append(param)
 
-        for p, fp32_p in zip(ddp_param_list, module.fp32_params):
+        for p in ddp_param_list:
             chunk_16 = self.chunk_manager.get_chunk(p)
             if chunk_16 not in self.chunk16_set:
                 chunk_16.l2_norm_flag = self.clipping_flag
@@ -174,13 +174,15 @@ class GeminiOptimizer(OptimizerWrapper):
     def _set_grad_ptr(self):
         for group in self.param_groups:
             for fake_param in group["params"]:
-                chunk32 = self.param_to_chunk32[fake_param]
+                chunk16 = self.param_to_chunk16[fake_param]
                 begin, end = self.param_to_range[fake_param]
-                chunk16 = chunk32.paired_chunk
 
-                fake_param.data = chunk16.payload[begin:end]
+                grad_chunk16 = chunk16 if self.module.reuse_fp16_chunk else chunk16.grad_chunk
+                fake_param.data = grad_chunk16.payload[begin:end]
                 fake_param.grad = fake_param.data
-                fake_param.data = chunk32.payload[begin:end]
+
+                to_update_chunk = chunk16.paired_chunk if self.module.master_weights else chunk16
+                fake_param.data = to_update_chunk.payload[begin:end]
 
     def _update_fp16_params(self):
         none_tensor = torch.empty([0])
@@ -194,23 +196,25 @@ class GeminiOptimizer(OptimizerWrapper):
 
     def _clear_global_norm(self) -> None:
         for c16 in self.chunk16_set:
-            c16.l2_norm = None
+            grad_chunk = c16 if self.module.reuse_fp16_chunk else c16.grad_chunk
+            grad_chunk.l2_norm = None
 
     def _calc_global_norm(self) -> float:
         norm_sqr: float = 0.0
         group_to_norm = dict()
         for c16 in self.chunk16_set:
-            assert c16.l2_norm is not None
+            grad_chunk = c16 if self.module.reuse_fp16_chunk else c16.grad_chunk
+            assert grad_chunk.l2_norm is not None
 
-            if c16.is_gathered:
-                norm_sqr += c16.l2_norm
+            if grad_chunk.is_gathered:
+                norm_sqr += grad_chunk.l2_norm
             else:
                 # this chunk is sharded, use communication to collect total norm
-                if c16.torch_pg not in group_to_norm:
-                    group_to_norm[c16.torch_pg] = 0.0
-                group_to_norm[c16.torch_pg] += c16.l2_norm
+                if grad_chunk.torch_pg not in group_to_norm:
+                    group_to_norm[grad_chunk.torch_pg] = 0.0
+                group_to_norm[grad_chunk.torch_pg] += grad_chunk.l2_norm
 
-            c16.l2_norm = None  # clear l2 norm
+            grad_chunk.l2_norm = None  # clear l2 norm
 
         comm_buffer = torch.zeros(1, dtype=torch.float, device=get_current_device())
         for group, part_norm in group_to_norm.items():
@@ -237,7 +241,8 @@ class GeminiOptimizer(OptimizerWrapper):
         return self.optim.zero_grad(set_to_none=True)
 
     def step(self, *args, **kwargs):
-        self._maybe_move_fp32_params()
+        if self.module.master_weights:
+            self._maybe_move_fp32_params()
         self._set_grad_ptr()
 
         if self.mix_precision_mixin.should_skip_step():
@@ -245,7 +250,8 @@ class GeminiOptimizer(OptimizerWrapper):
                 self._logger.info(f"Found overflow. Skip step")
             self._clear_global_norm()  # clear recorded norm
             self.zero_grad()  # reset all gradients
-            self._update_fp16_params()
+            if self.module.reuse_fp16_chunk:
+                self._update_fp16_params()
             return
 
         # get combined scale. combined scale = loss scale * clipping norm
@@ -255,7 +261,9 @@ class GeminiOptimizer(OptimizerWrapper):
         ret = self.optim.step(div_scale=combined_scale, *args, **kwargs)
         self._register_states()
         self.zero_grad()
-        self._update_fp16_params()
+        if self.module.master_weights:
+            self._update_fp16_params()
+        self.module.accumulating_grads = False
         return ret
 
     def clip_grad_norm(self, model: torch.nn.Module, max_norm: float, norm_type: float = 2.0):
@@ -282,8 +290,8 @@ class GeminiOptimizer(OptimizerWrapper):
 
             for group in self.param_groups:
                 for fake_param in group["params"]:
-                    chunk32 = self.param_to_chunk32[fake_param]
-                    chunk16 = chunk32.paired_chunk
+                    chunk16 = self.param_to_chunk16[fake_param]
+                    chunk32 = chunk16.paired_chunk
 
                     if chunk32.device_type == "cuda":
                         continue
@@ -297,7 +305,8 @@ class GeminiOptimizer(OptimizerWrapper):
 
             for group in self.param_groups:
                 for fake_param in group["params"]:
-                    chunk32 = self.param_to_chunk32[fake_param]
+                    chunk16 = self.param_to_chunk16[fake_param]
+                    chunk32 = chunk16.paired_chunk
                     if chunk32.device_type == "cuda":
                         state = self.optim.state[fake_param]
                         for k, v in state.items():
@@ -341,7 +350,7 @@ class GeminiOptimizer(OptimizerWrapper):
                     continue
                 grad_device = self.module.grads_device[param]
                 fake_param = torch.nn.Parameter(torch.empty([0], device=grad_device))
-                self.param_to_chunk32[fake_param] = chunk16.paired_chunk
+                self.param_to_chunk16[fake_param] = chunk16
                 self.param_to_range[fake_param] = range_pair
                 self.id_to_fake_params[param_id] = fake_param
                 fake_params_list.append(fake_param)
@@ -366,7 +375,7 @@ class GeminiOptimizer(OptimizerWrapper):
         if param_id not in self.id_to_fake_params:
             return -1, -1, -1
         fake_param = self.id_to_fake_params[param_id]
-        chunk = self.param_to_chunk32[fake_param].paired_chunk
+        chunk = self.param_to_chunk16[fake_param]
         param = self.id_to_real_params[param_id]
         param_info = chunk.tensors_info[param]
 

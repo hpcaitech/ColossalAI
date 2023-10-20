@@ -74,9 +74,14 @@ class TPInferEngine:
             model.config.num_hidden_layers if hasattr(model.config, "num_hidden_layers") else model.config.num_layers
         )
         self.layer_num = num_hidden_layers
-        self.multi_query_group_num = (
-            model.config.multi_query_group_num if hasattr(model.config, "multi_query_group_num") else 0
-        )
+
+        self.multi_query_group_num = 0
+
+        if hasattr(model.config, "multi_query_group_num"):
+            self.multi_query_group_num = model.config.multi_query_group_num
+
+        if hasattr(model.config, "num_key_value_heads"):
+            self.multi_query_group_num = model.config.num_key_value_heads
 
         self.tp_size = -1  # to be set with given shard config in self.prepare_shard_config
         self.cache_manager = None
@@ -99,6 +104,7 @@ class TPInferEngine:
         assert self.tp_size >= 1, "TP size not initialized without providing a valid ShardConfig"
         assert self.head_num % self.tp_size == 0, f"Cannot shard {self.head_num} heads with tp size {self.tp_size}"
         self.head_num //= self.tp_size  # update sharded number of heads
+
         if self.multi_query_group_num:
             # NOTE the logic of MQA tensor parallelism should be specified.
             assert (
@@ -400,7 +406,7 @@ class TPInferEngine:
             model = self.model.model
         elif isinstance(model, BloomForCausalLM):
             model = self.model.transformer
-        
+
         setattr(model, "infer_state", infer_state)
         output = self.model.forward(input_ids=input_)
         logits = output.logits
@@ -440,7 +446,7 @@ class TPInferEngine:
 
         batch.input_ids = torch.tensor(new_input_ids, dtype=torch.long).cuda()
         batch.nopad_total_token_num += len(batch)
-        batch.nopad_max_len_in_batch += 1
+        batch.nopad_max_len_in_batch += 1  # NOTE: we may repalce this
         self.cache[batch.batch_id] = batch
         return output_dict
 

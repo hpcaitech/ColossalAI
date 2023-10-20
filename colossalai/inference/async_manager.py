@@ -144,7 +144,6 @@ def start_dynamic_batching(args, tp_engine, waiting_req_list):
         )
 
     except Exception:
-        batch_manager.clean_up()
-        raise
+        raise Exception
 
     return batch_manager

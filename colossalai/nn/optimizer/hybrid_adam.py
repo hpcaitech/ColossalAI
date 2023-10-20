@@ -108,9 +108,6 @@ class HybridAdam(CPUAdam):
                 target_device = p.device
                 if len(state) == 0:
                     state["step"] = 0
-
-                    # FIXME(ver217): CPU adam kernel only supports fp32 states now
-                    assert p.dtype is torch.float, "HybridAdam only support fp32 parameters"
                     # gradient momentums
                     state["exp_avg"] = torch.zeros_like(p, device=target_device)
                     # gradient variances

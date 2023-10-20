@@ -5,7 +5,7 @@ import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
-from colossalai.utils import get_current_device
+from colossalai.utils import free_storage, get_current_device
 
 from .chunk import Chunk, ChunkFullError, TensorState
 
@@ -245,3 +245,47 @@ class ChunkManager:
         chunk.release_chunk()
         self.accessed_chunks.remove(chunk)
         self.accessed_mem -= chunk.chunk_mem
+
+    def init_grad_chunk(self, chunk: Chunk) -> Chunk:
+        if chunk.grad_chunk is not None:
+            self.__sub_memory_usage(chunk.grad_chunk.memory_usage)
+        grad_chunk = chunk.init_grad_chunk()
+        self.__add_memory_usage(grad_chunk.memory_usage)
+        if grad_chunk not in self.accessed_chunks:
+            self.accessed_chunks.add(grad_chunk)
+            self.accessed_mem += grad_chunk.chunk_mem
+        return grad_chunk
+
+    def rearrange_accumulated_grad_chunk(self, chunk: Chunk) -> Chunk:
+        """Rearrange gradients accumulated in chunk.grad_chunk, and getP prepared for gradient reduction."""
+
+        assert chunk.grad_chunk is not None
+
+        # Make a backup for gradient accumulated before.
+        # Here backup gradients should be multiplied, since it will be divided after gradient reduction.
+        if chunk.grad_chunk.is_gathered:
+            accumulated_grad = chunk.grad_chunk.cuda_global_chunk.clone().detach().mul_(chunk.pg_size)
+            accumulated_grad_gathered = True
+        else:
+            if chunk.grad_chunk.cuda_shard is not None:
+                accumulated_grad = chunk.grad_chunk.cuda_shard.clone().detach().mul_(chunk.pg_size)
+            else:
+                accumulated_grad = (
+                    chunk.grad_chunk.cpu_shard.to(get_current_device()).clone().detach().mul_(chunk.pg_size)
+                )
+            accumulated_grad_gathered = False
+
+        # Reset grad_chunk, and chunk.grad_chunk will be accessed.
+        grad_chunk = self.init_grad_chunk(chunk)
+        grad_chunk.cuda_global_chunk.zero_()
+
+        # Add backup gradients to grad_chunk.
+        if accumulated_grad_gathered:
+            grad_chunk.cuda_global_chunk.add_(accumulated_grad)
+        else:
+            grad_chunk.cuda_global_chunk[grad_chunk.shard_begin : grad_chunk.shard_end].add_(accumulated_grad)
+
+        # Release accumulated_grad
+        free_storage(accumulated_grad)
+
+        return grad_chunk

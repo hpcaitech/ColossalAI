@@ -12,6 +12,7 @@ if HAS_TRITON:
     from .qkv_matmul_kernel import qkv_gemm_4d_kernel
     from .softmax import softmax_kernel
 
+    # adpeted from https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/ops/transformer/inference/triton/triton_matmul_kernel.py#L312
     def self_attention_forward_without_fusion(
         q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, input_mask: torch.Tensor, scale: float
     ):
@@ -141,6 +142,7 @@ if HAS_TRITON:
         )
         return output.view(batches, -1, d_model)
 
+    # modified from https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/ops/transformer/inference/triton/attention.py#L212
     def self_attention_compute_using_triton(
         qkv, input_mask, layer_past, alibi, scale, head_size, triangular=False, use_flash=False
     ):

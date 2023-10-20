@@ -1,4 +1,10 @@
-from torch.optim.lr_scheduler import _LRScheduler
+import torch
+from packaging.version import Version
+
+if Version(torch.__version__) >= Version("2.0.0"):
+    from torch.optim.lr_scheduler import LRScheduler as _LRScheduler
+else:
+    from torch.optim.lr_scheduler import _LRScheduler
 
 
 class _enable_get_lr_call:

@@ -160,6 +160,8 @@ class Chunk:
         self.l2_norm_flag = False
         self.l2_norm = None
 
+        self.grad_chunk = None
+
     @property
     def memory_usage(self) -> Dict[str, int]:
         cuda_memory = 0
@@ -414,7 +416,9 @@ class Chunk:
             return
         self.__update_one_tensor_info(self.tensors_info[tensor], tensor_state)
 
-    def copy_tensor_to_chunk_slice(self, tensor: torch.Tensor, data_slice: torch.Tensor) -> None:
+    def copy_tensor_to_chunk_slice(
+        self, tensor: torch.Tensor, data_slice: torch.Tensor, update_ptr: bool = True
+    ) -> None:
         """
         Copy data slice to the memory space indexed by the input tensor in the chunk.
 
@@ -427,7 +431,23 @@ class Chunk:
 
         tensor_info = self.tensors_info[tensor]
         self.cuda_global_chunk[tensor_info.offset : tensor_info.end].copy_(data_slice.data.flatten())
-        tensor.data = self.cuda_global_chunk[tensor_info.offset : tensor_info.end].view(tensor.shape)
+        if update_ptr:
+            tensor.data = self.cuda_global_chunk[tensor_info.offset : tensor_info.end].view(tensor.shape)
+
+    def add_tensor_to_chunk_slice(self, tensor: torch.Tensor, data_slice: torch.Tensor) -> None:
+        """
+        Add data slice to the memory space indexed by the input tensor in the chunk.
+        Only used when accumulating gradient chunks.
+
+        Args:
+            tensor (torch.Tensor): the tensor used to retrieve meta information
+            data_slice (torch.Tensor): the tensor to be added to the chunk
+        """
+        # sanity check
+        assert self.is_gathered
+
+        tensor_info = self.tensors_info[tensor]
+        self.cuda_global_chunk[tensor_info.offset : tensor_info.end].add_(data_slice.data.flatten())
 
     def get_valid_length(self) -> int:
         """Get the valid length of the chunk's payload."""
@@ -577,3 +597,46 @@ class Chunk:
                 output.append("\t\t# of {}: {}\n".format(st, self.tensor_state_cnter[st]))
 
         return "".join(output)
+
+    def init_grad_chunk(self) -> "Chunk":
+        """Init grad chunk. This should be called in grad handler.
+
+        Returns:
+            Chunk: Grad chunk
+        """
+        if self.grad_chunk is None:
+            # grad chunk is not initialized
+            grad_chunk = Chunk(
+                chunk_size=self.chunk_size,
+                process_group=self.torch_pg,
+                dtype=self.dtype,
+                keep_gathered=self.keep_gathered,
+                pin_memory=self.pin_memory,
+            )
+            grad_chunk.num_tensors = self.num_tensors
+            grad_chunk.utilized_size = self.utilized_size
+            grad_chunk.tensor_state_cnter[TensorState.HOLD] = self.num_tensors
+            for tensor, state in self.tensors_info.items():
+                grad_chunk.tensors_info[tensor] = TensorInfo(TensorState.HOLD, state.offset, state.end)
+
+            grad_chunk.valid_end = self.valid_end
+
+            if grad_chunk.chunk_temp.device.type == "cpu":
+                grad_chunk.cuda_global_chunk = grad_chunk.chunk_temp.to(get_current_device())
+            else:
+                grad_chunk.cuda_global_chunk = grad_chunk.chunk_temp
+            grad_chunk.chunk_temp = None
+
+            if grad_chunk.pin_memory:
+                grad_chunk.cpu_shard = torch.empty(
+                    grad_chunk.shard_size, dtype=grad_chunk.dtype, pin_memory=grad_chunk.pin_memory
+                )
+
+            self.grad_chunk = grad_chunk
+        else:
+            # grad chunk is initialized, just reallocate cuda global chunk
+            self.grad_chunk.cuda_shard = None
+            self.grad_chunk.is_gathered = True
+            alloc_storage(self.grad_chunk.cuda_global_chunk)
+
+        return self.grad_chunk

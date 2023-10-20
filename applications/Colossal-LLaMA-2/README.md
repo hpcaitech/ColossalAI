@@ -25,7 +25,9 @@
 * [2023/09] [One Half-Day of Training Using a Few Hundred Dollars Yields Similar Results to Mainstream Large Models, Open-Source and Commercial-Free Domain-Specific Llm Solution](https://www.hpc-ai.tech/blog/one-half-day-of-training-using-a-few-hundred-dollars-yields-similar-results-to-mainstream-large-models-open-source-and-commercial-free-domain-specific-llm-solution)
 [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Colossal-LLaMA-2)
 [[blog]](https://www.hpc-ai.tech/blog/one-half-day-of-training-using-a-few-hundred-dollars-yields-similar-results-to-mainstream-large-models-open-source-and-commercial-free-domain-specific-llm-solution)
-[[model weights]](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base)
+[[HuggingFace model weights]](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base)
+[[Modelscope model weights]](https://www.modelscope.cn/models/colossalai/Colossal-LLaMA-2-7b-base/summary)
+
 
 ## Colossal-LLaMA-2-7B
 The [Colossal-AI](https://github.com/hpcaitech/ColossalAI) team has introduced the open-source model **Colossal-LLaMA-2-7B-base**. This model, a derivation of LLaMA-2, has undergone continual pre-training involving approximately 8.5 billion tokens over a duration of 15 hours with 64 A800 GPUs. At a cost of **less than $1,000**, you can achieve results **similar to those that cost millions of dollars to pretrain from scratch**. It is licensed under the LLaMA-2 license and [Apache 2.0 License](https://github.com/hpcaitech/ColossalAI/blob/main/LICENSE) **without any additional commercial use restrictions**. This solution can also be used to build models of specific domain knowledge or tasks.
@@ -122,7 +124,23 @@ pred = model.generate(**inputs,
 print(tokenizer.decode(pred.cpu()[0], skip_special_tokens=True)[len(input):])
 ```
 
-You can also download model weights from [🤗HuggingFace](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base).
+You can also load our model using modelscope, use the following code:
+```Python
+from modelscope import AutoModelForCausalLM, AutoTokenizer, snapshot_download
+model_dir = snapshot_download('colossalai/Colossal-LLaMA-2-7b-base', revision='v1.0.1')
+tokenizer = AutoTokenizer.from_pretrained(model_dir, device_map="auto", trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="auto", trust_remote_code=True).eval()
+generation_kwargs = {"max_new_tokens": 256, 
+                     "top_p": 0.95, 
+                     "temperature": 0.3
+                    }
+input = '离离原上草，'
+inputs = tokenizer(input, return_token_type_ids=False, return_tensors='pt')
+inputs = inputs.to('cuda:0')
+output = model.generate(**inputs, **generation_kwargs)
+print(tokenizer.decode(output.cpu()[0], skip_special_tokens=True)[len(input):])
+```
+You can download model weights from [🤗HuggingFace](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base) or [👾Modelscope](https://modelscope.cn/models/colossalai/Colossal-LLaMA-2-7b-base/summary).
 
 ## Usage
 ### Install

@@ -241,6 +241,7 @@ class BloomInferenceForwards:
         #       and update these information in engine.generate after model foward called
         infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.seq_len += 1
+        infer_state.max_len_in_batch += 1
 
         if not return_dict:
             return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None)

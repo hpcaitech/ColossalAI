@@ -5,7 +5,8 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
-from colossalai.kernel.triton import llama_context_attn_fwd, rotary_embedding_fwd, token_attention_fwd
+from colossalai.kernel.triton import llama_context_attn_fwd, token_attention_fwd
+from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
 
 from ._utils import copy_kv_to_mem_cache
 
@@ -22,6 +23,17 @@ except:
         "if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch"
     )
     HAS_VLLM_KERNERL = False
+
+try:
+    from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import (
+        context_attention_fwd as lightllm_llama2_context_attention_fwd,
+    )
+    from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd as llama_rotary_embedding_fwd
+
+    HAS_LIGHTLLM_KERNEL = True
+except:
+    print("please install lightllm from source to run inference: https://github.com/ModelTC/lightllm")
+    HAS_LIGHTLLM_KERNEL = False
 
 
 def rotate_half(x):
@@ -82,7 +94,7 @@ class LlamaInferenceForwards:
             past_key_values_length = 0
         else:
             past_key_values_length = infer_state.max_len_in_batch - 1
-            
+
         # NOTE: differentiate with prefill stage
         #       block_loc require different value-assigning method for two different stage
         if use_cache and seq_length != 1:
@@ -110,7 +122,7 @@ class LlamaInferenceForwards:
                 infer_state.decode_mem_index = alloc_mem
                 # infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
                 # infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
-                infer_state.block_loc[:, infer_state.max_len_in_batch - 1] = infer_state.decode_mem_index
+                infer_state.block_loc[:, se - 1] = infer_state.decode_mem_index
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -134,6 +146,7 @@ class LlamaInferenceForwards:
             seq_len = infer_state.seq_len
             infer_state.position_cos = torch.index_select(self._cos_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
             infer_state.position_sin = torch.index_select(self._sin_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
+            infer_state.other_kv_index = infer_state.block_loc[0, infer_state.max_len_in_batch - 1].item()
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
@@ -181,6 +194,7 @@ class LlamaInferenceForwards:
         # infer_state.block_loc[:, infer_state.max_len_in_batch-1] = infer_state.total_token_num + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.start_loc += torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.seq_len += 1
+        infer_state.max_len_in_batch += 1
 
         if not return_dict:
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
@@ -255,8 +269,8 @@ class LlamaInferenceForwards:
         # key_states_transposed [bs, num_heads, seq_len, head_dim/embed_size_per_head]
 
         query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
-        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
-        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
+        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim)
+        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim)
 
         # NOTE might want to revise
         #   need some way to record the length of past key values cache
@@ -264,12 +278,12 @@ class LlamaInferenceForwards:
 
         cos, sin = infer_state.position_cos, infer_state.position_sin
 
-        rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
-        rotary_embedding_fwd(key_states.view(-1, self.num_heads, self.head_dim), cos, sin)
+        llama_rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
+        llama_rotary_embedding_fwd(key_states.view(-1, self.num_key_value_heads, self.head_dim), cos, sin)
 
         query_states = query_states.reshape(-1, self.num_heads, self.head_dim)
-        key_states = key_states.reshape(-1, self.num_heads, self.head_dim)
-        value_states = value_states.reshape(-1, self.num_heads, self.head_dim)
+        key_states = key_states.reshape(-1, self.num_key_value_heads, self.head_dim)
+        value_states = value_states.reshape(-1, self.num_key_value_heads, self.head_dim)
 
         if infer_state.is_context_stage:
             # first token generation
@@ -282,15 +296,27 @@ class LlamaInferenceForwards:
                 infer_state.cache_manager,
             )
             attn_output = torch.empty_like(query_states)
-            llama_context_attn_fwd(
-                query_states,
-                key_states,
-                value_states,
-                attn_output,
-                infer_state.start_loc,
-                infer_state.seq_len,
-                infer_state.max_len_in_batch,
-            )
+
+            if self.num_key_value_groups == 1:
+                llama_context_attn_fwd(
+                    query_states,
+                    key_states,
+                    value_states,
+                    attn_output,
+                    infer_state.start_loc,
+                    infer_state.seq_len,
+                    infer_state.max_len_in_batch,
+                )
+            else:
+                lightllm_llama2_context_attention_fwd(
+                    query_states,
+                    key_states,
+                    value_states,
+                    attn_output,
+                    infer_state.start_loc,
+                    infer_state.seq_len,
+                    infer_state.max_len_in_batch,
+                )
         else:
             if infer_state.decode_is_contiguous:
                 # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
@@ -318,16 +344,29 @@ class LlamaInferenceForwards:
             # (batch_size, seqlen, nheads, headdim)
             attn_output = torch.empty_like(query_states)
 
-            token_attention_fwd(
-                query_states,
-                infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
-                infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
-                attn_output,
-                infer_state.block_loc,
-                infer_state.start_loc,
-                infer_state.seq_len,
-                infer_state.max_len_in_batch,
-            )
+            if self.num_key_value_groups == 1:
+                token_attention_fwd(
+                    query_states,
+                    infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+                    infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+                    attn_output,
+                    infer_state.block_loc,
+                    infer_state.start_loc,
+                    infer_state.seq_len,
+                    infer_state.max_len_in_batch,
+                )
+            else:
+                Llama2TokenAttentionForwards.token_attn(
+                    query_states,
+                    infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+                    infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+                    attn_output,
+                    infer_state.block_loc,
+                    infer_state.start_loc,
+                    infer_state.seq_len,
+                    infer_state.max_len_in_batch,
+                    infer_state.other_kv_index,
+                )
 
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
