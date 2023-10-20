@@ -9,13 +9,12 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.legacy.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import DummyDataloader, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.chunk import search_chunk_configuration
-from tests.components_to_test import run_fwd_bwd
-from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.kit.model_zoo import model_zoo, run_fwd, run_fwd_bwd
 
 PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.0},  # zero2
@@ -53,12 +52,11 @@ def single_chunk_init(model: torch.nn.Module, placement_config: dict):
 
 
 @parameterize("placement_config", PLACEMENT_CONFIGS)
-@parameterize("model_name", ["gpt2"])
+@parameterize("model_name", ["transformers_gpt_lm"])
 @parameterize("model_init_func", [single_chunk_init, multi_chunk_init])
 def exam_inference(placement_config: dict, model_name: str, model_init_func: Callable):
     set_seed(19360226)
-    get_components_func = non_distributed_component_funcs.get_callable(model_name)
-    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
+    model_builder, data_gen_fn, output_transform_fn, *_ = next(iter(model_zoo.get_sub_registry(model_name).values()))
 
     torch_model = model_builder().cuda()
     amp_config = dict(opt_level="O2", keep_batchnorm_fp32=False, loss_scale=128)
@@ -79,29 +77,27 @@ def exam_inference(placement_config: dict, model_name: str, model_init_func: Cal
     torch_model.eval()
 
     set_seed(dist.get_rank() * 3 + 128)
-    train_dataloader = iter(train_dataloader)
+    train_dataloader = iter(DummyDataloader(data_gen_fn))
 
     def train_iter():
-        input_ids, label = next(train_dataloader)
-        input_ids, label = input_ids.cuda(), label.cuda()
+        data = next(train_dataloader)
+        data = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
         zero_optim.zero_grad()
         torch_optim.zero_grad()
-        torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
-        loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
-        assert_close(torch_loss, loss, rtol=1e-5, atol=1e-5)
+        torch_loss = run_fwd_bwd(torch_model, data, output_transform_fn, optimizer=torch_optim)
+        loss = run_fwd_bwd(model, data, output_transform_fn, optimizer=zero_optim)
+        assert_close(torch_loss.float(), loss.float(), rtol=1e-5, atol=1e-5)
         zero_optim.step()
         torch_optim.step()
         check_param(model, torch_model)
 
     def inference_iter():
-        input_ids, label = next(train_dataloader)
-        input_ids, label = input_ids.cuda(), label.cuda()
+        data = next(train_dataloader)
+        data = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
         with torch.no_grad():
-            torch_output = torch_model(input_ids)
-            torch_loss = criterion(torch_output.float(), label)
-            zero_output = model(input_ids)
-            zero_loss = criterion(zero_output.float(), label)
-        assert_close(torch_loss, zero_loss)
+            torch_loss = run_fwd(torch_model, data, output_transform_fn)
+            zero_loss = run_fwd(model, data, output_transform_fn)
+        assert_close(torch_loss.float(), zero_loss.float(), rtol=1e-5, atol=1e-5)
 
     train_iter()
     inference_iter()

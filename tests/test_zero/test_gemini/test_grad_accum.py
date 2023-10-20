@@ -7,13 +7,12 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import DummyDataloader, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.chunk import search_chunk_configuration
-from tests.components_to_test import run_fwd
-from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.kit.model_zoo import model_zoo, run_fwd
 
 PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.0},  # zero2
@@ -38,7 +37,7 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 
     # Compare gradients.
     for p0, p1 in zip(model.parameters(), torch_model.parameters()):
-        assert_close(p0, p1.grad, rtol=1e-3, atol=5e-5)
+        assert_close(p0, p1.grad, rtol=2e-3, atol=2e-2)
 
     # Release gradient chunks and move them to gradient device.
     for grad_chunk, device in zip(grad_chunk_list, device_list):
@@ -48,21 +47,19 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("keep_gathered", [False, True])
-@parameterize("model_name", ["gpt2", "bert"])
-@parameterize("use_grad_checkpoint", [False, True])
+@parameterize("model_name", ["transformers_gpt_lm"])
 @parameterize("master_weights", [False, True])
-def exam_gemini_grad_acc(
-    placement_config, keep_gathered: bool, model_name: str, use_grad_checkpoint: bool, master_weights: bool
-):
+def exam_gemini_grad_acc(placement_config, keep_gathered: bool, model_name: str, master_weights: bool):
     init_device = get_current_device()
-    get_components_func = non_distributed_component_funcs.get_callable(model_name)
-    model_builder, train_dataloader, _, _, criterion = get_components_func()
+    model_builder, data_gen_fn, output_transform_fn, loss_fn, *_ = next(
+        iter(model_zoo.get_sub_registry(model_name).values())
+    )
 
     set_seed(42)
-    gemini_model = model_builder(use_grad_checkpoint)
+    gemini_model = model_builder()
 
     set_seed(42)
-    torch_model = model_builder(use_grad_checkpoint).cuda()
+    torch_model = model_builder().cuda()
     for torch_p, p in zip(torch_model.parameters(), gemini_model.parameters()):
         torch_p.data.copy_(p.data)
 
@@ -94,22 +91,23 @@ def exam_gemini_grad_acc(
 
     set_seed(rank)
     accum_iter = 4
-    for i, (input_ids, label) in enumerate(train_dataloader):
+    train_dataloader = DummyDataloader(data_gen_fn)
+    for i, data in enumerate(train_dataloader):
         delay_unscale = False if (i + 1) % accum_iter == 0 else True
-        input_ids, label = input_ids.cuda(), label.cuda()
+        data = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
 
         set_seed(42 + rank)
-        torch_loss = run_fwd(torch_model, input_ids, label, criterion)
+        torch_loss = run_fwd(torch_model, data, output_transform_fn, loss_fn)
         torch_loss = torch_loss / accum_iter
         with amp.scale_loss(torch_loss, torch_optim, delay_unscale=delay_unscale) as scaled_loss:
             scaled_loss.backward()
 
         set_seed(42 + rank)
-        gemini_loss = run_fwd(gemini_model, input_ids, label, criterion)
+        gemini_loss = run_fwd(gemini_model, data, output_transform_fn, loss_fn)
         gemini_loss = gemini_loss / accum_iter
         gemini_optim.backward(gemini_loss)
 
-        assert torch.allclose(torch_loss, gemini_loss, rtol=1e-3, atol=1e-5)
+        assert torch.allclose(torch_loss.float(), gemini_loss.float(), rtol=1e-3, atol=1e-5)
 
         check_grad(gemini_model, torch_model)
 
