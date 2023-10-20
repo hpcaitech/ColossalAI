@@ -14,30 +14,29 @@ class MoeManager(metaclass=SingletonMeta):
     """
 
     def __init__(self):
+        self.parallel = None
+        self.seed = None
+        self.mode = None
+        self.use_ep_inside = None
         self.world_size = None
+        self._parallel_info_dict = dict()
+
+        # router
+        self.router_aux_loss = []
+        self.router_z_loss = []
+
+        # fixed mode
+        self.pp_size = None
+        self.dp_size = None
+        self.ep_size = None
+
+        # dynamic mode
         # Users may want to set maximum expert parallel size smaller than the world size
         # since very low bandwidth across nodes may constrain the performance of MoE
         # When we have a maximum expert parallel size, we have a minimum data parallel size naturally
         self.max_ep_size = None
-        self.min_dp_size = None
-        self.router_aux_loss = []
-        self.router_z_loss = []
-        self.parallel = None
-        self.seed = None
-        self.mode = None
-        self.use_kernel_optim = False
-        self.use_ep_inside = None
-        self.pp_size = None
-
-        # load balance param
-        self.load_balance = None
-        self.tolerance = None
-        self.beam_width = None
-        self.group_swap_factor = None
-        self.overlap_alltoall = None
 
         self.has_setup = False
-        self._parallel_info_dict = dict()
 
     @property
     def parallel_info_dict(self):
@@ -50,7 +49,6 @@ class MoeManager(metaclass=SingletonMeta):
     def setup(
         self,
         seed: int,
-        use_kernel_optim: bool = False,
         parallel: str = None,
         mode: str = "dynamic",
         max_ep_size: int = 8,
@@ -58,11 +56,6 @@ class MoeManager(metaclass=SingletonMeta):
         fixed_ep_size: int = 0,
         fixed_pp_size: int = 0,
         use_ep_inside: bool = True,
-        enable_load_balance: bool = False,
-        tolerance: float = 0.1,
-        beam_width: int = 8,
-        group_swap_factor: float = 0.4,
-        overlap_alltoall: bool = False,
     ) -> None:
         """
         Setup MoE distributed context.
@@ -80,38 +73,28 @@ class MoeManager(metaclass=SingletonMeta):
             fixed_pp_size (int, optional): Fixed pp size in fixed mode. Defaults to 0.
             use_ep_inside (bool, optional): Use ep inside dp if True, dp inside ep if Fasle. Defaults to True.
         """
-        assert not self.is_initialized, "MoE distributed context shouldn't be set up again"
+        assert (not self.is_initialized), "MoE distributed context shouldn't be set up again"
         assert torch.cuda.is_available(), "MoE requires to enable CUDA first"
 
-        self.world_size = dist.get_world_size()
         self.seed = seed + dist.get_rank()
         self.parallel = parallel
         self.use_ep_inside = use_ep_inside
+        self.world_size = dist.get_world_size()
 
         # init by mode
         self.mode = mode
         assert self.mode in ["fixed", "dynamic"], "mode should be fixed or dynamic"
         if self.mode == "dynamic":
-            self.max_ep_size = min(max_ep_size, dist.get_world_size())
-            self.min_dp_size = self.world_size // self.max_ep_size
+            self.max_ep_size = min(max_ep_size, self.world_size)
         else:
-            assert fixed_dp_size > 0 and fixed_ep_size > 0 and fixed_pp_size > 0, "dp_size, ep_size and pp_size should be greater than 0"
-            assert isinstance(fixed_dp_size, int) and isinstance(fixed_ep_size, int) and isinstance(
-                fixed_pp_size, int), "dp_size, ep_size and pp_size should be int"
+            assert (fixed_dp_size > 0 and fixed_ep_size > 0
+                    and fixed_pp_size > 0), "dp_size, ep_size and pp_size should be greater than 0"
+            assert (isinstance(fixed_dp_size, int) and isinstance(fixed_ep_size, int)
+                    and isinstance(fixed_pp_size, int)), "dp_size, ep_size and pp_size should be int"
             self.ep_size = fixed_ep_size
             self.dp_size = fixed_dp_size
             self.pp_size = fixed_pp_size
 
-        # Enabling kernel optimization may raise error in some cases
-        # Users can close kernel optimization manually
-        self.use_kernel_optim = use_kernel_optim
-
-        # update load balance
-        self.load_balance = enable_load_balance
-        self.tolerance = tolerance
-        self.beam_width = beam_width
-        self.group_swap_factor = group_swap_factor
-        self.overlap_alltoall = overlap_alltoall
         self.has_setup = True
 
     def get_info(self, num_experts: int, use_tp: bool = False) -> Tuple[int, MoeParallelInfo]:
@@ -129,21 +112,12 @@ class MoeManager(metaclass=SingletonMeta):
         """
 
         if self.mode == "dynamic":
-            gt_flag = num_experts % self.max_ep_size == 0    # check whether num_experts is greater
-            lt_flag = self.max_ep_size % num_experts == 0    # check whether num_experts is less
-
-            assert gt_flag or lt_flag, "Automatic experts placement dose not not support expert number" \
-                                    " is not a multiple of ep size or vice versa."
-
-            # If the number of experts is greater than maximum expert parallel size. a.k.a ep_size,
-            # there are multiple experts in each GPU and each GPU has different experts
-            # So it's data parallel size is 1
-            # Otherwise, there is only one expert in each GPU
-            # The data parallel size should be calculated
-            dp_size = 1 if gt_flag else self.max_ep_size // num_experts
-            ep_size = self.max_ep_size // dp_size
-            # Don't forget to multiply minimum data parallel size
-            dp_size *= self.min_dp_size
+            gt_flag = (num_experts % self.max_ep_size == 0)    # check whether num_experts is greater
+            lt_flag = (self.max_ep_size % num_experts == 0)    # check whether num_experts is less
+            assert gt_flag or lt_flag, ("Automatic experts placement dose not not support expert number"
+                                        " is not a multiple of ep size or vice versa.")
+            dp_size = 1 if gt_flag else self.world_size // num_experts
+            ep_size = self.world_size // dp_size
             pp_size = 1
         else:
             dp_size = self.dp_size
@@ -169,13 +143,10 @@ class MoeManager(metaclass=SingletonMeta):
 
         return num_local_experts, self.parallel_info_dict[ep_size]
 
-    def set_kernel_not_use(self):
-        self.use_kernel_optim = False
-
     def reset_loss(self):
         self.router_aux_loss, self.router_z_loss = [], []
 
-    def add_loss(self, aux_loss: float = 0., z_loss: float = 0.):
+    def add_loss(self, aux_loss: float = 0.0, z_loss: float = 0.0):
         self.router_aux_loss.append(aux_loss)
         self.router_z_loss.append(z_loss)
 
