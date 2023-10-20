@@ -26,14 +26,6 @@ class Req:
             "sampling_param": self.sample_params.to_dict(),
         }
 
-    def to_req_detokenization_state(self):
-        out = ReqDetokenizationState(
-            self.request_id, self.prompt_ids, self.max_output_len, self.sample_params.ignore_eos
-        )
-        if self.output_metadata_list:
-            out.gen_metadata.update(self.output_metadata_list[-1])
-        return out
-
     def stop_sequences_matched(self):
         # should we add stpp sequences to the sample params?
         if self.sample_params.stop_sequences is not None:
@@ -75,10 +67,13 @@ class Batch:
             tokens += req.input_len + len(req.output_ids)
         return tokens
 
-    def mark_finished_req(self, eos_id):
+    def mark_finished_req(self, eos_id, engine_max_output_len):
         has_new_finish = False
         for req in self.reqs:
             if req.stop_sequences_matched():
+                req.has_generate_finished = True
+                has_new_finish = True
+            if len(req.output_ids) >= engine_max_output_len:
                 req.has_generate_finished = True
                 has_new_finish = True
             if req.output_ids[-1] == eos_id and req.sample_params.ignore_eos == False:

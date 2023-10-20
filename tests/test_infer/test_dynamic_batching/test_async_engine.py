@@ -23,7 +23,7 @@ def run_async_engine(path: str):
     if model is None or not os.path.exists(model):
         return
 
-    prompt = "Introduce some landmarks in London.\nThe Tower of London is a historic castle on the north bank of the River Thames in central London. It was founded towards the end of 10"
+    prompt = "Introduce some landmarks in London.\n The Tower of London is a historic castle on the north bank of the River Thames in central London. It was founded towards the end of 10"
     sampling_params = SamplingParams()
     asyncio.run(asy_for_loop_test(config, prompt, sampling_params))
 

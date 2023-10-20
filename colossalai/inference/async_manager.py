@@ -93,7 +93,7 @@ class Async_DynamicBatchManager(DynamicBatchManager):
         ans = self.engine._prefill_batch(batch.batch_id)
         req_to_out_token_id = ans
         self._add_token_id_to_req(batch, req_to_out_token_id)
-        has_new_finished_req = batch.mark_finished_req(self.eos_id)
+        has_new_finished_req = batch.mark_finished_req(self.eos_id, self.engine.max_output_len)
         outputs = self._handle_finish_req(batch, has_new_finished_req)
         return has_new_finished_req, outputs
         # delete finished reqs
@@ -105,7 +105,7 @@ class Async_DynamicBatchManager(DynamicBatchManager):
         ans = self.engine._decode_batch(batch.batch_id)
         req_to_out_token_id = ans
         self._add_token_id_to_req(batch, req_to_out_token_id)
-        has_new_finished_req = batch.mark_finished_req(self.eos_id)
+        has_new_finished_req = batch.mark_finished_req(self.eos_id, self.engine.max_output_len)
         outputs = self._handle_finish_req(batch, has_new_finished_req)
         return has_new_finished_req, outputs
 
