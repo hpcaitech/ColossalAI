@@ -14,13 +14,16 @@ from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_rank, get_ep_s
 
 class MoeModel(nn.Module):
 
-    def __init__(self, checkpoint: bool = False):
+    def __init__(self, checkpoint: bool = False, enable_load_balance: bool = False):
 
         class TestSubModule(CheckpointModule):
 
             def __init__(self):
                 super().__init__(checkpoint)
-                self.moe = SparseMLP(num_experts=8, hidden_size=16, intermediate_size=32)
+                self.moe = SparseMLP(num_experts=8,
+                                     hidden_size=16,
+                                     intermediate_size=32,
+                                     enable_load_balance=enable_load_balance)
                 self.proj = nn.Linear(16, 4)
 
             def _forward(self, x):

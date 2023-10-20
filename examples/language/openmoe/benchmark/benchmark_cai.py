@@ -19,7 +19,7 @@ from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParall
 from colossalai.cluster import DistCoordinator
 from colossalai.moe.layers import apply_load_balance
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.moe.utils import skip_init
+from colossalai.moe.utils import set_moe_args, skip_init
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
@@ -158,9 +158,6 @@ def main():
     }
     mgr_dict = {
         "seed": 42,
-        "use_kernel_optim": args.use_kernel,
-        "enable_load_balance": args.load_balance,
-        "overlap_alltoall": args.overlap_alltoall
     }
     if args.plugin == "zero":
         dp_size = dist.get_world_size()
@@ -221,10 +218,28 @@ def main():
     # Build OpenMoe model
     repo_name = "hpcaitech/openmoe-" + args.model_name
     config = LlamaConfig.from_pretrained(repo_name)
-    setattr(config, "router_aux_loss_factor", 0.1)
-    setattr(config, "router_z_loss_factor", 0.1)
-    setattr(config, "label_smoothing", 0.1)
-    setattr(config, "z_loss_factor", 0.1)
+    moe_args = {
+        "num_experts": config.num_experts,
+        "moe_layer_interval": config.moe_layer_interval,
+        "router_topk": 2,
+        "router_capacity_factor_train": 1.25,
+        "router_capacity_factor_eval": 2.0,
+        "router_min_capacity": 4,
+        "router_noisy_policy": None,
+        "router_drop_tks": True,
+        "router_aux_loss_factor": 0.01,
+        "router_z_loss_factor": 0.01,
+        "mlp_gated": True,
+        "label_smoothing": 0.001,
+        "z_loss_factor": 0.01,
+        "enable_load_balance": args.load_balance,
+        "load_balance_tolerance": 0.1,
+        "load_balance_beam_width": 8,
+        "load_balance_group_swap_factor": 0.4,
+        "enable_kernel": args.use_kernel,
+        "enable_comm_overlap": args.overlap_alltoall,
+    }
+    set_moe_args(config, moe_args)
     with skip_init():
         model = OpenMoeForCausalLM(config)
     coordinator.print_on_master(f"Finish init model with config:\n{config}")

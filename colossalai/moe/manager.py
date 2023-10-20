@@ -117,7 +117,8 @@ class MoeManager(metaclass=SingletonMeta):
             assert gt_flag or lt_flag, ("Automatic experts placement dose not not support expert number"
                                         " is not a multiple of ep size or vice versa.")
             dp_size = 1 if gt_flag else self.world_size // num_experts
-            ep_size = self.world_size // dp_size
+            ep_size = min(self.world_size // dp_size, self.max_ep_size)
+            dp_size = self.world_size // ep_size
             pp_size = 1
         else:
             dp_size = self.dp_size

@@ -39,6 +39,7 @@ from colossalai.kernel.cuda_native.mha.flash_attn_2 import HAS_FLASH_ATTN
 from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.moe.layers import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
+from colossalai.moe.utils import get_activation
 
 if HAS_TRITON:
     from colossalai.kernel.triton.llama_act_combine_kernel import LlamaActCombine
@@ -166,7 +167,7 @@ def SwiGLU(x):
 
 class OpenMoeMLP(nn.Module):
 
-    def __init__(self, config):
+    def __init__(self, config: LlamaConfig):
         super().__init__()
         self.pretraining_tp = config.pretraining_tp
         self.hidden_size = config.hidden_size
@@ -174,8 +175,9 @@ class OpenMoeMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size * 2, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        self.act_fn = SwiGLU
-        self.use_kernel = True if MOE_MANAGER.use_kernel_optim else False
+        self.hidden_act = config.hidden_act
+        self.act_fn = get_activation(self.hidden_act)
+        self.use_kernel = config.enable_kernel
 
     def forward(self, x):
         if self.pretraining_tp > 1:
@@ -191,7 +193,7 @@ class OpenMoeMLP(nn.Module):
             down_proj = [F.linear(intermediate_states[i], down_proj_slices[i]) for i in range(self.pretraining_tp)]
             down_proj = sum(down_proj)
         else:
-            if HAS_TRITON and self.use_kernel:
+            if HAS_TRITON and self.use_kernel and self.hidden_act == "swiglu":
                 down_proj = self.down_proj(LlamaActCombine.apply(self.gate_proj(x), self.up_proj(x)))
             else:
                 down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
@@ -361,16 +363,22 @@ class OpenMoeDecoderLayer(nn.Module):
         self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         if self.moe:
             self.mlp = SparseMLP(num_experts=config.num_experts,
-                                 router_top_k=config.topk,
-                                 router_capacity_factor_train=config.capacity_factor_train,
-                                 router_capacity_factor_eval=config.capacity_factor_eval,
-                                 router_min_capacity=config.min_capacity,
-                                 router_noisy_policy=config.noisy_policy,
-                                 router_drop_tks=config.drop_tks,
                                  hidden_size=config.hidden_size,
                                  intermediate_size=config.intermediate_size,
+                                 router_top_k=config.router_topk,
+                                 router_capacity_factor_train=config.router_capacity_factor_train,
+                                 router_capacity_factor_eval=config.router_capacity_factor_eval,
+                                 router_min_capacity=config.router_min_capacity,
+                                 router_noisy_policy=config.router_noisy_policy,
+                                 router_drop_tks=config.router_drop_tks,
                                  mlp_activation=config.hidden_act,
-                                 mlp_gated=config.gated)
+                                 mlp_gated=config.mlp_gated,
+                                 enable_load_balance=config.enable_load_balance,
+                                 load_balance_tolerance=config.load_balance_tolerance,
+                                 load_balance_beam_width=config.load_balance_beam_width,
+                                 load_balance_group_swap_factor=config.load_balance_group_swap_factor,
+                                 enable_kernel=config.enable_kernel,
+                                 enable_comm_overlap=config.enable_comm_overlap)
             self.pre_extra_mlp_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.extra_mlp = OpenMoeMLP(config)
         else:
