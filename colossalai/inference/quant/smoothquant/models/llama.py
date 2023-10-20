@@ -419,6 +419,7 @@ class LlamaApplyRotary(nn.Module):
         return x_embed
 
 
+# Adapted from https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
 def llama_decoder_layer_forward(
     self,
     hidden_states: torch.Tensor,
@@ -559,6 +560,7 @@ def init_to_get_rotary(config, base=10000, use_elem=False):
     return _cos_cached, _sin_cached
 
 
+# Adapted from https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
 @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)
 def llama_model_forward(
     self,
@@ -729,6 +731,7 @@ class SmoothLlamaForCausalLM(BaseSmoothForCausalLM):
     def __init__(self, model: PreTrainedModel, quantized: bool = False):
         super().__init__(model, quantized)
 
+    # Adatped from https://github.com/mit-han-lab/smoothquant/blob/main/smoothquant/calibration.py
     def get_act_dict(
         self,
         tokenizer,

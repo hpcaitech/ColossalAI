@@ -8,7 +8,6 @@ from transformers import LlamaTokenizer
 
 import colossalai
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
-from colossalai.inference.tensor_parallel.modeling._utils import init_to_get_rotary
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
@@ -49,8 +48,6 @@ def run_llama_test(args):
     model = AutoGPTQForCausalLM.from_quantized(
         quantized_model_dir, device=torch.cuda.current_device(), inject_fused_attention=False
     )
-
-    init_to_get_rotary(model.model.model, base=10000)
 
     model_config = model.config
     shard_config = ShardConfig(
