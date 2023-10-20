@@ -62,6 +62,7 @@ class W8A8BFP32O32LinearSiLU(torch.nn.Module):
         return int8_module
 
 
+# modified from torch-int: https://github.com/Guangxuan-Xiao/torch-int/blob/main/torch_int/nn/linear.py
 class W8A8B8O8Linear(torch.nn.Module):
     # For qkv_proj
     def __init__(self, in_features, out_features, alpha=1.0, beta=1.0):
@@ -117,6 +118,7 @@ class W8A8B8O8Linear(torch.nn.Module):
         return int8_module
 
 
+# modified from torch-int: https://github.com/Guangxuan-Xiao/torch-int/blob/main/torch_int/nn/linear.py
 class W8A8BFP32OFP32Linear(torch.nn.Module):
     # For fc2 and out_proj
     def __init__(self, in_features, out_features, alpha=1.0, beta=1.0):

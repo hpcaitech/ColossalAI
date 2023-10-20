@@ -267,6 +267,7 @@ def cai_gptq_matmul_248_kernel(
     tl.store(c_ptrs, accumulator, mask=c_mask)
 
 
+# Adapted from AutoGPTQ auto_gptq: https://github.com/PanQiWei/AutoGPTQ
 @autotune(
     configs=[
         triton.Config(
