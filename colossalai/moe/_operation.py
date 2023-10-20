@@ -227,10 +227,10 @@ class MoeCombine(torch.autograd.Function):
         return d_expert, d_logits, None, None, None
 
 
-def moe_cumsum(inputs: Tensor):
+def moe_cumsum(inputs: Tensor, use_kernel: bool = False):
     dim0 = inputs.size(0)
     flag = (dim0 <= 1024) or (dim0 <= 2048 and dim0 % 2 == 0) or (dim0 % 4 == 0)
-    if flag and MOE_MANAGER.use_kernel_optim:
+    if flag and use_kernel:
         if MOE_KERNEL is None:
             load_moe()
         return MOE_KERNEL.cumsum_sub_one(inputs)

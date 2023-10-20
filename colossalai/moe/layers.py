@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from colossalai.moe._operation import AllGather, AllToAll, MoeCombine, MoeDispatch, ReduceScatter
-from colossalai.moe.experts import BaseMLPExperts, get_expert_class
+from colossalai.moe.experts import MLPExperts
 from colossalai.moe.load_balance import LoadBalancer
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.routers import MoeRouter, get_router_cls
@@ -48,50 +48,59 @@ class SparseMLP(nn.Module):
     def __init__(
         self,
         num_experts: int,
-        top_k: int = 1,
-        capacity_factor_train: float = 1.25,
-        capacity_factor_eval: float = 2.0,
-        min_capacity: int = 4,
-        noisy_policy: Optional[str] = None,
-        drop_tks: bool = True,
-        hidden_size: int = 2048,
-        intermediate_size: int = 2048,
-        activation: str = None,
-        gated: bool = False,
+        hidden_size: int,
+        intermediate_size: int,
+        router_top_k: int = 1,
+        router_capacity_factor_train: Optional[float] = 1.25,
+        router_capacity_factor_eval: Optional[float] = 2.0,
+        router_min_capacity: Optional[int] = 4,
+        router_noisy_policy: Optional[str] = None,
+        router_drop_tks: Optional[bool] = True,
+        mlp_activation: Optional[str] = None,
+        mlp_gated: Optional[bool] = False,
+        enable_load_balance: Optional[bool] = False,
+        load_balance_tolerance: Optional[float] = 0.1,
+        load_balance_beam_width: Optional[int] = 8,
+        load_balance_group_swap_factor: Optional[float] = 0.4,
+        enable_kernel: Optional[bool] = False,
+        enable_comm_overlap: Optional[bool] = False,
     ):
         super().__init__()
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
         self.num_experts = num_experts
-        self.use_kernel = MOE_MANAGER.use_kernel_optim
+        self.gated = mlp_gated
+        self.enable_kernel = enable_kernel
+        self.enable_comm_overlap = enable_comm_overlap
         self.expert_parallel = MOE_MANAGER.get_parallel()
-        self.gated = gated
-        assert self.expert_parallel in [
-            "EP",
-            "TP",
-            None,
-        ], f"Unsupported expert parallel type {self.expert_parallel}"
 
         # moe router
-        noisy_func = get_noise_generator(noisy_policy, num_experts)
-        router_cls = get_router_cls(top_k)
-        self.topk = top_k
+        noisy_func = get_noise_generator(router_noisy_policy, num_experts)
+        router_cls = get_router_cls(router_top_k)
+        self.topk = router_top_k
         self.router: MoeRouter = router_cls(
-            capacity_factor_train=capacity_factor_train,
-            capacity_factor_eval=capacity_factor_eval,
-            min_capacity=min_capacity,
+            capacity_factor_train=router_capacity_factor_train,
+            capacity_factor_eval=router_capacity_factor_eval,
+            min_capacity=router_min_capacity,
             noisy_func=noisy_func,
-            drop_tks=drop_tks,
+            drop_tks=router_drop_tks,
         )
 
+        # gate
+        self.gate_weight = torch.nn.Parameter(torch.empty(num_experts, self.hidden_size))
+
         # moe experts
-        expert_cls = get_expert_class(self.expert_parallel)
-        self.experts: BaseMLPExperts = expert_cls(num_experts=num_experts,
-                                                  hidden_size=hidden_size,
-                                                  intermediate_size=intermediate_size,
-                                                  activation=activation,
-                                                  gated=gated,
-                                                  use_kernel=self.use_kernel)
+        self.experts = MLPExperts(
+            num_experts=self.num_experts,
+            expert_parallel=self.expert_parallel,
+            hidden_size=self.hidden_size,
+            intermediate_size=self.intermediate_size,
+            activation=mlp_activation,
+            gated=mlp_gated,
+            use_kernel=self.enable_kernel,
+        )
+
+        # get parallel settings
         if self.expert_parallel is not None:
             self.ep_group = get_ep_group(self.experts)
             self.ep_size = get_ep_size(self.experts)
@@ -101,11 +110,8 @@ class SparseMLP(nn.Module):
             self.dp_group = None
         self.num_local_experts = self.experts.num_local_experts
 
-        # gate
-        self.gate_weight = torch.nn.Parameter(torch.empty(num_experts, self.hidden_size))
-
         # load balance
-        self.enable_load_balance = MOE_MANAGER.load_balance
+        self.enable_load_balance = enable_load_balance
         if self.enable_load_balance == True:
             self.load_balancer = LoadBalancer(
                 experts=self.experts,
@@ -114,9 +120,9 @@ class SparseMLP(nn.Module):
                 expert_num=self.num_experts,
                 ep_group=self.ep_group,
                 dp_group=self.dp_group,
-                tolerance=MOE_MANAGER.tolerance,
-                beam_width=MOE_MANAGER.beam_width,
-                group_swap_factor=MOE_MANAGER.group_swap_factor,
+                tolerance=load_balance_tolerance,
+                beam_width=load_balance_beam_width,
+                group_swap_factor=load_balance_group_swap_factor,
             )
 
         # init param
@@ -147,14 +153,15 @@ class SparseMLP(nn.Module):
             with torch.no_grad():
                 # TODO: optimize computation
                 expert_load = torch.topk(gate_output, k=self.topk, dim=-1)[1]
+                # TODO: bincount introduces synchronize, fix it
                 expert_load = torch.bincount(expert_load.view(-1))
                 self.load_balancer.update_load(expert_load)
 
         # the result from the router
-        route_result_list = self.router(inputs=gate_output, use_kernel=self.use_kernel, ep_group=self.ep_group)
+        route_result_list = self.router(inputs=gate_output, use_kernel=self.enable_kernel, ep_group=self.ep_group)
 
         # dispatch_data: (num_experts, capacity, hidden_size)
-        if self.use_kernel:
+        if self.enable_kernel:
             dispatch_data = MoeDispatch.apply(tokens, *route_result_list[1:])
             dispatch_data = dispatch_data.reshape(self.num_experts, -1, self.hidden_size)
         else:
@@ -163,16 +170,16 @@ class SparseMLP(nn.Module):
 
         # expert_output: (num_groups, num_experts, capacity, hidden_size)
         if self.expert_parallel == "EP":
-            expert_output = self._ep_process(dispatch_data)
+            expert_output = self._ep_process(dispatch_data, overlap=self.enable_comm_overlap)
         elif self.expert_parallel == "TP":
-            expert_output = self._tp_process(dispatch_data)
+            expert_output = self._tp_process(dispatch_data, overlap=self.enable_comm_overlap)
         elif self.expert_parallel is None:
             expert_output = self._local_process(dispatch_data)
         else:
             raise NotImplementedError("This kind of communication has not been implemented yet.\n"
                                       "Please use Experts build function.")
 
-        if self.use_kernel:
+        if self.enable_kernel:
             expert_output = expert_output.reshape(-1, self.hidden_size)
             ans = MoeCombine.apply(expert_output, *route_result_list)
         else:
@@ -189,10 +196,7 @@ class SparseMLP(nn.Module):
         expert_out = self.experts(expert_in)
         return expert_out
 
-    def _ep_process(self,
-                    dispatch_data: torch.Tensor,
-                    overlap: bool = True
-                    ) -> torch.Tensor:
+    def _ep_process(self, dispatch_data: torch.Tensor, overlap: bool = False) -> torch.Tensor:
         """
         Expert Parallel
 
@@ -210,16 +214,16 @@ class SparseMLP(nn.Module):
             return expert_output
 
         else:
+
             @dataclasses.dataclass
-            class Capsule():
+            class Capsule:
                 data: torch.Tensor
                 handle: Any = None
 
-            NUM_CHUNK = 2
+            NUM_CHUNK = 4
             NUM_STAGES = 4
 
-            assert dispatch_data.shape[1] % NUM_CHUNK == 0, \
-                "arbitrary chunk num is not supported yet"
+            assert (dispatch_data.shape[1] % NUM_CHUNK == 0), "arbitrary chunk num is not supported yet"
             chunk_size = dispatch_data.shape[1] // NUM_CHUNK
             input_shape = (self.ep_size, self.num_local_experts, -1, self.hidden_size)
             dispatch_data = dispatch_data.reshape(*input_shape)
@@ -238,24 +242,17 @@ class SparseMLP(nn.Module):
 
                 # all2all last output
                 if _expert_out is not None:
-                    expert_out = Capsule(
-                        *AllToAll.apply(_expert_out.data, self.ep_group, True),
-                    )
+                    expert_out = Capsule(*AllToAll.apply(_expert_out.data, self.ep_group, True),)
                     _expert_out = None
 
                 # all2all next input
                 if 0 <= i < NUM_CHUNK:
-                    _expert_in = Capsule(
-                        *AllToAll.apply(chunk_data[i].contiguous(), self.ep_group, True)
-                    )
+                    _expert_in = Capsule(*AllToAll.apply(chunk_data[i].contiguous(), self.ep_group, True))
 
                 # compute
                 if expert_in is not None:
                     expert_in.handle.wait()
-                    _expert_out = Capsule(
-                        data=self.experts(expert_in.data),
-                        handle=None
-                    )
+                    _expert_out = Capsule(data=self.experts(expert_in.data), handle=None)
                     expert_in = None
 
                 if _expert_in is not None:
@@ -264,10 +261,7 @@ class SparseMLP(nn.Module):
 
             return output
 
-    def _tp_process(self,
-                    dispatch_data: torch.Tensor,
-                    overlap: bool = True
-                    ) -> torch.Tensor:
+    def _tp_process(self, dispatch_data: torch.Tensor, overlap: bool = False) -> torch.Tensor:
         """
         without overlap:
                    |    C    |
@@ -291,23 +285,24 @@ class SparseMLP(nn.Module):
             expert_out = ReduceScatter.apply(expert_out, self.ep_group, False)[0]
             return expert_out
         else:
+
             @dataclasses.dataclass
-            class Capsule():
+            class Capsule:
                 data: torch.Tensor
                 handle: Any
                 indices: Tuple
 
-            NUM_CHUNK = 2
+            NUM_CHUNK = 4
             NUM_STAGES = 4
 
-            assert dispatch_data.shape[0] % NUM_CHUNK == 0, \
-                "arbitrary chunk num is not supported yet, please use chunk num that can divide num_experts"
+            assert (dispatch_data.shape[0] % NUM_CHUNK == 0
+                   ), "arbitrary chunk num is not supported yet, please use chunk num that can divide num_experts"
             chunk_size = dispatch_data.shape[0] // NUM_CHUNK
             chunk_data = torch.split(dispatch_data, chunk_size, dim=0)
             output = torch.empty_like(dispatch_data)
 
             def get_chunk_slice(idx: int, chunk_size: int) -> Tuple[slice]:
-                return (slice(idx * chunk_size, (idx + 1) * chunk_size), )
+                return (slice(idx * chunk_size, (idx + 1) * chunk_size),)
 
             _expert_in, expert_in, _expert_out, expert_out = None, None, None, None
 
@@ -321,7 +316,7 @@ class SparseMLP(nn.Module):
                 if _expert_out is not None:
                     expert_out = Capsule(
                         *ReduceScatter.apply(_expert_out.data, self.ep_group, True),
-                        indices=_expert_out.indices
+                        indices=_expert_out.indices,
                     )
                     _expert_out = None
 
@@ -329,7 +324,7 @@ class SparseMLP(nn.Module):
                 if 0 <= i < NUM_CHUNK:
                     _expert_in = Capsule(
                         *AllGather.apply(chunk_data[i].contiguous(), self.ep_group, True),
-                        indices=get_chunk_slice(i, chunk_size)
+                        indices=get_chunk_slice(i, chunk_size),
                     )
 
                 # compute
@@ -337,7 +332,8 @@ class SparseMLP(nn.Module):
                     expert_in.handle.wait()
                     _expert_out = Capsule(
                         self.experts(expert_in.data, expert_in.indices),
-                        handle=None, indices=expert_in.indices
+                        handle=None,
+                        indices=expert_in.indices,
                     )
                     expert_in = None
 
@@ -360,4 +356,6 @@ def apply_load_balance(model: nn.Module, optim: Any) -> None:
                     sub_module.load_balancer.balance_load(optim)
             _apply_recursive(sub_module)
 
+    torch.cuda.empty_cache()
     _apply_recursive(model)
+    torch.cuda.empty_cache()

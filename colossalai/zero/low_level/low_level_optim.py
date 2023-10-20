@@ -7,7 +7,7 @@ from typing import Dict, Iterator, Optional, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from torch._utils import _flatten_dense_tensors
+from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
@@ -281,6 +281,40 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             if self.extra_dp_pg is None:
                 flat_grads = self._bucket_store.get_flatten_grad()
                 flat_grads /= self._world_size
+            else:
+                # record moe and non moe param
+                moe_list = []
+                for param in self._bucket_store._param_list:
+                    moe_list.append(is_moe_tensor(param))
+
+                # divide them into different groups
+                moe_grad_list = []
+                non_moe_grad_list = []
+                for grad_list in self._bucket_store._grad_in_bucket.values():
+                    non_moe_cur_grad = []
+                    moe_cur_grad = []
+                    for i in range(len(grad_list)):
+                        if moe_list[i] == True:
+                            moe_cur_grad.append(grad_list[i])
+                        else:
+                            non_moe_cur_grad.append(grad_list[i])
+                    if len(moe_cur_grad) > 0:
+                        moe_grad_list.append(moe_cur_grad)
+                    if len(non_moe_cur_grad) > 0:
+                        non_moe_grad_list.append(non_moe_cur_grad)
+
+                if len(non_moe_grad_list) > 0:
+                    non_moe_flat_grads = []
+                    for grad_list in non_moe_grad_list:
+                        non_moe_flat_grads.append(_flatten_dense_tensors(grad_list))
+                    non_moe_flat_grads = _flatten_dense_tensors(non_moe_flat_grads)
+                    non_moe_flat_grads /= self._world_size
+
+                if len(moe_grad_list) > 0:
+                    moe_flat_grads = []
+                    for grad_list in moe_grad_list:
+                        moe_flat_grads.append(_flatten_dense_tensors(grad_list))
+                    moe_flat_grads = _flatten_dense_tensors(moe_flat_grads)
 
             # ready to add other tensors to bucket
             self._bucket_store.reset_num_elements_in_bucket()
@@ -290,6 +324,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 # in case of the memory being reused in the default stream
                 if self.extra_dp_pg is None:
                     flat_grads.record_stream(stream)
+                else:
+                    if len(non_moe_grad_list) > 0:
+                        non_moe_flat_grads.record_stream(stream)
+                    if len(moe_grad_list) > 0:
+                        moe_flat_grads.record_stream(stream)
                 # waiting for ops in the default stream finishing
                 stream.wait_stream(torch.cuda.current_stream())
             else:
@@ -324,64 +363,70 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
                     # sync extra zero group
                     else:
-                        # record moe and non moe param
-                        moe_list = []
-                        for param in self._bucket_store._param_list:
-                            moe_list.append(is_moe_tensor(param))
-
-                        # divide them into different groups
-                        moe_grad_list = []
-                        non_moe_grad_list = []
-                        for grad_list in self._bucket_store._grad_in_bucket.values():
-                            non_moe_cur_grad = []
-                            moe_cur_grad = []
-                            for i in range(len(grad_list)):
-                                if moe_list[i] == True:
-                                    moe_cur_grad.append(grad_list[i])
-                                else:
-                                    non_moe_cur_grad.append(grad_list[i])
-                            if len(moe_cur_grad) > 0:
-                                moe_grad_list.append(moe_cur_grad)
-                            if len(non_moe_cur_grad) > 0:
-                                non_moe_grad_list.append(non_moe_cur_grad)
-
                         # sync non moe param in global dp group
                         if len(non_moe_grad_list) > 0:
-                            flat_grads = []
-                            for grad_list in non_moe_grad_list:
-                                flat_grads.append(_flatten_dense_tensors(grad_list))
-                            flat_grads = _flatten_dense_tensors(flat_grads)
-                            flat_grads /= self._world_size
-                            dist.all_reduce(flat_grads, group=self.dp_pg)
-                            flat_grads_per_rank = flat_grads.split(flat_grads.numel() // self._world_size)
+                            dist.all_reduce(non_moe_flat_grads, group=self.dp_pg)
+                            flat_grads_per_rank = non_moe_flat_grads.split(non_moe_flat_grads.numel() //
+                                                                           self._world_size)
                             self._sync_unpartitioned_grad(non_moe_grad_list, flat_grads_per_rank, group_id)
 
                         # sync moe param only in zero group
                         if len(moe_grad_list) > 0:
-                            flat_grads = []
-                            for grad_list in moe_grad_list:
-                                flat_grads.append(_flatten_dense_tensors(grad_list))
-                            flat_grads = _flatten_dense_tensors(flat_grads)
-                            dist.all_reduce(flat_grads, group=self.extra_dp_pg)
-                            flat_grads_per_rank = flat_grads.split(flat_grads.numel() // self._world_size)
+                            dist.all_reduce(moe_flat_grads, group=self.extra_dp_pg)
+                            flat_grads_per_rank = moe_flat_grads.split(moe_flat_grads.numel() // self._world_size)
                             self._sync_unpartitioned_grad(moe_grad_list, flat_grads_per_rank, group_id)
 
                 else:
-                    flat_grads_list = list(flat_grads.split(len(flat_grads) // self._world_size))
-                    recieved_grad = torch.zeros_like(flat_grads_list[0])
-                    dist.reduce_scatter(recieved_grad, flat_grads_list, group=self.dp_pg)
+                    if self.extra_dp_pg is None:
+                        flat_grads_list = list(flat_grads.split(len(flat_grads) // self._world_size))
+                        recieved_grad = torch.zeros_like(flat_grads_list[0])
+                        dist.reduce_scatter(recieved_grad, flat_grads_list, group=self.dp_pg)
 
-                    if recieved_grad.dtype != grad_dtype:
-                        recieved_grad = recieved_grad.to(grad_dtype)
+                        if recieved_grad.dtype != grad_dtype:
+                            recieved_grad = recieved_grad.to(grad_dtype)
 
-                    grad_in_bucket_current_rank = self._bucket_store.get_grad()[self._local_rank]
-                    sync_tensor(recieved_grad, grad_in_bucket_current_rank)
-                    for grad in grad_in_bucket_current_rank:
-                        param_id = self._bucket_store.get_param_id_of_grad(grad)
-                        if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id)) < 1:
-                            self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
-                        else:
-                            self._grad_store.add_gradients_by_param_id(grad, 0, group_id, param_id)
+                        grad_in_bucket_current_rank = self._bucket_store.get_grad()[self._local_rank]
+                        sync_tensor(recieved_grad, grad_in_bucket_current_rank)
+                        for grad in grad_in_bucket_current_rank:
+                            param_id = self._bucket_store.get_param_id_of_grad(grad)
+                            if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id)) < 1:
+                                self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                            else:
+                                self._grad_store.add_gradients_by_param_id(grad, 0, group_id, param_id)
+                    else:
+                        if len(non_moe_grad_list) > 0:
+                            flat_grads_list = list(non_moe_flat_grads.split(
+                                len(non_moe_flat_grads) // self._world_size))
+                            recieved_grad = torch.zeros_like(flat_grads_list[0])
+                            dist.reduce_scatter(recieved_grad, flat_grads_list, group=self.dp_pg)
+
+                            grad_in_bucket_current_rank = self._bucket_store.get_grad()[self._local_rank]
+                            sync_tensor(recieved_grad, grad_in_bucket_current_rank)
+                            for grad in grad_in_bucket_current_rank:
+                                param_id = self._bucket_store.get_param_id_of_grad(grad)
+                                if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id)) < 1:
+                                    self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                                else:
+                                    self._grad_store.add_gradients_by_param_id(grad, 0, group_id, param_id)
+
+                        if len(moe_grad_list) > 0:
+                            flat_grads_list = list(moe_flat_grads.split(len(moe_flat_grads) // self.extra_dp_pg_size))
+                            recieved_grad = torch.zeros_like(flat_grads_list[0])
+                            dist.reduce_scatter(recieved_grad, flat_grads_list, group=self.extra_dp_pg)
+
+                            param_slice = self._world_size // self.extra_dp_pg_size
+                            recieved_grad = list(recieved_grad.split(len(recieved_grad) // param_slice))
+                            grad_in_bucket_current_rank = self._bucket_store.get_grad()[self._local_rank]
+                            for split_recieved_grad in recieved_grad:
+                                split_recieved_grad = _unflatten_dense_tensors(split_recieved_grad,
+                                                                               grad_in_bucket_current_rank)
+                                for grad in grad_in_bucket_current_rank:
+                                    param_id = self._bucket_store.get_param_id_of_grad(grad)
+                                    if len(self._grad_store.get_partitioned_gradients_by_param_id(
+                                            group_id, param_id)) < param_slice:
+                                        self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+                                    else:
+                                        self._grad_store.add_gradients_by_param_id(grad, 0, group_id, param_id)
 
                 self._bucket_store.reset()
 
@@ -512,18 +557,19 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     # moe hybrid zero
                     if self.extra_dp_pg is not None and is_moe_tensor(working_param):
                         real_working_params[group_id].append(working_param)
-                        param_slice = self._world_size // self.extra_dp_pg_size
-                        grad = grads[self.extra_dp_pg_rank * param_slice:(self.extra_dp_pg_rank + 1) * param_slice]
-                        grad = flatten(grad).to(splited_param.dtype).to(splited_param.device)
-                        splited_param.grad = grad
-                        grad_partition_groups.append(grad)
-                        real_master_params[group_id].append(splited_param)
+                        if self._partition_grads:
+                            grad = grads
+                        else:
+                            param_slice = self._world_size // self.extra_dp_pg_size
+                            grad = grads[self.extra_dp_pg_rank * param_slice:(self.extra_dp_pg_rank + 1) * param_slice]
+                        grad = flatten(grad)
                     else:
                         real_working_params[group_id].append(working_param)
-                        grad = grads[grad_index].to(splited_param.dtype).to(splited_param.device)
-                        splited_param.grad = grad
-                        grad_partition_groups.append(grad)
-                        real_master_params[group_id].append(splited_param)
+                        grad = grads[grad_index]
+                    grad = grad.to(splited_param.dtype).to(splited_param.device)
+                    splited_param.grad = grad
+                    grad_partition_groups.append(grad)
+                    real_master_params[group_id].append(splited_param)
 
             # compute norm
             working_grads = self._grad_store.get_working_grads_by_group_id(group_id)
@@ -539,13 +585,21 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         global_norm = calculate_global_norm_from_list(norm_list=norm_groups)
         self._unscale_and_clip_grads(grad_partition_groups, global_norm)
 
+        # TODO: we should store master param for ep
+        if len(self.param_groups) > len(self._working_param_groups):
+            for param in self.param_groups[-1]['params']:
+                param.data = param.data.to(torch.float32)
+                param.grad = param.grad.to(torch.float32)
+
         # update the parameters
         self.optim.step()
 
-        # release the moe grad
+        # TODO: release the moe grad. we should store master param
         if len(self.param_groups) > len(self._working_param_groups):
+            dtype = real_working_params[0][0].dtype
             for param in self.param_groups[-1]['params']:
                 param.grad = None
+                param.data = param.data.to(dtype)
 
         # release the grad
         grad_partition_groups = []

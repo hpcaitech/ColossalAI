@@ -15,12 +15,12 @@ from utils import PerformanceEvaluator, get_model_numel
 import colossalai
 from colossalai import get_default_parser
 from colossalai.booster import Booster
-from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.moe.layers import apply_load_balance
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.moe.utils import skip_init
+from colossalai.moe.utils import set_moe_args, skip_init
+from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
 
@@ -118,7 +118,7 @@ def parse_args():
     parser.add_argument("--pp_size", type=int, default=2, help="pp size")
     parser.add_argument("--dp_size", type=int, default=1, help="dp size")
     parser.add_argument("--ep_size", type=int, default=2, help="ep size")
-    parser.add_argument("--zero_stage", type=int, default=1, help="zero stage in hybrid plugin")
+    parser.add_argument("--zero_stage", type=int, default=2, help="zero stage in hybrid plugin")
     parser.add_argument("--microbatch_size", type=int, default=1, help="microbatch size")
     parser.add_argument("--extra_dp_size", type=int, default=1)
     # kernel
@@ -132,6 +132,9 @@ def parse_args():
     parser.add_argument("--active", type=int, default=20)
     # load balance
     parser.add_argument("--load_balance", action="store_true")
+
+    # overlap
+    parser.add_argument("--overlap_alltoall", action="store_true")
     args = parser.parse_args()
     return args
 
@@ -150,12 +153,18 @@ def main():
         "custom_policy": OpenMoeForCausalLMPolicy(),
         "enable_fused_normalization": args.use_kernel,
         "enable_jit_fused": args.use_kernel,
-        "precision": "bf16"
+        "precision": "bf16",
+        "zero_stage": args.zero_stage,
     }
-    mgr_dict = {"seed": 42, "use_kernel_optim": args.use_kernel, "enable_load_balance": args.load_balance}
+    mgr_dict = {
+        "seed": 42,
+    }
     if args.plugin == "zero":
         dp_size = dist.get_world_size()
-        plugin = LowLevelZeroPlugin(initial_scale=2**5, stage=2)
+        plugin = MoeHybridParallelPlugin(
+            pp_size=1,
+            **hybrid_dict,
+        )
         MOE_MANAGER.setup(
             parallel=None,
             **mgr_dict,
@@ -164,11 +173,11 @@ def main():
         dp_size = dist.get_world_size()
         plugin = MoeHybridParallelPlugin(
             pp_size=1,
-            zero_stage=2,
             **hybrid_dict,
         )
         MOE_MANAGER.setup(
             parallel="EP",
+            max_ep_size=dp_size,
             **mgr_dict,
         )
     elif args.plugin == "ep_zero":
@@ -176,23 +185,6 @@ def main():
         use_ep_inside = False
         plugin = MoeHybridParallelPlugin(
             pp_size=1,
-            zero_stage=1,
-            extra_dp_size=args.extra_dp_size,
-            use_ep_inside=use_ep_inside,
-            **hybrid_dict,
-        )
-        MOE_MANAGER.setup(
-            parallel="EP",
-            max_ep_size=dp_size // args.extra_dp_size,
-            use_ep_inside=use_ep_inside,
-            **mgr_dict,
-        )
-    elif args.plugin == "zero_ep":
-        dp_size = dist.get_world_size()
-        use_ep_inside = True
-        plugin = MoeHybridParallelPlugin(
-            pp_size=1,
-            zero_stage=1,
             extra_dp_size=args.extra_dp_size,
             use_ep_inside=use_ep_inside,
             **hybrid_dict,
@@ -226,10 +218,28 @@ def main():
     # Build OpenMoe model
     repo_name = "hpcaitech/openmoe-" + args.model_name
     config = LlamaConfig.from_pretrained(repo_name)
-    setattr(config, "router_aux_loss_factor", 0.1)
-    setattr(config, "router_z_loss_factor", 0.1)
-    setattr(config, "label_smoothing", 0.1)
-    setattr(config, "z_loss_factor", 0.1)
+    moe_args = {
+        "num_experts": config.num_experts,
+        "moe_layer_interval": config.moe_layer_interval,
+        "router_topk": 2,
+        "router_capacity_factor_train": 1.25,
+        "router_capacity_factor_eval": 2.0,
+        "router_min_capacity": 4,
+        "router_noisy_policy": None,
+        "router_drop_tks": True,
+        "router_aux_loss_factor": 0.01,
+        "router_z_loss_factor": 0.01,
+        "mlp_gated": True,
+        "label_smoothing": 0.001,
+        "z_loss_factor": 0.01,
+        "enable_load_balance": args.load_balance,
+        "load_balance_tolerance": 0.1,
+        "load_balance_beam_width": 8,
+        "load_balance_group_swap_factor": 0.4,
+        "enable_kernel": args.use_kernel,
+        "enable_comm_overlap": args.overlap_alltoall,
+    }
+    set_moe_args(config, moe_args)
     with skip_init():
         model = OpenMoeForCausalLM(config)
     coordinator.print_on_master(f"Finish init model with config:\n{config}")
@@ -247,7 +257,7 @@ def main():
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size)
 
     # Set optimizer
-    optimizer = torch.optim.Adam(model.parameters(), weight_decay=0.01, lr=1e-5)
+    optimizer = HybridAdam(model.parameters(), weight_decay=0.01, lr=1e-5)
 
     model_numel = get_model_numel(model)
     performance_evaluator = PerformanceEvaluator(
@@ -259,8 +269,8 @@ def main():
 
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
-    model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
     load_ckpt(repo_name, model, booster)
+    model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
     use_pipeline = (isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1)
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     coordinator.print_on_master(f"Finish init booster")
@@ -302,8 +312,8 @@ def main():
             optimizer.zero_grad()
             performance_evaluator.on_step_end(exmaple_data["input_ids"])
             if (step == args.warmup // 2) and args.load_balance:
-                apply_load_balance(model, optimizer)
                 coordinator.print_on_master(f"Apply load balance")
+                apply_load_balance(model, optimizer)
     performance_evaluator.on_fit_end()
 
 

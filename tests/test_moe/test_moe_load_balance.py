@@ -47,12 +47,8 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
     MOE_MANAGER.setup(
         seed=42,
         parallel="EP",
-        enable_load_balance=True,
-        tolerance=0.1,
-        beam_width=8,
-        group_swap_factor=0.4,
     )
-    zero_model = MoeModel(checkpoint=True)
+    zero_model = MoeModel(checkpoint=True, enable_load_balance=True)
     zero_optimizer = torch.optim.Adam(zero_model.parameters())
     plugin = LowLevelZeroPlugin(stage=stage, precision="bf16", verbose=True)
     booster = Booster(plugin=plugin)
@@ -118,12 +114,8 @@ def run_hybrid_zero_optim_test(local_rank, world_size, stage=1):
         max_ep_size=2,
         use_ep_inside=False,
         parallel="EP",
-        enable_load_balance=True,
-        tolerance=0.1,
-        beam_width=8,
-        group_swap_factor=0.4,
     )
-    zero_model = MoeModel(checkpoint=True)
+    zero_model = MoeModel(checkpoint=True, enable_load_balance=True)
     extra_dp_group = MOE_MANAGER.parallel_info_dict[2].dp_group
     ep_rank = dist.get_rank(MOE_MANAGER.parallel_info_dict[2].ep_group)
     ep_size = MOE_MANAGER.parallel_info_dict[2].ep_size
