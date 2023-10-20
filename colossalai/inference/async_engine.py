@@ -79,7 +79,6 @@ class Async_Engine:
         """
         request_outputs = self.driver.step()
         if request_outputs is not None:
-            print("request_outputs: ", request_outputs)
             for request_output in request_outputs:
                 self._request_tracker.process_request_output(request_output)
             self._request_tracker.add_stop()
