@@ -19,7 +19,7 @@ from colossalai.cluster import DistCoordinator
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.moe import MoeCheckpintIO
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.moe.utils import skip_init
+from colossalai.moe.utils import set_moe_args, skip_init
 from colossalai.utils import get_current_device
 
 
@@ -157,7 +157,6 @@ def main():
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",
-            use_kernel_optim=args.use_kernel if not test_mode else False,
         )
     elif args.plugin == "zero2_ep":
         plugin = MoeHybridParallelPlugin(
@@ -171,7 +170,6 @@ def main():
         MOE_MANAGER.setup(
             seed=42,
             parallel="EP",
-            use_kernel_optim=args.use_kernel if not test_mode else False,
         )
     elif args.plugin == "hybrid":
         plugin = MoeHybridParallelPlugin(
@@ -190,7 +188,6 @@ def main():
             fixed_dp_size=args.dp_size,
             fixed_ep_size=args.ep_size,
             fixed_pp_size=args.pp_size,
-            use_kernel_optim=args.use_kernel,
         )
     else:
         raise ValueError(f"Invalid plugin {args.plugin}")
@@ -205,10 +202,28 @@ def main():
     else:
         repo_name = "hpcaitech/openmoe-" + args.model_name
         config = LlamaConfig.from_pretrained(repo_name)
-    setattr(config, "router_aux_loss_factor", args.router_aux_loss_factor)
-    setattr(config, "router_z_loss_factor", args.router_z_loss_factor)
-    setattr(config, "label_smoothing", args.label_smoothing)
-    setattr(config, "z_loss_factor", args.z_loss_factor)
+    moe_args = {
+        "num_experts": config.num_experts,
+        "moe_layer_interval": config.moe_layer_interval,
+        "router_topk": 2,
+        "router_capacity_factor_train": 1.25,
+        "router_capacity_factor_eval": 2.0,
+        "router_min_capacity": 4,
+        "router_noisy_policy": None,
+        "router_drop_tks": True,
+        "router_aux_loss_factor": 0.01,
+        "router_z_loss_factor": 0.01,
+        "mlp_gated": True,
+        "label_smoothing": 0.001,
+        "z_loss_factor": 0.01,
+        "enable_load_balance": False,
+        "load_balance_tolerance": 0.1,
+        "load_balance_beam_width": 8,
+        "load_balance_group_swap_factor": 0.4,
+        "enable_kernel": False,
+        "enable_comm_overlap": False,
+    }
+    set_moe_args(config, moe_args)
     with skip_init():
         model = OpenMoeForCausalLM(config)
     logger.info(f"Finish init model with config:\n{config}", ranks=[0])

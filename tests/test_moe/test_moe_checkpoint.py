@@ -16,7 +16,6 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "examples/language/openmoe"))
 
-# TODO: better way to import them
 OpenMoeForCausalLM = importlib.import_module("model.modeling_openmoe").OpenMoeForCausalLM
 OpenMoeForCausalLMPolicy = importlib.import_module("model.openmoe_policy").OpenMoeForCausalLMPolicy
 
@@ -37,22 +36,27 @@ def get_config():
         "head_dim": 4,
         "num_attention_heads": 4,
         "dropout_rate": 0.0,
-        "layer_norm_epsilon": 1e-06,
         "hidden_act": "swiglu",
         "num_experts": 16,
-        "topk": 2,
         "capacity_factor_train": 1.25,
         "capacity_factor_eval": 2.0,
         "min_capacity": 4,
         "noisy_policy": None,
         "drop_tks": True,
-        "expert_parallel": None,
-        "gated": True,
         "moe_layer_interval": 4,
         "router_aux_loss_factor": 0.1,
         "router_z_loss_factor": 0.1,
         "label_smoothing": 0.1,
         "z_loss_factor": 0.1,
+        "mlp_gated": True,
+        "label_smoothing": 0.001,
+        "z_loss_factor": 0.01,
+        "enable_load_balance": False,
+        "load_balance_tolerance": 0.1,
+        "load_balance_beam_width": 8,
+        "load_balance_group_swap_factor": 0.4,
+        "enable_kernel": False,
+        "enable_comm_overlap": False,
     }
     for key, value in settings.items():
         setattr(config, key, value)

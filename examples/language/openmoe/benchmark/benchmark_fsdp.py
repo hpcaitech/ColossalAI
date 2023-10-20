@@ -12,7 +12,6 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import MixedPrecision
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from torch.utils.data import Dataset
 from torch.utils.data.distributed import DistributedSampler
-from transformers import Adafactor
 from transformers.models.llama import LlamaConfig
 from utils import PerformanceEvaluator, get_model_numel
 
@@ -80,7 +79,7 @@ def fsdp_main(rank, world_size, args):
         auto_wrap_policy=auto_wrap_policy,
         device_id=torch.cuda.current_device(),
     )
-    optimizer = Adafactor(model.parameters())
+    optimizer = torch.optim.Adam(model.parameters(), weight_decay=0.01, lr=1e-5)
     model.train()
 
     model_numel = get_model_numel(model)

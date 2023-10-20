@@ -1,5 +1,5 @@
 import contextlib
-from typing import Callable, Dict, List
+from typing import Any, Callable, Dict, List
 
 import torch
 import torch.distributed as dist
@@ -170,3 +170,8 @@ def sync_moe_model_param(model: nn.Module):
             for param in param_dict[ep_size]:
                 src_rank = get_dp_group_ranks(param)[0]
                 dist.broadcast(param, src=src_rank, group=get_dp_group(param))
+
+
+def set_moe_args(config: Any, args: dict):
+    for k, v in args.items():
+        setattr(config, k, v)

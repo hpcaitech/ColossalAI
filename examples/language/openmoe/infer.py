@@ -5,6 +5,8 @@ from model.modeling_openmoe import OpenMoeForCausalLM
 from transformers import T5Tokenizer
 from transformers.models.llama import LlamaConfig
 
+from colossalai.moe.utils import set_moe_args
+
 
 def parse_args():
     parser = ArgumentParser()
@@ -17,9 +19,54 @@ def inference(args):
     tokenizer = T5Tokenizer.from_pretrained("google/umt5-small")
     if args.model == "test":
         config = LlamaConfig.from_pretrained("hpcaitech/openmoe-base")
+        moe_args = {
+            "num_experts": config.num_experts,
+            "moe_layer_interval": config.moe_layer_interval,
+            "router_topk": 2,
+            "router_capacity_factor_train": 1.25,
+            "router_capacity_factor_eval": 2.0,
+            "router_min_capacity": 4,
+            "router_noisy_policy": None,
+            "router_drop_tks": True,
+            "router_aux_loss_factor": 0.01,
+            "router_z_loss_factor": 0.01,
+            "mlp_gated": True,
+            "label_smoothing": 0.001,
+            "z_loss_factor": 0.01,
+            "enable_load_balance": False,
+            "load_balance_tolerance": 0.1,
+            "load_balance_beam_width": 8,
+            "load_balance_group_swap_factor": 0.4,
+            "enable_kernel": False,
+            "enable_comm_overlap": False,
+        }
+        set_moe_args(config, moe_args)
         model = OpenMoeForCausalLM(config)
     else:
-        model = OpenMoeForCausalLM.from_pretrained(f"hpcaitech/openmoe-{args.model}")
+        config = LlamaConfig.from_pretrained(f"hpcaitech/openmoe-{args.model}")
+        moe_args = {
+            "num_experts": config.num_experts,
+            "moe_layer_interval": config.moe_layer_interval,
+            "router_topk": 2,
+            "router_capacity_factor_train": 1.25,
+            "router_capacity_factor_eval": 2.0,
+            "router_min_capacity": 4,
+            "router_noisy_policy": None,
+            "router_drop_tks": True,
+            "router_aux_loss_factor": 0.01,
+            "router_z_loss_factor": 0.01,
+            "mlp_gated": True,
+            "label_smoothing": 0.001,
+            "z_loss_factor": 0.01,
+            "enable_load_balance": False,
+            "load_balance_tolerance": 0.1,
+            "load_balance_beam_width": 8,
+            "load_balance_group_swap_factor": 0.4,
+            "enable_kernel": False,
+            "enable_comm_overlap": False,
+        }
+        set_moe_args(config, moe_args)
+        model = OpenMoeForCausalLM.from_pretrained(f"hpcaitech/openmoe-{args.model}", config=config)
     model = model.eval().half()
     model = model.to(torch.cuda.current_device())
 

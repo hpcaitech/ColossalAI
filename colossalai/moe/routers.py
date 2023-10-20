@@ -30,7 +30,8 @@ class MoeRouter(nn.Module, ABC):
                  capacity_factor_eval: float,
                  min_capacity: int,
                  noisy_func: Optional[Callable] = None,
-                 drop_tks: bool = True):
+                 drop_tks: bool = True,
+                 use_kernel: bool = False):
         super().__init__()
         self.k_value = k_value
         self.capacity_factor_train = capacity_factor_train
@@ -40,6 +41,7 @@ class MoeRouter(nn.Module, ABC):
         self.drop_tks = drop_tks
         self._aux_loss = None
         self._z_loss = None
+        self.use_kernel = use_kernel
 
     def get_capacity(self, logits_shape):
         capacity_factor = self.capacity_factor_train if self.training else self.capacity_factor_eval
@@ -49,11 +51,7 @@ class MoeRouter(nn.Module, ABC):
         assert capacity > 0
         return int(capacity)
 
-    def set_aux_loss(self,
-                     router_probs: torch.Tensor,
-                     expert_indices: torch.Tensor,
-                     num_experts: int
-                     ) -> None:
+    def set_aux_loss(self, router_probs: torch.Tensor, expert_indices: torch.Tensor, num_experts: int) -> None:
         """Computes auxiliary load balancing loss as in Switch Transformer.
 
         See Switch Transformer (https://arxiv.org/abs/2101.03961). This function
@@ -81,8 +79,7 @@ class MoeRouter(nn.Module, ABC):
 
         tokens_per_group_and_expert = torch.mean(expert_mask.float(), dim=-2)
         router_prob_per_group_and_expert = torch.mean(router_probs.float(), dim=-2)
-        aux_loss = num_experts**2 * torch.mean(
-            tokens_per_group_and_expert * router_prob_per_group_and_expert)
+        aux_loss = num_experts**2 * torch.mean(tokens_per_group_and_expert * router_prob_per_group_and_expert)
         self._aux_loss = aux_loss
 
     def set_z_loss(self, router_logits: torch.Tensor):
@@ -101,8 +98,7 @@ class MoeRouter(nn.Module, ABC):
         assert router_logits.dim() == 3, "router_logits must be 3D tensor"
         num_groups, tokens_per_group, _ = router_logits.shape
         log_z = torch.logsumexp(router_logits, dim=-1)
-        z_loss = torch.sum(log_z**2, dtype=torch.float32
-                           ) / (num_groups * tokens_per_group)
+        z_loss = torch.sum(log_z**2, dtype=torch.float32) / (num_groups * tokens_per_group)
         self._z_loss = z_loss
 
     def pop_router_loss(self) -> torch.Tensor:
@@ -113,8 +109,8 @@ class MoeRouter(nn.Module, ABC):
 
 
 class Top1Router(MoeRouter):
-    """Top1 router that returns the dispatch mask (batch_size * seq_len, num_experts, capacity) 
-    and combine weight (batch_size * seq_len, num_experts, capacity) for routing usage. More detailed 
+    """Top1 router that returns the dispatch mask (batch_size * seq_len, num_experts, capacity)
+    and combine weight (batch_size * seq_len, num_experts, capacity) for routing usage. More detailed
     function can be found in the paper about Switch Transformer of Google.
 
     Args:
@@ -142,22 +138,17 @@ class Top1Router(MoeRouter):
         self.select_policy = select_policy
         assert select_policy in {"first", "random"}
         if select_policy == "random":
-            self.uniform = torch.distributions.uniform.Uniform(
-                low=torch.tensor(0.0, device=get_current_device()),
-                high=torch.tensor(1.0, device=get_current_device())
-            ).rsample
+            self.uniform = torch.distributions.uniform.Uniform(low=torch.tensor(0.0, device=get_current_device()),
+                                                               high=torch.tensor(1.0,
+                                                                                 device=get_current_device())).rsample
 
-    def forward(self,
-                inputs: torch.Tensor,
-                use_kernel: bool = False,
-                ep_group: Optional[ProcessGroup] = None
-                ) -> Tuple:
+    def forward(self, inputs: torch.Tensor, use_kernel: bool = False, ep_group: Optional[ProcessGroup] = None) -> Tuple:
         """
         Args:
             inputs (torch.Tensor): The input tensor of shape (batch_size * seq_len, num_experts).
 
         Returns:
-            1. use_kernel is False: 
+            1. use_kernel is False:
                 The combine weight tensor of shape (batch_size * seq_len, num_experts, capacity).
                 The dispatch mask tensor of shape (batch_size * seq_len, num_experts, capacity).
             2. use_kernel is True:
@@ -188,9 +179,9 @@ class Top1Router(MoeRouter):
             rand_mask = mask * self.uniform(mask.shape)
             _, dispatch_idx = torch.topk(rand_mask, k=capacity, dim=0)
             mask = mask * torch.zeros_like(mask).scatter_(0, dispatch_idx, 1)
-            ranks = moe_cumsum(mask)
+            ranks = moe_cumsum(mask, use_kernel=self.use_kernel)
         elif self.select_policy == "first":
-            ranks = moe_cumsum(mask)
+            ranks = moe_cumsum(mask, use_kernel=self.use_kernel)
             mask = mask * torch.lt(ranks, capacity)
         else:
             raise NotImplementedError("Not support such select policy yet.")
@@ -211,8 +202,8 @@ class Top1Router(MoeRouter):
 
 
 class Top2Router(MoeRouter):
-    """Top2 router that returns the dispatch mask (batch_size * seq_len, num_experts, capacity) 
-    and combine weight (batch_size * seq_len, num_experts, capacity) for routing usage. More detailed 
+    """Top2 router that returns the dispatch mask (batch_size * seq_len, num_experts, capacity)
+    and combine weight (batch_size * seq_len, num_experts, capacity) for routing usage. More detailed
     function can be found in the paper about ViT-MoE.
 
     Args:
@@ -236,17 +227,13 @@ class Top2Router(MoeRouter):
                          noisy_func=noisy_func,
                          drop_tks=drop_tks)
 
-    def forward(self,
-                inputs: torch.Tensor,
-                use_kernel: bool = False,
-                ep_group: Optional[ProcessGroup] = None
-                ) -> Tuple:
+    def forward(self, inputs: torch.Tensor, use_kernel: bool = False, ep_group: Optional[ProcessGroup] = None) -> Tuple:
         """
         Args:
             inputs (torch.Tensor): The input tensor of shape (batch_size * seq_len, num_experts).
 
         Returns:
-            1. use_kernel is False: 
+            1. use_kernel is False:
                 The combine weight tensor of shape (batch_size * seq_len, num_experts, capacity).
                 The dispatch mask tensor of shape (batch_size * seq_len, num_experts, capacity).
             2. use_kernel is True:
@@ -280,8 +267,8 @@ class Top2Router(MoeRouter):
             dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=ep_group)
             capacity = max_num.item()
 
-        rank1 = moe_cumsum(mask1)    # rank1: [s, e]
-        rank2 = moe_cumsum(mask2)
+        rank1 = moe_cumsum(mask1, use_kernel=self.use_kernel)    # rank1: [s, e]
+        rank2 = moe_cumsum(mask2, use_kernel=self.use_kernel)
         rank2 += torch.sum(mask1, dim=-2, keepdim=True)
 
         mask1 *= torch.lt(rank1, capacity)
@@ -313,7 +300,7 @@ class Top2Router(MoeRouter):
             weight1 = mask1 * probs.type_as(inputs)
             weight2 = mask2 * probs.type_as(inputs)
 
-            cb_weight = torch.zeros(inputs.shape + (capacity, ), device=inputs.device)
+            cb_weight = torch.zeros(inputs.shape + (capacity,), device=inputs.device)
             sec_mask = torch.zeros_like(cb_weight, dtype=torch.bool)
             indices = torch.arange(0, inputs.shape[0], device=inputs.device)
             cb_weight[indices, top1_idx[indices], rank1[indices]] += weight1[indices, top1_idx[indices]]
@@ -348,17 +335,14 @@ class TopKRouter(MoeRouter):
                  min_capacity: int = 4,
                  noisy_func: Optional[Callable] = None,
                  drop_tks: bool = True):
-        super().__init__(num_selected_experts,
-                         capacity_factor_train,
-                         capacity_factor_eval,
-                         min_capacity,
-                         noisy_func,
+        super().__init__(num_selected_experts, capacity_factor_train, capacity_factor_eval, min_capacity, noisy_func,
                          drop_tks)
 
-    def forward(self,
-                router_probs: torch.Tensor,
-                expert_capacity: int,
-                ) -> Tuple:
+    def forward(
+        self,
+        router_probs: torch.Tensor,
+        expert_capacity: int,
+    ) -> Tuple:
         """Computes masks for the top-k experts per token.
 
         Args:
@@ -418,17 +402,12 @@ class TopKRouter(MoeRouter):
         # The combine array will be used for combining expert outputs, scaled by the
         # router probabilities. Shape: [num_groups, tokens_per_group, num_experts,
         # expert_capacity].
-        combine_array = torch.einsum(
-            '...te,...tec->...tec',
-            router_probs,
-            dispatch_mask)
+        combine_array = torch.einsum('...te,...tec->...tec', router_probs, dispatch_mask)
 
         return combine_array, dispatch_mask
 
 
-def get_router_cls(top_k: int,
-                   grouped: bool = False
-                   ) -> MoeRouter:
+def get_router_cls(top_k: int, grouped: bool = False) -> MoeRouter:
     if not grouped:
         if top_k == 1:
             return Top1Router
