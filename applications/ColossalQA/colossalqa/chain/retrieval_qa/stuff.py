@@ -7,6 +7,7 @@ This code is based on LangChain Ai's langchain, which can be found at
 https://github.com/langchain-ai/langchain
 The original code is licensed under the MIT license.
 """
+import copy
 from typing import Any, List
 
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
@@ -71,11 +72,15 @@ class CustomStuffDocumentsChain(StuffDocumentsChain):
 
         # if the document is in the key-value format has a 'is_key_value_mapping'=True in meta_data and has 'value' in metadata
         # use the value to replace the key
+        doc_prefix = kwargs.get("doc_prefix", "Supporting Document ")
         docs_ = []
-        for doc in docs:
-            if doc.metadata.get("is_key_value_mapping", False) and "value" in doc.metadata:
-                doc.page_content = str(doc.metadata["value"])
-            docs_.append(doc)
+        for id, doc in enumerate(docs):
+            doc_ = copy.deepcopy(doc)
+            if doc_.metadata.get("is_key_value_mapping", False) and "value" in doc_.metadata:
+                doc_.page_content = str(doc_.metadata["value"])
+            prefix = doc_prefix + str(id)
+            doc_.page_content = str(prefix + ":" + (" " if doc_.page_content[0] != " " else "") + doc_.page_content)
+            docs_.append(doc_)
 
         doc_strings = [format_document(doc, self.document_prompt) for doc in docs_]
         arg_list = ["stop", "temperature", "top_k", "top_p", "max_new_tokens"]

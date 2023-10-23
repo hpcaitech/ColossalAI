@@ -103,28 +103,30 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
         else:
             docs = self._get_docs(question)  # type: ignore[call-arg]
 
-        kwargs = {k: v for k, v in inputs.items() if k in ["stop", "temperature", "top_k", "top_p", "max_new_tokens"]}
+        kwargs = {
+            k: v
+            for k, v in inputs.items()
+            if k in ["stop", "temperature", "top_k", "top_p", "max_new_tokens", "doc_prefix"]
+        }
         answers = []
         buffered_history_backup, summarized_history_temp_backup = copy.deepcopy(
             self.combine_documents_chain.memory.buffered_history
         ), copy.deepcopy(self.combine_documents_chain.memory.summarized_history_temp)
 
-        for idx, doc in enumerate(docs):
-            answer = self.combine_documents_chain.run(
-                input_documents=[doc], question=question, callbacks=_run_manager.get_child(), **kwargs
-            )
-            answers.append((answer, idx))
-            (
-                self.combine_documents_chain.memory.buffered_history,
-                self.combine_documents_chain.memory.summarized_history_temp,
-            ) = copy.deepcopy(buffered_history_backup), copy.deepcopy(summarized_history_temp_backup)
+        # for idx, doc in enumerate(docs):
+        answer = self.combine_documents_chain.run(
+            input_documents=docs, question=question, callbacks=_run_manager.get_child(), **kwargs
+        )
+        answers.append((answer, 0))
+        (
+            self.combine_documents_chain.memory.buffered_history,
+            self.combine_documents_chain.memory.summarized_history_temp,
+        ) = copy.deepcopy(buffered_history_backup), copy.deepcopy(summarized_history_temp_backup)
 
         # backup memory
         rejected_answers = ["无法回答该问题"]
         print(answers)
-        answers = [
-            f"{ans[0]}---支持文档：文档{ans[1]}\n" for ans in answers if all([rej not in ans[0] for rej in rejected_answers])
-        ]
+        answers = [f"{ans[0]}" for ans in answers if all([rej not in ans[0] for rej in rejected_answers])]
         if len(answers) == 0:
             answer = "抱歉，根据提供的信息无法回答该问题。"
         else:
@@ -159,7 +161,11 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
             docs = await self._aget_docs(question, run_manager=_run_manager)
         else:
             docs = await self._aget_docs(question)  # type: ignore[call-arg]
-        kwargs = {k: v for k, v in inputs.items() if k in ["stop", "temperature", "top_k", "top_p", "max_new_tokens"]}
+        kwargs = {
+            k: v
+            for k, v in inputs.items()
+            if k in ["stop", "temperature", "top_k", "top_p", "max_new_tokens", "doc_prefix"]
+        }
         answer = await self.combine_documents_chain.arun(
             input_documents=docs, question=question, callbacks=_run_manager.get_child(), **kwargs
         )

@@ -58,6 +58,7 @@ class ColossalAPI:
             inputs = {
                 "input_ids": self.tokenizer(input, return_tensors="pt")["input_ids"].to(torch.cuda.current_device())
             }
+        # print(kwargs)
         output = self.actor.generate(**inputs, **kwargs)
         output = output.cpu()
         prompt_len = inputs["input_ids"].size(1)
@@ -109,8 +110,8 @@ class ColossalLLM(LLM):
             for stopping_words in stop:
                 if stopping_words in out:
                     out = out.split(stopping_words)[0]
-        # print(prompt)
-        # print(out)
+        print(prompt)
+        print(out)
         logger.info(f"-----------------\n{out}", verbose=self.verbose)
         return out
 

@@ -93,7 +93,7 @@ if __name__ == "__main__":
         chain_type="stuff",
         retriever=information_retriever,
         chain_type_kwargs={"prompt": PROMPT_RETRIEVAL_QA_ZH, "memory": memory},
-        llm_kwargs={"max_new_tokens": 150, "temperature": 0.75, "do_sample": True},
+        llm_kwargs={"max_new_tokens": 150, "temperature": 0.6, "do_sample": True},
     )
 
     # Set disambiguity handler
@@ -105,5 +105,5 @@ if __name__ == "__main__":
         if "END" == user_input:
             print("Agent: Happy to chat with you ：)")
             break
-        agent_response = llm_chain.run(query=user_input, stop=["</答案>"])
+        agent_response = llm_chain.run(query=user_input, stop=["</答案>"], doc_prefix="支持文档")
         print(f"Agent: {agent_response}")
