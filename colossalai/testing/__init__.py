@@ -9,6 +9,7 @@ from .comparison import (
 )
 from .pytest_wrapper import run_on_environment_flag
 from .utils import (
+    DummyDataloader,
     clear_cache_before_run,
     free_port,
     parameterize,
@@ -34,4 +35,5 @@ __all__ = [
     "run_on_environment_flag",
     "check_state_dict_equal",
     "assert_hf_output_close",
+    "DummyDataloader",
 ]

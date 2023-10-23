@@ -1,10 +1,13 @@
-# 使用混合并行训练 GPT
+# 使用混合并行训练 GPT-2
 
-作者: Hongxin Liu, Yongbin Li
+作者: Hongxin Liu, Yongbin Li, Mingyan Jiang
+
+**前置教程**
+- [并行插件](../basics/booster_plugins.md)
+- [booster API](../basics/booster_api.md)
 
 **示例代码**
-- [ColossalAI-Examples GPT2](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/gpt_2)
-- [ColossalAI-Examples GPT3](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/gpt_3)
+- [ColossalAI-Examples GPT2](https://github.com/hpcaitech/ColossalAI/blob/main/examples/language/gpt/hybridparallelism/finetune.py)
 
 **相关论文**
 - [Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training](https://arxiv.org/abs/2110.14883)
@@ -12,265 +15,190 @@
 
 ## 引言
 
-在上一篇教程中，我们介绍了如何用流水并行训练 ViT。在本教程中，你将学习一个更复杂的场景--用混合并行方式训练GPT。在这种情况下，由于GPT-3过大，即使CPU内存也无法容纳它。因此，你必须自己分割模型。
+在上一篇教程中，我们介绍了如何用流水并行训练 ViT。在本教程中，你将学习一个更复杂的场景--用混合并行方式训练GPT-2。在这种情况下，由于GPT-2过大，即使CPU内存也无法容纳它。因此，该模型必须被分割。
 
 ## 目录
 
 在本教程中，我们将介绍:
-
-1. 基于 colossalai/model_zoo 定义 GPT 模型
-2. 处理数据集
-3. 使用混合并行训练 GPT
+1. 初始化混合并行插件
+2. 定义 GPT-2 模型的训练组件
+3. 使用 [HybridParallelPlugin](../basics/booster_plugins.md) 增强GPT-2模型
+4. 使用混合并行训练 GPT-2
 
 ## 导入依赖库
 
 ```python
-import json
-import os
-from typing import Callable
+from typing import Callable, List, Union
+import torch
+import torch.distributed as dist
+import torch.nn as nn
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
+from tqdm import tqdm
+from transformers import AutoConfig, GPT2ForSequenceClassification, get_linear_schedule_with_warmup
+from transformers import AutoTokenizer
 
 import colossalai
-import colossalai.utils as utils
-import model_zoo.gpt.gpt as col_gpt
-import torch
-import torch.nn as nn
-from colossalai import nn as col_nn
-from colossalai.amp import AMP_TYPE
-from colossalai.legacy.builder.pipeline import partition_uniform
-from colossalai.legacy.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.legacy.engine.schedule import (InterleavedPipelineSchedule,
-                                        PipelineSchedule)
-from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.legacy.nn.layer.wrapper import PipelineSharedModuleWrapper
-from colossalai.legacy.trainer import Trainer, hooks
-from colossalai.utils.timer import MultiTimer
-from model_zoo.gpt import GPTLMLoss
-from torch.nn import functional as F
-from torch.utils.data import Dataset
-from transformers import GPT2Tokenizer
+from colossalai.booster import Booster
+from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.cluster import DistCoordinator
+from colossalai.nn.optimizer import HybridAdam
+from colossalai.utils import get_current_device
 ```
-
-
-
-## 定义 GPT 模型
-
-在前面的教程中，我们介绍了3种建立流水并行模型的方法，但对于像 GPT-3 这样的巨大模型，你甚至不能在 CPU 中建立模型。在这种情况下，你必须自己分割模型。
-
-GPT 数据加载器返回 `input_ids` 和 `attention_mask`, 因此我们在 `forward()` 中使用两个关键字参数来获得它们。请注意，对于除第一阶段以外的其他阶段， `forward()` 的第一个位置参数是上一阶段的输出张量。所以 `hidden_states` 来自前一阶段，并且对于第一阶段来说，它是 `None`。
-
-对于 GPT, *word embedding layer* 与 *output head* 共享权重。我们提供 `PipelineSharedModuleWrapper` 在流水阶段间共享参数。它需要一个 `int` 型的 `list` 作为参数, 这意味着 rank 们共享这些参数。你可以使用 `register_module()`
-或 `register_parameter()` 来注册一个模块或一个参数作为共享模块或参数。如果你有多组共享模块/参数，你应该有多个 `PipelineSharedModuleWrapper` 实例。 如果参数在**一个**阶段内共享, 你不应该使用
-`PipelineSharedModuleWrapper`, 而只是使用同一个模块/参数实例。在这个例子中，*word embedding layer* 在第一阶段, 而 *output head* 在最后一个阶段。因此，他们在 rank `[0, pipeline_size - 1]` 之间共享参数。
-
-对于第一阶段，它维护 embedding layer 和一些 transformer blocks。对于最后一个阶段，它维护一些 transformer blocks 和 output head layer。对于其他阶段，他们只维护一些 transformer blocks。
-`partition_uniform(num_layers, pipeline_size, num_chunks)` 返回所有 rank 的 parts, part 是一个 `(start, end)` (不包括end) 的 `tuple`。`start == 0` 表示这是第一阶段, 而 `end == num_layers` 表示这是最后一个阶段。
-
+### 定义plugin
+定义一个[`HybridParallelPlugin`](../basics/booster_plugins.md)对象，指定所需要使用的并行策略，在该例子中，同时使用了流水线并行和zero1.
 ```python
-class PipelineGPTHybrid(nn.Module):
-    def __init__(self,
-                 num_layers: int = 12,
-                 hidden_size: int = 768,
-                 num_attention_heads: int = 12,
-                 vocab_size: int = 50304,
-                 embed_drop_rate: float = 0.,
-                 act_func: Callable = F.gelu,
-                 mlp_ratio: int = 4,
-                 attn_drop_rate: float = 0.,
-                 drop_rate: float = 0.,
-                 dtype: torch.dtype = torch.float,
-                 checkpoint: bool = False,
-                 max_position_embeddings: int = 1024,
-                 layer_norm_epsilon: float = 1e-5,
-                 first: bool = False,
-                 last: bool = False):
-        super().__init__()
-        self.embedding = None
-        self.norm = None
-        self.head = None
-        if first:
-            self.embedding = col_gpt.GPTEmbedding(
-                hidden_size, vocab_size, max_position_embeddings, dropout=embed_drop_rate, dtype=dtype)
-        self.blocks = nn.ModuleList([
-            col_gpt.GPTBlock(hidden_size, num_attention_heads, mlp_ratio=mlp_ratio, attention_dropout=attn_drop_rate,
-                             dropout=drop_rate, dtype=dtype, checkpoint=checkpoint, activation=act_func)
-            for _ in range(num_layers)
-        ])
-        if last:
-            self.norm = col_nn.LayerNorm(hidden_size, eps=layer_norm_epsilon)
-            self.head = col_gpt.GPTLMHead(vocab_size=vocab_size,
-                                          dim=hidden_size,
-                                          dtype=dtype,
-                                          bias=False)
-
-    def forward(self, hidden_states=None, input_ids=None, attention_mask=None):
-        if self.embedding is not None:
-            hidden_states = self.embedding(input_ids=input_ids)
-        batch_size = hidden_states.shape[0]
-        attention_mask = attention_mask.view(batch_size, -1)
-        attention_mask = attention_mask[:, None, None, :]
-        attention_mask = attention_mask.to(dtype=hidden_states.dtype)  # fp16 compatibility
-        attention_mask = (1.0 - attention_mask) * -10000.0
-        for block in self.blocks:
-            hidden_states, attention_mask = block(hidden_states, attention_mask)
-        if self.norm is not None:
-            hidden_states = self.head(self.norm(hidden_states))
-        return hidden_states
-
-
-def build_gpt_pipeline(num_layers, num_chunks, device=torch.device('cuda'), **kwargs):
-    logger = get_dist_logger()
-    pipeline_size = gpc.get_world_size(ParallelMode.PIPELINE)
-    pipeline_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
-    rank = gpc.get_global_rank()
-    wrapper = PipelineSharedModuleWrapper([0, pipeline_size - 1])
-    parts = partition_uniform(num_layers, pipeline_size, num_chunks)[pipeline_rank]
-    models = []
-    for start, end in parts:
-        kwargs['num_layers'] = end - start
-        kwargs['first'] = start == 0
-        kwargs['last'] = end == num_layers
-        logger.info(f'Rank{rank} build layer {start}-{end}, {end-start}/{num_layers} layers')
-        chunk = PipelineGPTHybrid(**kwargs).to(device)
-        if start == 0:
-            wrapper.register_module(chunk.embedding.word_embeddings)
-        elif end == num_layers:
-            wrapper.register_module(chunk.head)
-        models.append(chunk)
-    if len(models) == 1:
-        model = models[0]
-    else:
-        model = nn.ModuleList(models)
-    return model
-
-
-def GPT2_exlarge_pipeline_hybrid(num_chunks=1, checkpoint=False, dtype=torch.float):
-    cfg = dict(hidden_size=1600, num_attention_heads=32, checkpoint=checkpoint, dtype=dtype)
-    return build_gpt_pipeline(48, num_chunks, **cfg)
-
-
-def GPT3_pipeline_hybrid(num_chunks=1, checkpoint=False, dtype=torch.float):
-    cfg = dict(hidden_size=12288, num_attention_heads=96,
-               checkpoint=checkpoint, max_position_embeddings=2048, dtype=dtype)
-    return build_gpt_pipeline(96, num_chunks, **cfg)
+plugin = HybridParallelPlugin(
+    tp_size=1,
+    pp_size=2,
+    num_microbatches=None,
+    microbatch_size=1,
+    enable_all_optimization=True,
+    zero_stage=1,
+    precision="fp16",
+    initial_scale=1,
+)
 ```
 
-## 处理数据集
-
-我们在这里提供了一个小型 GPT web-text 数据集。 原始格式是 loose JSON, 我们将保存处理后的数据集。
-
+## 创建分布式环境.
 ```python
-class WebtextDataset(Dataset):
-    def __init__(self, path, seq_len=1024) -> None:
-        super().__init__()
-        root = os.path.dirname(path)
-        encoded_data_cache_path = os.path.join(root, f'gpt_webtext_{seq_len}.pt')
-        if os.path.isfile(encoded_data_cache_path):
-            seq_len_, data, attention_mask = torch.load(
-                encoded_data_cache_path)
-            if seq_len_ == seq_len:
-                self.data = data
-                self.attention_mask = attention_mask
-                return
-        raw_data = []
-        with open(path) as f:
-            for line in f.readlines():
-                raw_data.append(json.loads(line)['text'])
-        tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-        tokenizer.pad_token = tokenizer.unk_token
-        encoded_data = tokenizer(
-            raw_data, padding=True, truncation=True, max_length=seq_len, return_tensors='pt')
-        self.data = encoded_data['input_ids']
-        self.attention_mask = encoded_data['attention_mask']
-        torch.save((seq_len, self.data, self.attention_mask),
-                   encoded_data_cache_path)
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, index):
-        return {
-            'input_ids': self.data[index],
-            'attention_mask': self.attention_mask[index]
-        }, self.data[index]
+# Launch ColossalAI
+colossalai.launch_from_torch(config={}, seed=42)
+coordinator = DistCoordinator()
 ```
-
-## 使用混合并行训练 GPT
-
-在上一个教程中，我们解释了一些流水并行的参数含义。在本例中，我们可以确定在流水阶段之间交换的每个输出张量的形状。对于 GPT，该形状为
-`(MICRO BATCH SIZE, SEQUENCE LEN, HIDDEN SIZE)`。通过设置该参数，我们可以避免交换每个阶段的张量形状。当你不确定张量的形状时，你可以把它保留为
-`None`, 形状会被自动推测。请确保你的模型的 `dtype` 是正确的：当你使用 `fp16`，模型的 `dtype` 必须是 `torch.half`；否则，`dtype` 必须是 `torch.float`。对于流水并行，仅支持 `AMP_TYPE.NAIVE`。
-
-你可以通过在 `CONFIG` 里使用 `parallel` 来轻松使用张量并行。数据并行的大小是根据 GPU 的数量自动设置的。
-
+## 定义GPT-2模型的训练组件
+在使用混合并行之前，您需要定义训练所使用的组件。
+定义超参数。
 ```python
-NUM_EPOCHS = 60
-SEQ_LEN = 1024
-BATCH_SIZE = 192
-NUM_CHUNKS = None
-TENSOR_SHAPE = (1, 1024, 1600)
-# only pipeline parallel
-# CONFIG = dict(NUM_MICRO_BATCHES = 192, parallel=dict(pipeline=2), fp16=dict(mode=AMP_TYPE.NAIVE))
-# pipeline + 1D model parallel
-CONFIG = dict(NUM_MICRO_BATCHES = 192, parallel=dict(pipeline=2, tensor=dict(mode='1d', size=2)), fp16=dict(mode=AMP_TYPE.NAIVE))
-
-
-def train():
-    disable_existing_loggers()
-    parser = colossalai.get_default_parser()
-    args = parser.parse_args()
-    colossalai.launch_from_torch(config=CONFIG, backend=args.backend)
-    logger = get_dist_logger()
-
-    train_ds = WebtextDataset(os.environ['DATA'], seq_len=SEQ_LEN)
-    train_dataloader = utils.get_dataloader(train_ds,
-                                            seed=42,
-                                            batch_size=BATCH_SIZE,
-                                            pin_memory=True,
-                                            shuffle=True,
-                                            drop_last=True)
-
-    use_interleaved = NUM_CHUNKS is not None
-    num_chunks = 1 if not use_interleaved else NUM_CHUNKS
-    model = GPT2_exlarge_pipeline_hybrid(num_chunks=num_chunks, checkpoint=True, dtype=torch.half)
-    # model = GPT3_pipeline_hybrid(num_chunks=num_chunks, checkpoint=True, dtype=torch.half)
-    if use_interleaved and not isinstance(model, nn.ModuleList):
-        model = nn.ModuleList([model])
-
-    criterion = GPTLMLoss()
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.00015, weight_decay=1e-2,)
-
-    engine, train_dataloader, _, _ = colossalai.initialize(model,
-                                                           optimizer,
-                                                           criterion,
-                                                           train_dataloader=train_dataloader)
-    global_batch_size = BATCH_SIZE * \
-        gpc.get_world_size(ParallelMode.DATA) * getattr(gpc.config, "gradient_accumulation", 1)
-    logger.info(f'Init done, global batch size = {global_batch_size}', ranks=[0])
-
-    timer = MultiTimer()
-
-    trainer = Trainer(
-        engine=engine,
-        logger=logger,
-        timer=timer
-    )
-
-    hook_list = [
-        hooks.LossHook(),
-        hooks.LogMetricByEpochHook(logger),
-        hooks.ThroughputHook(),
-        hooks.LogMetricByStepHook(),
-    ]
-
-    trainer.fit(
-        train_dataloader=train_dataloader,
-        epochs=NUM_EPOCHS,
-        test_interval=1,
-        hooks=hook_list,
-        display_progress=True,
-        return_output_label=False,
-    )
+NUM_EPOCHS = 3
+BATCH_SIZE = 32
+LEARNING_RATE = 2.4e-5
+WEIGHT_DECAY = 0.01
+WARMUP_FRACTION = 0.1
 ```
-<!-- doc-test-command: echo  -->
+获取数据集。您可以使用`plugin.prepare_dataloader`生成dataloader,也可以自定义您的dataloader。
+```python
+def tokenize_batch(batch, tokenizer: Optional[AutoTokenizer] = None, max_length: int = 2048):
+    texts = [sample["sentence1"] + sample["sentence2"] for sample in batch]
+    data = tokenizer(texts, return_tensors="pt", padding="max_length", truncation=True, max_length=max_length)
+    data = {k: v.cuda() for k, v in data.items()}
+    data["labels"] = data["input_ids"].clone()
+    return data
+
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
+dataset = datasets.load_dataset("glue", "mrpc")
+train_dataloader = plugin.prepare_dataloader(
+    dataset["train"],
+    batch_size=BATCH_SIZE,
+    shuffle=True,
+    drop_last=True,
+    collate_fn=partial(tokenize_batch, tokenizer=tokenizer, max_length=512),
+)
+```
+定义GPT-2模型。
+```python
+cfg = AutoConfig.from_pretrained("gpt2", num_labels=2)
+model = GPT2ForSequenceClassification.from_pretrained("gpt2", config=cfg).cuda()
+```
+准备优化器
+```python
+lr = LEARNING_RATE * coordinator.world_size
+no_decay = ["bias", "LayerNorm.weight"]
+optimizer_grouped_parameters = [
+    {
+        "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+        "weight_decay": WEIGHT_DECAY,
+    },
+    {
+        "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+        "weight_decay": 0.0,
+    },
+]
+
+optimizer = HybridAdam(optimizer_grouped_parameters, lr=lr, eps=1e-8)
+```
+准备 `lr_scheduler` 和 `criterion`，需要注意的是，当混合并行使用了管道并行时，还需定义`criterion`函数。这个函数应该以模型前后向的输入和输出作为参数，并返回loss。
+```python
+# lr scheduler
+total_steps = len(train_dataloader) * NUM_EPOCHS
+num_warmup_steps = int(WARMUP_FRACTION * total_steps)
+lr_scheduler = get_linear_schedule_with_warmup(
+    optimizer,
+    num_warmup_steps=num_warmup_steps,
+    num_training_steps=total_steps,
+)
+
+def _criterion(outputs, inputs):
+    return outputs.loss
+```
+## 增强GPT-2模型
+使用 HybridParallelPlugin 定义一个 booster（增强器）。根据设置的插件参数，booster会将一种或者多种并行策略注入到模型中。该例子中使用了管道并行，zero1，及半精度训练等优化。
+```python
+booster = Booster(plugin=plugin)
+```
+使用定义的 booster 来增强这些组件。
+```python
+model, optimizer, _criterion, _, lr_scheduler = booster.boost(
+    model, optimizer, criterion=_criterion, lr_scheduler=lr_scheduler
+)
+```
+
+
+## 使用混合并行训练 GPT-2
+
+在前面的教程中，我们已经解释了如何使用 Booster 和 HybridParallelPlugin 将各种并行特性注入到模型及其训练组件中。现在我们可以开始模型训练。
+定义一个训练函数。当使用了管道并行时，需要调用`booster.execute_pipeline`进行模型训练的阶段调度。
+```python
+def train_epoch(
+    epoch: int,
+    model: nn.Module,
+    optimizer: Optimizer,
+    _criterion: Callable,
+    lr_scheduler: LRScheduler,
+    train_dataloader: DataLoader,
+    booster: Booster,
+    coordinator: DistCoordinator,
+):
+    use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
+    is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
+    print_flag = (not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_stage)
+    total_step = len(train_dataloader)
+
+    model.train()
+    optimizer.zero_grad()
+    train_dataloader_iter = iter(train_dataloader)
+    with tqdm(
+        range(total_step),
+        desc=f"Epoch [{epoch + 1}/{NUM_EPOCHS}]",
+        disable=not print_flag,
+    ) as pbar:
+        # Forward pass
+        for _ in pbar:
+            if use_pipeline:
+                outputs = booster.execute_pipeline(
+                    train_dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
+                )
+                # Backward and optimize
+                if is_pp_last_stage:
+                    loss = outputs["loss"]
+                    pbar.set_postfix({"loss": loss.item()})
+            else:
+                data = next(train_dataloader_iter)
+                data = move_to_cuda(data)
+                outputs = model(**data)
+                loss = _criterion(outputs, None)
+                # Backward
+                booster.backward(loss, optimizer)
+                pbar.set_postfix({"loss": loss.item()})
+
+            optimizer.step()
+            optimizer.zero_grad()
+            lr_scheduler.step()
+
+```
+训练 GPT-2 模型。
+```python
+for epoch in range(NUM_EPOCHS):
+    train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, train_dataloader, booster, coordinator)
+```
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=1 train_gpt_using_hybrid_parallelism.py  -->

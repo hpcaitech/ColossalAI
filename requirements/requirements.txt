@@ -11,3 +11,6 @@ ninja
 torch>=1.12
 safetensors
 einops
+sentencepiece
+google
+protobuf

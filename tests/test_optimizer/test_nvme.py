@@ -2,7 +2,7 @@ import torch
 
 from colossalai.nn.optimizer import CPUAdam, HybridAdam
 from colossalai.testing import clear_cache_before_run, parameterize
-from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.kit.model_zoo import model_zoo
 
 
 def move_some_params_to_cuda(model, torch_model):
@@ -22,8 +22,7 @@ def check_params_equal(model, torch_model):
 @parameterize("nvme_offload_dir", ["./offload", None])
 @parameterize("adam_cls", [CPUAdam, HybridAdam])
 def test_nvme_adam(nvme_offload_fraction, nvme_offload_dir, adam_cls):
-    get_components_func = non_distributed_component_funcs.get_callable("simple_net")
-    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
+    model_builder, data_gen_fn, *_ = next(iter(model_zoo.get_sub_registry("custom_simple_net").values()))
     model = model_builder()
     torch_model = model_builder()
     move_some_params_to_cuda(model, torch_model)

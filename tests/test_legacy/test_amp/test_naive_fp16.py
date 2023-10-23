@@ -6,7 +6,7 @@ import torch
 import colossalai
 from colossalai.legacy.amp import convert_to_apex_amp, convert_to_naive_amp
 from colossalai.testing import assert_close_loose, clear_cache_before_run, rerun_if_address_is_in_use, spawn
-from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.kit.model_zoo import model_zoo
 
 
 def check_equal(a, b):
@@ -25,13 +25,12 @@ def run_naive_amp():
     torch.backends.cudnn.deterministic = True
 
     # create layer
-    test_models = ["repeated_computed_layers", "nested_model", "resnet18"]
+    test_models = ["custom_repeated_computed_layers", "custom_nested_model", "torchvision_resnet18"]
     for test_name in test_models:
-        get_component_func = non_distributed_component_funcs.get_callable(test_name)
-        model_builder, train_dataloader, _, optim_class, _ = get_component_func()
+        model_builder, data_gen_fn, *_ = next(iter(model_zoo.get_sub_registry(test_name).values()))
 
         # create model
-        naive_amp_model = model_builder(checkpoint=True).cuda()
+        naive_amp_model = model_builder().cuda()
         apex_amp_model = copy.deepcopy(naive_amp_model)
 
         # create optimizer
@@ -48,13 +47,12 @@ def run_naive_amp():
         apex_amp_model, apex_amp_optimizer = convert_to_apex_amp(apex_amp_model, apex_amp_optimizer, apex_amp_config)
 
         # create data
-        data_iter = iter(train_dataloader)
-        data, label = next(data_iter)
-        data = data.cuda()
+        data = data_gen_fn()
+        data = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
 
         # forward pass
-        naive_amp_output = naive_amp_model(data)
-        apex_amp_output = apex_amp_model(data)
+        naive_amp_output = naive_amp_model(**data)
+        apex_amp_output = apex_amp_model(**data)
         assert_close_loose(naive_amp_output, apex_amp_output)
 
         # backward

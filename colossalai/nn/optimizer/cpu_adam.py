@@ -9,7 +9,8 @@ from .nvme_optimizer import NVMeOptimizer
 
 
 class CPUAdam(NVMeOptimizer):
-    """Implements Adam algorithm.
+    """
+    Implements Adam algorithm.
 
     Supports parameters updating on both GPU and CPU, depending on the device of parameters.
     But the parameters and gradients should on the same device:
@@ -77,6 +78,7 @@ class CPUAdam(NVMeOptimizer):
         super(CPUAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)
         self.adamw_mode = adamw_mode
         cpu_adam = CPUAdamBuilder().load()
+        # if you find yourself stuck here, make sure that you install colossalai with CUDA_EXT=1 specification
         self.cpu_adam_op = cpu_adam.CPUAdamOptimizer(lr, betas[0], betas[1], eps, weight_decay, adamw_mode)
 
     def torch_adam_update(
@@ -131,9 +133,6 @@ class CPUAdam(NVMeOptimizer):
                 target_device = p.device
                 if len(state) == 0:
                     state["step"] = 0
-
-                    # FIXME(ver217): CPU adam kernel only supports fp32 states now
-                    assert p.dtype is torch.float, "CPUAdam only support fp32 parameters"
                     # gradient momentums
                     state["exp_avg"] = torch.zeros_like(p, device=target_device)
                     # gradient variances

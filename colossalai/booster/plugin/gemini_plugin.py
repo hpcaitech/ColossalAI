@@ -97,7 +97,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
 
         Path(checkpoint_path).mkdir(parents=True, exist_ok=True)
 
-        state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=True, dtype=torch.float32)
+        state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=True)
         weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint_path)
 
@@ -245,6 +245,7 @@ class GeminiPlugin(DPPluginBase):
         chunk_config_dict (dict, optional): chunk configuration dictionary.
         chunk_init_device (torch.device, optional): device to initialize the chunk.
         placement_policy (str, optional): "static" and "auto". Defaults to "static".
+        enable_gradient_accumulation (bool, optional): Whether to enable gradient accumulation. When set to True, gradient will be stored after doing backward pass. Defaults to False.
         shard_param_frac (float, optional): fraction of parameters to be sharded. Only for "static" placement.
             If `shard_param_frac` is 1.0, it's equal to zero-3. If `shard_param_frac` is 0.0, it's equal to zero-2. Defaults to 1.0.
         offload_optim_frac (float, optional): fraction of optimizer states to be offloaded. Only for "static" placement.
@@ -257,6 +258,7 @@ class GeminiPlugin(DPPluginBase):
         warmup_non_model_data_ratio (float, optional): ratio of expected non-model data memory during warmup. Only for "auto" placement. Defaults to 0.8.
         steady_cuda_cap_ratio (float, optional): ratio of allowed cuda capacity for model data during steady state. Only for "auto" placement. Defaults to 0.9.
         precision (str, optional): precision. Support 'fp16' and 'bf16'. Defaults to 'fp16'.
+        master_weights (bool, optional): Whether to keep fp32 master parameter weights in optimizer. Defaults to True.
         pin_memory (bool, optional): use pin memory on CPU. Defaults to False.
         force_outputs_fp32 (bool, optional): force outputs are fp32. Defaults to False.
         strict_ddp_mode (bool, optional): use strict ddp mode (only use dp without other parallelism). Defaults to False.
@@ -290,12 +292,14 @@ class GeminiPlugin(DPPluginBase):
         chunk_config_dict: Optional[dict] = None,
         chunk_init_device: Optional[torch.device] = None,
         placement_policy: str = "static",
+        enable_gradient_accumulation: bool = False,
         shard_param_frac: float = 1.0,  # only for static placement
         offload_optim_frac: float = 0.0,  # only for static placement
         offload_param_frac: float = 0.0,  # only for static placement
         warmup_non_model_data_ratio: float = 0.8,  # only for auto placement
         steady_cuda_cap_ratio: float = 0.9,  # only for auto placement
         precision: str = "fp16",
+        master_weights: bool = True,
         pin_memory: bool = False,
         force_outputs_fp32: bool = False,
         strict_ddp_mode: bool = False,
@@ -321,6 +325,7 @@ class GeminiPlugin(DPPluginBase):
             chunk_config_dict=chunk_config_dict,
             chunk_init_device=(chunk_init_device or get_current_device()),
             placement_policy=placement_policy,
+            enable_gradient_accumulation=enable_gradient_accumulation,
             shard_param_frac=shard_param_frac,
             offload_optim_frac=offload_optim_frac,
             offload_param_frac=offload_param_frac,
@@ -334,6 +339,7 @@ class GeminiPlugin(DPPluginBase):
             min_chunk_size_m=min_chunk_size_m,
             memstats=memstats,
             mixed_precision=PRECISION_STR_TO_DTYPE[precision],
+            master_weights=master_weights,
         )
         self.zero_optim_config = dict(
             gpu_margin_mem_ratio=gpu_margin_mem_ratio,
