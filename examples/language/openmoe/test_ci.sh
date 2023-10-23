@@ -7,7 +7,13 @@ python infer.py --model "test"
 torchrun --standalone --nproc_per_node 4 train.py \
     --num_epoch 1 \
     --model_name "test" \
-    --plugin zero2_ep \
+    --plugin "ep" \
+    --batch_size 1
+
+torchrun --standalone --nproc_per_node 4 train.py \
+    --num_epoch 1 \
+    --model_name "test" \
+    --plugin "ep_zero" \
     --batch_size 1
 
 torchrun --standalone --nproc_per_node 4 train.py \
