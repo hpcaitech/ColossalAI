@@ -1,5 +1,12 @@
-"""Chain that combines documents by stuffing into context."""
+"""
+Chain that combines documents by stuffing into context
 
+Modified from Original Source
+
+This code is based on LangChain Ai's langchain, which can be found at
+https://github.com/langchain-ai/langchain
+The original code is licensed under the MIT license.
+"""
 from typing import Any, List
 
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain

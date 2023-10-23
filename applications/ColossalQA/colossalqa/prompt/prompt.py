@@ -39,6 +39,12 @@ _ZH_RETRIEVAL_QA_PROMPT = """你是一个善于解答用户问题的AI助手。�
 用户: {question}
 AI:"""
 
+_ZH_RETRIEVAL_QA_PROMPT = """<指令>根据已知信息和对话历史，简洁和专业地来回答问题。如果无法从中得到答案，请说 “根据已知信息无法回答该问题”，不允许在答案中添加编造成分，答案请使用中文。 </指令>
+<已知信息>{context}</已知信息>
+<对话历史>{chat_history}</对话历史>
+<问题>{question}</问题>
+<答案>"""
+
 _ZH_RETRIEVAL_CLASSIFICATION_USE_CASE = """使用提供的参考案例判断客户遇到的故障所属的故障原因分类。
 
 背景信息:

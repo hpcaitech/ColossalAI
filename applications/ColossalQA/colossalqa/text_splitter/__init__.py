@@ -1,1 +1,1 @@
-from .ali_text_splitter import NeuralTextSplitter
+from .chinese_text_splitter import ChineseTextSplitter

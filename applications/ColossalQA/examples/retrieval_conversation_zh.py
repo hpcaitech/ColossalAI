@@ -10,7 +10,7 @@ from colossalqa.local.llm import ColossalAPI, ColossalLLM
 from colossalqa.memory import ConversationBufferWithSummary
 from colossalqa.prompt.prompt import PROMPT_DISAMBIGUATE_ZH, PROMPT_RETRIEVAL_QA_ZH, SUMMARY_PROMPT_ZH
 from colossalqa.retriever import CustomRetriever
-from colossalqa.text_splitter import NeuralTextSplitter
+from colossalqa.text_splitter import ChineseTextSplitter
 from langchain import LLMChain
 from langchain.embeddings import HuggingFaceEmbeddings
 
@@ -75,8 +75,10 @@ if __name__ == "__main__":
         retriever_data = DocumentLoader([[file, data_name.replace(" ", "_")]]).all_data
 
         # Split
-        text_splitter = NeuralTextSplitter(separator=separator.replace("\\n", "\n").replace("\\t", "\t"))
+        text_splitter = ChineseTextSplitter()
+        # print(retriever_data)
         splits = text_splitter.split_documents(retriever_data)
+        # print(splits)
         documents.extend(splits)
     # Create retriever
     information_retriever.add_documents(docs=documents, cleanup="incremental", mode="by_source", embedding=embedding)
@@ -91,7 +93,7 @@ if __name__ == "__main__":
         chain_type="stuff",
         retriever=information_retriever,
         chain_type_kwargs={"prompt": PROMPT_RETRIEVAL_QA_ZH, "memory": memory},
-        llm_kwargs={"max_new_tokens": 50, "temperature": 0.75, "do_sample": True},
+        llm_kwargs={"max_new_tokens": 150, "temperature": 0.75, "do_sample": True},
     )
 
     # Set disambiguity handler
@@ -103,6 +105,5 @@ if __name__ == "__main__":
         if "END" == user_input:
             print("Agent: Happy to chat with you ：)")
             break
-        agent_response = llm_chain.run(query=user_input, stop=["用户: "])
-        agent_response = agent_response.split("\n")[0]
+        agent_response = llm_chain.run(query=user_input, stop=["</答案>"])
         print(f"Agent: {agent_response}")

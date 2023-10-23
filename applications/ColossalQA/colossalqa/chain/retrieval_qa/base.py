@@ -1,23 +1,28 @@
-"""Chain for question-answering against a vector database."""
+"""
+Chain for question-answering against a vector database.
+
+Modified from Original Source
+
+This code is based on LangChain Ai's langchain, which can be found at
+https://github.com/langchain-ai/langchain
+The original code is licensed under the MIT license.
+"""
 from __future__ import annotations
 
+import copy
 import inspect
 from typing import Any, Dict, List, Optional
-import copy
-from langchain.callbacks.manager import (
-    AsyncCallbackManagerForChainRun,
-    CallbackManagerForChainRun,
-    Callbacks,
-)
+
+from colossalqa.chain.retrieval_qa.load_chain import load_qa_chain
+from colossalqa.chain.retrieval_qa.stuff import CustomStuffDocumentsChain
+from langchain.callbacks.manager import AsyncCallbackManagerForChainRun, CallbackManagerForChainRun, Callbacks
 from langchain.chains.llm import LLMChain
 from langchain.chains.question_answering.stuff_prompt import PROMPT_SELECTOR
+from langchain.chains.retrieval_qa.base import BaseRetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.pydantic_v1 import Field
 from langchain.schema import BaseRetriever, Document
 from langchain.schema.language_model import BaseLanguageModel
-from langchain.chains.retrieval_qa.base import BaseRetrievalQA
-from colossalqa.chain.retrieval_qa.stuff import CustomStuffDocumentsChain
-from colossalqa.chain.retrieval_qa.load_chain import load_qa_chain
 
 
 class CustomBaseRetrievalQA(BaseRetrievalQA):
@@ -32,16 +37,16 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
         **kwargs: Any,
     ) -> BaseRetrievalQA:
         """Initialize from LLM."""
-        if 'llm_kwargs' in kwargs:
-            llm_kwargs = copy.deepcopy(kwargs['llm_kwargs'])
-            del kwargs['llm_kwargs']
+        if "llm_kwargs" in kwargs:
+            llm_kwargs = copy.deepcopy(kwargs["llm_kwargs"])
+            del kwargs["llm_kwargs"]
         else:
             llm_kwargs = {}
         _prompt = prompt or PROMPT_SELECTOR.get_prompt(llm)
         llm_chain = LLMChain(llm=llm, prompt=_prompt, callbacks=callbacks, llm_kwargs=llm_kwargs)
-        document_prompt = kwargs.get("document_prompt", PromptTemplate(
-            input_variables=["page_content"], template="Context:\n{page_content}"
-        )) 
+        document_prompt = kwargs.get(
+            "document_prompt", PromptTemplate(input_variables=["page_content"], template="Context:\n{page_content}")
+        )
         combine_documents_chain = CustomStuffDocumentsChain(
             llm_chain=llm_chain,
             document_variable_name="context",
@@ -64,16 +69,14 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
         **kwargs: Any,
     ) -> BaseRetrievalQA:
         """Load chain from chain type."""
-        if 'llm_kwargs' in kwargs:
-            llm_kwargs = copy.deepcopy(kwargs['llm_kwargs'])
-            del kwargs['llm_kwargs']
+        if "llm_kwargs" in kwargs:
+            llm_kwargs = copy.deepcopy(kwargs["llm_kwargs"])
+            del kwargs["llm_kwargs"]
         else:
             llm_kwargs = {}
 
         _chain_type_kwargs = chain_type_kwargs or {}
-        combine_documents_chain = load_qa_chain(
-            llm, chain_type=chain_type, **_chain_type_kwargs, llm_kwargs=llm_kwargs
-        )
+        combine_documents_chain = load_qa_chain(llm, chain_type=chain_type, **_chain_type_kwargs, llm_kwargs=llm_kwargs)
         return cls(combine_documents_chain=combine_documents_chain, **kwargs)
 
     def _call(
@@ -94,17 +97,39 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
         """
         _run_manager = run_manager or CallbackManagerForChainRun.get_noop_manager()
         question = inputs[self.input_key]
-        accepts_run_manager = (
-            "run_manager" in inspect.signature(self._get_docs).parameters
-        )
+        accepts_run_manager = "run_manager" in inspect.signature(self._get_docs).parameters
         if accepts_run_manager:
             docs = self._get_docs(question, run_manager=_run_manager)
         else:
             docs = self._get_docs(question)  # type: ignore[call-arg]
-        kwargs = {k:v for k,v in inputs.items() if k in ['stop', 'temperature', 'top_k', 'top_p', 'max_new_tokens']}
-        answer = self.combine_documents_chain.run(
-            input_documents=docs, question=question, callbacks=_run_manager.get_child(), **kwargs
-        )
+
+        kwargs = {k: v for k, v in inputs.items() if k in ["stop", "temperature", "top_k", "top_p", "max_new_tokens"]}
+        answers = []
+        buffered_history_backup, summarized_history_temp_backup = copy.deepcopy(
+            self.combine_documents_chain.memory.buffered_history
+        ), copy.deepcopy(self.combine_documents_chain.memory.summarized_history_temp)
+
+        for idx, doc in enumerate(docs):
+            answer = self.combine_documents_chain.run(
+                input_documents=[doc], question=question, callbacks=_run_manager.get_child(), **kwargs
+            )
+            answers.append((answer, idx))
+            (
+                self.combine_documents_chain.memory.buffered_history,
+                self.combine_documents_chain.memory.summarized_history_temp,
+            ) = copy.deepcopy(buffered_history_backup), copy.deepcopy(summarized_history_temp_backup)
+
+        # backup memory
+        rejected_answers = ["无法回答该问题"]
+        print(answers)
+        answers = [
+            f"{ans[0]}---支持文档：文档{ans[1]}\n" for ans in answers if all([rej not in ans[0] for rej in rejected_answers])
+        ]
+        if len(answers) == 0:
+            answer = "抱歉，根据提供的信息无法回答该问题。"
+        else:
+            answer = " ".join(answers)
+        self.combine_documents_chain.memory.save_context({"question": question}, {"output": answer})
 
         if self.return_source_documents:
             return {self.output_key: answer, "source_documents": docs}
@@ -129,14 +154,12 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
         """
         _run_manager = run_manager or AsyncCallbackManagerForChainRun.get_noop_manager()
         question = inputs[self.input_key]
-        accepts_run_manager = (
-            "run_manager" in inspect.signature(self._aget_docs).parameters
-        )
+        accepts_run_manager = "run_manager" in inspect.signature(self._aget_docs).parameters
         if accepts_run_manager:
             docs = await self._aget_docs(question, run_manager=_run_manager)
         else:
             docs = await self._aget_docs(question)  # type: ignore[call-arg]
-        kwargs = {k:v for k,v in inputs.items() if k in ['stop', 'temperature', 'top_k', 'top_p', 'max_new_tokens']}
+        kwargs = {k: v for k, v in inputs.items() if k in ["stop", "temperature", "top_k", "top_p", "max_new_tokens"]}
         answer = await self.combine_documents_chain.arun(
             input_documents=docs, question=question, callbacks=_run_manager.get_child(), **kwargs
         )
@@ -171,9 +194,7 @@ class RetrievalQA(CustomBaseRetrievalQA):
         run_manager: CallbackManagerForChainRun,
     ) -> List[Document]:
         """Get docs."""
-        return self.retriever.get_relevant_documents(
-            question, callbacks=run_manager.get_child()
-        )
+        return self.retriever.get_relevant_documents(question, callbacks=run_manager.get_child())
 
     async def _aget_docs(
         self,
@@ -182,9 +203,7 @@ class RetrievalQA(CustomBaseRetrievalQA):
         run_manager: AsyncCallbackManagerForChainRun,
     ) -> List[Document]:
         """Get docs."""
-        return await self.retriever.aget_relevant_documents(
-            question, callbacks=run_manager.get_child()
-        )
+        return await self.retriever.aget_relevant_documents(question, callbacks=run_manager.get_child())
 
     @property
     def _chain_type(self) -> str:

@@ -1,6 +1,12 @@
-'''
+"""
 Custom SummarizerMixin base class and ConversationSummaryMemory class
-'''
+
+Modified from Original Source
+
+This code is based on LangChain Ai's langchain, which can be found at
+https://github.com/langchain-ai/langchain
+The original code is licensed under the MIT license.
+"""
 
 from __future__ import annotations
 
@@ -10,10 +16,7 @@ from langchain.chains.llm import LLMChain
 from langchain.memory.chat_memory import BaseChatMemory
 from langchain.memory.prompt import SUMMARY_PROMPT
 from langchain.pydantic_v1 import BaseModel, root_validator
-from langchain.schema import (
-    BaseChatMessageHistory,
-    BasePromptTemplate,
-)
+from langchain.schema import BaseChatMessageHistory, BasePromptTemplate
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.schema.messages import BaseMessage, SystemMessage, get_buffer_string
 
@@ -22,32 +25,32 @@ class SummarizerMixin(BaseModel):
     """
     Mixin for summarizer.
     """
+
     human_prefix: str = "Human"
     ai_prefix: str = "AI"
     llm: BaseLanguageModel
     prompt: BasePromptTemplate = SUMMARY_PROMPT
     summary_message_cls: Type[BaseMessage] = SystemMessage
-    llm_kwargs: Dict={}
+    llm_kwargs: Dict = {}
 
-    def predict_new_summary(
-        self, messages: List[BaseMessage], existing_summary: str, stop:List=[]
-    ) -> str:
-        '''
+    def predict_new_summary(self, messages: List[BaseMessage], existing_summary: str, stop: List = []) -> str:
+        """
         Recursively summarize a conversation by generating a new summary using
         the last round of conversation and the existing summary.
-        '''
+        """
         new_lines = get_buffer_string(
             messages,
             human_prefix=self.human_prefix,
             ai_prefix=self.ai_prefix,
         )
 
-        chain = LLMChain(llm=self.llm, prompt=self.prompt, llm_kwargs = self.llm_kwargs)
+        chain = LLMChain(llm=self.llm, prompt=self.prompt, llm_kwargs=self.llm_kwargs)
         return chain.predict(summary=existing_summary, new_lines=new_lines, stop=stop)
 
 
 class ConversationSummaryMemory(BaseChatMemory, SummarizerMixin):
     """Conversation summarizer to chat memory."""
+
     buffer: str = ""
     memory_key: str = "history"  #: :meta private:
 
@@ -62,9 +65,7 @@ class ConversationSummaryMemory(BaseChatMemory, SummarizerMixin):
     ) -> ConversationSummaryMemory:
         obj = cls(llm=llm, chat_memory=chat_memory, **kwargs)
         for i in range(0, len(obj.chat_memory.messages), summarize_step):
-            obj.buffer = obj.predict_new_summary(
-                obj.chat_memory.messages[i : i + summarize_step], obj.buffer
-            )
+            obj.buffer = obj.predict_new_summary(obj.chat_memory.messages[i : i + summarize_step], obj.buffer)
         return obj
 
     @property
@@ -95,9 +96,7 @@ class ConversationSummaryMemory(BaseChatMemory, SummarizerMixin):
     def save_context(self, inputs: Dict[str, Any], outputs: Dict[str, str]) -> None:
         """Save context from this conversation to buffer."""
         super().save_context(inputs, outputs)
-        self.buffer = self.predict_new_summary(
-            self.chat_memory.messages[-2:], self.buffer
-        )
+        self.buffer = self.predict_new_summary(self.chat_memory.messages[-2:], self.buffer)
 
     def clear(self) -> None:
         """Clear memory contents."""
