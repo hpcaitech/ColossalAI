@@ -306,6 +306,8 @@ class GeminiPlugin(DPPluginBase):
         norm_type (float, optional): norm_type used for `clip_grad_norm`.
         use_tensor_parallel (bool, optional): Whether to use tensor parallelism strategy, which is implemented in Shardformer. Default to False.
         tp_size (int, optional): If 'use_tensor_parallel' is set to true, please configure 'tp_size' which determines the size of the tensor parallel process group. Default to 1.
+        use_fused_layernorm (bool, optional): Whether to use fused layernorm operator, which is implemented in Shardformer. Used when 'use_tensor_parallel' is True. Default to False.
+        use_flash_attention (bool, optional): Whether to use flash attention, which is implemented in Shardformer. Used when 'use_tensor_parallel' is True. Default to False.
         verbose (bool, optional): verbose mode. Debug info including chunk search result will be printed. Defaults to False.
     """
 
@@ -341,6 +343,8 @@ class GeminiPlugin(DPPluginBase):
         norm_type: float = 2.0,
         use_tensor_parallel: bool = False,
         tp_size: int = 1,
+        use_fused_layernorm: bool = False,
+        use_flash_attention: bool = False,
         verbose: bool = False
     ) -> None:
         super().__init__()
@@ -381,6 +385,8 @@ class GeminiPlugin(DPPluginBase):
         )
         self.use_tensor_parallel = use_tensor_parallel
         self.tp_size = tp_size if self.use_tensor_parallel else 1
+        self.use_fused_layernorm = use_fused_layernorm if self.use_tensor_parallel else False
+        self.use_flash_attention = use_flash_attention if self.use_tensor_parallel else False
         self.verbose = verbose
 
     def support_no_sync(self) -> bool:
@@ -426,7 +432,10 @@ class GeminiPlugin(DPPluginBase):
                     self.pg_mesh = ProcessGroupMesh(dp_size, self.tp_size)
                     self.dp_group = self.pg_mesh.get_group_along_axis(0)
                     self.tp_group = self.pg_mesh.get_group_along_axis(1)
-                    shard_config = ShardConfig(tensor_parallel_process_group = self.tp_group, enable_tensor_parallelism=True)
+                    shard_config = ShardConfig(tensor_parallel_process_group = self.tp_group, 
+                                               enable_tensor_parallelism=True,
+                                               enable_fused_normalization=self.use_fused_layernorm,
+                                               enable_flash_attention=self.use_flash_attention)
                     shardformer = ShardFormer(shard_config)
                     model, _ = shardformer.optimize(model)
                 except NotImplementedError as e:

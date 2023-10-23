@@ -21,7 +21,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, use_tensor_p
             ctx = LazyInitContext()
         else:
             ctx = nullcontext()
-        plugin = GeminiPlugin(max_norm=1.0, initial_scale=2**5, use_tensor_parallel=use_tensor_parallel)
+        plugin = GeminiPlugin(max_norm=1.0, initial_scale=2**5, use_tensor_parallel=use_tensor_parallel, use_fused_layernorm=True, use_flash_attention=True)
         booster = Booster(plugin=plugin)
         with ctx:
             model = model_fn()

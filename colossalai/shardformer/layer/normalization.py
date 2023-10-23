@@ -4,6 +4,7 @@
 import torch.nn as nn
 
 from colossalai.lazy import LazyInitContext
+from ._operation import hook_paramter_in_backward
 
 __all__ = ["FusedLayerNorm", "FusedRMSNorm"]
 
@@ -35,16 +36,14 @@ FAST_LAYERNORM_SUPPORTED_SIZE = [
 ]
 
 
-class FusedLayerNorm:
+class FusedLayerNorm(nn.Module):
     r"""
     This is a wrapper around the apex fused layernorm implementation. It is meant to be used only with the from_native_module interface.
     """
 
-    def __init__(self) -> None:
-        raise NotImplementedError(
-            "FusedLayerNorm is not implemented as a physical class. "
-            "It is meant to be used only with the from_native_module interface to wrap the fused layernorm implementation provided by apex."
-        )
+    def __init__(self, layernorm=None) -> None:
+        super().__init__()
+        self.layernorm = layernorm
 
     @staticmethod
     def from_native_module(module: nn.LayerNorm, *args, **kwargs) -> nn.Module:
@@ -79,25 +78,31 @@ class FusedLayerNorm:
         else:
             from apex.normalization import FusedLayerNorm as ApexFusedLayerNorm
 
+        
         layernorm = (
             ApexFusedLayerNorm(normalized_shape, eps=eps, elementwise_affine=elementwise_affine).to(dtype).to(device)
         )
 
         layernorm.weight = module.weight
         layernorm.bias = module.bias
-        return layernorm
+        return FusedLayerNorm(layernorm=layernorm)
+    
+    def forward(self, input):
+        weight = self.layernorm.weight
+        bias = self.layernorm.bias
+        layernorm_output = self.layernorm(input)
+        output = hook_paramter_in_backward(layernorm_output, weight, bias)
+        return output
 
 
-class FusedRMSNorm:
+class FusedRMSNorm(nn.Module):
     """
     This is a wrapper around the apex fused rms norm implementation. It is meant to be used only with the from_native_module interface.
     """
 
-    def __init__(self) -> None:
-        raise NotImplementedError(
-            "FusedRMSNorm is not implemented as a physical class. "
-            "It is meant to be used only with the from_native_module interface to wrap the fused rms norm implementation provided by apex."
-        )
+    def __init__(self, rmsnorm=None) -> None:
+        super().__init__()
+        self.rmsnorm = rmsnorm
 
     @staticmethod
     def from_native_module(module: nn.Module, *args, **kwargs) -> nn.Module:
@@ -124,4 +129,10 @@ class FusedRMSNorm:
 
         rmsnorm.weight = module.weight
 
-        return rmsnorm
+        return FusedRMSNorm(rmsnorm=rmsnorm)
+    
+    def forward(self, input):
+        weight = self.rmsnorm.weight
+        rmsnorm_output = self.rmsnorm(input)
+        output = hook_paramter_in_backward(rmsnorm_output, weight)
+        return output
