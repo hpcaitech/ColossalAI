@@ -19,6 +19,7 @@ class DynamicBatchManager:
         max_total_token_num,
         batch_max_tokens,
         model,
+        tokenizer=None,
         eos_id=None,
         log_stats=True,
         log_stats_interval=10,
@@ -56,8 +57,8 @@ class DynamicBatchManager:
 
         self.stats_tool = Stats(log_stats, log_stats_interval)
         self.mem_usage_interval = log_stats_interval * 2
-        self.tokenizer = get_tokenizer(tokenizer_name=self.model)
-        if self.eos_id is None:
+        self.tokenizer = get_tokenizer(tokenizer_name=self.model) if tokenizer is None else tokenizer
+        if self.eos_id == None:
             self.eos_id = self.tokenizer.eos_token_id
 
     def add_req(self, request_id: str, prompt_ids: List[int], sampling_params: SamplingParams, prompts: str = ""):
