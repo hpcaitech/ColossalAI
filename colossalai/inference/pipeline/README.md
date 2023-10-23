@@ -31,8 +31,6 @@ Pipeline Inference is composed of three parts: `PPInferEngine`, `MicroBatchManag
 
 ### Example
 ```python
-from colossalai.pipeline import PPInferEngine
-# Suppose the pipeline size is 2, and use fp16 to do infenrence. Use Llama as an example.
 from colossalai.inference import PPInferEngine
 from colossalai.inference.pipeline.policies import LlamaModelInferPolicy
 import colossalai
@@ -40,22 +38,16 @@ from transformers import LlamaForCausalLM, LlamaTokenizer
 
 colossalai.launch_from_torch(config={})
 
-model = LlamaForCausalLM.from_pretrained("path_to_model")
-tokenizer = LlamaTokenizer.from_pretrained("path_to_model")
-# assume the model is infered with 2 pipeline stages
-inferengine = PPInferEngine(pp_size=2, model=model, model_policy=LlamaModelInferPolicy(), new_length=8)
+model = LlamaForCausalLM.from_pretrained("/path/to/model")
+tokenizer = LlamaTokenizer.from_pretrained("/path/to/model")
 
-input = ["Introduce a landmark in China ","Introduce a landmark in China "]
+# assume the model is infered with 2 pipeline stages
+inferengine = PPInferEngine(pp_size=2, model=model, model_policy=LlamaModelInferPolicy(), new_length=32)
+
+input = ["Introduce a landmark in London","Introduce a landmark in Singapore"]
 data = tokenizer(input, return_tensors='pt')
 output = inferengine.inference(data.to('cuda'))
-
-
-```
-
-### Quick start
-```shell
-cd benchmark
-sh run.sh
+print(tokenizer.batch_decode(output))
 ```
 
 ## Performance
