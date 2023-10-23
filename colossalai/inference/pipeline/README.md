@@ -17,7 +17,7 @@
 Pipeline Inference is composed of three parts: `PPInferEngine`, `MicroBatchManager` and `generate` [schedule](https://github.com/hpcaitech/ColossalAI/blob/feature/pipeline-infer/colossalai/pipeline/schedule/generate.py).
 
 1. `PPInderEngine` is the High-Level API for users to use. It is responsible for the following tasks:
-    - Initialize the pipeline inference environment with `PipelineStageManager` and mdoel with `ShardFormer`.
+    - Initialize the pipeline inference environment with `PipelineStageManager` and model with `ShardFormer`.
     - Run the pipeline inference model.
 
 2. `MicroBatchManager` is a structure to manage the micro-batch information. It is responsible for the following tasks:
@@ -41,7 +41,7 @@ colossalai.launch_from_torch(config={})
 model = LlamaForCausalLM.from_pretrained("/path/to/model")
 tokenizer = LlamaTokenizer.from_pretrained("/path/to/model")
 
-# assume the model is infered with 2 pipeline stages
+# assume the model is inferred with 2 pipeline stages
 inferengine = PPInferEngine(pp_size=2, model=model, model_policy=LlamaModelInferPolicy(), new_length=32)
 
 input = ["Introduce a landmark in London","Introduce a landmark in Singapore"]
