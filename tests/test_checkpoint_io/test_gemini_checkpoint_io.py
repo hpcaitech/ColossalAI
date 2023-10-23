@@ -49,7 +49,7 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
         pretrained_path = os.path.join(tempdir, "pretrained")
         bert_model.config.save_pretrained(save_directory=pretrained_path)
 
-        plugin = GeminiPlugin(**placement_config, use_tensor_parallel=use_tensor_parallel, tp_size=tp_size)
+        plugin = GeminiPlugin(**placement_config, use_tensor_parallel=use_tensor_parallel, tp_size=tp_size, use_fused_layernorm=True)
         booster = Booster(plugin=plugin)
         bert_model, _, _, _, _ = booster.boost(bert_model)
         model_size = sum(p.numel() * p.element_size() for p in bert_model.parameters()) / 1024**2
@@ -73,7 +73,7 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
 def exam_state_dict(placement_config, shard: bool, model_name: str, size_per_shard: int, use_tensor_parallel: bool, tp_size: int):
     (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()
-    plugin = GeminiPlugin(**placement_config, precision="fp16", initial_scale=(2**14), use_tensor_parallel=use_tensor_parallel, tp_size=tp_size)
+    plugin = GeminiPlugin(**placement_config, precision="fp16", initial_scale=(2**14), use_tensor_parallel=use_tensor_parallel, tp_size=tp_size, use_fused_layernorm=True)
     booster = Booster(plugin=plugin)
 
     model = model_fn()
