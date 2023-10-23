@@ -64,6 +64,11 @@ class DynamicBatchManager:
         """
         Add new request to req queue, during initialization all requests are held in waiting list.
         """
+        sampling_params.max_new_tokens = (
+            self.engine.max_output_len
+            if sampling_params.max_new_tokens > self.engine.max_output_len
+            else sampling_params.max_new_tokens
+        )
         req = Req(request_id, prompt_ids, sampling_params, prompts)
         self.req_queue.append(req)
         return

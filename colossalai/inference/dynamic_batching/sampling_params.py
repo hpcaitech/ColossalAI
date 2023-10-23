@@ -16,7 +16,7 @@ class SamplingParams:
         top_p: float = 1.0,
         top_k: int = -1,  # -1 is for all
         ignore_eos: bool = False,
-        max_new_tokens: int = 16,
+        max_new_tokens: int = 256,
         stop_sequences: Optional[Union[str, List[str]]] = None,  # conditions to stop generation
     ) -> None:
         self.do_sample = do_sample
