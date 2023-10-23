@@ -175,11 +175,8 @@ class LlamaInferenceForwards:
         seq_length_with_past = seq_length
         past_key_values_length = 0
 
-        if past_key_values is not None:
-            #  NOT READY FOR PRIME TIME
-            #  dummy but work, revise it
+        if infer_state.is_context_stage is False:
             past_key_values_length = infer_state.cache_manager.past_key_values_length
-            # past_key_values_length = past_key_values[0][0].shape[2]
             seq_length_with_past = seq_length_with_past + past_key_values_length
 
         # NOTE: differentiate with prefill stage

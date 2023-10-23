@@ -88,9 +88,10 @@ class PPInferEngine:
         self.pg_mesh = ProcessGroupMesh(pp_size)
         self.stage_manager = PipelineStageManager(self.pg_mesh, 0, True)
         self.model = pp_model or self._shardformer(model, model_policy)
-        self.cache_manager_list = [self._init_manager(max_batch_size, max_input_len, max_output_len)] * (
-            micro_batch_buffer_size or pp_size
-        )
+        self.cache_manager_list = [
+            self._init_manager(max_batch_size, max_input_len, max_output_len)
+            for _ in range(micro_batch_buffer_size or pp_size)
+        ]
         self.mb_manager = MicroBatchManager(
             self.stage_manager.stage,
             new_length,
