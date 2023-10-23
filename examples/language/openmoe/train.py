@@ -18,6 +18,7 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.logging import disable_existing_loggers, get_dist_logger
+from colossalai.moe.layers import apply_load_balance
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import skip_init
 from colossalai.utils import get_current_device
@@ -162,6 +163,7 @@ def parse_args():
 
     # load balance
     parser.add_argument("--load_balance", action="store_true", help="moe load balance")
+    parser.add_argument("--load_balance_interval", type=int, default=1000, help="moe load balance interval")
 
     # overlap
     parser.add_argument("--comm_overlap", action="store_true", help="moe comm overlap")
@@ -301,7 +303,7 @@ def main():
                 desc=f"Epoch [{epoch + 1}/{args.num_epoch}]",
                 disable=not coordinator.is_master(),
         ) as pbar:
-            for _ in pbar:
+            for step in pbar:
                 if use_pipeline:
                     # Forward pass
                     outputs = booster.execute_pipeline(
@@ -328,6 +330,11 @@ def main():
 
                 optimizer.step()
                 optimizer.zero_grad()
+
+                # Apply load balance
+                if args.load_balance and args.load_balance_interval > 0 and step % args.load_balance_interval == 0:
+                    coordinator.print_on_master(f"Apply load balance")
+                    apply_load_balance(model, optimizer)
 
     # Finish training and evaluate
     logger.info(f"Finish finetuning", ranks=[0])
