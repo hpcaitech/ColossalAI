@@ -50,12 +50,14 @@ def run():
     before_add = len(dynamic_batch_manager.req_queue)
 
     # test add req function
-    dynamic_batch_manager.add_req(req4.prompt_ids, req4.sample_params, req4.request_id)
+    dynamic_batch_manager.add_req(req4.request_id, req4.prompt_ids, req4.sample_params)
     assert len(dynamic_batch_manager.req_queue.waiting_req_list) == before_add + 1
 
     # test abort function
     dynamic_batch_manager.abort(req4.request_id)
     assert dynamic_batch_manager.req_queue.waiting_req_list[-1].aborted == True
+   
+    print(dynamic_batch_manager.req_queue.waiting_req_list)
 
     # test filter batch function,  loop_for_fwd, _step, _init_batch and _prefill/_decode batch are tested
     batch = dynamic_batch_manager.req_queue.generate_new_batch()
