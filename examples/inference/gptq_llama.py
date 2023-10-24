@@ -3,6 +3,7 @@ import os
 import time
 
 import torch
+from _utils import print_perf_stats
 from auto_gptq import AutoGPTQForCausalLM
 from transformers import LlamaTokenizer
 

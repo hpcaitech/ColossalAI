@@ -4,19 +4,20 @@ import time
 
 import torch
 from _utils import print_perf_stats
-from transformers import LlamaForCausalLM, LlamaTokenizer
+from transformers import AutoTokenizer
 
 import colossalai
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer import ShardConfig
-from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
+from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 
 
-def run_llama_test(args):
-    llama_model_path = args.path
+def run_chatglm2_test(args):
+    chatglm2_model_path = args.path
     max_batch_size = args.batch_size
     max_input_len = args.input_len
     max_output_len = args.output_len
@@ -24,9 +25,8 @@ def run_llama_test(args):
 
     print("max_batch_size : " + str(max_batch_size))
 
-    tokenizer = LlamaTokenizer.from_pretrained(llama_model_path)
-    tokenizer.pad_token_id = tokenizer.unk_token_id
-    model = LlamaForCausalLM.from_pretrained(llama_model_path, pad_token_id=tokenizer.eos_token_id)
+    tokenizer = AutoTokenizer.from_pretrained("THUDM/chatglm2-6b", trust_remote_code=True)
+    model = ChatGLMForConditionalGeneration.from_pretrained(chatglm2_model_path, pad_token_id=tokenizer.eos_token_id)
     model = model.half()
     model.config
 
@@ -89,16 +89,15 @@ def run_llama_test(args):
     print_perf_stats(times, model.config, max_batch_size)
 
 
-def check_llama(rank, world_size, port, args):
+def check_chatglm2(rank, world_size, port, args):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    run_llama_test(args)
+    run_chatglm2_test(args)
 
 
 @rerun_if_address_is_in_use()
-@clear_cache_before_run()
-def test_llama(args):
-    spawn(check_llama, args.tp_size, args=args)
+def test_chatglm2(args):
+    spawn(check_chatglm2, args.tp_size, args=args)
 
 
 if __name__ == "__main__":
@@ -114,4 +113,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    test_llama(args)
+    test_chatglm2(args)
