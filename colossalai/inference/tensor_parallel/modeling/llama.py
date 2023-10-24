@@ -362,23 +362,43 @@ class LlamaInferenceForwards:
                     infer_state.decode_mem_index,
                     infer_state.cache_manager,
                 )
-
-            # second token and follows
-            # kv = torch.stack((key_states, value_states), dim=2)
-            # (batch_size, seqlen, nheads, headdim)
-            attn_output = torch.empty_like(query_states)
-
-        
-            heads_per_group = self.num_heads // self.num_key_value_heads
-            query_states = query_states.view(bsz, q_len, self.num_key_value_heads, heads_per_group, self.head_dim)
-            cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id]
-            cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id]
             
-            cache_k = cache_k.view(bsz, -1, self.num_key_value_heads, 1, self.head_dim)
-            cache_v = cache_v.view(bsz, -1, self.num_key_value_heads, 1, self.head_dim)
-        
-        
-            attn_output = fmha.memory_efficient_attention_forward(query_states, cache_k, cache_v, None)
+            if attention_mask is not None:
+                attn_output = torch.empty_like(query_states)        
+                heads_per_group = self.num_heads // self.num_key_value_heads
+                query_states = query_states.view(bsz, q_len, self.num_key_value_heads, heads_per_group, self.head_dim)
+                cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id]
+                cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id]
+                
+                cache_k = cache_k.view(bsz, -1, self.num_key_value_heads, 1, self.head_dim)
+                cache_v = cache_v.view(bsz, -1, self.num_key_value_heads, 1, self.head_dim)
+            
+            
+                attn_output = fmha.memory_efficient_attention_forward(query_states, cache_k, cache_v, None)
+                
+            elif self.num_key_value_groups == 1:
+                token_attention_fwd(
+                    query_states,
+                    infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+                    infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+                    attn_output,
+                    infer_state.block_loc,
+                    infer_state.start_loc,
+                    infer_state.seq_len,
+                    infer_state.cache_manager.past_key_values_length,
+                )
+            else:
+                Llama2TokenAttentionForwards.token_attn(
+                    query_states,
+                    infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+                    infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+                    attn_output,
+                    infer_state.block_loc,
+                    infer_state.start_loc,
+                    infer_state.seq_len,
+                    infer_state.cache_manager.past_key_values_length,
+                    infer_state.other_kv_index,
+                )
 
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
