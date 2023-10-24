@@ -228,3 +228,8 @@ class GeneralCheckpointIO(CheckpointIO):
                         self.__class__.__name__, "\n\t".join(error_msgs)
                     )
                 )
+
+    def is_lora_model(self, model: nn.Module) -> bool:
+        # import PeftModel from peft (remember to check ImportError)
+        # and then check model using isinstance(model, PeftModel)
+        pass

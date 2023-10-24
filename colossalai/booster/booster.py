@@ -221,6 +221,15 @@ class Booster:
         assert self.plugin.support_no_sync(), f"The plugin {self.plugin.__class__.__name__} does not support no_sync."
         return self.plugin.no_sync(model, optimizer)
 
+    def enable_lora(self, model: nn.Module) -> nn.Module:
+        # Arguments for lora configs should be passed to this function.
+
+        # 1. Check whether peft can be imported
+        # 2. Check whether plugin supports LoRA
+        # 3. Enable lora for ckpt_io and plugin
+        # 4. Create LORAConfig and wrap model with get_peft_model()
+        pass
+
     def load_model(self, model: Union[nn.Module, ModelWrapper], checkpoint: str, strict: bool = True) -> None:
         """Load model from checkpoint.
 
@@ -323,3 +332,9 @@ class Booster:
             checkpoint (str): Path to the checkpoint. It must be a local file path.
         """
         self.checkpoint_io.load_lr_scheduler(lr_scheduler, checkpoint)
+
+    def load_lora(self, model: nn.Module, checkpoint: str) -> None:
+        pass
+
+    def save_lora(self, model: nn.Module, checkpoint: str) -> None:
+        pass
