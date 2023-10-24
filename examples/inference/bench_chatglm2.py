@@ -3,6 +3,7 @@ import os
 import time
 
 import torch
+from _utils import print_perf_stats
 from transformers import AutoTokenizer
 
 import colossalai
@@ -13,25 +14,6 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLM
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
-
-
-def print_perf_stats(latency_set, config, bs, warmup=3):
-    torch.cuda.empty_cache()
-    # trim warmup queries
-    latency_set = list(latency_set)
-    latency_set = latency_set[warmup:]
-    count = len(latency_set)
-
-    if count > 0:
-        latency_set.sort()
-        avg = sum(latency_set) / count
-        num_layers = getattr(config, "num_layers", config.num_hidden_layers)
-        num_parameters = num_layers * config.hidden_size * config.hidden_size * 12
-        num_bytes = 2
-
-        print("Avg Per Token Latency: {0:8.2f} ms".format(avg * 1000))
-        print("Avg BW: {0:8.2f} GB/s".format(1 / avg * num_parameters * num_bytes / 1e9))
-        print("Avg flops: {0:8.2f} TFlops/s".format(1 / avg * num_parameters * num_bytes * bs / 1e12))
 
 
 def run_chatglm2_test(args):
@@ -103,6 +85,8 @@ def run_chatglm2_test(args):
 
         print("decoder process latency is : " + str(latency) + " s")
         print("decoder throughput is : " + str(1 / latency * max_batch_size))
+
+    print_perf_stats(times, model.config, max_batch_size)
 
 
 def check_chatglm2(rank, world_size, port, args):
