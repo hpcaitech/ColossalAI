@@ -35,6 +35,18 @@ except:
     print("please install lightllm from source to run inference: https://github.com/ModelTC/lightllm")
     HAS_LIGHTLLM_KERNEL = False
 
+try:
+    from xformers.ops import RMSNorm, fmha, rope_padded
+    from xformers.ops.fmha.attn_bias import (
+        BlockDiagonalCausalWithOffsetPaddedKeysMask as AttnBias,
+    )
+    HAS_XFORMERS = True
+except:
+    print("please install xformers from source to run inference:")
+    HAS_XFORMERS = False
+    
+    
+
 
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
@@ -355,16 +367,21 @@ class LlamaInferenceForwards:
             attn_output = torch.empty_like(query_states)
 
             if self.num_key_value_groups == 1:
-                token_attention_fwd(
-                    query_states,
-                    infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
-                    infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
-                    attn_output,
-                    infer_state.block_loc,
-                    infer_state.start_loc,
-                    infer_state.seq_len,
-                    infer_state.cache_manager.past_key_values_length,
-                )
+                # token_attention_fwd(
+                #     query_states,
+                #     infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+                #     infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+                #     attn_output,
+                #     infer_state.block_loc,
+                #     infer_state.start_loc,
+                #     infer_state.seq_len,
+                #     infer_state.cache_manager.past_key_values_length,
+                # )
+                attn_output = fmha.memory_efficient_attention_forward(query_states, 
+                                                                      infer_state.cache_manager.key_buffer[infer_state.decode_layer_id], 
+                                                                      infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+                                                                      attention_mask
+                                                                      )
             else:
                 Llama2TokenAttentionForwards.token_attn(
                     query_states,
