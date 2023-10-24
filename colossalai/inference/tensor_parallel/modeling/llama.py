@@ -42,7 +42,7 @@ try:
     )
     HAS_XFORMERS = True
 except:
-    print("please install xformers from source to run inference:")
+    print("please install xformers from source to run inference: https://github.com/facebookresearch/xformers")
     HAS_XFORMERS = False
     
     
