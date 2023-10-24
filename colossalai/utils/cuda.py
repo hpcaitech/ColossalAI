@@ -51,6 +51,11 @@ def empty_cache():
 
 
 def set_device(index: Optional[int] = None) -> None:
+    import os
     if index is None:
         index = dist.get_rank() % torch.cuda.device_count()
+    visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES')
+    if visible_devices is not None:
+        visible_devices = visible_devices.split(',')
+        index = int(visible_devices[index])
     torch.cuda.set_device(index)
