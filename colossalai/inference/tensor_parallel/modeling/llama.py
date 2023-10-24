@@ -363,7 +363,7 @@ class LlamaInferenceForwards:
                     infer_state.cache_manager,
                 )
             
-            if attention_mask is not None:
+            if attention_mask is None:
                 attn_output = torch.empty_like(query_states)        
                 heads_per_group = self.num_heads // self.num_key_value_heads
                 query_states = query_states.view(bsz, q_len, self.num_key_value_heads, heads_per_group, self.head_dim)
