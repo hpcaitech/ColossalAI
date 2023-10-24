@@ -221,7 +221,8 @@ class LlamaInferenceForwards:
             hidden_states=all_hidden_states,
             attentions=all_self_attns,
         )
-
+        
+    
     @staticmethod
     def llama_decoder_layer_forward(
         self: LlamaDecoderLayer,
@@ -265,6 +266,7 @@ class LlamaInferenceForwards:
             outputs += (present_key_value,)
 
         return outputs
+    
 
     @staticmethod
     def llama_flash_attn_kvcache_forward(
@@ -366,34 +368,17 @@ class LlamaInferenceForwards:
             # (batch_size, seqlen, nheads, headdim)
             attn_output = torch.empty_like(query_states)
 
-            if self.num_key_value_groups == 1:
-                # token_attention_fwd(
-                #     query_states,
-                #     infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
-                #     infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
-                #     attn_output,
-                #     infer_state.block_loc,
-                #     infer_state.start_loc,
-                #     infer_state.seq_len,
-                #     infer_state.cache_manager.past_key_values_length,
-                # )
-                attn_output = fmha.memory_efficient_attention_forward(query_states, 
-                                                                      infer_state.cache_manager.key_buffer[infer_state.decode_layer_id], 
-                                                                      infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
-                                                                      attention_mask
-                                                                      )
-            else:
-                Llama2TokenAttentionForwards.token_attn(
-                    query_states,
-                    infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
-                    infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
-                    attn_output,
-                    infer_state.block_loc,
-                    infer_state.start_loc,
-                    infer_state.seq_len,
-                    infer_state.cache_manager.past_key_values_length,
-                    infer_state.other_kv_index,
-                )
+        
+            heads_per_group = self.num_heads // self.num_key_value_heads
+            query_states = query_states.view(bsz, q_len, self.num_key_value_heads, heads_per_group, self.head_dim)
+            cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id]
+            cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id]
+            
+            cache_k = cache_k.view(bsz, -1, self.num_key_value_heads, 1, self.head_dim)
+            cache_v = cache_v.view(bsz, -1, self.num_key_value_heads, 1, self.head_dim)
+        
+        
+            attn_output = fmha.memory_efficient_attention_forward(query_states, cache_k, cache_v, None)
 
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
