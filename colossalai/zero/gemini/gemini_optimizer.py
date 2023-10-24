@@ -116,7 +116,7 @@ class GeminiOptimizer(OptimizerWrapper):
         self.param_info = param_info
         self.tp_group = tp_group
         self.tp_size = dist.get_world_size(tp_group) if tp_group is not None else 1
-        self.tp_rank = dist.get_rank(tp_group)
+        self.tp_rank = dist.get_rank(tp_group) if tp_group is not None else None
         self.verbose = verbose
         self.param_groups_backup = list()
 

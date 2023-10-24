@@ -304,10 +304,16 @@ class GeminiPlugin(DPPluginBase):
         max_norm (float, optional): max_norm used for `clip_grad_norm`. You should notice that you shall not do
             clip_grad_norm by yourself when using ZeRO DDP. The ZeRO optimizer will take care of clip_grad_norm.
         norm_type (float, optional): norm_type used for `clip_grad_norm`.
-        use_tensor_parallel (bool, optional): Whether to use tensor parallelism strategy, which is implemented in Shardformer. Default to False.
-        tp_size (int, optional): If 'use_tensor_parallel' is set to true, please configure 'tp_size' which determines the size of the tensor parallel process group. Default to 1.
-        use_fused_layernorm (bool, optional): Whether to use fused layernorm operator, which is implemented in Shardformer. Used when 'use_tensor_parallel' is True. Default to False.
-        use_flash_attention (bool, optional): Whether to use flash attention, which is implemented in Shardformer. Used when 'use_tensor_parallel' is True. Default to False.
+        enable_tensor_parallelism (bool, optional): Whether to use tensor parallelism strategy, which is implemented in Shardformer. Default to False.
+        tp_size (int, optional): If 'enable_tensor_parallelism' is set to true, please configure 'tp_size' which determines the size of the tensor parallel process group. Default to 1.
+        enable_all_optimization (bool, optional): Whether to switch on all the optimizations supported by Shardformer.
+                                                    Currently all the optimization methods include fused normalization, flash attention and JIT.
+                                                    Defaults to False.
+        enable_fused_normalization (bool, optional): Whether to switch on fused normalization in Shardformer. Defaults to False.
+        enable_flash_attention (bool, optional): Whether to switch on flash attention in Shardformer. Defaults to False.
+        enable_jit_fused (bool, optional): Whether to switch on JIT in Shardformer. Default to False.
+        enable_sequence_parallelism (bool): Whether to turn on sequence parallelism in Shardformer. Defaults to False.
+        enable_sequence_overlap (bool): Whether to turn on sequence overlap in Shardformer. Defaults to False.
         verbose (bool, optional): verbose mode. Debug info including chunk search result will be printed. Defaults to False.
     """
 
@@ -341,10 +347,14 @@ class GeminiPlugin(DPPluginBase):
         max_scale: float = 2**32,
         max_norm: float = 0.0,
         norm_type: float = 2.0,
-        use_tensor_parallel: bool = False,
+        enable_tensor_parallelism: bool = False,
         tp_size: int = 1,
-        use_fused_layernorm: bool = False,
-        use_flash_attention: bool = False,
+        enable_all_optimization: bool = False,
+        enable_fused_normalization: bool = False,
+        enable_flash_attention: bool = False,
+        enable_sequence_parallelism: bool = False,
+        enable_jit_fused: bool = False,
+        enable_sequence_overlap: bool = False,
         verbose: bool = False
     ) -> None:
         super().__init__()
@@ -383,10 +393,14 @@ class GeminiPlugin(DPPluginBase):
             max_norm=max_norm,
             norm_type=norm_type,
         )
-        self.use_tensor_parallel = use_tensor_parallel
-        self.tp_size = tp_size if self.use_tensor_parallel else 1
-        self.use_fused_layernorm = use_fused_layernorm if self.use_tensor_parallel else False
-        self.use_flash_attention = use_flash_attention if self.use_tensor_parallel else False
+        self.enable_tensor_parallelism = enable_tensor_parallelism
+        self.tp_size = tp_size if self.enable_tensor_parallelism else 1
+        self.enable_all_optimization = enable_all_optimization
+        self.enable_fused_normalization = enable_fused_normalization
+        self.enable_flash_attention = enable_flash_attention
+        self.enable_sequence_parallelism = enable_sequence_parallelism if self.enable_tensor_parallelism else False
+        self.enable_jit_fused = enable_jit_fused
+        self.enable_sequence_overlap = enable_sequence_overlap
         self.verbose = verbose
 
     def support_no_sync(self) -> bool:
@@ -426,20 +440,24 @@ class GeminiPlugin(DPPluginBase):
             # wrap the model with Gemini
             self.dp_group = None
             self.tp_group = None
-            if self.use_tensor_parallel:
-                try:
-                    dp_size = dist.get_world_size() // self.tp_size
-                    self.pg_mesh = ProcessGroupMesh(dp_size, self.tp_size)
-                    self.dp_group = self.pg_mesh.get_group_along_axis(0)
-                    self.tp_group = self.pg_mesh.get_group_along_axis(1)
-                    shard_config = ShardConfig(tensor_parallel_process_group = self.tp_group, 
-                                               enable_tensor_parallelism=True,
-                                               enable_fused_normalization=self.use_fused_layernorm,
-                                               enable_flash_attention=self.use_flash_attention)
-                    shardformer = ShardFormer(shard_config)
-                    model, _ = shardformer.optimize(model)
-                except NotImplementedError as e:
-                    print(f"Tensor Parallelism policy for {model.__class__} is not implemented yet\n.")
+            try:
+                dp_size = dist.get_world_size() // self.tp_size
+                assert dp_size > 1, f"the size of DP group should greater than 1. Please reduce the TP group size."
+                self.pg_mesh = ProcessGroupMesh(dp_size, self.tp_size)
+                self.dp_group = self.pg_mesh.get_group_along_axis(0)
+                self.tp_group = self.pg_mesh.get_group_along_axis(1)
+                shard_config = ShardConfig(tensor_parallel_process_group = self.tp_group, 
+                                            enable_tensor_parallelism=self.enable_tensor_parallelism,
+                                            enable_all_optimization=self.enable_all_optimization,
+                                            enable_fused_normalization=self.enable_fused_normalization,
+                                            enable_flash_attention=self.enable_flash_attention,
+                                            enable_jit_fused=self.enable_jit_fused,
+                                            enable_sequence_parallelism=self.enable_sequence_parallelism,
+                                            enable_sequence_overlap=self.enable_sequence_overlap)
+                shardformer = ShardFormer(shard_config)
+                model, _ = shardformer.optimize(model)
+            except NotImplementedError as e:
+                print(f"Tensor Parallelism policy for {model.__class__} is not implemented yet\n.")
 
             model = GeminiDDP(model, **self.gemini_config, process_group=self.dp_group, verbose=self.verbose)
 
