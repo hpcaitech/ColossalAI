@@ -221,14 +221,46 @@ class Booster:
         assert self.plugin.support_no_sync(), f"The plugin {self.plugin.__class__.__name__} does not support no_sync."
         return self.plugin.no_sync(model, optimizer)
 
-    def enable_lora(self, model: nn.Module) -> nn.Module:
-        # Arguments for lora configs should be passed to this function.
+    def enable_lora(
+        self,
+        model: nn.Module,
+        r: int = 8,
+        target_modules: Optional[Union[List[str], str]] = None,
+        lora_alpha: int = 8,
+        lora_dropout: float = 0.0,
+        fan_in_fan_out: bool = False,
+        bias: str = "none",
+    ) -> nn.Module:
+        """
+        Wrap the passed in model with LoRA modules for training.
+        Lora in ColossalAI is implemented using Huggingface peft library, so the arguments for Lora configuration are identical to those of peft.
 
-        # 1. Check whether peft can be imported
-        # 2. Check whether plugin supports LoRA
-        # 3. Enable lora for ckpt_io and plugin
-        # 4. Create LORAConfig and wrap model with get_peft_model()
-        pass
+        Args:
+            model (nn.Module): The model to be appended with LoRA modules.
+            r (int, optional): Lora attention dimension. Defaults to 8.
+            target_modules (Union[List[str],str], optional): List of names or regex expressions of the modules to apply Lora to.
+                For example, ['q', 'v'] or '.*decoder.*(SelfAttention|EncDecAttention).*(q|v)$'. Defaults to None.
+            lora_alpha (int, optional): The alpha parameter for Lora scaling. Defaults to 8.
+            lora_dropout (float, optional): The dropout probability for Lora layers. Defaults to 0.0.
+            fan_in_fan_out (bool, optional): Set this to True if the layer to replace stores weight like (fan_in, fan_out).
+                For example, gpt-2 uses `Conv1D` which stores weights like (fan_in, fan_out) and hence this should be set
+                to `True`. Defaults to False.
+            bias (str, optional): Bias type for Lora. Can be 'none', 'all' or 'lora_only'. If 'all' or 'lora_only', the
+                corresponding biases will be updated during training. Be aware that this means that, even when disabling
+                the adapters, the model will not produce the same output as the base model would have without adaptation.
+                Defaults to "none".
+        """
+        assert self.plugin is not None, f"Lora can only enabled when a plugin is provided."
+        assert self.plugin.support_lora(), f"The plugin {self.plugin.__class__.__name__} does not support lora."
+        lora_config = dict(
+            r=r,
+            target_modules=target_modules,
+            lora_alpha=lora_alpha,
+            lora_dropout=lora_dropout,
+            fan_in_fan_out=fan_in_fan_out,
+            bias=bias,
+        )
+        return self.plugin.enable_lora(model, lora_config)
 
     def load_model(self, model: Union[nn.Module, ModelWrapper], checkpoint: str, strict: bool = True) -> None:
         """Load model from checkpoint.

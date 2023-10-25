@@ -1,4 +1,4 @@
-from typing import Callable, Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -173,6 +173,9 @@ class TorchDDPPlugin(DPPluginBase):
     def support_no_sync(self) -> bool:
         return True
 
+    def support_lora(self) -> bool:
+        return True
+
     def control_precision(self) -> bool:
         return False
 
@@ -216,3 +219,13 @@ class TorchDDPPlugin(DPPluginBase):
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         assert isinstance(model, TorchDDPModel), "Model is not boosted by TorchDDPPlugin."
         return model.module.no_sync()
+
+    def enable_lora(self, model: nn.Module, lora_config: Dict) -> nn.Module:
+        assert not isinstance(model, TorchDDPModel), "Lora should be enabled before boosting the model."
+
+        try:
+            from peft import LoraConfig
+        except ImportError:
+            raise ImportError("Please install Huggingface Peft library to enable lora feature in ColossalAI!")
+
+        LoraConfig(**lora_config)
