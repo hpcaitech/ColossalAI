@@ -360,8 +360,7 @@ class LlamaInferenceForwards:
                 )
                 
             if self.num_key_value_groups == 1:
-                if HAS_FLASH_KERNEL:
-                    attn_output = torch.empty_like(query_states)        
+                if HAS_FLASH_KERNEL:     
                     heads_per_group = self.num_heads // self.num_key_value_heads
                     cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id]
                     cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id]
