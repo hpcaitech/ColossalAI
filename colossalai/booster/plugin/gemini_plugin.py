@@ -35,6 +35,8 @@ __all__ = ["GeminiPlugin"]
 SUPPORTED_PRECISION = ["fp16", "bf16"]
 PRECISION_STR_TO_DTYPE = {"fp16": torch.half, "bf16": torch.bfloat16}
 
+DP_AXIS = 0
+TP_AXIS = 1
 
 def get_param_info(optim: Optimizer):
     # Get a backup of necessary information of parameters for future use, which includes:
@@ -442,10 +444,10 @@ class GeminiPlugin(DPPluginBase):
             self.tp_group = None
             try:
                 dp_size = dist.get_world_size() // self.tp_size
-                assert dp_size > 1, f"the size of DP group should greater than 1. Please reduce the TP group size."
+                assert dp_size > 1, f"The size of the DP group should be greater than 1. Please reduce the TP group size."
                 self.pg_mesh = ProcessGroupMesh(dp_size, self.tp_size)
-                self.dp_group = self.pg_mesh.get_group_along_axis(0)
-                self.tp_group = self.pg_mesh.get_group_along_axis(1)
+                self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
+                self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
                 shard_config = ShardConfig(tensor_parallel_process_group = self.tp_group, 
                                             enable_tensor_parallelism=self.enable_tensor_parallelism,
                                             enable_all_optimization=self.enable_all_optimization,

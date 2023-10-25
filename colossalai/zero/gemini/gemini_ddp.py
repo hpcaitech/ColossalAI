@@ -455,7 +455,7 @@ class GeminiDDP(ModelWrapper):
                                                       global_shape = global_shape)
                 elif is_customized_distributed_tensor(tensor):
                     init_tensor_as_customization_distributed(record_tensor, shard_fn=tensor.shard_fn, gather_fn=tensor.gather_fn)
-                record_tensor = gather_distributed_param(record_tensor, keep_vars=False)           
+                record_tensor = gather_distributed_param(record_tensor, keep_vars=False).cpu()        
 
             assert tensor not in chunk_to_save_data
             chunk_to_save_data[tensor] = record_tensor
