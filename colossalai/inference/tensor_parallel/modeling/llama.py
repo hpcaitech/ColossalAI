@@ -1,4 +1,5 @@
 from typing import List, Optional, Tuple
+import math
 
 import torch
 from transformers.modeling_outputs import BaseModelOutputWithPast
@@ -36,16 +37,11 @@ except:
     HAS_LIGHTLLM_KERNEL = False
 
 try:
-    from xformers.ops import RMSNorm, fmha, rope_padded
-    from xformers.ops.fmha.attn_bias import (
-        BlockDiagonalCausalWithOffsetPaddedKeysMask as AttnBias,
-    )
-    HAS_XFORMERS = True
+    from flash_attn import flash_attn_with_kvcache
+    HAS_FLASH_KERNEL = True
 except:
-    print("please install xformers from source to run inference: https://github.com/facebookresearch/xformers")
-    HAS_XFORMERS = False
-    
-    
+    HAS_FLASH_KERNEL = False
+    print("please install flash attentiom from https://github.com/Dao-AILab/flash-attention")
 
 
 def rotate_half(x):
@@ -362,32 +358,34 @@ class LlamaInferenceForwards:
                     infer_state.decode_mem_index,
                     infer_state.cache_manager,
                 )
-            
-            if attention_mask is None:
-                attn_output = torch.empty_like(query_states)        
-                heads_per_group = self.num_heads // self.num_key_value_heads
-                query_states = query_states.view(bsz, q_len, self.num_key_value_heads, heads_per_group, self.head_dim)
-                cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id]
-                cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id]
                 
-                cache_k = cache_k.view(bsz, -1, self.num_key_value_heads, 1, self.head_dim)
-                cache_v = cache_v.view(bsz, -1, self.num_key_value_heads, 1, self.head_dim)
-            
-            
-                attn_output = fmha.memory_efficient_attention_forward(query_states, cache_k, cache_v, None)
+            if self.num_key_value_groups == 1:
+                if HAS_FLASH_KERNEL:
+                    attn_output = torch.empty_like(query_states)        
+                    heads_per_group = self.num_heads // self.num_key_value_heads
+                    cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id]
+                    cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id]
+                    
+                    query_states = query_states.view(bsz, -1, self.num_heads, self.head_dim)
+                    cache_k = cache_k.view(bsz, -1, self.num_key_value_heads, self.head_dim)
+                    cache_v = cache_v.view(bsz, -1, self.num_key_value_heads, self.head_dim)
+                    
+                    attn_output = flash_attn_with_kvcache(q = query_states, k_cache = cache_k, v_cache = cache_v, softmax_scale = 1/ math.sqrt(self.head_dim), causal = True)
                 
-            elif self.num_key_value_groups == 1:
-                token_attention_fwd(
-                    query_states,
-                    infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
-                    infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
-                    attn_output,
-                    infer_state.block_loc,
-                    infer_state.start_loc,
-                    infer_state.seq_len,
-                    infer_state.cache_manager.past_key_values_length,
-                )
+                else:
+                    attn_output = torch.empty_like(query_states)
+                    token_attention_fwd(
+                        query_states,
+                        infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+                        infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+                        attn_output,
+                        infer_state.block_loc,
+                        infer_state.start_loc,
+                        infer_state.seq_len,
+                        infer_state.cache_manager.past_key_values_length,
+                    )
             else:
+                attn_output = torch.empty_like(query_states)
                 Llama2TokenAttentionForwards.token_attn(
                     query_states,
                     infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
