@@ -343,7 +343,6 @@ class GeminiDDP(ModelWrapper):
         with torch._C.DisableTorchFunction():
             chunk = self.chunk_manager.get_chunk(p)
             if chunk.tensors_info[p].state != TensorState.HOLD_AFTER_BWD:
-                print(chunk.tensors_info[p].state)
                 raise RuntimeError(
                     f"Parameter `{self.param2name[p]}` failed at the gradient reduction. "
                     "Some unsupported torch function is operated upon this parameter."
