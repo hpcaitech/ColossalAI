@@ -8,6 +8,14 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 
+SUPPORT_PEFT = False
+try:
+    import peft
+
+    SUPPORT_PEFT = True
+except ImportError:
+    pass
+
 import colossalai.interface.pretrained as pretrained_utils
 from colossalai.checkpoint_io import GeneralCheckpointIO
 from colossalai.interface import ModelWrapper, OptimizerWrapper
@@ -224,12 +232,15 @@ class Booster:
     def enable_lora(
         self,
         model: nn.Module,
+        task_type: Optional[Union["peft.TaskType", str]] = None,
         r: int = 8,
         target_modules: Optional[Union[List[str], str]] = None,
         lora_alpha: int = 8,
         lora_dropout: float = 0.0,
         fan_in_fan_out: bool = False,
         bias: str = "none",
+        modules_to_save: Optional[List[str]] = None,
+        inference_mode: bool = False,
     ) -> nn.Module:
         """
         Wrap the passed in model with LoRA modules for training.
@@ -237,6 +248,7 @@ class Booster:
 
         Args:
             model (nn.Module): The model to be appended with LoRA modules.
+            task_type (Union[peft.TaskType, str], optional): The type of task to perform in peft(For example, TaskType.CAUSAL_LM). Defaults to None.
             r (int, optional): Lora attention dimension. Defaults to 8.
             target_modules (Union[List[str],str], optional): List of names or regex expressions of the modules to apply Lora to.
                 For example, ['q', 'v'] or '.*decoder.*(SelfAttention|EncDecAttention).*(q|v)$'. Defaults to None.
@@ -249,16 +261,24 @@ class Booster:
                 corresponding biases will be updated during training. Be aware that this means that, even when disabling
                 the adapters, the model will not produce the same output as the base model would have without adaptation.
                 Defaults to "none".
+            modules_to_save (List[str], optional):List of modules apart from LoRA layers to be set as trainable
+                and saved in the final checkpoint. Defaults to None.
+            inference_mode (bool, optional): Whether to use the Peft model in inference mode. Defaults to False.
         """
+        if not SUPPORT_PEFT:
+            raise ImportError("Please install Huggingface Peft library to enable lora features in ColossalAI!")
         assert self.plugin is not None, f"Lora can only enabled when a plugin is provided."
         assert self.plugin.support_lora(), f"The plugin {self.plugin.__class__.__name__} does not support lora."
         lora_config = dict(
+            task_type=task_type,
             r=r,
             target_modules=target_modules,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
             fan_in_fan_out=fan_in_fan_out,
             bias=bias,
+            modules_to_save=modules_to_save,
+            inference_mode=inference_mode,
         )
         return self.plugin.enable_lora(model, lora_config)
 
@@ -365,8 +385,28 @@ class Booster:
         """
         self.checkpoint_io.load_lr_scheduler(lr_scheduler, checkpoint)
 
-    def load_lora(self, model: nn.Module, checkpoint: str) -> None:
-        pass
+    def save_lora(self, model: Union[nn.Module, ModelWrapper], checkpoint: str, use_safetensors: bool = False) -> None:
+        """
+        Save the lora adapters and adapter configuration file to checkpoint directory.
 
-    def save_lora(self, model: nn.Module, checkpoint: str) -> None:
-        pass
+        Args:
+            model (Union[nn.Module, ModelWrapper]): A model boosted by Booster.
+            checkpoint (str): Path to the checkpoint directory. It must be a local path.
+            use_safetensors (bool, optional): Whether to use safe tensors when saving. Defaults to False.
+        """
+        if not SUPPORT_PEFT:
+            raise ImportError("Please install Huggingface Peft library to enable lora features in ColossalAI!")
+        self.checkpoint_io.save_lora(model, checkpoint, use_safetensors)
+
+    def load_lora(self, model: Union[nn.Module, ModelWrapper], checkpoint: str) -> None:
+        """
+        Instantiate a PEFT model from a pretrained model and loaded PEFT weights.
+
+        Args:
+            model (Union[nn.Module, ModelWrapper]): A model boosted by Booster.
+            checkpoint (str): Path to the checkpoint directory. It must be a local path.
+            use_safetensors (bool, optional): Whether to use safe tensors when saving. Defaults to False.
+        """
+        if not SUPPORT_PEFT:
+            raise ImportError("Please install Huggingface Peft library to enable lora features in ColossalAI!")
+        self.checkpoint_io.load_lora(model, checkpoint)

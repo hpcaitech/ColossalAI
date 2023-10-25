@@ -70,7 +70,7 @@ class Plugin(ABC):
     @abstractmethod
     def enable_lora(self, model: nn.Module, lora_config: Dict) -> nn.Module:
         """
-        Add LoRA modules to the model passed in.
+        Add LoRA modules to the model passed in. Should only be called in booster.enable_lora().
         """
 
     @abstractmethod

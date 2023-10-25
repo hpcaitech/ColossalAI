@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -116,6 +116,30 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
         super().load_sharded_optimizer(optimizer.unwrap(), index_file_path, prefix)
 
+    def save_lora(self, model: Union[nn.Module, ModelWrapper], checkpoint: str, use_safetensors: bool = False) -> None:
+        """
+        Save the lora adapters and adapter configuration file to checkpoint directory.
+        """
+        from peft import PeftModel
+
+        assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
+        if self.coordinator.is_master():
+            peft_model = model.unwrap()
+            assert isinstance(peft_model, PeftModel), "Please use save_lora method when lora is enabled."
+            peft_model.save_pretrained(save_directory=checkpoint, safe_serialization=use_safetensors)
+
+    def load_lora(self, model: Union[nn.Module, ModelWrapper], checkpoint: str) -> None:
+        """
+        Instantiate a PEFT model from a pretrained model and loaded PEFT weights.
+        """
+        from peft import PeftModel
+
+        assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
+        if self.coordinator.is_master():
+            peft_model = model.unwrap()
+            assert isinstance(peft_model, PeftModel), "Please use load_lora method when lora is enabled."
+            # peft_model.from_pretrained()
+
 
 class TorchDDPModel(ModelWrapper):
     def __init__(self, module: nn.Module, *args, **kwargs) -> None:
@@ -221,11 +245,7 @@ class TorchDDPPlugin(DPPluginBase):
         return model.module.no_sync()
 
     def enable_lora(self, model: nn.Module, lora_config: Dict) -> nn.Module:
+        from peft import LoraConfig, get_peft_model
+
         assert not isinstance(model, TorchDDPModel), "Lora should be enabled before boosting the model."
-
-        try:
-            from peft import LoraConfig
-        except ImportError:
-            raise ImportError("Please install Huggingface Peft library to enable lora feature in ColossalAI!")
-
-        LoraConfig(**lora_config)
+        return get_peft_model(model, LoraConfig(**lora_config))

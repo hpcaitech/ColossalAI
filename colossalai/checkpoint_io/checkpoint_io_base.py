@@ -327,3 +327,29 @@ class CheckpointIO(ABC):
         """
         state_dict = torch.load(checkpoint)
         lr_scheduler.load_state_dict(state_dict)
+
+    # ========================================================
+    # Abstract methods for lora loading/saving implementation
+    # ========================================================
+
+    @abstractmethod
+    def save_lora(self, model: Union[nn.Module, ModelWrapper], checkpoint: str, use_safetensors: bool = False) -> None:
+        """
+        Save the lora adapters and adapter configuration file to checkpoint directory.
+
+        Args:
+            model (Union[nn.Module, ModelWrapper]): A model boosted by Booster.
+            checkpoint (str): Path to the checkpoint directory. It must be a local path.
+            use_safetensors (bool, optional): Whether to use safe tensors when saving. Defaults to False.
+        """
+
+    @abstractmethod
+    def load_lora(self, model: Union[nn.Module, ModelWrapper], checkpoint: str) -> None:
+        """
+        Instantiate a PEFT model from a pretrained model and loaded PEFT weights.
+
+        Args:
+            model (Union[nn.Module, ModelWrapper]): A model boosted by Booster.
+            checkpoint (str): Path to the checkpoint directory. It must be a local path.
+            use_safetensors (bool, optional): Whether to use safe tensors when saving. Defaults to False.
+        """
