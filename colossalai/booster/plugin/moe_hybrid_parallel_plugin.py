@@ -1,4 +1,5 @@
 import random
+from types import MethodType
 from typing import Callable, Optional, OrderedDict, Tuple
 
 import numpy as np
@@ -32,38 +33,55 @@ PP_AXIS, DP_AXIS, TP_AXIS = 0, 1, 2
 
 
 class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
-
     def __init__(
-            self,
-            optimizer: Optimizer,
-            model: Module,
-            use_pipeline: bool,
-            param_info: OrderedDict,
-            initial_scale: int = 2**16,    # grad scaler config
-            min_scale: int = 1,
-            growth_factor: float = 2.,
-            backoff_factor: float = .5,
-            growth_interval: int = 2000,
-            hysteresis: int = 2,
-            max_scale: int = 2**24,
-            clip_grad_norm: float = 0.0,    # grad clipping
-            verbose: bool = False,
-            reduce_bucket_size: int = 1024 * 1024,    # communication
-            communication_dtype: Optional[torch.dtype] = None,
-            overlap_communication: bool = True,
-            partition_grad: bool = False,    # stage 2 flag
-            cpu_offload: bool = False,    # cpu offload
-            dp_process_group: Optional[ProcessGroup] = None,    # the dp pg for comm
-            tp_process_group: Optional[ProcessGroup] = None,    # if using tp
-            forced_dtype: Optional[torch.dtype] = None,
-            extra_dp_process_group: Optional[ProcessGroup] = None):
+        self,
+        optimizer: Optimizer,
+        model: Module,
+        use_pipeline: bool,
+        param_info: OrderedDict,
+        initial_scale: int = 2**16,  # grad scaler config
+        min_scale: int = 1,
+        growth_factor: float = 2.0,
+        backoff_factor: float = 0.5,
+        growth_interval: int = 2000,
+        hysteresis: int = 2,
+        max_scale: int = 2**24,
+        clip_grad_norm: float = 0.0,  # grad clipping
+        verbose: bool = False,
+        reduce_bucket_size: int = 1024 * 1024,  # communication
+        communication_dtype: Optional[torch.dtype] = None,
+        overlap_communication: bool = True,
+        partition_grad: bool = False,  # stage 2 flag
+        cpu_offload: bool = False,  # cpu offload
+        dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
+        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
+        forced_dtype: Optional[torch.dtype] = None,
+        extra_dp_process_group: Optional[ProcessGroup] = None,
+    ):
         self.param_info = param_info
         if use_pipeline:
             init_pipeline_optimizer(optimizer, model)
-        super().__init__(optimizer, initial_scale, min_scale, growth_factor, backoff_factor, growth_interval,
-                         hysteresis, max_scale, clip_grad_norm, verbose, reduce_bucket_size, communication_dtype,
-                         overlap_communication, partition_grad, cpu_offload, dp_process_group, tp_process_group,
-                         forced_dtype, extra_dp_process_group)
+        super().__init__(
+            optimizer,
+            initial_scale,
+            min_scale,
+            growth_factor,
+            backoff_factor,
+            growth_interval,
+            hysteresis,
+            max_scale,
+            clip_grad_norm,
+            verbose,
+            reduce_bucket_size,
+            communication_dtype,
+            overlap_communication,
+            partition_grad,
+            cpu_offload,
+            dp_process_group,
+            tp_process_group,
+            forced_dtype,
+            extra_dp_process_group,
+        )
 
 
 class MoeHybridParallelPlugin(HybridParallelPlugin):
@@ -123,51 +141,51 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         overlap_communication (bool, optional): Whether to overlap communication and computation when using ZeRO. Defaults to True.
     """
 
-    def __init__(self,
-                 tp_size: int,
-                 pp_size: int,
-                 extra_dp_size: int = 1,
-                 precision: str = 'fp16',
-                 zero_stage: int = 0,
-                 enable_all_optimization: bool = False,
-                 enable_fused_normalization: bool = False,
-                 enable_flash_attention: bool = False,
-                 enable_jit_fused: bool = False,
-                 enable_sequence_parallelism: bool = False,
-                 enable_sequence_overlap: bool = False,
-                 num_microbatches: Optional[int] = None,
-                 microbatch_size: Optional[int] = None,
-                 initial_scale: float = 2**16,
-                 min_scale: float = 1,
-                 growth_factor: float = 2,
-                 backoff_factor: float = 0.5,
-                 growth_interval: int = 1000,
-                 hysteresis: int = 2,
-                 max_scale: float = 2**32,
-                 max_norm: float = 0,
-                 broadcast_buffers: bool = True,
-                 ddp_bucket_cap_mb: int = 25,
-                 find_unused_parameters: bool = False,
-                 check_reduction: bool = False,
-                 gradient_as_bucket_view: bool = False,
-                 static_graph: bool = False,
-                 zero_bucket_size_in_m: int = 12,
-                 cpu_offload: bool = False,
-                 communication_dtype: Optional[torch.dtype] = None,
-                 overlap_communication: bool = True,
-                 use_ep_inside: bool = True,
-                 custom_policy: Policy = None) -> None:
-
-        super().__init__(tp_size=tp_size,
-                         pp_size=pp_size,
-                         num_microbatches=num_microbatches,
-                         microbatch_size=microbatch_size)
-        assert dist.get_world_size() % (
-            tp_size * pp_size
-        ) == 0, f'world size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}'
+    def __init__(
+        self,
+        tp_size: int,
+        pp_size: int,
+        extra_dp_size: int = 1,
+        precision: str = "fp16",
+        zero_stage: int = 0,
+        enable_all_optimization: bool = False,
+        enable_fused_normalization: bool = False,
+        enable_flash_attention: bool = False,
+        enable_jit_fused: bool = False,
+        enable_sequence_parallelism: bool = False,
+        enable_sequence_overlap: bool = False,
+        num_microbatches: Optional[int] = None,
+        microbatch_size: Optional[int] = None,
+        initial_scale: float = 2**16,
+        min_scale: float = 1,
+        growth_factor: float = 2,
+        backoff_factor: float = 0.5,
+        growth_interval: int = 1000,
+        hysteresis: int = 2,
+        max_scale: float = 2**32,
+        max_norm: float = 0,
+        broadcast_buffers: bool = True,
+        ddp_bucket_cap_mb: int = 25,
+        find_unused_parameters: bool = False,
+        check_reduction: bool = False,
+        gradient_as_bucket_view: bool = False,
+        static_graph: bool = False,
+        zero_bucket_size_in_m: int = 12,
+        cpu_offload: bool = False,
+        communication_dtype: Optional[torch.dtype] = None,
+        overlap_communication: bool = True,
+        use_ep_inside: bool = True,
+        custom_policy: Policy = None,
+    ) -> None:
+        super().__init__(
+            tp_size=tp_size, pp_size=pp_size, num_microbatches=num_microbatches, microbatch_size=microbatch_size
+        )
+        assert (
+            dist.get_world_size() % (tp_size * pp_size) == 0
+        ), f"world size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
 
         if enable_sequence_parallelism:
-            assert tp_size > 1, 'Sequence parallelism must be enabled when using tensor parallelism'
+            assert tp_size > 1, "Sequence parallelism must be enabled when using tensor parallelism"
 
         self.tp_size = tp_size
         self.pp_size = pp_size
@@ -204,24 +222,28 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.custom_policy = custom_policy
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
-            assert num_microbatches is not None or microbatch_size is not None, 'num_microbatches or microbatch_size must be specified when using pipeline parallelism'
-            assert self.zero_stage <= 1, 'zero stage must be 0 or 1 when using pipeline parallelism'
+            assert (
+                num_microbatches is not None or microbatch_size is not None
+            ), "num_microbatches or microbatch_size must be specified when using pipeline parallelism"
+            assert self.zero_stage <= 1, "zero stage must be 0 or 1 when using pipeline parallelism"
             self.stage_manager = PipelineStageManager(self.pg_mesh, PP_AXIS)
-            self.schedule = OneForwardOneBackwardSchedule(self.stage_manager,
-                                                          num_microbatches=num_microbatches,
-                                                          microbatch_size=microbatch_size)
+            self.schedule = OneForwardOneBackwardSchedule(
+                self.stage_manager, num_microbatches=num_microbatches, microbatch_size=microbatch_size
+            )
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
         self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
         self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
-        self.shard_config = ShardConfig(tensor_parallel_process_group=self.tp_group,
-                                        pipeline_stage_manager=self.stage_manager,
-                                        enable_tensor_parallelism=self.tp_size > 1,
-                                        enable_all_optimization=self.enable_all_optimization,
-                                        enable_fused_normalization=self.enable_fused_normalization,
-                                        enable_flash_attention=self.enable_flash_attention,
-                                        enable_jit_fused=self.enable_jit_fused,
-                                        enable_sequence_parallelism=enable_sequence_parallelism,
-                                        enable_sequence_overlap=enable_sequence_overlap)
+        self.shard_config = ShardConfig(
+            tensor_parallel_process_group=self.tp_group,
+            pipeline_stage_manager=self.stage_manager,
+            enable_tensor_parallelism=self.tp_size > 1,
+            enable_all_optimization=self.enable_all_optimization,
+            enable_fused_normalization=self.enable_fused_normalization,
+            enable_flash_attention=self.enable_flash_attention,
+            enable_jit_fused=self.enable_jit_fused,
+            enable_sequence_parallelism=enable_sequence_parallelism,
+            enable_sequence_overlap=enable_sequence_overlap,
+        )
         self.amp_config = dict(
             initial_scale=initial_scale,
             growth_factor=growth_factor,
@@ -232,30 +254,28 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             max_scale=max_scale,
         )
 
-        self.ddp_config = dict(broadcast_buffers=broadcast_buffers,
-                               bucket_cap_mb=ddp_bucket_cap_mb,
-                               find_unused_parameters=find_unused_parameters,
-                               check_reduction=check_reduction,
-                               gradient_as_bucket_view=gradient_as_bucket_view,
-                               static_graph=static_graph)
+        self.ddp_config = dict(
+            broadcast_buffers=broadcast_buffers,
+            bucket_cap_mb=ddp_bucket_cap_mb,
+            find_unused_parameters=find_unused_parameters,
+            check_reduction=check_reduction,
+            gradient_as_bucket_view=gradient_as_bucket_view,
+            static_graph=static_graph,
+        )
 
-        self.zero_config = dict(reduce_bucket_size=zero_bucket_size_in_m * 1024 * 1024,
-                                communication_dtype=communication_dtype,
-                                overlap_communication=overlap_communication,
-                                cpu_offload=cpu_offload,
-                                partition_grad=(self.zero_stage == 2))
+        self.zero_config = dict(
+            reduce_bucket_size=zero_bucket_size_in_m * 1024 * 1024,
+            communication_dtype=communication_dtype,
+            overlap_communication=overlap_communication,
+            cpu_offload=cpu_offload,
+            partition_grad=(self.zero_stage == 2),
+        )
 
         self.max_norm = max_norm
 
-    def prepare_dataloader(self,
-                           dataset,
-                           batch_size,
-                           shuffle=False,
-                           seed=1024,
-                           drop_last=False,
-                           pin_memory=False,
-                           num_workers=0,
-                           **kwargs):
+    def prepare_dataloader(
+        self, dataset, batch_size, shuffle=False, seed=1024, drop_last=False, pin_memory=False, num_workers=0, **kwargs
+    ):
         r"""
         Prepare a dataloader for distributed training. The dataloader will be wrapped by
         `torch.utils.data.DataLoader` and `torch.utils.data.DistributedSampler`.
@@ -278,10 +298,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             :class:`torch.utils.data.DataLoader`: A DataLoader used for training or testing.
         """
         _kwargs = kwargs.copy()
-        sampler = DistributedSampler(dataset,
-                                     num_replicas=self.pg_mesh.size(DP_AXIS),
-                                     rank=self.pg_mesh.coordinate(DP_AXIS),
-                                     shuffle=shuffle)
+        sampler = DistributedSampler(
+            dataset, num_replicas=self.pg_mesh.size(DP_AXIS), rank=self.pg_mesh.coordinate(DP_AXIS), shuffle=shuffle
+        )
 
         # Deterministic dataloader
         def seed_worker(worker_id):
@@ -290,14 +309,16 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             torch.manual_seed(worker_seed)
             random.seed(worker_seed)
 
-        return DataLoader(dataset,
-                          batch_size=batch_size,
-                          sampler=sampler,
-                          worker_init_fn=seed_worker,
-                          drop_last=drop_last,
-                          pin_memory=pin_memory,
-                          num_workers=num_workers,
-                          **_kwargs)
+        return DataLoader(
+            dataset,
+            batch_size=batch_size,
+            sampler=sampler,
+            worker_init_fn=seed_worker,
+            drop_last=drop_last,
+            pin_memory=pin_memory,
+            num_workers=num_workers,
+            **_kwargs,
+        )
 
     def get_checkpoint_io(self) -> MoeCheckpintIO:
         self.checkpoint_io = MoeCheckpintIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
@@ -314,40 +335,45 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         param_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
-            model = HybridParallelModule(model, self.precision, self.shard_config, self.dp_group, use_ddp,
-                                         self.ddp_config, self.custom_policy)
+            model = HybridParallelModule(
+                model, self.precision, self.shard_config, self.dp_group, use_ddp, self.ddp_config, self.custom_policy
+            )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
-                if self.precision in ['fp16', 'bf16']:
-                    optimizer = HybridParallelAMPOptimizer(optimizer,
-                                                           model,
-                                                           use_pipeline=self.enable_pipeline_parallelism,
-                                                           param_info=param_info,
-                                                           precision=self.precision,
-                                                           max_norm=self.max_norm,
-                                                           **self.amp_config)
-                    self.checkpoint_io.link_master_and_working_param(optimizer.working_to_master_map,
-                                                                     optimizer.master_to_working_map)
+                if self.precision in ["fp16", "bf16"]:
+                    optimizer = HybridParallelAMPOptimizer(
+                        optimizer,
+                        model,
+                        use_pipeline=self.enable_pipeline_parallelism,
+                        param_info=param_info,
+                        precision=self.precision,
+                        max_norm=self.max_norm,
+                        **self.amp_config,
+                    )
+                    self.checkpoint_io.link_master_and_working_param(
+                        optimizer.working_to_master_map, optimizer.master_to_working_map
+                    )
                 else:
-                    optimizer = HybridParallelNaiveOptimizer(optimizer,
-                                                             model,
-                                                             use_pipeline=self.enable_pipeline_parallelism,
-                                                             param_info=param_info)
+                    optimizer = HybridParallelNaiveOptimizer(
+                        optimizer, model, use_pipeline=self.enable_pipeline_parallelism, param_info=param_info
+                    )
             else:
                 assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
-                assert self.precision != 'fp32', "Please set precision to 'fp16' or 'bf16' when using ZeRO."
-                optimizer = HybridParallelZeroOptimizer(optimizer,
-                                                        model,
-                                                        use_pipeline=self.enable_pipeline_parallelism,
-                                                        param_info=param_info,
-                                                        dp_process_group=self.dp_group,
-                                                        tp_process_group=self.tp_group,
-                                                        extra_dp_process_group=self.extra_dp_group,
-                                                        verbose=True,
-                                                        clip_grad_norm=self.max_norm,
-                                                        **self.zero_config,
-                                                        **self.amp_config)
-                self.checkpoint_io.link_master_and_working_param(optimizer._param_store.working_to_master_param,
-                                                                 optimizer._param_store.master_to_working_param)
+                assert self.precision != "fp32", "Please set precision to 'fp16' or 'bf16' when using ZeRO."
+                optimizer = HybridParallelZeroOptimizer(
+                    optimizer,
+                    model,
+                    use_pipeline=self.enable_pipeline_parallelism,
+                    param_info=param_info,
+                    dp_process_group=self.dp_group,
+                    tp_process_group=self.tp_group,
+                    extra_dp_process_group=self.extra_dp_group,
+                    verbose=True,
+                    clip_grad_norm=self.max_norm,
+                    **self.zero_config,
+                    **self.amp_config,
+                )
+            # inject update_master_params
+            model.update_master_params = MethodType(optimizer.update_master_params, model)
 
         return model, optimizer, criterion, dataloader, lr_scheduler

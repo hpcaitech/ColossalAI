@@ -1,3 +1,4 @@
+import argparse
 import os
 
 import datasets
@@ -13,7 +14,6 @@ from transformers import Adafactor, T5Tokenizer
 from transformers.models.llama import LlamaConfig
 
 import colossalai
-from colossalai import get_default_parser
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
@@ -42,7 +42,6 @@ def load_ckpt(repo_name: str, model: OpenMoeForCausalLM, booster: Booster):
 
 
 class RandomDataset(Dataset):
-
     def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000, tokenizer=None):
         """
         A random dataset
@@ -86,7 +85,7 @@ class RandomDataset(Dataset):
 
 def parse_args():
     # basic settings
-    parser = get_default_parser()
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model_name",
         type=str,
@@ -288,7 +287,7 @@ def main():
     model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
     if not test_mode:
         load_ckpt(repo_name, model, booster)
-    use_pipeline = (isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1)
+    use_pipeline = isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     logger.info(f"Finish init booster", ranks=[0])
 
@@ -299,9 +298,9 @@ def main():
         train_dataloader_iter = iter(dataloader)
         total_len = len(train_dataloader_iter)
         with tqdm(
-                range(total_len),
-                desc=f"Epoch [{epoch + 1}/{args.num_epoch}]",
-                disable=not coordinator.is_master(),
+            range(total_len),
+            desc=f"Epoch [{epoch + 1}/{args.num_epoch}]",
+            disable=not coordinator.is_master(),
         ) as pbar:
             for step in pbar:
                 if use_pipeline:
