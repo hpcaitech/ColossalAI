@@ -58,18 +58,20 @@ class RewardModelTrainer(SLTrainer):
                     num_samples += chosen_ids.size(0)
                     num_correct += (chosen_reward > reject_reward).sum().item()
                     dist += (chosen_reward - reject_reward).mean().item()
-                    
+
                 self.dist = dist / len(self.eval_dataloader)
                 self.acc = num_correct / num_samples
 
             if self.writer:
-                self.writer.add_scalar("eval/mean_reward_choen", sum(mean_reward_choen)/len(mean_reward_choen), epoch)
-                self.writer.add_scalar("eval/mean_reward_reject", sum(mean_reward_reject)/len(mean_reward_reject), epoch)
+                self.writer.add_scalar("eval/mean_reward_choen", sum(mean_reward_choen) / len(mean_reward_choen), epoch)
+                self.writer.add_scalar(
+                    "eval/mean_reward_reject", sum(mean_reward_reject) / len(mean_reward_reject), epoch
+                )
                 self.writer.add_scalar("eval/dist", self.dist, epoch)
                 self.writer.add_scalar("eval/acc", self.acc, epoch)
 
     def _train(self, epoch):
-        self.model.eval()
+        self.model.train()
         step_bar = tqdm.trange(
             len(self.train_dataloader), desc=f"Epoch {epoch + 1}/{self.max_epochs}", disable=not is_rank_0()
         )

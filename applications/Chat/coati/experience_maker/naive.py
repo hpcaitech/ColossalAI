@@ -65,25 +65,24 @@ class NaiveExperienceMaker(ExperienceMaker):
         action_mask = action_mask[:, -(sequences.size(1) - input_len) :]
         num_actions = action_mask.size(1)
 
-        with torch.no_grad():
-            actor_output = self.actor(sequences, attention_mask)["logits"]
-            action_log_probs = calc_action_log_probs(actor_output, sequences, num_actions)
+        actor_output = self.actor(sequences, attention_mask)["logits"]
+        action_log_probs = calc_action_log_probs(actor_output, sequences, num_actions)
 
-            base_model_output = self.initial_model(sequences, attention_mask)["logits"]
+        base_model_output = self.initial_model(sequences, attention_mask)["logits"]
 
-            base_action_log_probs = calc_action_log_probs(base_model_output, sequences, num_actions)
-            value = self.critic(sequences, attention_mask)
-            sequences_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True)
+        base_action_log_probs = calc_action_log_probs(base_model_output, sequences, num_actions)
+        value = self.critic(sequences, attention_mask)
+        sequences_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True)
 
-            sequences_rm = self.rm_model_tokenizer(
-                sequences_text, return_tensors="pt", padding="max_length", truncation=True, max_length=300
-            )
-            r = self.reward_model(
-                **{
-                    "sequences": sequences_rm["input_ids"].to(dtype=torch.long, device=sequences.device),
-                    "attention_mask": sequences_rm["attention_mask"].to(device=sequences.device),
-                }
-            )
+        sequences_rm = self.rm_model_tokenizer(
+            sequences_text, return_tensors="pt", padding="max_length", truncation=True, max_length=300
+        )
+        r = self.reward_model(
+            **{
+                "sequences": sequences_rm["input_ids"].to(dtype=torch.long, device=sequences.device),
+                "attention_mask": sequences_rm["attention_mask"].to(device=sequences.device),
+            }
+        )
         reward, kl = compute_reward(r, self.kl_coef, action_log_probs, base_action_log_probs, action_mask=action_mask)
 
         # Adapted from https://github.com/CarperAI/trlx/blob/main/trlx/models/modeling_ppo.py#L134
