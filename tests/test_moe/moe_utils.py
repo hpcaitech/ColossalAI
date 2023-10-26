@@ -4,7 +4,6 @@ import torch.nn as nn
 
 from colossalai.legacy.engine.gradient_handler._base_gradient_handler import BaseGradientHandler
 from colossalai.legacy.engine.gradient_handler.utils import bucket_allreduce
-from colossalai.legacy.nn import CheckpointModule
 from colossalai.legacy.registry import GRADIENT_HANDLER
 from colossalai.moe import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
@@ -13,20 +12,16 @@ from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_rank, get_ep_s
 
 
 class MoeModel(nn.Module):
-
-    def __init__(self, checkpoint: bool = False, enable_load_balance: bool = False):
-
-        class TestSubModule(CheckpointModule):
-
+    def __init__(self, enable_load_balance: bool = False):
+        class TestSubModule(nn.Module):
             def __init__(self):
-                super().__init__(checkpoint)
-                self.moe = SparseMLP(num_experts=8,
-                                     hidden_size=16,
-                                     intermediate_size=32,
-                                     enable_load_balance=enable_load_balance)
+                super().__init__()
+                self.moe = SparseMLP(
+                    num_experts=8, hidden_size=16, intermediate_size=32, enable_load_balance=enable_load_balance
+                )
                 self.proj = nn.Linear(16, 4)
 
-            def _forward(self, x):
+            def forward(self, x):
                 x = self.moe(x)
                 x = self.proj(x)
                 return x
@@ -76,8 +71,9 @@ class MoeGradientHandler(BaseGradientHandler):
 
             for ep_size in epsize_param_dict:
                 if ep_size != 1 and ep_size != MOE_MANAGER.world_size:
-                    bucket_allreduce(param_list=epsize_param_dict[ep_size],
-                                     group=MOE_MANAGER.parallel_info_dict[ep_size].dp_group)
+                    bucket_allreduce(
+                        param_list=epsize_param_dict[ep_size], group=MOE_MANAGER.parallel_info_dict[ep_size].dp_group
+                    )
 
 
 def sync_tp_from_ep(tp_model: SparseMLP, ep_model: SparseMLP, assert_grad_flag: bool = False) -> None:
@@ -130,8 +126,9 @@ def sync_local_from_ep(local_model: SparseMLP, ep_model: SparseMLP, assert_grad_
         local_model (MoeModule)
         ep_model (MoeModule)
     """
-    for (local_name, local_param), (ep_name, ep_param) in zip(local_model.named_parameters(),
-                                                              ep_model.named_parameters()):
+    for (local_name, local_param), (ep_name, ep_param) in zip(
+        local_model.named_parameters(), ep_model.named_parameters()
+    ):
         assert local_name == ep_name
         if "experts" not in local_name:
             if assert_grad_flag:
@@ -168,4 +165,5 @@ def assert_not_equal_in_group(tensor, process_group=None):
         a = tensor_list[i]
         b = tensor_list[i + 1]
         assert not torch.allclose(
-            a, b), f'expected tensors on rank {i} and {i + 1} to be equal but they are not, {a} vs {b}'
+            a, b
+        ), f"expected tensors on rank {i} and {i + 1} to be equal but they are not, {a} vs {b}"

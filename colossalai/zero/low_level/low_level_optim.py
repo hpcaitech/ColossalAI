@@ -20,19 +20,11 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
+
 # from colossalai.tensor import ColoParameter, ProcessGroup
 from colossalai.utils.cuda import get_current_device
 
 from ._utils import calculate_global_norm_from_list, flatten, has_inf_or_nan, release_param_grad, sync_tensor
-from ._utils import (
-    calculate_global_norm_from_list,
-    compute_norm,
-    flatten,
-    has_inf_or_nan,
-    release_param_grad,
-    sync_tensor,
-    unflatten,
-)
 from .bookkeeping import BucketStore, GradientStore, ParameterStore
 
 
@@ -84,7 +76,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
-        tp_process_group: Optional[ProcessGroup] = None,    # if using tp
+        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
         forced_dtype: Optional[torch.dtype] = None,
         extra_dp_process_group: Optional[ProcessGroup] = None,
         master_weights: bool = True,  # master weights
@@ -161,7 +153,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # and add buffers to parameter store for future access
         for group_id, param_group in enumerate(self.optim.param_groups):
             group_params = list()
-            for param in param_group['params']:
+            for param in param_group["params"]:
                 if param.requires_grad:
                     if self.extra_dp_pg is None:
                         # skip moe param
@@ -185,9 +177,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if len(moe_params) > 0:
             param_group = dict()
             for key, value in self.optim.param_groups[0].items():
-                if key != 'params':
+                if key != "params":
                     param_group[key] = value
-            param_group['params'] = moe_params
+            param_group["params"] = moe_params
             self.optim.param_groups.append(param_group)
 
         # intialize communication stream for
@@ -373,8 +365,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             sync_tensor(flat_grads_per_rank[rank], grad_list)
                             for grad in grad_list:
                                 param_id = self._bucket_store.get_param_id_of_grad(grad)
-                                if len(self._grad_store.get_partitioned_gradients_by_param_id(
-                                        group_id, param_id)) < self._world_size:
+                                if (
+                                    len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id))
+                                    < self._world_size
+                                ):
                                     self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
                                 else:
                                     self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
@@ -384,8 +378,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         # sync non moe param in global dp group
                         if len(non_moe_grad_list) > 0:
                             dist.all_reduce(non_moe_flat_grads, group=self.dp_pg)
-                            flat_grads_per_rank = non_moe_flat_grads.split(non_moe_flat_grads.numel() //
-                                                                           self._world_size)
+                            flat_grads_per_rank = non_moe_flat_grads.split(
+                                non_moe_flat_grads.numel() // self._world_size
+                            )
                             self._sync_unpartitioned_grad(non_moe_grad_list, flat_grads_per_rank, group_id)
 
                         # sync moe param only in zero group
@@ -413,8 +408,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                                 self._grad_store.add_gradients_by_param_id(grad, 0, group_id, param_id)
                     else:
                         if len(non_moe_grad_list) > 0:
-                            flat_grads_list = list(non_moe_flat_grads.split(
-                                len(non_moe_flat_grads) // self._world_size))
+                            flat_grads_list = list(
+                                non_moe_flat_grads.split(len(non_moe_flat_grads) // self._world_size)
+                            )
                             recieved_grad = torch.zeros_like(flat_grads_list[0])
                             dist.reduce_scatter(recieved_grad, flat_grads_list, group=self.dp_pg)
 
@@ -436,12 +432,15 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             recieved_grad = list(recieved_grad.split(len(recieved_grad) // param_slice))
                             grad_in_bucket_current_rank = self._bucket_store.get_grad()[self._local_rank]
                             for split_recieved_grad in recieved_grad:
-                                split_recieved_grad = _unflatten_dense_tensors(split_recieved_grad,
-                                                                               grad_in_bucket_current_rank)
+                                split_recieved_grad = _unflatten_dense_tensors(
+                                    split_recieved_grad, grad_in_bucket_current_rank
+                                )
                                 for grad in grad_in_bucket_current_rank:
                                     param_id = self._bucket_store.get_param_id_of_grad(grad)
-                                    if len(self._grad_store.get_partitioned_gradients_by_param_id(
-                                            group_id, param_id)) < param_slice:
+                                    if (
+                                        len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id))
+                                        < param_slice
+                                    ):
                                         self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
                                     else:
                                         self._grad_store.add_gradients_by_param_id(grad, 0, group_id, param_id)
@@ -581,7 +580,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             grad = grads
                         else:
                             param_slice = self._world_size // self.extra_dp_pg_size
-                            grad = grads[self.extra_dp_pg_rank * param_slice:(self.extra_dp_pg_rank + 1) * param_slice]
+                            grad = grads[
+                                self.extra_dp_pg_rank * param_slice : (self.extra_dp_pg_rank + 1) * param_slice
+                            ]
                         grad = flatten(grad)
                     else:
                         real_working_params[group_id].append(working_param)
@@ -609,7 +610,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # TODO: we should store master param for ep
         if len(self.param_groups) > len(self._working_param_groups):
-            for param in self.param_groups[-1]['params']:
+            for param in self.param_groups[-1]["params"]:
                 param.data = param.data.to(torch.float32)
                 param.grad = param.grad.to(torch.float32)
 
@@ -618,10 +619,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # TODO: release the moe grad. we should store master param
         if len(self.param_groups) > len(self._working_param_groups):
-            dtype = real_working_params[0][0].dtype
-            for param in self.param_groups[-1]['params']:
+            for param in self.param_groups[-1]["params"]:
                 param.grad = None
-                param.data = param.data.to(dtype)
+                param.data = param.data.to(self._dtype)
 
         # release the grad
         grad_partition_groups = []
@@ -629,23 +629,23 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             release_param_grad(self._master_param_groups_of_current_rank[group_id])
 
         # update working partition updated by the current rank
-        # dtype = real_working_params[0][0].dtype
         for group_id in range(self.num_param_groups):
             master_working_param = self.optim.param_groups[group_id]["params"]
             for idx, splited_param in enumerate(master_working_param):
                 working_param = real_working_params[group_id][idx]
                 if self.extra_dp_pg is not None and is_moe_tensor(working_param):
                     all_splited_param = [
-                        torch.zeros(splited_param.shape, device="cuda", dtype=dtype)
+                        torch.zeros(splited_param.shape, device="cuda", dtype=self._dtype)
                         for _ in range(self.extra_dp_pg_size)
                     ]
-                    dist.all_gather(all_splited_param, splited_param.cuda().to(dtype), group=self.extra_dp_pg)
+                    dist.all_gather(all_splited_param, splited_param.cuda().to(self._dtype), group=self.extra_dp_pg)
                 else:
                     all_splited_param = [
-                        torch.zeros(splited_param.shape, device="cuda", dtype=dtype) for _ in range(self._world_size)
+                        torch.zeros(splited_param.shape, device="cuda", dtype=self._dtype)
+                        for _ in range(self._world_size)
                     ]
-                    dist.all_gather(all_splited_param, splited_param.cuda().to(dtype), group=self.dp_pg)
-                working_param.data.copy_(flatten(all_splited_param)[:working_param.numel()].reshape_as(working_param))
+                    dist.all_gather(all_splited_param, splited_param.cuda().to(self._dtype), group=self.dp_pg)
+                working_param.data.copy_(flatten(all_splited_param)[: working_param.numel()].reshape_as(working_param))
             self.optim.param_groups[group_id]["params"] = self._master_param_groups_of_current_rank[group_id]
 
     def _compute_grad_norm(self, gradients: List[Tensor], norm_type: int = 2) -> float:
@@ -775,16 +775,17 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     working_param = self._param_store.master_to_working_param[id(param)]
                     if self.extra_dp_pg is not None and is_moe_tensor(v):
                         gather_tensor = [
-                            torch.zeros(v.shape, device='cuda', dtype=v.dtype) for _ in range(self.extra_dp_pg_size)
+                            torch.zeros(v.shape, device="cuda", dtype=v.dtype) for _ in range(self.extra_dp_pg_size)
                         ]
                         dist.all_gather(gather_tensor, v.cuda(), group=self.extra_dp_pg)
                     else:
                         gather_tensor = [
-                            torch.zeros(v.shape, device='cuda', dtype=v.dtype) for _ in range(self._world_size)
+                            torch.zeros(v.shape, device="cuda", dtype=v.dtype) for _ in range(self._world_size)
                         ]
                         dist.all_gather(gather_tensor, v.cuda(), group=self.dp_pg)
-                    param_state = torch.stack(gather_tensor).view(-1)[:working_param.numel()].reshape_as(
-                        working_param).cpu()
+                    param_state = (
+                        torch.stack(gather_tensor).view(-1)[: working_param.numel()].reshape_as(working_param).cpu()
+                    )
                     zero_state[param][k] = param_state
 
         states_dict = self._pack_state(zero_state)
@@ -808,10 +809,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             v = torch.nn.functional.pad(v, [0, padding_size])
                         if self.extra_dp_pg is not None and is_moe_tensor(v):
                             v_list = v.split(v.numel() // self.extra_dp_pg_size)
-                            zero_state_dict['state'][param_idx][k] = v_list[self.extra_dp_pg_rank].detach().clone()
+                            zero_state_dict["state"][param_idx][k] = v_list[self.extra_dp_pg_rank].detach().clone()
                         else:
                             v_list = v.split(v.numel() // self._world_size)
-                            zero_state_dict['state'][param_idx][k] = v_list[self._local_rank].detach().clone()
+                            zero_state_dict["state"][param_idx][k] = v_list[self._local_rank].detach().clone()
 
         self.optim.load_state_dict(zero_state_dict)
 
@@ -841,19 +842,20 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 working_param = self._param_store.master_to_working_param[id(master_param)]
 
             for k, v in states.items():
-                if isinstance(v, torch.Tensor) and k != 'step':
+                if isinstance(v, torch.Tensor) and k != "step":
                     if self.extra_dp_pg is not None and is_moe_tensor(v):
                         state_tensor = [
-                            torch.zeros(v.shape, device='cuda', dtype=v.dtype) for _ in range(self.extra_dp_pg_size)
+                            torch.zeros(v.shape, device="cuda", dtype=v.dtype) for _ in range(self.extra_dp_pg_size)
                         ]
                         dist.all_gather(state_tensor, v.cuda(), group=self.extra_dp_pg)
                     else:
                         state_tensor = [
-                            torch.zeros(v.shape, device='cuda', dtype=v.dtype) for _ in range(self._world_size)
+                            torch.zeros(v.shape, device="cuda", dtype=v.dtype) for _ in range(self._world_size)
                         ]
                         dist.all_gather(state_tensor, v.cuda(), group=self.dp_pg)
-                    state_tensor = torch.stack(state_tensor).view(-1)[:working_param.numel()].reshape_as(
-                        working_param).cpu()
+                    state_tensor = (
+                        torch.stack(state_tensor).view(-1)[: working_param.numel()].reshape_as(working_param).cpu()
+                    )
                     current_block_size += state_tensor.numel()
                     current_block[k] = state_tensor
 

@@ -35,21 +35,24 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
     label = torch.randint(0, 4, (16,)).cuda()
 
     MOE_MANAGER.setup(seed=42, parallel=None)
-    torch_model = MoeModel(checkpoint=True)
+    torch_model = MoeModel()
     torch_optimizer = torch.optim.Adam(torch_model.parameters())
     torch_model = torch_model.cuda()
 
     MOE_MANAGER.__init__()
     MOE_MANAGER.setup(seed=42, max_ep_size=2, use_ep_inside=False, parallel="EP")
-    zero_model = MoeModel(checkpoint=True)
+    zero_model = MoeModel()
     extra_dp_group = MOE_MANAGER.parallel_info_dict[2].dp_group
     ep_rank = dist.get_rank(MOE_MANAGER.parallel_info_dict[2].ep_group)
     ep_size = MOE_MANAGER.parallel_info_dict[2].ep_size
     for zero_param, torch_param in zip(zero_model.parameters(), torch_model.parameters()):
         if is_moe_tensor(zero_param):
             num_expert = torch_param.data.shape[0]
-            zero_param.data.copy_(torch_param.data[ep_rank * (num_expert // ep_size):(ep_rank + 1) *
-                                                   (num_expert // ep_size)].detach().clone())
+            zero_param.data.copy_(
+                torch_param.data[ep_rank * (num_expert // ep_size) : (ep_rank + 1) * (num_expert // ep_size)]
+                .detach()
+                .clone()
+            )
         else:
             zero_param.data.copy_(torch_param.data.detach().clone())
     zero_optimizer = torch.optim.Adam(zero_model.parameters())
@@ -63,18 +66,21 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
     run_fwd_bwd(zero_model, data, label, criterion, zero_optimizer)
     zero_optimizer.step()
 
-    for (torch_name, torch_param), (zero_name, zero_param) in zip(torch_model.named_parameters(),
-                                                                  zero_model.named_parameters()):
+    for (torch_name, torch_param), (zero_name, zero_param) in zip(
+        torch_model.named_parameters(), zero_model.named_parameters()
+    ):
         if is_moe_tensor(zero_param):
             num_expert = torch_param.data.shape[0]
-            torch_param.data = torch_param.data[ep_rank * (num_expert // ep_size):(ep_rank + 1) *
-                                                (num_expert // ep_size)]
-        assert torch.allclose(torch_param.data, zero_param.data,
-                              atol=1e-4), f"{torch_name}\ntorch_param {torch_param.data}\nzero_param {zero_param.data}"
+            torch_param.data = torch_param.data[
+                ep_rank * (num_expert // ep_size) : (ep_rank + 1) * (num_expert // ep_size)
+            ]
+        assert torch.allclose(
+            torch_param.data, zero_param.data, atol=1e-4
+        ), f"{torch_name}\ntorch_param {torch_param.data}\nzero_param {zero_param.data}"
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_zero_optim_test(rank, world_size, stage=1)
 
 
@@ -85,5 +91,5 @@ def test_moe_zero_optim(world_size):
     spawn(run_dist, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_moe_zero_optim(world_size=4)

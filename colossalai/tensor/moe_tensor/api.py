@@ -1,7 +1,6 @@
 import torch
 import torch.distributed as dist
-
-from colossalai.tensor import ProcessGroup
+from torch.distributed import ProcessGroup
 
 from .moe_info import MoeParallelInfo
 

@@ -40,13 +40,13 @@ def run_fwd_bwd(model, data, label, criterion, optimizer, enable_autocast=False)
 def run_zero_optim_test(local_rank, world_size, stage=1):
     criterion = torch.nn.CrossEntropyLoss()
 
-    zero_model = MoeModel(checkpoint=True)
+    zero_model = MoeModel()
     zero_optimizer = torch.optim.Adam(zero_model.parameters())
     plugin = LowLevelZeroPlugin(stage=stage, precision="fp32")
     booster = Booster(plugin=plugin)
     zero_model, zero_optimizer, _, _, _ = booster.boost(zero_model, zero_optimizer)
 
-    torch_model = MoeModel(checkpoint=True)
+    torch_model = MoeModel()
     for zero_param, torch_param in zip(zero_model.parameters(), torch_model.parameters()):
         torch_param.data.copy_(zero_param.data)
     torch_optimizer = torch.optim.Adam(torch_model.parameters())
@@ -63,18 +63,19 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
         torch_optimizer.step()
         zero_optimizer.step()
 
-        for (torch_name, torch_param), (zero_name, zero_param) in zip(torch_model.named_parameters(),
-                                                                      zero_model.named_parameters()):
+        for (torch_name, torch_param), (zero_name, zero_param) in zip(
+            torch_model.named_parameters(), zero_model.named_parameters()
+        ):
             assert torch.allclose(
-                torch_param.data,
-                zero_param.data), f"{torch_name}\ntorch_param {torch_param.data}\nzero_param {zero_param.data}"
+                torch_param.data, zero_param.data
+            ), f"{torch_name}\ntorch_param {torch_param.data}\nzero_param {zero_param.data}"
 
         torch_optimizer.zero_grad()
         zero_optimizer.zero_grad()
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     MOE_MANAGER.setup(seed=42, parallel="EP")
     run_zero_optim_test(rank, world_size, stage=1)
     run_zero_optim_test(rank, world_size, stage=2)
@@ -87,5 +88,5 @@ def test_moe_zero_optim(world_size):
     spawn(run_dist, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_moe_zero_optim(world_size=2)

@@ -48,7 +48,7 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
         seed=42,
         parallel="EP",
     )
-    zero_model = MoeModel(checkpoint=True, enable_load_balance=True)
+    zero_model = MoeModel(enable_load_balance=True)
     zero_optimizer = torch.optim.Adam(zero_model.parameters())
     plugin = LowLevelZeroPlugin(stage=stage, precision="bf16", verbose=True)
     booster = Booster(plugin=plugin)
@@ -56,7 +56,7 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
 
     MOE_MANAGER.__init__()
     MOE_MANAGER.setup(seed=42, parallel="EP")
-    torch_model = MoeModel(checkpoint=True)
+    torch_model = MoeModel()
     for zero_param, torch_param in zip(zero_model.parameters(), torch_model.parameters()):
         torch_param.data.copy_(zero_param.data)
     torch_optimizer = torch.optim.Adam(torch_model.parameters())
@@ -104,7 +104,7 @@ def run_hybrid_zero_optim_test(local_rank, world_size, stage=1):
 
     MOE_MANAGER.__init__()
     MOE_MANAGER.setup(seed=42, parallel=None)
-    torch_model = MoeModel(checkpoint=True)
+    torch_model = MoeModel()
     torch_optimizer = torch.optim.Adam(torch_model.parameters())
     torch_model = torch_model.cuda()
 
@@ -115,15 +115,18 @@ def run_hybrid_zero_optim_test(local_rank, world_size, stage=1):
         use_ep_inside=False,
         parallel="EP",
     )
-    zero_model = MoeModel(checkpoint=True, enable_load_balance=True)
+    zero_model = MoeModel(enable_load_balance=True)
     extra_dp_group = MOE_MANAGER.parallel_info_dict[2].dp_group
     ep_rank = dist.get_rank(MOE_MANAGER.parallel_info_dict[2].ep_group)
     ep_size = MOE_MANAGER.parallel_info_dict[2].ep_size
     for zero_param, torch_param in zip(zero_model.parameters(), torch_model.parameters()):
         if is_moe_tensor(zero_param):
             num_expert = torch_param.data.shape[0]
-            zero_param.data.copy_(torch_param.data[ep_rank * (num_expert // ep_size):(ep_rank + 1) *
-                                                   (num_expert // ep_size)].detach().clone())
+            zero_param.data.copy_(
+                torch_param.data[ep_rank * (num_expert // ep_size) : (ep_rank + 1) * (num_expert // ep_size)]
+                .detach()
+                .clone()
+            )
         else:
             zero_param.data.copy_(torch_param.data.detach().clone())
     zero_optimizer = torch.optim.Adam(zero_model.parameters())
