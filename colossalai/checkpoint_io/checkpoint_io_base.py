@@ -329,8 +329,7 @@ class CheckpointIO(ABC):
         lr_scheduler.load_state_dict(state_dict)
 
     # ================================================================================
-    # Abstract methods for lora saving implementation.
-    # Loading lora is standard for different CheckpointIOs, so it needn't be abstract.
+    # Abstract method for lora saving implementation.
     # ================================================================================
 
     @abstractmethod
@@ -345,12 +344,3 @@ class CheckpointIO(ABC):
             checkpoint (str): Path to the checkpoint directory. It must be a local path.
             use_safetensors (bool, optional): Whether to use safe tensors when saving. Defaults to False.
         """
-
-    # def load_lora_from_pretrained(self, model: nn.Module, checkpoint: str) -> None:
-    #     """
-    #     Instantiate a PEFT model from a pretrained model and load PEFT weights from pretrained checkpoint.
-
-    #     Args:
-    #         model (Union[nn.Module, ModelWrapper]): A model boosted by Booster.
-    #         checkpoint (str): Path to the checkpoint directory. It must be a local path.
-    #     """

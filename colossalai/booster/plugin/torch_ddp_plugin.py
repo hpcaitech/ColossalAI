@@ -130,18 +130,6 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
             assert isinstance(peft_model, PeftModel), "Please use save_lora method when lora is enabled."
             peft_model.save_pretrained(save_directory=checkpoint, safe_serialization=use_safetensors)
 
-    # def load_lora(self, model: Union[nn.Module, ModelWrapper], checkpoint: str) -> None:
-    #     """
-    #     Instantiate a PEFT model from a pretrained model and loaded PEFT weights.
-    #     """
-    #     from peft import PeftModel
-
-    #     assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
-    #     if self.coordinator.is_master():
-    #         peft_model = model.unwrap()
-    #         assert isinstance(peft_model, PeftModel), "Please use load_lora method when lora is enabled."
-    #         PeftModel.from_pretrained(peft_model, checkpoint)
-
 
 class TorchDDPModel(ModelWrapper):
     def __init__(self, module: nn.Module, *args, **kwargs) -> None:

@@ -414,18 +414,3 @@ class Booster:
         if not SUPPORT_PEFT:
             raise ImportError("Please install Huggingface Peft library to enable lora features in ColossalAI!")
         self.checkpoint_io.save_lora_as_pretrained(model, checkpoint, use_safetensors)
-
-    # def load_lora_from_pretrained(self, model: nn.Module, checkpoint: str) -> None:
-    #     """
-    #     Instantiate a PEFT model from a pretrained model and load PEFT weights from pretrained checkpoint.
-
-    #     Args:
-    #         model (Union[nn.Module, ModelWrapper]): A model boosted by Booster.
-    #         checkpoint (str): Path to the checkpoint directory. It must be a local path.
-    #     """
-    #     if not SUPPORT_PEFT:
-    #         raise ImportError("Please install Huggingface Peft library to enable lora features in ColossalAI!")
-
-    #     from peft import PeftModel
-    #     assert (not isinstance(model, PeftModel)) and (not isinstance(model, ModelWrapper)), f"Lora should be loaded before boosting or enabling lora."
-    #     self.checkpoint_io.load_lora_from_pretrained(model, checkpoint)
