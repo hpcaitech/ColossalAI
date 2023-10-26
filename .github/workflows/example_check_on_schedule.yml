@@ -65,19 +65,17 @@ jobs:
       - name: Install Colossal-AI
         run: |
           CUDA_EXT=1 pip install -v .
-      - name: Restore huggingface cache
-        run: |
-          example_dir=${{ matrix.directory }}
-          if [[ $example_dir == *language/bert* ]]; then
-            echo "restore Bert weights"
-            cp -p -r /home/lcsoftware/gitact/actions-runner/_work/_temp/_github_home/hf_cache "${PWD}/examples/${example_dir}"
-          fi
+          
       - name: Traverse all files
         run: |
           example_dir=${{ matrix.directory }}
           echo "Testing ${example_dir} now"
+          if [[ $example_dir == *language/bert* ]]; then
+            echo "restore Bert weights to ${PWD}/examples/${example_dir}"
+            cp -p -r /home/lcsoftware/gitact/actions-runner/_work/_temp/_github_home/hf_cache "${PWD}/examples/${example_dir}"
+            ls -A ${PWD}/examples/${example_dir} | grep *bert-base*
+          fi
           cd "${PWD}/examples/${example_dir}"
-          ls -A | grep *bert-base*
           bash test_ci.sh
         env:
           NCCL_SHM_DISABLE: 1
