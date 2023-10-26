@@ -233,6 +233,7 @@ class Booster:
         self,
         model: nn.Module,
         task_type: Optional[Union["peft.TaskType", str]] = None,
+        inference_mode: bool = False,
         r: int = 8,
         target_modules: Optional[Union[List[str], str]] = None,
         lora_alpha: int = 8,
@@ -240,7 +241,8 @@ class Booster:
         fan_in_fan_out: bool = False,
         bias: str = "none",
         modules_to_save: Optional[List[str]] = None,
-        inference_mode: bool = False,
+        layers_to_transform: Optional[Union[List[int], int]] = None,
+        layers_pattern: Optional[str] = None,
     ) -> nn.Module:
         """
         Wrap the passed in model with LoRA modules for training.
@@ -248,7 +250,9 @@ class Booster:
 
         Args:
             model (nn.Module): The model to be appended with LoRA modules.
-            task_type (Union[peft.TaskType, str], optional): The type of task to perform in peft(For example, TaskType.CAUSAL_LM). Defaults to None.
+            task_type (Union[peft.TaskType, str], optional): The type of task to perform in peft. Available task types in string include "SEQ_CLS", "SEQ_2_SEQ_LM", "CAUSAL_LM",
+                "TOKEN_CLS", "QUESTION_ANS", and "FEATURE_EXTRACTION". Defaults to None.
+            inference_mode (bool, optional): Whether to use the Peft model in inference mode. Defaults to False.
             r (int, optional): Lora attention dimension. Defaults to 8.
             target_modules (Union[List[str],str], optional): List of names or regex expressions of the modules to apply Lora to.
                 For example, ['q', 'v'] or '.*decoder.*(SelfAttention|EncDecAttention).*(q|v)$'. Defaults to None.
@@ -263,7 +267,11 @@ class Booster:
                 Defaults to "none".
             modules_to_save (List[str], optional):List of modules apart from LoRA layers to be set as trainable
                 and saved in the final checkpoint. Defaults to None.
-            inference_mode (bool, optional): Whether to use the Peft model in inference mode. Defaults to False.
+            layers_to_transform (Union[List[int],int], optional): The layer indexes to transform, if this argument is specified,
+                it will apply the LoRA transformations on the layer indexes that are specified in this list. If a single integer
+                is passed, it will apply the LoRA transformations on the layer at this index. Defaults to None.
+            layers_pattern (str, optional): The layer pattern name, used only if `layers_to_transform` is different from `None` and if the layer
+                pattern is not in the common layers pattern. Defaults to None.
         """
         if not SUPPORT_PEFT:
             raise ImportError("Please install Huggingface Peft library to enable lora features in ColossalAI!")
@@ -271,6 +279,7 @@ class Booster:
         assert self.plugin.support_lora(), f"The plugin {self.plugin.__class__.__name__} does not support lora."
         lora_config = dict(
             task_type=task_type,
+            inference_mode=inference_mode,
             r=r,
             target_modules=target_modules,
             lora_alpha=lora_alpha,
@@ -278,7 +287,8 @@ class Booster:
             fan_in_fan_out=fan_in_fan_out,
             bias=bias,
             modules_to_save=modules_to_save,
-            inference_mode=inference_mode,
+            layers_to_transform=layers_to_transform,
+            layers_pattern=layers_pattern,
         )
         return self.plugin.enable_lora(model, lora_config)
 
