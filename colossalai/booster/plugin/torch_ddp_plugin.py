@@ -116,7 +116,9 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
         super().load_sharded_optimizer(optimizer.unwrap(), index_file_path, prefix)
 
-    def save_lora(self, model: Union[nn.Module, ModelWrapper], checkpoint: str, use_safetensors: bool = False) -> None:
+    def save_lora_as_pretrained(
+        self, model: Union[nn.Module, ModelWrapper], checkpoint: str, use_safetensors: bool = False
+    ) -> None:
         """
         Save the lora adapters and adapter configuration file to checkpoint directory.
         """
@@ -128,17 +130,17 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
             assert isinstance(peft_model, PeftModel), "Please use save_lora method when lora is enabled."
             peft_model.save_pretrained(save_directory=checkpoint, safe_serialization=use_safetensors)
 
-    def load_lora(self, model: Union[nn.Module, ModelWrapper], checkpoint: str) -> None:
-        """
-        Instantiate a PEFT model from a pretrained model and loaded PEFT weights.
-        """
-        from peft import PeftModel
+    # def load_lora(self, model: Union[nn.Module, ModelWrapper], checkpoint: str) -> None:
+    #     """
+    #     Instantiate a PEFT model from a pretrained model and loaded PEFT weights.
+    #     """
+    #     from peft import PeftModel
 
-        assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
-        if self.coordinator.is_master():
-            peft_model = model.unwrap()
-            assert isinstance(peft_model, PeftModel), "Please use load_lora method when lora is enabled."
-            # peft_model.from_pretrained()
+    #     assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
+    #     if self.coordinator.is_master():
+    #         peft_model = model.unwrap()
+    #         assert isinstance(peft_model, PeftModel), "Please use load_lora method when lora is enabled."
+    #         PeftModel.from_pretrained(peft_model, checkpoint)
 
 
 class TorchDDPModel(ModelWrapper):
@@ -245,7 +247,13 @@ class TorchDDPPlugin(DPPluginBase):
         return model.module.no_sync()
 
     def enable_lora(self, model: nn.Module, lora_config: Dict) -> nn.Module:
-        from peft import LoraConfig, get_peft_model
+        from peft import LoraConfig, PeftModel, get_peft_model
 
         assert not isinstance(model, TorchDDPModel), "Lora should be enabled before boosting the model."
-        return get_peft_model(model, LoraConfig(**lora_config))
+
+        pretrained_dir = lora_config.pop("pretrained_dir")
+
+        if pretrained_dir is None:
+            return get_peft_model(model, LoraConfig(**lora_config))
+        else:
+            return PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)

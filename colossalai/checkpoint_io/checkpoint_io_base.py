@@ -328,14 +328,17 @@ class CheckpointIO(ABC):
         state_dict = torch.load(checkpoint)
         lr_scheduler.load_state_dict(state_dict)
 
-    # ========================================================
-    # Abstract methods for lora loading/saving implementation
-    # ========================================================
+    # ================================================================================
+    # Abstract methods for lora saving implementation.
+    # Loading lora is standard for different CheckpointIOs, so it needn't be abstract.
+    # ================================================================================
 
     @abstractmethod
-    def save_lora(self, model: Union[nn.Module, ModelWrapper], checkpoint: str, use_safetensors: bool = False) -> None:
+    def save_lora_as_pretrained(
+        self, model: Union[nn.Module, ModelWrapper], checkpoint: str, use_safetensors: bool = False
+    ) -> None:
         """
-        Save the lora adapters and adapter configuration file to checkpoint directory.
+        Save the lora adapters and adapter configuration file to a pretrained checkpoint directory.
 
         Args:
             model (Union[nn.Module, ModelWrapper]): A model boosted by Booster.
@@ -343,13 +346,11 @@ class CheckpointIO(ABC):
             use_safetensors (bool, optional): Whether to use safe tensors when saving. Defaults to False.
         """
 
-    @abstractmethod
-    def load_lora(self, model: Union[nn.Module, ModelWrapper], checkpoint: str) -> None:
-        """
-        Instantiate a PEFT model from a pretrained model and loaded PEFT weights.
+    # def load_lora_from_pretrained(self, model: nn.Module, checkpoint: str) -> None:
+    #     """
+    #     Instantiate a PEFT model from a pretrained model and load PEFT weights from pretrained checkpoint.
 
-        Args:
-            model (Union[nn.Module, ModelWrapper]): A model boosted by Booster.
-            checkpoint (str): Path to the checkpoint directory. It must be a local path.
-            use_safetensors (bool, optional): Whether to use safe tensors when saving. Defaults to False.
-        """
+    #     Args:
+    #         model (Union[nn.Module, ModelWrapper]): A model boosted by Booster.
+    #         checkpoint (str): Path to the checkpoint directory. It must be a local path.
+    #     """
