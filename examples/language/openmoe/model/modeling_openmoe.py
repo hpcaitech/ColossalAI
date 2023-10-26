@@ -39,7 +39,7 @@ from colossalai.kernel.cuda_native.mha.flash_attn_2 import HAS_FLASH_ATTN
 from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.moe.layers import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.moe.utils import get_activation
+from colossalai.moe.utils import get_activation, set_moe_args
 
 if HAS_TRITON:
     from colossalai.kernel.triton.llama_act_combine_kernel import LlamaActCombine
@@ -47,6 +47,78 @@ if HAS_TRITON:
 logger = logging.get_logger(__name__)
 
 _CONFIG_FOR_DOC = "LlamaConfig"
+
+
+def set_openmoe_args(
+    config: LlamaConfig,
+    num_experts: int,
+    moe_layer_interval: int,
+    router_topk: int = 2,
+    router_capacity_factor_train: float = 1.25,
+    router_capacity_factor_eval: float = 2.0,
+    router_min_capacity: int = 4,
+    router_noisy_policy: str = None,
+    router_drop_tks: bool = True,
+    router_aux_loss_factor: float = 0.01,
+    router_z_loss_factor: float = 0.01,
+    mlp_gated: bool = True,
+    label_smoothing: float = 0.001,
+    z_loss_factor: float = 0.01,
+    enable_load_balance: bool = False,
+    load_balance_tolerance: float = 0.1,
+    load_balance_beam_width: int = 8,
+    load_balance_group_swap_factor: float = 0.4,
+    enable_kernel: bool = False,
+    enable_comm_overlap: bool = False,
+) -> None:
+    """
+    MoE related arguments.
+    It inserts the MoE arguments into the Llama config.
+
+    Args:
+        config (LlamaConfig): Transformers Llama config.
+        num_experts (int, optional): Number of experts.
+        moe_layer_interval (int, optional): The interval moe layer.
+        router_topk (int, optional): Moe router top k. Defaults to 2.
+        router_capacity_factor_train (float, optional): Moe router max capacity for train. Defaults to 1.25.
+        router_capacity_factor_eval (float, optional): Moe router max capacity for eval. Defaults to 2.0.
+        router_min_capacity (int, optional): Moe router min capacity. Defaults to 4.
+        router_noisy_policy (str, optional): Moe router noisy policy. You can choose [Jitter, Gaussian, None]. Defaults to None.
+        router_drop_tks (bool, optional): Whether moe router drop tokens which exceed max capacity. Defaults to True.
+        router_aux_loss_factor (float, optional): Moe router aux loss. You can refer to STMoE for details. Defaults to 0.01.
+        router_z_loss_factor (float, optional): Moe router z loss. You can refer to STMoE for details. Defaults to 0.01.
+        mlp_gated (bool, optional): Use gate in mlp. Defaults to True.
+        label_smoothing (float, optional): Label smoothing. Defaults to 0.001.
+        z_loss_factor (float, optional): The final outputs' classification z loss factor. Defaults to 0.01.
+        enable_load_balance (bool, optional): Expert load balance. Defaults to False.
+        load_balance_tolerance (float, optional): Expert load balance search's difference tolerance. Defaults to 0.1.
+        load_balance_beam_width (int, optional): Expert load balance search's beam width. Defaults to 8.
+        load_balance_group_swap_factor (float, optional): Expert load balance group swap factor. Longer value encourages less swap. Defaults to 0.4.
+        enable_kernel (bool, optional): Use kernel optimization. Defaults to False.
+        enable_comm_overlap (bool, optional): Use communication overlap for MoE. Recommended to enable for muiti-node training. Defaults to False.
+    """
+    moe_args = dict(
+        num_experts=num_experts,
+        moe_layer_interval=moe_layer_interval,
+        router_topk=router_topk,
+        router_capacity_factor_train=router_capacity_factor_train,
+        router_capacity_factor_eval=router_capacity_factor_eval,
+        router_min_capacity=router_min_capacity,
+        router_noisy_policy=router_noisy_policy,
+        router_drop_tks=router_drop_tks,
+        router_aux_loss_factor=router_aux_loss_factor,
+        router_z_loss_factor=router_z_loss_factor,
+        mlp_gated=mlp_gated,
+        label_smoothing=label_smoothing,
+        z_loss_factor=z_loss_factor,
+        enable_load_balance=enable_load_balance,
+        load_balance_tolerance=load_balance_tolerance,
+        load_balance_beam_width=load_balance_beam_width,
+        load_balance_group_swap_factor=load_balance_group_swap_factor,
+        enable_kernel=enable_kernel,
+        enable_comm_overlap=enable_comm_overlap,
+    )
+    set_moe_args(config, moe_args)
 
 
 # Copied from transformers.models.bart.modeling_bart._make_causal_mask
@@ -96,7 +168,7 @@ def generate_fixed_pos_embedding(features, length, min_timescale=1.0, max_timesc
       output_sin: a float32 Tensor with shape [length, features]
       output_cos: a float32 Tensor with shape [length, features]
     """
-    fraction = torch.arange(0, features, 2, dtype=torch.float64).cuda() / features
+    fraction = torch.arange(0, features, 2, dtype=torch.float32).cuda() / features
     timescale = min_timescale * (max_timescale / min_timescale)**fraction
     rotational_frequency = 1. / timescale
 
@@ -231,7 +303,7 @@ class OpenMoeAttention(nn.Module):
         self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
         self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
-        self.sin, self.cos = generate_fixed_pos_embedding(self.head_dim, self.max_position_embeddings, 1e4)
+        self.sin, self.cos = generate_fixed_pos_embedding(self.head_dim, self.max_position_embeddings, 1.0, 1e4)
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()

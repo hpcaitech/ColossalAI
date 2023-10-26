@@ -48,14 +48,15 @@ class MoeCheckpintIO(HybridParallelCheckpointIO):
         """
         for name, param in state_dict.items():
             if ".experts." in name:
-                model_param = dict(model.named_parameters())[name]
-                if is_moe_tensor(model_param):
-                    ep_rank = get_ep_rank(model_param)
-                    ep_size = get_ep_size(model_param)
-                    expert_num = param.shape[0] // ep_size
-                    assert param.shape[0] % ep_size == 0
-                    param = param[ep_rank * expert_num:(ep_rank + 1) * expert_num]
-                    state_dict[name] = param
+                if name in dict(model.named_parameters()):
+                    model_param = dict(model.named_parameters())[name]
+                    if is_moe_tensor(model_param):
+                        ep_rank = get_ep_rank(model_param)
+                        ep_size = get_ep_size(model_param)
+                        expert_num = param.shape[0] // ep_size
+                        assert param.shape[0] % ep_size == 0
+                        param = param[ep_rank * expert_num:(ep_rank + 1) * expert_num]
+                        state_dict[name] = param
         dist.barrier()
         return state_dict
 
