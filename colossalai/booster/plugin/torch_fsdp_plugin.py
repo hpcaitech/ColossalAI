@@ -190,7 +190,10 @@ class TorchFSDPPlugin(DPPluginBase):
         raise RuntimeError("FSDP is not supported while torch version under 1.12.0.")
 
     def support_no_sync(self) -> bool:
-        False
+        return False
+
+    def support_lora(self) -> bool:
+        return False
 
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         raise NotImplementedError("Torch fsdp no_sync func not supported yet.")

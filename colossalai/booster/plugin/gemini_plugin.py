@@ -360,6 +360,9 @@ class GeminiPlugin(DPPluginBase):
     def support_no_sync(self) -> bool:
         return False
 
+    def support_lora(self) -> bool:
+        return False
+
     def control_precision(self) -> bool:
         return True
 

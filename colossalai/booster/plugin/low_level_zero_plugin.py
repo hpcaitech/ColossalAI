@@ -295,6 +295,9 @@ class LowLevelZeroPlugin(DPPluginBase):
     def support_no_sync(self) -> bool:
         return self.stage == 1
 
+    def support_lora(self) -> bool:
+        return False
+
     def control_precision(self) -> bool:
         return True
 
