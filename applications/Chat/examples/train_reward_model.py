@@ -3,7 +3,7 @@ import warnings
 
 import torch
 import torch.distributed as dist
-from coati.dataset import HhRlhfDataset, RmStaticDataset
+from coati.dataset import PreferenceDataset
 from coati.models import LogExpLoss, LogSigLoss
 from coati.models.bloom import BLOOMRM
 from coati.models.gpt import GPTRM
@@ -113,11 +113,21 @@ def train(args):
     eval_data = data["test"].select(range(min(args.max_datasets_size, len(data["test"]))))
 
     if args.dataset == "Dahoas/rm-static":
-        train_dataset = RmStaticDataset(train_data, tokenizer, args.max_len)
-        eval_dataset = RmStaticDataset(eval_data, tokenizer, args.max_len)
+        train_dataset = RmStaticDataset(
+            train_data,
+            tokenizer,
+            args.max_len,
+            dataset_schema={"prompt": "prompt", "chosen": "chosen", "rejected": "rejected"},
+        )
+        eval_dataset = RmStaticDataset(
+            eval_data,
+            tokenizer,
+            args.max_len,
+            dataset_schema={"prompt": "prompt", "chosen": "chosen", "rejected": "rejected"},
+        )
     elif args.dataset == "Anthropic/hh-rlhf":
-        train_dataset = HhRlhfDataset(train_data, tokenizer, args.max_len)
-        eval_dataset = HhRlhfDataset(eval_data, tokenizer, args.max_len)
+        train_dataset = PreferenceDataset(train_data, tokenizer, args.max_len)
+        eval_dataset = PreferenceDataset(eval_data, tokenizer, args.max_len)
     else:
         raise ValueError(f'Unsupported dataset "{args.dataset}"')
 

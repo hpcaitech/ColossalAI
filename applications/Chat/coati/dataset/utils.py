@@ -20,3 +20,21 @@ def jload(f, mode="r"):
     jdict = json.load(f)
     f.close()
     return jdict
+
+
+def read_data_by_schema(data, schema: str):
+    keys = schema.split(".")
+    result = data
+    for key in keys:
+        result = result.get(key)
+        if result is None:
+            return None
+    return result
+
+
+def read_string_by_schema(data, schema: str):
+    ret = read_data_by_schema(data, schema)
+    if ret:
+        return ret
+    else:
+        return ""

@@ -23,7 +23,7 @@ from transformers import PreTrainedTokenizer
 
 from colossalai.logging import get_dist_logger
 
-from .utils import is_rank_0, jload
+from .utils import is_rank_0, jload, read_string_by_schema
 
 logger = get_dist_logger()
 
@@ -122,12 +122,29 @@ class SFTDataset(Dataset):
         max_length: max length of input
     """
 
-    def __init__(self, dataset: Dict, tokenizer: PreTrainedTokenizer, max_length: int = 512) -> None:
+    def __init__(
+        self,
+        dataset: Dict,
+        tokenizer: PreTrainedTokenizer,
+        max_length: int = 512,
+        verbose=True,
+        dataset_schema: Dict[str, str] = {"prompt": "prompt", "completion": "completion"},
+    ) -> None:
         super().__init__()
         self.input_ids = []
 
-        sources = [data["prompt"] for data in dataset]
-        targets = [data["completion"] + tokenizer.eos_token for data in tqdm(dataset, disable=not is_rank_0())]
+        sources = [read_string_by_schema(data, dataset_schema["prompt"]) for data in dataset]
+        targets = [
+            read_string_by_schema(data, dataset_schema["completion"]) + tokenizer.eos_token
+            for data in tqdm(dataset, disable=not is_rank_0())
+        ]
+        self.verbose = verbose
+        if self.verbose:
+            logger.info(
+                "Display the first two item in the SFT dataset, to disable this message, set verbose=False in the SFTDataset constructor"
+            )
+            logger.info("prompt: ", sources[:2])
+            logger.info("target: ", targets[:2])
 
         logger.info("Tokenizing inputs... This may take some time...")
         if isinstance(tokenizer, ChatGLMTokenizer):
@@ -159,7 +176,9 @@ class SupervisedDataset(Dataset):
         tokenizer: PreTrainedTokenizer,
         max_datasets_size: Optional[int] = None,
         max_length: int = 512,
-        prompt_dict: Optional[Dict[str, str]] = PROMPT_DICT
+        prompt_dict: Optional[Dict[str, str]] = PROMPT_DICT,
+        verbose=True,
+        dataset_schema: Dict[str, str] = {"instruction": "instruction", "input": "input", "output": "output"},
     ):
         super().__init__()
         logger.info("Loading data...")
@@ -172,12 +191,21 @@ class SupervisedDataset(Dataset):
 
         logger.info("Formatting inputs...")
         prompt_input, prompt_no_input = prompt_dict["prompt_input"], prompt_dict["prompt_no_input"]
+        list_data_dict = [
+            {k: read_string_by_schema(example, dataset_schema[k]) for k in dataset_schema} for example in list_data_dict
+        ]
         sources = [
-            prompt_input.format_map(example) if "input" in example else prompt_no_input.format_map(example)
+            prompt_input.format_map(example) if example["input"] != "" else prompt_no_input.format_map(example)
             for example in list_data_dict
         ]
         targets = [example["output"] + tokenizer.eos_token for example in list_data_dict]
-
+        self.verbose = verbose
+        if self.verbose:
+            logger.info(
+                "Display the first two item in the supervised dataset, to disable this message, set verbose=False in the SupervisedDataset constructor"
+            )
+            logger.info("prompt: ", sources[:2])
+            logger.info("target: ", targets[:2])
         logger.info("Tokenizing inputs... This may take some time...")
         if isinstance(tokenizer, ChatGLMTokenizer):
             self.input_ids, self.labels, self.attention_mask = _preprocess_chatglm(
