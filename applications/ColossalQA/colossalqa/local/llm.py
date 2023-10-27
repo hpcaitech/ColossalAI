@@ -18,10 +18,16 @@ class ColossalAPI:
     API for calling LLM.generate
     """
 
+    __instances = dict()
+
     def __init__(self, model_type: str, pretrain: str, ckpt_path: str = None) -> None:
         """
         Configurate model
         """
+        if model_type + pretrain + (ckpt_path or "") in ColossalAPI.__instances:
+            return
+        else:
+            ColossalAPI.__instances[model_type + pretrain + (ckpt_path or "")] = self
         self.model_type = model_type
         if model_type == "llama":
             self.actor = LlamaForCausalLM.from_pretrained(pretrain, torch_dtype=torch.float16)
@@ -40,6 +46,13 @@ class ColossalAPI:
             self.tokenizer = AutoTokenizer.from_pretrained(pretrain, trust_remote_code=True)
 
         self.actor.eval()
+
+    @staticmethod
+    def get_api(model_type: str, pretrain: str, ckpt_path: str = None):
+        if model_type + pretrain + (ckpt_path or "") in ColossalAPI.__instances:
+            return ColossalAPI.__instances[model_type + pretrain + (ckpt_path or "")]
+        else:
+            return ColossalAPI(model_type, pretrain, ckpt_path)
 
     def generate(self, input: str, **kwargs) -> str:
         """

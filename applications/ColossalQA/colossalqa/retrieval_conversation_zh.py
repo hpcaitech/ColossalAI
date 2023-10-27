@@ -25,7 +25,7 @@ class ChineseRetrievalConversation:
         """
         # Local coati api
         logger.info(f"model_name: {model_name}; model_path: {model_path}", verbose=True)
-        colossal_api = ColossalAPI(model_name, model_path)
+        colossal_api = ColossalAPI.get_api(model_name, model_path)
         self.llm = ColossalLLM(n=1, api=colossal_api)
 
         # Define the retriever
@@ -47,6 +47,7 @@ class ChineseRetrievalConversation:
             prompt=SUMMARY_PROMPT_ZH,
             human_prefix="用户",
             ai_prefix="AI",
+            max_tokens=2000,
             llm_kwargs={"max_new_tokens": 50, "temperature": 0.6, "do_sample": True},
         )
         self.memory.initiate_document_retrieval_chain(
