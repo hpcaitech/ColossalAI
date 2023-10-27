@@ -1,5 +1,6 @@
 from typing import List, Optional, Tuple
 import math
+import copy
 
 import torch
 from transformers.modeling_outputs import BaseModelOutputWithPast
@@ -13,7 +14,6 @@ from ._utils import copy_kv_to_mem_cache
 
 try:
     from vllm import layernorm_ops, pos_encoding_ops
-
     rms_norm = layernorm_ops.rms_norm
     rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
     HAS_VLLM_KERNERL = True
@@ -29,6 +29,7 @@ try:
     from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import (
         context_attention_fwd as lightllm_llama2_context_attention_fwd,
     )
+    from lightllm.models.llama.triton_kernel.context_flashattention_nopad import context_attention_fwd as lightllm_context_attention_fwd
     from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd as llama_rotary_embedding_fwd
 
     HAS_LIGHTLLM_KERNEL = True
@@ -61,6 +62,40 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
+
+def llama_triton_context_attention(query_states, key_states, value_states, attn_output, infer_state, num_key_value_groups=1):
+    if num_key_value_groups == 1:
+        if HAS_LIGHTLLM_KERNEL is False:
+            llama_context_attn_fwd(
+                query_states,
+                key_states,
+                value_states,
+                attn_output,
+                infer_state.start_loc,
+                infer_state.seq_len,
+                infer_state.cache_manager.past_key_values_length,
+            )
+        else:
+            lightllm_context_attention_fwd(
+                query_states,
+                key_states,
+                value_states,
+                attn_output,
+                infer_state.start_loc,
+                infer_state.seq_len,
+                infer_state.cache_manager.past_key_values_length,
+            )
+    else:
+        assert HAS_LIGHTLLM_KERNEL is True, "You have to install lightllm kernels to run llama2 model"
+        lightllm_llama2_context_attention_fwd(
+            query_states,
+            key_states,
+            value_states,
+            attn_output,
+            infer_state.start_loc,
+            infer_state.seq_len,
+            infer_state.cache_manager.past_key_values_length,
+        )
 
 
 class LlamaInferenceForwards:
@@ -314,29 +349,9 @@ class LlamaInferenceForwards:
                 infer_state.context_mem_index,
                 infer_state.cache_manager,
             )
-
             attn_output = torch.empty_like(query_states)
-
-            if self.num_key_value_groups == 1:
-                llama_context_attn_fwd(
-                    query_states,
-                    key_states,
-                    value_states,
-                    attn_output,
-                    infer_state.start_loc,
-                    infer_state.seq_len,
-                    infer_state.cache_manager.past_key_values_length,
-                )
-            else:
-                lightllm_llama2_context_attention_fwd(
-                    query_states,
-                    key_states,
-                    value_states,
-                    attn_output,
-                    infer_state.start_loc,
-                    infer_state.seq_len,
-                    infer_state.cache_manager.past_key_values_length,
-                )
+            
+            llama_triton_context_attention(query_states, key_states, value_states, attn_output, infer_state, num_key_value_groups=self.num_key_value_groups)
         else:
             if infer_state.decode_is_contiguous:
                 # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
@@ -366,10 +381,12 @@ class LlamaInferenceForwards:
                     cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id]
                     
                     query_states = query_states.view(bsz, -1, self.num_heads, self.head_dim)
-                    cache_k = cache_k.view(bsz, -1, self.num_key_value_heads, self.head_dim)
-                    cache_v = cache_v.view(bsz, -1, self.num_key_value_heads, self.head_dim)
+                    copy_cache_k= copy.deepcopy(cache_k)
+                    copy_cache_v = copy.deepcopy(cache_v)
+                    copy_cache_k = copy_cache_k.view(bsz, -1, self.num_key_value_heads, self.head_dim)
+                    copy_cache_v = copy_cache_v.view(bsz, -1, self.num_key_value_heads, self.head_dim)
                     
-                    attn_output = flash_attn_with_kvcache(q = query_states, k_cache = cache_k, v_cache = cache_v, softmax_scale = 1/ math.sqrt(self.head_dim), causal = True)
+                    attn_output = flash_attn_with_kvcache(q = query_states, k_cache = copy_cache_k, v_cache = copy_cache_v, softmax_scale = 1/ math.sqrt(self.head_dim), causal = True)
                 
                 else:
                     attn_output = torch.empty_like(query_states)
