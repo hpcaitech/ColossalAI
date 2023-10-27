@@ -13,19 +13,6 @@ from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttention
 from ._utils import copy_kv_to_mem_cache
 
 try:
-    from vllm import layernorm_ops, pos_encoding_ops
-    rms_norm = layernorm_ops.rms_norm
-    rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
-    HAS_VLLM_KERNERL = True
-except:
-    print("fall back to original rotary_embedding_neox of huggingface")
-    print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
-    print(
-        "if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch"
-    )
-    HAS_VLLM_KERNERL = False
-
-try:
     from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import (
         context_attention_fwd as lightllm_llama2_context_attention_fwd,
     )
@@ -426,22 +413,3 @@ class LlamaInferenceForwards:
         # return past_key_value as None
         return attn_output, None, None
 
-
-def get_llama_vllm_rmsnorm_forward():
-    if HAS_VLLM_KERNERL:
-
-        def _vllm_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
-            x = hidden_states
-            out = torch.empty_like(x)
-            rms_norm(
-                out,
-                x,
-                self.weight.data,
-                self.variance_epsilon,
-            )
-
-            return out
-
-        return _vllm_rmsnorm_forward
-    else:
-        return None
