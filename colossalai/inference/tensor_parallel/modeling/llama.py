@@ -97,6 +97,32 @@ def llama_triton_context_attention(query_states, key_states, value_states, attn_
             infer_state.cache_manager.past_key_values_length,
         )
 
+def llama_triton_token_attention(query_states, attn_output, infer_state, num_key_value_groups=1):
+    assert HAS_LIGHTLLM_KERNEL is True, "You have to install lightllm kernel to run token attention for llama models"
+    if num_key_value_groups == 1:
+        token_attention_fwd(
+            query_states,
+            infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+            infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+            attn_output,
+            infer_state.block_loc,
+            infer_state.start_loc,
+            infer_state.seq_len,
+            infer_state.cache_manager.past_key_values_length,
+        )
+    else:
+        Llama2TokenAttentionForwards.token_attn(
+            query_states,
+            infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+            infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+            attn_output,
+            infer_state.block_loc,
+            infer_state.start_loc,
+            infer_state.seq_len,
+            infer_state.cache_manager.past_key_values_length,
+            infer_state.other_kv_index,
+        )
+
 
 class LlamaInferenceForwards:
     """
@@ -329,7 +355,6 @@ class LlamaInferenceForwards:
             infer_state.cache_manager.past_key_values_length += q_len  # seq_len
 
         cos, sin = infer_state.position_cos, infer_state.position_sin
-        # print("shape ", cos.shape, query_states.view(-1, self.num_heads, self.head_dim).shape, )
 
         llama_rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
         llama_rotary_embedding_fwd(key_states.view(-1, self.num_key_value_heads, self.head_dim), cos, sin)
@@ -374,45 +399,25 @@ class LlamaInferenceForwards:
                     infer_state.cache_manager,
                 )
                 
-            if self.num_key_value_groups == 1:
-                if HAS_FLASH_KERNEL:     
-                    heads_per_group = self.num_heads // self.num_key_value_heads
-                    cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id]
-                    cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id]
-                    
-                    query_states = query_states.view(bsz, -1, self.num_heads, self.head_dim)
-                    copy_cache_k= copy.deepcopy(cache_k)
-                    copy_cache_v = copy.deepcopy(cache_v)
-                    copy_cache_k = copy_cache_k.view(bsz, -1, self.num_key_value_heads, self.head_dim)
-                    copy_cache_v = copy_cache_v.view(bsz, -1, self.num_key_value_heads, self.head_dim)
-                    
-                    attn_output = flash_attn_with_kvcache(q = query_states, k_cache = copy_cache_k, v_cache = copy_cache_v, softmax_scale = 1/ math.sqrt(self.head_dim), causal = True)
+            if HAS_FLASH_KERNEL:     
+                heads_per_group = self.num_heads // self.num_key_value_heads
+                cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id]
+                cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id]
                 
-                else:
-                    attn_output = torch.empty_like(query_states)
-                    token_attention_fwd(
-                        query_states,
-                        infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
-                        infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
-                        attn_output,
-                        infer_state.block_loc,
-                        infer_state.start_loc,
-                        infer_state.seq_len,
-                        infer_state.cache_manager.past_key_values_length,
-                    )
-            else:
+                query_states = query_states.view(bsz, -1, self.num_heads, self.head_dim)
+                copy_cache_k= copy.deepcopy(cache_k)
+                copy_cache_v = copy.deepcopy(cache_v)
+                copy_cache_k = copy_cache_k.view(bsz, -1, self.num_key_value_heads, self.head_dim)
+                copy_cache_v = copy_cache_v.view(bsz, -1, self.num_key_value_heads, self.head_dim)
+                
+                attn_output = flash_attn_with_kvcache(q = query_states, 
+                                                      k_cache = copy_cache_k, 
+                                                      v_cache = copy_cache_v, 
+                                                      softmax_scale = 1/ math.sqrt(self.head_dim), 
+                                                      causal = True)
+            else:                
                 attn_output = torch.empty_like(query_states)
-                Llama2TokenAttentionForwards.token_attn(
-                    query_states,
-                    infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
-                    infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
-                    attn_output,
-                    infer_state.block_loc,
-                    infer_state.start_loc,
-                    infer_state.seq_len,
-                    infer_state.cache_manager.past_key_values_length,
-                    infer_state.other_kv_index,
-                )
+                llama_triton_token_attention(query_states, attn_output, infer_state, num_key_value_groups=self.num_key_value_groups)
 
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
