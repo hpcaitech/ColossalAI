@@ -2,11 +2,14 @@ import pytest
 import torch
 import torch.distributed as dist
 import transformers
+from packaging import version
 
 import colossalai
 from colossalai.inference.pipeline import PPInferEngine
 from colossalai.inference.pipeline.policies import LlamaModelInferPolicy
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
+
+CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
 
 
 def data_gen():
