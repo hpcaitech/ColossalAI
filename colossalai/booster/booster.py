@@ -246,7 +246,7 @@ class Booster:
         layers_pattern: Optional[str] = None,
     ) -> nn.Module:
         """
-        Wrap the passed in model with LoRA modules for training. If pretrained directory is provided, load lora configs and weights are loaded from that directory.
+        Wrap the passed in model with LoRA modules for training. If pretrained directory is provided, lora configs and weights are loaded from that directory.
         Lora in ColossalAI is implemented using Huggingface peft library, so the arguments for Lora configuration are same as those of peft.
 
         Args:
@@ -279,7 +279,7 @@ class Booster:
         """
         if not SUPPORT_PEFT:
             raise ImportError("Please install Huggingface Peft library to enable lora features in ColossalAI!")
-        assert self.plugin is not None, f"Lora can only enabled when a plugin is provided."
+        assert self.plugin is not None, f"Lora can only be enabled when a plugin is provided."
         assert self.plugin.support_lora(), f"The plugin {self.plugin.__class__.__name__} does not support lora."
         lora_config = dict(
             pretrained_dir=pretrained_dir,
@@ -413,4 +413,6 @@ class Booster:
         """
         if not SUPPORT_PEFT:
             raise ImportError("Please install Huggingface Peft library to enable lora features in ColossalAI!")
+        assert self.plugin is not None, f"Lora can only be enabled when a plugin is provided."
+        assert self.plugin.support_lora(), f"The plugin {self.plugin.__class__.__name__} does not support lora."
         self.checkpoint_io.save_lora_as_pretrained(model, checkpoint, use_safetensors)
