@@ -9,7 +9,7 @@ from colossalai.shardformer.policies.base_policy import ModulePolicyDescription,
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
 
 from ..modeling._utils import init_to_get_rotary
-from ..modeling.llama import LlamaInferenceForwards, get_llama_vllm_rmsnorm_forward
+from ..modeling.llama import LlamaInferenceForwards
 
 try:
     from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward as lightllm_rmsnorm_forward
