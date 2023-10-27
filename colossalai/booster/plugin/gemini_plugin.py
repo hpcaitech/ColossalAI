@@ -2,7 +2,7 @@ import gc
 import logging
 import os
 from pathlib import Path
-from typing import Callable, Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -410,4 +410,7 @@ class GeminiPlugin(DPPluginBase):
         return GeminiCheckpointIO()
 
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
+        raise NotImplementedError
+
+    def enable_lora(self, model: nn.Module, lora_config: Dict) -> nn.Module:
         raise NotImplementedError

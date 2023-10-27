@@ -1,6 +1,6 @@
 import warnings
 from pathlib import Path
-from typing import Callable, Iterable, Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -238,3 +238,6 @@ class TorchFSDPPlugin(DPPluginBase):
 
     def get_checkpoint_io(self) -> CheckpointIO:
         return TorchFSDPCheckpointIO()
+
+    def enable_lora(self, model: nn.Module, lora_config: Dict) -> nn.Module:
+        raise NotImplementedError

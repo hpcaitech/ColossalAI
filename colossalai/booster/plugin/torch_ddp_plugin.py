@@ -127,7 +127,9 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
         if self.coordinator.is_master():
             peft_model = model.unwrap()
-            assert isinstance(peft_model, PeftModel), "Please use save_lora method when lora is enabled."
+            assert isinstance(
+                peft_model, PeftModel
+            ), "The model doesn't have lora adapters, please enable lora before saving."
             peft_model.save_pretrained(save_directory=checkpoint, safe_serialization=use_safetensors)
 
 
