@@ -21,12 +21,22 @@ class CPUAdamBuilder(Builder):
         return [self.csrc_abs_path("includes"), self.get_cuda_home_include()]
 
     def cxx_flags(self):
-        extra_cxx_flags = ["-std=c++14", "-lcudart", "-lcublas", "-g", "-Wno-reorder", "-fopenmp", "-march=native"]
+        extra_cxx_flags = [
+            "-std=c++14",
+            "-std=c++17",
+            "-lcudart",
+            "-lcublas",
+            "-g",
+            "-Wno-reorder",
+            "-fopenmp",
+            "-march=native",
+        ]
         return ["-O3"] + self.version_dependent_macros + extra_cxx_flags
 
     def nvcc_flags(self):
         extra_cuda_flags = [
             "-std=c++14",
+            "-std=c++17",
             "-U__CUDA_NO_HALF_OPERATORS__",
             "-U__CUDA_NO_HALF_CONVERSIONS__",
             "-U__CUDA_NO_HALF2_OPERATORS__",
