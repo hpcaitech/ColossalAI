@@ -12,8 +12,8 @@ from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_us
 
 TP_SIZE = 1
 BATCH_SIZE = 2
-MAX_INPUT_LEN = 5
-MAX_OUTPUT_LEN = 16
+MAX_INPUT_LEN = 48
+MAX_OUTPUT_LEN = 256
 
 
 def run():
@@ -39,8 +39,8 @@ def run():
 
     dynamic_batch_manager = DynamicBatchManager(
         tp_engine=infer_engine,
-        max_total_token_num=42,
-        batch_max_tokens=42,
+        max_total_token_num=640,
+        batch_max_tokens=608,
         eos_id=0,
         log_stats=False,
         log_stats_interval=10,
@@ -56,8 +56,6 @@ def run():
     # test abort function
     dynamic_batch_manager.abort(req4.request_id)
     assert dynamic_batch_manager.req_queue.waiting_req_list[-1].aborted == True
-   
-    print(dynamic_batch_manager.req_queue.waiting_req_list)
 
     # test filter batch function,  loop_for_fwd, _step, _init_batch and _prefill/_decode batch are tested
     batch = dynamic_batch_manager.req_queue.generate_new_batch()
