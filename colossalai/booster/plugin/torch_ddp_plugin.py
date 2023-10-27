@@ -236,14 +236,13 @@ class TorchDDPPlugin(DPPluginBase):
         assert isinstance(model, TorchDDPModel), "Model is not boosted by TorchDDPPlugin."
         return model.module.no_sync()
 
-    def enable_lora(self, model: nn.Module, lora_config: Dict) -> nn.Module:
-        from peft import LoraConfig, PeftModel, get_peft_model
+    def enable_lora(
+        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+    ) -> nn.Module:
+        from peft import PeftModel, get_peft_model
 
         assert not isinstance(model, TorchDDPModel), "Lora should be enabled before boosting the model."
-
-        pretrained_dir = lora_config.pop("pretrained_dir")
-
         if pretrained_dir is None:
-            return get_peft_model(model, LoraConfig(**lora_config))
+            return get_peft_model(model, lora_config)
         else:
             return PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)

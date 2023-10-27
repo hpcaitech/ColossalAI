@@ -895,5 +895,7 @@ class HybridParallelPlugin(PipelinePluginBase):
     def no_sync(self, model: Module) -> Iterator[None]:
         raise NotImplementedError
 
-    def enable_lora(self, model: Module, lora_config: Dict) -> Module:
+    def enable_lora(
+        self, model: Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+    ) -> Module:
         raise NotImplementedError

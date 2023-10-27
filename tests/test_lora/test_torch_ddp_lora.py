@@ -2,6 +2,7 @@ import copy
 import os
 
 import torch
+from peft import LoraConfig
 from torch import distributed as dist
 from torch.optim import AdamW
 
@@ -23,10 +24,12 @@ from tests.test_checkpoint_io.utils import shared_tempdir
 @clear_cache_before_run()
 def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type):
     model = model_fn()
+    lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
 
     plugin = TorchDDPPlugin()
     booster = Booster(plugin=plugin)
-    model = booster.enable_lora(model, task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
+
+    model = booster.enable_lora(model, lora_config=lora_config)
     model_copy = copy.deepcopy(model)
 
     optimizer = AdamW(model.parameters(), lr=0.001)
@@ -58,12 +61,13 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
 @clear_cache_before_run()
 def check_checkpoint(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type):
     plugin = TorchDDPPlugin()
+    lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
 
     model_save = model_fn()
     model_load = copy.deepcopy(model_save)
 
     booster = Booster(plugin=plugin)
-    model_save = booster.enable_lora(model_save, task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
+    model_save = booster.enable_lora(model_save, lora_config=lora_config)
     model_save, _, _, _, _ = booster.boost(model_save)
 
     with shared_tempdir() as tempdir:

@@ -239,5 +239,7 @@ class TorchFSDPPlugin(DPPluginBase):
     def get_checkpoint_io(self) -> CheckpointIO:
         return TorchFSDPCheckpointIO()
 
-    def enable_lora(self, model: nn.Module, lora_config: Dict) -> nn.Module:
+    def enable_lora(
+        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+    ) -> nn.Module:
         raise NotImplementedError

@@ -230,20 +230,7 @@ class Booster:
         return self.plugin.no_sync(model, optimizer)
 
     def enable_lora(
-        self,
-        model: nn.Module,
-        pretrained_dir: Optional[str] = None,
-        task_type: Optional[Union["peft.TaskType", str]] = None,
-        inference_mode: bool = False,
-        r: int = 8,
-        target_modules: Optional[Union[List[str], str]] = None,
-        lora_alpha: int = 8,
-        lora_dropout: float = 0.0,
-        fan_in_fan_out: bool = False,
-        bias: str = "none",
-        modules_to_save: Optional[List[str]] = None,
-        layers_to_transform: Optional[Union[List[int], int]] = None,
-        layers_pattern: Optional[str] = None,
+        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: "peft.LoraConfig" = None
     ) -> nn.Module:
         """
         Wrap the passed in model with LoRA modules for training. If pretrained directory is provided, lora configs and weights are loaded from that directory.
@@ -253,49 +240,26 @@ class Booster:
             model (nn.Module): The model to be appended with LoRA modules.
             pretrained_dir(str, optional): The path to the pretrained directory, can be a local directory
                 or model_id of a PEFT configuration hosted inside a model repo on the Hugging Face Hub.
-                When set to None, create new lora configs and weights for the model. Defaults to None.
-            task_type (Union[peft.TaskType, str], optional): The type of task to perform in peft. Available task types in string include "SEQ_CLS", "SEQ_2_SEQ_LM", "CAUSAL_LM",
-                "TOKEN_CLS", "QUESTION_ANS", and "FEATURE_EXTRACTION". Defaults to None.
-            inference_mode (bool, optional): Whether to use the Peft model in inference mode. Defaults to False.
-            r (int, optional): Lora attention dimension. Defaults to 8.
-            target_modules (Union[List[str],str], optional): List of names or regex expressions of the modules to apply Lora to.
-                For example, ['q', 'v'] or '.*decoder.*(SelfAttention|EncDecAttention).*(q|v)$'. Defaults to None.
-            lora_alpha (int, optional): The alpha parameter for Lora scaling. Defaults to 8.
-            lora_dropout (float, optional): The dropout probability for Lora layers. Defaults to 0.0.
-            fan_in_fan_out (bool, optional): Set this to True if the layer to replace stores weight like (fan_in, fan_out).
-                For example, gpt-2 uses `Conv1D` which stores weights like (fan_in, fan_out) and hence this should be set
-                to `True`. Defaults to False.
-            bias (str, optional): Bias type for Lora. Can be 'none', 'all' or 'lora_only'. If 'all' or 'lora_only', the
-                corresponding biases will be updated during training. Be aware that this means that, even when disabling
-                the adapters, the model will not produce the same output as the base model would have without adaptation.
-                Defaults to "none".
-            modules_to_save (List[str], optional):List of modules apart from LoRA layers to be set as trainable
-                and saved in the final checkpoint. Defaults to None.
-            layers_to_transform (Union[List[int],int], optional): The layer indexes to transform, if this argument is specified,
-                it will apply the LoRA transformations on the layer indexes that are specified in this list. If a single integer
-                is passed, it will apply the LoRA transformations on the layer at this index. Defaults to None.
-            layers_pattern (str, optional): The layer pattern name, used only if `layers_to_transform` is different from `None` and if the layer
-                pattern is not in the common layers pattern. Defaults to None.
+                When set to None, create new lora configs and weights for the model using the passed in lora_config. Defaults to None.
+            lora_config: (peft.LoraConfig, optional): Passed in LoraConfig for peft. Defaults to None.
         """
         if not SUPPORT_PEFT:
             raise ImportError("Please install Huggingface Peft library to enable lora features in ColossalAI!")
+
         assert self.plugin is not None, f"Lora can only be enabled when a plugin is provided."
         assert self.plugin.support_lora(), f"The plugin {self.plugin.__class__.__name__} does not support lora."
-        lora_config = dict(
-            pretrained_dir=pretrained_dir,
-            task_type=task_type,
-            inference_mode=inference_mode,
-            r=r,
-            target_modules=target_modules,
-            lora_alpha=lora_alpha,
-            lora_dropout=lora_dropout,
-            fan_in_fan_out=fan_in_fan_out,
-            bias=bias,
-            modules_to_save=modules_to_save,
-            layers_to_transform=layers_to_transform,
-            layers_pattern=layers_pattern,
-        )
-        return self.plugin.enable_lora(model, lora_config)
+        if pretrained_dir is None:
+            assert (
+                lora_config is not None
+            ), "Please provide configuration for Lora when pretrained directory path isn't passed in."
+            assert isinstance(
+                lora_config, peft.LoraConfig
+            ), "The passed in configuration should be an instance of peft.LoraConfig."
+        if lora_config is None:
+            assert (
+                pretrained_dir is not None
+            ), "Please provide pretrained directory path if not passing in lora configuration."
+        return self.plugin.enable_lora(model, pretrained_dir, lora_config)
 
     def load_model(self, model: Union[nn.Module, ModelWrapper], checkpoint: str, strict: bool = True) -> None:
         """Load model from checkpoint.

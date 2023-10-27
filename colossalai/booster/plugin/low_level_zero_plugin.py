@@ -340,5 +340,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         assert isinstance(optimizer, LowLevelZeroOptimizer)
         return optimizer.no_sync()
 
-    def enable_lora(self, model: nn.Module, lora_config: Dict) -> nn.Module:
+    def enable_lora(
+        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+    ) -> nn.Module:
         raise NotImplementedError

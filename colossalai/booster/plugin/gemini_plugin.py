@@ -412,5 +412,7 @@ class GeminiPlugin(DPPluginBase):
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         raise NotImplementedError
 
-    def enable_lora(self, model: nn.Module, lora_config: Dict) -> nn.Module:
+    def enable_lora(
+        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+    ) -> nn.Module:
         raise NotImplementedError
