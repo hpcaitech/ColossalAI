@@ -7,7 +7,7 @@ import transformers
 
 import colossalai
 from colossalai.inference import PPInferEngine
-from colossalai.inference.pipeline.policy.llama_ppinfer import LlamaForCausalLMPipelinePolicy
+from colossalai.inference.pipeline.policies import LlamaModelInferPolicy
 
 GIGABYTE = 1024**3
 MEGABYTE = 1024 * 1024
@@ -117,8 +117,11 @@ if __name__ == "__main__":
         micro_batch_size=args.mb_size,
         new_length=args.new_length,
         model=model,
-        model_policy=LlamaForCausalLMPipelinePolicy(),
+        model_policy=LlamaModelInferPolicy(),
         verbose=True,
+        max_batch_size=args.mb_size,
+        max_input_len=args.seq_len,
+        max_output_len=args.seq_len + args.new_length + 256,
     )
     data = data_gen(args.batch_size, args.seq_len)
 

@@ -17,7 +17,7 @@
 Pipeline Inference is composed of three parts: `PPInferEngine`, `MicroBatchManager` and `generate` [schedule](https://github.com/hpcaitech/ColossalAI/blob/feature/pipeline-infer/colossalai/pipeline/schedule/generate.py).
 
 1. `PPInderEngine` is the High-Level API for users to use. It is responsible for the following tasks:
-    - Initialize the pipeline inference environment with `PipelineStageManager` and mdoel with `ShardFormer`.
+    - Initialize the pipeline inference environment with `PipelineStageManager` and model with `ShardFormer`.
     - Run the pipeline inference model.
 
 2. `MicroBatchManager` is a structure to manage the micro-batch information. It is responsible for the following tasks:
@@ -31,54 +31,53 @@ Pipeline Inference is composed of three parts: `PPInferEngine`, `MicroBatchManag
 
 ### Example
 ```python
-from colossalai.pipeline import PPInferEngine
-# Suppose the pipeline size is 2, and use fp16 to do infenrence. Use Llama as an example.
-model = LlamaForCausalLM.from_pretrained('/path/to/model')
-inputs = tokenizer("Hello, my dog is cute", "What a good day", return_tensors="pt")
-engine = PPInferEngine(
-    pp_size=2,
-    dtype='fp16',
-    micro_batch_size=1,
-    new_length=10,
-    model=model,
-    model_policy=LlamaForCausalLMPipelinePolicy())
+from colossalai.inference import PPInferEngine
+from colossalai.inference.pipeline.policies import LlamaModelInferPolicy
+import colossalai
+from transformers import LlamaForCausalLM, LlamaTokenizer
 
-output = engine.inference([inputs])
+colossalai.launch_from_torch(config={})
 
-```
+model = LlamaForCausalLM.from_pretrained("/path/to/model")
+tokenizer = LlamaTokenizer.from_pretrained("/path/to/model")
 
-### Quick start
-```shell
-cd benchmark
-sh run.sh
+# assume the model is inferred with 2 pipeline stages
+inferengine = PPInferEngine(pp_size=2, model=model, model_policy=LlamaModelInferPolicy(), new_length=32)
+
+input = ["Introduce a landmark in London","Introduce a landmark in Singapore"]
+data = tokenizer(input, return_tensors='pt')
+output = inferengine.inference(data.to('cuda'))
+print(tokenizer.batch_decode(output))
 ```
 
 ## Performance
 
-We conducted multiple benchmark tests to evaluate the performance. We compared the inference `latency` and `throughputs` between `Pipeline Inference` and `hugging face` pipeline. The test environment is 2*A10, 20G.
+We conducted multiple benchmark tests to evaluate the performance. We compared the inference `latency` and `throughputs` between `Pipeline Inference` and `hugging face` pipeline. The test environment is 2 * A10, 20G / 2 * A800, 80G.
 
-### Llama Throughput(tokens/s)
+### Llama Throughput (tokens/s) | input length=1024, output length=128
 
-#### 7b, fp16
+#### A10 7b, fp16
 | batch_size(micro_batch size)| 2(1) | 4(2) | 8(4) | 16(8) | 32(8) | 32(16)|
 | :---: | :---: | :---: | :---: | :---: | :---: | :---:|
-| Pipeline Inference(1024, 128) | 33.31 | 59.98 | 98.92 | 143.47 | 152.61 | OOM |
-| Hugging Face(1024, 128) |  41.43 | 65.30 | 91.93 | 114.62 | OOM| OOM |
-| Pipeline Inference(512, 512) | 43.37 | 82.81 | 148.03 | 229.06 | 238.67 | 312.82 |
-| Hugging Face(512, 512) |  49.13 | 84.91 | 132.87 | 178.30 | OOM| OOM |
+| Pipeline Inference | 40.35 | 77.1 | 139.03 | 232.7 | 257.81 | OOM |
+| Hugging Face |  41.43 | 65.30 | 91.93 | 114.62 | OOM| OOM |
 
-#### 7b, fp32
+#### A10 13b, fp16
 | batch_size(micro_batch size)| 2(1) | 4(2) | 8(4) | 16(4) |
 | :---: | :---: | :---: | :---: | :---: |
-| Pipeline Inference(1024, 128) | 20.61 | 31.23 | 45.20 | 47.46 |
-| Hugging Face(1024, 128) | 19.80 | 29.37| OOM | OOM |
-| Pipeline Inference(512, 512) | 28.07 | 46.76 | 79.35 | 81.70 |
-| Hugging Face(512, 512) |  25.67 | 43.97 | 60.67 | OOM |
+| Pipeline Inference | 25.39 | 47.09 | 83.7 | 89.46 |
+| Hugging Face | 23.48 | 37.59 | 53.44 | OOM |
 
-#### 13b, fp16
-| batch_size(micro_batch size)| 2(1) | 4(2) | 8(4) | 16(4) |
-| :---: | :---: | :---: | :---: | :---: |
-| Pipeline Inference(1024, 128) | 21.73 | 38.06 | 61.02 | 64.30 |
-| Hugging Face(1024, 128) | 23.48 | 37.59 | 53.44 | OOM |
-| Pipeline Inference(512, 512) | 26.65 | 49.48 | 86.11 | 88.44 |
-| Hugging Face(512, 512) |  27.45 | 47.74 | 74.46 | OOM |
+
+#### A800 7b, fp16
+| batch_size(micro_batch size) | 2(1) | 4(2) | 8(4) | 16(8) | 32(16) |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| Pipeline Inference| 57.97 | 110.13 | 213.33 | 389.86 | 670.12  |
+| Hugging Face  | 42.44 | 76.5 | 151.97 | 212.88 | 256.13 |
+
+
+#### A800 13b, fp16
+| batch_size(micro_batch size) | 2(1) | 4(2) | 8(4) | 16(8) | 32(16) |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| Pipeline Inference | 41.78 | 94.18 | 172.67| 310.75| 470.15 |
+| Hugging Face   | 36.57 | 68.4 | 105.81 | 139.51 | 166.34 |
