@@ -76,7 +76,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
-        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
         forced_dtype: Optional[torch.dtype] = None,
         extra_dp_process_group: Optional[ProcessGroup] = None,
         master_weights: bool = True,  # master weights
@@ -108,8 +107,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if self.extra_dp_pg is not None:
             self.extra_dp_pg_size = dist.get_world_size(group=self.extra_dp_pg)
             self.extra_dp_pg_rank = dist.get_rank(group=self.extra_dp_pg)
-
-        self.tp_pg = tp_process_group
 
         # working and master params for mixed precision training
         self._working_param_groups = dict()
