@@ -255,6 +255,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 # use fp32 when master_weights is True
                 if self._master_weights is True:
                     splited_param_current_rank = splited_params.detach().float().to(device)
+                else:
+                    splited_param_current_rank = splited_params
 
                 params_current_rank.append(splited_param_current_rank)
                 self._param_store.link_master_and_working_param(splited_param_current_rank, param)
