@@ -385,8 +385,11 @@ class LlamaInferenceForwards:
                     infer_state.decode_mem_index,
                     infer_state.cache_manager,
                 )
-                
-            if HAS_FLASH_KERNEL:     
+            
+            if HAS_LIGHTLLM_KERNEL:
+                attn_output = torch.empty_like(query_states)
+                llama_triton_token_attention(query_states, attn_output, infer_state, num_key_value_groups=self.num_key_value_groups)
+            else:
                 heads_per_group = self.num_heads // self.num_key_value_heads
                 cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id]
                 cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id]
@@ -401,10 +404,8 @@ class LlamaInferenceForwards:
                                                       k_cache = copy_cache_k, 
                                                       v_cache = copy_cache_v, 
                                                       softmax_scale = 1/ math.sqrt(self.head_dim), 
-                                                      causal = True)
-            else:                
-                attn_output = torch.empty_like(query_states)
-                llama_triton_token_attention(query_states, attn_output, infer_state, num_key_value_groups=self.num_key_value_groups)
+                                                      causal = True)       
+
 
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
