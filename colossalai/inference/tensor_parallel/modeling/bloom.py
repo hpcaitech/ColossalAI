@@ -19,6 +19,12 @@ from transformers.utils import logging
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import bloom_context_attn_fwd, copy_kv_cache_to_dest, token_attention_fwd
 
+try:
+    from lightllm.models.bloom.triton_kernel.context_flashattention_nopad import context_attention_fwd as lightllm_bloom_context_attention_fwd
+    HAS_LIGHTLLM_KERNEL = True
+except:
+    HAS_LIGHTLLM_KERNEL = False
+
 
 def generate_alibi(n_head, dtype=torch.float16):
     """
@@ -460,7 +466,10 @@ class BloomInferenceForwards:
             # output = self.output[:batch_size*q_length, :, :]
             output = torch.empty_like(q)
 
-            bloom_context_attn_fwd(q, k, v, output, b_start_loc, b_seq_len, max_input_len, alibi)
+            if HAS_LIGHTLLM_KERNEL:
+                lightllm_bloom_context_attention_fwd(q, k, v, output, alibi, b_start_loc, b_seq_len, max_input_len)
+            else:
+                bloom_context_attn_fwd(q, k, v, output, b_start_loc, b_seq_len, max_input_len, alibi)
 
             context_layer = output.view(batch_size, q_length, H * D_HEAD)
         else:

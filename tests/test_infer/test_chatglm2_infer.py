@@ -12,6 +12,12 @@ from colossalai.shardformer.modeling.chatglm2_6b.configuration_chatglm import Ch
 from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
+try:
+    import lightllm 
+    HAS_LIGHTLLM_KERNEL = True
+except:
+    HAS_LIGHTLLM_KERNEL = False
+    
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 TPSIZE = 1
 BATCH_SIZE = 8
@@ -61,7 +67,7 @@ def check_chatglm2(rank, world_size, port):
     run_chatglm2_test()
 
 
-@pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
+@pytest.mark.skipif(not CUDA_SUPPORT or not HAS_LIGHTLLM_KERNEL, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
