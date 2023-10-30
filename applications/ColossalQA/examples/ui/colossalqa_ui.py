@@ -14,7 +14,7 @@ client_data = {
     "sql_file_path": None,
     "user_input": None,
 }
-URL = "http://127.0.0.1:50000"
+URL = "http://localhost:13666"
 
 
 def add_text(history, text):
@@ -43,10 +43,6 @@ def bot(history):
         headers = {"Content-type": "application/json"}
         print(f"Sending request to server url: {URL}")
         response = requests.post(URL, data=json.dumps(client_data), headers=headers)
-        print("------------------")
-        print(response)
-        print("------------------")
-        print(response.text)
         response = json.loads(response.text)
         history[-1][1] = response["response"]
         if response["error"] != "":
@@ -63,7 +59,10 @@ with gr.Blocks() as demo:
         [],
         elem_id="chatbot",
         bubble_full_width=False,
-        avatar_images=(None, (os.path.join(os.path.dirname(__file__), "avatar.png"))),
+        avatar_images=(
+            (os.path.join(os.path.dirname(__file__), "img/avatar_ai.png")),
+            (os.path.join(os.path.dirname(__file__), "img/avatar_user.png")),
+        ),
     )
 
     with gr.Row():
@@ -81,4 +80,4 @@ with gr.Blocks() as demo:
 
 demo.queue()
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(share=True)

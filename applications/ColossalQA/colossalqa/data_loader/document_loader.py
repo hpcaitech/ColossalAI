@@ -25,7 +25,7 @@ class DocumentLoader:
     Load documents from different files into list of langchain Documents
     """
 
-    def __init__(self, files: List[List[str]], **kwargs) -> None:
+    def __init__(self, files: List, **kwargs) -> None:
         """
         Args:
             files: list of files (list[file path, name])
@@ -35,7 +35,7 @@ class DocumentLoader:
         self.kwargs = kwargs
 
         for item in files:
-            path = item[0]
+            path = item[0] if isinstance(item, list) else item
             logger.info(f"Loading data from {path}")
             self.load_data(path)
             logger.info("Data loaded")

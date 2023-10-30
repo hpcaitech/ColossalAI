@@ -64,7 +64,7 @@ class ChineseRetrievalConversation:
             chain_type="stuff",
             retriever=self.retriever,
             chain_type_kwargs={"prompt": PROMPT_RETRIEVAL_QA_ZH, "memory": self.memory},
-            llm_kwargs={"max_new_tokens": 50, "temperature": 0.75, "do_sample": True},
+            llm_kwargs={"max_new_tokens": 150, "temperature": 0.9, "do_sample": True},
         )
 
     def disambiguity(self, input: str):
@@ -83,6 +83,6 @@ class ChineseRetrievalConversation:
             self.memory.buffered_history.messages = memory.buffered_history.messages
             self.memory.summarized_history_temp.messages = memory.summarized_history_temp.messages
         return (
-            self.retrieval_chain.run(query=user_input, stop=[self.memory.human_prefix + ": "]).split("\n")[0],
+            self.retrieval_chain.run(query=user_input, stop=["</答案>"], doc_prefix="支持文档").split("\n")[0],
             self.memory,
         )
