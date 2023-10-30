@@ -131,7 +131,7 @@ def run_hybrid_zero_optim_test(local_rank, world_size, stage=1):
             zero_param.data.copy_(torch_param.data.detach().clone())
     zero_optimizer = torch.optim.Adam(zero_model.parameters())
     plugin = LowLevelZeroPlugin(stage=stage, precision="fp32")
-    plugin.zero_optim_kwargs["extra_dp_process_group"] = extra_dp_group
+    plugin.zero_optim_kwargs["moe_extra_dp_process_group"] = extra_dp_group
     booster = Booster(plugin=plugin)
     zero_model, zero_optimizer, _, _, _ = booster.boost(zero_model, zero_optimizer)
 
