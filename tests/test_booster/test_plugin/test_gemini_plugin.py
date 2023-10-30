@@ -10,6 +10,8 @@ from colossalai.booster.plugin import GeminiPlugin
 from colossalai.fx import is_compatible_with_meta
 from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.tensor.d_tensor.api import clear_layout_converter
+from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
@@ -124,6 +126,8 @@ def check_gemini_plugin(subset: str, init_method: str = "none", enable_tensor_pa
             enable_tensor_parallelism = False
 
         err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, enable_tensor_parallelism)
+        clear_layout_converter()
+        Randomizer.reset_index()
         torch.cuda.empty_cache()
         if err is None:
             passed_models.append(name)
