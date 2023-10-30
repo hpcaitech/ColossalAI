@@ -32,23 +32,16 @@ class PreferenceDataset(Dataset):
     ) -> None:
         super().__init__()
         self.end_token = tokenizer.eos_token if special_token is None else special_token
-        chosen = [
-            read_string_by_schema(data, dataset_schema["prompt"])
-            + read_string_by_schema(data, dataset_schema["chosen"])
-            + self.end_token
-            for data in tqdm(dataset, disable=not is_rank_0())
-        ]
+        prompt_ = read_string_by_schema(data, dataset_schema["prompt"]) if "prompt" in dataset_schema else ""
+        chosen_ = read_string_by_schema(data, dataset_schema["chosen"]) if "chosen" in dataset_schema else ""
+        read_string_by_schema(data, dataset_schema["rejected"]) if "rejected" in dataset_schema else ""
+        chosen = [prompt_ + chosen_ + self.end_token for data in tqdm(dataset, disable=not is_rank_0())]
         chosen_token = tokenizer(
             chosen, max_length=max_length, padding="max_length", truncation=True, return_tensors="pt"
         )
         self.chosen = {"input_ids": chosen_token["input_ids"], "attention_mask": chosen_token["attention_mask"]}
 
-        reject = [
-            read_string_by_schema(data, dataset_schema["prompt"])
-            + read_string_by_schema(data, dataset_schema["rejected"])
-            + self.end_token
-            for data in tqdm(dataset, disable=not is_rank_0())
-        ]
+        reject = [prompt_ + prompt_ + self.end_token for data in tqdm(dataset, disable=not is_rank_0())]
         reject_token = tokenizer(
             reject, max_length=max_length, padding="max_length", truncation=True, return_tensors="pt"
         )
