@@ -395,10 +395,8 @@ class LlamaInferenceForwards:
                 cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id]
                 
                 query_states = query_states.view(bsz, -1, self.num_heads, self.head_dim)
-                copy_cache_k= copy.deepcopy(cache_k)
-                copy_cache_v = copy.deepcopy(cache_v)
-                copy_cache_k = copy_cache_k.view(bsz, -1, self.num_key_value_heads, self.head_dim)
-                copy_cache_v = copy_cache_v.view(bsz, -1, self.num_key_value_heads, self.head_dim)
+                copy_cache_k = cache_k.view(bsz, -1, self.num_key_value_heads, self.head_dim)
+                copy_cache_v = cache_v.view(bsz, -1, self.num_key_value_heads, self.head_dim)
                 
                 attn_output = flash_attn_with_kvcache(q = query_states, 
                                                       k_cache = copy_cache_k, 
