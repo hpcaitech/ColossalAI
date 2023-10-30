@@ -5,8 +5,7 @@ import transformers
 from packaging import version
 
 import colossalai
-from colossalai.inference.pipeline import PPInferEngine
-from colossalai.inference.pipeline.policies import LlamaModelInferPolicy
+from colossalai.inference import CaiInferEngine, LlamaModelInferPolicy
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
@@ -26,27 +25,27 @@ for k, v in inputs.items():
         inputs[k] = v.to("cuda").repeat(*new_shape)
 
 
-def pipeline_inference_test(pp_size, new_length, micro_batch_size):
+def pipeline_inference_test(pp_size, max_output_len, micro_batch_size):
     model = transformers.LlamaForCausalLM(transformers.LlamaConfig(num_hidden_layers=4))
 
-    engine = PPInferEngine(
+    engine = CaiInferEngine(
         pp_size=pp_size,
         model=model,
         model_policy=LlamaModelInferPolicy(),
-        new_length=new_length,
+        max_output_len=max_output_len,
         micro_batch_size=micro_batch_size,
     )
     output = engine.inference(inputs)
     if dist.get_rank() == 0:
-        assert len(output[0]) == new_length, f"{len(output)}, {new_length}"
+        assert len(output[0]) == max_output_len, f"{len(output)}, {max_output_len}"
 
 
 @parameterize("pp_size", [2])
-@parameterize("new_length", [4, 8, 16])
+@parameterize("max_output_len", [4, 8, 16])
 @parameterize("micro_batch_size", [1, 4])
 @clear_cache_before_run()
-def run_pipeline_inference_test(pp_size, new_length, micro_batch_size):
-    pipeline_inference_test(pp_size, new_length, micro_batch_size)
+def run_pipeline_inference_test(pp_size, max_output_len, micro_batch_size):
+    pipeline_inference_test(pp_size, max_output_len, micro_batch_size)
     torch.cuda.empty_cache()
 
 

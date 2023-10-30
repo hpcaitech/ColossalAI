@@ -1,3 +1,3 @@
-from .engine import PPInferEngine
+from .microbatch_manager import MicroBatchManager
 
-__all__ = ["PPInferEngine"]
+__all__ = ["MicroBatchManager"]

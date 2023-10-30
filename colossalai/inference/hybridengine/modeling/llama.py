@@ -176,7 +176,7 @@ class LlamaInferenceForwards:
         past_key_values_length = 0
 
         if infer_state.is_context_stage is False:
-            past_key_values_length = infer_state.cache_manager.past_key_values_length
+            past_key_values_length = infer_state.cache_manager.max_len_in_batch
             seq_length_with_past = seq_length_with_past + past_key_values_length
 
         # NOTE: differentiate with prefill stage
@@ -200,9 +200,7 @@ class LlamaInferenceForwards:
                 infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
             else:
                 print(f" *** Encountered allocation non-contiguous")
-                print(
-                    f"    infer_state.cache_manager.past_key_values_length: {infer_state.cache_manager.past_key_values_length}"
-                )
+                print(f"    infer_state.cache_manager.max_len_in_batch: {infer_state.cache_manager.max_len_in_batch}")
                 infer_state.decode_is_contiguous = False
                 alloc_mem = infer_state.cache_manager.alloc(batch_size)
                 infer_state.decode_mem_index = alloc_mem
@@ -364,7 +362,7 @@ class LlamaInferenceForwards:
         #   need some way to record the length of past key values cache
         #   since we won't return past_key_value_cache right now
         if infer_state.decode_layer_id == 0:  # once per model.forward
-            infer_state.cache_manager.past_key_values_length += q_len  # seq_len
+            infer_state.cache_manager.max_len_in_batch += q_len  # seq_len
 
         cos, sin = infer_state.position_cos, infer_state.position_sin
 
@@ -397,7 +395,7 @@ class LlamaInferenceForwards:
                 attn_output,
                 infer_state.start_loc,
                 infer_state.seq_len,
-                infer_state.cache_manager.past_key_values_length,
+                infer_state.cache_manager.max_len_in_batch,
             )
 
         else:
@@ -435,7 +433,7 @@ class LlamaInferenceForwards:
                 infer_state.block_loc,
                 infer_state.start_loc,
                 infer_state.seq_len,
-                infer_state.cache_manager.past_key_values_length,
+                infer_state.cache_manager.max_len_in_batch,
             )
 
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
