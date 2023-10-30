@@ -55,10 +55,16 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         cpu_offload: bool = False,  # cpu offload
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
         tp_process_group: Optional[ProcessGroup] = None,  # if using tp
+        pp_process_group: Optional[ProcessGroup] = None,
         forced_dtype: Optional[torch.dtype] = None,
-        extra_dp_process_group: Optional[ProcessGroup] = None,
+        moe_extra_dp_process_group: Optional[ProcessGroup] = None,
     ):
         self.param_info = param_info
+        self.stage_manager = model.stage_manager
+        self.shared_params = model.shared_params
+        self.dp_pg = dp_process_group
+        self.tp_pg = tp_process_group
+        self.pp_pg = pp_process_group
         if use_pipeline:
             init_pipeline_optimizer(optimizer, model)
         super().__init__(
@@ -79,7 +85,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             cpu_offload=cpu_offload,
             dp_process_group=dp_process_group,
             forced_dtype=forced_dtype,
-            extra_dp_process_group=extra_dp_process_group,
+            moe_extra_dp_process_group=moe_extra_dp_process_group,
         )
 
 
@@ -176,9 +182,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         use_ep_inside: bool = True,
         custom_policy: Policy = None,
     ) -> None:
-        super().__init__(
-            tp_size=tp_size, pp_size=pp_size, num_microbatches=num_microbatches, microbatch_size=microbatch_size
-        )
         assert (
             dist.get_world_size() % (tp_size * pp_size) == 0
         ), f"world size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
@@ -205,16 +208,16 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             ep_size = self.dp_size // extra_dp_size
             if use_ep_inside:
                 self.pg_mesh_moe = ProcessGroupMesh(self.pp_size, extra_dp_size, ep_size)
-                self.extra_dp_group = self.pg_mesh_moe.get_group_along_axis(1)
+                self.moe_extra_dp_group = self.pg_mesh_moe.get_group_along_axis(1)
                 if dist.get_rank() == 0:
                     print(f"Zero Parallel: pp {self.pp_size}, outer_dp {extra_dp_size}, inner_dp {ep_size}")
             else:
                 self.pg_mesh_moe = ProcessGroupMesh(self.pp_size, ep_size, extra_dp_size)
-                self.extra_dp_group = self.pg_mesh_moe.get_group_along_axis(2)
+                self.moe_extra_dp_group = self.pg_mesh_moe.get_group_along_axis(2)
                 if dist.get_rank() == 0:
                     print(f"Zero Parallel: pp {self.pp_size}, outer_dp {ep_size}, inner_dp {extra_dp_size}")
         else:
-            self.extra_dp_group = None
+            self.moe_extra_dp_group = None
 
         self.stage_manager = None
         self.schedule = None
@@ -366,7 +369,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                     param_info=param_info,
                     dp_process_group=self.dp_group,
                     tp_process_group=self.tp_group,
-                    extra_dp_process_group=self.extra_dp_group,
+                    pp_process_group=self.pp_group,
+                    moe_extra_dp_process_group=self.moe_extra_dp_group,
                     verbose=True,
                     clip_grad_norm=self.max_norm,
                     **self.zero_config,
