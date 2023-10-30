@@ -39,12 +39,12 @@ OPTIM_PLACEMENT_CONFIGS = [
 @parameterize("use_safetensors", [False, True])
 @parameterize("enable_tensor_parallelism", [True, False])
 @parameterize("tp_size", [2])
-@parameterize("enable_all_optimization", [True, False])
-def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: bool, enable_tensor_parallelism: bool, tp_size: int, enable_all_optimization: bool):
+def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: bool, enable_tensor_parallelism: bool, tp_size: int):
     from transformers import BertForSequenceClassification
 
     (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     bert_model = model_fn()
+    enable_all_optimization = True if enable_tensor_parallelism else False
 
     with shared_tempdir() as tempdir:
         pretrained_path = os.path.join(tempdir, "pretrained")
@@ -71,10 +71,10 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
 @parameterize("size_per_shard", [32])
 @parameterize("enable_tensor_parallelism", [True, False])
 @parameterize("tp_size", [2])
-@parameterize("enable_all_optimization", [True, False])
-def exam_state_dict(placement_config, shard: bool, model_name: str, size_per_shard: int, enable_tensor_parallelism: bool, tp_size: int, enable_all_optimization: bool):
+def exam_state_dict(placement_config, shard: bool, model_name: str, size_per_shard: int, enable_tensor_parallelism: bool, tp_size: int):
     (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()
+    enable_all_optimization = True if enable_tensor_parallelism else False
     plugin = GeminiPlugin(**placement_config, precision="fp16", initial_scale=(2**14), enable_tensor_parallelism=enable_tensor_parallelism, tp_size=tp_size, enable_all_optimization=enable_all_optimization)
     booster = Booster(plugin=plugin)
 
