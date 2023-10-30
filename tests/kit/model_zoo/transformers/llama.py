@@ -27,8 +27,10 @@ if HAS_LLAMA:
         # tokenized_input = tokenizer(input, return_tensors='pt').to('cuda')
         # -----------------------------------
 
-        input_ids = torch.Tensor([[1, 15043, 29892, 590, 11203, 338, 274, 1082]]).long()
-        attention_mask = torch.Tensor([[1, 1, 1, 1, 1, 1, 1, 1]]).long()
+        input_ids = torch.Tensor(
+            [[1, 15043, 29892, 590, 11203, 338, 274, 1082], [1, 15043, 29892, 590, 11203, 338, 274, 1082]]
+        ).long()
+        attention_mask = torch.Tensor([[1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1]]).long()
         return dict(input_ids=input_ids, attention_mask=attention_mask)
 
     # label is needed for casual lm

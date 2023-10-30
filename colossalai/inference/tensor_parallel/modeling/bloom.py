@@ -133,17 +133,11 @@ class BloomInferenceForwards:
             assert hasattr(self, "infer_state")
             infer_state = self.infer_state
 
-        # Compute alibi tensor: check build_alibi_tensor documentation
-        seq_length_with_past = seq_length
-        past_key_values_length = 0
-        # if self.cache_manager.past_key_values_length > 0:
-        if infer_state.cache_manager.past_key_values_length > 0:
-            # update the past key values length in cache manager,
-            # NOTE use BatchInferState.past_key_values_length instead the one in cache manager
-            past_key_values_length = infer_state.cache_manager.past_key_values_length
-            seq_length_with_past = seq_length_with_past + past_key_values_length
-
         # infer_state.cache_manager = self.cache_manager
+        if infer_state.is_context_stage:
+            past_key_values_length = 0
+        else:
+            past_key_values_length = infer_state.max_len_in_batch - 1
 
         if use_cache and seq_length != 1:
             # prefill stage
@@ -160,21 +154,19 @@ class BloomInferenceForwards:
                 infer_state.decode_mem_index = alloc_mem[0]
                 infer_state.decode_mem_start = alloc_mem[1]
                 infer_state.decode_mem_end = alloc_mem[2]
-                infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
+                infer_state.block_loc[:, infer_state.max_len_in_batch - 1] = infer_state.decode_mem_index
             else:
                 print(f" *** Encountered allocation non-contiguous")
-                print(
-                    f"    infer_state.cache_manager.past_key_values_length: {infer_state.cache_manager.past_key_values_length}"
-                )
+                print(f"    infer_state.max_len_in_batch : {infer_state.max_len_in_batch}")
                 infer_state.decode_is_contiguous = False
                 alloc_mem = infer_state.cache_manager.alloc(batch_size)
                 infer_state.decode_mem_index = alloc_mem
                 # infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
                 # infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
-                infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
+                infer_state.block_loc[:, infer_state.max_len_in_batch - 1] = infer_state.decode_mem_index
 
         if attention_mask is None:
-            attention_mask = torch.ones((batch_size, seq_length_with_past), device=hidden_states.device)
+            attention_mask = torch.ones((batch_size, infer_state.max_len_in_batch), device=hidden_states.device)
         else:
             attention_mask = attention_mask.to(hidden_states.device)
 
@@ -195,6 +187,7 @@ class BloomInferenceForwards:
             past_key_values_length=past_key_values_length,
         )
 
+        infer_state.decode_layer_id = 0
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
@@ -228,6 +221,7 @@ class BloomInferenceForwards:
                     infer_state=infer_state,
                 )
 
+            infer_state.decode_layer_id += 1
             hidden_states = outputs[0]
             if use_cache is True:
                 presents = presents + (outputs[1],)
@@ -247,7 +241,7 @@ class BloomInferenceForwards:
         #       and update these information in engine.generate after model foward called
         infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.seq_len += 1
-        infer_state.decode_layer_id = 0
+        infer_state.max_len_in_batch += 1
 
         if not return_dict:
             return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None)
@@ -453,9 +447,6 @@ class BloomInferenceForwards:
         mem_manager = infer_state.cache_manager
         layer_id = infer_state.decode_layer_id
 
-        if layer_id == 0:  # once per model.forward
-            infer_state.cache_manager.past_key_values_length += q_length  # += 1
-
         if infer_state.is_context_stage:
             # context process
             max_input_len = q_length
@@ -506,14 +497,11 @@ class BloomInferenceForwards:
                 b_loc,
                 b_start_loc,
                 b_seq_len,
-                infer_state.cache_manager.past_key_values_length,
+                infer_state.max_len_in_batch,
                 alibi,
             )
 
             context_layer = output.view(batch_size, q_length, H * D_HEAD)
-
-        # update layer id
-        infer_state.decode_layer_id += 1
 
         # NOTE: always set present as none for now, instead of returning past key value to the next decoding,
         #       we create the past key value pair from the cache manager

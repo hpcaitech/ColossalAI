@@ -74,12 +74,11 @@ class LlamaInferenceForwards:
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ):
-        batch_size = input_ids.shape[0]  # input_ids.shape[0]
-
         infer_state = self.infer_state
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
         # retrieve input_ids and inputs_embeds
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
@@ -90,15 +89,10 @@ class LlamaInferenceForwards:
         else:
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
-        seq_length_with_past = seq_length
-        past_key_values_length = 0
-
-        if past_key_values is not None:
-            #  NOT READY FOR PRIME TIME
-            #  dummy but work, revise it
-            past_key_values_length = infer_state.cache_manager.past_key_values_length
-            # past_key_values_length = past_key_values[0][0].shape[2]
-            seq_length_with_past = seq_length_with_past + past_key_values_length
+        if infer_state.is_context_stage:
+            past_key_values_length = 0
+        else:
+            past_key_values_length = infer_state.max_len_in_batch - 1
 
         # NOTE: differentiate with prefill stage
         #       block_loc require different value-assigning method for two different stage
@@ -118,23 +112,23 @@ class LlamaInferenceForwards:
                 infer_state.decode_mem_index = alloc_mem[0]
                 infer_state.decode_mem_start = alloc_mem[1]
                 infer_state.decode_mem_end = alloc_mem[2]
-                infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
+                infer_state.block_loc[:, infer_state.max_len_in_batch - 1] = infer_state.decode_mem_index
             else:
                 print(f" *** Encountered allocation non-contiguous")
-                print(
-                    f"    infer_state.cache_manager.past_key_values_length: {infer_state.cache_manager.past_key_values_length}"
-                )
+                print(f"    infer_state.max_len_in_batch : {infer_state.max_len_in_batch}")
                 infer_state.decode_is_contiguous = False
                 alloc_mem = infer_state.cache_manager.alloc(batch_size)
                 infer_state.decode_mem_index = alloc_mem
                 # infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
                 # infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
-                infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
+                infer_state.block_loc[:, infer_state.max_len_in_batch - 1] = infer_state.decode_mem_index
+
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(
                 past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
             )
+            position_ids = position_ids.repeat(batch_size, 1)
             position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
         else:
             position_ids = position_ids.view(-1, seq_length).long()
@@ -146,11 +140,12 @@ class LlamaInferenceForwards:
             infer_state.position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(
                 position_ids.view(-1).shape[0], -1
             )
+
         else:
             seq_len = infer_state.seq_len
             infer_state.position_cos = torch.index_select(self._cos_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
             infer_state.position_sin = torch.index_select(self._sin_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
-            infer_state.other_kv_index = infer_state.block_loc[0, seq_length_with_past - 1].item()
+            infer_state.other_kv_index = infer_state.block_loc[0, infer_state.max_len_in_batch - 1].item()
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
@@ -158,7 +153,7 @@ class LlamaInferenceForwards:
         # embed positions
         if attention_mask is None:
             attention_mask = torch.ones(
-                (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
+                (batch_size, infer_state.max_len_in_batch), dtype=torch.bool, device=inputs_embeds.device
             )
 
         attention_mask = self._prepare_decoder_attention_mask(
@@ -173,7 +168,6 @@ class LlamaInferenceForwards:
         next_decoder_cache = () if use_cache else None
 
         infer_state.decode_layer_id = 0
-
         for idx, decoder_layer in enumerate(self.layers):
             past_key_value = past_key_values[idx] if past_key_values is not None else None
             # NOTE: modify here for passing args to decoder layer
@@ -197,8 +191,9 @@ class LlamaInferenceForwards:
 
         # update indices
         # infer_state.block_loc[:, infer_state.max_len_in_batch-1] = infer_state.total_token_num + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
-        infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
+        infer_state.start_loc += torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.seq_len += 1
+        infer_state.max_len_in_batch += 1
 
         if not return_dict:
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
@@ -224,7 +219,6 @@ class LlamaInferenceForwards:
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
-
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
@@ -280,11 +274,8 @@ class LlamaInferenceForwards:
         # NOTE might want to revise
         #   need some way to record the length of past key values cache
         #   since we won't return past_key_value_cache right now
-        if infer_state.decode_layer_id == 0:  # once per model.forward
-            infer_state.cache_manager.past_key_values_length += q_len  # seq_len
 
         cos, sin = infer_state.position_cos, infer_state.position_sin
-        # print("shape ", cos.shape, query_states.view(-1, self.num_heads, self.head_dim).shape, )
 
         llama_rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
         llama_rotary_embedding_fwd(key_states.view(-1, self.num_key_value_heads, self.head_dim), cos, sin)
@@ -295,7 +286,6 @@ class LlamaInferenceForwards:
 
         if infer_state.is_context_stage:
             # first token generation
-
             # copy key and value calculated in current step to memory manager
             copy_kv_to_mem_cache(
                 infer_state.decode_layer_id,
@@ -304,7 +294,6 @@ class LlamaInferenceForwards:
                 infer_state.context_mem_index,
                 infer_state.cache_manager,
             )
-
             attn_output = torch.empty_like(query_states)
 
             if self.num_key_value_groups == 1:
@@ -315,7 +304,7 @@ class LlamaInferenceForwards:
                     attn_output,
                     infer_state.start_loc,
                     infer_state.seq_len,
-                    infer_state.cache_manager.past_key_values_length,
+                    infer_state.max_len_in_batch,
                 )
             else:
                 lightllm_llama2_context_attention_fwd(
@@ -325,7 +314,7 @@ class LlamaInferenceForwards:
                     attn_output,
                     infer_state.start_loc,
                     infer_state.seq_len,
-                    infer_state.cache_manager.past_key_values_length,
+                    infer_state.max_len_in_batch,
                 )
         else:
             if infer_state.decode_is_contiguous:
@@ -363,7 +352,7 @@ class LlamaInferenceForwards:
                     infer_state.block_loc,
                     infer_state.start_loc,
                     infer_state.seq_len,
-                    infer_state.cache_manager.past_key_values_length,
+                    infer_state.max_len_in_batch,
                 )
             else:
                 Llama2TokenAttentionForwards.token_attn(
@@ -374,7 +363,7 @@ class LlamaInferenceForwards:
                     infer_state.block_loc,
                     infer_state.start_loc,
                     infer_state.seq_len,
-                    infer_state.cache_manager.past_key_values_length,
+                    infer_state.max_len_in_batch,
                     infer_state.other_kv_index,
                 )
 
