@@ -17,7 +17,7 @@ from colossalai.shardformer.policies.base_policy import ModulePolicyDescription,
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
 
 from ..modeling._utils import init_to_get_rotary
-from ..modeling.llama import LlamaInferenceForwards, get_llama_vllm_rmsnorm_forward
+from ..modeling.llama import LlamaInferenceForwards
 
 try:
     from colossalai.kernel.triton import rmsnorm_forward
@@ -120,9 +120,6 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
         infer_forward = None
         if HAS_TRITON_RMSNORM:
             infer_forward = get_triton_rmsnorm_forward()
-        else:
-            # NOTE: adding rms_norm from cuda kernels caused precision issue, fix @tiandiao123
-            infer_forward = get_llama_vllm_rmsnorm_forward()
 
         if infer_forward is not None:
             method_replacement = {"forward": partial(infer_forward)}
