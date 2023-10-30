@@ -52,7 +52,6 @@ def run_chatglm2_test(test_config):
         "attention_mask": torch.ones((BATCH_SIZE, MAX_INPUT_LEN), device="cuda"),
     }
     outputs = infer_engine.generate(input_tokens, **generate_kwargs)
-
     assert outputs is not None
 
 
