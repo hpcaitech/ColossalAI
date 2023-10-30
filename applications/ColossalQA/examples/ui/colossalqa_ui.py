@@ -34,7 +34,7 @@ def bot(history):
     assert client_data["model_path"] is not None, "Please define model path"
     assert client_data["embedding"] is not None, "Please define embedding model"
     if not isinstance(history[-1][0], str):
-        client_data["docs"] = list(history[-1][0])
+        client_data["docs"].append(history[-1][0])
         client_data["user_input"] = None
     else:
         client_data["user_input"] = history[-1][0]
@@ -54,7 +54,21 @@ def bot(history):
     yield history
 
 
-with gr.Blocks() as demo:
+CSS = """
+.contain { display: flex; flex-direction: column; }
+#component-0 { height: 100%; }
+#chatbot { flex-grow: 1; }
+"""
+
+header_html = """
+<div style="background: linear-gradient(to right, #2a0cf4, #7100ed, #9800e6, #b600df, #ce00d9, #dc0cd1, #e81bca, #f229c3, #f738ba, #f946b2, #fb53ab, #fb5fa5); padding: 20px; text-align: left;">
+    <h1 style="color: white;">ColossalQA</h1>
+    <h4 style="color: white;">ColossalQA</h4>
+</div>
+"""
+
+with gr.Blocks(css=CSS) as demo:
+    html = gr.HTML(header_html)
     chatbot = gr.Chatbot(
         [],
         elem_id="chatbot",
