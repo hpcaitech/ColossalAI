@@ -19,8 +19,11 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
 from ._utils import copy_kv_to_mem_cache
 
 try:
-    from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import context_attention_fwd as lightllm_llama2_context_attention_fwd
     from lightllm.models.chatglm2.triton_kernel.rotary_emb import rotary_emb_fwd as chatglm2_rotary_emb_fwd
+    from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import (
+        context_attention_fwd as lightllm_llama2_context_attention_fwd,
+    )
+
     HAS_LIGHTLLM_KERNEL = True
 except:
     print("please install lightllm from source to run inference: https://github.com/ModelTC/lightllm")
@@ -118,13 +121,12 @@ class ChatGLM2InferenceForwards:
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
-        past_key_values_length = 0
+        if infer_state.is_context_stage:
+            past_key_values_length = 0
+        else:
+            past_key_values_length = infer_state.max_len_in_batch - 1
 
-        #  NOT READY FOR PRIME TIME
-        #  dummy but work, revise it
-        past_key_values_length = infer_state.cache_manager.past_key_values_length
         seq_length_with_past = seq_length + past_key_values_length
-        infer_state.seq_length_with_past = seq_length_with_past
 
         # prefill stage at first
         if use_cache and seq_length != 1:
@@ -272,7 +274,6 @@ class ChatGLM2InferenceForwards:
         infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.seq_len += 1
         infer_state.max_len_in_batch += 1
-        infer_state.cache_manager.past_key_values_length += seq_length
 
         if not return_dict:
             return tuple(
@@ -487,7 +488,7 @@ class ChatGLM2InferenceForwards:
                 attn_output.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head),
                 infer_state.start_loc,
                 infer_state.seq_len,
-                infer_state.seq_length_with_past,
+                infer_state.max_len_in_batch,
             )
 
         else:
