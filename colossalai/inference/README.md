@@ -34,11 +34,13 @@ In this section we discuss how the colossal inference works and integrates with 
   - [x] policy
   - [x] context forward
   - [x] token forward
+  - [x] support flash-decoding
 - [ ] Replace the kernels with `faster-transformer` in token-forward stage
 - [ ] Support all models
   - [x] Llama
+  - [x] Llama-2
   - [x] Bloom
-  - [ ] Chatglm2
+  - [x] Chatglm2
 - [ ] Benchmarking for all models
 
 ## Get started
@@ -68,6 +70,12 @@ git clone https://github.com/ModelTC/lightllm
 git checkout 28c1267cfca536b7b4f28e921e03de735b003039
 cd lightllm
 pip3 install -e .
+
+# also, install xformers from source: 
+pip install ninja
+# Set TORCH_CUDA_ARCH_LIST if running and building on different GPU types
+pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers
+
 ```
 
 ### Docker
@@ -89,7 +97,10 @@ git checkout 28c1267cfca536b7b4f28e921e03de735b003039
 cd lightllm
 pip3 install -e .
 
-
+# install xformers from source 
+pip install ninja
+# Set TORCH_CUDA_ARCH_LIST if running and building on different GPU types
+pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers 
 ```
 
 ### Dive into fast-inference!

@@ -5,7 +5,6 @@ import torch
 try:
     import triton
     import triton.language as tl
-
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
@@ -155,39 +154,43 @@ if HAS_TRITON:
         num_warps = 4 if Lk <= 64 else 8
 
         tmp = torch.empty((batch, head, max_input_len + 256), device=q.device, dtype=torch.float32)
-
-        _context_flash_attention_kernel[grid](
-            q,
-            k,
-            v,
-            sm_scale,
-            b_start_loc,
-            b_seq_len,
-            tmp,
-            alibi,
-            o,
-            q.stride(0),
-            q.stride(1),
-            q.stride(2),
-            k.stride(0),
-            k.stride(1),
-            k.stride(2),
-            v.stride(0),
-            v.stride(1),
-            v.stride(2),
-            o.stride(0),
-            o.stride(1),
-            o.stride(2),
-            tmp.stride(0),
-            tmp.stride(1),
-            tmp.stride(2),
-            # manually setting this blcok num, we can use tuning config to futher speed-up
-            BLOCK_M=BLOCK,
-            BLOCK_DMODEL=Lk,
-            BLOCK_N=BLOCK,
-            num_warps=num_warps,
-            num_stages=1,
-        )
+        
+        if triton.__version__ < "2.1.0":
+            _context_flash_attention_kernel[grid](
+                q,
+                k,
+                v,
+                sm_scale,
+                b_start_loc,
+                b_seq_len,
+                tmp,
+                alibi,
+                o,
+                q.stride(0),
+                q.stride(1),
+                q.stride(2),
+                k.stride(0),
+                k.stride(1),
+                k.stride(2),
+                v.stride(0),
+                v.stride(1),
+                v.stride(2),
+                o.stride(0),
+                o.stride(1),
+                o.stride(2),
+                tmp.stride(0),
+                tmp.stride(1),
+                tmp.stride(2),
+                # manually setting this blcok num, we can use tuning config to futher speed-up
+                BLOCK_M=BLOCK,
+                BLOCK_DMODEL=Lk,
+                BLOCK_N=BLOCK,
+                num_warps=num_warps,
+                num_stages=1,
+            )
+        else:
+            raise Exception("Please install lightllm kernels from https://github.com/ModelTC/lightllm since your triton version is larger than 2.0.0")
+            
         return
 
     @torch.no_grad()
@@ -207,36 +210,40 @@ if HAS_TRITON:
         tmp = torch.empty((batch, head, max_input_len + 256), device=q.device, dtype=torch.float32)
         num_warps = 4 if Lk <= 64 else 8
         # num_warps = 4
-        _context_flash_attention_kernel[grid](
-            q,
-            k,
-            v,
-            sm_scale,
-            b_start_loc,
-            b_seq_len,
-            tmp,
-            None,
-            o,
-            q.stride(0),
-            q.stride(1),
-            q.stride(2),
-            k.stride(0),
-            k.stride(1),
-            k.stride(2),
-            v.stride(0),
-            v.stride(1),
-            v.stride(2),
-            o.stride(0),
-            o.stride(1),
-            o.stride(2),
-            tmp.stride(0),
-            tmp.stride(1),
-            tmp.stride(2),
-            BLOCK_M=BLOCK,
-            BLOCK_DMODEL=Lk,
-            BLOCK_N=BLOCK,
-            num_warps=num_warps,
-            num_stages=1,
-        )
         
+        if triton.__version__ < "2.1.0":
+            _context_flash_attention_kernel[grid](
+                q,
+                k,
+                v,
+                sm_scale,
+                b_start_loc,
+                b_seq_len,
+                tmp,
+                None,
+                o,
+                q.stride(0),
+                q.stride(1),
+                q.stride(2),
+                k.stride(0),
+                k.stride(1),
+                k.stride(2),
+                v.stride(0),
+                v.stride(1),
+                v.stride(2),
+                o.stride(0),
+                o.stride(1),
+                o.stride(2),
+                tmp.stride(0),
+                tmp.stride(1),
+                tmp.stride(2),
+                BLOCK_M=BLOCK,
+                BLOCK_DMODEL=Lk,
+                BLOCK_N=BLOCK,
+                num_warps=num_warps,
+                num_stages=1,
+            )
+        else:
+            raise Exception("Please install lightllm kernels from https://github.com/ModelTC/lightllm since your triton version is larger than 2.0.0")
+            
         return
