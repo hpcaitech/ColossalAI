@@ -34,7 +34,7 @@ In this section we discuss how the colossal inference works and integrates with 
   - [x] policy
   - [x] context forward
   - [x] token forward
-  - [] support flash-decoding
+  - [x] support flash-decoding
 - [ ] Replace the kernels with `faster-transformer` in token-forward stage
 - [ ] Support all models
   - [x] Llama
