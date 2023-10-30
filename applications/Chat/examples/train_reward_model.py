@@ -113,13 +113,13 @@ def train(args):
     eval_data = data["test"].select(range(min(args.max_datasets_size, len(data["test"]))))
 
     if args.dataset == "Dahoas/rm-static":
-        train_dataset = RmStaticDataset(
+        train_dataset = PreferenceDataset(
             train_data,
             tokenizer,
             args.max_len,
             dataset_schema={"prompt": "prompt", "chosen": "chosen", "rejected": "rejected"},
         )
-        eval_dataset = RmStaticDataset(
+        eval_dataset = PreferenceDataset(
             eval_data,
             tokenizer,
             args.max_len,
