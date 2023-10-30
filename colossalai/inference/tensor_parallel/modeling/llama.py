@@ -60,7 +60,8 @@ def llama_triton_context_attention(query_states, key_states, value_states, attn_
                 attn_output,
                 infer_state.start_loc,
                 infer_state.seq_len,
-                infer_state.cache_manager.past_key_values_length,
+                # infer_state.cache_manager.past_key_values_length,
+                infer_state.max_len_in_batch,
             )
         else:
             lightllm_context_attention_fwd(
@@ -70,7 +71,8 @@ def llama_triton_context_attention(query_states, key_states, value_states, attn_
                 attn_output,
                 infer_state.start_loc,
                 infer_state.seq_len,
-                infer_state.cache_manager.past_key_values_length,
+                # infer_state.cache_manager.past_key_values_length,
+                infer_state.max_len_in_batch,
             )
     else:
         assert HAS_LIGHTLLM_KERNEL is True, "You have to install lightllm kernels to run llama2 model"
@@ -81,7 +83,8 @@ def llama_triton_context_attention(query_states, key_states, value_states, attn_
             attn_output,
             infer_state.start_loc,
             infer_state.seq_len,
-            infer_state.cache_manager.past_key_values_length,
+            # infer_state.cache_manager.past_key_values_length,
+            infer_state.max_len_in_batch,
         )
 
 def llama_triton_token_attention(query_states, attn_output, infer_state, num_key_value_groups=1):
@@ -95,7 +98,8 @@ def llama_triton_token_attention(query_states, attn_output, infer_state, num_key
             infer_state.block_loc,
             infer_state.start_loc,
             infer_state.seq_len,
-            infer_state.cache_manager.past_key_values_length,
+            # infer_state.cache_manager.past_key_values_length,
+            infer_state.max_len_in_batch,
         )
     else:
         Llama2TokenAttentionForwards.token_attn(
@@ -106,7 +110,8 @@ def llama_triton_token_attention(query_states, attn_output, infer_state, num_key
             infer_state.block_loc,
             infer_state.start_loc,
             infer_state.seq_len,
-            infer_state.cache_manager.past_key_values_length,
+            # infer_state.cache_manager.past_key_values_length,
+            infer_state.max_len_in_batch,
             infer_state.other_kv_index,
         )
 
@@ -377,6 +382,7 @@ class LlamaInferenceForwards:
                     infer_state.cache_manager,
                 )
             
+            HAS_LIGHTLLM_KERNEL = False
             if HAS_LIGHTLLM_KERNEL:
                 attn_output = torch.empty_like(query_states)
                 llama_triton_token_attention(query_states, attn_output, infer_state, num_key_value_groups=self.num_key_value_groups)
