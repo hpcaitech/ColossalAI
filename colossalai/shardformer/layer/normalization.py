@@ -65,43 +65,7 @@ class LayerNormBase(nn.Module):
             yield prefix, self
 
     def state_dict(self, *args, destination=None, prefix='', keep_vars=False):
-        r"""Returns a dictionary containing a whole state of the module.
-
-        Both parameters and persistent buffers (e.g. running averages) are
-        included. Keys are corresponding parameter and buffer names.
-        Parameters and buffers set to ``None`` are not included.
-
-        .. warning::
-            Currently ``state_dict()`` also accepts positional arguments for
-            ``destination``, ``prefix`` and ``keep_vars`` in order. However,
-            this is being deprecated and keyword arguments will be enforced in
-            future releases.
-
-        .. warning::
-            Please avoid the use of argument ``destination`` as it is not
-            designed for end-users.
-
-        Args:
-            destination (dict, optional): If provided, the state of module will
-                be updated into the dict and the same object is returned.
-                Otherwise, an ``OrderedDict`` will be created and returned.
-                Default: ``None``.
-            prefix (str, optional): a prefix added to parameter and buffer
-                names to compose the keys in state_dict. Default: ``''``.
-            keep_vars (bool, optional): by default the :class:`~torch.Tensor` s
-                returned in the state dict are detached from autograd. If it's
-                set to ``True``, detaching will not be performed.
-                Default: ``False``.
-
-        Returns:
-            dict:
-                a dictionary containing a whole state of the module
-
-        Example::
-
-            >>> module.state_dict().keys()
-            ['bias', 'weight']
-
+        r"""Don't recursive process self._module
         """
 
         # TODO: Remove `args` and the parsing logic when BC allows.
@@ -135,7 +99,7 @@ class LayerNormBase(nn.Module):
     
     def load_state_dict(self, state_dict: Mapping[str, Any],
                         strict: bool = True):
-        r"""Don't
+        r"""Don't recursive process self._module
         """
         if not isinstance(state_dict, Mapping):
             raise TypeError("Expected state_dict to be dict-like, got {}.".format(type(state_dict)))
