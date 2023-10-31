@@ -65,9 +65,7 @@ class LayerNormBase(nn.Module):
             yield prefix, self
 
     def state_dict(self, *args, destination=None, prefix='', keep_vars=False):
-        r"""Don't recursive process self._module
-        """
-
+        r"""Don't recursive process self._module"""
         # TODO: Remove `args` and the parsing logic when BC allows.
         if len(args) > 0:
             if destination is None:
@@ -99,8 +97,7 @@ class LayerNormBase(nn.Module):
     
     def load_state_dict(self, state_dict: Mapping[str, Any],
                         strict: bool = True):
-        r"""Don't recursive process self._module
-        """
+        r"""Don't recursive process self._module"""
         if not isinstance(state_dict, Mapping):
             raise TypeError("Expected state_dict to be dict-like, got {}.".format(type(state_dict)))
 
