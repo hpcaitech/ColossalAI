@@ -263,8 +263,6 @@ class LlamaInferenceForwards:
                 infer_state.decode_is_contiguous = False
                 alloc_mem = infer_state.cache_manager.alloc(batch_size)
                 infer_state.decode_mem_index = alloc_mem
-                # infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
-                # infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
                 infer_state.block_loc[:, infer_state.max_len_in_batch - 1] = infer_state.decode_mem_index
 
         if position_ids is None:
@@ -301,10 +299,6 @@ class LlamaInferenceForwards:
         )
 
         # decoder layers
-        () if output_hidden_states else None
-        () if output_attentions else None
-        next_decoder_cache = () if use_cache else None
-
         infer_state.decode_layer_id = 0
 
         start_idx, end_idx = stage_index[0], stage_index[1]
@@ -326,12 +320,8 @@ class LlamaInferenceForwards:
             infer_state.decode_layer_id += 1
             hidden_states = layer_outputs[0]
 
-            if use_cache:
-                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
-
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_stage() or stage_manager.num_stages == 1:
             hidden_states = self.norm(hidden_states)
-        next_cache = next_decoder_cache if use_cache else None
 
         # update indices
         # infer_state.block_loc[:, infer_state.max_len_in_batch-1] = infer_state.total_token_num + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
@@ -348,7 +338,7 @@ class LlamaInferenceForwards:
         #     hidden_states=all_hidden_states,
         #     attentions=all_self_attns,
         # )
-        return {"hidden_states": hidden_states, "past_key_values": next_cache}
+        return {"hidden_states": hidden_states}
 
     @staticmethod
     def llama_decoder_layer_forward(

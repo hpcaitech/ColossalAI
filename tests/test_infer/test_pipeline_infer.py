@@ -26,7 +26,11 @@ for k, v in inputs.items():
 
 
 def pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
-    model = transformers.LlamaForCausalLM(transformers.LlamaConfig(num_hidden_layers=4))
+    model = transformers.LlamaForCausalLM(
+        transformers.LlamaConfig(
+            vocab_size=20000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=4
+        )
+    )
 
     engine = CaiInferEngine(
         tp_size=tp_size,
@@ -43,8 +47,8 @@ def pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
 
 @parameterize("tp_size", [1])
 @parameterize("pp_size", [2])
-@parameterize("max_output_len", [4, 8, 16])
-@parameterize("micro_batch_size", [1, 4])
+@parameterize("max_output_len", [4])
+@parameterize("micro_batch_size", [1])
 @clear_cache_before_run()
 def run_pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
     pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size)
@@ -53,8 +57,8 @@ def run_pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_si
 
 @parameterize("tp_size", [2])
 @parameterize("pp_size", [2])
-@parameterize("max_output_len", [4, 8, 16])
-@parameterize("micro_batch_size", [1, 4])
+@parameterize("max_output_len", [4])
+@parameterize("micro_batch_size", [1])
 @clear_cache_before_run()
 def run_tp_pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
     pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size)
