@@ -258,8 +258,6 @@ class LlamaInferenceForwards:
                 infer_state.decode_mem_end = alloc_mem[2]
                 infer_state.block_loc[:, infer_state.max_len_in_batch - 1] = infer_state.decode_mem_index
             else:
-                print(f" *** Encountered allocation non-contiguous")
-                print(f"    infer_state.max_len_in_batch : {infer_state.max_len_in_batch}")
                 infer_state.decode_is_contiguous = False
                 alloc_mem = infer_state.cache_manager.alloc(batch_size)
                 infer_state.decode_mem_index = alloc_mem

@@ -21,7 +21,7 @@ _supported_models = [
 
 class CaiInferEngine:
     """
-    InferEngine is a class that handles the pipeline parallel inference.
+    CaiInferEngine is a class that handles the pipeline parallel inference.
 
     Args:
         tp_size (int): the size of tensor parallelism.
@@ -47,7 +47,7 @@ class CaiInferEngine:
     model = LlamaForCausalLM.from_pretrained("your_path_to_model")
     tokenizer = LlamaTokenizer.from_pretrained("/home/lczyh/share/models/llama-7b-hf")
     # assume the model is infered with 2 pipeline stages
-    inferengine = InferEngine(pp_size=2, model=model, model_policy=LlamaModelInferPolicy())
+    inferengine = CaiInferEngine(pp_size=2, model=model, model_policy=LlamaModelInferPolicy())
 
     input = ["Introduce a landmark in China ","Introduce a landmark in China "]
     data = tokenizer(input, return_tensors='pt')
