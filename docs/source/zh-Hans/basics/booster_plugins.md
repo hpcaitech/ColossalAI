@@ -55,7 +55,11 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 
 这个插件实现了多种并行训练策略和优化工具的组合。Hybrid Parallel插件支持的功能大致可以被分为以下四个部分：
 
-1. Shardformer: Shardformer负责在张量并行以及流水线并行下切分模型的逻辑，以及前向/后向方法的重载，这个插件为Shardformer功能提供了一个简单易用的接口。与此同时，Shardformer还负责将包括fused normalization, flash attention (xformers), JIT和序列并行在内的各类优化工具融入重载后的前向/后向方法。更多关于Shardformer的信息请参考 [Shardformer文档](../features/shardformer.md)。
+1. Shardformer: Shardformer负责在张量并行以及流水线并行下切分模型的逻辑，以及前向/后向方法的重载，这个插件为Shardformer功能提供了一个简单易用的接口。与此同时，Shardformer还负责将包括fused normalization, flash attention (xformers), JIT和序列并行在内的各类优化工具融入重载后的前向/后向方法。更多关于Shardformer的信息请参考 [Shardformer文档](../features/shardformer.md)。下图展示了Shardformer与Hybrid Parallel插件所支持的功能。
+
+<div align="center">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/shardformer/shardformer_and_hybridparallel.png" width="500" />
+</div>
 
 2. 混合精度训练：插件支持fp16/bf16的混合精度训练。更多关于混合精度训练的参数配置的详细信息请参考 [混合精度训练文档](../features/mixed_precision_training_with_booster.md)。
 
