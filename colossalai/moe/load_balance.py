@@ -13,7 +13,6 @@ from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 
 class LoadBalancer:
-
     def __init__(
         self,
         experts: MLPExperts,
@@ -41,6 +40,8 @@ class LoadBalancer:
         pp_size = 1 if MOE_MANAGER.pp_size is None else MOE_MANAGER.pp_size
         global_dp_group = ProcessGroupMesh(pp_size, dist.get_world_size() // pp_size)
         self.global_dp_group = global_dp_group.get_group_along_axis(1)
+        self.global_dp_rank = dist.get_rank(self.global_dp_group)
+        self.global_dp_size = dist.get_world_size(self.global_dp_group)
 
     def _clear_load(self) -> None:
         self.local_load = None
@@ -142,7 +143,7 @@ class LoadBalancer:
                     for group_size_j in range(group_size):
                         new_data = deepcopy(data)
                         # calculate origin group sum
-                        origin_diff = (origin_diff_list[group_num_i] + origin_diff_list[group_num_j])
+                        origin_diff = origin_diff_list[group_num_i] + origin_diff_list[group_num_j]
                         # swap data
                         self._swap_data(
                             new_data,
@@ -153,7 +154,8 @@ class LoadBalancer:
                         )
                         # calculate new group sum
                         new_diff = self._get_diff_from_avg(new_data, group_num_i, avg) + self._get_diff_from_avg(
-                            new_data, group_num_j, avg)
+                            new_data, group_num_j, avg
+                        )
                         # caculate score
                         new_score = origin_diff - new_diff
                         if new_score > 0:
@@ -307,14 +309,15 @@ class LoadBalancer:
             # TODO: exchange master weight, skip for now
             # master weight is shared by dp group
             tmp = working_weight_ptr.view(-1).split(
-                working_weight_ptr.numel() // dist.get_world_size(self.moe_dp_group))[dist.get_rank(self.moe_dp_group)]
+                working_weight_ptr.numel() // dist.get_world_size(self.moe_dp_group)
+            )[dist.get_rank(self.moe_dp_group)]
             master_weight_ptr.data.copy_(tmp.clone().detach().to(master_weight_ptr.device).to(master_weight_ptr.dtype))
         # exchange optim
         self._swap_expert_single_tensor(exp_avg_ptr, expert_idx, comm_group, send_first, comm_rank)
         self._swap_expert_single_tensor(exp_avg_sq_ptr, expert_idx, comm_group, send_first, comm_rank)
 
     def _gather_global_dp_group(self, data: Tensor) -> Tensor:
-        data_list = [torch.zeros_like(data) for _ in range(dist.get_world_size(self.global_dp_group))]
+        data_list = [torch.zeros_like(data) for _ in range(self.global_dp_size)]
         dist.all_gather(data_list, data, group=self.global_dp_group)
         data_list = torch.cat(data_list, dim=0)
         return data_list
@@ -348,8 +351,12 @@ class LoadBalancer:
         global_master_gate_weight = self._gather_global_dp_group(master_gate_weight).view(gate_shape)
         global_gate_exp_avg = self._gather_global_dp_group(gate_exp_avg).view(gate_shape)
         global_gate_exp_avg_sq = self._gather_global_dp_group(gate_exp_avg_sq).view(gate_shape)
-        assert (self.gate.shape == global_master_gate_weight.shape == global_gate_exp_avg.shape ==
-                global_gate_exp_avg_sq.shape)
+        assert (
+            self.gate.shape
+            == global_master_gate_weight.shape
+            == global_gate_exp_avg.shape
+            == global_gate_exp_avg_sq.shape
+        )
 
         for swap in swap_list:
             source_group, source_idx, target_group, target_idx = swap
@@ -380,10 +387,10 @@ class LoadBalancer:
             source_expert_pos = source_group * self.local_expert_num + source_idx
             target_expert_pos = target_group * self.local_expert_num + target_idx
             for gate in [
-                    self.gate,
-                    global_master_gate_weight,
-                    global_gate_exp_avg,
-                    global_gate_exp_avg_sq,
+                self.gate,
+                global_master_gate_weight,
+                global_gate_exp_avg,
+                global_gate_exp_avg_sq,
             ]:
                 origin_source = gate.data[source_expert_pos].clone().detach()
                 origin_target = gate.data[target_expert_pos].clone().detach()
@@ -393,16 +400,17 @@ class LoadBalancer:
                 )
 
         # update gate
-        dp_group_rank = dist.get_rank(self.global_dp_group)
-        dp_group_size = dist.get_world_size(self.global_dp_group)
-        global_master_gate_weight = global_master_gate_weight.view(-1).split(global_master_gate_weight.numel() //
-                                                                             dp_group_size)[dp_group_rank]
+        global_master_gate_weight = global_master_gate_weight.view(-1).split(
+            global_master_gate_weight.numel() // self.global_dp_size
+        )[self.global_dp_rank]
         master_gate_weight.data.copy_(global_master_gate_weight)
-        global_gate_exp_avg = global_gate_exp_avg.view(-1).split(global_gate_exp_avg.numel() //
-                                                                 dp_group_size)[dp_group_rank]
+        global_gate_exp_avg = global_gate_exp_avg.view(-1).split(global_gate_exp_avg.numel() // self.global_dp_size)[
+            self.global_dp_rank
+        ]
         gate_exp_avg.data.copy_(global_gate_exp_avg)
-        global_gate_exp_avg_sq = global_gate_exp_avg_sq.view(-1).split(global_gate_exp_avg_sq.numel() //
-                                                                       dp_group_size)[dp_group_rank]
+        global_gate_exp_avg_sq = global_gate_exp_avg_sq.view(-1).split(
+            global_gate_exp_avg_sq.numel() // self.global_dp_size
+        )[self.global_dp_rank]
         gate_exp_avg_sq.data.copy_(global_gate_exp_avg_sq)
 
     @torch.no_grad()

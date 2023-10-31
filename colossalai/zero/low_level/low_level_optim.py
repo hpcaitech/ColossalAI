@@ -432,7 +432,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             sync_tensor(flat_grad_list[rank], grad_list)
             for grad in grad_list:
                 param_id = self._bucket_store.get_param_id_of_grad(grad)
-                self._add_grad(grad, self._world_size, group_id, param_id)
+                self._add_grad(grad, self._world_size, group_id, param_id, rank)
 
     def _update_partitoned_grad(
         self, origin_grad_list: List, flat_grad: torch.Tensor, group_id: int, partition_num: int
@@ -442,11 +442,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             param_id = self._bucket_store.get_param_id_of_grad(grad)
             self._add_grad(grad, partition_num, group_id, param_id)
 
-    def _add_grad(self, grad: torch.Tensor, partition_num: int, group_id: int, param_id: int) -> None:
+    def _add_grad(self, grad: torch.Tensor, partition_num: int, group_id: int, param_id: int, rank: int = 0) -> None:
         if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id)) < partition_num:
             self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
         else:
-            self._grad_store.add_gradients_by_param_id(grad, 0, group_id, param_id)
+            self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
 
     def _add_to_bucket(self, param, group_id):
         param_size = param.numel()

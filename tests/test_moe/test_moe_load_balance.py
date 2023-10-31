@@ -160,6 +160,7 @@ def run_hybrid_zero_optim_test(local_rank, world_size, stage=1):
     zero_optimizer.step()
     zero_out = run_fwd_bwd(zero_model, data, label, criterion, zero_optimizer)
     torch_out = run_fwd_bwd(torch_model, data, label, criterion, None)
+    # TODO: high atol, check if bug exists
     assert torch.allclose(zero_out, torch_out, atol=8e-4), f"zero_out:{zero_out}\ntorch_out{torch_out}"
 
 
