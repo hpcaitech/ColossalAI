@@ -335,3 +335,20 @@ class CheckpointIO(ABC):
         """
         state_dict = torch.load(checkpoint)
         lr_scheduler.load_state_dict(state_dict)
+
+    # ================================================================================
+    # Abstract method for lora saving implementation.
+    # ================================================================================
+
+    @abstractmethod
+    def save_lora_as_pretrained(
+        self, model: Union[nn.Module, ModelWrapper], checkpoint: str, use_safetensors: bool = False
+    ) -> None:
+        """
+        Save the lora adapters and adapter configuration file to a pretrained checkpoint directory.
+
+        Args:
+            model (Union[nn.Module, ModelWrapper]): A model boosted by Booster.
+            checkpoint (str): Path to the checkpoint directory. It must be a local path.
+            use_safetensors (bool, optional): Whether to use safe tensors when saving. Defaults to False.
+        """
