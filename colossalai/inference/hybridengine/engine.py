@@ -12,6 +12,8 @@ from colossalai.shardformer.policies.base_policy import Policy
 from ..pipeline.microbatch_manager import MicroBatchManager
 from ..tensor_parallel.kvcache_manager import MemoryManager
 
+PP_AXIS, TP_AXIS = 0, 1
+
 _supported_models = [
     "LlamaForCausalLM",
     "BloomForCausalLM",
@@ -101,13 +103,12 @@ class CaiInferEngine:
         else:
             self.dtype = torch.float32
 
-        # Init tp infer
+        # Init pg mesh
+        pg_mesh = ProcessGroupMesh(pp_size, tp_size)
 
-        # Init pp infer
         stage_manager = None
         if pp_size > 1:
-            self.pg_mesh = ProcessGroupMesh(pp_size)
-            stage_manager = PipelineStageManager(self.pg_mesh, 0, True)
+            stage_manager = PipelineStageManager(pg_mesh, PP_AXIS, True)
             self.cache_manager_list = [
                 self._init_manager(model, max_batch_size, max_input_len, max_output_len)
                 for _ in range(micro_batch_buffer_size or pp_size)
@@ -123,7 +124,7 @@ class CaiInferEngine:
             self.verbose = verbose
             self.schedule = GenerateSchedule(stage_manager, self.mb_manager, verbose)
 
-        self.model = self._shardformer(model, model_policy, stage_manager)
+        self.model = self._shardformer(model, model_policy, stage_manager, pg_mesh.get_group_along_axis(TP_AXIS))
 
     def inference(self, input_list):
         """
@@ -145,9 +146,9 @@ class CaiInferEngine:
         else:
             return out
 
-    def _shardformer(self, model, model_policy, stage_manager):
+    def _shardformer(self, model, model_policy, stage_manager, tp_group):
         shardconfig = ShardConfig(
-            tensor_parallel_process_group=None,
+            tensor_parallel_process_group=tp_group,
             pipeline_stage_manager=stage_manager,
             enable_tensor_parallelism=False,
             enable_fused_normalization=False,

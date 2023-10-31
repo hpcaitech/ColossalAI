@@ -25,10 +25,11 @@ for k, v in inputs.items():
         inputs[k] = v.to("cuda").repeat(*new_shape)
 
 
-def pipeline_inference_test(pp_size, max_output_len, micro_batch_size):
+def pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
     model = transformers.LlamaForCausalLM(transformers.LlamaConfig(num_hidden_layers=4))
 
     engine = CaiInferEngine(
+        tp_size=tp_size,
         pp_size=pp_size,
         model=model,
         model_policy=LlamaModelInferPolicy(),
@@ -40,12 +41,23 @@ def pipeline_inference_test(pp_size, max_output_len, micro_batch_size):
         assert len(output[0]) == max_output_len, f"{len(output)}, {max_output_len}"
 
 
+@parameterize("tp_size", [1])
 @parameterize("pp_size", [2])
 @parameterize("max_output_len", [4, 8, 16])
 @parameterize("micro_batch_size", [1, 4])
 @clear_cache_before_run()
-def run_pipeline_inference_test(pp_size, max_output_len, micro_batch_size):
-    pipeline_inference_test(pp_size, max_output_len, micro_batch_size)
+def run_pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
+    pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size)
+    torch.cuda.empty_cache()
+
+
+@parameterize("tp_size", [2])
+@parameterize("pp_size", [2])
+@parameterize("max_output_len", [4, 8, 16])
+@parameterize("micro_batch_size", [1, 4])
+@clear_cache_before_run()
+def run_tp_pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
+    pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size)
     torch.cuda.empty_cache()
 
 
@@ -54,12 +66,18 @@ def check_pipeline_inference(rank, world_size, port):
     run_pipeline_inference_test()
 
 
+def check_tp_pipeline_inference(rank, world_size, port):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    run_tp_pipeline_inference_test()
+
+
 @pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_pipeline_inference():
     spawn(check_pipeline_inference, nprocs=2)
+    spawn(check_tp_pipeline_inference, nprocs=4)
 
 
 if __name__ == "__main__":
