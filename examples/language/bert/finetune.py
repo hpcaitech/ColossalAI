@@ -229,7 +229,7 @@ def main():
             num_microbatches=None,
             pp_style="interleaved",
             num_model_chunks=2,
-            microbatch_size=1,
+            microbatch_size=16,
             enable_all_optimization=True,
             zero_stage=1,
             precision="fp16",
