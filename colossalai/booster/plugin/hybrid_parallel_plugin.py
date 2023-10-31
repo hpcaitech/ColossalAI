@@ -3,7 +3,7 @@ import random
 from contextlib import nullcontext
 from functools import partial
 from types import MethodType
-from typing import Any, Callable, Iterator, List, Optional, OrderedDict, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, OrderedDict, Tuple, Union
 
 import numpy as np
 import torch
@@ -753,6 +753,9 @@ class HybridParallelPlugin(PipelinePluginBase):
     def support_no_sync(self) -> bool:
         return False
 
+    def support_lora(self) -> bool:
+        return False
+
     def control_checkpoint_io(self) -> bool:
         return True
 
@@ -890,4 +893,9 @@ class HybridParallelPlugin(PipelinePluginBase):
         return HybridParallelCheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
 
     def no_sync(self, model: Module) -> Iterator[None]:
+        raise NotImplementedError
+
+    def enable_lora(
+        self, model: Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+    ) -> Module:
         raise NotImplementedError

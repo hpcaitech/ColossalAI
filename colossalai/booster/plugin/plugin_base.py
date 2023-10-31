@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 import torch.nn as nn
 from torch.optim import Optimizer
@@ -34,6 +34,10 @@ class Plugin(ABC):
         pass
 
     @abstractmethod
+    def support_lora(self) -> bool:
+        pass
+
+    @abstractmethod
     def configure(
         self,
         model: nn.Module,
@@ -61,6 +65,12 @@ class Plugin(ABC):
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         """
         Context manager to disable gradient synchronization.
+        """
+
+    @abstractmethod
+    def enable_lora(self, model: nn.Module, pretrained_dir: str, lora_config: Dict) -> nn.Module:
+        """
+        Add LoRA modules to the model passed in. Should only be called in booster.enable_lora().
         """
 
     @abstractmethod

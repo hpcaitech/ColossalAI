@@ -1,6 +1,6 @@
 import warnings
 from pathlib import Path
-from typing import Callable, Iterable, Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -190,7 +190,10 @@ class TorchFSDPPlugin(DPPluginBase):
         raise RuntimeError("FSDP is not supported while torch version under 1.12.0.")
 
     def support_no_sync(self) -> bool:
-        False
+        return False
+
+    def support_lora(self) -> bool:
+        return False
 
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         raise NotImplementedError("Torch fsdp no_sync func not supported yet.")
@@ -235,3 +238,8 @@ class TorchFSDPPlugin(DPPluginBase):
 
     def get_checkpoint_io(self) -> CheckpointIO:
         return TorchFSDPCheckpointIO()
+
+    def enable_lora(
+        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+    ) -> nn.Module:
+        raise NotImplementedError
