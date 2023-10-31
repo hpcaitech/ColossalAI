@@ -5,7 +5,7 @@ from typing import Callable, Dict, List
 import torch.nn as nn
 from torch import Tensor, nn
 
-from colossalai.shardformer.layer import FusedLayerNorm, LayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
 from .._utils import getattr_
 from ..modeling.jit import get_jit_fused_dropout_add_func
@@ -22,13 +22,8 @@ __all__ = [
 
 
 class OPTPolicy(Policy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
-        if self.shard_config.enable_fused_normalization:
-            self.Norm = FusedLayerNorm
-        else:
-            self.Norm = LayerNorm
+    def __init__(self) -> None:
+        super().__init__()
 
     def config_sanity_check(self):
         pass
@@ -102,25 +97,26 @@ class OPTPolicy(Policy):
             )
 
         # optimization configuration
-        self.append_or_create_submodule_replacement(
-            description=SubModuleReplacementDescription(
-                suffix="final_layer_norm", target_module=self.Norm, ignore_if_not_exist=True
-            ),
-            policy=policy,
-            target_key=OPTDecoder,
-        )
-        self.append_or_create_submodule_replacement(
-            description=[
-                SubModuleReplacementDescription(
-                    suffix="self_attn_layer_norm", target_module=self.Norm, ignore_if_not_exist=True
+        if self.shard_config.enable_fused_normalization:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="final_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True
                 ),
-                SubModuleReplacementDescription(
-                    suffix="final_layer_norm", target_module=self.Norm, ignore_if_not_exist=True
-                ),
-            ],
-            policy=policy,
-            target_key=OPTDecoderLayer,
-        )
+                policy=policy,
+                target_key=OPTDecoder,
+            )
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="final_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True
+                    ),
+                ],
+                policy=policy,
+                target_key=OPTDecoderLayer,
+            )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
@@ -190,8 +186,8 @@ class OPTPolicy(Policy):
 
 
 class OPTModelPolicy(OPTPolicy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self) -> None:
+        super().__init__()
 
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTModel
@@ -212,8 +208,8 @@ class OPTModelPolicy(OPTPolicy):
 
 
 class OPTForCausalLMPolicy(OPTPolicy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self) -> None:
+        super().__init__()
 
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTForCausalLM
@@ -263,8 +259,8 @@ class OPTForCausalLMPolicy(OPTPolicy):
 
 
 class OPTForSequenceClassificationPolicy(OPTPolicy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self) -> None:
+        super().__init__()
 
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTForSequenceClassification
@@ -291,8 +287,8 @@ class OPTForSequenceClassificationPolicy(OPTPolicy):
 
 
 class OPTForQuestionAnsweringPolicy(OPTPolicy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self) -> None:
+        super().__init__()
 
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTForQuestionAnswering

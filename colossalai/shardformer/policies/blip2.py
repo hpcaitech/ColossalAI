@@ -13,13 +13,8 @@ __all__ = ["BlipPolicy", "BlipModelPolicy"]
 
 
 class BlipPolicy(Policy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
-        if self.shard_config.enable_fused_normalization:
-            self.Norm = col_nn.FusedLayerNorm
-        else:
-            self.Norm = col_nn.LayerNorm
+    def __init__(self) -> None:
+        super().__init__()
 
     def config_sanity_check(self):
         pass
@@ -222,93 +217,94 @@ class BlipPolicy(Policy):
             policy[Blip2Attention] = ModulePolicyDescription(method_replacement={"forward": forward_fn()})
 
         # optimization configuration
-        # Handle Blip2EncoderLayer layer
-        self.append_or_create_submodule_replacement(
-            description=[
-                SubModuleReplacementDescription(
-                    suffix="layer_norm1",
-                    target_module=self.Norm,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="layer_norm2",
-                    target_module=self.Norm,
-                ),
-            ],
-            policy=policy,
-            target_key=Blip2EncoderLayer,
-        )
+        if self.shard_config.enable_fused_normalization:
+            # Handle Blip2EncoderLayer layer
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="layer_norm1",
+                        target_module=col_nn.FusedLayerNorm,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="layer_norm2",
+                        target_module=col_nn.FusedLayerNorm,
+                    ),
+                ],
+                policy=policy,
+                target_key=Blip2EncoderLayer,
+            )
 
-        # handle Blip2VisionModel layer
-        self.append_or_create_submodule_replacement(
-            description=[
-                SubModuleReplacementDescription(
-                    suffix="post_layernorm",
-                    target_module=self.Norm,
-                )
-            ],
-            policy=policy,
-            target_key=Blip2VisionModel,
-        )
+            # handle Blip2VisionModel layer
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="post_layernorm",
+                        target_module=col_nn.FusedLayerNorm,
+                    )
+                ],
+                policy=policy,
+                target_key=Blip2VisionModel,
+            )
 
-        # handle Blip2VisionModel layer
-        self.append_or_create_submodule_replacement(
-            description=[
-                SubModuleReplacementDescription(
-                    suffix="layernorm",
-                    target_module=self.Norm,
-                )
-            ],
-            policy=policy,
-            target_key=Blip2QFormerModel,
-        )
+            # handle Blip2VisionModel layer
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="layernorm",
+                        target_module=col_nn.FusedLayerNorm,
+                    )
+                ],
+                policy=policy,
+                target_key=Blip2QFormerModel,
+            )
 
-        # handle Blip2QFormerLayer layer
-        self.append_or_create_submodule_replacement(
-            description=[
-                SubModuleReplacementDescription(
-                    suffix="attention.output.LayerNorm",
-                    target_module=self.Norm,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="crossattention.output.LayerNorm",
-                    target_module=self.Norm,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="output_query.LayerNorm",
-                    target_module=self.Norm,
-                ),
-            ],
-            policy=policy,
-            target_key=Blip2QFormerLayer,
-        )
+            # handle Blip2QFormerLayer layer
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="attention.output.LayerNorm",
+                        target_module=col_nn.FusedLayerNorm,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="crossattention.output.LayerNorm",
+                        target_module=col_nn.FusedLayerNorm,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="output_query.LayerNorm",
+                        target_module=col_nn.FusedLayerNorm,
+                    ),
+                ],
+                policy=policy,
+                target_key=Blip2QFormerLayer,
+            )
 
-        # handle OPTForCausalLM layer
-        self.append_or_create_submodule_replacement(
-            description=[
-                SubModuleReplacementDescription(
-                    suffix="model.decoder.final_layer_norm",
-                    target_module=self.Norm,
-                )
-            ],
-            policy=policy,
-            target_key=OPTForCausalLM,
-        )
+            # handle OPTForCausalLM layer
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="model.decoder.final_layer_norm",
+                        target_module=col_nn.FusedLayerNorm,
+                    )
+                ],
+                policy=policy,
+                target_key=OPTForCausalLM,
+            )
 
-        # handle OPTDecoderLayer layer
-        self.append_or_create_submodule_replacement(
-            description=[
-                SubModuleReplacementDescription(
-                    suffix="self_attn_layer_norm",
-                    target_module=self.Norm,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="final_layer_norm",
-                    target_module=self.Norm,
-                ),
-            ],
-            policy=policy,
-            target_key=OPTDecoderLayer,
-        )
+            # handle OPTDecoderLayer layer
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn_layer_norm",
+                        target_module=col_nn.FusedLayerNorm,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="final_layer_norm",
+                        target_module=col_nn.FusedLayerNorm,
+                    ),
+                ],
+                policy=policy,
+                target_key=OPTDecoderLayer,
+            )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
@@ -347,11 +343,11 @@ class BlipPolicy(Policy):
 
 # Blip2Model
 class Blip2ModelPolicy(BlipPolicy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self) -> None:
+        super().__init__()
 
 
 # Blip2ForConditionalGeneration
 class Blip2ForConditionalGenerationPolicy(BlipPolicy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self) -> None:
+        super().__init__()

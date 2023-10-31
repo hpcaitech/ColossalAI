@@ -19,13 +19,8 @@ __all__ = [
 
 
 class GPT2Policy(Policy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
-        if self.shard_config.enable_fused_normalization:
-            self.Norm = col_nn.FusedLayerNorm
-        else:
-            self.Norm = col_nn.LayerNorm
+    def __init__(self) -> None:
+        super().__init__()
 
     def config_sanity_check(self):
         pass
@@ -110,37 +105,38 @@ class GPT2Policy(Policy):
             )
 
         # optimization configuration
-        self.append_or_create_submodule_replacement(
-            description=SubModuleReplacementDescription(
-                suffix="ln_f",
-                target_module=self.Norm,
-            ),
-            policy=policy,
-            target_key=GPT2Model,
-        )
+        if self.shard_config.enable_fused_normalization:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="ln_f",
+                    target_module=col_nn.FusedLayerNorm,
+                ),
+                policy=policy,
+                target_key=GPT2Model,
+            )
 
-        self.append_or_create_submodule_replacement(
-            description=[
-                SubModuleReplacementDescription(
-                    suffix="ln_1",
-                    target_module=self.Norm,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
-                ),
-                SubModuleReplacementDescription(
-                    suffix="ln_2",
-                    target_module=self.Norm,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
-                ),
-                SubModuleReplacementDescription(
-                    suffix="ln_cross_attn",
-                    target_module=self.Norm,
-                    ignore_if_not_exist=True,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
-                ),
-            ],
-            policy=policy,
-            target_key=GPT2Block,
-        )
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="ln_1",
+                        target_module=col_nn.FusedLayerNorm,
+                        kwargs={"sp_partial_derived": use_sequence_parallel},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="ln_2",
+                        target_module=col_nn.FusedLayerNorm,
+                        kwargs={"sp_partial_derived": use_sequence_parallel},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="ln_cross_attn",
+                        target_module=col_nn.FusedLayerNorm,
+                        ignore_if_not_exist=True,
+                        kwargs={"sp_partial_derived": use_sequence_parallel},
+                    ),
+                ],
+                policy=policy,
+                target_key=GPT2Block,
+            )
 
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
@@ -204,8 +200,8 @@ class GPT2Policy(Policy):
 
 # GPT2Model
 class GPT2ModelPolicy(GPT2Policy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self) -> None:
+        super().__init__()
 
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2Model
@@ -228,8 +224,8 @@ class GPT2ModelPolicy(GPT2Policy):
 
 # GPT2LMHeadModel
 class GPT2LMHeadModelPolicy(GPT2Policy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self) -> None:
+        super().__init__()
 
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
@@ -275,8 +271,8 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
 
 # GPT2DoubleHeadsModel
 class GPT2DoubleHeadsModelPolicy(GPT2Policy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self) -> None:
+        super().__init__()
 
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2DoubleHeadsModel
@@ -329,8 +325,8 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
 
 # GPT2ForQuestionAnswering
 class GPT2ForQuestionAnsweringPolicy(GPT2Policy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self) -> None:
+        super().__init__()
 
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2ForQuestionAnswering
@@ -359,8 +355,8 @@ class GPT2ForQuestionAnsweringPolicy(GPT2Policy):
 
 # GPT2ForTokenClassification
 class GPT2ForTokenClassificationPolicy(GPT2Policy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self) -> None:
+        super().__init__()
 
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2ForTokenClassification
@@ -399,8 +395,8 @@ class GPT2ForTokenClassificationPolicy(GPT2Policy):
 
 # GPT2ForSequenceClassification
 class GPT2ForSequenceClassificationPolicy(GPT2Policy):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self) -> None:
+        super().__init__()
 
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2ForSequenceClassification

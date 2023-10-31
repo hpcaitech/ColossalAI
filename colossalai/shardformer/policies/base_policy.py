@@ -71,18 +71,26 @@ class Policy(ABC):
     If you want to define your own policy, you can inherit from this class and overwrite the methods you want to modify.
     """
 
-    def __init__(self, model: Optional[Module] = None, shard_config: Optional[ShardConfig] = None) -> None:
-        """
-        Initialize a Policy object.
+    def __init__(self) -> None:
+        self.shard_config: Optional[ShardConfig] = None
+        self.model: Optional[Module] = None
 
-        This method sets the model and shard configuration for the policy and performs a configuration sanity check.
-
+    def set_model(self, model: nn.Module) -> None:
+        r"""
+        Set model as an attribute of the Policy object so that we can access the model's attributes.
         Args:
-            model (Optional[Module]): The model to be used with this policy.
-            shard_config (Optional[ShardConfig]): The sharding configuration for the policy.
+            model (:class:`nn.Module`): The model to be perform
         """
-        self.model: Optional[Module] = model
-        self.shard_config: Optional[ShardConfig] = shard_config
+        self.model = model
+
+    def set_shard_config(self, shard_config: ShardConfig) -> None:
+        r"""
+        Set shard config as an attribute of the Policy object.
+        Args:
+            shard_config (:class:`ShardConfig`): The shard config to be perform
+        """
+        self.shard_config = shard_config
+
         self.config_sanity_check()
 
     @property

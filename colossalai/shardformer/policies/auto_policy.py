@@ -220,4 +220,4 @@ def get_autopolicy(model: nn.Module, shard_config: ShardConfig = None) -> Policy
         )
     else:
         policy = import_policy(policy_location, shard_config.inference_only)
-    return policy(model, shard_config)
+    return policy()
