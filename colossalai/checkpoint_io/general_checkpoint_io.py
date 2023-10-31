@@ -228,3 +228,6 @@ class GeneralCheckpointIO(CheckpointIO):
                         self.__class__.__name__, "\n\t".join(error_msgs)
                     )
                 )
+
+    def save_lora_as_pretrained(self, model: nn.Module, checkpoint: str, use_safetensors: bool = False) -> None:
+        raise NotImplementedError
