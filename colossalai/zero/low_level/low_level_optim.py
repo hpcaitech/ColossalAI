@@ -359,18 +359,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
                         flat_grads_per_rank = flat_grads.split(flat_grads.numel() // self._world_size)
                         grad_in_bucket = self._bucket_store.get_grad()
-
-                        for rank, grad_list in grad_in_bucket.items():
-                            sync_tensor(flat_grads_per_rank[rank], grad_list)
-                            for grad in grad_list:
-                                param_id = self._bucket_store.get_param_id_of_grad(grad)
-                                if (
-                                    len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id))
-                                    < self._world_size
-                                ):
-                                    self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
-                                else:
-                                    self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
+                        self._update_unpartitoned_grad(grad_in_bucket.values(), flat_grads_per_rank, group_id)
 
                     # sync extra zero group
                     else:
@@ -380,13 +369,13 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             flat_grads_per_rank = non_moe_flat_grads.split(
                                 non_moe_flat_grads.numel() // self._world_size
                             )
-                            self._sync_unpartitioned_grad(non_moe_grad_list, flat_grads_per_rank, group_id)
+                            self._update_unpartitoned_grad(non_moe_grad_list, flat_grads_per_rank, group_id)
 
                         # sync moe param only in zero group
                         if len(moe_grad_list) > 0:
                             dist.all_reduce(moe_flat_grads, group=self.moe_extra_dp_pg)
                             flat_grads_per_rank = moe_flat_grads.split(moe_flat_grads.numel() // self._world_size)
-                            self._sync_unpartitioned_grad(moe_grad_list, flat_grads_per_rank, group_id)
+                            self._update_unpartitoned_grad(moe_grad_list, flat_grads_per_rank, group_id)
 
                 else:
                     if self.moe_extra_dp_pg is None:
@@ -398,14 +387,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             recieved_grad = recieved_grad.to(grad_dtype)
 
                         grad_in_bucket_current_rank = self._bucket_store.get_grad()[self._local_rank]
-                        sync_tensor(recieved_grad, grad_in_bucket_current_rank)
-                        for grad in grad_in_bucket_current_rank:
-                            param_id = self._bucket_store.get_param_id_of_grad(grad)
-                            if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id)) < 1:
-                                self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
-                            else:
-                                self._grad_store.add_gradients_by_param_id(grad, 0, group_id, param_id)
+                        self._update_partitoned_grad(grad_in_bucket_current_rank, recieved_grad, group_id, 1)
                     else:
+                        # categorize moe and non moe param
                         grad_in_bucket_current_rank = self._bucket_store.get_grad()[self._local_rank]
                         moe_grad_in_bucket_current_rank = []
                         non_moe_grad_in_bucket_current_rank = []
@@ -421,13 +405,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             )
                             recieved_grad = torch.zeros_like(flat_grads_list[0])
                             dist.reduce_scatter(recieved_grad, flat_grads_list, group=self.dp_pg)
-                            sync_tensor(recieved_grad, non_moe_grad_in_bucket_current_rank)
-                            for grad in non_moe_grad_in_bucket_current_rank:
-                                param_id = self._bucket_store.get_param_id_of_grad(grad)
-                                if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id)) < 1:
-                                    self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
-                                else:
-                                    self._grad_store.add_gradients_by_param_id(grad, 0, group_id, param_id)
+                            self._update_partitoned_grad(
+                                non_moe_grad_in_bucket_current_rank, recieved_grad, group_id, 1
+                            )
 
                         if len(moe_grad_list) > 0:
                             flat_grads_list = list(
@@ -435,34 +415,38 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             )
                             recieved_grad = torch.zeros_like(flat_grads_list[0])
                             dist.reduce_scatter(recieved_grad, flat_grads_list, group=self.moe_extra_dp_pg)
-
                             param_slice = self._world_size // self.moe_extra_dp_pg_size
                             recieved_grad = list(recieved_grad.split(len(recieved_grad) // param_slice))
                             for split_recieved_grad in recieved_grad:
                                 split_recieved_grad = _unflatten_dense_tensors(
                                     split_recieved_grad, moe_grad_in_bucket_current_rank
                                 )
-                                for grad in moe_grad_in_bucket_current_rank:
+                                for real_grad, grad in zip(split_recieved_grad, moe_grad_in_bucket_current_rank):
                                     param_id = self._bucket_store.get_param_id_of_grad(grad)
-                                    if (
-                                        len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id))
-                                        < param_slice
-                                    ):
-                                        self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
-                                    else:
-                                        self._grad_store.add_gradients_by_param_id(grad, 0, group_id, param_id)
+                                    self._add_grad(real_grad, param_slice, group_id, param_id)
 
                 self._bucket_store.reset()
 
-    def _sync_unpartitioned_grad(self, origin_grad_list, flat_grad_list, group_id):
+    def _update_unpartitoned_grad(self, origin_grad_list: List, flat_grad_list: List, group_id: int) -> None:
         for rank, grad_list in enumerate(origin_grad_list):
             sync_tensor(flat_grad_list[rank], grad_list)
             for grad in grad_list:
                 param_id = self._bucket_store.get_param_id_of_grad(grad)
-                if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id)) < self._world_size:
-                    self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
-                else:
-                    self._grad_store.add_gradients_by_param_id(grad, rank, group_id, param_id)
+                self._add_grad(grad, self._world_size, group_id, param_id)
+
+    def _update_partitoned_grad(
+        self, origin_grad_list: List, flat_grad: torch.Tensor, group_id: int, partition_num: int
+    ) -> None:
+        sync_tensor(flat_grad, origin_grad_list)
+        for grad in origin_grad_list:
+            param_id = self._bucket_store.get_param_id_of_grad(grad)
+            self._add_grad(grad, partition_num, group_id, param_id)
+
+    def _add_grad(self, grad: torch.Tensor, partition_num: int, group_id: int, param_id: int) -> None:
+        if len(self._grad_store.get_partitioned_gradients_by_param_id(group_id, param_id)) < partition_num:
+            self._grad_store.append_gradients_by_param_id(grad, group_id, param_id)
+        else:
+            self._grad_store.add_gradients_by_param_id(grad, 0, group_id, param_id)
 
     def _add_to_bucket(self, param, group_id):
         param_size = param.numel()

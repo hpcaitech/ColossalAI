@@ -34,6 +34,7 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
     data = torch.randn(16, 4).cuda()
     label = torch.randint(0, 4, (16,)).cuda()
 
+    MOE_MANAGER.__init__()
     MOE_MANAGER.setup(seed=42, parallel=None)
     torch_model = MoeModel()
     torch_optimizer = torch.optim.Adam(torch_model.parameters())
@@ -82,6 +83,7 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
 def run_dist(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_zero_optim_test(rank, world_size, stage=1)
+    run_zero_optim_test(rank, world_size, stage=2)
 
 
 @pytest.mark.dist

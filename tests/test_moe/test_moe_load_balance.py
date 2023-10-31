@@ -175,6 +175,7 @@ def run_dist(rank, world_size, port):
     run_zero_optim_test(rank, world_size, stage=1)
     run_zero_optim_test(rank, world_size, stage=2)
     run_hybrid_zero_optim_test(rank, world_size, stage=1)
+    run_hybrid_zero_optim_test(rank, world_size, stage=2)
 
 
 @pytest.mark.dist
