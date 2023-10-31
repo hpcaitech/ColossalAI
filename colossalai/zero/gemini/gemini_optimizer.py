@@ -487,7 +487,7 @@ class GeminiOptimizer(OptimizerWrapper):
                 else:
                     tensor_size = param.numel()
                     if partition_dim is not None:
-                        tensor_size * self.tp_size
+                        tensor_size = tensor_size * self.tp_size
                     collected_states[state_name] = torch.zeros(
                         tensor_size, dtype=torch.float32, requires_grad=False
                     ).cpu()
