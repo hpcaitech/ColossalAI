@@ -150,24 +150,24 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         # Preparing file paths and index file.
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
         index_file = CheckpointIndexFile(checkpoint)
+        index_file.append_meta_data("param_groups", param_group_file)
 
         # Store the information of param groups to param_group_file.
-        index_file.append_meta_data("param_groups", param_group_file)
-        group_file_path = os.path.join(checkpoint, param_group_file)
-        param_groups = optimizer.get_param_groups_for_saving()
-        torch.save(param_groups, group_file_path)
+        if self.coordinator.is_master():
+            group_file_path = os.path.join(checkpoint, param_group_file)
+            param_groups = optimizer.get_param_groups_for_saving()
+            torch.save(param_groups, group_file_path)
 
         # States are broken into shards within max_shard_size.
         state_dict_shard = optimizer.state_shard(prefix=prefix, max_shard_size=size_per_shard, only_rank_0=True)
 
         # Save shards of optimizer states.
-        is_master = self.coordinator.is_master()
         total_size = save_state_dict_shards(
             sharded_state_dict=state_dict_shard,
             checkpoint=checkpoint,
             index_file=index_file,
             base_filename=states_name,
-            is_master=is_master,
+            is_master=self.coordinator.is_master(),
             use_safetensors=False,
         )
 
