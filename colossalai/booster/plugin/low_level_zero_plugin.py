@@ -5,7 +5,7 @@ import os
 from functools import partial
 from pathlib import Path
 from types import MethodType
-from typing import Callable, Dict, Iterator, List, Optional, Tuple, Dict
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -428,3 +428,8 @@ class LowLevelZeroPlugin(DPPluginBase):
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         assert isinstance(optimizer, LowLevelZeroOptimizer)
         return optimizer.no_sync()
+
+    def enable_lora(
+        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+    ) -> nn.Module:
+        raise NotImplementedError

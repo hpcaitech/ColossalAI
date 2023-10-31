@@ -1153,6 +1153,9 @@ class HybridParallelPlugin(PipelinePluginBase):
     def support_lora(self) -> bool:
         return False
 
+    def support_lora(self) -> bool:
+        return False
+
     def control_checkpoint_io(self) -> bool:
         return True
 
@@ -1350,6 +1353,11 @@ class HybridParallelPlugin(PipelinePluginBase):
             self.zero_stage != 2
         ), "ZERO2 is not compatible with no_sync function, please run gradient accumulation with gradient synchronization allowed."
         return optimizer.no_sync() if isinstance(optimizer, HybridParallelZeroOptimizer) else model.no_sync()
+
+    def enable_lora(
+        self, model: Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+    ) -> Module:
+        raise NotImplementedError
 
     def enable_lora(
         self, model: Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
