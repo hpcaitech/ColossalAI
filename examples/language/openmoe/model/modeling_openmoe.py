@@ -60,7 +60,7 @@ def set_openmoe_args(
     router_noisy_policy: str = None,
     router_drop_tks: bool = True,
     router_aux_loss_factor: float = 0.01,
-    router_z_loss_factor: float = 0.01,
+    router_z_loss_factor: float = 0.0001,
     mlp_gated: bool = True,
     label_smoothing: float = 0.001,
     z_loss_factor: float = 0.01,
@@ -122,10 +122,9 @@ def set_openmoe_args(
 
 
 # Copied from transformers.models.bart.modeling_bart._make_causal_mask
-def _make_causal_mask(input_ids_shape: torch.Size,
-                      dtype: torch.dtype,
-                      device: torch.device,
-                      past_key_values_length: int = 0):
+def _make_causal_mask(
+    input_ids_shape: torch.Size, dtype: torch.dtype, device: torch.device, past_key_values_length: int = 0
+):
     """
     Make causal mask used for bi-directional self-attention.
     """
@@ -169,10 +168,10 @@ def generate_fixed_pos_embedding(features, length, min_timescale=1.0, max_timesc
       output_cos: a float32 Tensor with shape [length, features]
     """
     fraction = torch.arange(0, features, 2, dtype=torch.float32).cuda() / features
-    timescale = min_timescale * (max_timescale / min_timescale)**fraction
-    rotational_frequency = 1. / timescale
+    timescale = min_timescale * (max_timescale / min_timescale) ** fraction
+    rotational_frequency = 1.0 / timescale
 
-    sinusoid_inp = torch.einsum('i,j->ij', torch.arange(length, dtype=torch.float32).cuda(), rotational_frequency)
+    sinusoid_inp = torch.einsum("i,j->ij", torch.arange(length, dtype=torch.float32).cuda(), rotational_frequency)
 
     sinusoid_inp = torch.cat([sinusoid_inp, sinusoid_inp], dim=-1)
 
@@ -193,8 +192,8 @@ def apply_rotary_embedding(q, k, cos, sin, decode=False, rotary_index=None):
 
     batch, qlen, qheads, d = q.shape
     kbatch, klen, kheads, kd = k.shape
-    assert batch == kbatch, f'{batch} != {kbatch}'
-    assert d == kd, f'{d} != {kd}'
+    assert batch == kbatch, f"{batch} != {kbatch}"
+    assert d == kd, f"{d} != {kd}"
     if decode and qlen == 1 and rotary_index is not None:
         qcos = cos[rotary_index + 1, :]
         qsin = sin[rotary_index + 1, :]
@@ -220,8 +219,8 @@ def apply_rotary_embedding(q, k, cos, sin, decode=False, rotary_index=None):
 
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
-    x1 = x[..., :x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2:]
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1)
 
 
@@ -238,7 +237,6 @@ def SwiGLU(x):
 
 
 class OpenMoeMLP(nn.Module):
-
     def __init__(self, config: LlamaConfig):
         super().__init__()
         self.pretraining_tp = config.pretraining_tp
@@ -362,12 +360,9 @@ class OpenMoeAttention(nn.Module):
         assert max_length <= self.sin.shape[0]
         sin, cos = self.sin[:max_length], self.cos[:max_length]
         # TODO: for inference, we can add emb kv into cache to avoid computation
-        query_states, key_states = apply_rotary_embedding(query_states,
-                                                          key_states,
-                                                          cos,
-                                                          sin,
-                                                          decode=True if q_len == 1 else False,
-                                                          rotary_index=position_ids)
+        query_states, key_states = apply_rotary_embedding(
+            query_states, key_states, cos, sin, decode=True if q_len == 1 else False, rotary_index=position_ids
+        )
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
 
@@ -377,6 +372,7 @@ class OpenMoeAttention(nn.Module):
 
         if HAS_FLASH_ATTN and use_kernel:
             from flash_attn import flash_attn_func
+
             query_states = query_states.transpose(1, 2)
             key_states = key_states.transpose(1, 2)
             value_states = value_states.transpose(1, 2)
@@ -388,7 +384,8 @@ class OpenMoeAttention(nn.Module):
             if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
                 raise ValueError(
                     f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-                    f" {attn_weights.size()}")
+                    f" {attn_weights.size()}"
+                )
 
             if attention_mask is not None:
                 if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
@@ -405,8 +402,10 @@ class OpenMoeAttention(nn.Module):
             attn_output = torch.matmul(attn_weights, value_states)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-            raise ValueError(f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-                             f" {attn_output.size()}")
+            raise ValueError(
+                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
+                f" {attn_output.size()}"
+            )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim)
@@ -425,7 +424,6 @@ class OpenMoeAttention(nn.Module):
 
 
 class OpenMoeDecoderLayer(nn.Module):
-
     def __init__(self, config: LlamaConfig, moe: bool):
         super().__init__()
         self.hidden_size = config.hidden_size
@@ -434,23 +432,25 @@ class OpenMoeDecoderLayer(nn.Module):
         self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         if self.moe:
-            self.mlp = SparseMLP(num_experts=config.num_experts,
-                                 hidden_size=config.hidden_size,
-                                 intermediate_size=config.intermediate_size,
-                                 router_top_k=config.router_topk,
-                                 router_capacity_factor_train=config.router_capacity_factor_train,
-                                 router_capacity_factor_eval=config.router_capacity_factor_eval,
-                                 router_min_capacity=config.router_min_capacity,
-                                 router_noisy_policy=config.router_noisy_policy,
-                                 router_drop_tks=config.router_drop_tks,
-                                 mlp_activation=config.hidden_act,
-                                 mlp_gated=config.mlp_gated,
-                                 enable_load_balance=config.enable_load_balance,
-                                 load_balance_tolerance=config.load_balance_tolerance,
-                                 load_balance_beam_width=config.load_balance_beam_width,
-                                 load_balance_group_swap_factor=config.load_balance_group_swap_factor,
-                                 enable_kernel=config.enable_kernel,
-                                 enable_comm_overlap=config.enable_comm_overlap)
+            self.mlp = SparseMLP(
+                num_experts=config.num_experts,
+                hidden_size=config.hidden_size,
+                intermediate_size=config.intermediate_size,
+                router_top_k=config.router_topk,
+                router_capacity_factor_train=config.router_capacity_factor_train,
+                router_capacity_factor_eval=config.router_capacity_factor_eval,
+                router_min_capacity=config.router_min_capacity,
+                router_noisy_policy=config.router_noisy_policy,
+                router_drop_tks=config.router_drop_tks,
+                mlp_activation=config.hidden_act,
+                mlp_gated=config.mlp_gated,
+                enable_load_balance=config.enable_load_balance,
+                load_balance_tolerance=config.load_balance_tolerance,
+                load_balance_beam_width=config.load_balance_beam_width,
+                load_balance_group_swap_factor=config.load_balance_group_swap_factor,
+                enable_kernel=config.enable_kernel,
+                enable_comm_overlap=config.enable_comm_overlap,
+            )
             self.pre_extra_mlp_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.extra_mlp = OpenMoeMLP(config)
         else:
@@ -643,10 +643,12 @@ class OpenMoeModel(OpenMoePreTrainedModel):
         self.vocab_size = config.vocab_size
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        self.layers = nn.ModuleList([
-            OpenMoeDecoderLayer(config, moe=True if (i + 1) % config.moe_layer_interval == 0 else False)
-            for i in range(config.num_hidden_layers)
-        ])
+        self.layers = nn.ModuleList(
+            [
+                OpenMoeDecoderLayer(config, moe=True if (i + 1) % config.moe_layer_interval == 0 else False)
+                for i in range(config.num_hidden_layers)
+            ]
+        )
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
         self.gradient_checkpointing = False
@@ -674,10 +676,12 @@ class OpenMoeModel(OpenMoePreTrainedModel):
 
         if attention_mask is not None:
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-            expanded_attn_mask = _expand_mask(attention_mask, inputs_embeds.dtype,
-                                              tgt_len=input_shape[-1]).to(inputs_embeds.device)
-            combined_attention_mask = (expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask +
-                                       combined_attention_mask)
+            expanded_attn_mask = _expand_mask(attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1]).to(
+                inputs_embeds.device
+            )
+            combined_attention_mask = (
+                expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask + combined_attention_mask
+            )
 
         return combined_attention_mask
 
@@ -695,8 +699,9 @@ class OpenMoeModel(OpenMoePreTrainedModel):
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (output_hidden_states
-                                if output_hidden_states is not None else self.config.output_hidden_states)
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
@@ -720,10 +725,9 @@ class OpenMoeModel(OpenMoePreTrainedModel):
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
-            position_ids = torch.arange(past_key_values_length,
-                                        seq_length + past_key_values_length,
-                                        dtype=torch.long,
-                                        device=device)
+            position_ids = torch.arange(
+                past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
+            )
             position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
         else:
             position_ids = position_ids.view(-1, seq_length).long()
@@ -732,18 +736,20 @@ class OpenMoeModel(OpenMoePreTrainedModel):
             inputs_embeds = self.embed_tokens(input_ids)
         # embed positions
         if attention_mask is None:
-            attention_mask = torch.ones((batch_size, seq_length_with_past),
-                                        dtype=torch.bool,
-                                        device=inputs_embeds.device)
-        attention_mask = self._prepare_decoder_attention_mask(attention_mask, (batch_size, seq_length), inputs_embeds,
-                                                              past_key_values_length)
+            attention_mask = torch.ones(
+                (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
+            )
+        attention_mask = self._prepare_decoder_attention_mask(
+            attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
+        )
 
         hidden_states = inputs_embeds
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
                 logger.warning_once(
-                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...")
+                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+                )
                 use_cache = False
 
         # decoder layers
@@ -760,7 +766,6 @@ class OpenMoeModel(OpenMoePreTrainedModel):
             if self.gradient_checkpointing and self.training:
 
                 def create_custom_forward(module):
-
                     def custom_forward(*inputs):
                         # None for past_key_value
                         return module(*inputs, output_attentions, None)
@@ -885,8 +890,9 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
         MOE_MANAGER.reset_loss()
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (output_hidden_states
-                                if output_hidden_states is not None else self.config.output_hidden_states)
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
@@ -920,7 +926,6 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
             if chunk_head == True:
 
                 def create_custom_forward(module):
-
                     def custom_forward(*inputs):
                         logits = module(inputs[0])
                         logits = logits.float()
@@ -938,8 +943,8 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
                 for batch_idx in range(hidden_states.shape[0]):
                     loss = loss + torch.utils.checkpoint.checkpoint(
                         create_custom_forward(self.lm_head),
-                        hidden_states[batch_idx:batch_idx + 1, :],
-                        labels[batch_idx:batch_idx + 1, :],
+                        hidden_states[batch_idx : batch_idx + 1, :],
+                        labels[batch_idx : batch_idx + 1, :],
                     )
                 logits = None
             else:
@@ -965,12 +970,9 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
             attentions=outputs.attentions,
         )
 
-    def prepare_inputs_for_generation(self,
-                                      input_ids,
-                                      past_key_values=None,
-                                      attention_mask=None,
-                                      inputs_embeds=None,
-                                      **kwargs):
+    def prepare_inputs_for_generation(
+        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
+    ):
         if past_key_values:
             input_ids = input_ids[:, -1:]
 
@@ -988,20 +990,23 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
         else:
             model_inputs = {"input_ids": input_ids}
 
-        model_inputs.update({
-            "position_ids": position_ids,
-            "past_key_values": past_key_values,
-            "use_cache": kwargs.get("use_cache"),
-            "attention_mask": attention_mask,
-        })
+        model_inputs.update(
+            {
+                "position_ids": position_ids,
+                "past_key_values": past_key_values,
+                "use_cache": kwargs.get("use_cache"),
+                "attention_mask": attention_mask,
+            }
+        )
         return model_inputs
 
     @staticmethod
     def _reorder_cache(past_key_values, beam_idx):
         reordered_past = ()
         for layer_past in past_key_values:
-            reordered_past += (tuple(
-                past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past),)
+            reordered_past += (
+                tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past),
+            )
         return reordered_past
 
     def _calculate_router_loss(self, aux_loss: list = None, z_loss: list = None):
@@ -1023,19 +1028,23 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
             Tuple of scalar loss.
         """
         if len(logits.shape) != len(targets.shape) + 1:
-            raise ValueError('Incorrect shapes. Got shape %s logits and %s targets' %
-                             (str(logits.shape), str(targets.shape)))
+            raise ValueError(
+                "Incorrect shapes. Got shape %s logits and %s targets" % (str(logits.shape), str(targets.shape))
+            )
         vocab_size = logits.shape[-1]
         confidence = 1.0 - self.config.label_smoothing
         low_confidence = (1.0 - confidence) / (vocab_size - 1)
-        normalizing_constant = -(confidence * math.log(confidence) +
-                                 (vocab_size - 1) * low_confidence * math.log(low_confidence + 1e-20))
+        normalizing_constant = -(
+            confidence * math.log(confidence) + (vocab_size - 1) * low_confidence * math.log(low_confidence + 1e-20)
+        )
 
         # one hot
-        soft_targets = targets[..., None] == \
-            torch.arange(vocab_size, device=targets.device).reshape((1,) * len(targets.shape) + (-1,))
-        soft_targets = torch.where(soft_targets, torch.full_like(soft_targets, confidence),
-                                   torch.full_like(soft_targets, low_confidence))
+        soft_targets = targets[..., None] == torch.arange(vocab_size, device=targets.device).reshape(
+            (1,) * len(targets.shape) + (-1,)
+        )
+        soft_targets = torch.where(
+            soft_targets, torch.full_like(soft_targets, confidence), torch.full_like(soft_targets, low_confidence)
+        )
         soft_targets = soft_targets.to(torch.float32)
 
         # cross entropy
@@ -1093,7 +1102,7 @@ class ZLossCrossEntropy(torch.autograd.Function):
         z_loss = ctx.z_loss
         logits, targets, exp_shifted, sum_exp, log_softmax, log_z = ctx.saved_tensors
         # z-loss term adds the (2 * z_loss * log_z) factor.
-        deriv = ((1 + 2 * z_loss * log_z).unsqueeze(-1) * exp_shifted / sum_exp - targets)
+        deriv = (1 + 2 * z_loss * log_z).unsqueeze(-1) * exp_shifted / sum_exp - targets
         g_logits = g.unsqueeze(-1) * deriv
         g_targets = -g.unsqueeze(-1) * log_softmax
 

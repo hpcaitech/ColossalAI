@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 
@@ -13,7 +14,6 @@ from transformers.models.llama import LlamaConfig
 from utils import PerformanceEvaluator, get_model_numel
 
 import colossalai
-from colossalai import get_default_parser
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
@@ -42,27 +42,26 @@ def load_ckpt(repo_name: str, model: OpenMoeForCausalLM, booster: Booster):
 
 
 class RandomDataset(Dataset):
-
-    def __init__(self,
-                 num_samples: int = 1000,
-                 max_length: int = 2048,
-                 vocab_size: int = 256384,
-                 tokenizer: T5Tokenizer = None):
+    def __init__(
+        self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 256384, tokenizer: T5Tokenizer = None
+    ):
         self.num_samples = num_samples
         self.max_length = max_length
         if os.path.exists("./mock_data.json"):
             self.input_ids = []
             self.attention_mask = []
-            with open("./mock_data.json", 'r') as f:
+            with open("./mock_data.json", "r") as f:
                 data = json.load(f)
             for v in data.values():
                 d = v["text"]
-                encode = tokenizer("<pad>" + d,
-                                   return_tensors="pt",
-                                   add_special_tokens=False,
-                                   max_length=max_length,
-                                   truncation=True,
-                                   padding="max_length")
+                encode = tokenizer(
+                    "<pad>" + d,
+                    return_tensors="pt",
+                    add_special_tokens=False,
+                    max_length=max_length,
+                    truncation=True,
+                    padding="max_length",
+                )
                 self.input_ids.append(encode["input_ids"])
                 self.attention_mask.append(encode["attention_mask"])
             self.input_ids = torch.cat(self.input_ids, dim=0).to(get_current_device())
@@ -87,7 +86,7 @@ class RandomDataset(Dataset):
 
 def parse_args():
     # basic settings
-    parser = get_default_parser()
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model_name",
         type=str,
@@ -159,17 +158,7 @@ def main():
     mgr_dict = {
         "seed": 42,
     }
-    if args.plugin == "zero":
-        dp_size = dist.get_world_size()
-        plugin = MoeHybridParallelPlugin(
-            pp_size=1,
-            **hybrid_dict,
-        )
-        MOE_MANAGER.setup(
-            parallel=None,
-            **mgr_dict,
-        )
-    elif args.plugin == "ep":
+    if args.plugin == "ep":
         dp_size = dist.get_world_size()
         plugin = MoeHybridParallelPlugin(
             pp_size=1,
@@ -218,12 +207,14 @@ def main():
     # Build OpenMoe model
     repo_name = "hpcaitech/openmoe-" + args.model_name
     config = LlamaConfig.from_pretrained(repo_name)
-    set_openmoe_args(config,
-                     num_experts=config.num_experts,
-                     moe_layer_interval=config.moe_layer_interval,
-                     enable_load_balance=args.load_balance,
-                     enable_kernel=args.use_kernel,
-                     enable_comm_overlap=args.overlap_alltoall)
+    set_openmoe_args(
+        config,
+        num_experts=config.num_experts,
+        moe_layer_interval=config.moe_layer_interval,
+        enable_load_balance=args.load_balance,
+        enable_kernel=args.use_kernel,
+        enable_comm_overlap=args.overlap_alltoall,
+    )
     with skip_init():
         model = OpenMoeForCausalLM(config)
     coordinator.print_on_master(f"Finish init model with config:\n{config}")
@@ -255,7 +246,7 @@ def main():
     booster = Booster(plugin=plugin, **booster_kwargs)
     load_ckpt(repo_name, model, booster)
     model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
-    use_pipeline = (isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1)
+    use_pipeline = isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     coordinator.print_on_master(f"Finish init booster")
 

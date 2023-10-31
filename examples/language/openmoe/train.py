@@ -1,26 +1,27 @@
 import argparse
 import os
+from functools import partial
+from typing import Dict
 
-import datasets
 import torch
 import torch.distributed as dist
-import transformers
+from datasets import load_dataset
 from huggingface_hub import snapshot_download
 from model.modeling_openmoe import OpenMoeForCausalLM, set_openmoe_args
 from model.openmoe_policy import OpenMoeForCausalLMPolicy
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from transformers import Adafactor, T5Tokenizer
+from transformers import T5Tokenizer
 from transformers.models.llama import LlamaConfig
 
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
-from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.moe.layers import apply_load_balance
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import skip_init
+from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
 
@@ -41,32 +42,23 @@ def load_ckpt(repo_name: str, model: OpenMoeForCausalLM, booster: Booster):
     booster.load_model(model, ckpt_path)
 
 
+def tokenize_data(batch, tokenizer: T5Tokenizer, max_length: int) -> Dict:
+    texts = ["<pad>" + sample["prompt"] + sample["completion"] for sample in batch]
+    data = tokenizer(
+        texts,
+        return_tensors="pt",
+        padding="max_length",
+        truncation=True,
+        max_length=max_length,
+        add_special_tokens=False,
+    )
+    data = {k: v.cuda() for k, v in data.items()}
+    data["labels"] = data["input_ids"].clone()
+    return data
+
+
 class RandomDataset(Dataset):
     def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000, tokenizer=None):
-        """
-        A random dataset
-
-        You can use tokenizer to process your own data
-        Example:
-            self.input_ids = []
-            self.attention_mask = []
-            data = your_data()
-            data = shuffle(data)
-            for text in data:
-                # text is a str
-                encode = tokenizer(
-                    "<pad>" + text,
-                    return_tensors="pt",
-                    add_special_tokens=False,
-                    max_length=max_length,
-                    truncation=True,
-                    padding="max_length")
-                self.input_ids.append(encode["input_ids"])
-                self.attention_mask.append(encode["attention_mask"])
-            self.input_ids = torch.cat(self.input_ids, dim=0).to(get_current_device())
-            self.attention_mask = torch.cat(self.attention_mask, dim=0).to(get_current_device())
-        """
-        # TODO: use distributed sampler
         self.num_samples = num_samples
         self.max_length = max_length
         self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device())
@@ -94,54 +86,79 @@ def parse_args():
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
-        "--output_path",
-        type=str,
-        default="./output_model.bin",
-        help="The path of your saved model after finetuning.",
-    )
-    parser.add_argument("--num_epoch", type=int, default=10, help="Number of epochs.")
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=4,
-        help="Batch size (per dp group) for the training dataloader.",
-    )
-    parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
-    parser.add_argument(
         "--plugin",
         type=str,
         default="hybrid",
-        help="parallel plugin",
         choices=["ep", "ep_zero", "hybrid"],
+        help="Parallel methos. ep_zero is recommended for general cases. ep can provides least memory consumption and hybrid suits large scale training.",
+    )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        default="./outputs",
+        help="The path of your saved model after finetuning.",
+    )
+    parser.add_argument("--num_epoch", type=int, default=1, help="Number of epochs.")
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=1,
+        help="Batch size (per dp group) for the training dataloader.",
+    )
+    parser.add_argument(
+        "--save_interval",
+        type=int,
+        default=1000,
+        help=" The interval (steps) of saving checkpoints.",
+    )
+    parser.add_argument(
+        "--precision",
+        type=str,
+        default="bf16",
+        choices=["fp32", "bf16", "fp16"],
+        help="The mixed precision training.",
+    )
+    parser.add_argument("--max_length", type=int, default=2048, help="Max sequence length.")
+    parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="yizhongw/self_instruct",
+        help="dataset name from `datasets` repo.",
+    )
+    parser.add_argument(
+        "--task_name",
+        type=str,
+        default="super_natural_instructions",
+        help="task of corresponding dataset.",
     )
 
     # optim
-    parser.add_argument("--decay_rate", type=float, default=-0.8, help="adafactor optim decay rate.")
-    parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay to use.")
     parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate.")
+    parser.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay to use.")
 
     # zero stage for all plugins
-    parser.add_argument("--zero_stage", type=int, default=2, help="zero stage in hybrid plugin")
-
-    # ep zero plugin
-    parser.add_argument("--extra_dp_size", type=int, default=1, help="ep zero's moe dp size")
-
+    parser.add_argument("--zero_stage", type=int, default=2, help="zero stage.")
+    # ep_zero plugin
+    parser.add_argument(
+        "--extra_dp_size", type=int, default=1, help="ep_zero plugin's moe dp size. Recommended to be 2 or 4."
+    )
     # hybrid plugin
-    parser.add_argument("--pp_size", type=int, default=2, help="pp size")
-    parser.add_argument("--dp_size", type=int, default=1, help="dp size")
-    parser.add_argument("--ep_size", type=int, default=2, help="ep size")
-    parser.add_argument("--microbatch_size", type=int, default=1, help="microbatch size")
+    parser.add_argument("--pp_size", type=int, default=2, help="pp size for hybrid plugin")
+    parser.add_argument("--dp_size", type=int, default=1, help="dp size for hybrid plugin")
+    parser.add_argument("--ep_size", type=int, default=2, help="ep size for hybrid plugin")
+    parser.add_argument("--microbatch_size", type=int, default=1, help="Microbatch size in pipeline for hybrid plugin")
 
     # kernel
     parser.add_argument(
         "--use_kernel",
         action="store_true",
-        help="Use kernel optim. Need to install flash attention and triton to enable all kernel optimizations.",
+        help="Use kernel optim. Need to install flash attention and triton to enable all kernel optimizations. Skip if not installed.",
     )
     parser.add_argument(
         "--use_layernorm_kernel",
         action="store_true",
-        help="Use layernorm kernel. Need to install apex.",
+        help="Use layernorm kernel. Need to install apex. Raise error if not installed.",
     )
 
     # loss
@@ -149,23 +166,30 @@ def parse_args():
         "--router_aux_loss_factor",
         type=float,
         default=0.01,
-        help="router_aux_loss_factor.",
+        help="Moe router z loss. You can refer to STMoE for details.",
     )
     parser.add_argument(
         "--router_z_loss_factor",
         type=float,
         default=0.0001,
-        help="router_z_loss_factor.",
+        help="Moe router aux loss. You can refer to STMoE for details.",
     )
-    parser.add_argument("--label_smoothing", type=float, default=0.0, help="label_smoothing.")
-    parser.add_argument("--z_loss_factor", type=float, default=0.0001, help="z_loss_factor.")
+    parser.add_argument("--label_smoothing", type=float, default=0.0, help="Label smoothing.")
+    parser.add_argument(
+        "--z_loss_factor", type=float, default=0.0001, help="The final outputs' classification z loss factor."
+    )
 
     # load balance
-    parser.add_argument("--load_balance", action="store_true", help="moe load balance")
-    parser.add_argument("--load_balance_interval", type=int, default=1000, help="moe load balance interval")
-
-    # overlap
-    parser.add_argument("--comm_overlap", action="store_true", help="moe comm overlap")
+    parser.add_argument(
+        "--load_balance", action="store_true", help="Expert load balance. Defaults to False. Recommend to enable."
+    )
+    parser.add_argument("--load_balance_interval", type=int, default=1000, help="Expert load balance interval.")
+    # communicate overlap
+    parser.add_argument(
+        "--comm_overlap",
+        action="store_true",
+        help="Use communication overlap for MoE. Recommended to enable for muiti-node training.",
+    )
 
     args = parser.parse_args()
     return args
@@ -179,16 +203,6 @@ def main():
     coordinator = DistCoordinator()
     test_mode = args.model_name == "test"
 
-    # Manage loggers
-    disable_existing_loggers()
-    logger = get_dist_logger()
-    if coordinator.is_master():
-        datasets.utils.logging.set_verbosity_warning()
-        transformers.utils.logging.set_verbosity_info()
-    else:
-        datasets.utils.logging.set_verbosity_error()
-        transformers.utils.logging.set_verbosity_error()
-
     # Set plugin
     booster_kwargs = {}
     hybrid_dict = {
@@ -196,7 +210,7 @@ def main():
         "custom_policy": OpenMoeForCausalLMPolicy(),
         "enable_fused_normalization": args.use_layernorm_kernel,
         "enable_jit_fused": args.use_kernel,
-        "precision": "bf16",
+        "precision": args.precision,
         "zero_stage": args.zero_stage,
     }
     mgr_dict = {
@@ -245,13 +259,13 @@ def main():
         )
     else:
         raise ValueError(f"Invalid plugin {args.plugin}")
-    logger.info(f"Set plugin as {plugin}", ranks=[0])
+    coordinator.print_on_master(f"Set plugin as {plugin.__class__.__name__}")
 
     # Build OpenMoe model
     if test_mode:
         config = LlamaConfig.from_pretrained("hpcaitech/openmoe-base")
-        config.hidden_size = 64
-        config.intermediate_size = 128
+        config.hidden_size = 128
+        config.intermediate_size = 256
         config.vocab_size = 32000
     else:
         repo_name = "hpcaitech/openmoe-" + args.model_name
@@ -269,30 +283,38 @@ def main():
     )
     with skip_init():
         model = OpenMoeForCausalLM(config)
-    logger.info(f"Finish init model with config:\n{config}", ranks=[0])
+    coordinator.print_on_master(f"Finish init model with config:\n{config}")
 
     # Enable gradient checkpointing
     model.gradient_checkpointing_enable()
 
     # Prepare tokenizer and dataloader
     tokenizer = T5Tokenizer.from_pretrained("google/umt5-small")
-    dataset = RandomDataset(num_samples=1000 if not test_mode else 20, tokenizer=tokenizer)
-    dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
+    if test_mode:
+        dataset = RandomDataset(num_samples=20, tokenizer=tokenizer)
+        collate_fn = None
+    else:
+        dataset = load_dataset(args.dataset, args.task_name)
+        dataset = dataset["train"]
+        collate_fn = partial(tokenize_data, tokenizer=tokenizer, max_length=args.max_length)
+    dataloader = plugin.prepare_dataloader(
+        dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, collate_fn=collate_fn
+    )
 
     # Set optimizer
-    optimizer = Adafactor(model.parameters(), decay_rate=args.decay_rate, weight_decay=args.weight_decay)
+    optimizer = HybridAdam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
-    model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
     if not test_mode:
         load_ckpt(repo_name, model, booster)
+    model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
     use_pipeline = isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
-    logger.info(f"Finish init booster", ranks=[0])
+    coordinator.print_on_master(f"Finish init booster")
 
     # Start finetuning
-    logger.info(f"Start finetuning", ranks=[0])
+    coordinator.print_on_master(f"Start finetuning")
     for epoch in range(args.num_epoch):
         model.train()
         train_dataloader_iter = iter(dataloader)
@@ -331,14 +353,24 @@ def main():
                 optimizer.zero_grad()
 
                 # Apply load balance
-                if args.load_balance and args.load_balance_interval > 0 and step % args.load_balance_interval == 0:
+                if (
+                    args.load_balance
+                    and args.load_balance_interval > 0
+                    and (step + 1) % args.load_balance_interval == 0
+                ):
                     coordinator.print_on_master(f"Apply load balance")
                     apply_load_balance(model, optimizer)
+                # save ckeckpoint
+                if (step + 1) % args.save_interval == 0:
+                    coordinator.print_on_master(f"Saving model checkpoint to {args.output_path}")
+                    booster.save_model(model, args.output_path, shard=True)
 
-    # Finish training and evaluate
-    logger.info(f"Finish finetuning", ranks=[0])
-    booster.save_model(model, args.output_path)
-    logger.info(f"Saving model checkpoint to {args.output_path}", ranks=[0])
+        # save checkpoint at the end of each epochs
+        booster.save_model(model, args.output_path, shard=True)
+        coordinator.print_on_master(f"Saving model checkpoint to {args.output_path}")
+
+    # Finish training
+    coordinator.print_on_master(f"Finish training")
 
 
 if __name__ == "__main__":
