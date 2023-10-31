@@ -12,10 +12,10 @@ export TORCH_DISTRIBUTED_DEBUG=INFO
 export TORCH_DISTRIBUTED_DETAIL=DEBUG
 export GLOO_SOCKET_IFNAME=eth0
 
+NUM_GPU=8
 MODEL="8b"
-BATCH_SIZE=1
 SEQ_LENGTH=2048
-WARMUP=8
+WARMUP=20
 ACTIVE=4
 
 # HACK: make model importable
@@ -26,19 +26,32 @@ else
     export PYTHONPATH=$example_dir:$PYTHONPATH
 fi
 
-# single node
-torchrun --standalone $example_dir/benchmark/benchmark_fsdp.py \
-    --model_name $MODEL \
-    --batch_size $BATCH_SIZE \
-    --seq_length $SEQ_LENGTH \
-    --warmup $WARMUP \
-    --active $ACTIVE
 
-# multi node
-torchrun --nproc_per_node=8 --nnodes=2 --node_rank=node_rank --master_addr=master_addr --master_port=master_port \
-    $example_dir/benchmark/benchmark_fsdp.py \
+# ep
+echo -e "\n\n Naive EP \n\n"
+colossalai run --nproc_per_node $NUM_GPU --hostfile "hostfile.txt" \
+    $example_dir/benchmark/benchmark_cai.py \
     --model_name $MODEL \
-    --batch_size $BATCH_SIZE \
+    --batch_size 12 \
     --seq_length $SEQ_LENGTH \
     --warmup $WARMUP \
-    --active $ACTIVE
+    --active $ACTIVE \
+    --plugin ep \
+    --zero_stage 2
+
+
+# ep_zero
+echo -e "\n\n EP-ZERO \n\n"
+colossalai run --nproc_per_node $NUM_GPU --hostfile "hostfile.txt" \
+    $example_dir/benchmark/benchmark_cai.py \
+    --model_name $MODEL \
+    --batch_size 20 \
+    --seq_length $SEQ_LENGTH \
+    --warmup $WARMUP \
+    --active $ACTIVE \
+    --plugin ep_zero \
+    --use_kernel \
+    --extra_dp_size 2 \
+    --zero_stage 1 \
+    --load_balance \
+    --overlap_alltoall

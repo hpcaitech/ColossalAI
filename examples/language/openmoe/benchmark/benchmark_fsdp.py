@@ -4,9 +4,8 @@ import os
 
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 import tqdm
-from model.modeling_openmoe import LlamaConfig, OpenMoeDecoderLayer, OpenMoeForCausalLM
+from model.modeling_openmoe import LlamaConfig, OpenMoeDecoderLayer, OpenMoeForCausalLM, set_openmoe_args
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.fully_sharded_data_parallel import MixedPrecision
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
@@ -19,7 +18,6 @@ from colossalai.moe.manager import MOE_MANAGER
 
 
 class RandomDataset(Dataset):
-
     def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000):
         self.num_samples = num_samples
         self.max_length = max_length
@@ -38,12 +36,12 @@ class RandomDataset(Dataset):
 
 
 def fsdp_main(rank, world_size, args):
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "14501"
     # initialize the process group
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
-    MOE_MANAGER.setup(seed=42, parallel=None, use_kernel_optim=False)
+    # initialize the process group
+    dist.init_process_group("nccl")
+
+    MOE_MANAGER.setup(seed=42, parallel=None)
 
     dp_size = dist.get_world_size()
     dataset = RandomDataset(
@@ -56,10 +54,14 @@ def fsdp_main(rank, world_size, args):
     torch.cuda.set_device(rank)
 
     config = LlamaConfig.from_pretrained("hpcaitech/openmoe-%s" % args.model_name)
-    setattr(config, "router_aux_loss_factor", 0.1)
-    setattr(config, "router_z_loss_factor", 0.1)
-    setattr(config, "label_smoothing", 0.1)
-    setattr(config, "z_loss_factor", 0.1)
+    set_openmoe_args(
+        config,
+        num_experts=config.num_experts,
+        moe_layer_interval=config.moe_layer_interval,
+        enable_load_balance=False,
+        enable_kernel=False,
+        enable_comm_overlap=False,
+    )
     torch.set_default_dtype(torch.float16)
     model = OpenMoeForCausalLM(config)
     torch.set_default_dtype(torch.float32)
@@ -72,9 +74,9 @@ def fsdp_main(rank, world_size, args):
     model = FSDP(
         model,
         mixed_precision=MixedPrecision(
-            param_dtype=torch.float16,
-            reduce_dtype=torch.float16,
-            buffer_dtype=torch.float16,
+            param_dtype=torch.bfloat16,
+            reduce_dtype=torch.bfloat16,
+            buffer_dtype=torch.bfloat16,
         ),
         auto_wrap_policy=auto_wrap_policy,
         device_id=torch.cuda.current_device(),
@@ -132,5 +134,6 @@ if __name__ == "__main__":
 
     torch.manual_seed(42)
 
-    WORLD_SIZE = torch.cuda.device_count()
-    mp.spawn(fsdp_main, args=(WORLD_SIZE, args), nprocs=WORLD_SIZE, join=True)
+    world_size = int(os.environ["WORLD_SIZE"])
+    local_rank = int(os.environ["LOCAL_RANK"])
+    fsdp_main(local_rank, world_size, args)
