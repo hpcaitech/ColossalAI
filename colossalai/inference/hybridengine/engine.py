@@ -16,11 +16,6 @@ PP_AXIS, TP_AXIS = 0, 1
 
 _supported_models = [
     "LlamaForCausalLM",
-    "BloomForCausalLM",
-    "ChatGLMModel",
-    "ChatGLMForConditionalGeneration",
-    "LlamaGPTQForCausalLM",
-    "BloomGPTQForCausalLM",
 ]
 
 
@@ -29,13 +24,12 @@ class CaiInferEngine:
     InferEngine is a class that handles the pipeline parallel inference.
 
     Args:
-        pp_size (int): the number of pipeline stages.
-        pp_model (`nn.Module`): the model already in pipeline parallelism style.
+        tp_size (int): the size of tensor parallelism.
+        pp_size (int): the size of pipeline parallelism.
         model (`nn.Module`): the model not in pipeline style, and will be modified with `ShardFormer`.
         model_policy (`colossalai.shardformer.policies.base_policy.Policy`): the policy to shardformer model.
         micro_batch_size (int): the micro batch size.
         micro_batch_buffer_size (int): the buffer size for micro batch. Normally, it should be the same as the number of pipeline stages.
-        early_stopping (bool): whether to stop early.
         max_batch_size (int): the maximum batch size.
         max_input_len (int): the maximum input length.
         max_output_len (int): the maximum output length.
