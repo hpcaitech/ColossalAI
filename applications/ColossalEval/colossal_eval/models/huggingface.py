@@ -96,7 +96,7 @@ class HuggingFaceModel(BaseModel):
             self.logger.warning("pad_token_id is not set for the tokenizer. " "Using eos_token_id as pad_token_id.")
             if self.tokenizer.eos_token:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
-            elif self.tokenizer.eod_id:
+            elif hasattr(self.tokenizer, "eod_id"):
                 # Qwen has an eod token "<|endoftext|>".
                 self.tokenizer.pad_token_id = self.tokenizer.eod_id
 
