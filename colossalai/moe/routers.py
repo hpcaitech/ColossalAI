@@ -360,8 +360,7 @@ class TopKRouter(MoeRouter):
         Returns:
             Dispatch and combine arrays for routing with masked matmuls.
         """
-        # TODO: add parallel group
-        raise RuntimeError("Not tested yet.")
+        # TODO: FIXME: add parallel group
         num_groups, _, num_experts = router_probs.shape
 
         # Top-k router probability and corresponding expert indices for each token.
