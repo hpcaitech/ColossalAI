@@ -22,19 +22,18 @@ def jload(f, mode="r"):
     return jdict
 
 
-def read_data_by_schema(data, schema: str):
+def read_string_by_schema(data, schema: str):
+    """
+    Read a feild of the dataset be schema
+    Args:
+        data: List[Any]
+        schema: cascaded feild names seperated by '.'. e.g. person.name.first will access data['person']['name']['first']
+    """
     keys = schema.split(".")
     result = data
     for key in keys:
-        result = result.get(key)
+        result = result.get(key, None)
         if result is None:
-            return None
+            return ""
+    assert isinstance(result, str), f"dataset element is not a string: {result}"
     return result
-
-
-def read_string_by_schema(data, schema: str):
-    ret = read_data_by_schema(data, schema)
-    if ret:
-        return ret
-    else:
-        return ""

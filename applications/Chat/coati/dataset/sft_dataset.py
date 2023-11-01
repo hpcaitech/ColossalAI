@@ -143,8 +143,8 @@ class SFTDataset(Dataset):
             logger.info(
                 "Display the first two item in the SFT dataset, to disable this message, set verbose=False in the SFTDataset constructor"
             )
-            logger.info("prompt: ", sources[:2])
-            logger.info("target: ", targets[:2])
+            logger.info("prompt:\n" + str(sources[:2]))
+            logger.info("target:\n" + str(targets[:2]))
 
         logger.info("Tokenizing inputs... This may take some time...")
         if isinstance(tokenizer, ChatGLMTokenizer):
@@ -204,8 +204,8 @@ class SupervisedDataset(Dataset):
             logger.info(
                 "Display the first two item in the supervised dataset, to disable this message, set verbose=False in the SupervisedDataset constructor"
             )
-            logger.info("prompt: ", sources[:2])
-            logger.info("target: ", targets[:2])
+            logger.info("prompt:\n" + str(sources[:2]))
+            logger.info("target:\n" + str(targets[:2]))
         logger.info("Tokenizing inputs... This may take some time...")
         if isinstance(tokenizer, ChatGLMTokenizer):
             self.input_ids, self.labels, self.attention_mask = _preprocess_chatglm(

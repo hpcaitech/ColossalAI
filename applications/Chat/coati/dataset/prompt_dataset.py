@@ -35,8 +35,10 @@ class PromptDataset(Dataset):
         instructions = [
             read_string_by_schema(data_dict, dataset_schema["instruction"]) + "\n" for data_dict in list_data_dict
         ]
-        print("prompt dataset")
-        print(instructions[:2])
+        self.logger.info(
+            "Display the first two item in the prompt dataset, to disable this message, set verbose=False in the PromptDataset constructor"
+        )
+        self.logger.info("prompt dataset:\n\t" + "\n\t".join([s for s in instructions[:2]]))
         tokens = tokenizer(
             instructions, return_tensors="pt", max_length=max_length, padding="max_length", truncation=True
         )
