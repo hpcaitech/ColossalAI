@@ -120,6 +120,9 @@ class SFTDataset(Dataset):
         dataset: dataset for supervised model
         tokenizer: tokenizer for supervised model
         max_length: max length of input
+        verbose: whether to display the first two item in the dataset
+        dataset_schema: schema for reading the dataset. cascaded feild names seperated by '.'.
+             e.g. person.name.first will access data['person']['name']['first']
     """
 
     def __init__(
@@ -168,7 +171,18 @@ class SFTDataset(Dataset):
 
 
 class SupervisedDataset(Dataset):
-    """Dataset for supervised fine-tuning."""
+    """Dataset for supervised fine-tuning.
+
+    Args:
+        dataset: dataset for supervised model
+        tokenizer: tokenizer for supervised model
+        max_datasets_size: number of examples to use from the dataset
+        max_length: max length of input
+        prompt_dict: prompts for the dataset used to format prompt
+        verbose: whether to display the first two item in the dataset
+        dataset_schema: schema for reading the dataset. cascaded feild names seperated by '.'.
+             e.g. person.name.first will access data['person']['name']['first']
+    """
 
     def __init__(
         self,

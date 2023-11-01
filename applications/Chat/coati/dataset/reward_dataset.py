@@ -19,6 +19,9 @@ class PreferenceDataset(Dataset):
         tokenizer: tokenizer for reward model
         max_length: max length of input
         special_token: special token at the end of sentence
+        verbose: whether to display the first two item in the dataset
+        dataset_schema: schema for reading the dataset. cascaded feild names seperated by '.'.
+             e.g. person.name.first will access data['person']['name']['first']
     """
 
     def __init__(
