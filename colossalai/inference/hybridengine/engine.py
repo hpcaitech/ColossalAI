@@ -142,7 +142,7 @@ class CaiInferEngine:
         shardconfig = ShardConfig(
             tensor_parallel_process_group=tp_group,
             pipeline_stage_manager=stage_manager,
-            enable_tensor_parallelism=False,
+            enable_tensor_parallelism=True if self.tp_size > 1 else False,
             enable_fused_normalization=False,
             enable_all_optimization=False,
             enable_flash_attention=False,
