@@ -27,7 +27,9 @@ jobs:
         echo $new_version > ./version.txt
         echo "version=$new_version" >> $GITHUB_OUTPUT
 
-    - run: python setup.py sdist build
+    - run: |
+        pip install --upgrade pip
+        python setup.py sdist build
 
     # publish to PyPI if executed on the main branch
     - name: Publish package to PyPI
