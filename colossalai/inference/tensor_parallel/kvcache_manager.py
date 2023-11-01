@@ -103,4 +103,4 @@ class MemoryManager:
         self.available_size = len(self.mem_state)
         self.mem_state[:] = 1
         self.max_len_in_batch = 0
-        self.logger.info("freed all space of memory manager")
+        # self.logger.info("freed all space of memory manager")
