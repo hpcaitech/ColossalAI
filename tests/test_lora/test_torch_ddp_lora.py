@@ -62,17 +62,33 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
 def check_checkpoint(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type):
     plugin = TorchDDPPlugin()
     lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
+    criterion = loss_fn
 
     model_save = model_fn()
     model_load = copy.deepcopy(model_save)
 
     booster = Booster(plugin=plugin)
     model_save = booster.enable_lora(model_save, lora_config=lora_config)
-    model_save, _, _, _, _ = booster.boost(model_save)
+    optimizer_save = AdamW(model_save.parameters(), lr=0.001)
+    model_save, optimizer_save, _, _, _ = booster.boost(model_save, optimizer_save)
+
+    data = data_gen_fn()
+    data = {k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
+
+    output = model_save(**data)
+    output = output_transform_fn(output)
+    loss = criterion(output)
+
+    booster.backward(loss, optimizer_save)
+    optimizer_save.clip_grad_by_norm(1.0)
+    optimizer_save.step()
 
     with shared_tempdir() as tempdir:
-        lora_ckpt_path = os.path.join(tempdir, "ckpt")
+        lora_ckpt_path = os.path.join(tempdir, "model_ckpt")
+        optimizer_ckpt_path = os.path.join(tempdir, "optimizer_ckpt")
+
         booster.save_lora_as_pretrained(model_save, lora_ckpt_path)
+        booster.save_optimizer(optimizer_save, optimizer_ckpt_path)
         dist.barrier()
 
         # The Lora checkpoint should be small in size
@@ -80,9 +96,13 @@ def check_checkpoint(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_t
         assert checkpoint_size_mb < 1
 
         model_load = booster.enable_lora(model_load, pretrained_dir=lora_ckpt_path)
-        model_load, _, _, _, _ = booster.boost(model_load)
+        optimizer_load = AdamW(model_save.parameters(), lr=0.001)
+        model_load, optimizer_load, _, _, _ = booster.boost(model_load, optimizer_load)
+
+        booster.load_optimizer(optimizer_load, optimizer_ckpt_path)
 
         check_state_dict_equal(model_save.state_dict(), model_load.state_dict())
+        check_state_dict_equal(optimizer_save.state_dict(), optimizer_load.state_dict())
 
 
 def run_lora_test():
