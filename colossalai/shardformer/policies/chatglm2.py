@@ -106,10 +106,12 @@ class ChatGLMPolicy(Policy):
                         SubModuleReplacementDescription(
                             suffix="input_layernorm",
                             target_module=col_nn.FusedLayerNorm,
+                            kwargs={"sp_partial_derived": use_sequence_parallel},
                         ),
                         SubModuleReplacementDescription(
                             suffix="post_attention_layernorm",
                             target_module=col_nn.FusedLayerNorm,
+                            kwargs={"sp_partial_derived": use_sequence_parallel},
                         ),
                     ],
                     policy=policy,
@@ -134,10 +136,12 @@ class ChatGLMPolicy(Policy):
                         SubModuleReplacementDescription(
                             suffix="input_layernorm",
                             target_module=col_nn.FusedRMSNorm,
+                            kwargs={"sp_partial_derived": use_sequence_parallel},
                         ),
                         SubModuleReplacementDescription(
                             suffix="post_attention_layernorm",
                             target_module=col_nn.FusedRMSNorm,
+                            kwargs={"sp_partial_derived": use_sequence_parallel},
                         ),
                     ],
                     policy=policy,
