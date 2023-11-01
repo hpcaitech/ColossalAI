@@ -63,6 +63,12 @@ class BertPolicy(Policy):
         )
 
         policy = {}
+
+        if self.shard_config.enable_fused_normalization:
+            norm_cls = col_nn.FusedLayerNorm
+        else:
+            norm_cls = col_nn.LayerNorm
+
         use_sequence_parallel = self.shard_config.enable_sequence_parallelism
         overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
@@ -144,35 +150,34 @@ class BertPolicy(Policy):
             )
 
         # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            # Handle bert layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="attention.output.LayerNorm",
-                        target_module=col_nn.FusedLayerNorm,
-                        kwargs={"sp_partial_derived": use_sequence_parallel},
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="output.LayerNorm",
-                        target_module=col_nn.FusedLayerNorm,
-                        kwargs={"sp_partial_derived": use_sequence_parallel},
-                    ),
-                ],
-                policy=policy,
-                target_key=BertLayer,
-            )
-            # handle embedding layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="LayerNorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    )
-                ],
-                policy=policy,
-                target_key=BertEmbeddings,
-            )
+        # Handle bert layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="attention.output.LayerNorm",
+                    target_module=norm_cls,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+                SubModuleReplacementDescription(
+                    suffix="output.LayerNorm",
+                    target_module=norm_cls,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+            ],
+            policy=policy,
+            target_key=BertLayer,
+        )
+        # handle embedding layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="LayerNorm",
+                    target_module=norm_cls,
+                )
+            ],
+            policy=policy,
+            target_key=BertEmbeddings,
+        )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:

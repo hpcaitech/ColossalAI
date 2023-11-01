@@ -55,6 +55,11 @@ class WhisperPolicy(Policy):
 
         policy = {}
 
+        if self.shard_config.enable_fused_normalization:
+            norm_cls = col_nn.FusedLayerNorm
+        else:
+            norm_cls = col_nn.LayerNorm
+
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn(
@@ -164,62 +169,61 @@ class WhisperPolicy(Policy):
             )
 
         # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            # Handle encoder layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="self_attn_layer_norm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="final_layer_norm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=WhisperEncoderLayer,
-            )
+        # Handle encoder layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="self_attn_layer_norm",
+                    target_module=norm_cls,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="final_layer_norm",
+                    target_module=norm_cls,
+                ),
+            ],
+            policy=policy,
+            target_key=WhisperEncoderLayer,
+        )
 
-            # Handle decoder layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="self_attn_layer_norm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="final_layer_norm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=WhisperDecoderLayer,
-            )
+        # Handle decoder layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="self_attn_layer_norm",
+                    target_module=norm_cls,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="final_layer_norm",
+                    target_module=norm_cls,
+                ),
+            ],
+            policy=policy,
+            target_key=WhisperDecoderLayer,
+        )
 
-            # handle encoder layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="layer_norm",
-                        target_module=col_nn.FusedLayerNorm,
-                    )
-                ],
-                policy=policy,
-                target_key=WhisperEncoder,
-            )
+        # handle encoder layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="layer_norm",
+                    target_module=norm_cls,
+                )
+            ],
+            policy=policy,
+            target_key=WhisperEncoder,
+        )
 
-            # handle decoder layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="layer_norm",
-                        target_module=col_nn.FusedLayerNorm,
-                    )
-                ],
-                policy=policy,
-                target_key=WhisperDecoder,
-            )
+        # handle decoder layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="layer_norm",
+                    target_module=norm_cls,
+                )
+            ],
+            policy=policy,
+            target_key=WhisperDecoder,
+        )
 
         # enable flash attention
         if self.shard_config.enable_flash_attention:

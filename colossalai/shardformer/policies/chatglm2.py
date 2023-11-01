@@ -48,6 +48,16 @@ class ChatGLMPolicy(Policy):
 
         policy = {}
 
+        if self.shard_config.enable_fused_normalization:
+            if self.model.config.rmsnorm:
+                norm_cls = col_nn.FusedRMSNorm
+            else:
+                norm_cls = col_nn.FusedLayerNorm
+        else:
+            if self.model.config.rmsnorm:
+                norm_cls = col_nn.RMSNorm
+            else:
+                norm_cls = col_nn.LayerNorm
         use_sequence_parallel = self.shard_config.enable_sequence_parallelism
         overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
@@ -99,66 +109,34 @@ class ChatGLMPolicy(Policy):
             )
 
         # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            if not self.model.config.rmsnorm:
-                self.append_or_create_submodule_replacement(
-                    description=[
-                        SubModuleReplacementDescription(
-                            suffix="input_layernorm",
-                            target_module=col_nn.FusedLayerNorm,
-                            kwargs={"sp_partial_derived": use_sequence_parallel},
-                        ),
-                        SubModuleReplacementDescription(
-                            suffix="post_attention_layernorm",
-                            target_module=col_nn.FusedLayerNorm,
-                            kwargs={"sp_partial_derived": use_sequence_parallel},
-                        ),
-                    ],
-                    policy=policy,
-                    target_key=GLMBlock,
-                )
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="input_layernorm",
+                    target_module=norm_cls,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+                SubModuleReplacementDescription(
+                    suffix="post_attention_layernorm",
+                    target_module=norm_cls,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+            ],
+            policy=policy,
+            target_key=GLMBlock,
+        )
 
-                if self.model.config.post_layer_norm:
-                    self.append_or_create_submodule_replacement(
-                        description=[
-                            SubModuleReplacementDescription(
-                                suffix="encoder.final_layernorm",
-                                target_module=col_nn.FusedLayerNorm,
-                            )
-                        ],
-                        policy=policy,
-                        target_key=ChatGLMModel,
+        if self.model.config.post_layer_norm:
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="encoder.final_layernorm",
+                        target_module=norm_cls,
                     )
-
-            else:
-                self.append_or_create_submodule_replacement(
-                    description=[
-                        SubModuleReplacementDescription(
-                            suffix="input_layernorm",
-                            target_module=col_nn.FusedRMSNorm,
-                            kwargs={"sp_partial_derived": use_sequence_parallel},
-                        ),
-                        SubModuleReplacementDescription(
-                            suffix="post_attention_layernorm",
-                            target_module=col_nn.FusedRMSNorm,
-                            kwargs={"sp_partial_derived": use_sequence_parallel},
-                        ),
-                    ],
-                    policy=policy,
-                    target_key=GLMBlock,
-                )
-
-                if self.model.config.post_layer_norm:
-                    self.append_or_create_submodule_replacement(
-                        description=[
-                            SubModuleReplacementDescription(
-                                suffix="encoder.final_layernorm",
-                                target_module=col_nn.FusedRMSNorm,
-                            )
-                        ],
-                        policy=policy,
-                        target_key=ChatGLMModel,
-                    )
+                ],
+                policy=policy,
+                target_key=ChatGLMModel,
+            )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:

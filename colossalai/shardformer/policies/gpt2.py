@@ -42,6 +42,11 @@ class GPT2Policy(Policy):
         from transformers.models.gpt2.modeling_gpt2 import GPT2Attention, GPT2Block, GPT2Model
 
         policy = {}
+
+        if self.shard_config.enable_fused_normalization:
+            norm_cls = col_nn.FusedLayerNorm
+        else:
+            norm_cls = col_nn.LayerNorm
         use_sequence_parallel = self.shard_config.enable_sequence_parallelism
         overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
@@ -105,38 +110,37 @@ class GPT2Policy(Policy):
             )
 
         # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            self.append_or_create_submodule_replacement(
-                description=SubModuleReplacementDescription(
-                    suffix="ln_f",
-                    target_module=col_nn.FusedLayerNorm,
-                ),
-                policy=policy,
-                target_key=GPT2Model,
-            )
+        self.append_or_create_submodule_replacement(
+            description=SubModuleReplacementDescription(
+                suffix="ln_f",
+                target_module=norm_cls,
+            ),
+            policy=policy,
+            target_key=GPT2Model,
+        )
 
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="ln_1",
-                        target_module=col_nn.FusedLayerNorm,
-                        kwargs={"sp_partial_derived": use_sequence_parallel},
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="ln_2",
-                        target_module=col_nn.FusedLayerNorm,
-                        kwargs={"sp_partial_derived": use_sequence_parallel},
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="ln_cross_attn",
-                        target_module=col_nn.FusedLayerNorm,
-                        ignore_if_not_exist=True,
-                        kwargs={"sp_partial_derived": use_sequence_parallel},
-                    ),
-                ],
-                policy=policy,
-                target_key=GPT2Block,
-            )
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="ln_1",
+                    target_module=norm_cls,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+                SubModuleReplacementDescription(
+                    suffix="ln_2",
+                    target_module=norm_cls,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+                SubModuleReplacementDescription(
+                    suffix="ln_cross_attn",
+                    target_module=norm_cls,
+                    ignore_if_not_exist=True,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+            ],
+            policy=policy,
+            target_key=GPT2Block,
+        )
 
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(

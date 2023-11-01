@@ -5,7 +5,7 @@ from typing import Callable, Dict, List
 import torch.nn as nn
 from torch import Tensor, nn
 
-from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import FusedLayerNorm, LayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
 from .._utils import getattr_
 from ..modeling.jit import get_jit_fused_dropout_add_func
@@ -45,6 +45,12 @@ class OPTPolicy(Policy):
         from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer
 
         policy = {}
+
+        if self.shard_config.enable_fused_normalization:
+            norm_cls = FusedLayerNorm
+        else:
+            norm_cls = LayerNorm
+
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn("OPT dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
@@ -97,26 +103,25 @@ class OPTPolicy(Policy):
             )
 
         # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            self.append_or_create_submodule_replacement(
-                description=SubModuleReplacementDescription(
-                    suffix="final_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True
+        self.append_or_create_submodule_replacement(
+            description=SubModuleReplacementDescription(
+                suffix="final_layer_norm", target_module=norm_cls, ignore_if_not_exist=True
+            ),
+            policy=policy,
+            target_key=OPTDecoder,
+        )
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="self_attn_layer_norm", target_module=norm_cls, ignore_if_not_exist=True
                 ),
-                policy=policy,
-                target_key=OPTDecoder,
-            )
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="self_attn_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="final_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True
-                    ),
-                ],
-                policy=policy,
-                target_key=OPTDecoderLayer,
-            )
+                SubModuleReplacementDescription(
+                    suffix="final_layer_norm", target_module=norm_cls, ignore_if_not_exist=True
+                ),
+            ],
+            policy=policy,
+            target_key=OPTDecoderLayer,
+        )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:

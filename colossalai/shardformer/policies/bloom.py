@@ -45,6 +45,10 @@ class BloomPolicy(Policy):
 
         policy = {}
 
+        if self.shard_config.enable_fused_normalization:
+            norm_cls = col_nn.FusedLayerNorm
+        else:
+            norm_cls = col_nn.LayerNorm
         use_sequence_parallel = self.shard_config.enable_sequence_parallelism
         overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
@@ -100,40 +104,39 @@ class BloomPolicy(Policy):
             )
 
         # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            # handle bloom model
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="ln_f",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="word_embeddings_layernorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=BloomModel,
-            )
+        # handle bloom model
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="ln_f",
+                    target_module=norm_cls,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="word_embeddings_layernorm",
+                    target_module=norm_cls,
+                ),
+            ],
+            policy=policy,
+            target_key=BloomModel,
+        )
 
-            # handle bloom block
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="input_layernorm",
-                        target_module=col_nn.FusedLayerNorm,
-                        kwargs={"sp_partial_derived": use_sequence_parallel},
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="post_attention_layernorm",
-                        target_module=col_nn.FusedLayerNorm,
-                        kwargs={"sp_partial_derived": use_sequence_parallel},
-                    ),
-                ],
-                policy=policy,
-                target_key=BloomBlock,
-            )
+        # handle bloom block
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="input_layernorm",
+                    target_module=norm_cls,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+                SubModuleReplacementDescription(
+                    suffix="post_attention_layernorm",
+                    target_module=norm_cls,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+            ],
+            policy=policy,
+            target_key=BloomBlock,
+        )
 
         if use_sequence_parallel:
             self.append_or_create_method_replacement(
