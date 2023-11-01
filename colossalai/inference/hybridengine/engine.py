@@ -85,6 +85,8 @@ class CaiInferEngine:
         assert max_batch_size <= 64, "Max batch size exceeds the constraint"
         assert max_input_len + max_output_len <= 4096, "Max length exceeds the constraint"
 
+        # TODO: support only tensor parallel inference
+        assert pp_size > 1, "Not support only tensor parallel inference."
         self.pp_size = pp_size
         self.tp_size = tp_size
 
