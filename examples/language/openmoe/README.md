@@ -14,9 +14,7 @@ CUDA_EXT=1 pip install -U git+https://github.com/hpcaitech/ColossalAI
 Then install dependencies.
 
 ```bash
-cd ColossalAI
-pip install -r requirements.txt
-cd examples/language/openmoe
+cd ColossalAI/examples/language/openmoe
 pip install -r requirements.txt
 ```
 
@@ -30,7 +28,7 @@ We have utilized `Triton`, `FlashAttention` and `Apex` kernel for better perform
 pip install triton
 
 # install flash attention via pip
-pip install flash-attn
+pip install flash-attn==2.0.5
 
 # install apex from source
 git clone https://github.com/NVIDIA/apex.git
