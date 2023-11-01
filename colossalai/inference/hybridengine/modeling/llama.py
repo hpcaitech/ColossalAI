@@ -1,43 +1,39 @@
 # This code is adapted from huggingface transformers: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/llama/modeling_llama.py
+import math
 from typing import List, Optional, Tuple
 
 import torch
-from transformers.models.llama.modeling_llama import (
-    LlamaAttention,
-    LlamaDecoderLayer,
-    LlamaForCausalLM,
-    LlamaModel,
-    LlamaRMSNorm,
-)
+from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaForCausalLM, LlamaModel
 from transformers.utils import logging
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import llama_context_attn_fwd, token_attention_fwd
+from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 from ._utils import copy_kv_to_mem_cache
 
 try:
-    from vllm import layernorm_ops, pos_encoding_ops
-
-    rms_norm = layernorm_ops.rms_norm
-    rotary_embedding_neox = pos_encoding_ops.rotary_embedding_neox
-    HAS_VLLM_KERNERL = True
-except:
-    print("fall back to original rotary_embedding_neox of huggingface")
-    print("install vllm from https://github.com/vllm-project/vllm to accelerate your inference")
-    print(
-        "if falied to install vllm, please use this branch to install: https://github.com/tiandiao123/vllm/tree/setup_branch"
+    from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import (
+        context_attention_fwd as lightllm_llama2_context_attention_fwd,
     )
-    HAS_VLLM_KERNERL = False
-
-try:
+    from lightllm.models.llama.triton_kernel.context_flashattention_nopad import (
+        context_attention_fwd as lightllm_context_attention_fwd,
+    )
     from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd as llama_rotary_embedding_fwd
 
     HAS_LIGHTLLM_KERNEL = True
 except:
     print("please install lightllm from source to run inference: https://github.com/ModelTC/lightllm")
     HAS_LIGHTLLM_KERNEL = False
+
+try:
+    from flash_attn import flash_attn_with_kvcache
+
+    HAS_FLASH_KERNEL = True
+except:
+    HAS_FLASH_KERNEL = False
+    print("please install flash attentiom from https://github.com/Dao-AILab/flash-attention")
 
 
 def rotate_half(x):
@@ -57,6 +53,75 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
+
+
+def llama_triton_context_attention(
+    query_states, key_states, value_states, attn_output, infer_state, num_key_value_groups=1
+):
+    if num_key_value_groups == 1:
+        if HAS_LIGHTLLM_KERNEL is False:
+            llama_context_attn_fwd(
+                query_states,
+                key_states,
+                value_states,
+                attn_output,
+                infer_state.start_loc,
+                infer_state.seq_len,
+                # infer_state.cache_manager.past_key_values_length,
+                infer_state.max_len_in_batch,
+            )
+        else:
+            lightllm_context_attention_fwd(
+                query_states,
+                key_states,
+                value_states,
+                attn_output,
+                infer_state.start_loc,
+                infer_state.seq_len,
+                # infer_state.cache_manager.past_key_values_length,
+                infer_state.max_len_in_batch,
+            )
+    else:
+        assert HAS_LIGHTLLM_KERNEL is True, "You have to install lightllm kernels to run llama2 model"
+        lightllm_llama2_context_attention_fwd(
+            query_states,
+            key_states,
+            value_states,
+            attn_output,
+            infer_state.start_loc,
+            infer_state.seq_len,
+            # infer_state.cache_manager.past_key_values_length,
+            infer_state.max_len_in_batch,
+        )
+
+
+def llama_triton_token_attention(query_states, attn_output, infer_state, num_key_value_groups=1):
+    assert HAS_LIGHTLLM_KERNEL is True, "You have to install lightllm kernel to run token attention for llama models"
+    if num_key_value_groups == 1:
+        token_attention_fwd(
+            query_states,
+            infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+            infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+            attn_output,
+            infer_state.block_loc,
+            infer_state.start_loc,
+            infer_state.seq_len,
+            # infer_state.cache_manager.past_key_values_length,
+            infer_state.max_len_in_batch,
+        )
+    else:
+        Llama2TokenAttentionForwards.token_attn(
+            query_states,
+            infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+            infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+            attn_output,
+            infer_state.block_loc,
+            infer_state.start_loc,
+            infer_state.seq_len,
+            # infer_state.cache_manager.past_key_values_length,
+            infer_state.max_len_in_batch,
+            infer_state.other_kv_index,
+        )
 
 
 class LlamaInferenceForwards:
@@ -144,13 +209,9 @@ class LlamaInferenceForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
     ):
-        # batch_size = input_ids.shape[0]  # input_ids.shape[0]
-        # print(f"[Before] rank:{torch.distributed.get_rank()}\n->{infer_state}")
-
-        # infer_state = self.infer_state
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
         # retrieve input_ids and inputs_embeds
         if stage_manager is None or stage_manager.is_first_stage():
             if input_ids is not None and inputs_embeds is not None:
@@ -172,12 +233,10 @@ class LlamaInferenceForwards:
             batch_size, seq_length = input_shape
             device = hidden_states.device
 
-        seq_length_with_past = seq_length
-        past_key_values_length = 0
-
-        if infer_state.is_context_stage is False:
-            past_key_values_length = infer_state.cache_manager.past_key_values_length
-            seq_length_with_past = seq_length_with_past + past_key_values_length
+        if infer_state.is_context_stage:
+            past_key_values_length = 0
+        else:
+            past_key_values_length = infer_state.max_len_in_batch - 1
 
         # NOTE: differentiate with prefill stage
         #       block_loc require different value-assigning method for two different stage
@@ -197,26 +256,19 @@ class LlamaInferenceForwards:
                 infer_state.decode_mem_index = alloc_mem[0]
                 infer_state.decode_mem_start = alloc_mem[1]
                 infer_state.decode_mem_end = alloc_mem[2]
-                infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
+                infer_state.block_loc[:, infer_state.max_len_in_batch - 1] = infer_state.decode_mem_index
             else:
-                print(f" *** Encountered allocation non-contiguous")
-                print(
-                    f"    infer_state.cache_manager.past_key_values_length: {infer_state.cache_manager.past_key_values_length}"
-                )
                 infer_state.decode_is_contiguous = False
                 alloc_mem = infer_state.cache_manager.alloc(batch_size)
                 infer_state.decode_mem_index = alloc_mem
-                # infer_state.decode_key_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
-                # infer_state.decode_value_buffer = torch.empty((batch_size, self.tp_head_num_, self.head_dim_), dtype=torch.float16, device="cuda")
-                infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
+                infer_state.block_loc[:, infer_state.max_len_in_batch - 1] = infer_state.decode_mem_index
+
         if position_ids is None:
             position_ids = torch.arange(
                 past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
             )
-            position_ids = position_ids.unsqueeze(0)
-            new_shape = [1] * position_ids.dim()
-            new_shape[0] = batch_size
-            position_ids = position_ids.repeat(*new_shape).view(-1, seq_length)
+            position_ids = position_ids.repeat(batch_size, 1)
+            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
         else:
             position_ids = position_ids.view(-1, seq_length).long()
 
@@ -227,15 +279,17 @@ class LlamaInferenceForwards:
             infer_state.position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(
                 position_ids.view(-1).shape[0], -1
             )
+
         else:
             seq_len = infer_state.seq_len
             infer_state.position_cos = torch.index_select(self._cos_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
             infer_state.position_sin = torch.index_select(self._sin_cached, 0, seq_len - 1).view(seq_len.shape[0], -1)
+            infer_state.other_kv_index = infer_state.block_loc[0, infer_state.max_len_in_batch - 1].item()
 
         # embed positions
         if attention_mask is None:
             attention_mask = torch.ones(
-                (batch_size, seq_length_with_past), dtype=torch.bool, device=hidden_states.device
+                (batch_size, infer_state.max_len_in_batch), dtype=torch.bool, device=hidden_states.device
             )
 
         attention_mask = self._prepare_decoder_attention_mask(
@@ -243,10 +297,6 @@ class LlamaInferenceForwards:
         )
 
         # decoder layers
-        () if output_hidden_states else None
-        () if output_attentions else None
-        next_decoder_cache = () if use_cache else None
-
         infer_state.decode_layer_id = 0
 
         start_idx, end_idx = stage_index[0], stage_index[1]
@@ -268,19 +318,15 @@ class LlamaInferenceForwards:
             infer_state.decode_layer_id += 1
             hidden_states = layer_outputs[0]
 
-            if use_cache:
-                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
-
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_stage() or stage_manager.num_stages == 1:
             hidden_states = self.norm(hidden_states)
-        next_cache = next_decoder_cache if use_cache else None
 
         # update indices
         # infer_state.block_loc[:, infer_state.max_len_in_batch-1] = infer_state.total_token_num + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
-        infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
+        infer_state.start_loc += torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.seq_len += 1
+        infer_state.max_len_in_batch += 1
 
-        # TODO: fix this to necessary return
         # if not return_dict:
         #     return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
 
@@ -290,8 +336,7 @@ class LlamaInferenceForwards:
         #     hidden_states=all_hidden_states,
         #     attentions=all_self_attns,
         # )
-        # print(f"[After] rank:{torch.distributed.get_rank()}\n->{infer_state}")
-        return {"hidden_states": hidden_states, "past_key_values": next_cache}
+        return {"hidden_states": hidden_states}
 
     @staticmethod
     def llama_decoder_layer_forward(
@@ -307,7 +352,6 @@ class LlamaInferenceForwards:
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
-
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
@@ -357,28 +401,24 @@ class LlamaInferenceForwards:
         # key_states_transposed [bs, num_heads, seq_len, head_dim/embed_size_per_head]
 
         query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
-        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
-        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
+        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim)
+        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim)
 
         # NOTE might want to revise
         #   need some way to record the length of past key values cache
         #   since we won't return past_key_value_cache right now
-        if infer_state.decode_layer_id == 0:  # once per model.forward
-            infer_state.cache_manager.past_key_values_length += q_len  # seq_len
 
         cos, sin = infer_state.position_cos, infer_state.position_sin
 
         llama_rotary_embedding_fwd(query_states.view(-1, self.num_heads, self.head_dim), cos, sin)
-        llama_rotary_embedding_fwd(key_states.view(-1, self.num_heads, self.head_dim), cos, sin)
+        llama_rotary_embedding_fwd(key_states.view(-1, self.num_key_value_heads, self.head_dim), cos, sin)
 
         query_states = query_states.reshape(-1, self.num_heads, self.head_dim)
-        key_states = key_states.reshape(-1, self.num_heads, self.head_dim)
-        value_states = value_states.reshape(-1, self.num_heads, self.head_dim)
+        key_states = key_states.reshape(-1, self.num_key_value_heads, self.head_dim)
+        value_states = value_states.reshape(-1, self.num_key_value_heads, self.head_dim)
 
         if infer_state.is_context_stage:
-            # print(f"rank:{torch.distributed.get_rank()}, {infer_state}")
             # first token generation
-
             # copy key and value calculated in current step to memory manager
             copy_kv_to_mem_cache(
                 infer_state.decode_layer_id,
@@ -387,19 +427,16 @@ class LlamaInferenceForwards:
                 infer_state.context_mem_index,
                 infer_state.cache_manager,
             )
-
             attn_output = torch.empty_like(query_states)
 
-            llama_context_attn_fwd(
+            llama_triton_context_attention(
                 query_states,
                 key_states,
                 value_states,
                 attn_output,
-                infer_state.start_loc,
-                infer_state.seq_len,
-                infer_state.cache_manager.past_key_values_length,
+                infer_state,
+                num_key_value_groups=self.num_key_value_groups,
             )
-
         else:
             if infer_state.decode_is_contiguous:
                 # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
@@ -422,45 +459,31 @@ class LlamaInferenceForwards:
                     infer_state.cache_manager,
                 )
 
-            # second token and follows
-            # kv = torch.stack((key_states, value_states), dim=2)
-            # (batch_size, seqlen, nheads, headdim)
-            attn_output = torch.empty_like(query_states)
+            if HAS_LIGHTLLM_KERNEL:
+                attn_output = torch.empty_like(query_states)
+                llama_triton_token_attention(
+                    query_states, attn_output, infer_state, num_key_value_groups=self.num_key_value_groups
+                )
+            else:
+                self.num_heads // self.num_key_value_heads
+                cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id]
+                cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id]
 
-            token_attention_fwd(
-                query_states,
-                infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
-                infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
-                attn_output,
-                infer_state.block_loc,
-                infer_state.start_loc,
-                infer_state.seq_len,
-                infer_state.cache_manager.past_key_values_length,
-            )
+                query_states = query_states.view(bsz, -1, self.num_heads, self.head_dim)
+                copy_cache_k = cache_k.view(bsz, -1, self.num_key_value_heads, self.head_dim)
+                copy_cache_v = cache_v.view(bsz, -1, self.num_key_value_heads, self.head_dim)
+
+                attn_output = flash_attn_with_kvcache(
+                    q=query_states,
+                    k_cache=copy_cache_k,
+                    v_cache=copy_cache_v,
+                    softmax_scale=1 / math.sqrt(self.head_dim),
+                    causal=True,
+                )
 
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
-        # print(f"rank:{torch.distributed.get_rank()}, {attn_output}")
+
         attn_output = self.o_proj(attn_output)
 
         # return past_key_value as None
         return attn_output, None, None
-
-
-def get_llama_vllm_rmsnorm_forward():
-    if HAS_VLLM_KERNERL:
-
-        def _vllm_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
-            x = hidden_states
-            out = torch.empty_like(x)
-            rms_norm(
-                out,
-                x,
-                self.weight.data,
-                self.variance_epsilon,
-            )
-
-            return out
-
-        return _vllm_rmsnorm_forward
-    else:
-        return None

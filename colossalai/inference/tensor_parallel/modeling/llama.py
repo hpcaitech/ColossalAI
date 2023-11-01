@@ -1,10 +1,9 @@
-from typing import List, Optional, Tuple
 import math
-import copy
+from typing import List, Optional, Tuple
 
 import torch
 from transformers.modeling_outputs import BaseModelOutputWithPast
-from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
+from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import llama_context_attn_fwd, token_attention_fwd
@@ -16,7 +15,9 @@ try:
     from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import (
         context_attention_fwd as lightllm_llama2_context_attention_fwd,
     )
-    from lightllm.models.llama.triton_kernel.context_flashattention_nopad import context_attention_fwd as lightllm_context_attention_fwd
+    from lightllm.models.llama.triton_kernel.context_flashattention_nopad import (
+        context_attention_fwd as lightllm_context_attention_fwd,
+    )
     from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd as llama_rotary_embedding_fwd
 
     HAS_LIGHTLLM_KERNEL = True
@@ -26,6 +27,7 @@ except:
 
 try:
     from flash_attn import flash_attn_with_kvcache
+
     HAS_FLASH_KERNEL = True
 except:
     HAS_FLASH_KERNEL = False
@@ -50,7 +52,10 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
 
-def llama_triton_context_attention(query_states, key_states, value_states, attn_output, infer_state, num_key_value_groups=1):
+
+def llama_triton_context_attention(
+    query_states, key_states, value_states, attn_output, infer_state, num_key_value_groups=1
+):
     if num_key_value_groups == 1:
         if HAS_LIGHTLLM_KERNEL is False:
             llama_context_attn_fwd(
@@ -86,6 +91,7 @@ def llama_triton_context_attention(query_states, key_states, value_states, attn_
             # infer_state.cache_manager.past_key_values_length,
             infer_state.max_len_in_batch,
         )
+
 
 def llama_triton_token_attention(query_states, attn_output, infer_state, num_key_value_groups=1):
     assert HAS_LIGHTLLM_KERNEL is True, "You have to install lightllm kernel to run token attention for llama models"
@@ -265,8 +271,7 @@ class LlamaInferenceForwards:
             hidden_states=all_hidden_states,
             attentions=all_self_attns,
         )
-        
-    
+
     @staticmethod
     def llama_decoder_layer_forward(
         self: LlamaDecoderLayer,
@@ -309,7 +314,6 @@ class LlamaInferenceForwards:
             outputs += (present_key_value,)
 
         return outputs
-    
 
     @staticmethod
     def llama_flash_attn_kvcache_forward(
@@ -358,8 +362,15 @@ class LlamaInferenceForwards:
                 infer_state.cache_manager,
             )
             attn_output = torch.empty_like(query_states)
-            
-            llama_triton_context_attention(query_states, key_states, value_states, attn_output, infer_state, num_key_value_groups=self.num_key_value_groups)
+
+            llama_triton_context_attention(
+                query_states,
+                key_states,
+                value_states,
+                attn_output,
+                infer_state,
+                num_key_value_groups=self.num_key_value_groups,
+            )
         else:
             if infer_state.decode_is_contiguous:
                 # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
@@ -381,26 +392,28 @@ class LlamaInferenceForwards:
                     infer_state.decode_mem_index,
                     infer_state.cache_manager,
                 )
-            
-            HAS_LIGHTLLM_KERNEL = False
+
             if HAS_LIGHTLLM_KERNEL:
                 attn_output = torch.empty_like(query_states)
-                llama_triton_token_attention(query_states, attn_output, infer_state, num_key_value_groups=self.num_key_value_groups)
+                llama_triton_token_attention(
+                    query_states, attn_output, infer_state, num_key_value_groups=self.num_key_value_groups
+                )
             else:
-                heads_per_group = self.num_heads // self.num_key_value_heads
+                self.num_heads // self.num_key_value_heads
                 cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id]
                 cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id]
-                
+
                 query_states = query_states.view(bsz, -1, self.num_heads, self.head_dim)
                 copy_cache_k = cache_k.view(bsz, -1, self.num_key_value_heads, self.head_dim)
                 copy_cache_v = cache_v.view(bsz, -1, self.num_key_value_heads, self.head_dim)
-                
-                attn_output = flash_attn_with_kvcache(q = query_states, 
-                                                      k_cache = copy_cache_k, 
-                                                      v_cache = copy_cache_v, 
-                                                      softmax_scale = 1/ math.sqrt(self.head_dim), 
-                                                      causal = True)       
 
+                attn_output = flash_attn_with_kvcache(
+                    q=query_states,
+                    k_cache=copy_cache_k,
+                    v_cache=copy_cache_v,
+                    softmax_scale=1 / math.sqrt(self.head_dim),
+                    causal=True,
+                )
 
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
 
@@ -408,4 +421,3 @@ class LlamaInferenceForwards:
 
         # return past_key_value as None
         return attn_output, None, None
-

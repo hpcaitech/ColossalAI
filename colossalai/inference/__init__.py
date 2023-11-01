@@ -1,4 +1,4 @@
-from .pipeline import PPInferEngine
+from .hybridengine import CaiInferEngine
+from .hybridengine.polices import LlamaModelInferPolicy
 
-
-__all__ = ['PPInferEngine']
+__all__ = ["CaiInferEngine", "LlamaModelInferPolicy"]
