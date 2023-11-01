@@ -85,8 +85,6 @@ class CaiInferEngine:
         assert max_batch_size <= 64, "Max batch size exceeds the constraint"
         assert max_input_len + max_output_len <= 4096, "Max length exceeds the constraint"
 
-        # TODO: support only tensor parallel inference
-        assert pp_size > 1, "Not support only tensor parallel inference."
         self.pp_size = pp_size
         self.tp_size = tp_size
 
@@ -102,23 +100,21 @@ class CaiInferEngine:
         # Init pg mesh
         pg_mesh = ProcessGroupMesh(pp_size, tp_size)
 
-        stage_manager = None
-        if pp_size > 1:
-            stage_manager = PipelineStageManager(pg_mesh, PP_AXIS, True)
-            self.cache_manager_list = [
-                self._init_manager(model, max_batch_size, max_input_len, max_output_len)
-                for _ in range(micro_batch_buffer_size or pp_size)
-            ]
-            self.mb_manager = MicroBatchManager(
-                stage_manager.stage,
-                micro_batch_size,
-                micro_batch_buffer_size or pp_size,
-                max_input_len,
-                max_output_len,
-                self.cache_manager_list,
-            )
-            self.verbose = verbose
-            self.schedule = GenerateSchedule(stage_manager, self.mb_manager, verbose)
+        stage_manager = PipelineStageManager(pg_mesh, PP_AXIS, True)
+        self.cache_manager_list = [
+            self._init_manager(model, max_batch_size, max_input_len, max_output_len)
+            for _ in range(micro_batch_buffer_size or pp_size)
+        ]
+        self.mb_manager = MicroBatchManager(
+            stage_manager.stage,
+            micro_batch_size,
+            micro_batch_buffer_size or pp_size,
+            max_input_len,
+            max_output_len,
+            self.cache_manager_list,
+        )
+        self.verbose = verbose
+        self.schedule = GenerateSchedule(stage_manager, self.mb_manager, verbose)
 
         self.model = self._shardformer(model, model_policy, stage_manager, pg_mesh.get_group_along_axis(TP_AXIS))
 
