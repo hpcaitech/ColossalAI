@@ -110,7 +110,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         use_safetensors: bool = False,
     ):
         """
-        Save sharded model.
+        Save sharded model. 
         As there is communication when getting state dict, model.state_dict() must be called on all processes.
         """
         assert isinstance(model, GeminiDDP), "Please boost the model before saving!"
