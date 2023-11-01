@@ -6,8 +6,6 @@ from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.distributed import ProcessGroup
 
-from colossalai.moe.manager import MOE_MANAGER
-
 MOE_KERNEL = None
 
 
@@ -121,6 +119,8 @@ class AllToAll(torch.autograd.Function):
             outputs: Tensor
             handle: Optional[Work], if overlap is True
         """
+        assert ctx is not None or not overlap
+
         if ctx is not None:
             ctx.comm_grp = group
         if not inputs.is_contiguous():
@@ -138,7 +138,7 @@ class AllToAll(torch.autograd.Function):
     @staticmethod
     def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None, None]:
         return (
-            AllToAll.forward(None, grad_outputs[0], ctx.comm_grp)[0],
+            AllToAll.forward(None, grad_outputs[0], ctx.comm_grp, False)[0],
             None,
             None,
         )

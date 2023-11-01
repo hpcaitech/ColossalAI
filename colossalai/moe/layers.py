@@ -51,19 +51,19 @@ class SparseMLP(nn.Module):
         hidden_size: int,
         intermediate_size: int,
         router_top_k: int = 1,
-        router_capacity_factor_train: Optional[float] = 1.25,
-        router_capacity_factor_eval: Optional[float] = 2.0,
-        router_min_capacity: Optional[int] = 4,
+        router_capacity_factor_train: float = 1.25,
+        router_capacity_factor_eval: float = 2.0,
+        router_min_capacity: int = 4,
         router_noisy_policy: Optional[str] = None,
-        router_drop_tks: Optional[bool] = True,
+        router_drop_tks: bool = True,
         mlp_activation: Optional[str] = None,
-        mlp_gated: Optional[bool] = False,
-        enable_load_balance: Optional[bool] = False,
-        load_balance_tolerance: Optional[float] = 0.1,
-        load_balance_beam_width: Optional[int] = 8,
-        load_balance_group_swap_factor: Optional[float] = 0.4,
-        enable_kernel: Optional[bool] = False,
-        enable_comm_overlap: Optional[bool] = False,
+        mlp_gated: bool = False,
+        enable_load_balance: bool = False,
+        load_balance_tolerance: float = 0.1,
+        load_balance_beam_width: int = 8,
+        load_balance_group_swap_factor: float = 0.4,
+        enable_kernel: bool = False,
+        enable_comm_overlap: bool = False,
     ):
         super().__init__()
         self.hidden_size = hidden_size
@@ -132,7 +132,7 @@ class SparseMLP(nn.Module):
     def reset_parameters(self):
         torch.nn.init.normal_(self.gate_weight, std=math.sqrt(0.1 / self.hidden_size))
 
-    def forward(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         """
         Args:
             inputs (torch.Tensor): The input tensor of shape (batch_size, seq_len, hidden_size)
@@ -158,7 +158,8 @@ class SparseMLP(nn.Module):
                 self.load_balancer.update_load(expert_load)
 
         # the result from the router
-        route_result_list = self.router(inputs=gate_output, use_kernel=self.enable_kernel, ep_group=self.ep_group)
+        used_capacity, *route_result_list = self.router(
+            inputs=gate_output, use_kernel=self.enable_kernel, ep_group=self.ep_group)
 
         # dispatch_data: (num_experts, capacity, hidden_size)
         if self.enable_kernel:
@@ -170,9 +171,17 @@ class SparseMLP(nn.Module):
 
         # expert_output: (num_groups, num_experts, capacity, hidden_size)
         if self.expert_parallel == "EP":
-            expert_output = self._ep_process(dispatch_data, overlap=self.enable_comm_overlap)
+            expert_output = self._ep_process(
+                dispatch_data,
+                used_capacity,
+                overlap=self.enable_comm_overlap
+            )
         elif self.expert_parallel == "TP":
-            expert_output = self._tp_process(dispatch_data, overlap=self.enable_comm_overlap)
+            expert_output = self._tp_process(
+                dispatch_data,
+                used_capacity,
+                overlap=self.enable_comm_overlap
+            )
         elif self.expert_parallel is None:
             expert_output = self._local_process(dispatch_data)
         else:
@@ -196,7 +205,12 @@ class SparseMLP(nn.Module):
         expert_out = self.experts(expert_in)
         return expert_out
 
-    def _ep_process(self, dispatch_data: torch.Tensor, overlap: bool = False) -> torch.Tensor:
+    def _ep_process(
+        self,
+        dispatch_data: torch.Tensor,
+        used_capacity: torch.Tensor,
+        overlap: bool = False
+    ) -> torch.Tensor:
         """
         Expert Parallel
 
@@ -261,7 +275,12 @@ class SparseMLP(nn.Module):
 
             return output
 
-    def _tp_process(self, dispatch_data: torch.Tensor, overlap: bool = False) -> torch.Tensor:
+    def _tp_process(
+        self,
+        dispatch_data: torch.Tensor,
+        used_capacity: torch.Tensor,
+        overlap: bool = False
+    ) -> torch.Tensor:
         """
         without overlap:
                    |    C    |
@@ -295,8 +314,8 @@ class SparseMLP(nn.Module):
             NUM_CHUNK = 4
             NUM_STAGES = 4
 
-            assert (dispatch_data.shape[0] % NUM_CHUNK == 0
-                   ), "arbitrary chunk num is not supported yet, please use chunk num that can divide num_experts"
+            assert dispatch_data.shape[0] % NUM_CHUNK == 0, \
+                "arbitrary chunk num is not supported yet, please use chunk num that can divide num_experts"
             chunk_size = dispatch_data.shape[0] // NUM_CHUNK
             chunk_data = torch.split(dispatch_data, chunk_size, dim=0)
             output = torch.empty_like(dispatch_data)
