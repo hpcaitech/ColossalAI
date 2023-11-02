@@ -225,7 +225,7 @@ for model in ${MODELS_PPO[@]}; do
             rm_pretrain_model="--rm_pretrain $rm_pretrain"
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$strategy-$lora_rank, attempt $i"
-                torchrun --standalone --nproc_per_node=1 $EXAMPLES_DIR/train_prompts.py \
+                torchrun --standalone --nproc_per_node=1 $EXAMPLES_DIR/train_ppo.py \
                     --prompt_dataset $PROMPT_DATASET --pretrain_dataset $PRETRAIN_DATASET --max_datasets_size 32 \
                     --strategy $strategy --model $model --tokenizer $MODELS_DIR/$model \
                     --num_episodes 1 --num_collect_steps 1 --num_update_steps 1 --lr 1e-8 \
