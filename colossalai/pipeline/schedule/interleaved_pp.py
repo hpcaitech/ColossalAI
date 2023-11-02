@@ -3,7 +3,7 @@ from typing import Any, Callable, Iterable, List, Optional, Union
 
 import torch
 import torch.cuda
-from torch.nn import Module
+from torch.nn import Module, ModuleList
 from torch.utils._pytree import tree_map
 
 from colossalai.interface import OptimizerWrapper
@@ -16,18 +16,25 @@ from .base import PipelineSchedule
 
 
 class InterleavedSchedule(PipelineSchedule):
-    def __init__(self, num_microbatches: int, num_model_chunks: int, stage_manager: PipelineStageManager) -> None:
-        self.num_model_chunks = num_model_chunks
-        assert (
-            num_microbatches % self.num_model_chunks == 0
-        ), "Number of microbatches should be an integer multiple of number of model chunks"
+    def __init__(
+        self,
+        stage_manager: PipelineStageManager,
+        num_microbatches: Optional[int] = None,
+        microbatch_size: Optional[int] = None,
+        num_model_chunks: Optional[int] = 1,
+    ) -> None:
         super().__init__(stage_manager)
+        assert (
+            num_microbatches is not None or microbatch_size is not None
+        ), "Either num_microbatches or microbatch_size should be provided"
         self.comm = PipelineP2PCommunication(stage_manager)
         self.num_microbatches = num_microbatches
+        self.microbatch_size = microbatch_size
         self.batch: Optional[Any] = None
         self.batch_size: Optional[int] = None
         self.microbatch_offset: Optional[int] = None
-        self.microbatch_size: Optional[int] = None
+        self._use_microbatch_size = num_microbatches is None
+        self.num_model_chunks = num_model_chunks
 
     def load_batch(self, data_iter: Iterable, device: Optional[torch.device] = None) -> None:
         """Load a batch from data iterator.
@@ -42,8 +49,22 @@ class InterleavedSchedule(PipelineSchedule):
         self.batch = batch
         self.batch_size = get_batch_size(batch)
         self.microbatch_offset = [0 for _ in range(self.num_model_chunks)]
-        assert self.batch_size % self.num_microbatches == 0, "Batch size should divided by the number of microbatches"
-        self.microbatch_size = self.batch_size // self.num_microbatches
+        if not self._use_microbatch_size:
+            assert (
+                self.batch_size % self.num_microbatches == 0
+            ), "Batch size should divided by the number of microbatches"
+            self.microbatch_size = self.batch_size // self.num_microbatches
+        else:
+            assert self.batch_size % self.microbatch_size == 0, "Batch size should divided by the microbatch size"
+            self.num_microbatches = self.batch_size // self.microbatch_size
+
+        assert (
+            self.num_microbatches % self.num_model_chunks == 0
+        ), "Number of microbatches should be an integer multiple of number of model chunks"
+
+        assert (
+            self.num_microbatches % self.stage_manager.num_stages == 0
+        ), "Number of microbatches should be an integer multiple of number of pipeline parallel devices"
 
     def load_micro_batch(self, model_chunk_id: int) -> Any:
         """Load a micro batch from the current batch.
@@ -83,7 +104,7 @@ class InterleavedSchedule(PipelineSchedule):
         Returns:
             bool: Whether the current virtual stage is the first stage.
         """
-        if self.stage_manager.is_first_stage() and model_chunk_id == 0:
+        if self.stage_manager.is_first_device() and model_chunk_id == 0:
             return True
         return False
 
@@ -96,7 +117,7 @@ class InterleavedSchedule(PipelineSchedule):
         Returns:
             bool: Whether the current virtual stage is the last stage.
         """
-        if self.stage_manager.is_last_stage() and model_chunk_id == self.num_model_chunks - 1:
+        if self.stage_manager.is_last_device() and model_chunk_id == self.num_model_chunks - 1:
             return True
         return False
 
@@ -162,7 +183,7 @@ class InterleavedSchedule(PipelineSchedule):
 
     def forward_step(
         self,
-        model_chunk: Module,
+        model_chunk: Union[ModuleList, Module],
         model_chunk_id: int,
         input_obj: Optional[dict],
         criterion: Callable,
@@ -171,7 +192,7 @@ class InterleavedSchedule(PipelineSchedule):
     ) -> Union[torch.Tensor, dict]:
         """Forward one step of the pipeline
         Args:
-            model (Module): Model Chunk to be run
+            model (ModuleList or Module): Model Chunk to be run
             input_obj (Optional[dict]): The output from the previous stage. If it is the first stage, the `input_obj` is None.
             criterion (Callable): Criterion to calculate loss.
             accum_loss (Optional[torch.Tensor], optional): Accumulated loss. Defaults to None.
@@ -184,7 +205,15 @@ class InterleavedSchedule(PipelineSchedule):
 
         # for the first stage, input_obj is None
         # for the non-first stage, input_obj is the output of the previous stage and it's must be a dict
-        output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)
+
+        if isinstance(model_chunk, ModuleList):
+            output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)
+        else:
+            # in shardformer, each device still has the entire model, so we need to pass the relevant stage layers
+            if input_obj is None:
+                input_obj = {}
+            input_obj["stage_index"] = self.stage_manager.layers[model_chunk_id]
+            output_obj = model_forward(model_chunk, micro_batch, input_obj)
 
         if self.is_last_stage(model_chunk_id):
             loss = criterion(output_obj, micro_batch) / self.num_microbatches
@@ -243,7 +272,7 @@ class InterleavedSchedule(PipelineSchedule):
 
     def forward_backward_step(
         self,
-        model_chunk: Module,
+        model_chunk: Union[ModuleList, Module],
         data_iter: Iterable,
         criterion: Callable[..., Any],
         optimizer: Optional[OptimizerWrapper] = None,
@@ -253,7 +282,7 @@ class InterleavedSchedule(PipelineSchedule):
         """Runs interleaved 1F1B schedule, with communication between pipeline stages.
 
         Args:
-            model_chunk (List[Module]): Model Chunk to be trained.
+            model_chunk (ModuleList or Module): Model Chunk to be trained. Original interleaved uses a module list whereas shardformer uses entire model + layer specification
             data_iter (Iterable): Data iterator.
             criterion (Callable[[Any, Any], Tensor]): Criterion to be used. It should take two arguments: model outputs and inputs, and returns loss tensor.
             optimizer (OptimizerWrapper, optional): Optimizer to be used. Can be None when only forward is executed. Defaults to None.
@@ -268,7 +297,7 @@ class InterleavedSchedule(PipelineSchedule):
             assert forward_only, "Optimizer should be passed when doing backward."
 
         self.load_batch(data_iter)
-        num_model_chunks = len(model_chunk)
+        num_model_chunks = self.num_model_chunks
 
         # num_warmup_microbatches is the step when not all the processes are working
         num_microbatches = self.num_microbatches * num_model_chunks
@@ -289,9 +318,9 @@ class InterleavedSchedule(PipelineSchedule):
             input_objs = [[] for _ in range(num_model_chunks)]
             output_objs = [[] for _ in range(num_model_chunks)]
 
-        outputs = [] if return_outputs and self.stage_manager.is_last_stage() else None
+        outputs = [] if return_outputs and self.stage_manager.is_last_device() else None
 
-        if return_loss and self.stage_manager.is_last_stage():
+        if return_loss and self.stage_manager.is_last_device():
             accum_loss = torch.zeros(1, device=get_current_device())
         else:
             accum_loss = None
@@ -299,13 +328,15 @@ class InterleavedSchedule(PipelineSchedule):
         # for ranks except the first one, get into recv state
         # print(self.stage_manager.stage,num_microbatches, num_warmup_microbatches, num_microbatches_remaining)
         input_obj = self.recv_forward(0)
-        input_objs[0].append(input_obj)
+        if not forward_only:
+            input_objs[0].append(input_obj)
+
         # Run warmup forward passes.
         for i in range(num_warmup_microbatches):
             model_chunk_id = self.get_model_chunk_id(i, forward=True)
-
+            self.stage_manager.set_interleaved_model_chunk_id(model_chunk_id)
             # recv first on first rank to avoid sending or recving at the same time
-            if self.stage_manager.is_first_stage():
+            if self.stage_manager.is_first_device():
                 input_obj = self.recv_forward(model_chunk_id)
                 output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
                 self.send_forward(model_chunk_id, output_obj)
@@ -329,6 +360,7 @@ class InterleavedSchedule(PipelineSchedule):
         # Run 1F1B in steady state.
         for i in range(num_microbatches_remaining):
             model_chunk_id = self.get_model_chunk_id(i + num_warmup_microbatches, forward=True)
+            self.stage_manager.set_interleaved_model_chunk_id(model_chunk_id)
             last_iteration = i == (num_microbatches_remaining - 1)
 
             output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
@@ -367,10 +399,10 @@ class InterleavedSchedule(PipelineSchedule):
         if not forward_only:
             for i in range(num_microbatches_remaining, num_microbatches):
                 model_chunk_id = self.get_model_chunk_id(i, forward=False)
+                self.stage_manager.set_interleaved_model_chunk_id(model_chunk_id)
                 # print(f"{self.stage_manager.stage}/{model_chunk_id}: {len(input_objs[model_chunk_id])} {len(output_objs[model_chunk_id])} {i}")
                 input_obj = input_objs[model_chunk_id].pop(0)
                 output_obj = output_objs[model_chunk_id].pop(0)
-
                 output_obj_grad = self.recv_backward(model_chunk_id)
                 input_obj_grad = self.backward_step(optimizer, input_obj, output_obj, output_obj_grad)
                 self.send_backward(model_chunk_id, input_obj_grad)

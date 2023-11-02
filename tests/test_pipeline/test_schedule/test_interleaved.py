@@ -66,7 +66,7 @@ def examine_pp(num_micro_batches):
     seed_all(1453)
 
     NUM_MICRO_BATCHS = num_micro_batches
-    BATCH_SIZE = num_micro_batches
+    BATCH_SIZE = 24
     NUM_CHUNKS = 2
 
     # create model
@@ -76,8 +76,13 @@ def examine_pp(num_micro_batches):
 
     DP_DIM, PP_DIM, TP_DIM = 0, 1, 2
     pg_mesh = ProcessGroupMesh(1, world_size, 1)
-    stage_manager = PipelineStageManager(pg_mesh, PP_DIM, is_virtual=True)
-    schedule = InterleavedSchedule(NUM_MICRO_BATCHS, NUM_CHUNKS, stage_manager)
+    stage_manager = PipelineStageManager(pg_mesh, PP_DIM, is_virtual=True, num_model_chunks=NUM_CHUNKS)
+    schedule = InterleavedSchedule(
+        stage_manager=stage_manager,
+        num_microbatches=NUM_MICRO_BATCHS,
+        microbatch_size=None,
+        num_model_chunks=NUM_CHUNKS,
+    )
 
     sharded_model = torch.nn.ModuleList()
     for idx, (_, sub_model) in enumerate(pp_model.named_children()):
@@ -115,7 +120,7 @@ def examine_pp(num_micro_batches):
     )
 
     # check loss
-    if stage_manager.is_last_stage():
+    if stage_manager.is_last_device():
         assert torch.allclose(torch_loss, pp_ret["loss"])
 
     # check gradients

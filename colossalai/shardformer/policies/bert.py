@@ -251,13 +251,34 @@ class BertPolicy(Policy):
             else:
                 module = self.model.bert
 
-            layers_per_stage = Policy.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {
-                "forward": partial(
-                    new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
+            # num_model_chunks > 1 if interleaved
+            num_model_chunks = stage_manager.num_model_chunks
+            layers_per_stage = Policy.distribute_layers(
+                len(module.encoder.layer), stage_manager.num_stages * num_model_chunks
+            )
+
+            if num_model_chunks > 1:
+                stage_index = Policy.get_stage_index(
+                    layers_per_stage, stage_manager.stage, stage_manager.num_stages, num_model_chunks
                 )
-            }
+            else:
+                stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+
+            if num_model_chunks == 1:
+                method_replacement = {
+                    "forward": partial(
+                        new_forward,
+                        stage_manager=stage_manager,
+                        stage_index=stage_index,
+                        shard_config=self.shard_config,
+                    )
+                }
+            # for interleaved, stage index for each forward is chosen in scheduler
+            else:
+                stage_manager.set_interleaved_device_layers(stage_index)
+                method_replacement = {
+                    "forward": partial(new_forward, stage_manager=stage_manager, shard_config=self.shard_config)
+                }
             self.append_or_create_method_replacement(
                 description=method_replacement, policy=policy, target_key=model_cls
             )
@@ -275,12 +296,29 @@ class BertPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
-        if stage_manager.is_first_stage():
+        num_model_chunks = stage_manager.num_model_chunks
+        layers_per_stage = self.distribute_layers(
+            len(module.encoder.layer), stage_manager.num_stages * num_model_chunks
+        )
+        if stage_manager.is_first_device():
             held_layers.append(module.embeddings)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
-        held_layers.extend(module.encoder.layer[start_idx:end_idx])
-        if stage_manager.is_last_stage():
+        if num_model_chunks > 1:
+            stage_index = Policy.get_stage_index(
+                layers_per_stage, stage_manager.stage, stage_manager.num_stages, num_model_chunks
+            )
+        else:
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+
+        # interleaved stage index for one device comes in pairs, e.g.[[0,3],[6,9]]
+        if all(isinstance(item, list) for item in stage_index):
+            for i in range(len(stage_index)):
+                start_idx, end_idx = stage_index[i]
+                held_layers.extend(module.encoder.layer[start_idx:end_idx])
+        else:
+            start_idx, end_idx = stage_index
+            held_layers.extend(module.encoder.layer[start_idx:end_idx])
+
+        if stage_manager.is_last_device():
             held_layers.append(module.pooler)
 
         return held_layers
@@ -472,7 +510,7 @@ class BertForSequenceClassificationPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_device():
             held_layers.append(self.model.dropout)
             held_layers.append(self.model.classifier)
         return held_layers

@@ -18,7 +18,9 @@ class PipelineStageManager:
         stage (int): The current stage.
     """
 
-    def __init__(self, pg_mesh: ProcessGroupMesh, pipeline_axis: int, is_virtual: bool = False) -> None:
+    def __init__(
+        self, pg_mesh: ProcessGroupMesh, pipeline_axis: int, is_virtual: bool = False, num_model_chunks=1
+    ) -> None:
         self.pg_mesh = pg_mesh
         self.pipeline_axis = pipeline_axis
         self.prev_rank: Optional[Tuple[int, ...]] = None
@@ -32,6 +34,10 @@ class PipelineStageManager:
         # the next rank of the last rank is rank0
         next_coord = coord[: self.pipeline_axis] + (coord[self.pipeline_axis] + 1,) + coord[self.pipeline_axis + 1 :]
         self.next_rank = self.pg_mesh.ravel(next_coord, self.pg_mesh.shape, mode="wrap")
+        # for interleaved pipeline parallel, each device is responsible for multiple chunk of layers
+        self.num_model_chunks = num_model_chunks
+        self.model_chunk_id = 0
+        self.layers = Optional[List[List[int]]]
 
         # init p2p process groups
         stages = list(range(self.num_stages))
@@ -55,13 +61,30 @@ class PipelineStageManager:
         Returns:
             bool: Whether the current stage is the first stage.
         """
-        return self.stage == 0
+        return self.stage == 0 and self.model_chunk_id == 0
 
     def is_last_stage(self) -> bool:
         """Is the current stage the last stage.
 
         Returns:
             bool: Whether the current stage is the last stage.
+        """
+        return self.stage == self.num_stages - 1 and self.model_chunk_id == self.num_model_chunks - 1
+
+    # introduced due to interleaved pipeline parallel, as the first/last device may also hold intermediate stages
+    def is_first_device(self) -> bool:
+        """Is the current stage on the first device.
+
+        Returns:
+            bool: Whether the current stage is on the first device.
+        """
+        return self.stage == 0
+
+    def is_last_device(self) -> bool:
+        """Is the current stage on the last device.
+
+        Returns:
+            bool: Whether the current stage on the last device.
         """
         return self.stage == self.num_stages - 1
 
@@ -131,3 +154,17 @@ class PipelineStageManager:
             ProcessGroup: Process group of the given stages.
         """
         return self.pg_mesh.get_group_along_axis(self.pipeline_axis, stages)
+
+    def set_interleaved_model_chunk_id(self, model_chunk_id: int):
+        """For interleaved pipeline parallel, set the model chunk id for the device at the current stage.
+        Args:
+            model_chunk_id (int): the id of the current model chunk for the device.
+        """
+        self.model_chunk_id = model_chunk_id
+
+    def set_interleaved_device_layers(self, layers: List[List[int]]):
+        """For interleaved pipeline parallel, set the layer chunks for the device.
+        Args:
+            layers (List[List[int]]): list of layer chunks for the device.
+        """
+        self.layers = layers

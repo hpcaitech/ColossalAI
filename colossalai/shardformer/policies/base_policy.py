@@ -9,6 +9,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
 
+from colossalai.pipeline.schedule import PipelineSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 from ..layer.parallel_module import ParallelModule
@@ -97,6 +98,12 @@ class Policy(ABC):
     def pipeline_stage_manager(self) -> Optional[PipelineStageManager]:
         if self.shard_config is not None:
             return self.shard_config.pipeline_stage_manager
+        return None
+
+    @property
+    def scheduler(self) -> Optional[PipelineSchedule]:
+        if self.shard_config is not None:
+            return self.shard_config.scheduler
         return None
 
     @abstractmethod
@@ -214,13 +221,30 @@ class Policy(ABC):
         return layers_per_stage
 
     @staticmethod
-    def get_stage_index(layers_per_stage: List[int], stage: int) -> List[int]:
-        """
-        get the start index and end index of layers for each stage.
-        """
-        num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
+    def get_stage_index(
+        layers_per_stage: List[int], stage: int, num_stages=None, num_model_chunks=1
+    ) -> Union[List[int], List[List[int]]]:
+        # num_stages info is only needed for interleaved pipeline stage assignment
+        if num_stages is None:
+            """
+            get the start index and end index of layers for each stage.
+            """
+            num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
 
-        start_idx = num_layers_per_stage_accumulated[stage]
-        end_idx = num_layers_per_stage_accumulated[stage + 1]
+            start_idx = num_layers_per_stage_accumulated[stage]
+            end_idx = num_layers_per_stage_accumulated[stage + 1]
 
-        return [start_idx, end_idx]
+            return [start_idx, end_idx]
+        else:
+            """
+            interleaved pipeline: get the start index and end index PAIRS for each stage.
+            """
+            num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
+
+            stage_indexes = []
+            for model_chunk in range(num_model_chunks):
+                start_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages]
+                end_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages + 1]
+                stage_indexes.append([start_idx, end_idx])
+
+            return stage_indexes
