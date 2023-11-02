@@ -1,49 +1,47 @@
 import pytest
 import torch
-import torch.nn as nn
+import torch.distributed as dist
 
 import colossalai
-from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.legacy.context import ParallelMode
-from colossalai.legacy.core import global_context as gpc
-from colossalai.nn.layer.moe import Experts, MoeLayer, Top1Router, Top2Router
+from colossalai.moe import SparseMLP
+from colossalai.moe.manager import MOE_MANAGER
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 NUM_EXPERTS = 4
-CONFIG = dict()
 
 
 def check_equal(tensor_a, tensor_b, atol=1e-06):
     assert torch.allclose(tensor_a, tensor_b, rtol=0, atol=atol) is True
 
 
-def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.float32, router=Top2Router):
+def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.float32, topk=1):
     # Here we do not need TF32, since it brings absolute error on results
     torch.backends.cuda.matmul.allow_tf32 = False
 
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    local_rank = gpc.get_local_rank(ParallelMode.GLOBAL)
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    local_rank = dist.get_rank()
 
-    MOE_CONTEXT.setup(42)  # MOE environment initialization
-    MOE_CONTEXT.reset_loss()
-    torch.manual_seed(rs + local_rank)  # set each process has different random seed
+    MOE_MANAGER.setup(42, parallel="EP")    # MOE environment initialization
+    MOE_MANAGER.reset_loss()
+    torch.manual_seed(rs + local_rank)    # set each process has different random seed
 
     # get randomized data
     tokens = torch.randn(BATCH_SIZE, hidden_size, dtype=data_type, device=get_current_device(), requires_grad=True)
 
-    expert_module = nn.Linear
-    expert_factor = dict(in_features=hidden_size, out_features=hidden_size, device=get_current_device())
-    expert = Experts(expert_module, NUM_EXPERTS, **expert_factor)
-    layer = MoeLayer(hidden_size, NUM_EXPERTS, router(capacity_factor_train=1.0), expert)
+    layer = SparseMLP(hidden_size=hidden_size,
+                      intermediate_size=hidden_size * 2,
+                      num_experts=NUM_EXPERTS,
+                      router_top_k=topk,
+                      router_capacity_factor_train=1.0)
     layer = layer.to(get_current_device())
     if data_type == torch.float16:
         layer = layer.half()
 
     # use matrix multiplication instead of COL_MOE_KERNEL in MOE dispatch and combine
-    layer.use_kernel = False
-    old_out, _ = layer(tokens)
+    layer.enable_kernel = False
+    old_out = layer(tokens)
     ech = old_out.shape
     grad = torch.randn(ech, device=get_current_device())
     old_out.backward(grad)  # get gradient
@@ -56,8 +54,8 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     tokens.grad.zero_()
     layer.gate_weight.grad.zero_()
 
-    layer.use_kernel = True
-    new_out, _ = layer(tokens)  # get outputs through colossal kernel
+    layer.enable_kernel = True
+    new_out = layer(tokens)    # get outputs through colossal kernel
 
     if data_type == torch.float32:
         check_equal(old_out, new_out)
@@ -86,11 +84,11 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
 @pytest.mark.parametrize("rs", [131])
 @pytest.mark.parametrize("hidden_size", [32, 144])
 @pytest.mark.parametrize("data_type", [torch.float32, torch.float16])
-@pytest.mark.parametrize("router", [Top1Router, Top2Router])
+@pytest.mark.parametrize("topk", [1, 2])
 @rerun_if_address_is_in_use()
-def test_moe_kernel(rs, hidden_size, data_type, router):
-    spawn(run_routing, 4, rs=rs, hidden_size=hidden_size, data_type=data_type, router=router)
+def test_moe_kernel(rs, hidden_size, data_type, topk):
+    spawn(run_routing, 4, rs=rs, hidden_size=hidden_size, data_type=data_type, topk=topk)
 
 
-if __name__ == "__main__":
-    test_moe_kernel(2, 256, torch.float16, Top2Router)
+if __name__ == '__main__':
+    test_moe_kernel(2, 256, torch.float16, 2)
