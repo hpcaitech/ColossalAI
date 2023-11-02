@@ -356,12 +356,13 @@ class GeminiPlugin(DPPluginBase):
             norm_type=norm_type,
         )
         self.verbose = verbose
+        self.lora_enabled = False
 
     def support_no_sync(self) -> bool:
         return False
 
     def support_lora(self) -> bool:
-        return False
+        return True
 
     def control_precision(self) -> bool:
         return True
@@ -383,6 +384,10 @@ class GeminiPlugin(DPPluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
+        if self.lora_enabled:
+            # The optimizer will be small when enabling lora, so no need to offload.
+            self.gemini_config["offload_optim_frac"] = 0.0
+
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
             # FIXME(ver217): gemini does not support sync bn
@@ -415,4 +420,12 @@ class GeminiPlugin(DPPluginBase):
     def enable_lora(
         self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
     ) -> nn.Module:
-        raise NotImplementedError
+        from peft import PeftModel, get_peft_model
+
+        assert not isinstance(model, GeminiDDP), "Lora should be enabled before boosting the model."
+        self.lora_enabled = True
+
+        if pretrained_dir is None:
+            return get_peft_model(model, lora_config)
+        else:
+            return PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)
