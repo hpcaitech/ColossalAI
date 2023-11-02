@@ -112,11 +112,11 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
             description=method_replacement, policy=policy, target_key=LlamaAttention
         )
 
-        if self.pipeline_stage_manager:
-            # set None as default
-            self.set_pipeline_forward(
-                model_cls=LlamaForCausalLM, new_forward=LlamaInferenceForwards.llama_causal_lm_forward, policy=policy
-            )
+        # set as default, in inference we also use pipeline style forward, just setting stage as 1
+        self.set_pipeline_forward(
+            model_cls=LlamaForCausalLM, new_forward=LlamaInferenceForwards.llama_causal_lm_forward, policy=policy
+        )
+
         infer_forward = None
         if HAS_TRITON_RMSNORM:
             infer_forward = get_triton_rmsnorm_forward()
@@ -135,8 +135,22 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage."""
+        assert self.pipeline_stage_manager is not None
+
+        if self.model.__class__.__name__ == "LlamaModel":
+            module = self.model
+        else:
+            module = self.model.model
         stage_manager = self.pipeline_stage_manager
-        held_layers = super().get_held_layers()
+
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
         if stage_manager.is_first_stage():
+            held_layers.append(module.embed_tokens)
             held_layers.append(self.model.lm_head)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.layers[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.norm)
+
         return held_layers
