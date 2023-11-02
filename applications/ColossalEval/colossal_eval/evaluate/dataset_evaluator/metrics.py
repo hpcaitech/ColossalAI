@@ -443,6 +443,20 @@ def multi_choice_accuracy(prediction, reference, **kwargs):
     return score
 
 
+def accuracy_by_options(question, prediction, reference):
+    pattern = r"[A-Z]\. [^\n]+"
+    options = re.findall(pattern, question)
+    answer = prediction.split("\n\n")[0]
+
+    for option in options:
+        choice, content = option.split(". ", 1)
+
+        if choice == reference and content == answer:
+            return 1
+
+    return 0
+
+
 def combined_single_choice_accuracy(prediction, reference, **kwargs):
     return single_choice_accuracy(prediction, reference, **kwargs)
 

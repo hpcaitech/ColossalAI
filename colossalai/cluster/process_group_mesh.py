@@ -1,3 +1,4 @@
+import gc
 import itertools
 from functools import reduce
 from operator import mul
@@ -43,6 +44,24 @@ class ProcessGroupMesh:
         self._coord = ProcessGroupMesh.unravel(self._rank, self._shape)
         self._ranks_to_group: Dict[Tuple[int, ...], ProcessGroup] = {}
         self._group_to_ranks: Dict[ProcessGroup, Tuple[int, ...]] = {}
+
+    def __del__(self):
+        r"""
+        Destructor method for the ProcessGroupMesh class.
+
+        When the ProcessGroupMesh object is deleted or goes out of scope, this method is called. It is responsible for
+        cleaning up any process groups that were created during the lifetime of the object.
+
+        Note:
+            All process groups in PyTorch are represented as global variables, and they may not be automatically destroyed
+            when the ProcessGroupMesh's lifetime ends. This method manually destroys the process groups to release
+            system resources.
+        """
+        for group in self._ranks_to_group.values():
+            dist.destroy_process_group(group)
+
+        # Manually clear all process groups to save memory
+        gc.collect()
 
     @property
     def shape(self) -> Tuple[int, ...]:

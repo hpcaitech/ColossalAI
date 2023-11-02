@@ -69,11 +69,11 @@ output_transform_fn = lambda x: x
 
 # define loss function
 loss_fn_for_bloom_model = lambda x: torch.nn.functional.mse_loss(
-    x.last_hidden_state, torch.ones_like(x.last_hidden_state)
+    x["last_hidden_state"], torch.ones_like(x["last_hidden_state"])
 )
-loss_fn_for_causal_lm = lambda x: x.loss
-loss_fn_for_classification = lambda x: x.loss
-loss_fn_for_question_answering = lambda x: x.loss
+loss_fn_for_causal_lm = lambda x: x["loss"]
+loss_fn_for_classification = lambda x: x["loss"]
+loss_fn_for_question_answering = lambda x: x["loss"]
 
 config = transformers.BloomConfig(
     n_layer=2, n_head=4, vocab_size=250880, hidden_dropout=0, attention_dropout=0, hidden_size=64, pad_token_id=50256

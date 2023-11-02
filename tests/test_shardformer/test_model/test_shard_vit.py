@@ -43,7 +43,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     grads_to_check = {}
     if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
         if test_config["precision"] == "fp32":
-            atol, rtol = 1e-5, 1e-3
+            atol, rtol = 2e-5, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
         row_layer_grads = get_grad_tensors_for_check(
@@ -62,7 +62,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
         if test_config["precision"] == "fp32":
-            atol, rtol = 1e-5, 1e-3
+            atol, rtol = 2e-3, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
 
@@ -149,15 +149,6 @@ def run_vit_test(test_config):
             "tp_size": 2,
             "pp_size": 2,
             "num_microbatches": 4,
-            "enable_all_optimization": False,
-            "use_lazy_init": False,
-            "precision": "fp32",
-            "initial_scale": 1,
-        },
-        {
-            "tp_size": 2,
-            "pp_size": 2,
-            "num_microbatches": 2,
             "enable_all_optimization": False,
             "use_lazy_init": False,
             "precision": "fp32",

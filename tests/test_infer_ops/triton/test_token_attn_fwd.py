@@ -3,16 +3,13 @@ import torch
 from packaging import version
 
 try:
-    pass
-
     from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
-
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
     print("please install triton from https://github.com/openai/triton")
 
-TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
+TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) >= version.parse("11.6")
 
 
 def torch_att(xq, xk, xv, bs, seqlen, num_head, head_dim):

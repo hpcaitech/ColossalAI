@@ -9,7 +9,8 @@ from .nvme_optimizer import NVMeOptimizer
 
 
 class CPUAdam(NVMeOptimizer):
-    """Implements Adam algorithm.
+    """
+    Implements Adam algorithm.
 
     Supports parameters updating on both GPU and CPU, depending on the device of parameters.
     But the parameters and gradients should on the same device:
@@ -146,8 +147,7 @@ class CPUAdam(NVMeOptimizer):
                     assert state["exp_avg"].device.type == "cpu", "exp_avg should stay on cpu"
                     assert state["exp_avg_sq"].device.type == "cpu", "exp_avg should stay on cpu"
                     self._pre_update(p, "exp_avg", "exp_avg_sq")
-                    # FIXME(ver217): CPU adam kernel only supports fp32 states now
-                    if p.grad.dtype is torch.bfloat16 or p.dtype is not torch.float:
+                    if p.grad.dtype is torch.bfloat16:
                         # cpu adam kernel does not support bf16 now
                         bias_correction1 = 1 - beta1 ** state["step"]
                         bias_correction2 = 1 - beta2 ** state["step"]

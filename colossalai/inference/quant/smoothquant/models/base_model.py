@@ -87,7 +87,6 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
         batch_infer_state.start_loc = seq_start_indexes.to("cuda")
         batch_infer_state.block_loc = block_loc
         batch_infer_state.decode_layer_id = 0
-        batch_infer_state.past_key_values_len = 0
         batch_infer_state.is_context_stage = True
         batch_infer_state.set_cache_manager(self.cache_manager)
         batch_infer_state.cache_manager.free_all()
@@ -132,6 +131,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
             mean_scale = np.mean([v["input"] for v in act_dict.values()])
             pbar.set_description(f"Mean input scale: {mean_scale:.2f}")
 
+    # Adatped from https://github.com/mit-han-lab/smoothquant/blob/main/smoothquant/calibration.py
     def get_act_scales(self, model, tokenizer, dataset, num_samples=512, seq_len=512):
         model.eval()
         device = next(model.parameters()).device
@@ -163,6 +163,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
 
         return act_scales
 
+    # Adapted from https://github.com/mit-han-lab/smoothquant/blob/main/smoothquant/smooth.py
     @torch.no_grad()
     def smooth_ln_fcs(self, ln, fcs, act_scales, alpha=0.5):
         if not isinstance(fcs, list):
@@ -189,6 +190,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
     def create_quantized_model(model):
         raise NotImplementedError("Not implement create_quantized_model method")
 
+    # Adapted from AutoGPTQ: https://github.com/PanQiWei/AutoGPTQ/blob/main/auto_gptq/modeling/_base.py
     def save_quantized(
         self,
         save_dir: str,
@@ -249,6 +251,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
 
         self.model.config.save_pretrained(save_dir)
 
+    # Adapted from AutoGPTQ: https://github.com/PanQiWei/AutoGPTQ/blob/main/auto_gptq/modeling/_base.py
     def save_pretrained(
         self,
         save_dir: str,
@@ -260,6 +263,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
         warnings.warn("you are using save_pretrained, which will re-direct to save_quantized.")
         self.save_quantized(save_dir, use_safetensors, safetensors_metadata)
 
+    # Adapted from AutoGPTQ: https://github.com/PanQiWei/AutoGPTQ/blob/main/auto_gptq/modeling/_base.py
     @classmethod
     def from_pretrained(
         cls,
@@ -354,6 +358,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
 
         return cls(model, False)
 
+    # Adapted from AutoGPTQ: https://github.com/PanQiWei/AutoGPTQ/blob/main/auto_gptq/modeling/_base.py
     @classmethod
     def from_quantized(
         cls,
