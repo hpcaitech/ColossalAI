@@ -338,7 +338,14 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         if not isinstance(model, ModelWrapper):
             use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
             model = HybridParallelModule(
-                model, self.precision, self.shard_config, self.dp_group, use_ddp, self.ddp_config, self.custom_policy
+                module=model,
+                precision=self.precision,
+                shard_config=self.shard_config,
+                dp_group=self.dp_group,
+                tp_group=self.tp_group,
+                use_ddp=use_ddp,
+                ddp_config=self.ddp_config,
+                custom_policy=self.custom_policy,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
