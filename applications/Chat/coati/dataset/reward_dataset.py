@@ -3,12 +3,7 @@ from typing import Callable, Dict
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-from colossalai.logging import get_dist_logger
-
 from .utils import is_rank_0, read_string_by_schema
-
-logger = get_dist_logger()
-
 
 class PreferenceDataset(Dataset):
     """
@@ -19,7 +14,6 @@ class PreferenceDataset(Dataset):
         tokenizer: tokenizer for reward model
         max_length: max length of input
         special_token: special token at the end of sentence
-        verbose: whether to display the first two item in the dataset
         dataset_schema: schema for reading the dataset. cascaded feild names seperated by '.'.
              e.g. person.name.first will access data['person']['name']['first']
     """
@@ -30,7 +24,6 @@ class PreferenceDataset(Dataset):
         tokenizer: Callable,
         max_length: int,
         special_token=None,
-        verbose=True,
         dataset_schema: Dict[str, str] = {"prompt": "", "chosen": "chosen", "rejected": "rejected"},
     ) -> None:
         super().__init__()
@@ -56,13 +49,6 @@ class PreferenceDataset(Dataset):
             reject, max_length=max_length, padding="max_length", truncation=True, return_tensors="pt"
         )
         self.reject = {"input_ids": reject_token["input_ids"], "attention_mask": reject_token["attention_mask"]}
-        self.verbose = verbose
-        if self.verbose:
-            logger.info(
-                "Display the first two item in the preference dataset, to disable this message, set verbose=False in the PreferenceDataset constructor"
-            )
-            logger.info("chosen:\n" + str(chosen[:2]))
-            logger.info("reject:\n" + str(reject[:2]))
 
     def __len__(self):
         length = self.chosen["input_ids"].shape[0]

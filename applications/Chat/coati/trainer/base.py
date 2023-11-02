@@ -194,6 +194,9 @@ class OnPolicyTrainer(ABC):
                         # NOTE: set model to eval to merge LoRA weights
                         LORA_MANAGER.merge_weights = True
                         self.actor.eval()
+                        
+                        # TODO: support saving lora-weights only
+                        
                     # save model checkpoint after fitting
                     self.strategy.save_model(self.actor, args.save_path, only_rank0=True)
                     # save optimizer checkpoint on all ranks

@@ -33,6 +33,18 @@ class NaiveExperienceMaker(ExperienceMaker):
         self.lam = lam
 
     @torch.no_grad()
+    def calculate_advantage(self, reward: torch.Tensor, value: torch.Tensor, num_actions: int) -> torch.Tensor:
+        lastgaelam = 0
+        advantages_reversed = []
+        for t in reversed(range(num_actions)):
+            nextvalues = value[:, t + 1] if t < num_actions - 1 else 0.0
+            delta = reward[:, t] + self.gamma * nextvalues - value[:, t]
+            lastgaelam = delta + self.gamma * self.lam * lastgaelam
+            advantages_reversed.append(lastgaelam)
+        advantages = torch.stack(advantages_reversed[::-1], dim=1)
+        return advantages
+
+    @torch.no_grad()
     def make_experience(self, input_ids: torch.Tensor, **generate_kwargs) -> Experience:
         self.actor.eval()
         self.critic.eval()
@@ -85,17 +97,9 @@ class NaiveExperienceMaker(ExperienceMaker):
         )
         reward, kl = compute_reward(r, self.kl_coef, action_log_probs, base_action_log_probs, action_mask=action_mask)
 
-        # Adapted from https://github.com/CarperAI/trlx/blob/main/trlx/models/modeling_ppo.py#L134
-
-        lastgaelam = 0
-        advantages_reversed = []
         value = value[:, -num_actions:] * action_mask
-        for t in reversed(range(num_actions)):
-            nextvalues = value[:, t + 1] if t < num_actions - 1 else 0.0
-            delta = reward[:, t] + self.gamma * nextvalues - value[:, t]
-            lastgaelam = delta + self.gamma * self.lam * lastgaelam
-            advantages_reversed.append(lastgaelam)
-        advantages = torch.stack(advantages_reversed[::-1], dim=1)
+        
+        advantages = self.calculate_advantage(reward, value, num_actions)
 
         advantages = advantages.detach()
         value = value.detach()

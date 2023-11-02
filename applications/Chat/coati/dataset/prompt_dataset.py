@@ -18,7 +18,6 @@ class PromptDataset(Dataset):
         tokenizer: tokenizer for supervised model
         max_datasets_size: number of examples to use from the dataset
         max_length: max length of input
-        verbose: whether to display the first two item in the dataset
         dataset_schema: schema for reading the dataset. cascaded feild names seperated by '.'.
              e.g. person.name.first will access data['person']['name']['first']
     """
@@ -29,7 +28,6 @@ class PromptDataset(Dataset):
         tokenizer: transformers.PreTrainedTokenizer,
         max_datasets_size: int = None,
         max_length: int = 96,
-        verbose: bool = True,
         dataset_schema: Dict[str, str] = {"instruction": "instruction"},
     ):
         super(PromptDataset, self).__init__()
@@ -38,7 +36,6 @@ class PromptDataset(Dataset):
         self.logger.info("Loading data...")
         list_data_dict = jload(data_path)
         self.logger.info(f"Loaded {len(list_data_dict)} examples.")
-        self.verbose = verbose
 
         if max_datasets_size is not None:
             self.logger.info(f"Limiting dataset to {max_datasets_size} examples.")
@@ -47,11 +44,6 @@ class PromptDataset(Dataset):
         instructions = [
             read_string_by_schema(data_dict, dataset_schema["instruction"]) + "\n" for data_dict in list_data_dict
         ]
-        if self.verbose:
-            self.logger.info(
-                "Display the first two item in the prompt dataset, to disable this message, set verbose=False in the PromptDataset constructor"
-            )
-            self.logger.info("prompt dataset:\n\t" + "\n\t".join([s for s in instructions[:2]]))
         tokens = tokenizer(
             instructions, return_tensors="pt", max_length=max_length, padding="max_length", truncation=True
         )

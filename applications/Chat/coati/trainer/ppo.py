@@ -196,7 +196,6 @@ class PPOTrainer(OnPolicyTrainer):
         critic_loss = critic_loss * self.vf_coef
         self.strategy.backward(critic_loss, self.critic, self.critic_optim)
 
-        # TODO Implement check overflow here
         if not to_skip:
             self.strategy.optimizer_step(self.actor_optim)
         self.strategy.optimizer_step(self.critic_optim)
@@ -207,8 +206,6 @@ class PPOTrainer(OnPolicyTrainer):
         response_text = self.experience_maker.tokenizer.batch_decode(experience.sequences, skip_special_tokens=True)
         for i in range(len(response_text)):
             response_text[i] = response_text[i] + f"\n\nReward: {experience.reward[i]}"
-            if i < 3:
-                print(response_text[i])
 
         if self.writer:
             # use wandb

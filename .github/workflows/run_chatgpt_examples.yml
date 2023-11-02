@@ -51,3 +51,4 @@ jobs:
           SFT_DATASET: /data/scratch/github_actions/chat/data.json
           PROMPT_DATASET: /data/scratch/github_actions/chat/prompts_en.jsonl
           PRETRAIN_DATASET: /data/scratch/github_actions/chat/alpaca_data.json
+          DATA_DIRECTORY: /data/scratch/github_actions/chat

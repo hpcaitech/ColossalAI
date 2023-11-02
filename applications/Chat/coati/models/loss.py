@@ -40,13 +40,11 @@ class PolicyLoss(nn.Module):
         action_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         skip = False
-        # log_probs = log_probs + 1e-6
-        # old_log_probs = old_log_probs + 1e-6
         ratio_ = ((log_probs - old_log_probs)*action_mask).exp()
-        # if masked_mean(ratio_, action_mask).max()>50.0:
-        #     skip = True
+        if masked_mean(ratio_, action_mask).max()>15.0:
+            # ratio will always be 1. if dropout is disabled
+            skip = True
         ratio = ratio_.clamp(0.0, 10.0)
-        # advantages = advantages.clamp(-0.7, 0.7)
         surr1 = ratio * advantages
         surr2 = ratio.clamp(1 - self.clip_eps, 1 + self.clip_eps) * advantages
         loss = -torch.min(surr1, surr2)
