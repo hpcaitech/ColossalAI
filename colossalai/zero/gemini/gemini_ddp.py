@@ -343,6 +343,7 @@ class GeminiDDP(ModelWrapper):
                         grad_chunk = self.chunk_manager.rearrange_accumulated_grad_chunk(chunk)
                     else:
                         grad_chunk = chunk.grad_chunk
+                        chunk.grad_chunk.l2_norm = None
 
                 # hold -> compute -> hold after bwd
                 grad_chunk.tensor_trans_state(p, TensorState.COMPUTE)

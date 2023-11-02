@@ -637,6 +637,7 @@ class Chunk:
             # grad chunk is initialized, just reallocate cuda global chunk
             self.grad_chunk.cuda_shard = None
             self.grad_chunk.is_gathered = True
+            self.grad_chunk.l2_norm = None
             alloc_storage(self.grad_chunk.cuda_global_chunk)
 
         return self.grad_chunk
