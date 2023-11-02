@@ -77,6 +77,7 @@ class GeminiDDP(ModelWrapper):
         memstats: Optional[MemStats] = None,  # genimi memory stats
         master_weights: bool = True,
         verbose: bool = False,
+        modules_to_save_for_lora: set = None,
     ) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
         if chunk_config_dict is not None:
@@ -149,6 +150,7 @@ class GeminiDDP(ModelWrapper):
             strict_ddp_mode=strict_ddp_mode,
             cpu_offload=self.gemini_manager.policy_name != "cuda",
             pin_memory=pin_memory,
+            modules_to_save_for_lora=modules_to_save_for_lora,
         )
         super().__init__(module)
         self._non_persistent_buffers_set = self._get_non_persistent_buffers_set(module)
@@ -693,7 +695,9 @@ class GeminiDDP(ModelWrapper):
                     if input_name not in local_state:
                         unexpected_keys.append(key)
 
-    def _init_chunks(self, param_order, strict_ddp_mode: bool, cpu_offload: bool, pin_memory: bool):
+    def _init_chunks(
+        self, param_order, strict_ddp_mode: bool, cpu_offload: bool, pin_memory: bool, modules_to_save_for_lora: set
+    ):
         dp_world_size = dist.get_world_size(self.dp_process_group)
         for p in param_order.generate():
             self._preprocess_param(p)
@@ -702,6 +706,11 @@ class GeminiDDP(ModelWrapper):
             # ignore the parameters with no gradient
             if not p.requires_grad:
                 self.set_params_to_ignore([p])
+
+            # when using lora, ignore the original copy of modules for modules in modules_to_save
+            if modules_to_save_for_lora is not None:
+                if any((f"{key}.original_module" in self.param2name[p]) for key in modules_to_save_for_lora):
+                    self.set_params_to_ignore([p])
 
             # move ignored parameters to CUDA
             if is_ddp_ignored(p):

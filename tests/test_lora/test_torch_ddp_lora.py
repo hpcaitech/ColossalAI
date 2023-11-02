@@ -54,7 +54,10 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
             assert p1.requires_grad
             assert_not_equal(p1.to(p2.device), p2)
         else:
-            if not p1.requires_grad:
+            # if a non-lora module isn't supposed to be saved, it shouldn't be updated
+            modules_to_save = model.unwrap().modules_to_save
+            if (modules_to_save is None) or all((key not in n1) for key in modules_to_save):
+                assert not p1.requires_grad
                 assert_equal(p1.to(p2.device), p2)
 
 

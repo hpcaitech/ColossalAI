@@ -385,8 +385,18 @@ class GeminiPlugin(DPPluginBase):
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         if self.lora_enabled:
+            from peft import PeftModel
+
+            assert isinstance(
+                model, PeftModel
+            ), "The model should have been wrapped as a PeftModel when self.lora_enabled is True"
+
             # The optimizer will be small when enabling lora, so no need to offload.
             self.gemini_config["offload_optim_frac"] = 0.0
+
+            # The modules to be finetuned and saved should be passed to GeminiDDP for further processing.
+            # For example: the 'classifier'/'score' module in models for SequenceClassification
+            self.gemini_config["modules_to_save_for_lora"] = model.modules_to_save
 
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn

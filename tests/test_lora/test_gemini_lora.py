@@ -47,6 +47,9 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
 
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
+    # for n, p in model.named_parameters():
+    #     print(n, p.shape, p.requires_grad)
+
     data = data_gen_fn()
     data = {k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
 
@@ -69,7 +72,10 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
             assert model.name2param[name].requires_grad
             assert_not_equal(p1, p2)
         else:
-            if not model.name2param[name].requires_grad:
+            # if a non-lora module isn't supposed to be saved, it shouldn't be updated
+            modules_to_save = model.unwrap().modules_to_save
+            if (modules_to_save is None) or all((key not in name) for key in modules_to_save):
+                assert not model.name2param[name].requires_grad
                 assert_equal(p1, p2)
 
 
