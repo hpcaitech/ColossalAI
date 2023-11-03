@@ -10,13 +10,14 @@ import warnings
 from copy import deepcopy
 from typing import Any, Callable, Dict, Iterable, List, Tuple, Union
 
-from conversation import Conversation, default_conversation
 from datasets import dataset_dict
 from torch.utils.data import ConcatDataset, Dataset, IterableDataset
 from transformers.models.llama.tokenization_llama import LlamaTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 
 from colossalai.logging import get_dist_logger
+
+from .conversation import Conversation, default_conversation
 
 logger = get_dist_logger()
 

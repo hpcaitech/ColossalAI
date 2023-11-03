@@ -8,12 +8,10 @@ import argparse
 import json
 import math
 import os
-
-# import time
 from multiprocessing import cpu_count
 
+from colossal_llama2.dataset.conversation import default_conversation
 from colossal_llama2.dataset.spliced_and_tokenized_dataset import supervised_tokenize_sft
-from colossal_llama2.utils.conversation import default_conversation
 from datasets import dataset_dict, load_dataset
 from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
@@ -130,14 +128,6 @@ def main():
                     logger.info(f"processing {spliced_count} spliced data points for {fp_writer.name}")
                 spliced_count += 1
                 fp_writer.write(json.dumps(spliced_data_point, ensure_ascii=False) + "\n")
-
-        # logger.info(
-        #     f"Current file {fp_writer.name}; "
-        #     f"Data size: {len(spliced_dataset)}; "
-        #     f"Spliced data size: {spliced_dataset.current_size}; "
-        #     f"Splicing compression rate: {round(spliced_dataset.current_size / len(spliced_dataset), 6)}; "
-        #     f"Time cost: {round((time.time() - st) / 60, 6)} minutes."
-        # )
 
         # Save each arrow spliced dataset
         output_arrow_path = os.path.join(args.data_arrow_output_dir, output_name)
