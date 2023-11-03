@@ -1,5 +1,6 @@
 import contextlib
-from typing import Any, Callable, Dict, List
+import os
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -175,3 +176,37 @@ def sync_moe_model_param(model: nn.Module):
 def set_moe_args(config: Any, args: dict):
     for k, v in args.items():
         setattr(config, k, v)
+
+
+def create_ep_node_group(
+    ep_group: dist.ProcessGroup
+) -> Tuple[dist.ProcessGroup,
+           Optional[dist.ProcessGroup]]:
+    """
+    e.g., If ep_group = [1, 2, 5, 6], and nproc_per_node = 4
+        Then, ep_intra_group = [1, 2] & [5, 6], ep_inter_group = [1, 5] & None
+    """
+    assert dist.is_initialized(), "Please initialize torch.distributed first."
+
+    rank = dist.get_rank()
+    node_rank = int(os.environ["GROUP_RANK"])
+    nproc_per_node = int(os.environ["LOCAL_WORLD_SIZE"])
+    num_node = dist.get_world_size() // nproc_per_node
+    ep_ranks = dist.get_process_group_ranks(ep_group)
+
+    ep_intra_ranks = [
+        node_rank * nproc_per_node + i
+        for i in range(nproc_per_node)
+        if i in ep_ranks
+    ]
+    ep_intra_node_group = dist.new_group(ep_intra_ranks)
+
+    ep_inter_ranks = [
+        min(ep_ranks) + i * nproc_per_node
+        for i in range(num_node)
+    ]
+    ep_inter_node_group = None
+    if rank in ep_inter_ranks and len(ep_inter_ranks) > 1:
+        ep_inter_node_group = dist.new_group(ep_inter_ranks)
+
+    return ep_intra_node_group, ep_inter_node_group
