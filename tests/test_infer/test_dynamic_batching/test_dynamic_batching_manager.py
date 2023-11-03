@@ -34,7 +34,7 @@ def run():
     model = LlamaForCausalLM(llama_config)
     model = model.half()
 
-    shard_config = ShardConfig(enable_tensor_parallelism=False, inference_only=True)
+    shard_config = ShardConfig(enable_tensor_parallelism=False, extra_kwargs={"inference_only": True})
     infer_engine = TPInferEngine(model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
 
     dynamic_batch_manager = DynamicBatchManager(

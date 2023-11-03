@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import torch.distributed as dist
@@ -33,10 +33,9 @@ class ShardConfig:
     enable_flash_attention: bool = False
     enable_jit_fused: bool = False
     enable_all_optimization: bool = False
-    inference_only: bool = False
-    inference_gptq: bool = False
     enable_sequence_parallelism: bool = False
     enable_sequence_overlap: bool = False
+    extra_kwargs: field(default_factory=dict) = None
     # pipeline_parallel_size: int
     # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']
@@ -46,6 +45,9 @@ class ShardConfig:
         return self._tensor_parallel_size
 
     def __post_init__(self):
+        for key, value in self.extra_kwargs.items():
+            setattr(self, key, value)
+
         if not self.enable_tensor_parallelism and self.enable_sequence_parallelism:
             raise ValueError(
                 "enable_sequence_parallelism can only be set to True when enable_tensor_parallelism is True"
@@ -77,4 +79,3 @@ class ShardConfig:
         Set default params for inference.
         """
         # assert self.pipeline_stage_manager is None, "pipeline parallelism is not supported in inference for now"
-        pass

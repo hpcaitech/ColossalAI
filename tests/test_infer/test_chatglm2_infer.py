@@ -49,7 +49,7 @@ def run_chatglm2_test(test_config):
     model = model.half()
 
     shard_config = ShardConfig(
-        enable_tensor_parallelism=True if test_config["tp_size"] > 1 else False, inference_only=True
+        enable_tensor_parallelism=True if test_config["tp_size"] > 1 else False, extra_kwargs={"inference_only": True}
     )
     infer_engine = TPInferEngine(model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
     generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)

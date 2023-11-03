@@ -36,7 +36,7 @@ def run(test_config):
 
     # 1. check TPInferEngine init and model optimization
     shard_config = ShardConfig(
-        enable_tensor_parallelism=True if test_config["tp_size"] > 1 else False, inference_only=True
+        enable_tensor_parallelism=True if test_config["tp_size"] > 1 else False, extra_kwargs={"inference_only": True}
     )
     infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
 

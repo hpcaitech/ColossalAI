@@ -100,7 +100,9 @@ class ColossalInferenceHandler(BaseHandler, ABC):
 
         colossalai.launch(config={}, rank=rank, world_size=world_size, host=host, port=port, backend="nccl")
         logger.info("Initializing TPInferEngine ...")
-        shard_config = ShardConfig(enable_tensor_parallelism=True if self.tp_size > 1 else False, inference_only=True)
+        shard_config = ShardConfig(
+            enable_tensor_parallelism=True if self.tp_size > 1 else False, extra_kwargs={"inference_only": True}
+        )
         self.infer_engine = TPInferEngine(
             self.model, shard_config, self.max_batch_size, self.max_input_len, self.max_output_len
         )

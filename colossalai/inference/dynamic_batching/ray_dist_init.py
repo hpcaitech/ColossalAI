@@ -67,7 +67,9 @@ class Worker:
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_path, pad_token_id=self.tokenizer.pad_token_id, torch_dtype=torch.float16
         )
-        shard_config = ShardConfig(enable_tensor_parallelism=True if world_size > 1 else False, inference_only=True)
+        shard_config = ShardConfig(
+            enable_tensor_parallelism=True if world_size > 1 else False, extra_kwargs={"inference_only": True}
+        )
         self.infer_engine = TPInferEngine(
             self.model, shard_config, self.max_batch_size, self.max_input_len, self.max_output_len
         )
