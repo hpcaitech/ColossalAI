@@ -60,6 +60,12 @@ class BertPolicy(Policy):
         )
 
         policy = {}
+
+        if self.shard_config.enable_fused_normalization:
+            norm_cls = col_nn.FusedLayerNorm
+        else:
+            norm_cls = col_nn.LayerNorm
+
         use_sequence_parallel = self.shard_config.enable_sequence_parallelism
         overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
@@ -141,33 +147,34 @@ class BertPolicy(Policy):
             )
 
         # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            # Handle bert layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="attention.output.LayerNorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="output.LayerNorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=BertLayer,
-            )
-            # handle embedding layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="LayerNorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    )
-                ],
-                policy=policy,
-                target_key=BertEmbeddings,
-            )
+        # Handle bert layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="attention.output.LayerNorm",
+                    target_module=norm_cls,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+                SubModuleReplacementDescription(
+                    suffix="output.LayerNorm",
+                    target_module=norm_cls,
+                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                ),
+            ],
+            policy=policy,
+            target_key=BertLayer,
+        )
+        # handle embedding layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="LayerNorm",
+                    target_module=norm_cls,
+                )
+            ],
+            policy=policy,
+            target_key=BertEmbeddings,
+        )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
@@ -288,9 +295,6 @@ class BertPolicy(Policy):
 
 # BertModel
 class BertModelPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         policy = super().module_policy()
         from transformers.models.bert.modeling_bert import BertModel
@@ -313,9 +317,6 @@ class BertModelPolicy(BertPolicy):
 
 # BertForPreTraining
 class BertForPreTrainingPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
@@ -355,9 +356,6 @@ class BertForPreTrainingPolicy(BertPolicy):
 
 # BertLMHeadModel
 class BertLMHeadModelPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
@@ -396,9 +394,6 @@ class BertLMHeadModelPolicy(BertPolicy):
 
 # BertForMaskedLM
 class BertForMaskedLMPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
@@ -437,9 +432,6 @@ class BertForMaskedLMPolicy(BertPolicy):
 
 # BertForSequenceClassification
 class BertForSequenceClassificationPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForSequenceClassification
 
@@ -484,9 +476,6 @@ class BertForSequenceClassificationPolicy(BertPolicy):
 
 # BertForTokenClassification
 class BertForTokenClassificationPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForTokenClassification
 
@@ -531,9 +520,6 @@ class BertForTokenClassificationPolicy(BertPolicy):
 
 # BertForNextSentencePrediction
 class BertForNextSentencePredictionPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         policy = super().module_policy()
         from transformers.models.bert.modeling_bert import BertForNextSentencePrediction
@@ -564,9 +550,6 @@ class BertForNextSentencePredictionPolicy(BertPolicy):
 
 # BertForMultipleChoice
 class BertForMultipleChoicePolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForMultipleChoice
 
@@ -610,9 +593,6 @@ class BertForMultipleChoicePolicy(BertPolicy):
 
 
 class BertForQuestionAnsweringPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForQuestionAnswering
 

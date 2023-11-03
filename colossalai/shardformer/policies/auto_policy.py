@@ -4,6 +4,7 @@ from typing import Optional
 
 import torch.nn as nn
 
+from ..shard.shard_config import ShardConfig
 from .base_policy import Policy
 
 __all__ = ["PolicyLocation", "get_autopolicy", "import_policy"]
@@ -197,7 +198,7 @@ def _fullname(obj):
     return module + "." + klass.__qualname__
 
 
-def get_autopolicy(model: nn.Module, inference_only: Optional[bool] = False) -> Policy:
+def get_autopolicy(model: nn.Module, shard_config: ShardConfig = None) -> Policy:
     r"""
     Return the auto policy for the model
 
@@ -208,7 +209,7 @@ def get_autopolicy(model: nn.Module, inference_only: Optional[bool] = False) -> 
         :class:`Policy`: The auto policy for the model
     """
     full_name = _fullname(model)
-    if inference_only:
+    if shard_config.inference_only:
         policy_location = _INFER_POLICY_LIST.get(full_name, None)
     else:
         policy_location = _POLICY_LIST.get(full_name, None)
@@ -218,5 +219,5 @@ def get_autopolicy(model: nn.Module, inference_only: Optional[bool] = False) -> 
             f"Auto policy for {model.__class__.__qualname__} is not implemented\n. Supported models are {list(_POLICY_LIST.keys())} and {list(_INFER_POLICY_LIST.keys())}"
         )
     else:
-        policy = import_policy(policy_location, inference_only)
+        policy = import_policy(policy_location, shard_config.inference_only)
     return policy()
