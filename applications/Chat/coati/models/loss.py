@@ -28,9 +28,11 @@ class PolicyLoss(nn.Module):
     Policy Loss for PPO
     """
 
-    def __init__(self, clip_eps: float = 0.2) -> None:
+    def __init__(self, clip_eps: float = 0.2, skip_threshold: float = 15.0, ratio_clip_threshold: float = 10.0) -> None:
         super().__init__()
         self.clip_eps = clip_eps
+        self.skip_threshold = skip_threshold
+        self.ratio_clip_threshold = ratio_clip_threshold
 
     def forward(
         self,
@@ -41,10 +43,10 @@ class PolicyLoss(nn.Module):
     ) -> torch.Tensor:
         skip = False
         ratio_ = ((log_probs - old_log_probs)*action_mask).exp()
-        if masked_mean(ratio_, action_mask).max()>15.0:
-            # ratio will always be 1. if dropout is disabled
+        if masked_mean(ratio_, action_mask).max()>self.skip_threshold:
+            # ratio will always be 1. if dropout is disabled, using non-zero dropout is not recommended
             skip = True
-        ratio = ratio_.clamp(0.0, 10.0)
+        ratio = ratio_.clamp(0.0, self.ratio_clip_threshold)
         surr1 = ratio * advantages
         surr2 = ratio.clamp(1 - self.clip_eps, 1 + self.clip_eps) * advantages
         loss = -torch.min(surr1, surr2)

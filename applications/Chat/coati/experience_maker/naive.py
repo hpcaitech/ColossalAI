@@ -90,10 +90,8 @@ class NaiveExperienceMaker(ExperienceMaker):
             sequences_text, return_tensors="pt", padding="max_length", truncation=True, max_length=300
         )
         r = self.reward_model(
-            **{
-                "sequences": sequences_rm["input_ids"].to(dtype=torch.long, device=sequences.device),
-                "attention_mask": sequences_rm["attention_mask"].to(device=sequences.device),
-            }
+            sequences = sequences_rm["input_ids"].to(dtype=torch.long, device=sequences.device),
+            attention_mask = sequences_rm["attention_mask"].to(device=sequences.device)
         )
         reward, kl = compute_reward(r, self.kl_coef, action_log_probs, base_action_log_probs, action_mask=action_mask)
 

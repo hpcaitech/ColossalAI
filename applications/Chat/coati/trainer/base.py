@@ -202,7 +202,7 @@ class OnPolicyTrainer(ABC):
                     # save optimizer checkpoint on all ranks
                     if args.need_optim_ckpt:
                         self.strategy.save_optimizer(
-                            self.actor_optim, "actor_optim_checkpoint_prompts_%d.pt" % (torch.cuda.current_device()), only_rank0=False
+                            self.actor_optim, "actor_optim_checkpoint_prompts_%d.pt" % (torch.cuda.current_device()), only_rank0=True
                         )
 
                     self.strategy.save_checkpoint(episode)
