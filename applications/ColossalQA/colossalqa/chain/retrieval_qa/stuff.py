@@ -72,7 +72,7 @@ class CustomStuffDocumentsChain(StuffDocumentsChain):
 
         # if the document is in the key-value format has a 'is_key_value_mapping'=True in meta_data and has 'value' in metadata
         # use the value to replace the key
-        doc_prefix = kwargs.get("doc_prefix", "Supporting Document ")
+        doc_prefix = kwargs.get("doc_prefix", "Supporting Document")
         docs_ = []
         for id, doc in enumerate(docs):
             doc_ = copy.deepcopy(doc)

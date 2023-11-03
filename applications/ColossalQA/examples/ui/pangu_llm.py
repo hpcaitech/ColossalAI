@@ -149,10 +149,10 @@ if __name__ == '__main__':
     # USERNAME: 华为云控制台：“我的凭证”->“API凭证”下的“IAM用户名”，也就是你登录IAM账户的名字
     # PASSWORD: IAM用户的密码
     # DOMAIN_NAME: 华为云控制台：“我的凭证”->“API凭证”下的“用户名”，也就是公司管理IAM账户的总账户名
-    os.environ["URL"] = "https://pangu.cn-southwest-2.myhuaweicloud.com/v1/infers/7c996ea5-a08d-4480-9b47-29b71df679ce/v1/ddc28c926972441592db4a9052389ad1/deployments/abd45976-f351-4ebc-af2b-20bb4bbebf48/text/completions"
-    os.environ["URLNAME"] = "ZhengZian"
-    os.environ["PASSWORD"] = "zheng19991231"
-    os.environ["DOMAIN_NAME"] = "luchen1627"
+    os.environ["URL"] = ""
+    os.environ["URLNAME"] = ""
+    os.environ["PASSWORD"] = ""
+    os.environ["DOMAIN_NAME"] = ""
 
     pg = Pangu(id=1)
     pg.set_auth_config()
