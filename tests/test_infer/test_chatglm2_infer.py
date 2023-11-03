@@ -13,11 +13,10 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLM
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 try:
-    import lightllm 
     HAS_LIGHTLLM_KERNEL = True
 except:
     HAS_LIGHTLLM_KERNEL = False
-    
+
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 TPSIZE = 1
 BATCH_SIZE = 8
@@ -48,7 +47,7 @@ def run_chatglm2_test(test_config):
     model = model.half()
 
     shard_config = ShardConfig(
-        enable_tensor_parallelism=True if test_config["tp_size"] > 1 else False, inference_only=True
+        enable_tensor_parallelism=True if test_config["tp_size"] > 1 else False, extra_kwargs={"inference_only": True}
     )
     infer_engine = TPInferEngine(model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
     generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
@@ -67,7 +66,10 @@ def check_chatglm2(rank, world_size, port):
     run_chatglm2_test()
 
 
-@pytest.mark.skipif(not CUDA_SUPPORT or not HAS_LIGHTLLM_KERNEL, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
+@pytest.mark.skipif(
+    not CUDA_SUPPORT or not HAS_LIGHTLLM_KERNEL,
+    reason="kv-cache manager engine requires cuda version to be higher than 11.5",
+)
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()

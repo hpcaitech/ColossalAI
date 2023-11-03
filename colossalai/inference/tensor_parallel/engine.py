@@ -200,7 +200,7 @@ class TPInferEngine:
                 enable_all_optimization=False,
                 enable_flash_attention=False,
                 enable_jit_fused=False,
-                inference_only=True,
+                extra_kwargs={"inference_only": True},
             )
         else:
             shard_config.inference_only = True
@@ -219,12 +219,11 @@ class TPInferEngine:
         model_name = model.__class__.__name__
         assert model_name in self.supported_models, f"Unsupported model cls {model_name} for TP inference."
 
-        model = model.model if self.shard_config.inference_gptq else model
-
+        if "inference_gptq" in self.shard_config.extra_kwargs.keys() and self.shard_config.inference_gptq:
+            model = model.model
         policy = get_autopolicy(model, inference_only=True)
         self.model, _ = shardformer.optimize(model, policy)
-
-        if self.shard_config.inference_gptq:
+        if "inference_gptq" in self.shard_config.extra_kwargs.keys() and self.shard_config.inference_gptq:
             self._post_init_gptq_buffer(self.model)
 
         self.model = self.model.cuda()
@@ -311,7 +310,7 @@ class TPInferEngine:
                 seq_start_indexes[i] = start_index
                 start_index += curr_seq_len
                 max_len_in_batch = curr_seq_len if curr_seq_len > max_len_in_batch else max_len_in_batch
-        
+
         block_loc = torch.empty((batch_size, self.max_input_len + self.max_output_len), dtype=torch.long, device="cuda")
         batch_infer_state = BatchInferState(batch_size, max_len_in_batch)
         batch_infer_state.seq_len = seq_lengths.to("cuda")
