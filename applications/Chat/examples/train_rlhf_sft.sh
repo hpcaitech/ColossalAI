@@ -15,7 +15,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 
 set_n_least_used_CUDA_VISIBLE_DEVICES 1
 
-torchrun --standalone --nproc_per_node=1 train_rlhf_sft.py \
+colossalai run --nproc_per_node=1 --master_port 12354 --hostfile ./hostfile train_rlhf_sft.py \
     --pretrain "gpt2" \
     --model 'gpt2' \
     --strategy colossalai_zero2 \

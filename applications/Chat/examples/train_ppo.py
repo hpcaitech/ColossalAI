@@ -75,20 +75,20 @@ def main(args):
         if args.model == "gpt2":
             config = AutoConfig.from_pretrained(args.pretrain)
             config.embd_pdrop = 0.000
-            config.attn_pdrop = 0.0001
-            config.resid_pdrop = 0.0001
+            config.attn_pdrop = 0.000
+            config.resid_pdrop = 0.000
             actor = GPTActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
         elif args.model == "bloom":
             config = AutoConfig.from_pretrained(args.pretrain)
             # TODO: find a proper hyperparameter setting for BLOOM
-            config.attention_dropout = 0.0001
-            config.hidden_dropout = 0.0001
+            config.attention_dropout = 0.000
+            config.hidden_dropout = 0.000
             actor = BLOOMActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
         elif args.model == "opt":
             config = AutoConfig.from_pretrained(args.pretrain)
             # TODO: find a proper hyperparameter setting for OPT
-            config.attention_dropout = 0.0001
-            config.dropout = 0.0001
+            config.attention_dropout = 0.000
+            config.dropout = 0.000
             config.layerdrop = 0.000
             actor = OPTActor(pretrained=args.pretrain, config=config, lora_rank=args.lora_rank)
         elif args.model == "llama":

@@ -15,7 +15,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 
 set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
-torchrun --standalone --nproc_per_node=2 --nnodes=1 train_reward_model.py \
+colossalai run --nproc_per_node=1 --master_port 12354 --hostfile ./hostfile train_reward_model.py \
     --pretrain 'gpt2' \
     --model 'gpt2' \
     --strategy colossalai_zero2 \

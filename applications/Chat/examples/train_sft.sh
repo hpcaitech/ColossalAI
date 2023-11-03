@@ -15,7 +15,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 
 set_n_least_used_CUDA_VISIBLE_DEVICES 4
 
-torchrun --standalone --nproc_per_node=4 train_sft.py \
+colossalai run --nproc_per_node=1 --master_port 12354 --hostfile ./hostfile train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy colossalai_zero2 \
