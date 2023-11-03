@@ -30,9 +30,6 @@ __all__ = ["distribute_t5_layers", "T5ModelPolicy", "T5ForConditionalGenerationP
 
 
 class T5BasePolicy(Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def config_sanity_check(self):
         pass
 
@@ -371,9 +368,6 @@ class T5BasePolicy(Policy):
 
 
 class T5ModelPolicy(T5BasePolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers import T5Model
 
@@ -410,9 +404,6 @@ class T5ModelPolicy(T5BasePolicy):
 
 
 class T5ForConditionalGenerationPolicy(T5BasePolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers import T5ForConditionalGeneration
 
@@ -474,9 +465,6 @@ class T5ForConditionalGenerationPolicy(T5BasePolicy):
 
 
 class T5EncoderPolicy(T5BasePolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers import T5EncoderModel
 

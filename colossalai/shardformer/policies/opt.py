@@ -22,9 +22,6 @@ __all__ = [
 
 
 class OPTPolicy(Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def config_sanity_check(self):
         pass
 
@@ -191,9 +188,6 @@ class OPTPolicy(Policy):
 
 
 class OPTModelPolicy(OPTPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTModel
 
@@ -213,9 +207,6 @@ class OPTModelPolicy(OPTPolicy):
 
 
 class OPTForCausalLMPolicy(OPTPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTForCausalLM
 
@@ -264,9 +255,6 @@ class OPTForCausalLMPolicy(OPTPolicy):
 
 
 class OPTForSequenceClassificationPolicy(OPTPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTForSequenceClassification
 
@@ -292,9 +280,6 @@ class OPTForSequenceClassificationPolicy(OPTPolicy):
 
 
 class OPTForQuestionAnsweringPolicy(OPTPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTForQuestionAnswering
 

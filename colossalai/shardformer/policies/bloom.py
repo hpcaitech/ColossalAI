@@ -21,9 +21,6 @@ from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDe
 
 
 class BloomPolicy(Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def config_sanity_check(self):
         pass
 
@@ -233,9 +230,6 @@ class BloomPolicy(Policy):
 
 
 class BloomModelPolicy(BloomPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         policy = super().module_policy()
         from transformers.models.bloom.modeling_bloom import BloomModel
@@ -259,9 +253,6 @@ class BloomModelPolicy(BloomPolicy):
 
 
 class BloomForCausalLMPolicy(BloomPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.bloom.modeling_bloom import BloomForCausalLM
 
@@ -305,9 +296,6 @@ class BloomForCausalLMPolicy(BloomPolicy):
 
 
 class BloomForSequenceClassificationPolicy(BloomPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.bloom.modeling_bloom import BloomForSequenceClassification
 
@@ -344,9 +332,6 @@ class BloomForSequenceClassificationPolicy(BloomPolicy):
 
 
 class BloomForTokenClassificationPolicy(BloomPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.bloom.modeling_bloom import BloomForTokenClassification
 
@@ -391,9 +376,6 @@ class BloomForTokenClassificationPolicy(BloomPolicy):
 
 
 class BloomForQuestionAnsweringPolicy(BloomPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     # No head sharding as the output features is only 2
     def module_policy(self):
         from transformers.models.bloom.modeling_bloom import BloomForQuestionAnswering

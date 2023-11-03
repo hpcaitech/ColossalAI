@@ -20,9 +20,6 @@ __all__ = ["ChatGLMPolicy", "ChatGLMModelPolicy", "ChatGLMForConditionalGenerati
 
 
 class ChatGLMPolicy(Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def config_sanity_check(self):
         pass
 
@@ -219,9 +216,6 @@ class ChatGLMPolicy(Policy):
 
 
 class ChatGLMModelPolicy(ChatGLMPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         pass
 
@@ -242,9 +236,6 @@ class ChatGLMModelPolicy(ChatGLMPolicy):
 
 
 class ChatGLMForConditionalGenerationPolicy(ChatGLMModelPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         policy = super().module_policy()
 

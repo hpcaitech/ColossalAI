@@ -7,9 +7,6 @@ __all__ = ["SamPolicy", "SamModelPolicy"]
 
 
 class SamPolicy(Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def config_sanity_check(self):
         pass
 

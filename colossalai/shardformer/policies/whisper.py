@@ -26,9 +26,6 @@ __all__ = [
 
 
 class WhisperPolicy(Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def config_sanity_check(self):
         pass
 
@@ -423,9 +420,6 @@ class WhisperPolicy(Policy):
 
 # WhisperModel
 class WhisperModelPolicy(WhisperPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers import WhisperModel
 
@@ -448,9 +442,6 @@ class WhisperModelPolicy(WhisperPolicy):
 
 # WhisperForConditionalGeneration
 class WhisperForConditionalGenerationPolicy(WhisperPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers import WhisperForConditionalGeneration
 
@@ -509,9 +500,6 @@ class WhisperForConditionalGenerationPolicy(WhisperPolicy):
 
 # WhisperForAudioClassification
 class WhisperForAudioClassificationPolicy(WhisperPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def preprocess(self):
         return self.model
 

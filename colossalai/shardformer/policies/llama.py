@@ -15,9 +15,6 @@ __all__ = ["LlamaPolicy", "LlamaForCausalLMPolicy", "LlamaForSequenceClassificat
 
 
 class LlamaPolicy(Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def config_sanity_check(self):
         pass
 
@@ -182,9 +179,6 @@ class LlamaPolicy(Policy):
 
 
 class LlamaModelPolicy(LlamaPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         policy = super().module_policy()
         from transformers.models.llama.modeling_llama import LlamaModel
@@ -207,9 +201,6 @@ class LlamaModelPolicy(LlamaPolicy):
 
 
 class LlamaForCausalLMPolicy(LlamaPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers import LlamaForCausalLM
 
@@ -262,9 +253,6 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
 
 
 class LlamaForSequenceClassificationPolicy(LlamaPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers import LlamaForSequenceClassification
 

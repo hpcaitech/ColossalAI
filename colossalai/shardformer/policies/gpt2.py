@@ -19,9 +19,6 @@ __all__ = [
 
 
 class GPT2Policy(Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def config_sanity_check(self):
         pass
 
@@ -204,9 +201,6 @@ class GPT2Policy(Policy):
 
 # GPT2Model
 class GPT2ModelPolicy(GPT2Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2Model
 
@@ -228,9 +222,6 @@ class GPT2ModelPolicy(GPT2Policy):
 
 # GPT2LMHeadModel
 class GPT2LMHeadModelPolicy(GPT2Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
 
@@ -275,9 +266,6 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
 
 # GPT2DoubleHeadsModel
 class GPT2DoubleHeadsModelPolicy(GPT2Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2DoubleHeadsModel
 
@@ -329,9 +317,6 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
 
 # GPT2ForQuestionAnswering
 class GPT2ForQuestionAnsweringPolicy(GPT2Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2ForQuestionAnswering
 
@@ -359,9 +344,6 @@ class GPT2ForQuestionAnsweringPolicy(GPT2Policy):
 
 # GPT2ForTokenClassification
 class GPT2ForTokenClassificationPolicy(GPT2Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2ForTokenClassification
 
@@ -399,9 +381,6 @@ class GPT2ForTokenClassificationPolicy(GPT2Policy):
 
 # GPT2ForSequenceClassification
 class GPT2ForSequenceClassificationPolicy(GPT2Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2ForSequenceClassification
 

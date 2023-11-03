@@ -32,9 +32,6 @@ __all__ = [
 
 
 class BertPolicy(Policy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def config_sanity_check(self):
         pass
 
@@ -298,9 +295,6 @@ class BertPolicy(Policy):
 
 # BertModel
 class BertModelPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         policy = super().module_policy()
         from transformers.models.bert.modeling_bert import BertModel
@@ -323,9 +317,6 @@ class BertModelPolicy(BertPolicy):
 
 # BertForPreTraining
 class BertForPreTrainingPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
@@ -365,9 +356,6 @@ class BertForPreTrainingPolicy(BertPolicy):
 
 # BertLMHeadModel
 class BertLMHeadModelPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
@@ -406,9 +394,6 @@ class BertLMHeadModelPolicy(BertPolicy):
 
 # BertForMaskedLM
 class BertForMaskedLMPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         policy = super().module_policy()
         policy = self.add_lm_head_policy(policy)
@@ -447,9 +432,6 @@ class BertForMaskedLMPolicy(BertPolicy):
 
 # BertForSequenceClassification
 class BertForSequenceClassificationPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForSequenceClassification
 
@@ -494,9 +476,6 @@ class BertForSequenceClassificationPolicy(BertPolicy):
 
 # BertForTokenClassification
 class BertForTokenClassificationPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForTokenClassification
 
@@ -541,9 +520,6 @@ class BertForTokenClassificationPolicy(BertPolicy):
 
 # BertForNextSentencePrediction
 class BertForNextSentencePredictionPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         policy = super().module_policy()
         from transformers.models.bert.modeling_bert import BertForNextSentencePrediction
@@ -574,9 +550,6 @@ class BertForNextSentencePredictionPolicy(BertPolicy):
 
 # BertForMultipleChoice
 class BertForMultipleChoicePolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForMultipleChoice
 
@@ -620,9 +593,6 @@ class BertForMultipleChoicePolicy(BertPolicy):
 
 
 class BertForQuestionAnsweringPolicy(BertPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForQuestionAnswering
 
