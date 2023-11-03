@@ -87,7 +87,7 @@ More details can be found in the latest news.
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/ColossalChat%20Speed.jpg" width=450/>
 </p>
 
-> DeepSpeedChat performance comes from its blog on 2023 April 12, ColossalChat performance can be reproduced on an AWS p4d.24xlarge node with 8 A100-40G GPUs with the following command: `torchrun --standalone --nproc_per_node 8 benchmark_opt_lora_dummy.py --num_collect_steps 1 --use_kernels --strategy colossalai_zero2 --experience_batch_size 64 --train_batch_size 32`
+> DeepSpeedChat performance comes from its blog on 2023 April 12, ColossalChat performance can be reproduced on an AWS p4d.24xlarge node with 8 A100-40G GPUs with the following command: `colossalai run --nproc_per_node=8 --hostfile ./hostfile  benchmark_opt_lora_dummy.py --num_collect_steps 1 --use_kernels --strategy colossalai_zero2 --experience_batch_size 64 --train_batch_size 32`
 
 ## Install
 
@@ -337,7 +337,7 @@ If you only have a single 24G GPU, you can use the following script. `batch_size
 
 ```bash
 // [INFO]: MAX GPU MEMORY ALLOCATED:  19148.9345703125 MB
-torchrun --standalone --nproc_per_node=1 train_sft.py \
+colossalai run --nproc_per_node=4 --hostfile ./hostfile train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy ddp \
@@ -355,7 +355,7 @@ torchrun --standalone --nproc_per_node=1 train_sft.py \
 `colossalai_gemini` strategy can enable a single 24G GPU to train the whole model without using LoRA if you have sufficient CPU memory. You can use the following script.
 
 ```bash
-torchrun --standalone --nproc_per_node=1 train_sft.py \
+colossalai run --nproc_per_node=4 --hostfile ./hostfile train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy colossalai_gemini \
@@ -372,7 +372,7 @@ torchrun --standalone --nproc_per_node=1 train_sft.py \
 If you have 4x32 GB GPUs, you can even train the whole 7B model using our `colossalai_zero2_cpu` strategy! The script is given as follows.
 
 ```bash
-torchrun --standalone --nproc_per_node=4 train_sft.py \
+colossalai run --nproc_per_node=4 --hostfile ./hostfile train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy colossalai_zero2_cpu \

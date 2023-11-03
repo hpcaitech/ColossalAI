@@ -55,9 +55,6 @@ class NaiveExperienceMaker(ExperienceMaker):
 
         sequences = generate(self.actor, input_ids, self.tokenizer, **generate_kwargs)
 
-        self.actor.train()
-        self.critic.train()
-
         # calculate auxiliary tensors
         attention_mask = None
         pad_token_id = self.tokenizer.pad_token_id

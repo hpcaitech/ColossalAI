@@ -3,28 +3,6 @@ from typing import Optional, Union
 import torch
 import torch.nn.functional as F
 
-
-def _compute_approx_kl(
-    log_probs: torch.Tensor, log_probs_base: torch.Tensor, action_mask: Optional[torch.Tensor] = None
-) -> torch.Tensor:
-    """
-    Compute the approximate KL divergence between two distributions.
-    Schulman blog: http://joschu.net/blog/kl-approx.html
-
-    Args:
-        log_probs: Log probabilities of the new distribution.
-        log_probs_base: Log probabilities of the base distribution.
-        action_mask: Mask for actions.
-    """
-
-    approx_kl = log_probs_base - log_probs
-    if action_mask is not None:
-        approx_kl = masked_mean(approx_kl, action_mask, dim=1)
-        return approx_kl
-    approx_kl = approx_kl.mean(dim=1)
-    return approx_kl
-
-
 def compute_reward(
     r: Union[torch.Tensor, float],
     kl_coef: float,
@@ -42,12 +20,12 @@ def compute_reward(
     Returns:
         reward: [batch_size, response_length]
     '''
-    log_ratio = log_probs - log_probs_base # address numerical instability issue
-    kl = -kl_coef * log_ratio * action_mask # _compute_approx_kl(log_probs, log_probs_base, action_mask=action_mask)
+    log_ratio = log_probs - log_probs_base
+    # Compute the approximate KL divergence between two distributions.
+    # Reference: https://github.com/microsoft/DeepSpeedExamples/blob/f52b72571e4d677dda3bf5faf96bcab143b1c035/applications/DeepSpeed-Chat/training/step3_rlhf_finetuning/ppo_trainer.py#L189.
+    kl = -kl_coef * log_ratio * action_mask
     reward = kl
-    # print(reward[0]*action_mask[0])
     r_clip = torch.clamp(r, -reward_eps, reward_eps)
-    # print(r_clip[0])
     for i in range(action_mask.size(0)):
         assert action_mask[i].sum()>0
         reward[i, :action_mask[i].sum()] += r_clip[i]

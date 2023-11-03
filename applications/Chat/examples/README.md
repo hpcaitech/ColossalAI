@@ -38,13 +38,13 @@
 pip install -r requirements.txt
 ```
 
-## Get Start with torchrun (ELASTIC LAUNCH)
+## Get Start with colossalai run
 
-You can config how you want to start the training by adding control flags to the torchrun command when starting your training script. Here, we explains some mostly used torchrun arguments, for more details, please kindly refers to the official [torchrun user guide](https://pytorch.org/docs/stable/elastic/run.html).
+You can config how you want to start the training by adding control flags to the colossalai run command when starting your training script. Here, we explains some mostly used colossalai run arguments.
 
-- nnodes: number of nodes used in the training
+- master_port: master port number
 - nproc-per-node: specifies the number of processes to be launched per node
-- rdzv-endpoint: address of the host node
+- hostfile: address of the host and slave nodes
 
 
 ## Supervised datasets collection
@@ -113,7 +113,7 @@ You can run the `examples/train_sft.sh` to start a supervised instructs fine-tun
 You can also use the following cmd to start a supervised instructs fine-tuning with your own settings.
 
 ```bash
-torchrun --standalone --nproc_per_node=4 train_sft.py \
+colossalai run --nproc_per_node=1 --master_port 12345 --hostfile ./hostfile train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy colossalai_zero2 \
@@ -165,7 +165,7 @@ You can run the `examples/train_rlhf_sft.sh` to start a supervised instructs fin
 You can also use the following cmd to start a supervised instructs fine-tuning with your own settings.
 
 ```bash
-torchrun --standalone --nproc_per_node=1 train_rlhf_sft.py \
+colossalai run --nproc_per_node=1 --master_port 12345 --hostfile train_rlhf_sft.py \
     --pretrain "gpt2" \
     --model 'gpt2' \
     --strategy colossalai_zero2 \
@@ -196,7 +196,7 @@ You can run the `examples/train_rm.sh` to start a reward model training.
 You can also use the following cmd to start training a reward model.
 
 ```bash
-torchrun --standalone --nproc_per_node=4 train_reward_model.py \
+colossalai run --nproc_per_node=1 --master_port 12345 --hostfile train_reward_model.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy colossalai_zero2 \
@@ -272,7 +272,7 @@ You can also use the cmd following to start PPO training.
 
 PPO Training Script
 ```bash
-torchrun --standalone --nproc_per_node=4 train_prompts.py \
+colossalai run --nproc_per_node=1 --master_port 12345 --hostfile train_prompts.py \
     --pretrain_dataset 'path to sft dataset used in stage 1'  \
     --prompt_dataset 'dataset that contains prompt (queries) for PPO training' \
     --strategy colossalai_zero2 \
