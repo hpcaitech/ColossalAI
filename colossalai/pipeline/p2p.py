@@ -166,16 +166,6 @@ def filling_ops_queue(obj, comm_op, comm_rank, ops_queue, group):
             ops_queue.append(op_to_add)
 
 
-def _batch_send_tensor(dst, tensor_list: List[torch.Tensor], group):
-    ops = []
-    filling_ops_queue(tensor_list, dist.isend, dst, ops, group)
-    if len(ops) > 0:
-        reqs = dist.batch_isend_irecv(ops)
-        for req in reqs:
-            req.wait()
-    torch.cuda.synchronize()
-
-
 def create_recv_buffer(tensor_metadata, current_device):
     buffer_recv = []
     for (_, tensor_shape, tensor_dtype, tensor_requires_grad) in tensor_metadata:
@@ -185,11 +175,19 @@ def create_recv_buffer(tensor_metadata, current_device):
     return buffer_recv
 
 
-def _batch_recv_tensor(src, tensor_metadata, current_device, group):
-    buffer_recv = create_recv_buffer(tensor_metadata, current_device)
+def _batch_send_recv_tensor(send_tensor_list, recv_tensor_metadata, send_dst, recv_src, group, current_device):
+    buffer_recv = None
+    if recv_tensor_metadata is not None:
+        buffer_recv = create_recv_buffer(recv_tensor_metadata, current_device)
+
     ops = []
 
-    filling_ops_queue(buffer_recv, dist.irecv, src, ops, group)
+    if send_dst is not None:
+        filling_ops_queue(send_tensor_list, dist.isend, send_dst, ops, group)
+
+    if recv_src is not None:
+        assert buffer_recv is not None
+        filling_ops_queue(buffer_recv, dist.irecv, recv_src, ops, group)
 
     if len(ops) > 0:
         reqs = dist.batch_isend_irecv(ops)
@@ -199,7 +197,7 @@ def _batch_recv_tensor(src, tensor_metadata, current_device, group):
     return buffer_recv
 
 
-def _send_object_with_serialization(object: Any, src: int, dst: int, group: ProcessGroup, current_device, is_nccl_backend):
+def _send_object_with_serialization(object: Any, dst: int, group: ProcessGroup, current_device, is_nccl_backend):
     if Version(torch.__version__) >= Version("1.13.0"):
         object_tensor, object_size_tensor = c10d._object_to_tensor(
             object, device=current_device)
@@ -214,7 +212,7 @@ def _send_object_with_serialization(object: Any, src: int, dst: int, group: Proc
     c10d.send(object_tensor, dst=dst, group=group)
 
 
-def _recv_object_with_serialization(src: int, dst: int, group: ProcessGroup, current_device, is_nccl_backend):
+def _recv_object_with_serialization(src: int, group: ProcessGroup, current_device, is_nccl_backend):
     object_size_tensor = torch.empty(1, dtype=torch.long)
     if is_nccl_backend:
         object_size_tensor = object_size_tensor.to(current_device)
@@ -231,8 +229,7 @@ def _recv_object_with_serialization(src: int, dst: int, group: ProcessGroup, cur
     if object_tensor.device != torch.device("cpu"):
         object_tensor = object_tensor.cpu()
 
-    unpickle_object = _cuda_safe_tensor_to_object(
-        object_tensor, object_size_tensor.item())
+    unpickle_object = _cuda_safe_tensor_to_object(object_tensor, object_size_tensor.item())
 
     if (
         isinstance(unpickle_object, torch.Tensor)
@@ -243,27 +240,82 @@ def _recv_object_with_serialization(src: int, dst: int, group: ProcessGroup, cur
     return unpickle_object
 
 
-def _send_dict_of_tensor(object: Any, src: int, dst: int, group: ProcessGroup, current_device, is_nccl_backend):
-    metadata = []
-    metadata.append('__metadata__transfer__')
-    for k, v in object.items():
-        metadata.append((k, v.shape, v.dtype, v.requires_grad))
+def _check_if_fast_send_available(object):
+    if type(object) is list:
+        is_list_of_tensor = all([type(v) is torch.Tensor for v in object])
+        return is_list_of_tensor
+    elif type(object) is dict:
+        is_dict_of_tensor = all([type(k) is str and type(
+            v) is torch.Tensor for k, v in object.items()])
 
-    _send_object_with_serialization(metadata, src, dst, group, current_device, is_nccl_backend)
+        return is_dict_of_tensor
+    return False
 
-    _batch_send_tensor(dst, list(object.values()), group)
 
+def _send_recv(
+    object,
+    send_dst: Optional[int],
+    recv_src: Optional[int],
+    group: ProcessGroup
+) -> Any:
+    if c10d._rank_not_in_group(group):
+        c10d._warn_not_in_group("_send_recv")
+        return
 
-def _recv_dict_of_tensor(metadata, src: int, dst: int, group: ProcessGroup, current_device, is_nccl_backend):
-    recved_batch = _batch_recv_tensor(src, metadata, current_device, group)
-    object = {
-        k: v
-        for k, v in zip(
-            [m[0] for m in metadata],
-            recved_batch,
-        )
-    }
-    return object
+    current_device, is_nccl_backend = check_device(group)
+
+    assert (send_dst is not None) or (recv_src is not None)
+
+    can_fast_send = False
+    if send_dst is not None:
+        can_fast_send = _check_if_fast_send_available(object) and is_nccl_backend
+        if not can_fast_send:
+            send_metadata = ['__serialization__', object]
+            _send_object_with_serialization(send_metadata, send_dst, group, current_device, is_nccl_backend)
+        else:
+            send_metadata = []
+            send_metadata.append('__tensor__')
+            if type(object) is list:
+                for v in object:
+                    send_metadata.append((None, v.shape, v.dtype, v.requires_grad))
+            elif type(object) is dict:
+                for k, v in object.items():
+                    send_metadata.append((k, v.shape, v.dtype, v.requires_grad))
+            _send_object_with_serialization(send_metadata, send_dst, group, current_device, is_nccl_backend)
+
+    recv_metadata = None
+    if recv_src is not None:
+        recv_metadata = _recv_object_with_serialization(recv_src, group, current_device, is_nccl_backend)
+        assert type(recv_metadata) is list and len(recv_metadata) > 1
+        if recv_metadata[0] == '__serialization__':
+            return recv_metadata[1]
+        else:
+            recv_metadata.pop(0)
+
+    # The following code is for fast send and recv
+    if not can_fast_send and send_dst is not None:
+        return
+
+    send_tensor_list = None
+    if type(object) is list:
+        send_tensor_list = object
+    elif type(object) is dict:
+        send_tensor_list = list(object.values())
+
+    recv_buffer = _batch_send_recv_tensor(send_tensor_list, recv_metadata, send_dst, recv_src, group, current_device)
+
+    if recv_metadata is not None:
+        assert recv_buffer is not None
+        if recv_metadata[0][0] is None:
+            return recv_buffer
+        else:
+            return {
+                k: v
+                for k, v in zip(
+                    [m[0] for m in recv_metadata],
+                    recv_buffer,
+                )
+            }
 
 
 def _send_object(object: Any, src: int, dst: int, group: ProcessGroup) -> None:
@@ -276,21 +328,7 @@ def _send_object(object: Any, src: int, dst: int, group: ProcessGroup) -> None:
     Returns:
         None
     """
-    if c10d._rank_not_in_group(group):
-        c10d._warn_not_in_group("_send_object")
-        return
-
-    current_device, is_nccl_backend = check_device(group)
-
-    if type(object) is dict:
-        is_dict_of_tensor = all([type(k) is str and type(
-            v) is torch.Tensor for k, v in object.items()])
-
-        if is_dict_of_tensor:
-            _send_dict_of_tensor(object, src, dst, group, current_device, is_nccl_backend)
-            return
-
-    _send_object_with_serialization(object, src, dst, group, current_device, is_nccl_backend)
+    _send_recv(object, dst, None, group)
 
 
 def _recv_object(src: int, dst: int, group: ProcessGroup) -> Any:
@@ -302,19 +340,7 @@ def _recv_object(src: int, dst: int, group: ProcessGroup) -> Any:
     Returns:
         Any: Object received from src.
     """
-    if c10d._rank_not_in_group(group):
-        c10d._warn_not_in_group("_recv_object")
-        return
-
-    current_device, is_nccl_backend = check_device(group)
-
-    object = _recv_object_with_serialization(src, dst, group, current_device, is_nccl_backend)
-    if type(object) is list and len(object) >= 1 and object[0] == '__metadata__transfer__':
-        object.pop(0)
-        object = _recv_dict_of_tensor(object, src, dst, group, current_device, is_nccl_backend)
-        return object
-    else:
-        return object
+    return _send_recv(None, None, src, group)
 
 
 def _p2p_comm(
