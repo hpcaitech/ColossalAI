@@ -4,7 +4,7 @@
 import io
 import pickle
 import re
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Union, Dict
 
 import torch
 import torch.distributed as dist
@@ -45,6 +45,21 @@ def _cuda_safe_tensor_to_object(tensor: torch.Tensor, tensor_size: torch.Size) -
     return unpickle
 
 
+def check_for_nccl_backend(group):
+    pg = group or c10d._get_default_group()
+    # Gate PG wrapper check on Gloo availability.
+    if c10d._GLOO_AVAILABLE:
+        # It is not expected for PG to be wrapped many times, but support it just
+        # in case
+        while isinstance(pg, c10d._ProcessGroupWrapper):
+            pg = pg.wrapped_pg
+
+    return (
+        c10d.is_nccl_available() and
+        pg.name() == c10d.Backend.NCCL
+    )
+
+
 def _broadcast_object_list(
     object_list: List[Any], src: int, group: ProcessGroup, device: Optional[Union[torch.device, str, int]] = None
 ):
@@ -65,7 +80,7 @@ def _broadcast_object_list(
         c10d._warn_not_in_group("broadcast_object_list")
         return
 
-    is_nccl_backend = c10d._check_for_nccl_backend(group)
+    is_nccl_backend = check_for_nccl_backend(group)
     current_device = None
 
     if device is not None:
@@ -113,7 +128,7 @@ def _broadcast_object_list(
 
     if my_rank != src:
         for i, obj_size in enumerate(object_sizes_tensor):
-            obj_view = object_tensor[offset : offset + obj_size]
+            obj_view = object_tensor[offset: offset + obj_size]
             obj_view = obj_view.type(torch.uint8)
             if obj_view.device != torch.device("cpu"):
                 obj_view = obj_view.cpu()
@@ -131,6 +146,126 @@ def _broadcast_object_list(
             object_list[i] = unpickle_object
 
 
+def check_device(group):
+    is_nccl_backend = check_for_nccl_backend(group)
+    current_device = None
+
+    current_device = torch.device("cpu")
+    if is_nccl_backend:
+        current_device = torch.device("cuda", torch.cuda.current_device())
+    return current_device, is_nccl_backend
+
+
+def filling_ops_queue(obj, comm_op, comm_rank, ops_queue, group):
+    if isinstance(obj, torch.Tensor):
+        op_to_add = dist.P2POp(comm_op, obj, comm_rank, group)
+        ops_queue.append(op_to_add)
+    else:
+        for tensor_to_comm in obj:
+            op_to_add = dist.P2POp(comm_op, tensor_to_comm, comm_rank, group)
+            ops_queue.append(op_to_add)
+
+
+def _batch_send_tensor(dst, tensor_list: List[torch.Tensor], group):
+    ops = []
+    filling_ops_queue(tensor_list, dist.isend, dst, ops, group)
+    if len(ops) > 0:
+        reqs = dist.batch_isend_irecv(ops)
+        for req in reqs:
+            req.wait()
+    torch.cuda.synchronize()
+
+
+def create_recv_buffer(tensor_metadata, current_device):
+    buffer_recv = []
+    for (_, tensor_shape, tensor_dtype, tensor_requires_grad) in tensor_metadata:
+        tensor_recv = torch.empty(
+            tensor_shape, requires_grad=tensor_requires_grad, device=current_device, dtype=tensor_dtype)
+        buffer_recv.append(tensor_recv)
+    return buffer_recv
+
+
+def _batch_recv_tensor(src, tensor_metadata, current_device, group):
+    buffer_recv = create_recv_buffer(tensor_metadata, current_device)
+    ops = []
+
+    filling_ops_queue(buffer_recv, dist.irecv, src, ops, group)
+
+    if len(ops) > 0:
+        reqs = dist.batch_isend_irecv(ops)
+        for req in reqs:
+            req.wait()
+    torch.cuda.synchronize()
+    return buffer_recv
+
+
+def _send_object_with_serialization(object: Any, src: int, dst: int, group: ProcessGroup, current_device, is_nccl_backend):
+    if Version(torch.__version__) >= Version("1.13.0"):
+        object_tensor, object_size_tensor = c10d._object_to_tensor(
+            object, device=current_device)
+    else:
+        object_tensor, object_size_tensor = c10d._object_to_tensor(object)
+
+    if is_nccl_backend:
+        object_size_tensor = object_size_tensor.to(current_device)
+        object_tensor = object_tensor.to(current_device)
+
+    c10d.send(object_size_tensor, dst=dst, group=group)
+    c10d.send(object_tensor, dst=dst, group=group)
+
+
+def _recv_object_with_serialization(src: int, dst: int, group: ProcessGroup, current_device, is_nccl_backend):
+    object_size_tensor = torch.empty(1, dtype=torch.long)
+    if is_nccl_backend:
+        object_size_tensor = object_size_tensor.to(current_device)
+
+    c10d.recv(object_size_tensor, src=src, group=group)
+
+    object_tensor = torch.empty(object_size_tensor.item(), dtype=torch.uint8)
+    if is_nccl_backend:
+        object_tensor = object_tensor.to(current_device)
+
+    c10d.recv(object_tensor, src=src, group=group)
+
+    object_tensor = object_tensor.type(torch.uint8)
+    if object_tensor.device != torch.device("cpu"):
+        object_tensor = object_tensor.cpu()
+
+    unpickle_object = _cuda_safe_tensor_to_object(
+        object_tensor, object_size_tensor.item())
+
+    if (
+        isinstance(unpickle_object, torch.Tensor)
+        and unpickle_object.device.index != torch.cuda.current_device()
+    ):
+        unpickle_object = unpickle_object.cuda()
+
+    return unpickle_object
+
+
+def _send_dict_of_tensor(object: Any, src: int, dst: int, group: ProcessGroup, current_device, is_nccl_backend):
+    metadata = []
+    metadata.append('__metadata__transfer__')
+    for k, v in object.items():
+        metadata.append((k, v.shape, v.dtype, v.requires_grad))
+
+    _send_object_with_serialization(metadata, src, dst, group, current_device, is_nccl_backend)
+
+    _batch_send_tensor(dst, list(object.values()), group)
+
+
+def _recv_dict_of_tensor(metadata, src: int, dst: int, group: ProcessGroup, current_device, is_nccl_backend):
+    recved_batch = _batch_recv_tensor(src, metadata, current_device, group)
+    object = {
+        k: v
+        for k, v in zip(
+            [m[0] for m in metadata],
+            recved_batch,
+        )
+    }
+    return object
+
+
 def _send_object(object: Any, src: int, dst: int, group: ProcessGroup) -> None:
     """send anything to dst rank
 
@@ -141,8 +276,21 @@ def _send_object(object: Any, src: int, dst: int, group: ProcessGroup) -> None:
     Returns:
         None
     """
-    # then broadcast safely
-    _broadcast_object_list([object], src, group)
+    if c10d._rank_not_in_group(group):
+        c10d._warn_not_in_group("_send_object")
+        return
+
+    current_device, is_nccl_backend = check_device(group)
+
+    if type(object) is dict:
+        is_dict_of_tensor = all([type(k) is str and type(
+            v) is torch.Tensor for k, v in object.items()])
+
+        if is_dict_of_tensor:
+            _send_dict_of_tensor(object, src, dst, group, current_device, is_nccl_backend)
+            return
+
+    _send_object_with_serialization(object, src, dst, group, current_device, is_nccl_backend)
 
 
 def _recv_object(src: int, dst: int, group: ProcessGroup) -> Any:
@@ -154,10 +302,19 @@ def _recv_object(src: int, dst: int, group: ProcessGroup) -> Any:
     Returns:
         Any: Object received from src.
     """
-    object_list = [None]
-    _broadcast_object_list(object_list, src, group)
+    if c10d._rank_not_in_group(group):
+        c10d._warn_not_in_group("_recv_object")
+        return
 
-    return object_list[0]
+    current_device, is_nccl_backend = check_device(group)
+
+    object = _recv_object_with_serialization(src, dst, group, current_device, is_nccl_backend)
+    if type(object) is list and len(object) >= 1 and object[0] == '__metadata__transfer__':
+        object.pop(0)
+        object = _recv_dict_of_tensor(object, src, dst, group, current_device, is_nccl_backend)
+        return object
+    else:
+        return object
 
 
 def _p2p_comm(
