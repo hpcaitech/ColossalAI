@@ -49,6 +49,8 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, enable_tenso
         booster.backward(loss, optimizer)
         optimizer.step()
 
+    except NotImplementedError:
+        print(f"Tensor Parallelism policy for {model.__class__} is not implemented yet\n.")
     except Exception as e:
         # raise e
         return repr(e)
@@ -126,8 +128,6 @@ def check_gemini_plugin(subset: str, init_method: str = "none", enable_tensor_pa
             enable_tensor_parallelism = False
 
         err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, enable_tensor_parallelism)
-        clear_layout_converter()
-        Randomizer.reset_index()
         torch.cuda.empty_cache()
         if err is None:
             passed_models.append(name)

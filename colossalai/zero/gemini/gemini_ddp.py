@@ -332,9 +332,6 @@ class GeminiDDP(ModelWrapper):
 
     def backward_by_grad(self, tensor, grad):
         raise RuntimeError("Gemini is not compatible with pipeline. backward_by_grad shoudn't be called in Gemini.")
-        with self.param_op_hook.switch_to_backward(), ColoParamOpHookManager.use_hooks(self.param_op_hook):
-            torch.autograd.backward(tensor, grad)
-        self._post_backward()
 
     def grad_handle(self, p, grad):
         setattr(p, "_gemini_reduced", True)
@@ -444,7 +441,7 @@ class GeminiDDP(ModelWrapper):
             record_tensor = torch.empty([0])
             record_flag = (not only_rank_0) | (dist.get_rank(chunk.torch_pg) == 0)
             if record_flag:
-                record_tensor = temp_chunk[tensor_info.offset : tensor_info.end].view(tensor.shape).cuda()
+                record_tensor = temp_chunk[tensor_info.offset : tensor_info.end].view(tensor.shape).to(tensor.device)
                 if is_distributed_tensor(tensor):
                     global_shape = get_global_shape(tensor)
                     device_mesh = get_device_mesh(tensor)
@@ -455,7 +452,7 @@ class GeminiDDP(ModelWrapper):
                                                       global_shape = global_shape)
                 elif is_customized_distributed_tensor(tensor):
                     init_tensor_as_customization_distributed(record_tensor, shard_fn=tensor.shard_fn, gather_fn=tensor.gather_fn)
-                record_tensor = gather_distributed_param(record_tensor, keep_vars=False).cpu()        
+                record_tensor = gather_distributed_param(record_tensor, keep_vars=False).cpu()
 
             assert tensor not in chunk_to_save_data
             chunk_to_save_data[tensor] = record_tensor

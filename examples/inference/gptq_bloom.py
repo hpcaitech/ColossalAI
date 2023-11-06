@@ -1,5 +1,4 @@
 import argparse
-import logging
 import os
 import time
 
@@ -37,7 +36,6 @@ def print_perf_stats(latency_set, config, bs, warmup=3):
 
 
 def bench_bloom(args):
-
     pretrained_model_dir = args.path
     quantized_model_dir = args.quantized_path
     max_batch_size = args.batch_size
@@ -48,9 +46,9 @@ def bench_bloom(args):
     tokenizer.pad_token = tokenizer.eos_token
 
     # load quantized model to the first GPU
-    model = AutoGPTQForCausalLM.from_quantized(quantized_model_dir,
-                                               device=torch.cuda.current_device(),
-                                               inject_fused_attention=False)
+    model = AutoGPTQForCausalLM.from_quantized(
+        quantized_model_dir, device=torch.cuda.current_device(), inject_fused_attention=False
+    )
 
     model = model.half()
 
@@ -60,22 +58,22 @@ def bench_bloom(args):
     generate_kwargs = dict(max_new_tokens=max_output_len, do_sample=False)
 
     input_tokens = {
-        "input_ids": torch.randint(1, 1000, (max_batch_size, max_input_len), device='cuda'),
-        "attention_mask": torch.ones((max_batch_size, max_input_len), device='cuda')
+        "input_ids": torch.randint(1, 1000, (max_batch_size, max_input_len), device="cuda"),
+        "attention_mask": torch.ones((max_batch_size, max_input_len), device="cuda"),
     }
 
     # init TPInferEngine and shard the original model
     # To benchmark torch original, comment out the line of optimizing model
-    shard_config = ShardConfig(enable_tensor_parallelism=True if args.tp_size > 1 else False,
-                               inference_only=True,
-                               inference_gptq=True)
+    shard_config = ShardConfig(
+        enable_tensor_parallelism=True if args.tp_size > 1 else False, inference_only=True, inference_gptq=True
+    )
     infer_engine = TPInferEngine(model, shard_config, max_batch_size, max_input_len, max_output_len)
 
     # prepare data for generation
     generate_kwargs = dict(max_new_tokens=max_output_len, do_sample=False)
     input_tokens = {
         "input_ids": torch.randint(10, 1000, (max_batch_size, max_input_len)),
-        "attention_mask": torch.ones((max_batch_size, max_input_len))
+        "attention_mask": torch.ones((max_batch_size, max_input_len)),
     }
     for t in input_tokens:
         if torch.is_tensor(input_tokens[t]):
@@ -99,7 +97,7 @@ def bench_bloom(args):
 
 def check_bloom(rank, world_size, port, args):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     bench_bloom(args)
 
 
@@ -111,12 +109,12 @@ def test_bloom(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-p', '--path', type=str, help='Model path', required=True)
-    parser.add_argument('-q', '--quantized_path', type=str, help='Model path', required=True)
-    parser.add_argument('-tp', '--tp_size', type=int, default=1, help='Tensor parallel size')
-    parser.add_argument('-b', '--batch_size', type=int, default=16, help='Maximum batch size')
-    parser.add_argument('--input_len', type=int, default=1024, help='Maximum input length')
-    parser.add_argument('--output_len', type=int, default=128, help='Maximum output length')
+    parser.add_argument("-p", "--path", type=str, help="Model path", required=True)
+    parser.add_argument("-q", "--quantized_path", type=str, help="Model path", required=True)
+    parser.add_argument("-tp", "--tp_size", type=int, default=1, help="Tensor parallel size")
+    parser.add_argument("-b", "--batch_size", type=int, default=16, help="Maximum batch size")
+    parser.add_argument("--input_len", type=int, default=1024, help="Maximum input length")
+    parser.add_argument("--output_len", type=int, default=128, help="Maximum output length")
 
     args = parser.parse_args()
 
