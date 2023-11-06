@@ -182,7 +182,7 @@ def create_recv_buffer(tensor_metadata, current_device):
         return buffer_recv
 
 
-def _batch_send_recv_tensor(send_tensor_list, recv_tensor_metadata, send_dst, recv_src, group, current_device):
+def _batch_send_recv_tensor(send_tensor_list, recv_tensor_metadata, send_dst, recv_src, send_group, recv_group, current_device):
     buffer_recv = None
     if recv_tensor_metadata is not None:
         buffer_recv = create_recv_buffer(recv_tensor_metadata, current_device)
@@ -190,11 +190,11 @@ def _batch_send_recv_tensor(send_tensor_list, recv_tensor_metadata, send_dst, re
     ops = []
 
     if send_dst is not None:
-        filling_ops_queue(send_tensor_list, dist.isend, send_dst, ops, group)
+        filling_ops_queue(send_tensor_list, dist.isend, send_dst, ops, send_group)
 
     if recv_src is not None:
         assert buffer_recv is not None
-        filling_ops_queue(buffer_recv, dist.irecv, recv_src, ops, group)
+        filling_ops_queue(buffer_recv, dist.irecv, recv_src, ops, recv_group)
 
     if len(ops) > 0:
         reqs = dist.batch_isend_irecv(ops)
@@ -204,50 +204,12 @@ def _batch_send_recv_tensor(send_tensor_list, recv_tensor_metadata, send_dst, re
     return buffer_recv
 
 
-def _send_object_with_serialization(object: Any, dst: int, group: ProcessGroup, current_device, is_nccl_backend):
-    if Version(torch.__version__) >= Version("1.13.0"):
-        object_tensor, object_size_tensor = c10d._object_to_tensor(
-            object, device=current_device)
-    else:
-        object_tensor, object_size_tensor = c10d._object_to_tensor(object)
-
-    if is_nccl_backend:
-        object_size_tensor = object_size_tensor.to(current_device)
-        object_tensor = object_tensor.to(current_device)
-
-    c10d.send(object_size_tensor, dst=dst, group=group)
-    c10d.send(object_tensor, dst=dst, group=group)
-
-
-def _recv_object_with_serialization(src: int, group: ProcessGroup, current_device, is_nccl_backend):
-    object_size_tensor = torch.empty(1, dtype=torch.long)
-    if is_nccl_backend:
-        object_size_tensor = object_size_tensor.to(current_device)
-
-    c10d.recv(object_size_tensor, src=src, group=group)
-
-    object_tensor = torch.empty(object_size_tensor.item(), dtype=torch.uint8)
-    if is_nccl_backend:
-        object_tensor = object_tensor.to(current_device)
-
-    c10d.recv(object_tensor, src=src, group=group)
-
-    object_tensor = object_tensor.type(torch.uint8)
-    if object_tensor.device != torch.device("cpu"):
-        object_tensor = object_tensor.cpu()
-
-    unpickle_object = _cuda_safe_tensor_to_object(object_tensor, object_size_tensor.item())
-
-    if (
-        isinstance(unpickle_object, torch.Tensor)
-        and unpickle_object.device.index != torch.cuda.current_device()
-    ):
-        unpickle_object = unpickle_object.cuda()
-
-    return unpickle_object
-
-
-def _send_recv_serialization_object(object: Any, send_dst: Optional[int], recv_src: Optional[int], group: ProcessGroup, current_device, is_nccl_backend):
+def _send_recv_serialization_object(
+        object: Any,
+        send_dst: Optional[int], recv_src: Optional[int],
+        send_group: Optional[ProcessGroup], recv_group: Optional[ProcessGroup],
+        current_device,
+        is_nccl_backend):
     ops = []
     send_object_tensor = None
     if object is not None and send_dst is not None:
@@ -260,14 +222,14 @@ def _send_recv_serialization_object(object: Any, send_dst: Optional[int], recv_s
             send_object_size_tensor = send_object_size_tensor.to(current_device)
             send_object_tensor = send_object_tensor.to(current_device)
 
-        filling_ops_queue(send_object_size_tensor, dist.isend, send_dst, ops, group)
+        filling_ops_queue(send_object_size_tensor, dist.isend, send_dst, ops, send_group)
 
     recv_object_size_tensor = None
     if recv_src is not None:
         recv_object_size_tensor = torch.empty(1, dtype=torch.long)
         if is_nccl_backend:
             recv_object_size_tensor = recv_object_size_tensor.to(current_device)
-        filling_ops_queue(recv_object_size_tensor, dist.irecv, recv_src, ops, group)
+        filling_ops_queue(recv_object_size_tensor, dist.irecv, recv_src, ops, recv_group)
 
     if len(ops) > 0:
         reqs = dist.batch_isend_irecv(ops)
@@ -278,14 +240,14 @@ def _send_recv_serialization_object(object: Any, send_dst: Optional[int], recv_s
     ops = []
 
     if send_dst is not None and send_object_tensor is not None:
-        filling_ops_queue(send_object_tensor, dist.isend, send_dst, ops, group)
+        filling_ops_queue(send_object_tensor, dist.isend, send_dst, ops, send_group)
 
     recv_object_tensor = None
     if recv_src is not None and recv_object_size_tensor is not None:
         recv_object_tensor = torch.empty(recv_object_size_tensor.item(), dtype=torch.uint8)
         if is_nccl_backend:
             recv_object_tensor = recv_object_tensor.to(current_device)
-        filling_ops_queue(recv_object_tensor, dist.irecv, recv_src, ops, group)
+        filling_ops_queue(recv_object_tensor, dist.irecv, recv_src, ops, recv_group)
 
     if len(ops) > 0:
         reqs = dist.batch_isend_irecv(ops)
@@ -324,17 +286,24 @@ def _check_if_fast_send_available(object):
     return False
 
 
-def _send_recv(
+def _communicate(
     object,
     send_dst: Optional[int],
     recv_src: Optional[int],
-    group: ProcessGroup
+    send_group: Optional[ProcessGroup] = None,
+    recv_group: Optional[ProcessGroup] = None,
 ) -> Any:
-    if c10d._rank_not_in_group(group):
-        c10d._warn_not_in_group("_send_recv")
+    if c10d._rank_not_in_group(send_group) or c10d._rank_not_in_group(recv_group):
+        c10d._warn_not_in_group("_communicate")
         return
 
-    current_device, is_nccl_backend = check_device(group)
+    current_send_device, is_send_nccl_backend = check_device(send_group)
+    current_recv_device, is_recv_nccl_backend = check_device(recv_group)
+
+    is_nccl_backend = is_send_nccl_backend and is_recv_nccl_backend
+
+    assert current_send_device == current_recv_device
+    current_device = current_send_device
 
     assert (send_dst is not None) or (recv_src is not None)
 
@@ -359,7 +328,7 @@ def _send_recv(
                 for k, v in object.items():
                     send_metadata.append((k, v.shape, v.dtype, v.requires_grad))
 
-    recv_metadata = _send_recv_serialization_object(send_metadata, send_dst, recv_src, group, current_device, is_nccl_backend)
+    recv_metadata = _send_recv_serialization_object(send_metadata, send_dst, recv_src, send_group, recv_group, current_device, is_nccl_backend)
     if recv_metadata is not None:
         assert type(recv_metadata) is list and len(recv_metadata) >= 2
         if recv_metadata[0] == '__serialization__':
@@ -377,7 +346,7 @@ def _send_recv(
     elif type(object) is dict:
         send_tensor_list = list(object.values())
 
-    recv_buffer = _batch_send_recv_tensor(send_tensor_list, recv_metadata, send_dst, recv_src, group, current_device)
+    recv_buffer = _batch_send_recv_tensor(send_tensor_list, recv_metadata, send_dst, recv_src, send_group, recv_group, current_device)
 
     if recv_metadata is not None:
         assert recv_buffer is not None
@@ -405,7 +374,7 @@ def _send_object(object: Any, src: int, dst: int, group: ProcessGroup) -> None:
     Returns:
         None
     """
-    _send_recv(object, dst, None, group)
+    _communicate(object, send_dst=dst, recv_src=None, send_group=group)
 
 
 def _recv_object(src: int, dst: int, group: ProcessGroup) -> Any:
@@ -417,7 +386,7 @@ def _recv_object(src: int, dst: int, group: ProcessGroup) -> Any:
     Returns:
         Any: Object received from src.
     """
-    return _send_recv(None, None, src, group)
+    return _communicate(None, send_dst=None, recv_src=src, recv_group=group)
 
 
 def _p2p_comm(
@@ -561,6 +530,64 @@ class PipelineP2PCommunication:
             prev_rank = self.stage_manager.get_prev_rank()
         cur_rank = self.stage_manager.get_rank()
         _send_object(input_object, cur_rank, prev_rank, self.stage_manager.get_p2p_process_group(cur_rank, prev_rank))
+
+    def send_forward_recv_backward(self, input_object: Any, next_rank: int = None) -> Any:
+        """Sends the gradient tensor to and copy the gradient tensor from the next stage in pipeline
+
+        Args:
+            input_object (Any): Object to be sent.
+            next_rank (int, optional): The rank of the sender and recipient of the tensor
+        """
+        if next_rank is None:
+            next_rank = self.stage_manager.get_next_rank()
+
+        cur_rank = self.stage_manager.get_rank()
+        group = self.stage_manager.get_p2p_process_group(cur_rank, next_rank)
+        return _communicate(
+            input_object, next_rank, next_rank,
+            send_group=group, recv_group=group,
+        )
+
+    def send_backward_recv_forward(self, input_object: Any, prev_rank: int = None) -> Any:
+        """Sends the gradient tensor to and copy the gradient tensor from the previous stage in pipeline
+
+        Args:
+            input_object (Any): Object to be sent.
+            prev_rank (int, optional): The rank of the sender and recipient of the tensor
+        """
+        if prev_rank is None:
+            prev_rank = self.stage_manager.get_prev_rank()
+
+        cur_rank = self.stage_manager.get_rank()
+        group = self.stage_manager.get_p2p_process_group(prev_rank, cur_rank)
+        return _communicate(
+            input_object, prev_rank, prev_rank,
+            send_group=group, recv_group=group,
+        )
+
+    def send_forward_recv_forward(self, input_object: Any, prev_rank: int = None, next_rank: int = None) -> Any:
+        """Sends the gradient tensor to the previous stage and copy the input tensor from the previous stage in pipeline.
+
+        Args:
+            input_object (Any): Object to be sent.
+            prev_rank (int, optional): The rank of the sender of the tensor
+            next_rank (int, optional): The rank of the recipient of the tensor
+        """
+        if prev_rank is None:
+            prev_rank = self.stage_manager.get_prev_rank()
+        if next_rank is None:
+            next_rank = self.stage_manager.get_next_rank()
+
+        cur_rank = self.stage_manager.get_rank()
+        recv_group = self.stage_manager.get_p2p_process_group(prev_rank, cur_rank)
+        send_group = self.stage_manager.get_p2p_process_group(cur_rank, next_rank)
+        return _communicate(
+            input_object,
+            send_dst=next_rank,
+            recv_src=prev_rank,
+            send_group=send_group,
+            recv_group=recv_group,
+        )
 
     def p2p_communicate(
         self, output_object: Any, recv_pre: bool, peer: int = None, comm_dtype: torch.dtype = torch.float16

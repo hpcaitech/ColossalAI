@@ -127,6 +127,17 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         if not self.stage_manager.is_last_stage():
             self.comm.send_forward(output_object, next_rank)
 
+    def send_forward_recv_backward(self, output_object: Any, next_rank: int = None) -> Any:
+        """Sends the input tensor to the next stage and copy the gradient tensor from the next stage in pipeline.
+           For 1F1B.
+
+        Args:
+            output_object (Any): Object to be sent.
+            next_rank (int, optional): The rank of the recipient of the tensor.
+        """
+        if not self.stage_manager.is_last_stage():
+            return self.comm.send_forward_recv_backward(output_object, next_rank)
+
     def send_backward(self, input_object: Any, prev_rank: int = None) -> None:
         """Sends the gradient tensor to the previous stage in pipeline.
            For 1F1B.
@@ -137,6 +148,33 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         """
         if not self.stage_manager.is_first_stage():
             self.comm.send_backward(input_object, prev_rank)
+
+    def send_backward_recv_forward(self, output_object: Any, prev_rank: int = None) -> Any:
+        """Sends the gradient tensor to the previous stage and copy the input tensor from the previous stage in pipeline.
+           For 1F1B.
+
+        Args:
+            output_object (Any): Object to be sent.
+            prev_rank (int, optional): The rank of the recipient of the tensor.
+        """
+        if not self.stage_manager.is_first_stage():
+            return self.comm.send_backward_recv_forward(output_object, prev_rank)
+
+    def send_forward_recv_forward(self, input_object: Any, prev_rank: int = None, next_rank: int = None) -> Any:
+        """Sends the input tensor to the next stage and copy the input tensor from the previous stage in pipeline.
+           For 1F1B.
+
+        Args:
+            input_object (Any): Object to be sent.
+            prev_rank (int, optional): The previous rank of the recipient of the tensor.
+            next_rank (int, optional): The next rank of the recipient of the tensor.
+        """
+        if self.stage_manager.is_first_stage():
+            return self.comm.send_forward(input_object, next_rank)
+        elif self.stage_manager.is_last_stage():
+            return self.comm.recv_forward(prev_rank)
+        else:
+            return self.comm.send_forward_recv_forward(input_object, prev_rank, next_rank)
 
     def forward_step(
         self,
@@ -287,15 +325,12 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
 
             output_obj = self.forward_step(model, input_obj, criterion, accum_loss, outputs)
             if forward_only:
-                self.send_forward(output_obj)
-
-                if not last_iteration:
-                    input_obj = self.recv_forward()
-
+                if last_iteration:
+                    self.send_forward(output_obj)
+                else:
+                    input_obj = self.send_forward_recv_forward(output_obj)
             else:
-                # TODO adjust here
-                self.send_forward(output_obj)
-                output_obj_grad = self.recv_backward()
+                output_obj_grad = self.send_forward_recv_backward(output_obj)
 
                 # Add input_obj and output_obj to end of list.
                 input_objs.append(input_obj)
@@ -308,10 +343,10 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
                 input_obj_grad = self.backward_step(optimizer, input_obj, output_obj, output_obj_grad)
 
                 if last_iteration:
+                    self.send_backward(input_obj_grad)
                     input_obj = None
                 else:
-                    input_obj = self.recv_forward()
-                self.send_backward(input_obj_grad)
+                    input_obj = self.send_backward_recv_forward(input_obj_grad)
 
         # Run cooldown backward passes.
         if not forward_only:
