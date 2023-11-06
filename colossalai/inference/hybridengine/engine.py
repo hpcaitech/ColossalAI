@@ -10,14 +10,12 @@ from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
 
 from ..pipeline.microbatch_manager import MicroBatchManager
+from ..quant.gptq import GPTQManager
 from ..tensor_parallel.kvcache_manager import MemoryManager
 
 PP_AXIS, TP_AXIS = 0, 1
 
-_supported_models = [
-    "LlamaForCausalLM",
-    "BloomForCausalLM",
-]
+_supported_models = ["LlamaForCausalLM", "BloomForCausalLM", "LlamaGPTQForCausalLM", "SmoothLlamaForCausalLM"]
 
 
 class CaiInferEngine:
@@ -70,12 +68,19 @@ class CaiInferEngine:
         max_batch_size: int = 4,
         max_input_len: int = 32,
         max_output_len: int = 32,
+        quant: str = None,
         verbose: bool = False,
         # TODO: implement early_stopping, and various gerneration options
         early_stopping: bool = False,
         do_sample: bool = False,
         num_beams: int = 1,
     ) -> None:
+        if quant == "gptq":
+            self.gptq_manager = GPTQManager(model.quantize_config, max_input_len=max_input_len)
+            model = model.model
+        elif quant == "smoothquant":
+            model = model.model
+
         assert model.__class__.__name__ in _supported_models, f"Model {model.__class__.__name__} is not supported."
         assert (
             tp_size * pp_size == dist.get_world_size()
@@ -85,9 +90,14 @@ class CaiInferEngine:
 
         assert max_batch_size <= 64, "Max batch size exceeds the constraint"
         assert max_input_len + max_output_len <= 4096, "Max length exceeds the constraint"
-
+        assert quant in ["smoothquant", "gptq", None], "quant should be one of 'smoothquant', 'gptq'"
         self.pp_size = pp_size
         self.tp_size = tp_size
+        self.quant = quant
+
+        if quant == "smoothquant" and dtype != "fp32":
+            dtype = "fp32"
+            print("Warning: smoothquant only support fp32 and int8 mix precision. set dtype to fp32")
 
         if dtype == "fp16":
             self.dtype = torch.float16
@@ -118,6 +128,8 @@ class CaiInferEngine:
         self.schedule = GenerateSchedule(stage_manager, self.mb_manager, verbose)
 
         self.model = self._shardformer(model, model_policy, stage_manager, pg_mesh.get_group_along_axis(TP_AXIS))
+        if quant == "gptq":
+            self.gptq_manager.post_init_gptq_buffer(self.model)
 
     def inference(self, input_list):
         """
@@ -149,6 +161,7 @@ class CaiInferEngine:
             enable_flash_attention=False,
             enable_jit_fused=False,
             enable_sequence_parallelism=False,
+            quant=self.quant,
         )
         shardformer = ShardFormer(shard_config=shardconfig)
         shard_model, _ = shardformer.optimize(model, model_policy)
@@ -158,7 +171,7 @@ class CaiInferEngine:
         max_total_token_num = max_batch_size * (max_input_len + max_output_len)
         if model.config.model_type == "llama":
             head_dim = model.config.hidden_size // model.config.num_attention_heads
-            head_num = model.config.num_attention_heads // self.tp_size
+            head_num = model.config.num_key_value_heads // self.tp_size
             num_hidden_layers = (
                 model.config.num_hidden_layers
                 if hasattr(model.config, "num_hidden_layers")
@@ -171,5 +184,8 @@ class CaiInferEngine:
             num_hidden_layers = model.config.n_layer
             layer_num = num_hidden_layers // self.pp_size
 
-        cache_manager = MemoryManager(max_total_token_num, self.dtype, head_num, head_dim, layer_num)
+        if self.quant == "smoothquant":
+            cache_manager = MemoryManager(max_total_token_num, torch.int8, head_num, head_dim, layer_num)
+        else:
+            cache_manager = MemoryManager(max_total_token_num, self.dtype, head_num, head_dim, layer_num)
         return cache_manager

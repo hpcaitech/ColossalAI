@@ -116,7 +116,6 @@ class LLamaSmoothquantAttention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        rotary_emb: Tuple[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
@@ -131,8 +130,7 @@ class LLamaSmoothquantAttention(nn.Module):
         key_states = self.k_proj(hidden_states)
         value_states = self.v_proj(hidden_states)
 
-        cos = rotary_emb[0]
-        sin = rotary_emb[1]
+        cos, sin = infer_state.position_cos, infer_state.position_sin
 
         int8_rotary_embedding_fwd(
             query_states.view(-1, self.num_heads, self.head_dim),
@@ -348,7 +346,6 @@ class LlamaSmoothquantDecoderLayer(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        rotary_emb: Tuple[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
@@ -378,7 +375,6 @@ class LlamaSmoothquantDecoderLayer(nn.Module):
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
-            rotary_emb=rotary_emb,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
@@ -650,15 +646,15 @@ def llama_model_forward(
         raise NotImplementedError("not implement gradient_checkpointing and training options ")
 
     if past_key_values_length == 0:
-        position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(
+        infer_state.position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(
             position_ids.view(-1).shape[0], -1
         )
-        position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(
+        infer_state.position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(
             position_ids.view(-1).shape[0], -1
         )
     else:
-        position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(batch_size, -1)
-        position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(batch_size, -1)
+        infer_state.position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(batch_size, -1)
+        infer_state.position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(batch_size, -1)
 
     # decoder layers
     all_hidden_states = () if output_hidden_states else None
@@ -673,7 +669,6 @@ def llama_model_forward(
 
         layer_outputs = decoder_layer(
             hidden_states,
-            rotary_emb=(position_cos, position_sin),
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,

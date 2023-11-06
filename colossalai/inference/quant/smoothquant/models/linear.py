@@ -138,21 +138,23 @@ class W8A8BFP32OFP32Linear(torch.nn.Module):
         )
         self.register_buffer(
             "bias",
-            torch.zeros(self.out_features, dtype=torch.float32, requires_grad=False),
+            torch.zeros((1, self.out_features), dtype=torch.float32, requires_grad=False),
         )
         self.register_buffer("a", torch.tensor(alpha))
 
     def _apply(self, fn):
         # prevent the bias from being converted to half
         super()._apply(fn)
-        self.bias = self.bias.to(torch.float32)
+        if self.bias is not None:
+            self.bias = self.bias.to(torch.float32)
         return self
 
     def to(self, *args, **kwargs):
         super().to(*args, **kwargs)
         self.weight = self.weight.to(*args, **kwargs)
-        self.bias = self.bias.to(*args, **kwargs)
-        self.bias = self.bias.to(torch.float32)
+        if self.bias is not None:
+            self.bias = self.bias.to(*args, **kwargs)
+            self.bias = self.bias.to(torch.float32)
         return self
 
     @torch.no_grad()
