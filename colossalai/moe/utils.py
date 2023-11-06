@@ -6,6 +6,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
+from colossalai.cluster.process_group_mesh import ProcessGroupMesh
 
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.tensor.moe_tensor.api import get_dp_group, get_dp_group_ranks, get_ep_size, is_moe_tensor
@@ -178,35 +179,40 @@ def set_moe_args(config: Any, args: dict):
         setattr(config, k, v)
 
 
-def create_ep_node_group(
-    ep_group: dist.ProcessGroup
-) -> Tuple[dist.ProcessGroup,
+def create_ep_hierarchical_group(
+    ep_group: dist.ProcessGroup,
+    num_node: int,
+    nproc_per_node: int,
+) -> Tuple[Optional[dist.ProcessGroup],
            Optional[dist.ProcessGroup]]:
     """
     e.g., If ep_group = [1, 2, 5, 6], and nproc_per_node = 4
         Then, ep_intra_group = [1, 2] & [5, 6], ep_inter_group = [1, 5] & None
     """
     assert dist.is_initialized(), "Please initialize torch.distributed first."
+    assert dist.get_world_size() == num_node * nproc_per_node
 
-    rank = dist.get_rank()
-    node_rank = int(os.environ["GROUP_RANK"])
-    nproc_per_node = int(os.environ["LOCAL_WORLD_SIZE"])
-    num_node = dist.get_world_size() // nproc_per_node
+    group_mesh = ProcessGroupMesh(num_node, nproc_per_node)
     ep_ranks = dist.get_process_group_ranks(ep_group)
 
-    ep_intra_ranks = [
-        node_rank * nproc_per_node + i
-        for i in range(nproc_per_node)
-        if i in ep_ranks
-    ]
-    ep_intra_node_group = dist.new_group(ep_intra_ranks)
+    ep_intra_node_group = None
+    for i in range(num_node):
+        ep_intra_ranks = [
+            i * nproc_per_node + j
+            for j in range(nproc_per_node)
+            if j in ep_ranks
+        ]
+        group = group_mesh.get_group(ep_intra_ranks)
+        if group is not None:
+            assert ep_intra_node_group is None
+            ep_intra_node_group = group
 
+    ep_inter_node_group = None
     ep_inter_ranks = [
-        min(ep_ranks) + i * nproc_per_node
+        ep_ranks[0] + i * nproc_per_node
         for i in range(num_node)
     ]
-    ep_inter_node_group = None
-    if rank in ep_inter_ranks and len(ep_inter_ranks) > 1:
-        ep_inter_node_group = dist.new_group(ep_inter_ranks)
+    if len(ep_inter_ranks) > 1:
+        ep_inter_node_group = group_mesh.get_group(ep_inter_ranks)
 
     return ep_intra_node_group, ep_inter_node_group
