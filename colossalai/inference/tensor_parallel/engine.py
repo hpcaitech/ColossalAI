@@ -77,14 +77,15 @@ class TPInferEngine:
         )
         self.layer_num = num_hidden_layers
 
-        self.multi_query_group_num = 0
+        self.multi_query_group_num = model.config.num_attention_heads
+        # default to attention_heads
+        self.multi_query_attention = model.config.multi_query_attention
 
         if hasattr(model.config, "multi_query_group_num"):
             self.multi_query_group_num = model.config.multi_query_group_num
 
         if hasattr(model.config, "num_key_value_heads"):
             self.multi_query_group_num = model.config.num_key_value_heads
-
         self.tp_size = -1  # to be set with given shard config in self.prepare_shard_config
         self.cache_manager = None
 
@@ -107,7 +108,7 @@ class TPInferEngine:
         assert self.head_num % self.tp_size == 0, f"Cannot shard {self.head_num} heads with tp size {self.tp_size}"
         self.head_num //= self.tp_size  # update sharded number of heads
 
-        if self.multi_query_group_num:
+        if self.multi_query_attention:
             # NOTE the logic of MQA tensor parallelism should be specified.
             assert (
                 self.multi_query_group_num % self.tp_size == 0
@@ -218,7 +219,7 @@ class TPInferEngine:
         ), "Discrepancy between the tp size of TPInferEngine and the tp size of shard config"
         model_name = model.__class__.__name__
         assert model_name in self.supported_models, f"Unsupported model cls {model_name} for TP inference."
-        
+
         model = model.model if self.shard_config.inference_gptq else model
         policy = get_autopolicy(model, shard_config=self.shard_config)
 
@@ -311,7 +312,7 @@ class TPInferEngine:
                 seq_start_indexes[i] = start_index
                 start_index += curr_seq_len
                 max_len_in_batch = curr_seq_len if curr_seq_len > max_len_in_batch else max_len_in_batch
-        
+
         block_loc = torch.empty((batch_size, self.max_input_len + self.max_output_len), dtype=torch.long, device="cuda")
         batch_infer_state = BatchInferState(batch_size, max_len_in_batch)
         batch_infer_state.seq_len = seq_lengths.to("cuda")

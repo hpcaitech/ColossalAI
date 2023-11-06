@@ -512,7 +512,7 @@ class ChatGLM2InferenceForwards:
                 )
 
             # second token and follows
-            attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
+            attn_output = torch.empty_like(query_layer.contiguous().view(-1, self.projection_size))
             cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id][
                 : infer_state.decode_mem_end, :, :
             ]

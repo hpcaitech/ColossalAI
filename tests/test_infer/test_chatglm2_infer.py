@@ -13,7 +13,7 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLM
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 try:
-    import lightllm
+    # noqa
     HAS_LIGHTLLM_KERNEL = True
 except:
     HAS_LIGHTLLM_KERNEL = False
