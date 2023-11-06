@@ -17,7 +17,9 @@ def fetch_version():
 
 print(find_packages(exclude=(
         'tests',
-        '*.egg-info'
+        '*.egg-info',
+        'data',
+        'examples'
     )))
 setup(
     name='colossalqa',

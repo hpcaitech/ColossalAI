@@ -8,9 +8,14 @@ from colossalqa.chain.retrieval_qa.base import RetrievalQA
 from colossalqa.data_loader.document_loader import DocumentLoader
 from colossalqa.local.llm import ColossalAPI, ColossalLLM
 from colossalqa.memory import ConversationBufferWithSummary
-from colossalqa.prompt.prompt import PROMPT_DISAMBIGUATE_EN, PROMPT_RETRIEVAL_QA_EN
+from colossalqa.prompt.prompt import (
+    PROMPT_DISAMBIGUATE_EN, 
+    PROMPT_RETRIEVAL_QA_EN,
+    EN_RETRIEVAL_QA_TRIGGER_KEYWORDS,
+    EN_RETRIEVAL_QA_REJECTION_ANSWER
+)
 from colossalqa.retriever import CustomRetriever
-from colossalqa.text_splitter import NeuralTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter 
 from langchain import LLMChain
 from langchain.embeddings import HuggingFaceEmbeddings
 
@@ -76,7 +81,7 @@ if __name__ == "__main__":
         retriever_data = DocumentLoader([[file, data_name.replace(" ", "_")]]).all_data
 
         # Split
-        text_splitter = NeuralTextSplitter(separator=separator.replace("\\n", "\n").replace("\\t", "\t"))
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size = 100, chunk_overlap  = 20)
         splits = text_splitter.split_documents(retriever_data)
         documents.extend(splits)
     # Create retriever
@@ -110,6 +115,8 @@ if __name__ == "__main__":
         if "END" == user_input:
             print("Agent: Happy to chat with you ：)")
             break
-        agent_response = retrieval_chain.run(query=user_input, stop=["Human: "])
-        agent_response = agent_response.split("\n")[0]
+        agent_response = retrieval_chain.run(query=user_input, stop=["Human: "],
+            rejection_trigger_keywrods = EN_RETRIEVAL_QA_TRIGGER_KEYWORDS,
+            rejection_answer=EN_RETRIEVAL_QA_REJECTION_ANSWER)
+        agent_response = agent_response.split("\n")[0]  
         print(f"Agent: {agent_response}")

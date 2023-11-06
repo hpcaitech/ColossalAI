@@ -10,7 +10,14 @@ from colossalqa.retriever import CustomRetriever
 from typing import Any, List, Optional, Dict, Tuple
 from colossalqa.local.llm import ColossalAPI, ColossalLLM
 from colossalqa.memory import ConversationBufferWithSummary
-from colossalqa.prompt.prompt import PROMPT_DISAMBIGUATE_ZH, PROMPT_RETRIEVAL_QA_ZH, SUMMARY_PROMPT_ZH
+from colossalqa.prompt.prompt import (
+    PROMPT_DISAMBIGUATE_ZH, 
+    PROMPT_RETRIEVAL_QA_ZH, 
+    SUMMARY_PROMPT_ZH, 
+    ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS, 
+    ZH_RETRIEVAL_QA_REJECTION_ANSWER
+)
+
 from langchain import LLMChain
 from pangu_llm import Pangu
 
@@ -145,7 +152,9 @@ class RAG_ChatBot:
         if memory:
             memory.buffered_history.messages = memory.buffered_history.messages
             memory.summarized_history_temp.messages = memory.summarized_history_temp.messages
-        result = self.rag_chain.run(query=user_input, stop=[memory.human_prefix + ": "])
+        result = self.rag_chain.run(query=user_input, stop=[memory.human_prefix + ": "],
+            rejection_trigger_keywrods = ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS,
+            rejection_answer=ZH_RETRIEVAL_QA_REJECTION_ANSWER)
         return result.split("\n")[0], memory
     
     def start_test_session(self):

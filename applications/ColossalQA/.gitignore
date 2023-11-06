@@ -142,7 +142,11 @@ docs/.build
 # pytorch checkpoint
 *.pt
 
+# sql
+*.db
+
 # wandb log
 example/wandb/
-
+example/ui/gradio/
+example/vector_db_for_test
 examples/awesome-chatgpt-prompts/

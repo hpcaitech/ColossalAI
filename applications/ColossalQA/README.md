@@ -22,10 +22,10 @@
 ### Highlevel Design
 
 
-![Alt text](./examples/diagram.png?raw=true "Fig.1. Design of the document retrieval conversation system")
+![Alt text](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/colossalqa/diagram.png "Fig.1. Design of the document retrieval conversation system")
 <p align="center">
 Fig.1. Design of the document retrieval conversation system
-</p>
+</p> 
 
 Retrieval-based Question Answering (QA) is a crucial application of natural language processing that aims to find the most relevant answers based on the information from a corpus of text documents in response to user queries. Vector stores, which represent documents and queries as vectors in a high-dimensional space, have gained popularity for their effectiveness in retrieval QA tasks.
 
@@ -55,7 +55,7 @@ Pass the prompt to the LLM with additional generaton arguments to get agent resp
 #### Step 7: Update Memory
 We designed a memory module that incoporates both long-term memory and short-term memory. In this step, we update the memory with the newly generated response. To fix into the context length of a given LLM, we sumarize the overlength part of historical conversation and present the rest in round-based conversation format. Fig.2. shows how long-term and short-term memory are update. Please refer to this [README](./colossalqa/prompt/README.md) for dialogue format.
 
-![Alt text](./examples/memory.png?raw=true "Fig.2. Design of the memory module")
+![Alt text](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/colossalqa/memory.png "Fig.2. Design of the memory module")
 <p align="center">
 Fig.2. Design of the memory module
 </p>

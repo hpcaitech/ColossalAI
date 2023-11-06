@@ -9,7 +9,7 @@ from colossalqa.data_loader.document_loader import DocumentLoader
 from colossalqa.local.llm import ColossalAPI, ColossalLLM
 from colossalqa.prompt.prompt import PROMPT_RETRIEVAL_CLASSIFICATION_USE_CASE_ZH
 from colossalqa.retriever import CustomRetriever
-from colossalqa.text_splitter import NeuralTextSplitter
+from colossalqa.text_splitter import ChineseTextSplitter
 from langchain.embeddings import HuggingFaceEmbeddings
 
 if __name__ == "__main__":
@@ -68,13 +68,13 @@ if __name__ == "__main__":
         return metadata
 
     retriever_data = DocumentLoader(
-        [["../data/test_data/custom_service_classification.json", "CustomerServiceDemo"]],
+        [["../data/data_sample/custom_service_classification.json", "CustomerServiceDemo"]],
         content_key="key",
         metadata_func=metadata_func,
     ).all_data
 
     # Split
-    text_splitter = NeuralTextSplitter(separator="\n\n")
+    text_splitter = ChineseTextSplitter()
     splits = text_splitter.split_documents(retriever_data)
     documents.extend(splits)
 

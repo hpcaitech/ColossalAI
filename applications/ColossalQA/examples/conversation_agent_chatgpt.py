@@ -5,7 +5,7 @@ You need openai api key to run this script
 """
 
 import os
-
+import argparse
 from colossalqa.data_loader.document_loader import DocumentLoader
 from colossalqa.data_loader.table_dataloader import TableLoader
 from langchain import LLMChain, OpenAI
@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     # Setup openai key
     # Set env var OPENAI_API_KEY or load from a file
-    openai_key = open("/home/lcyab/openai_key.txt").read()
+    openai_key = open(args.open_ai_key_path).read()
     os.environ["OPENAI_API_KEY"] = openai_key
 
     # Load data served on sql
@@ -39,8 +39,8 @@ if __name__ == "__main__":
     llm = OpenAI(temperature=0.0)
 
     while True:
-        file = input("Select a file to load or enter Esc to exit:")
-        if file == "Esc":
+        file = input("Select a file to load or press Enter to exit:")
+        if file == "":
             break
         data_name = input("Enter a short description of the data:")
 
@@ -73,8 +73,8 @@ if __name__ == "__main__":
     # Load data serve on sql
     print("Select files for constructing retriever")
     while True:
-        file = input("Select a file to load or enter Esc to exit:")
-        if file == "Esc":
+        file = input("Select a file to load or press Enter to exit:")
+        if file == "":
             break
         data_name = input("Enter a short description of the data:")
         retriever_data = DocumentLoader([[file, data_name.replace(" ", "_")]]).all_data
@@ -113,7 +113,6 @@ if __name__ == "__main__":
     llm_chain = LLMChain(llm=OpenAI(temperature=0.7), prompt=prompt)
     agent = ZeroShotAgent(llm_chain=llm_chain, tools=tools, verbose=True)
     agent_chain = AgentExecutor.from_agent_and_tools(agent=agent, tools=tools, verbose=True, memory=memory)
-    agent_chain.set_llm(OpenAI(temperature=0.2))
 
     while True:
         user_input = input("User: ")

@@ -49,7 +49,7 @@ class ChineseRetrievalConversation:
             ai_prefix="AI",
             max_tokens=2000,
             llm_kwargs={"max_new_tokens": 50, "temperature": 0.6, "do_sample": True},
-        )
+        ) 
         self.memory.initiate_document_retrieval_chain(
             self.llm,
             PROMPT_RETRIEVAL_QA_ZH,
@@ -83,6 +83,8 @@ class ChineseRetrievalConversation:
             self.memory.buffered_history.messages = memory.buffered_history.messages
             self.memory.summarized_history_temp.messages = memory.summarized_history_temp.messages
         return (
-            self.retrieval_chain.run(query=user_input, stop=["</答案>"], doc_prefix="支持文档").split("\n")[0],
+            self.retrieval_chain.run(query=user_input, stop=["</答案>"], doc_prefix="支持文档", \
+                                     rejection_trigger_keywrods = ["无法回答该问题"], \
+                                    rejection_answer="抱歉，根据提供的信息无法回答该问题。").split("\n")[0],
             self.memory,
         )

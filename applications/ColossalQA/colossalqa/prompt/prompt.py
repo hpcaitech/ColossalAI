@@ -26,19 +26,8 @@ _CUSTOM_SUMMARIZER_TEMPLATE_ZH = """请递进式地总结所提供的当前对�
 
 新的摘要:"""
 
-# _ZH_RETRIEVAL_QA_PROMPT = """你是一个善于解答用户问题的AI助手。在保证安全的前提下，回答问题要尽可能有帮助。你的答案不应该包含任何有害的、不道德的、种族主义的、性别歧视的、危险的或非法的内容。请确保你的回答是公正和积极的。
-# 如果不能根据给定的上下文推断出答案，请不要分享虚假、不确定的信息。
-# 使用提供的背景信息和聊天记录对用户的输入作出回应或继续对话。您应该只生成一个回复。不需要跟进回答。请使用中文作答。
 
-# 背景信息:
-# {context}
-
-# 聊天记录:
-# {chat_history}
-
-# 用户: {question}
-# AI:"""
-
+# Chinese retrieval qa prompt
 
 _ZH_RETRIEVAL_QA_PROMPT = """<指令>根据下列支持文档和对话历史，简洁和专业地来回答问题。如果无法从支持文档中得到答案，请说 “根据已知信息无法回答该问题”。回答中请不要涉及支持文档中没有提及的信息，答案请使用中文。 </指令>
 
@@ -50,6 +39,10 @@ _ZH_RETRIEVAL_QA_PROMPT = """<指令>根据下列支持文档和对话历史，�
 
 <问题>{question}</问题>
 <答案>"""
+
+ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS = ["无法回答该问题"]
+ZH_RETRIEVAL_QA_REJECTION_ANSWER = "抱歉，根据提供的信息无法回答该问题。"
+
 
 _ZH_RETRIEVAL_CLASSIFICATION_USE_CASE = """使用提供的参考案例判断客户遇到的故障所属的故障原因分类。
 
@@ -77,9 +70,11 @@ AI: 我认识一个叫张三的人
 句子: {input}
 消除歧义的句子:"""
 
-_EN_RETRIEVAL_QA_PROMPT = """[INST] <<SYS>>Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.
-If the answer cannot be infered based on the given context, please don't share false information.<</SYS>>
-Use the context and chat history to respond to the human's input at the end or carry on the conversation. You should generate one response only. No following up is needed.
+# English retrieval qa prompt
+
+_EN_RETRIEVAL_QA_PROMPT = """[INST] <<SYS>>Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist content.
+If the answer cannot be infered based on the given context, please say "I cannot answer the question based on the information given.".<</SYS>>
+Use the context and chat history to answer the question.
 
 context:
 {context}
@@ -87,8 +82,10 @@ context:
 chat history
 {chat_history}
 
-Human: {question}
-AI:"""
+question: {question}
+answer:"""
+EN_RETRIEVAL_QA_TRIGGER_KEYWORDS = ["cannot answer the question"]
+EN_RETRIEVAL_QA_REJECTION_ANSWER = "Sorry, this question cannot be answered based on the information provided."
 
 _EN_DISAMBIGUATION_PROMPT = """[INST] <<SYS>>You are a helpful, respectful and honest assistant. You always follow the instruction.<</SYS>>
 Please replace any ambiguous references in the given sentence with the specific names or entities mentioned in the chat history or just output the original sentence if no chat history is provided or if the sentence doesn't contain ambiguous references. Your output should be the disambiguated sentence itself (in the same line as "disambiguated sentence:") and contain nothing else.

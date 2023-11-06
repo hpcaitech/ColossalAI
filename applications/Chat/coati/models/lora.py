@@ -17,6 +17,7 @@ class LoRAManager:
 LORA_MANAGER = LoRAManager()
 
 
+
 class LoraLinear(lora.LoRALayer, nn.Module):
     """Replace in-place ops to out-of-place ops to fit gemini. Convert a torch.nn.Linear to LoraLinear."""
 
@@ -111,6 +112,7 @@ def _lora_linear_wrapper(linear: nn.Linear, lora_rank: int) -> LoraLinear:
 def _convert_to_lora_recursively(module: nn.Module, lora_rank: int) -> None:
     for name, child in module.named_children():
         if isinstance(child, nn.Linear):
+            
             setattr(module, name, _lora_linear_wrapper(child, lora_rank))
         else:
             _convert_to_lora_recursively(child, lora_rank)

@@ -8,10 +8,11 @@ from colossalqa.mylogging import get_logger
 from colossalqa.retrieval_conversation_en import EnglishRetrievalConversation
 from colossalqa.retrieval_conversation_zh import ChineseRetrievalConversation
 from colossalqa.retriever import CustomRetriever
-from colossalqa.text_splitter import NeuralTextSplitter
+from colossalqa.text_splitter import ChineseTextSplitter
 from colossalqa.utils import detect_lang_naive
 from langchain.embeddings import HuggingFaceEmbeddings
-
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.text_splitter import TextSplitter
 logger = get_logger()
 
 
@@ -31,6 +32,8 @@ class UniversalRetrievalConversation:
         sql_file_path: str = None,
         files_zh: List[List[str]] = None,
         files_en: List[List[str]] = None,
+        text_splitter_chunk_size = 100,
+        text_splitter_chunk_overlap = 10
     ) -> None:
         """
         Warpper for multilingual retrieval qa class (Chinese + English)
@@ -46,17 +49,19 @@ class UniversalRetrievalConversation:
             encode_kwargs={"normalize_embeddings": False},
         )
         print("Select files for constructing Chinese retriever")
-        docs_zh = self.load_supporting_docs(files=files_zh)
+        docs_zh = self.load_supporting_docs(files=files_zh, \
+            text_splitter = ChineseTextSplitter(chunk_size = text_splitter_chunk_size, chunk_overlap  = text_splitter_chunk_overlap))
         # Create retriever
-        self.information_retriever_zh = CustomRetriever(k=3, sql_file_path=sql_file_path, verbose=True)
+        self.information_retriever_zh = CustomRetriever(k=3, sql_file_path=sql_file_path.replace('.db', '_zh.db'), verbose=True)
         self.information_retriever_zh.add_documents(
             docs=docs_zh, cleanup="incremental", mode="by_source", embedding=self.embedding
         )
 
         print("Select files for constructing English retriever")
-        docs_en = self.load_supporting_docs(files=files_en)
+        docs_en = self.load_supporting_docs(files=files_en, \
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size = text_splitter_chunk_size, chunk_overlap  = text_splitter_chunk_overlap))
         # Create retriever
-        self.information_retriever_en = CustomRetriever(k=3, sql_file_path=sql_file_path, verbose=True)
+        self.information_retriever_en = CustomRetriever(k=3, sql_file_path=sql_file_path.replace('.db', '_en.db'), verbose=True)
         self.information_retriever_en.add_documents(
             docs=docs_en, cleanup="incremental", mode="by_source", embedding=self.embedding
         )
@@ -69,7 +74,7 @@ class UniversalRetrievalConversation:
         )
         self.memory = None
 
-    def load_supporting_docs(self, files: List[List[str]] = None):
+    def load_supporting_docs(self, files: List[List[str]] = None, text_splitter: TextSplitter = None):
         """
         Load supporting documents, currently, all documents will be stored in one vector store
         """
@@ -77,13 +82,12 @@ class UniversalRetrievalConversation:
         if files:
             for file in files:
                 retriever_data = DocumentLoader([[file["data_path"], file["name"]]]).all_data
-                text_splitter = NeuralTextSplitter(separator=file["separator"] if file["separator"] != "" else "\n")
                 splits = text_splitter.split_documents(retriever_data)
                 documents.extend(splits)
         else:
             while True:
-                file = input("Select a file to load or enter Esc to exit:")
-                if file == "Esc":
+                file = input("Select a file to load or press Enter to exit:")
+                if file == "":
                     break
                 data_name = input("Enter a short description of the data:")
                 separator = input(
@@ -93,10 +97,9 @@ class UniversalRetrievalConversation:
                 retriever_data = DocumentLoader([[file, data_name.replace(" ", "_")]]).all_data
 
                 # Split
-                text_splitter = NeuralTextSplitter(separator=separator.replace("\\n", "\n").replace("\\t", "\t"))
                 splits = text_splitter.split_documents(retriever_data)
                 documents.extend(splits)
-        return documents
+        return documents 
 
     def start_test_session(self):
         """
@@ -120,4 +123,4 @@ class UniversalRetrievalConversation:
             agent_response, self.memory = self.chinese_retrieval_conversation.run(user_input, self.memory)
         else:
             agent_response, self.memory = self.english_retrieval_conversation.run(user_input, self.memory)
-        return agent_response.split("\n")[0]
+        return agent_response.split("\n")[0] 

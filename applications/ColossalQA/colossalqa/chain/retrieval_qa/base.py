@@ -24,7 +24,6 @@ from langchain.pydantic_v1 import Field
 from langchain.schema import BaseRetriever, Document
 from langchain.schema.language_model import BaseLanguageModel
 
-
 class CustomBaseRetrievalQA(BaseRetrievalQA):
     """Base class for question-answering chains."""
 
@@ -37,11 +36,7 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
         **kwargs: Any,
     ) -> BaseRetrievalQA:
         """Initialize from LLM."""
-        if "llm_kwargs" in kwargs:
-            llm_kwargs = copy.deepcopy(kwargs["llm_kwargs"])
-            del kwargs["llm_kwargs"]
-        else:
-            llm_kwargs = {}
+        llm_kwargs = kwargs.pop("llm_kwargs", {})
         _prompt = prompt or PROMPT_SELECTOR.get_prompt(llm)
         llm_chain = LLMChain(llm=llm, prompt=_prompt, callbacks=callbacks, llm_kwargs=llm_kwargs)
         document_prompt = kwargs.get(
@@ -69,12 +64,7 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
         **kwargs: Any,
     ) -> BaseRetrievalQA:
         """Load chain from chain type."""
-        if "llm_kwargs" in kwargs:
-            llm_kwargs = copy.deepcopy(kwargs["llm_kwargs"])
-            del kwargs["llm_kwargs"]
-        else:
-            llm_kwargs = {}
-
+        llm_kwargs = kwargs.pop("llm_kwargs", {})
         _chain_type_kwargs = chain_type_kwargs or {}
         combine_documents_chain = load_qa_chain(llm, chain_type=chain_type, **_chain_type_kwargs, llm_kwargs=llm_kwargs)
         return cls(combine_documents_chain=combine_documents_chain, **kwargs)
@@ -109,29 +99,30 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
             if k in ["stop", "temperature", "top_k", "top_p", "max_new_tokens", "doc_prefix"]
         }
         answers = []
-        buffered_history_backup, summarized_history_temp_backup = copy.deepcopy(
-            self.combine_documents_chain.memory.buffered_history
-        ), copy.deepcopy(self.combine_documents_chain.memory.summarized_history_temp)
+        if self.combine_documents_chain.memory is not None:
+            buffered_history_backup, summarized_history_temp_backup = copy.deepcopy(
+                self.combine_documents_chain.memory.buffered_history
+            ), copy.deepcopy(self.combine_documents_chain.memory.summarized_history_temp)
+        else:
+            buffered_history_backup = None
+            summarized_history_temp_backup = None
 
-        # for idx, doc in enumerate(docs):
         answer = self.combine_documents_chain.run(
             input_documents=docs, question=question, callbacks=_run_manager.get_child(), **kwargs
         )
-        answers.append((answer, 0))
-        (
-            self.combine_documents_chain.memory.buffered_history,
-            self.combine_documents_chain.memory.summarized_history_temp,
-        ) = copy.deepcopy(buffered_history_backup), copy.deepcopy(summarized_history_temp_backup)
+        if summarized_history_temp_backup is not None and buffered_history_backup is not None:
+            (
+                self.combine_documents_chain.memory.buffered_history,
+                self.combine_documents_chain.memory.summarized_history_temp,
+            ) = copy.deepcopy(buffered_history_backup), copy.deepcopy(summarized_history_temp_backup)
 
-        # backup memory
-        rejected_answers = ["无法回答该问题"]
-        print(answers)
-        answers = [f"{ans[0]}" for ans in answers if all([rej not in ans[0] for rej in rejected_answers])]
-        if len(answers) == 0:
-            answer = "抱歉，根据提供的信息无法回答该问题。"
-        else:
-            answer = " ".join(answers)
-        self.combine_documents_chain.memory.save_context({"question": question}, {"output": answer})
+        # if rejection_trigger_keywords is not given, return the response from LLM directly
+        rejection_trigger_keywrods = inputs.get('rejection_trigger_keywrods', [])
+        answer = answer if all([rej not in answer for rej in rejection_trigger_keywrods]) else None
+        if answer is None:
+            answer = inputs.get('rejection_answer', "抱歉，根据提供的信息无法回答该问题。")
+        if self.combine_documents_chain.memory is not None:
+            self.combine_documents_chain.memory.save_context({"question": question}, {"output": answer})
 
         if self.return_source_documents:
             return {self.output_key: answer, "source_documents": docs}
@@ -169,6 +160,12 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
         answer = await self.combine_documents_chain.arun(
             input_documents=docs, question=question, callbacks=_run_manager.get_child(), **kwargs
         )
+        # if rejection_trigger_keywords is not given, return the response from LLM directly
+        rejection_trigger_keywrods = inputs.get('rejection_trigger_keywrods', [])
+        answer = answer if all([rej not in answer for rej in rejection_trigger_keywrods]) or len(rejection_trigger_keywrods)==0 else None
+        if answer is None:
+            answer = inputs.get('rejection_answer', "抱歉，根据提供的信息无法回答该问题。")
+        self.combine_documents_chain.memory.save_context({"question": question}, {"output": answer})
 
         if self.return_source_documents:
             return {self.output_key: answer, "source_documents": docs}
