@@ -2,25 +2,27 @@ import copy
 import logging
 import os
 from pathlib import Path
+from shutil import rmtree
 from typing import Dict, Iterator, Optional, OrderedDict, Tuple
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.distributed import ProcessGroup
-from torch.optim import Optimizer
 
 from colossalai.checkpoint_io import CheckpointIndexFile, HybridParallelCheckpointIO
 from colossalai.checkpoint_io.utils import (
     StateDictSharder,
     gather_distributed_param,
     get_model_base_filenames,
+    get_optimizer_base_filenames,
     is_safetensors_available,
     load_shard_state_dict,
     load_state_dict,
     load_state_dict_into_model,
     load_states_into_optimizer,
     save_config_file,
+    save_param_groups,
     save_state_dict,
     save_state_dict_shards,
     sharded_optimizer_loading_epilogue,
@@ -318,8 +320,111 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
 
         return state_
 
-    def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str):
-        raise NotImplementedError()
+    def load_sharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint_index_file: str, prefix: str = ""):
+        """
+        Load sharded optimizer with the given path to index file of checkpoint folder.
+
+        Args:
+            optimizer (OptimizerWrapper): The optimizer to be loaded.
+            checkpoint_index_file (str): Path to the index file of checkpointing folder.
+            prefix (str): Not used.
+        """
+        assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
+
+        def _get_param_id_from_optimizer_param(
+            param: torch.Tensor, master_to_working_map: Optional[Dict[int, torch.Tensor]] = None
+        ):
+            if master_to_working_map is not None and id(param) in master_to_working_map:
+                working_param = master_to_working_map[id(param)]
+            else:
+                working_param = param
+            return optimizer.param_info["param2id"][id(working_param)]
+
+        # id_map is a mapping from param ids kept by current pipeline, to their corresponding parameter objects.
+        # When Zero is used, the mapped parameter objects should be fp32 master parameters.
+        # IDs should be obtained through saved param2id mapping earlier saved in optimizer.param_info.
+        id_map = {}
+        master_to_working_map = optimizer.get_master_to_working_map()
+        for pg in optimizer.optim.param_groups:
+            for param in pg["params"]:
+                param_id = _get_param_id_from_optimizer_param(param, master_to_working_map)
+                id_map[param_id] = param
+
+        # Read checkpoint index file.
+        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
+        ckpt_root_path = ckpt_index_file.root_path
+        weight_map = ckpt_index_file.weight_map
+        weight_map = {int(k): v for k, v in weight_map.items()}  # convert saved id from str to int
+
+        # Load param_groups
+        param_group_path = ckpt_index_file.get_param_group_filename()
+        if param_group_path is None:
+            raise RuntimeError(
+                f"Invalid index file path {checkpoint_index_file} for an optimizer. \
+                               Lacking param group file under current directory."
+            )
+        saved_groups = torch.load(param_group_path)
+
+        updated_groups = []
+        for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
+            # obtain updated param group
+            new_pg = copy.deepcopy(saved_pg)
+            new_pg["params"] = old_pg["params"]  # The parameters in the same group shouln't change.
+            updated_groups.append(new_pg)
+        # ep extra group
+        if MOE_MANAGER.parallel == "EP":
+            new_pg = copy.deepcopy(saved_pg)
+            new_pg["params"] = optimizer.optim.param_groups[-1][
+                "params"
+            ]  # Only keep the parameters kept by current pipeline stage.
+            for param in new_pg["params"]:
+                param.data = param.data.to(torch.float32)
+            updated_groups.append(new_pg)
+        optimizer.optim.__dict__.update({"param_groups": updated_groups})
+
+        # Load saved states to optimizer.
+        # Keep a record of loaded files so that file will not be repeatedly loaded.
+        loaded_file = set()
+        for pg in optimizer.optim.param_groups:
+            for param in pg["params"]:
+                if param is None:
+                    continue
+                param_id = _get_param_id_from_optimizer_param(param, master_to_working_map)
+                if param_id not in weight_map:
+                    continue
+                filename = weight_map[param_id]
+
+                # If this param's states has been loaded before, directly return.
+                if filename in loaded_file:
+                    continue
+
+                file_path = os.path.join(ckpt_root_path, filename)
+                state_dict = load_shard_state_dict(Path(file_path), use_safetensors=False)
+                load_states_into_optimizer(optimizer.optim, state_dict, id_map, strict=True)
+                loaded_file.add(filename)
+
+        # Then shard the loaded optimizer states if using tp/zero.
+        for param, state in optimizer.optim.state.items():
+            device = param.device
+            if master_to_working_map is not None and id(param) in master_to_working_map:
+                working_param = master_to_working_map[id(param)]
+            else:
+                working_param = param
+            original_shape = optimizer.param_info["param2shape"][id(working_param)]
+            sharded_state = self.pre_load_optim(
+                state,
+                param,
+                current_shape=working_param.shape,
+                original_shape=original_shape,
+                device=device,
+                inplace=True,
+            )
+            optimizer.optim.state[param] = sharded_state
+
+        sharded_optimizer_loading_epilogue(optimizer.optim)
+        if self.verbose and self.coordinator.is_master():
+            logging.info(f"The optimizer has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
+        dist.barrier()
 
     def load_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str):
         """
@@ -398,6 +503,7 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
             )
             optimizer.optim.state[param] = sharded_state
         sharded_optimizer_loading_epilogue(optimizer.optim)
+        dist.barrier()
 
     def pre_save_optim(
         self,
@@ -453,15 +559,170 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
 
         return state_
 
+    def _optimizer_sharder(
+        self,
+        optimizer: OptimizerWrapper,
+        size_per_shard: int = 1024,
+    ):
+        # An internel method that breaks state_dict of optimizer into shards within limited size.
+
+        state_dict_sharder = StateDictSharder(size_per_shard)
+        param_info = optimizer.param_info
+        master_to_working_map = optimizer.get_master_to_working_map()
+
+        for param, state in optimizer.optim.state.items():
+            if param is None:
+                continue
+
+            if master_to_working_map is not None and id(param) in master_to_working_map:
+                working_param = master_to_working_map[id(param)]
+            else:
+                working_param = param
+
+            param_id = param_info["param2id"][id(working_param)]
+            state_ = self.pre_save_optim(
+                state,
+                working_param,
+                inplace=False,
+                device=torch.device("cuda"),
+            )
+
+            block, block_size = state_dict_sharder.append_optim_state(param_id, state_)
+            if block is not None:
+                yield block, block_size
+
+        # Return the last block in sharder.
+        yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
+
     def save_sharded_optimizer(
         self,
-        optimizer: Optimizer,
-        checkpoint: Path,
-        gather_dtensor: bool,
-        prefix: str,
-        size_per_shard: int,
+        optimizer: OptimizerWrapper,
+        checkpoint: str,
+        gather_dtensor: bool = True,
+        prefix: Optional[str] = None,
+        size_per_shard: int = 1024,
     ):
-        raise NotImplementedError()
+        """
+        Save sharded optimizer checkpoint under the given checkpointing path.
+        The following files will be created under the path:
+        - An index file (pytorch_optim.bin.index.json) containing a map between optimizer states and file names
+        - A group file (pytorch_optim_group.bin) recording information of param_groups
+        - Multiple files that store state tensors of optimizers.
+          If pipeline parallelism is used, the filenames are in the form of "pytorch_optim.<prefix>-stage-000XX-shard-000XX.bin".
+          If pipeline parallelism is not used, "pytorch_optim.<prefix>-000XX.bin"
+
+        Args:
+            optimizer (OptimizerWrapper): Optimizer to save sharded state_dict
+            checkpoint (str): Path to save optimizer state_dict
+            gather_dtensor (bool): Whether to gather_dtensor, not used
+            prefix (str): Perfix of file to save
+            size_per_shard (int): Max file size of each file shard that store state tensors
+        """
+        assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
+        if os.path.isfile(checkpoint):
+            logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
+            return
+
+        Path(checkpoint).mkdir(parents=True, exist_ok=True)
+
+        # Devices along the same dp_group share the same copies of states when zero is not used.
+        # In this case only let the device with dp_rank == 0 save the model.
+        if not self.use_zero and self.dp_rank != 0:
+            return
+
+        # Then collect the sharded states along dp_group(if using zero)/tp_group.
+        # Only devices with (dp_rank == 0 and tp_rank == 0) are responsible for states saving.
+        state_dict_shard = self._optimizer_sharder(
+            optimizer,
+            size_per_shard=size_per_shard,
+        )
+        states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
+        index_file = CheckpointIndexFile(checkpoint)
+        control_saving = self.dp_rank == 0 and self.tp_rank == 0
+        if self.pp_size == 1:
+            # When pipeline is not used, save the optimizer shards as in general checkpointIO
+            total_size = save_state_dict_shards(
+                sharded_state_dict=state_dict_shard,
+                checkpoint=checkpoint,
+                index_file=index_file,
+                base_filename=states_name,
+                is_master=control_saving,
+            )
+
+            if control_saving:
+                # Store param groups.
+                index_file.append_meta_data("param_groups", param_group_file)
+                group_file_path = os.path.join(checkpoint, param_group_file)
+                save_param_groups(optimizer.param_info, group_file_path)
+                # Store index file.
+                index_file.append_meta_data("total_size", total_size)
+                index_file.write_index_file(save_index_file)
+                if self.verbose and self.coordinator.is_master():
+                    logging.info(
+                        f"The optimizer is going to be split to checkpoint shards. "
+                        f"You can find where each parameters has been saved in the "
+                        f"index located at {save_index_file}."
+                    )
+
+        else:
+            # When pipeline is used, each stage produces its own shard files and index files.
+            # Index files belonging to each stage are saved under a temporary folder ./tmp_index_files/
+            # After all the state_dicts have been saved, the master rank integrates all the index files into one final index file and deletes the tmp folder.
+
+            final_index_file_path = copy.deepcopy(save_index_file)
+            tmp_index_file_folder = os.path.join(checkpoint, "tmp_index_files")
+            Path(tmp_index_file_folder).mkdir(parents=True, exist_ok=True)
+
+            # Manage filenames of sharded weights and index file for each pipeline stage.
+            states_name = states_name.replace(".bin", f"-stage-{self.pp_rank+1:05d}-shard.bin")
+            save_index_file = save_index_file.replace(".json", f"-stage-{self.pp_rank+1:05d}.json")
+            save_index_file = os.path.join("tmp_index_files", save_index_file)
+
+            total_size = save_state_dict_shards(
+                sharded_state_dict=state_dict_shard,
+                checkpoint=checkpoint,
+                index_file=index_file,
+                base_filename=states_name,
+                is_master=control_saving,
+                use_pp_format=True,
+            )
+
+            if control_saving:
+                assert (
+                    self.dp_rank == 0 and self.tp_rank == 0
+                ), "The saving process should have both dp_rank and tp_rank as 0."
+                index_file.append_meta_data("total_size", total_size)
+                index_file.write_index_file(save_index_file)
+            else:
+                return
+
+            dist.barrier(self.pp_group)
+
+            # The global master rank integrates the index files and clean the folder.
+            if self.pp_rank == 0:
+                final_index_file = CheckpointIndexFile(checkpoint)
+                final_index_file.append_meta_data("total_size", 0)
+
+                for filename in os.listdir(tmp_index_file_folder):
+                    stage_index_file = CheckpointIndexFile.from_file(os.path.join(tmp_index_file_folder, filename))
+                    final_index_file.metadata["total_size"] += stage_index_file.metadata["total_size"]
+                    for param_id, state_filename in stage_index_file.weight_map.items():
+                        final_index_file.append_weight_map(param_id, state_filename)
+
+                # Store param groups.
+                final_index_file.append_meta_data("param_groups", param_group_file)
+                group_file_path = os.path.join(checkpoint, param_group_file)
+                save_param_groups(optimizer.param_info, group_file_path)
+
+                final_index_file.write_index_file(final_index_file_path)
+                rmtree(tmp_index_file_folder)
+
+                if self.verbose and self.coordinator.is_master():
+                    logging.info(
+                        f"The model is split into checkpoint shards. "
+                        f"You can find where each parameters has been saved in the "
+                        f"index located at {final_index_file_path}."
+                    )
 
     def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
         """

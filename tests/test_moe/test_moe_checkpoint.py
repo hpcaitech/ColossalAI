@@ -141,6 +141,13 @@ def get_model(parallel):
 
 
 def _test_moe_checkpoint(rank, parallel, shard):
+    if dist.get_rank() == 0:
+        if os.path.exists("./tmp_ckpt"):
+            shutil.rmtree("./tmp_ckpt")
+        if os.path.exists("./tmp_ckpt.pth"):
+            os.remove("./tmp_ckpt.pth")
+    dist.barrier()
+
     if parallel == None:
         MOE_MANAGER.setup(
             parallel=None,
@@ -178,6 +185,7 @@ def _test_moe_checkpoint(rank, parallel, shard):
             shutil.rmtree("./tmp_ckpt")
         else:
             os.remove("./tmp_ckpt.pth")
+    dist.barrier()
 
     # optim ckpt
     criterion = lambda x: x.mean()
@@ -193,6 +201,7 @@ def _test_moe_checkpoint(rank, parallel, shard):
         optim1.zero_grad()
     if shard:
         booster1.save_optimizer(optim1, "./tmp_ckpt", shard=True, size_per_shard=1)
+        dist.barrier()
         booster2.load_optimizer(optim2, "./tmp_ckpt")
     else:
         booster1.save_optimizer(optim1, "./tmp_ckpt.pth")
@@ -228,4 +237,4 @@ def test_moe_checkpoint(world_size, parallel, shard):
 
 
 if __name__ == "__main__":
-    test_moe_checkpoint(world_size=4, parallel="hybrid", shard=False)
+    test_moe_checkpoint(world_size=4, parallel="hybrid", shard=True)
