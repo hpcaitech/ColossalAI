@@ -1,8 +1,16 @@
 # modified from torch-int: https://github.com/Guangxuan-Xiao/torch-int/blob/main/torch_int/nn/linear.py
 
 import torch
-from torch_int._CUDA import linear_a8_w8_b8_o8, linear_a8_w8_bfp32_ofp32
-from torch_int.functional.quantization import quantize_per_tensor_absmax
+
+try:
+    from torch_int._CUDA import linear_a8_w8_b8_o8, linear_a8_w8_bfp32_ofp32
+    from torch_int.functional.quantization import quantize_per_tensor_absmax
+
+    HAS_TORCH_INT = True
+except ImportError:
+    HAS_TORCH_INT = False
+    print("Not install torch_int. Please install torch_int from https://github.com/Guangxuan-Xiao/torch-int")
+
 
 try:
     from colossalai.kernel.op_builder.smoothquant import SmoothquantBuilder
