@@ -7,7 +7,7 @@ import torch.distributed as dist
 import colossalai
 from colossalai.moe import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.moe.utils import sync_moe_model_param
+from colossalai.moe.utils import create_ep_hierarchical_group, sync_moe_model_param
 from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_rank, get_ep_size, is_moe_tensor
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
@@ -132,7 +132,12 @@ def run_test(rank: int, world_size: int, port: int, num_experts: int, batch_size
     local_model = SparseMLP(num_experts=num_experts, hidden_size=dim, intermediate_size=dim * 2)
     MOE_MANAGER.__init__()
     MOE_MANAGER.setup(parallel="EP")
-    ep_model = SparseMLP(num_experts=num_experts, hidden_size=dim, intermediate_size=dim * 2)
+    ep_model = SparseMLP(
+        num_experts=num_experts,
+        hidden_size=dim,
+        intermediate_size=dim * 2,
+        create_hierarchical_group=lambda group: create_ep_hierarchical_group(group, num_node=1, nproc_per_node=2)
+    )
     MOE_MANAGER.__init__()
     MOE_MANAGER.setup(parallel="TP")
     tp_model = SparseMLP(num_experts=num_experts, hidden_size=dim, intermediate_size=dim * 2)
