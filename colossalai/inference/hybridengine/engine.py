@@ -10,7 +10,6 @@ from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
 
 from ..pipeline.microbatch_manager import MicroBatchManager
-from ..quant.gptq import GPTQManager
 from ..tensor_parallel.kvcache_manager import MemoryManager
 
 PP_AXIS, TP_AXIS = 0, 1
@@ -76,6 +75,8 @@ class CaiInferEngine:
         num_beams: int = 1,
     ) -> None:
         if quant == "gptq":
+            from ..quant.gptq import GPTQManager
+
             self.gptq_manager = GPTQManager(model.quantize_config, max_input_len=max_input_len)
             model = model.model
         elif quant == "smoothquant":
