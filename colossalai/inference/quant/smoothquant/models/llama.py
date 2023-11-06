@@ -8,7 +8,6 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_int.nn.bmm import BMM_S8T_S8N_F32T, BMM_S8T_S8N_S8T
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.llama.configuration_llama import LlamaConfig
@@ -30,6 +29,15 @@ from colossalai.kernel.triton import (
     smooth_llama_context_attn_fwd,
     smooth_token_attention_fwd,
 )
+
+try:
+    from torch_int.nn.bmm import BMM_S8T_S8N_F32T, BMM_S8T_S8N_S8T
+
+    HAS_TORCH_INT = True
+except ImportError:
+    HAS_TORCH_INT = False
+    print("Not install torch_int. Please install torch_int from https://github.com/Guangxuan-Xiao/torch-int")
+
 
 from .base_model import BaseSmoothForCausalLM
 from .linear import W8A8B8O8Linear, W8A8BFP32O32LinearSiLU, W8A8BFP32OFP32Linear
