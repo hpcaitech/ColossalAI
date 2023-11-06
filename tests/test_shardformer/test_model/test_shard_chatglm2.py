@@ -35,6 +35,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     chatglm_model = unwrap_model(org_model, "ChatGLMModel", "transformer")
     shard_chatglm_model = unwrap_model(sharded_model, "ChatGLMModel", "transformer")
 
+    norm_layer_for_check = ["encoder.layers[0].input_layernorm"]
     row_layer_for_check = ["encoder.layers[0].self_attention.query_key_value", "embedding.word_embeddings"]
     col_layer_for_check = ["encoder.layers[0].self_attention.dense"]
 
@@ -66,8 +67,21 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             dim=1,
             verbose=False,
         )
+
+        norm_layer_grads = get_grad_tensors_for_check(
+            chatglm_model,
+            shard_chatglm_model,
+            norm_layer_for_check,
+            tp_group,
+            atol=atol,
+            rtol=rtol,
+            dim=1,
+            verbose=False,
+        )
+
         grads_to_check.update(col_layer_grads)
         grads_to_check.update(row_layer_grads)
+        grads_to_check.update(norm_layer_grads)
 
     # optimizer executes step
     org_optimizer.step()

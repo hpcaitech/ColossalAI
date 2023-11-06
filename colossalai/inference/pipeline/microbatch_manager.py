@@ -33,10 +33,9 @@ class MicroBatchDescription:
         max_input_len: int,
         max_output_len: int,
         cache_manager: MemoryManager,
-        new_length: int,
     ) -> None:
         self.mb_length = inputs_dict["input_ids"].shape[-1]
-        self.target_length = self.mb_length + new_length
+        self.target_length = self.mb_length + max_output_len
         self.infer_state = BatchInferState.init_from_batch(
             batch=inputs_dict, max_input_len=max_input_len, max_output_len=max_output_len, cache_manager=cache_manager
         )
@@ -77,7 +76,6 @@ class HeadMicroBatchDescription(MicroBatchDescription):
     Args:
         inputs_dict (Dict[str, torch.Tensor]): the inputs of current stage. The key should have `input_ids` and `attention_mask`.
         output_dict (Dict[str, torch.Tensor]): the outputs of previous stage. The key should have `hidden_states` and `past_key_values`.
-        new_length (int): the new length of the input sequence.
 
     """
 
@@ -87,9 +85,8 @@ class HeadMicroBatchDescription(MicroBatchDescription):
         max_input_len: int,
         max_output_len: int,
         cache_manager: MemoryManager,
-        new_length: int,
     ) -> None:
-        super().__init__(inputs_dict, max_input_len, max_output_len, cache_manager, new_length)
+        super().__init__(inputs_dict, max_input_len, max_output_len, cache_manager)
         assert inputs_dict is not None
         assert inputs_dict.get("input_ids") is not None and inputs_dict.get("attention_mask") is not None
         self.input_ids = inputs_dict["input_ids"]
@@ -139,9 +136,8 @@ class BodyMicroBatchDescription(MicroBatchDescription):
         max_input_len: int,
         max_output_len: int,
         cache_manager: MemoryManager,
-        new_length: int,
     ) -> None:
-        super().__init__(inputs_dict, max_input_len, max_output_len, cache_manager, new_length)
+        super().__init__(inputs_dict, max_input_len, max_output_len, cache_manager)
 
     @property
     def cur_length(self):
@@ -158,7 +154,6 @@ class MicroBatchManager:
 
     Args:
         stage (int): stage id of current stage.
-        new_length (int): the new length of the input sequence.
         micro_batch_size (int): the micro batch size.
         micro_batch_buffer_size (int): the buffer size for micro batch. Normally, it should be the same as the number of pipeline stages.
 
@@ -167,7 +162,6 @@ class MicroBatchManager:
     def __init__(
         self,
         stage: int,
-        new_length: int,
         micro_batch_size: int,
         micro_batch_buffer_size: int,
         max_input_len: int,
@@ -175,7 +169,6 @@ class MicroBatchManager:
         cache_manager_list: MemoryManager,
     ):
         self.stage = stage
-        self.new_length = new_length
         self.micro_batch_size = micro_batch_size
         self.buffer_size = micro_batch_buffer_size
         self.max_input_len = max_input_len
@@ -188,11 +181,11 @@ class MicroBatchManager:
     def add_descrption(self, inputs_dict: Dict[str, torch.Tensor]):
         if self.stage == 0:
             self.mb_descrption_buffer[self.idx] = HeadMicroBatchDescription(
-                inputs_dict, self.max_input_len, self.max_output_len, self.cache_manager_list[self.idx], self.new_length
+                inputs_dict, self.max_input_len, self.max_output_len, self.cache_manager_list[self.idx]
             )
         else:
             self.mb_descrption_buffer[self.idx] = BodyMicroBatchDescription(
-                inputs_dict, self.max_input_len, self.max_output_len, self.cache_manager_list[self.idx], self.new_length
+                inputs_dict, self.max_input_len, self.max_output_len, self.cache_manager_list[self.idx]
             )
 
     def step(self, new_token: torch.Tensor = None):

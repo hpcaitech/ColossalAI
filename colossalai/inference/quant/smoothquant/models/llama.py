@@ -149,12 +149,6 @@ class LLamaSmoothquantAttention(nn.Module):
             self.k_rotary_output_scale.item(),
         )
 
-        # NOTE might want to revise
-        #   need some way to record the length of past key values cache
-        #   since we won't return past_key_value_cache right now
-        if infer_state.decode_layer_id == 0:  # once per model.forward
-            infer_state.cache_manager.past_key_values_length += q_len  # seq_len
-
         def _copy_kv_to_mem_cache(layer_id, key_buffer, value_buffer, context_mem_index, mem_manager):
             copy_kv_cache_to_dest(key_buffer, context_mem_index, mem_manager.key_buffer[layer_id])
             copy_kv_cache_to_dest(value_buffer, context_mem_index, mem_manager.value_buffer[layer_id])
@@ -229,7 +223,7 @@ class LLamaSmoothquantAttention(nn.Module):
                 infer_state.block_loc,
                 infer_state.start_loc,
                 infer_state.seq_len,
-                infer_state.cache_manager.past_key_values_length,
+                infer_state.max_len_in_batch,
             )
 
         attn_output = attn_output.view(bsz, q_len, self.num_heads * self.head_dim)
@@ -592,17 +586,13 @@ def llama_model_forward(
     else:
         raise ValueError("You have to specify either input_ids or inputs_embeds")
 
-    seq_length_with_past = seq_length
-    past_key_values_length = 0
-
     infer_state = self.infer_state
+    if infer_state.is_context_stage:
+        past_key_values_length = 0
+    else:
+        past_key_values_length = infer_state.max_len_in_batch - 1
 
-    if past_key_values is not None:
-        #  NOT READY FOR PRIME TIME
-        #  dummy but work, revise it
-        past_key_values_length = infer_state.cache_manager.past_key_values_length
-        # past_key_values_length = past_key_values[0][0].shape[2]
-        seq_length_with_past = seq_length_with_past + past_key_values_length
+    seq_length_with_past = seq_length + past_key_values_length
 
     # NOTE: differentiate with prefill stage
     #       block_loc require different value-assigning method for two different stage
@@ -623,9 +613,7 @@ def llama_model_forward(
             infer_state.block_loc[:, seq_length_with_past - 1] = infer_state.decode_mem_index
         else:
             print(f" *** Encountered allocation non-contiguous")
-            print(
-                f"    infer_state.cache_manager.past_key_values_length: {infer_state.cache_manager.past_key_values_length}"
-            )
+            print(f"    infer_state.cache_manager.max_len_in_batch: {infer_state.max_len_in_batch}")
             infer_state.decode_is_contiguous = False
             alloc_mem = infer_state.cache_manager.alloc(batch_size)
             infer_state.decode_mem_index = alloc_mem
@@ -713,6 +701,7 @@ def llama_model_forward(
     infer_state.is_context_stage = False
     infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
     infer_state.seq_len += 1
+    infer_state.max_len_in_batch += 1
 
     next_cache = next_decoder_cache if use_cache else None
     if not return_dict:

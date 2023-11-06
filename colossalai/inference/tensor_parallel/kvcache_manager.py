@@ -32,7 +32,7 @@ class MemoryManager:
     ):
         self.logger = logging.get_logger(__name__)
         self.available_size = size
-        self.past_key_values_length = 0
+        self.max_len_in_batch = 0
         self._init_mem_states(size, device)
         self._init_kv_buffers(size, device, dtype, head_num, head_dim, layer_num)
 
@@ -102,5 +102,5 @@ class MemoryManager:
         """free all memory by updating memory states"""
         self.available_size = len(self.mem_state)
         self.mem_state[:] = 1
-        self.past_key_values_length = 0
+        self.max_len_in_batch = 0
         self.logger.info("freed all space of memory manager")

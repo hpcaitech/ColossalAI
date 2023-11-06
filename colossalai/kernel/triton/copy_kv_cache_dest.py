@@ -10,7 +10,6 @@ except ImportError:
     print("please install triton from https://github.com/openai/triton")
 
 if HAS_TRITON:
-
     # adapted from https://github.com/ModelTC/lightllm/blob/5c559dd7981ed67679a08a1e09a88fb4c1550b3a/lightllm/common/triton_kernel/destindex_copy_kv.py
     @triton.jit
     def _fwd_copy_kv_cache_dest(
@@ -53,7 +52,6 @@ if HAS_TRITON:
         assert head_dim == out.shape[2], "head_dim should be the same for k_ptr and out"
 
         num_warps = 2
-
         _fwd_copy_kv_cache_dest[(seq_len,)](
             k_ptr,
             dest_index_ptr,

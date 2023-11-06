@@ -60,6 +60,11 @@ class DatasetEvaluator(object):
                             sample["output"], ref, all_classes=self.data[category]["inference_kwargs"]["all_classes"]
                         ),
                     )
+
+                    score = max(
+                        score,
+                        metric_helper.accuracy_by_options(sample["input"], sample["output"], ref),
+                    )
                 softmaxs.append(references[i] if score == 1 else -1)
             else:
                 softmaxs.append(np.argmax(np.array(list(sample["softmax_over_choices"].values()))))

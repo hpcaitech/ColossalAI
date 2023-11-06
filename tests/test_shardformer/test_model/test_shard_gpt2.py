@@ -35,6 +35,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     gpt2 = unwrap_model(org_model, "GPT2Model", "transformer")
     sharded_gpt2 = unwrap_model(sharded_model, "GPT2Model", "transformer")
 
+    norm_layer_for_check = ["h[0].ln_1", "h[0].ln_2"]
     col_layer_for_check = ["h[0].mlp.c_fc"]
     row_layer_for_check = ["wte", "h[0].mlp.c_proj"]
 
@@ -51,8 +52,21 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         row_layer_grads = get_grad_tensors_for_check(
             gpt2, sharded_gpt2, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0, verbose=False
         )
+
+        norm_layer_grads = get_grad_tensors_for_check(
+            gpt2,
+            sharded_gpt2,
+            norm_layer_for_check,
+            tp_group,
+            atol=atol,
+            rtol=rtol,
+            dim=1,
+            verbose=False,
+        )
+
         grads_to_check.update(col_layer_grads)
         grads_to_check.update(row_layer_grads)
+        grads_to_check.update(norm_layer_grads)
 
     # optimizer executes step
     org_optimizer.step()

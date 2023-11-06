@@ -34,11 +34,13 @@ In this section we discuss how the colossal inference works and integrates with 
   - [x] policy
   - [x] context forward
   - [x] token forward
+  - [x] support flash-decoding
 - [ ] Replace the kernels with `faster-transformer` in token-forward stage
 - [ ] Support all models
   - [x] Llama
+  - [x] Llama-2
   - [x] Bloom
-  - [ ] Chatglm2
+  - [x] Chatglm2
 - [ ] Benchmarking for all models
 
 ## Get started
@@ -57,17 +59,21 @@ dependencies
 pytorch= 1.13.1 (gpu)
 cuda>= 11.6
 transformers= 4.30.2
-triton==2.0.0.dev20221202
-# for install vllm, please use this branch to install https://github.com/tiandiao123/vllm/tree/setup_branch
-vllm
-# for install flash-attention, please use commit hash: 67ae6fd74b4bc99c36b2ce524cf139c35663793c
+triton
+# for install flash-attention
 flash-attention
 
 # install lightllm since we depend on lightllm triton kernels
 git clone https://github.com/ModelTC/lightllm 
-git checkout 28c1267cfca536b7b4f28e921e03de735b003039
 cd lightllm
+git checkout 28c1267cfca536b7b4f28e921e03de735b003039
 pip3 install -e .
+
+# also, install xformers from source: 
+pip install ninja
+# Set TORCH_CUDA_ARCH_LIST if running and building on different GPU types
+pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers
+
 ```
 
 ### Docker
@@ -85,11 +91,14 @@ pip install -e .
 
 # install lightllm
 git clone https://github.com/ModelTC/lightllm 
-git checkout 28c1267cfca536b7b4f28e921e03de735b003039
 cd lightllm
+git checkout 28c1267cfca536b7b4f28e921e03de735b003039
 pip3 install -e .
 
-
+# install xformers from source 
+pip install ninja
+# Set TORCH_CUDA_ARCH_LIST if running and building on different GPU types
+pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers 
 ```
 
 ### Dive into fast-inference!
