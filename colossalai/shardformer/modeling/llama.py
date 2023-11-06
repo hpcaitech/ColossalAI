@@ -413,6 +413,7 @@ def get_llama_flash_attention_forward():
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
         assert q_len % 4 == 0, "Flash Attention Error: The sequence length should be a multiple of 4."
