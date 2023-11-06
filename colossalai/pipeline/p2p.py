@@ -167,12 +167,19 @@ def filling_ops_queue(obj, comm_op, comm_rank, ops_queue, group):
 
 
 def create_recv_buffer(tensor_metadata, current_device):
-    buffer_recv = []
-    for (_, tensor_shape, tensor_dtype, tensor_requires_grad) in tensor_metadata:
+    if tensor_metadata[0] == 0:
+        tensor_shape, tensor_dtype, tensor_requires_grad = tensor_metadata[1]
         tensor_recv = torch.empty(
             tensor_shape, requires_grad=tensor_requires_grad, device=current_device, dtype=tensor_dtype)
-        buffer_recv.append(tensor_recv)
-    return buffer_recv
+        return tensor_recv
+    elif tensor_metadata[0] == 1 or tensor_metadata[0] == 2:
+        buffer_recv = []
+        for tensor_data in tensor_metadata[1:]:
+            tensor_shape, tensor_dtype, tensor_requires_grad = tensor_data[-3:]
+            tensor_recv = torch.empty(
+                tensor_shape, requires_grad=tensor_requires_grad, device=current_device, dtype=tensor_dtype)
+            buffer_recv.append(tensor_recv)
+        return buffer_recv
 
 
 def _batch_send_recv_tensor(send_tensor_list, recv_tensor_metadata, send_dst, recv_src, group, current_device):
@@ -240,8 +247,73 @@ def _recv_object_with_serialization(src: int, group: ProcessGroup, current_devic
     return unpickle_object
 
 
+def _send_recv_serialization_object(object: Any, send_dst: Optional[int], recv_src: Optional[int], group: ProcessGroup, current_device, is_nccl_backend):
+    ops = []
+    send_object_tensor = None
+    if object is not None and send_dst is not None:
+        if Version(torch.__version__) >= Version("1.13.0"):
+            send_object_tensor, send_object_size_tensor = c10d._object_to_tensor(object, device=current_device)
+        else:
+            send_object_tensor, send_object_size_tensor = c10d._object_to_tensor(object)
+
+        if is_nccl_backend:
+            send_object_size_tensor = send_object_size_tensor.to(current_device)
+            send_object_tensor = send_object_tensor.to(current_device)
+
+        filling_ops_queue(send_object_size_tensor, dist.isend, send_dst, ops, group)
+
+    recv_object_size_tensor = None
+    if recv_src is not None:
+        recv_object_size_tensor = torch.empty(1, dtype=torch.long)
+        if is_nccl_backend:
+            recv_object_size_tensor = recv_object_size_tensor.to(current_device)
+        filling_ops_queue(recv_object_size_tensor, dist.irecv, recv_src, ops, group)
+
+    if len(ops) > 0:
+        reqs = dist.batch_isend_irecv(ops)
+        for req in reqs:
+            req.wait()
+    torch.cuda.synchronize()
+
+    ops = []
+
+    if send_dst is not None and send_object_tensor is not None:
+        filling_ops_queue(send_object_tensor, dist.isend, send_dst, ops, group)
+
+    recv_object_tensor = None
+    if recv_src is not None and recv_object_size_tensor is not None:
+        recv_object_tensor = torch.empty(recv_object_size_tensor.item(), dtype=torch.uint8)
+        if is_nccl_backend:
+            recv_object_tensor = recv_object_tensor.to(current_device)
+        filling_ops_queue(recv_object_tensor, dist.irecv, recv_src, ops, group)
+
+    if len(ops) > 0:
+        reqs = dist.batch_isend_irecv(ops)
+        for req in reqs:
+            req.wait()
+    torch.cuda.synchronize()
+
+    if recv_object_tensor is not None and recv_object_size_tensor is not None:
+        recv_object_tensor = recv_object_tensor.type(torch.uint8)
+        if recv_object_tensor.device != torch.device("cpu"):
+            recv_object_tensor = recv_object_tensor.cpu()
+
+        unpickle_object = _cuda_safe_tensor_to_object(
+            recv_object_tensor, recv_object_size_tensor.item())
+
+        if (
+            isinstance(unpickle_object, torch.Tensor)
+            and unpickle_object.device.index != torch.cuda.current_device()
+        ):
+            unpickle_object = unpickle_object.cuda()
+
+        return unpickle_object
+
+
 def _check_if_fast_send_available(object):
-    if type(object) is list:
+    if type(object) is torch.Tensor:
+        return True
+    elif type(object) is list:
         is_list_of_tensor = all([type(v) is torch.Tensor for v in object])
         return is_list_of_tensor
     elif type(object) is dict:
@@ -267,37 +339,40 @@ def _send_recv(
     assert (send_dst is not None) or (recv_src is not None)
 
     can_fast_send = False
+    send_metadata = None
     if send_dst is not None:
         can_fast_send = _check_if_fast_send_available(object) and is_nccl_backend
         if not can_fast_send:
             send_metadata = ['__serialization__', object]
-            _send_object_with_serialization(send_metadata, send_dst, group, current_device, is_nccl_backend)
         else:
             send_metadata = []
             send_metadata.append('__tensor__')
-            if type(object) is list:
+            if type(object) is torch.Tensor:
+                send_metadata.append(0)
+                send_metadata.append((object.shape, object.dtype, object.requires_grad))
+            elif type(object) is list:
+                send_metadata.append(1)
                 for v in object:
-                    send_metadata.append((None, v.shape, v.dtype, v.requires_grad))
+                    send_metadata.append((v.shape, v.dtype, v.requires_grad))
             elif type(object) is dict:
+                send_metadata.append(2)
                 for k, v in object.items():
                     send_metadata.append((k, v.shape, v.dtype, v.requires_grad))
-            _send_object_with_serialization(send_metadata, send_dst, group, current_device, is_nccl_backend)
 
-    recv_metadata = None
-    if recv_src is not None:
-        recv_metadata = _recv_object_with_serialization(recv_src, group, current_device, is_nccl_backend)
-        assert type(recv_metadata) is list and len(recv_metadata) > 1
+    recv_metadata = _send_recv_serialization_object(send_metadata, send_dst, recv_src, group, current_device, is_nccl_backend)
+    if recv_metadata is not None:
+        assert type(recv_metadata) is list and len(recv_metadata) >= 2
         if recv_metadata[0] == '__serialization__':
             return recv_metadata[1]
         else:
             recv_metadata.pop(0)
-
-    # The following code is for fast send and recv
     if not can_fast_send and send_dst is not None:
         return
 
     send_tensor_list = None
-    if type(object) is list:
+    if type(object) is torch.Tensor:
+        send_tensor_list = object
+    elif type(object) is list:
         send_tensor_list = object
     elif type(object) is dict:
         send_tensor_list = list(object.values())
@@ -306,13 +381,15 @@ def _send_recv(
 
     if recv_metadata is not None:
         assert recv_buffer is not None
-        if recv_metadata[0][0] is None:
+        if recv_metadata[0] == 0:
+            return recv_buffer
+        elif recv_metadata[0] == 1:
             return recv_buffer
         else:
             return {
                 k: v
                 for k, v in zip(
-                    [m[0] for m in recv_metadata],
+                    [m[0] for m in recv_metadata[1:]],
                     recv_buffer,
                 )
             }
