@@ -1,13 +1,13 @@
 import dataclasses
 import math
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
-from colossalai.moe._operation import AllGather, AllToAll, MoeCombine, MoeDispatch, ReduceScatter
+from colossalai.moe._operation import AllGather, AllToAll, HierarchicalAllToAll, MoeCombine, MoeDispatch, ReduceScatter
 from colossalai.moe.experts import MLPExperts
 from colossalai.moe.load_balance import LoadBalancer
 from colossalai.moe.manager import MOE_MANAGER
@@ -64,6 +64,7 @@ class SparseMLP(nn.Module):
         load_balance_group_swap_factor: float = 0.4,
         enable_kernel: bool = False,
         enable_comm_overlap: bool = False,
+        create_hierarchical_group: Optional[Callable] = lambda *args, **kwargs: None,
     ):
         super().__init__()
         self.hidden_size = hidden_size
@@ -104,6 +105,7 @@ class SparseMLP(nn.Module):
         if self.expert_parallel is not None:
             self.ep_group = get_ep_group(self.experts)
             self.ep_size = get_ep_size(self.experts)
+            self.ep_hierarchical_group = create_hierarchical_group(self.ep_group)
             self.dp_group = get_dp_group(self.experts)
         else:
             self.ep_group = None
@@ -221,12 +223,18 @@ class SparseMLP(nn.Module):
             torch.Tensor: (num_experts, capacity, hidden_size)
         """
         if not overlap or dist.get_world_size(self.ep_group) == 1:
-            expert_input = AllToAll.apply(dispatch_data, self.ep_group, False)[0]
-            expert_input = expert_input.reshape(self.ep_size, self.num_local_experts, -1, self.hidden_size)
-            expert_output = self.experts(expert_input)
-            expert_output = AllToAll.apply(expert_output, self.ep_group, False)[0]
-            return expert_output
-
+            if self.ep_hierarchical_group is not None:
+                expert_input = HierarchicalAllToAll.apply(dispatch_data, self.ep_hierarchical_group)
+                expert_input = expert_input.reshape(self.ep_size, self.num_local_experts, -1, self.hidden_size)
+                expert_output = self.experts(expert_input)
+                expert_output = HierarchicalAllToAll.apply(expert_output, self.ep_hierarchical_group)
+                return expert_output
+            else:
+                expert_input = AllToAll.apply(dispatch_data, self.ep_group, False)[0]
+                expert_input = expert_input.reshape(self.ep_size, self.num_local_experts, -1, self.hidden_size)
+                expert_output = self.experts(expert_input)
+                expert_output = AllToAll.apply(expert_output, self.ep_group, False)[0]
+                return expert_output
         else:
 
             @dataclasses.dataclass
