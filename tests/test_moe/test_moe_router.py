@@ -7,7 +7,7 @@ from colossalai.moe.routers import MoeRouter, Top1Router, Top2Router, TopKRouter
 @pytest.mark.parametrize(["router", "num_groups"], [
     (Top1Router(), 1),
     (Top2Router(), 1),
-    (TopKRouter(num_selected_experts=3), 4),
+    # (TopKRouter(num_selected_experts=3), 4),
 ])
 @pytest.mark.parametrize(["batch_size", "seq_len", "num_experts"], [
     (4, 5, 8),

@@ -1,12 +1,10 @@
 import contextlib
-import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
-from colossalai.cluster.process_group_mesh import ProcessGroupMesh
 
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.tensor.moe_tensor.api import get_dp_group, get_dp_group_ranks, get_ep_size, is_moe_tensor
@@ -192,7 +190,7 @@ def create_ep_hierarchical_group(
     assert dist.is_initialized(), "Please initialize torch.distributed first."
     assert dist.get_world_size() == num_node * nproc_per_node
 
-    group_mesh = ProcessGroupMesh(num_node, nproc_per_node)
+    rank = dist.get_rank()
     ep_ranks = dist.get_process_group_ranks(ep_group)
 
     ep_intra_node_group = None
@@ -202,8 +200,8 @@ def create_ep_hierarchical_group(
             for j in range(nproc_per_node)
             if j in ep_ranks
         ]
-        group = group_mesh.get_group(ep_intra_ranks)
-        if group is not None:
+        group = dist.new_group(ep_intra_ranks)
+        if rank in ep_intra_ranks:
             assert ep_intra_node_group is None
             ep_intra_node_group = group
 
@@ -213,6 +211,8 @@ def create_ep_hierarchical_group(
         for i in range(num_node)
     ]
     if len(ep_inter_ranks) > 1:
-        ep_inter_node_group = group_mesh.get_group(ep_inter_ranks)
+        group = dist.new_group(ep_inter_ranks)
+        if rank in ep_inter_ranks:
+            ep_inter_node_group = group
 
     return ep_intra_node_group, ep_inter_node_group
