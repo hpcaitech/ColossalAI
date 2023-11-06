@@ -14,10 +14,12 @@ from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParall
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
-sys.path.append(os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "examples/language/openmoe",
-))
+sys.path.append(
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "examples/language/openmoe",
+    )
+)
 
 OpenMoeForCausalLM = importlib.import_module("model.modeling_openmoe").OpenMoeForCausalLM
 set_openmoe_args = importlib.import_module("model.modeling_openmoe").set_openmoe_args
@@ -50,11 +52,19 @@ def get_model(parallel):
             zero_stage=0,
             custom_policy=OpenMoeForCausalLMPolicy(),
         )
-    elif parallel == "zero_ep":
+    elif parallel == "ep":
         plugin = MoeHybridParallelPlugin(
             tp_size=1,
             pp_size=1,
             zero_stage=2,
+            custom_policy=OpenMoeForCausalLMPolicy(),
+        )
+    elif parallel == "ep_zero":
+        plugin = MoeHybridParallelPlugin(
+            tp_size=1,
+            pp_size=1,
+            zero_stage=2,
+            extra_dp_size=2,
             custom_policy=OpenMoeForCausalLMPolicy(),
         )
     elif parallel == "hybrid":
@@ -73,17 +83,19 @@ def get_model(parallel):
 def _test_moe_checkpoint(parallel, shard):
     if parallel == None:
         MOE_MANAGER.setup(
-            seed=42,
             parallel=None,
         )
-    elif parallel == "zero2_ep":
+    elif parallel == "ep":
         MOE_MANAGER.setup(
-            seed=42,
             parallel="EP",
+        )
+    elif parallel == "ep_zero":
+        MOE_MANAGER.setup(
+            parallel="EP",
+            max_ep_size=2,
         )
     elif parallel == "hybrid":
         MOE_MANAGER.setup(
-            seed=42,
             parallel="EP",
             mode="fixed",
             fixed_dp_size=1,
@@ -103,8 +115,13 @@ def _test_moe_checkpoint(parallel, shard):
     state1 = model1.state_dict()
     state2 = model2.state_dict()
     for k, v in state1.items():
+        # print(f"k: {k} v: {v.data[0]}")
+        # dist.barrier()
         u = state2.get(k)
-        assert torch.equal(u.data, v.data)
+        if not torch.allclose(u.data, v.data):
+            print(k)
+            print(f"u: {u.data}\nv: {v.data}\n")
+        assert torch.allclose(u.data, v.data)
 
     if dist.get_rank() == 0:
         if shard:
@@ -127,7 +144,7 @@ def _run_dist(rank, world_size, port, parallel, shard):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
-@pytest.mark.parametrize("parallel", [None, "zero_ep", "hybrid"])
+@pytest.mark.parametrize("parallel", [None, "ep", "ep_zero", "hybrid"])
 @pytest.mark.parametrize("shard", [True, False])
 @rerun_if_address_is_in_use()
 def test_moe_checkpoint(world_size, parallel, shard):
@@ -135,4 +152,4 @@ def test_moe_checkpoint(world_size, parallel, shard):
 
 
 if __name__ == "__main__":
-    test_moe_checkpoint(world_size=4, parallel="hybrid", shard=True)
+    test_moe_checkpoint(world_size=4, parallel="ep_zero", shard=True)

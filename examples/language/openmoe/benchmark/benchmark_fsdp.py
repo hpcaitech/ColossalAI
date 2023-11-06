@@ -41,7 +41,7 @@ def fsdp_main(rank, world_size, args):
     # initialize the process group
     dist.init_process_group("nccl")
 
-    MOE_MANAGER.setup(seed=42, parallel=None)
+    MOE_MANAGER.setup(parallel=None)
 
     dp_size = dist.get_world_size()
     dataset = RandomDataset(

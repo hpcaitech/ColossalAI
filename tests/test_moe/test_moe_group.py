@@ -15,7 +15,7 @@ INTERMEDIATE_SIZE = 8
 
 def run_moe_init(expert_parallel):
     MOE_MANAGER.__init__()
-    MOE_MANAGER.setup(seed=42, parallel=expert_parallel)
+    MOE_MANAGER.setup(parallel=expert_parallel)
     expert_args = dict(
         hidden_size=HIDDEN_SIZE,
         intermediate_size=INTERMEDIATE_SIZE,

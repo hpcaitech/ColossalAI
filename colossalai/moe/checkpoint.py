@@ -1,6 +1,5 @@
 import logging
 import os
-from copy import deepcopy
 from pathlib import Path
 from typing import Iterator, Optional, OrderedDict, Tuple
 
@@ -26,7 +25,6 @@ from colossalai.tensor.moe_tensor.api import get_dp_rank, get_ep_group, get_ep_r
 
 
 class MoeCheckpintIO(HybridParallelCheckpointIO):
-
     def __init__(
         self,
         dp_group: ProcessGroup,
@@ -55,7 +53,7 @@ class MoeCheckpintIO(HybridParallelCheckpointIO):
                         ep_size = get_ep_size(model_param)
                         expert_num = param.shape[0] // ep_size
                         assert param.shape[0] % ep_size == 0
-                        param = param[ep_rank * expert_num:(ep_rank + 1) * expert_num]
+                        param = param[ep_rank * expert_num : (ep_rank + 1) * expert_num]
                         state_dict[name] = param
         dist.barrier()
         return state_dict
@@ -156,7 +154,7 @@ class MoeCheckpintIO(HybridParallelCheckpointIO):
                 dp_rank = get_dp_rank(param)
                 if dp_rank == 0:
                     param = param.data.cuda()
-                    all_param = [deepcopy(param) for _ in range(ep_size)]
+                    all_param = [torch.zeros_like(param) for _ in range(ep_size)]
                     # gather param from every ep rank
                     dist.all_gather(all_param, param, group=ep_group)
                     if ep_rank == 0:
@@ -245,9 +243,11 @@ class MoeCheckpintIO(HybridParallelCheckpointIO):
                 index_file.write_index_file(save_index_file)
                 save_config_file(model, checkpoint)
                 if self.verbose:
-                    logging.info(f"The model is split into checkpoint shards. "
-                                 f"You can find where each parameters has been saved in the "
-                                 f"index located at {save_index_file}.")
+                    logging.info(
+                        f"The model is split into checkpoint shards. "
+                        f"You can find where each parameters has been saved in the "
+                        f"index located at {save_index_file}."
+                    )
         dist.barrier()
 
     # ========================================================
