@@ -4,10 +4,13 @@
 import io
 import pickle
 import re
-from typing import Any, List, Optional, Union, Dict
+from typing import Any, List, Optional, Union
+from collections import namedtuple
 
 import torch
 import torch.distributed as dist
+from dataclasses import dataclass
+from enum import Enum
 from packaging.version import Version
 from torch.distributed import ProcessGroup
 from torch.distributed import distributed_c10d as c10d
@@ -156,6 +159,22 @@ def check_device(group):
     return current_device, is_nccl_backend
 
 
+TensorMetadata = namedtuple('TensorMetadata', ['key', 'shape', 'dtype', 'requires_grad'])
+
+
+class P2PDataType(Enum):
+    serialization = 0
+    tensor = 1
+    list = 2
+    dict = 3
+
+
+@dataclass
+class P2PMetadata:
+    data_type: P2PDataType
+    content: Union[List[TensorMetadata], TensorMetadata, Any]
+
+
 def filling_ops_queue(obj, comm_op, comm_rank, ops_queue, group):
     if isinstance(obj, torch.Tensor):
         op_to_add = dist.P2POp(comm_op, obj, comm_rank, group)
@@ -166,20 +185,19 @@ def filling_ops_queue(obj, comm_op, comm_rank, ops_queue, group):
             ops_queue.append(op_to_add)
 
 
-def create_recv_buffer(tensor_metadata, current_device):
-    if tensor_metadata[0] == 0:
-        tensor_shape, tensor_dtype, tensor_requires_grad = tensor_metadata[1]
-        tensor_recv = torch.empty(
-            tensor_shape, requires_grad=tensor_requires_grad, device=current_device, dtype=tensor_dtype)
+def create_recv_buffer(p2p_metadata: P2PMetadata, current_device):
+    if p2p_metadata.data_type == P2PDataType.tensor:
+        metadata = p2p_metadata.content
+        tensor_recv = torch.empty(metadata.shape, requires_grad=metadata.requires_grad, device=current_device, dtype=metadata.dtype)
         return tensor_recv
-    elif tensor_metadata[0] == 1 or tensor_metadata[0] == 2:
+    elif p2p_metadata.data_type in (P2PDataType.list, P2PDataType.dict):
         buffer_recv = []
-        for tensor_data in tensor_metadata[1:]:
-            tensor_shape, tensor_dtype, tensor_requires_grad = tensor_data[-3:]
-            tensor_recv = torch.empty(
-                tensor_shape, requires_grad=tensor_requires_grad, device=current_device, dtype=tensor_dtype)
+        for metadata in p2p_metadata.content:
+            tensor_recv = torch.empty(metadata.shape, requires_grad=metadata.requires_grad, device=current_device, dtype=metadata.dtype)
             buffer_recv.append(tensor_recv)
         return buffer_recv
+    else:
+        raise ValueError(f"Unknown data_type: {p2p_metadata.data_type}")
 
 
 def _batch_send_recv_tensor(send_tensor_list, recv_tensor_metadata, send_dst, recv_src, send_group, recv_group, current_device):
@@ -200,7 +218,6 @@ def _batch_send_recv_tensor(send_tensor_list, recv_tensor_metadata, send_dst, re
         reqs = dist.batch_isend_irecv(ops)
         for req in reqs:
             req.wait()
-    torch.cuda.synchronize()
     return buffer_recv
 
 
@@ -235,7 +252,6 @@ def _send_recv_serialization_object(
         reqs = dist.batch_isend_irecv(ops)
         for req in reqs:
             req.wait()
-    torch.cuda.synchronize()
 
     ops = []
 
@@ -253,7 +269,6 @@ def _send_recv_serialization_object(
         reqs = dist.batch_isend_irecv(ops)
         for req in reqs:
             req.wait()
-    torch.cuda.synchronize()
 
     if recv_object_tensor is not None and recv_object_size_tensor is not None:
         recv_object_tensor = recv_object_tensor.type(torch.uint8)
@@ -312,29 +327,30 @@ def _communicate(
     if send_dst is not None:
         can_fast_send = _check_if_fast_send_available(object) and is_nccl_backend
         if not can_fast_send:
-            send_metadata = ['__serialization__', object]
+            send_metadata = P2PMetadata(P2PDataType.serialization, object)
         else:
-            send_metadata = []
-            send_metadata.append('__tensor__')
             if type(object) is torch.Tensor:
-                send_metadata.append(0)
-                send_metadata.append((object.shape, object.dtype, object.requires_grad))
+                data_type = P2PDataType.tensor
+                content = TensorMetadata(None, object.shape, object.dtype, object.requires_grad)
             elif type(object) is list:
-                send_metadata.append(1)
+                data_type = P2PDataType.list
+                content = []
                 for v in object:
-                    send_metadata.append((v.shape, v.dtype, v.requires_grad))
+                    content.append(TensorMetadata(None, v.shape, v.dtype, v.requires_grad))
             elif type(object) is dict:
-                send_metadata.append(2)
+                data_type = P2PDataType.dict
+                content = []
                 for k, v in object.items():
-                    send_metadata.append((k, v.shape, v.dtype, v.requires_grad))
+                    content.append(TensorMetadata(k, v.shape, v.dtype, v.requires_grad))
+            else:
+                raise ValueError('Cannot send object of type {}'.format(type(object)))
+            send_metadata = P2PMetadata(data_type, content)
 
     recv_metadata = _send_recv_serialization_object(send_metadata, send_dst, recv_src, send_group, recv_group, current_device, is_nccl_backend)
     if recv_metadata is not None:
-        assert type(recv_metadata) is list and len(recv_metadata) >= 2
-        if recv_metadata[0] == '__serialization__':
-            return recv_metadata[1]
-        else:
-            recv_metadata.pop(0)
+        assert type(recv_metadata) is P2PMetadata
+        if recv_metadata.data_type == P2PDataType.serialization:
+            return recv_metadata.content
     if not can_fast_send and send_dst is not None:
         return
 
@@ -350,18 +366,18 @@ def _communicate(
 
     if recv_metadata is not None:
         assert recv_buffer is not None
-        if recv_metadata[0] == 0:
+        if recv_metadata.data_type in [P2PDataType.tensor, P2PDataType.list]:
             return recv_buffer
-        elif recv_metadata[0] == 1:
-            return recv_buffer
-        else:
+        elif recv_metadata.data_type == P2PDataType.dict:
             return {
                 k: v
                 for k, v in zip(
-                    [m[0] for m in recv_metadata[1:]],
+                    [m.key for m in recv_metadata.content],
                     recv_buffer,
                 )
             }
+        else:
+            raise ValueError('Unknown data type {}'.format(recv_metadata.data_type))
 
 
 def _send_object(object: Any, src: int, dst: int, group: ProcessGroup) -> None:
