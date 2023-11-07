@@ -4,6 +4,7 @@ from typing import Optional
 
 import torch.nn as nn
 
+from ..shard.shard_config import ShardConfig
 from .base_policy import Policy
 
 __all__ = ["PolicyLocation", "get_autopolicy", "import_policy"]
@@ -197,7 +198,7 @@ def _fullname(obj):
     return module + "." + klass.__qualname__
 
 
-def get_autopolicy(model: nn.Module, inference_only: Optional[bool] = False) -> Policy:
+def get_autopolicy(model: nn.Module, shard_config: ShardConfig = None) -> Policy:
     r"""
     Return the auto policy for the model
 
@@ -208,6 +209,9 @@ def get_autopolicy(model: nn.Module, inference_only: Optional[bool] = False) -> 
         :class:`Policy`: The auto policy for the model
     """
     full_name = _fullname(model)
+    inference_only = (
+        "inference_only" in shard_config.extra_kwargs.keys() and shard_config.extra_kwargs["inference_only"]
+    )
     if inference_only:
         policy_location = _INFER_POLICY_LIST.get(full_name, None)
     else:

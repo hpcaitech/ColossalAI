@@ -24,7 +24,6 @@ class ShardConfig:
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism, which partitions non-tensor-parallel regions along the sequence dimension. Defaults to False.
         enable_sequence_overlap (bool): Whether to turn on sequence overlap, wheich overlap the computation and communication in sequence parallelism. It can only be used when enable_sequence_parallelism is True. Defaults to False.
         enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalizaion', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
-        inference_only (bool): Whether only doing forward passing. Defaults to False.
     """
     tensor_parallel_process_group: Optional[ProcessGroup] = None
     pipeline_stage_manager: Optional[PipelineStageManager] = None
@@ -35,7 +34,7 @@ class ShardConfig:
     enable_all_optimization: bool = False
     enable_sequence_parallelism: bool = False
     enable_sequence_overlap: bool = False
-    extra_kwargs: field(default_factory=dict) = None
+    extra_kwargs: dict[str, bool] = field(default_factory=dict)
     # pipeline_parallel_size: int
     # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']
@@ -45,8 +44,9 @@ class ShardConfig:
         return self._tensor_parallel_size
 
     def __post_init__(self):
-        for key, value in self.extra_kwargs.items():
-            setattr(self, key, value)
+        if self.extra_kwargs:
+            for key, value in self.extra_kwargs.items():
+                setattr(self, key, value)
 
         if not self.enable_tensor_parallelism and self.enable_sequence_parallelism:
             raise ValueError(

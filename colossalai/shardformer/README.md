@@ -81,8 +81,6 @@ Following are the description `ShardConfig`'s arguments:
 
 -  `enable_all_optimization`: Whether to turn on all optimization tools including `fused normalizaion`, `flash attention`, `JIT fused operators`, `sequence parallelism` and `sequence overlap`. Defaults to False.
 
-- `inference_only`: Whether only doing forward passing. Defaults to False.
-
 ### Write your own policy
 
 If you have a custom model, you can also use Shardformer to parallelize it by writing your own sharding policy. More information about the sharding policy can be found in [API Design](#-api-design).
@@ -185,7 +183,6 @@ class ShardConfig:
 
     # Some possible future config fields
     tensor_parallel_mode: Choice['1d', '2d', '2.5d', '3d'] # support different tensor parallel mode
-    inference_only: bool # only inject inference-suitable sharding policy
     use_flash_attention: bool # whether to use flash attention to speed up attention
 ```
 
