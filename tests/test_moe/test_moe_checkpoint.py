@@ -6,14 +6,13 @@ import sys
 import pytest
 import torch
 import torch.distributed as dist
-from torch.utils.data import Dataset
 from transformers.models.llama import LlamaConfig
 
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.testing import check_state_dict_equal, rerun_if_address_is_in_use, spawn
+from colossalai.testing import DummyDataloader, check_state_dict_equal, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 
 sys.path.append(
@@ -28,60 +27,46 @@ set_openmoe_args = importlib.import_module("model.modeling_openmoe").set_openmoe
 OpenMoeForCausalLMPolicy = importlib.import_module("model.openmoe_policy").OpenMoeForCausalLMPolicy
 
 
-class RandomDataset(Dataset):
-    def __init__(self, num_samples: int = 4, max_length: int = 16, vocab_size: int = 10, tokenizer=None):
-        self.num_samples = num_samples
-        self.max_length = max_length
-        self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device())
-        self.attention_mask = torch.ones_like(self.input_ids)
-
-    def __len__(self):
-        return self.num_samples
-
-    def __getitem__(self, idx):
-        return {
-            "input_ids": self.input_ids[idx],
-            "attention_mask": self.attention_mask[idx],
-            "labels": self.input_ids[idx],
-        }
+def data_gen_fn(batch_size: int = 4, max_length: int = 16, vocab_size: int = 20):
+    input_ids = torch.randint(0, vocab_size, (batch_size, max_length), device=get_current_device())
+    attention_mask = torch.ones_like(input_ids)
+    return {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+        "labels": input_ids,
+    }
 
 
 def run_fwd_bwd(
     model, data, label, criterion, optimizer, enable_autocast=False, pipeline=False, booster=None, plugin=None
 ):
     model.train()
-    with torch.cuda.amp.autocast(enabled=enable_autocast):
-        if pipeline:
-            dataset = RandomDataset(num_samples=20)
-            collate_fn = None
-            dataloader = plugin.prepare_dataloader(
-                dataset, batch_size=1, shuffle=True, drop_last=True, collate_fn=collate_fn
-            )
-            train_dataloader_iter = iter(dataloader)
-            is_pp_last_stage = booster.plugin.stage_manager.is_last_stage()
-            y = booster.execute_pipeline(
-                train_dataloader_iter,
-                model,
-                lambda x, y: x.loss,
-                optimizer,
-                return_loss=True,
-                return_outputs=True,
-            )
-            # Backward and optimize
-            if is_pp_last_stage:
-                loss = y["loss"]
+    if pipeline:
+        train_dataloader_iter = DummyDataloader(data_gen_fn)
+        is_pp_last_stage = booster.plugin.stage_manager.is_last_stage()
+        y = booster.execute_pipeline(
+            train_dataloader_iter,
+            model,
+            lambda x, y: x.loss,
+            optimizer,
+            return_loss=True,
+            return_outputs=True,
+        )
+        # Backward and optimize
+        if is_pp_last_stage:
+            loss = y["loss"]
+    else:
+        if criterion:
+            y = model(data).logits
+            loss = criterion(y)
         else:
-            if criterion:
-                y = model(data).logits
-                loss = criterion(y)
-            else:
-                loss = model(data, label)
-            loss = loss.float()
+            loss = model(data, label)
+        loss = loss.float()
 
-            if optimizer is not None:
-                optimizer.backward(loss)
-            else:
-                loss.backward()
+        if optimizer is not None:
+            optimizer.backward(loss)
+        else:
+            loss.backward()
     return y
 
 
