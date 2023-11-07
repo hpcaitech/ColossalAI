@@ -44,7 +44,7 @@ class TPInferEngine:
         >>> # define model and shard config for your inference
         >>> model = ...
         >>> generate_kwargs = ...
-        >>> shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
+        >>> shard_config = ShardConfig(enable_tensor_parallelism=True, extra_kwargs={"inference_only": True})
         >>> infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
         >>> outputs = infer_engine.generate(input_ids, **generate_kwargs)
     """
@@ -181,7 +181,7 @@ class TPInferEngine:
         In further generation, use the sharded model instead of original model.
         """
         # NOTE we will change to use an inference config later with additional attrs we want
-        assert self.shard_config.inference_only is True
+        assert self.shard_config.extra_kwargs["inference_only"] is True
         shardformer = ShardFormer(shard_config=self.shard_config)
         self._prepare_with_shard_config(shard_config=self.shard_config)
         self._shard_model_by(shardformer, model)
@@ -206,7 +206,7 @@ class TPInferEngine:
                 extra_kwargs={"inference_only": True},
             )
         else:
-            shard_config.inference_only = True
+            shard_config.extra_kwargs = {"inference_only": True}
             shard_config.pipeline_stage_manager = None
             if shard_config.enable_tensor_parallelism:
                 self.tp_size = shard_config.tensor_parallel_size

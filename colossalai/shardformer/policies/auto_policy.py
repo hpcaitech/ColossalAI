@@ -209,7 +209,10 @@ def get_autopolicy(model: nn.Module, shard_config: ShardConfig = None) -> Policy
         :class:`Policy`: The auto policy for the model
     """
     full_name = _fullname(model)
-    if shard_config.inference_only:
+    inference_only = (
+        "inference_only" in shard_config.extra_kwargs.keys() and shard_config.extra_kwargs["inference_only"]
+    )
+    if inference_only:
         policy_location = _INFER_POLICY_LIST.get(full_name, None)
     else:
         policy_location = _POLICY_LIST.get(full_name, None)
