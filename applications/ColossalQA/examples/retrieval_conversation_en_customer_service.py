@@ -10,15 +10,15 @@ from colossalqa.data_loader.document_loader import DocumentLoader
 from colossalqa.local.llm import ColossalAPI, ColossalLLM
 from colossalqa.memory import ConversationBufferWithSummary
 from colossalqa.prompt.prompt import (
-    PROMPT_DISAMBIGUATE_EN, 
-    PROMPT_RETRIEVAL_QA_EN,
+    EN_RETRIEVAL_QA_REJECTION_ANSWER,
     EN_RETRIEVAL_QA_TRIGGER_KEYWORDS,
-    EN_RETRIEVAL_QA_REJECTION_ANSWER
+    PROMPT_DISAMBIGUATE_EN,
+    PROMPT_RETRIEVAL_QA_EN,
 )
 from colossalqa.retriever import CustomRetriever
-from langchain.text_splitter import RecursiveCharacterTextSplitter 
 from langchain import LLMChain
 from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 if __name__ == "__main__":
     # Parse arguments
@@ -107,12 +107,12 @@ if __name__ == "__main__":
 
     retriever_data = DocumentLoader(
         [["../data/data_sample/custom_service_preprocessed.json", "CustomerServiceDemo"]],
-        content_key="key", 
+        content_key="key",
         metadata_func=metadata_func,
-    ).all_data 
+    ).all_data
 
     # Split
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size = 100, chunk_overlap  = 20) 
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=20)
     splits = text_splitter.split_documents(retriever_data)
     documents.extend(splits)
 
@@ -140,15 +140,18 @@ if __name__ == "__main__":
     )
     # Set disambiguity handler
     information_retriever.set_rephrase_handler(disambiguity)
- 
+
     # Start conversation
     while True:
         user_input = input("User: ")
         if "END" == user_input:
             print("Agent: Happy to chat with you ：)")
             break
-        agent_response = retrieval_chain.run(query=user_input, stop=["Human: "],
-            rejection_trigger_keywrods = EN_RETRIEVAL_QA_TRIGGER_KEYWORDS,
-            rejection_answer=EN_RETRIEVAL_QA_REJECTION_ANSWER)
+        agent_response = retrieval_chain.run(
+            query=user_input,
+            stop=["Human: "],
+            rejection_trigger_keywrods=EN_RETRIEVAL_QA_TRIGGER_KEYWORDS,
+            rejection_answer=EN_RETRIEVAL_QA_REJECTION_ANSWER,
+        )
         agent_response = agent_response.split("\n")[0]
         print(f"Agent: {agent_response}")
