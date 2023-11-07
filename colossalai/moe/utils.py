@@ -191,6 +191,7 @@ def create_ep_hierarchical_group(
     if nproc_per_node is None:
         nproc_per_node = os.environ.get("LOCAL_WORLD_SIZE")
         assert nproc_per_node is not None, "Please use torchrun to launch the job, or specify nproc_per_node manually."
+        nproc_per_node = int(nproc_per_node)
     else:
         assert dist.get_world_size() % nproc_per_node == 0, \
             "nproc_per_node should be a divisor of world_size."
