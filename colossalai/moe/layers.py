@@ -1,6 +1,6 @@
 import dataclasses
 import math
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -12,7 +12,7 @@ from colossalai.moe.experts import MLPExperts
 from colossalai.moe.load_balance import LoadBalancer
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.routers import MoeRouter, get_router_cls
-from colossalai.moe.utils import get_noise_generator
+from colossalai.moe.utils import create_ep_hierarchical_group, get_noise_generator
 from colossalai.tensor.moe_tensor.api import get_dp_group, get_ep_group, get_ep_size
 
 
@@ -64,7 +64,7 @@ class SparseMLP(nn.Module):
         load_balance_group_swap_factor: float = 0.4,
         enable_kernel: bool = False,
         enable_comm_overlap: bool = False,
-        create_hierarchical_group: Optional[Callable] = lambda *args, **kwargs: None,
+        enable_hierarchical_comm: bool = False,
     ):
         super().__init__()
         self.hidden_size = hidden_size
@@ -105,7 +105,8 @@ class SparseMLP(nn.Module):
         if self.expert_parallel is not None:
             self.ep_group = get_ep_group(self.experts)
             self.ep_size = get_ep_size(self.experts)
-            self.ep_hierarchical_group = create_hierarchical_group(self.ep_group)
+            self.ep_hierarchical_group = create_ep_hierarchical_group(
+                self.ep_group) if enable_hierarchical_comm else None
             self.dp_group = get_dp_group(self.experts)
         else:
             self.ep_group = None

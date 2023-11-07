@@ -70,6 +70,7 @@ def set_openmoe_args(
     load_balance_group_swap_factor: float = 0.4,
     enable_kernel: bool = False,
     enable_comm_overlap: bool = False,
+    enable_hierarchical_alltoall: bool = False,
 ) -> None:
     """
     MoE related arguments.
@@ -96,6 +97,7 @@ def set_openmoe_args(
         load_balance_group_swap_factor (float, optional): Expert load balance group swap factor. Longer value encourages less swap. Defaults to 0.4.
         enable_kernel (bool, optional): Use kernel optimization. Defaults to False.
         enable_comm_overlap (bool, optional): Use communication overlap for MoE. Recommended to enable for muiti-node training. Defaults to False.
+        enable_hierarchical_alltoall (bool, optional): Use hierarchical alltoall for MoE. Defaults to False.
     """
     moe_args = dict(
         num_experts=num_experts,
@@ -117,6 +119,7 @@ def set_openmoe_args(
         load_balance_group_swap_factor=load_balance_group_swap_factor,
         enable_kernel=enable_kernel,
         enable_comm_overlap=enable_comm_overlap,
+        enable_hierarchical_alltoall=enable_hierarchical_alltoall,
     )
     set_moe_args(config, moe_args)
 

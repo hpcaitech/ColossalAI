@@ -1,3 +1,4 @@
+import os
 import warnings
 
 import pytest
@@ -132,11 +133,12 @@ def run_test(rank: int, world_size: int, port: int, num_experts: int, batch_size
     local_model = SparseMLP(num_experts=num_experts, hidden_size=dim, intermediate_size=dim * 2)
     MOE_MANAGER.__init__()
     MOE_MANAGER.setup(parallel="EP")
+    os.environ["LOCAL_WORLD_SIZE"] = str(world_size)
     ep_model = SparseMLP(
         num_experts=num_experts,
         hidden_size=dim,
         intermediate_size=dim * 2,
-        create_hierarchical_group=lambda group: create_ep_hierarchical_group(group, nproc_per_node=world_size)
+        enable_hierarchical_comm=True,
     )
     MOE_MANAGER.__init__()
     MOE_MANAGER.setup(parallel="TP")
