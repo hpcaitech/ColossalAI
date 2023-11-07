@@ -11,8 +11,8 @@ from colossalqa.retriever import CustomRetriever
 from colossalqa.text_splitter import ChineseTextSplitter
 from colossalqa.utils import detect_lang_naive
 from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.text_splitter import TextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter, TextSplitter
+
 logger = get_logger()
 
 
@@ -32,8 +32,8 @@ class UniversalRetrievalConversation:
         sql_file_path: str = None,
         files_zh: List[List[str]] = None,
         files_en: List[List[str]] = None,
-        text_splitter_chunk_size = 100,
-        text_splitter_chunk_overlap = 10
+        text_splitter_chunk_size=100,
+        text_splitter_chunk_overlap=10,
     ) -> None:
         """
         Warpper for multilingual retrieval qa class (Chinese + English)
@@ -49,19 +49,31 @@ class UniversalRetrievalConversation:
             encode_kwargs={"normalize_embeddings": False},
         )
         print("Select files for constructing Chinese retriever")
-        docs_zh = self.load_supporting_docs(files=files_zh, \
-            text_splitter = ChineseTextSplitter(chunk_size = text_splitter_chunk_size, chunk_overlap  = text_splitter_chunk_overlap))
+        docs_zh = self.load_supporting_docs(
+            files=files_zh,
+            text_splitter=ChineseTextSplitter(
+                chunk_size=text_splitter_chunk_size, chunk_overlap=text_splitter_chunk_overlap
+            ),
+        )
         # Create retriever
-        self.information_retriever_zh = CustomRetriever(k=3, sql_file_path=sql_file_path.replace('.db', '_zh.db'), verbose=True)
+        self.information_retriever_zh = CustomRetriever(
+            k=3, sql_file_path=sql_file_path.replace(".db", "_zh.db"), verbose=True
+        )
         self.information_retriever_zh.add_documents(
             docs=docs_zh, cleanup="incremental", mode="by_source", embedding=self.embedding
         )
 
         print("Select files for constructing English retriever")
-        docs_en = self.load_supporting_docs(files=files_en, \
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size = text_splitter_chunk_size, chunk_overlap  = text_splitter_chunk_overlap))
+        docs_en = self.load_supporting_docs(
+            files=files_en,
+            text_splitter=RecursiveCharacterTextSplitter(
+                chunk_size=text_splitter_chunk_size, chunk_overlap=text_splitter_chunk_overlap
+            ),
+        )
         # Create retriever
-        self.information_retriever_en = CustomRetriever(k=3, sql_file_path=sql_file_path.replace('.db', '_en.db'), verbose=True)
+        self.information_retriever_en = CustomRetriever(
+            k=3, sql_file_path=sql_file_path.replace(".db", "_en.db"), verbose=True
+        )
         self.information_retriever_en.add_documents(
             docs=docs_en, cleanup="incremental", mode="by_source", embedding=self.embedding
         )
@@ -99,7 +111,7 @@ class UniversalRetrievalConversation:
                 # Split
                 splits = text_splitter.split_documents(retriever_data)
                 documents.extend(splits)
-        return documents 
+        return documents
 
     def start_test_session(self):
         """
@@ -123,4 +135,4 @@ class UniversalRetrievalConversation:
             agent_response, self.memory = self.chinese_retrieval_conversation.run(user_input, self.memory)
         else:
             agent_response, self.memory = self.english_retrieval_conversation.run(user_input, self.memory)
-        return agent_response.split("\n")[0] 
+        return agent_response.split("\n")[0]
