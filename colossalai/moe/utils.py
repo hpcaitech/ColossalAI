@@ -1,4 +1,5 @@
 import contextlib
+import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import torch
@@ -179,8 +180,7 @@ def set_moe_args(config: Any, args: dict):
 
 def create_ep_hierarchical_group(
     ep_group: dist.ProcessGroup,
-    num_node: int,
-    nproc_per_node: int,
+    nproc_per_node: Optional[int] = None,
 ) -> Tuple[Optional[dist.ProcessGroup],
            Optional[dist.ProcessGroup]]:
     """
@@ -188,7 +188,13 @@ def create_ep_hierarchical_group(
         Then, ep_intra_group = [1, 2] & [5, 6], ep_inter_group = [1, 5] & None
     """
     assert dist.is_initialized(), "Please initialize torch.distributed first."
-    assert dist.get_world_size() == num_node * nproc_per_node
+    if nproc_per_node is None:
+        nproc_per_node = os.environ.get("LOCAL_WORLD_SIZE")
+        assert nproc_per_node is not None, "Please use torchrun to launch the job, or specify nproc_per_node manually."
+    else:
+        assert dist.get_world_size() % nproc_per_node == 0, \
+            "nproc_per_node should be a divisor of world_size."
+    num_node = dist.get_world_size() // nproc_per_node
 
     rank = dist.get_rank()
     ep_ranks = dist.get_process_group_ranks(ep_group)

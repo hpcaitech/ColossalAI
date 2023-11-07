@@ -136,7 +136,7 @@ def run_test(rank: int, world_size: int, port: int, num_experts: int, batch_size
         num_experts=num_experts,
         hidden_size=dim,
         intermediate_size=dim * 2,
-        create_hierarchical_group=lambda group: create_ep_hierarchical_group(group, num_node=1, nproc_per_node=2)
+        create_hierarchical_group=lambda group: create_ep_hierarchical_group(group, nproc_per_node=world_size)
     )
     MOE_MANAGER.__init__()
     MOE_MANAGER.setup(parallel="TP")
