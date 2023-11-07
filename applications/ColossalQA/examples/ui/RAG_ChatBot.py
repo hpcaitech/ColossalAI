@@ -175,7 +175,7 @@ class RAG_ChatBot:
 if __name__ == "__main__":
     # Initialize an Langchain LLM(here we use pangu as an example)
     from langchain.llms import OpenAI
-    llm = OpenAI(openai_api_key="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")
+    llm = OpenAI(openai_api_key="your_openai_api_key")
 
     # chatgpt cannot control temperature, do_sample, etc.
     DEFAULT_RAG_CFG["mem_llm_kwargs"] = None
