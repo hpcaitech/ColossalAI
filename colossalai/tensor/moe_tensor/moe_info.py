@@ -15,8 +15,12 @@ class MoeParallelInfo:
             ep_inside (bool, optional): Use ep inside dp if True, dp inside ep if Fasle. Defaults to True.
         """
         self.pp_size, self.dp_size, self.ep_size = pp_size, dp_size, ep_size
-        self.pp_axis, self.dp_axis, self.ep_axis = (0, 1, 2) if ep_inside else (0, 2, 1)
-        self.pg = ProcessGroupMesh(self.pp_size, self.dp_size, self.ep_size)
+        if ep_inside:
+            self.pp_axis, self.dp_axis, self.ep_axis = 0, 1, 2
+            self.pg = ProcessGroupMesh(self.pp_size, self.dp_size, self.ep_size)
+        else:
+            self.pp_axis, self.ep_axis, self.dp_axis = 0, 1, 2
+            self.pg = ProcessGroupMesh(self.pp_size, self.ep_size, self.dp_size)
 
         self.ep_group = self.pg.get_group_along_axis(self.ep_axis)
         self.ep_group_ranks = self.pg.get_ranks_in_group(self.ep_group)
