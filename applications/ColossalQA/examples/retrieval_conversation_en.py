@@ -38,7 +38,7 @@ if __name__ == "__main__":
     # Setup LLM
     # llm = VllmLLM(n=1)
 
-    colossal_api = ColossalAPI(args.model_name, args.model_path)
+    colossal_api = ColossalAPI.get_api(args.model_name, args.model_path)
     llm = ColossalLLM(n=1, api=colossal_api)
 
     # Define the retriever

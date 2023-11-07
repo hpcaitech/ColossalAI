@@ -8,7 +8,7 @@ from colossalqa.local.utils import TEST_PROMPT_CHATGLM, get_response, post_http_
 from colossalqa.mylogging import get_logger
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
-from transformers import AutoModel, AutoTokenizer, LlamaForCausalLM, LlamaTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaForCausalLM, LlamaTokenizer
 
 logger = get_logger()
 
@@ -32,7 +32,7 @@ class ColossalAPI:
         if model_type == "llama":
             self.actor = LlamaForCausalLM.from_pretrained(pretrain, torch_dtype=torch.float16)
         else:
-            self.actor = AutoModel.from_pretrained(pretrain, torch_dtype=torch.float16, trust_remote_code=True)
+            self.actor = AutoModelForCausalLM.from_pretrained(pretrain, torch_dtype=torch.float16, trust_remote_code=True)
 
         if ckpt_path is not None:
             state_dict = torch.load(ckpt_path)
@@ -169,7 +169,7 @@ class VllmLLM(LLM):
         self.kwargs = kwargs
         if "max_tokens" not in kwargs:
             kwargs["max_tokens"] = 100
-        self.api = VllmAPI(host=host, port=port)
+        self.api = VllmAPI(host=host, port=port) 
 
     @property
     def _identifying_params(self) -> Mapping[str, int]:

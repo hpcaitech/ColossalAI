@@ -34,7 +34,7 @@ if __name__ == "__main__":
     if not os.path.exists(args.sql_file_path):
         os.makedirs(args.sql_file_path)
 
-    colossal_api = ColossalAPI(args.model_name, args.model_path)
+    colossal_api = ColossalAPI.get_api(args.model_name, args.model_path)
     llm = ColossalLLM(n=1, api=colossal_api)
 
     # Setup embedding model locally

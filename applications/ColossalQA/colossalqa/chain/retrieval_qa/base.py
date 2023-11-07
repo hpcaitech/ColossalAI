@@ -119,7 +119,7 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
         # if rejection_trigger_keywords is not given, return the response from LLM directly
         rejection_trigger_keywrods = inputs.get('rejection_trigger_keywrods', [])
         answer = answer if all([rej not in answer for rej in rejection_trigger_keywrods]) else None
-        if answer is None:
+        if answer is None: 
             answer = inputs.get('rejection_answer', "抱歉，根据提供的信息无法回答该问题。")
         if self.combine_documents_chain.memory is not None:
             self.combine_documents_chain.memory.save_context({"question": question}, {"output": answer})

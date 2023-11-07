@@ -24,7 +24,7 @@ class EnglishRetrievalConversation:
         Setup retrieval qa chain for Chinese retrieval based QA
         """
         logger.info(f"model_name: {model_name}; model_path: {model_path}", verbose=True)
-        colossal_api = ColossalAPI(model_name, model_path)
+        colossal_api = ColossalAPI.get_api(model_name, model_path)
         self.llm = ColossalLLM(n=1, api=colossal_api)
 
         # Define the retriever
