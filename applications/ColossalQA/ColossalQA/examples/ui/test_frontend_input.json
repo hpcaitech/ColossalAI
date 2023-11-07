@@ -1,0 +1,4 @@
+{"docs": ["/home/lczza/data/ColossalAI/applications/ColossalQA/data/test_data/companies_zh.txt"],
+"embed_model_name": "m3e",
+"llm_name": "pangu",
+"conversation_ready": false}
