@@ -156,6 +156,7 @@ class HierarchicalAllToAll(torch.autograd.Function):
         Returns:
             outputs: Tensor
         """
+        # TODO: we can reduce comm volume by removing empty capacity
         if ctx is not None:
             ctx.comm_grps = groups
         intra_node_group, inter_node_group = groups
