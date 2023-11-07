@@ -19,7 +19,7 @@ try:
     HAS_SMOOTHQUANT_CUDA = True
 except ImportError:
     HAS_SMOOTHQUANT_CUDA = False
-    raise ImportError("CUDA smoothquant linear is not installed")
+    print("CUDA smoothquant linear is not installed")
 
 
 class W8A8BFP32O32LinearSiLU(torch.nn.Module):
