@@ -293,6 +293,22 @@ def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> 
 # Helper functions for saving state dict
 # ======================================
 
+def move_to_cpu(obj):
+    """
+    Recursively move tensors to CPU to avoid serialization issues with CUDA tensors.
+    """
+    if torch.is_tensor(obj):
+        return obj.cpu()
+    elif isinstance(obj, dict):
+        return {k: move_to_cpu(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [move_to_cpu(o) for o in obj]
+    elif isinstance(obj, tuple):
+        return tuple(move_to_cpu(o) for o in obj)
+    elif isinstance(obj, OrderedDict):
+        return OrderedDict((k, move_to_cpu(v)) for k, v in obj.items())
+    else:
+        return obj
 
 def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors: bool) -> None:
     """
@@ -303,6 +319,9 @@ def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors
         checkpoint_file_path (str): path to the checkpoint file.
         use_safetensors (bool): whether to use safetensors to save the checkpoint.
     """
+    # Move all tensors in the state_dict to CPU before saving to avoid serialization issues
+    state_dict_cpu = move_to_cpu(state_dict)
+    
     if use_safetensors:
         assert is_safetensors_available(), "safetensors is not available."
         assert checkpoint_file_path.endswith(
@@ -310,9 +329,9 @@ def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors
         ), "safetensors only supports .safetensors suffix for checkpoint file."
         from safetensors.torch import save_file as safe_save_file
 
-        safe_save_file(state_dict, checkpoint_file_path, metadata={"format": "pt"})
+        safe_save_file(state_dict_cpu, checkpoint_file_path, metadata={"format": "pt"})
     else:
-        torch.save(state_dict, checkpoint_file_path)
+        torch.save(state_dict_cpu, checkpoint_file_path)
 
 
 def save_param_groups(state_dict: dict, group_file_path: str) -> None:
