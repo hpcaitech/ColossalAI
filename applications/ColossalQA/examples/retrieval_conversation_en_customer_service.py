@@ -107,7 +107,7 @@ if __name__ == "__main__":
 
     retriever_data = DocumentLoader(
         [["../data/data_sample/custom_service_preprocessed.json", "CustomerServiceDemo"]],
-        content_key="key",
+        content_key="key", 
         metadata_func=metadata_func,
     ).all_data
 
