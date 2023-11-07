@@ -73,7 +73,6 @@ class Pangu(LLM):
         auth_config['auth_token'] = self.get_latest_auth_token(region, username, password, domain_name)
         self.auth_config = auth_config
 
-
     def get_latest_auth_token(self, region, username, password, domain_name):
         url = f"https://iam.{region}.myhuaweicloud.com/v3/auth/tokens" 
         payload = json.dumps({ 

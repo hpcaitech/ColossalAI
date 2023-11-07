@@ -5,23 +5,23 @@ import os
 import random
 import string
 from http.server import BaseHTTPRequestHandler, HTTPServer
-
+from colossalqa.local.llm import ColossalAPI, ColossalLLM
 from colossalqa.data_loader.document_loader import DocumentLoader
 from colossalqa.retrieval_conversation_zh import ChineseRetrievalConversation
 from colossalqa.retriever import CustomRetriever
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from RAG_ChatBot import RAG_ChatBot, DEFAULT_RAG_CFG
-from pangu_llm import Pangu
 
 # Define the mapping between embed_model_name(passed from Front End) and the actual path on the back end server
 EMBED_MODEL_DICT = {
-    "m3e": "/home/lczza/data/embed_model_ckpt/m3e-base"
+    "m3e": os.environ["EMB_MODEL_PATH"]
 }
 # Define the mapping between LLM_name(passed from Front End) and the actual path on the back end server
 LLM_DICT = {  
-    "chatglm2": "/mnt/vepfs/lcxyc/leaderboard_models/chatglm2-6b",
-    "pangu": "Pangu_API"
+    "chatglm2": os.environ.get("CHAT_LLM_PATH", None),
+    "pangu": "Pangu_API",
+    "chatgpt": "OpenAI_API"
 }
 
 def randomword(length):
@@ -57,7 +57,7 @@ class ColossalQAServerRequestHandler(BaseHTTPRequestHandler):
                 self.rag_config["embed_model_name_or_path"] = embed_model_path 
 
                 # Create the storage path for knowledge base files
-                self.rag_config["retri_kb_file_path"] = "./tmp/" + randomword(20)
+                self.rag_config["retri_kb_file_path"] = os.path.join(os.environ["TMP"], "colossalqa_kb/"+randomword(20))
                 if not os.path.exists(self.rag_config["retri_kb_file_path"]):
                     os.makedirs(self.rag_config["retri_kb_file_path"])
                 
@@ -65,26 +65,35 @@ class ColossalQAServerRequestHandler(BaseHTTPRequestHandler):
                     # ---- Intialize LLM, QA_chatbot here ----
                     print("Initializing LLM...")
                     if llm_path == "Pangu_API":
-                        # TODO: verify user's auth info here
-                        # os.environ["URL"] = ""
-                        # os.environ["USERNAME"] = ""
-                        # os.environ["PASSWORD"] = ""
-                        # os.environ["DOMAIN_NAME"] = ""
+                        from pangu_llm import Pangu
                         self.llm = Pangu(id=1)
-                        self.llm.set_auth_config()
+                        self.llm.set_auth_config()  # verify user's auth info here
+                        self.rag_config["mem_llm_kwargs"] = None
+                        self.rag_config["disambig_llm_kwargs"] = None
+                        self.rag_config["gen_llm_kwargs"] = None
+                    elif llm_path == "OpenAI_API":
+                        from langchain.llms import OpenAI
+                        self.llm = OpenAI()
+                        self.rag_config["mem_llm_kwargs"] = None
+                        self.rag_config["disambig_llm_kwargs"] = None
+                        self.rag_config["gen_llm_kwargs"] = None
                     else:
-                        # ** (For Testing Only) 
+                        # ** (For Testing Only) **
                         # In practice, all LLMs will run on the cloud platform and accessed by API, instead of running locally.
                         # initialize model from model_path by using ColossalLLM 
-                        # self.llm = get_local_llm(model_path=llm_path)  # TODO: implement 
-                        pass
+                        self.rag_config["mem_llm_kwargs"] = {"max_new_tokens": 50, "temperature": 1, "do_sample": True}
+                        self.rag_config["disambig_llm_kwargs"] = {"max_new_tokens": 30, "temperature": 1, "do_sample": True}
+                        self.rag_config["gen_llm_kwargs"] = {"max_new_tokens": 100, "temperature": 1, "do_sample": True}
+                        self.colossal_api = ColossalAPI(llm_name, llm_path)
+                        self.llm = ColossalLLM(n=1, api=self.colossal_api)
                 
                     print(f"Initializing RAG Chain...")
+                    print("RAG_CONFIG: ", self.rag_config)
                     self.__class__.chatbot = RAG_ChatBot(self.llm, self.rag_config)
                     print("Loading Files....\n", self.docs_files)
                     self.__class__.chatbot.load_doc_from_files(self.docs_files)
                     # -----------------------------------------------------------------------------------
-                    res = {"response": "文件上传完成，模型初始化完成，让我们开始对话吧！", "error": "", "conversation_ready": True}
+                    res = {"response": f"文件上传完成，模型初始化完成，让我们开始对话吧！(后端模型:{llm_name})", "error": "", "conversation_ready": True}
             except Exception as e:
                 res = {"response": "文件上传或模型初始化有误，无法开始对话。",
                        "error": f"Error in File Uploading and/or RAG initialization. Error details: {e}", 
@@ -98,7 +107,7 @@ class ColossalQAServerRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(res).encode("utf-8"))
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Chinese retrieval based conversation system backed by ChatGLM2")
+    parser = argparse.ArgumentParser(description="Chinese retrieval based conversation system")
     parser.add_argument("--port", type=int, default=13666, help="port on localhost to start the server")
     args = parser.parse_args()
     server_address = ("localhost", args.port)

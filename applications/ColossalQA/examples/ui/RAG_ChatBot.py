@@ -24,12 +24,12 @@ DEFAULT_RAG_CFG = {
     "mem_human_prefix": "用户",
     "mem_ai_prefix": "AI",
     "mem_max_tokens": 2000,
-    "mem_llm_kwargs": {"max_new_tokens": 50, "temperature": 0.6, "do_sample": True},
+    "mem_llm_kwargs": {"max_new_tokens": 50, "temperature": 1, "do_sample": True},
     "disambig_prompt": PROMPT_DISAMBIGUATE_ZH,
-    "disambig_llm_kwargs": {"max_new_tokens": 30, "temperature": 0.6, "do_sample": True},
+    "disambig_llm_kwargs": {"max_new_tokens": 30, "temperature": 1, "do_sample": True},
     "embed_model_name_or_path": "/home/lczza/data/embed_model_ckpt/m3e-base",
     "embed_model_device": {"device": "cpu"},
-    "gen_llm_kwargs": {"max_new_tokens": 100, "temperature": 0.75, "do_sample": True},
+    "gen_llm_kwargs": {"max_new_tokens": 100, "temperature": 1, "do_sample": True},
     "gen_qa_prompt": PROMPT_RETRIEVAL_QA_ZH
 }
 
@@ -61,6 +61,7 @@ class RAG_ChatBot:
         self.text_splitter = ChineseTextSplitter()
 
     def set_memory(self, **kwargs):
+        params = {"llm_kwargs": kwargs["mem_llm_kwargs"]} if kwargs.get("mem_llm_kwargs", None) else {}
         # Initialize memory with summarization ability
         self.memory = ConversationBufferWithSummary(
             llm=self.llm,
@@ -68,7 +69,7 @@ class RAG_ChatBot:
             human_prefix=kwargs["mem_human_prefix"],
             ai_prefix=kwargs["mem_ai_prefix"],
             max_tokens=kwargs["mem_max_tokens"],
-            llm_kwargs=kwargs["mem_llm_kwargs"],
+            **params
         )
 
     def set_info_retriever(self, **kwargs):
@@ -77,13 +78,14 @@ class RAG_ChatBot:
                                               verbose=kwargs['verbose'])
     
     def set_rag_chain(self, **kwargs):
+        params = {"llm_kwargs": kwargs["gen_llm_kwargs"]} if kwargs.get("gen_llm_kwargs", None) else {}
         self.rag_chain = RetrievalQA.from_chain_type(
             llm=self.llm,
             verbose=kwargs['verbose'],
             chain_type="stuff",
             retriever=self.info_retriever,
             chain_type_kwargs={"prompt": kwargs["gen_qa_prompt"], "memory": self.memory},
-            llm_kwargs=kwargs["gen_llm_kwargs"],
+            **params
         )
 
     def split_docs(self, documents):
@@ -91,10 +93,11 @@ class RAG_ChatBot:
         return doc_splits
 
     def set_disambig_retriv(self, **kwargs):
+        params = {"llm_kwargs": kwargs["disambig_llm_kwargs"]} if kwargs.get("disambig_llm_kwargs", None) else {}
         self.llm_chain_disambiguate = LLMChain(
             llm=self.llm,
             prompt=kwargs["disambig_prompt"],
-            llm_kwargs=kwargs["disambig_llm_kwargs"]   
+            **params  
         )
         def disambiguity(input: str):
             out = self.llm_chain_disambiguate.run(input=input, chat_history=self.memory.buffer, stop=["\n"])
@@ -162,9 +165,14 @@ class RAG_ChatBot:
 
 if __name__ == "__main__":
     # Initialize an Langchain LLM(here we use pangu as an example)
-    llm = Pangu(id=1)
-    llm.set_auth_config()
+    from langchain.llms import OpenAI
+    llm = OpenAI(openai_api_key="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")
 
+    # chatgpt cannot control temperature, do_sample, etc.
+    DEFAULT_RAG_CFG["mem_llm_kwargs"] = None
+    DEFAULT_RAG_CFG["disambig_llm_kwargs"] = None
+    DEFAULT_RAG_CFG["gen_llm_kwargs"] = None
+    
     rag = RAG_ChatBot(llm, DEFAULT_RAG_CFG)
     rag.load_doc_from_console()
     rag.start_test_session()

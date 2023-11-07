@@ -1,9 +1,11 @@
 import json
 import os
-
 import gradio as gr
 import requests
-RAG_STATE = {"conversation_ready": False}  # Chatbot is not ready until files are uploaded and rag chain is initilized
+
+RAG_STATE = {"conversation_ready": False,  # Conversation is not ready until files are uploaded and RAG chain is initialized
+             "embed_model_name": os.environ.get("EMB_MODEL", "m3e"),
+             "llm_name": os.environ.get("CHAT_LLM", "chatgpt")}  
 URL = "http://localhost:13666"
 
 def get_response(client_data, URL):
@@ -33,8 +35,8 @@ def bot(history):
         # Upload files and initialize models
         client_data = {
             "docs": RAG_STATE["upload_files"],
-            "embed_model_name": "m3e",  # Select embedding model name here
-            "llm_name": "pangu",  # Select LLM model name here
+            "embed_model_name": RAG_STATE["embed_model_name"],  # Select embedding model name here
+            "llm_name": RAG_STATE["llm_name"],  # Select LLM model name here. ["pangu", "chatglm2"]
             "conversation_ready": RAG_STATE["conversation_ready"]
         }
     else:
