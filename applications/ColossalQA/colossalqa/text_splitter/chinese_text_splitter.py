@@ -35,8 +35,8 @@ class ChineseTextSplitter(RecursiveCharacterTextSplitter):
                         next_sentence_end = max([text.find(m, pos_end) for m in ["。", "！", "？"]])
                         segs[i] = str(text[pos : next_sentence_end + 1])
                 splitted.append(segs[i])
-        if len(splitted) == 0:
-            return []
+        if len(splitted)<=1:
+            return splitted
         splitted_text = []
         i = 1
         if splitted[0] not in splitted[1]:
@@ -52,7 +52,6 @@ class ChineseTextSplitter(RecursiveCharacterTextSplitter):
         ret = []
         for s in splitted_text:
             if s not in ret:
-                # print(len(s))
                 ret.append(s)
         return ret
 

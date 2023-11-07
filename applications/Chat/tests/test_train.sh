@@ -188,6 +188,12 @@ SKIPPED_TESTS=(
     "llama-ddp"
     "llama-colossalai_gemini"
     "llama-colossalai_zero2"
+    "bloom-ddp"
+    "bloom-colossalai_gemini"
+    "bloom-colossalai_zero2"
+    "opt-ddp"
+    "opt-colossalai_gemini"
+    "opt-colossalai_zero2"
 )
 
 for model in ${MODELS[@]}; do

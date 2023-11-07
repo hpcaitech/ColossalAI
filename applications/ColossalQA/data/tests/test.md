@@ -1,4 +1,4 @@
-# ColossalQA - Langchain-based Document Retrieval Conversation System
+# README Format File for Testing
 ![Alt text](./examples/diagram.png?raw=true "Fig.1. design of the document retrieval conversation system")
 
 ## Table of Contents

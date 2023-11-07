@@ -9,9 +9,14 @@ from colossalqa.chain.retrieval_qa.base import RetrievalQA
 from colossalqa.data_loader.document_loader import DocumentLoader
 from colossalqa.local.llm import ColossalAPI, ColossalLLM
 from colossalqa.memory import ConversationBufferWithSummary
-from colossalqa.prompt.prompt import PROMPT_DISAMBIGUATE_EN, PROMPT_RETRIEVAL_QA_EN
+from colossalqa.prompt.prompt import (
+    PROMPT_DISAMBIGUATE_EN, 
+    PROMPT_RETRIEVAL_QA_EN,
+    EN_RETRIEVAL_QA_TRIGGER_KEYWORDS,
+    EN_RETRIEVAL_QA_REJECTION_ANSWER
+)
 from colossalqa.retriever import CustomRetriever
-from colossalqa.text_splitter import NeuralTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter 
 from langchain import LLMChain
 from langchain.embeddings import HuggingFaceEmbeddings
 
@@ -36,7 +41,7 @@ if __name__ == "__main__":
     # Setup LLM
     # llm = VllmLLM(n=1)
 
-    colossal_api = ColossalAPI(args.model_name, args.model_path)
+    colossal_api = ColossalAPI.get_api(args.model_name, args.model_path)
     llm = ColossalLLM(n=1, api=colossal_api)
 
     # Define the retriever
@@ -67,18 +72,18 @@ if __name__ == "__main__":
     documents = []
 
     # preprocess data
-    if not os.path.exists("../data/test_data/custom_service_preprocessed.json"):
-        if not os.path.exists("../data/test_data/custom_service.json"):
+    if not os.path.exists("../data/data_sample/custom_service_preprocessed.json"):
+        if not os.path.exists("../data/data_sample/custom_service.json"):
             raise ValueError(
                 "custom_service.json not found, please download the data from HuggingFace Datasets: qgyd2021/e_commerce_customer_service"
             )
-        data = json.load(open("../data/test_data/custom_service.json", "r", encoding="utf8"))
+        data = json.load(open("../data/data_sample/custom_service.json", "r", encoding="utf8"))
         preprocessed = []
         for row in data["rows"]:
             preprocessed.append({"key": row["row"]["query"], "value": row["row"]["response"]})
         data = {}
         data["data"] = preprocessed
-        with open("../data/test_data/custom_service_preprocessed.json", "w", encoding="utf8") as f:
+        with open("../data/data_sample/custom_service_preprocessed.json", "w", encoding="utf8") as f:
             json.dump(data, f, ensure_ascii=False)
 
     # define metadata function which is used to format the prompt with value in metadata instead of key,
@@ -101,13 +106,13 @@ if __name__ == "__main__":
         return metadata
 
     retriever_data = DocumentLoader(
-        [["../data/test_data/custom_service_preprocessed.json", "CustomerServiceDemo"]],
+        [["../data/data_sample/custom_service_preprocessed.json", "CustomerServiceDemo"]],
         content_key="key",
         metadata_func=metadata_func,
     ).all_data
 
     # Split
-    text_splitter = NeuralTextSplitter(separator="\n\n")
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size = 100, chunk_overlap  = 20) 
     splits = text_splitter.split_documents(retriever_data)
     documents.extend(splits)
 
@@ -135,13 +140,15 @@ if __name__ == "__main__":
     )
     # Set disambiguity handler
     information_retriever.set_rephrase_handler(disambiguity)
-
+ 
     # Start conversation
     while True:
         user_input = input("User: ")
         if "END" == user_input:
             print("Agent: Happy to chat with you ：)")
             break
-        agent_response = retrieval_chain.run(query=user_input, stop=["Human: "])
+        agent_response = retrieval_chain.run(query=user_input, stop=["Human: "],
+            rejection_trigger_keywrods = EN_RETRIEVAL_QA_TRIGGER_KEYWORDS,
+            rejection_answer=EN_RETRIEVAL_QA_REJECTION_ANSWER)
         agent_response = agent_response.split("\n")[0]
         print(f"Agent: {agent_response}")

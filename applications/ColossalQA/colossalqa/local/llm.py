@@ -8,7 +8,7 @@ from colossalqa.local.utils import TEST_PROMPT_CHATGLM, get_response, post_http_
 from colossalqa.mylogging import get_logger
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
-from transformers import AutoModel, AutoTokenizer, LlamaForCausalLM, LlamaTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaForCausalLM, LlamaTokenizer
 
 logger = get_logger()
 
@@ -117,24 +117,11 @@ class ColossalLLM(LLM):
             for stopping_words in stop:
                 if stopping_words in out:
                     out = out.split(stopping_words)[0]
-        logger.info(f"-----------------\n{out}", verbose=self.verbose)
+        logger.info(f"{prompt}{out}", verbose=self.verbose)
         return out
 
-    def set_api(self, api: Any, **kwargs) -> None:
-        if "max_new_tokens" not in kwargs:
-            kwargs["max_new_tokens"] = 100
-        self.kwargs = kwargs
-        self.api = api
-        logger.info("done")
-
-    def set_kwargs(self, **kwargs) -> None:
-        logger.info(f"set kwargs:{kwargs}")
-        if "max_new_tokens" not in kwargs:
-            kwargs["max_new_tokens"] = 100
-        self.kwargs = kwargs
-
     @property
-    def _identifying_params(self) -> Mapping[str, Any]:
+    def _identifying_params(self) -> Mapping[str, int]:
         """Get the identifying parameters."""
         return {"n": self.n}
 
@@ -169,7 +156,7 @@ class VllmLLM(LLM):
             for stopping_words in stop:
                 if stopping_words in out:
                     out = out.split(stopping_words)[0]
-        logger.info(f"-----------------\n{out}", verbose=self.verbose)
+        logger.info(f"{prompt}{out}", verbose=self.verbose)
         return out
 
     def set_host_port(self, host: str = "localhost", port: int = 8077, **kwargs) -> None:
@@ -179,7 +166,7 @@ class VllmLLM(LLM):
         self.api = VllmAPI(host=host, port=port)
 
     @property
-    def _identifying_params(self) -> Mapping[str, Any]:
+    def _identifying_params(self) -> Mapping[str, int]:
         """Get the identifying parameters."""
         return {"n": self.n}
 

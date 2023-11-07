@@ -1,9 +1,9 @@
 import os
 from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter 
 from colossalqa.memory import ConversationBufferWithSummary
 from colossalqa.local.llm import ColossalLLM, ColossalAPI
 from colossalqa.data_loader.document_loader import DocumentLoader
-from colossalqa.text_splitter import NeuralTextSplitter
 from colossalqa.retriever import CustomRetriever
 from colossalqa.prompt.prompt import PROMPT_RETRIEVAL_QA_ZH
 
@@ -12,14 +12,18 @@ def test_memory_long():
     data_path = os.environ.get('TEST_DATA_PATH_EN')
     model_name = os.environ.get('EN_MODEL_NAME')
     sql_file_path = os.environ.get('SQL_FILE_PATH')
-    colossal_api = ColossalAPI(model_name, model_path)
+
+    if not os.path.exists(sql_file_path):
+        os.makedirs(sql_file_path)
+        
+    colossal_api = ColossalAPI.get_api(model_name, model_path)
     llm = ColossalLLM(n=4, api=colossal_api)
     memory = ConversationBufferWithSummary(llm=llm, max_tokens=600,
         llm_kwargs={'max_new_tokens':50, 'temperature':0.6, 'do_sample':True})
     retriever_data = DocumentLoader([[data_path, 'company information']]).all_data
 
     # Split
-    text_splitter = NeuralTextSplitter()
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size = 100, chunk_overlap  = 20)
     splits = text_splitter.split_documents(retriever_data)
 
     embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
@@ -51,14 +55,18 @@ def test_memory_short():
     data_path = os.environ.get('TEST_DATA_PATH_EN')
     model_name = os.environ.get('EN_MODEL_NAME')
     sql_file_path = os.environ.get('SQL_FILE_PATH')
-    colossal_api = ColossalAPI(model_name, model_path)
+
+    if not os.path.exists(sql_file_path):
+        os.makedirs(sql_file_path)
+
+    colossal_api = ColossalAPI.get_api(model_name, model_path)
     llm = ColossalLLM(n=4, api=colossal_api)
     memory = ConversationBufferWithSummary(llm=llm,
         llm_kwargs={'max_new_tokens':50, 'temperature':0.6, 'do_sample':True})
     retriever_data = DocumentLoader([[data_path, 'company information']]).all_data
 
     # Split
-    text_splitter = NeuralTextSplitter()
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size = 100, chunk_overlap  = 20)
     splits = text_splitter.split_documents(retriever_data)
 
     embedding = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base",
