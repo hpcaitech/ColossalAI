@@ -125,6 +125,7 @@ class GeminiDDP(ModelWrapper):
         if self.enable_gradient_accumulation:
             self.reuse_fp16_chunk = False
         self.accumulating_grads = False  # Whether model is accumulating gradients
+        self.modules_to_save_for_lora = modules_to_save_for_lora
 
         self._logger = get_dist_logger()
 
@@ -150,7 +151,7 @@ class GeminiDDP(ModelWrapper):
             strict_ddp_mode=strict_ddp_mode,
             cpu_offload=self.gemini_manager.policy_name != "cuda",
             pin_memory=pin_memory,
-            modules_to_save_for_lora=modules_to_save_for_lora,
+            modules_to_save_for_lora=self.modules_to_save_for_lora,
         )
         super().__init__(module)
         self._non_persistent_buffers_set = self._get_non_persistent_buffers_set(module)
@@ -413,13 +414,49 @@ class GeminiDDP(ModelWrapper):
                 destination = hook_result
         return destination
 
-    def _get_chunk_to_save_data(self, chunk: Chunk, only_rank_0: bool) -> Dict:
+    def state_dict_for_lora(self, destination=None, prefix="", keep_vars=False, only_rank_0: bool = True):
+        """Returns a state dict only containing lora modules and modules to save.
+           bias parameters are selectively kept according to the config.bias.
+
+           This method is modified based on `peft.utils.get_peft_model_state_dict` method of peft library.
+
+        Returns:
+            dict:
+                a dictionary containing lora modules and modules to save
+        """
+        from peft import PeftModel
+
+        assert isinstance(
+            self.unwarp(), PeftModel
+        ), "Method state_dict_for_lora can only be called on models wrapped with peft."
+
+        adapter_name = "default"  # Gemini Plugin will only use default as adapter_name
+        peft_config = self.unwrap().peft_config[adapter_name]
+
+        if destination is None:
+            destination = OrderedDict()
+            destination._metadata = OrderedDict()
+
+        destination._metadata[prefix[:-1]] = local_metadata = dict(version=self._version)
+        self._save_to_lora_state_dict(destination, prefix, keep_vars, only_rank_0, peft_config.bias)
+
+        for hook in self._state_dict_hooks.values():
+            hook_result = hook(self, destination, prefix, local_metadata)
+            if hook_result is not None:
+                destination = hook_result
+
+        destination = {k.replace(f".{adapter_name}", ""): v for k, v in destination.items() if adapter_name in k}
+        destination = {k.replace(f".modules_to_save", ""): v for k, v in destination.items() if "modules_to_save" in k}
+        return destination
+
+    def _get_chunk_to_save_data(self, chunk: Chunk, only_rank_0: bool, param_list: List[nn.Parameter] = None) -> Dict:
         """
         get gathered chunk content.
 
         Args:
             chunk (Chunk): a chunk
             only_rank_0 (bool): whether to only save data on rank 0
+            param_list (List[nn.Parameter]) : If not None, only the params in param_list will be collected. Defaults to None.
 
         Returns:
             Dict: a dict whose key is param name and value is param with correct payload
@@ -429,6 +466,8 @@ class GeminiDDP(ModelWrapper):
         temp_chunk = get_temp_total_chunk_on_cuda(chunk, self.mixed_precision)
 
         for tensor, tensor_info in chunk.tensors_info.items():
+            if (param_list is not None) and (tensor not in param_list):
+                continue
             record_tensor = torch.empty([0])
             record_flag = (not only_rank_0) | (dist.get_rank(chunk.torch_pg) == 0)
             if record_flag:
@@ -455,7 +494,7 @@ class GeminiDDP(ModelWrapper):
         param_to_save_data = dict()
         chunk_list = self.chunk_manager.get_chunks(param_list)
         for chunk in chunk_list:
-            param_to_save_data.update(self._get_chunk_to_save_data(chunk, only_rank_0))
+            param_to_save_data.update(self._get_chunk_to_save_data(chunk, only_rank_0, param_list))
         return param_to_save_data
 
     def _save_to_state_dict(self, destination, prefix, keep_vars, only_rank_0=True):
@@ -508,6 +547,76 @@ class GeminiDDP(ModelWrapper):
             is not torch.nn.Module.get_extra_state
         ):
             destination[extra_state_key] = self.get_extra_state()
+
+    def _save_to_lora_state_dict(self, destination, prefix, keep_vars, only_rank_0=True, bias_config="none"):
+        r"""Saves module states needed by lora checkpoint to `destination` dictionary, containing a state
+        of the module, but not its descendants.
+
+        This method is modified based on `peft.utils.get_peft_model_state_dict` method of peft library.
+
+        Args:
+            destination (dict): a dict where state will be stored
+            prefix (str): the prefix for parameters and buffers used in this
+                module
+            bias_config (str): A string indicating the bias parameters to finetune and save.
+                If set to "none", no bias parameters are saved; If set to "all", all bias parameters are saved;
+                If set to "lora_only", only bias parameters attached to a module owning lora are saved.
+                Defaults to "none".
+        """
+        assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
+
+        # pick the parameters needed by lora checkpoint
+        # if fp16_chunks are reused by gradients, pick the fp32 parameters, else pick fp16 parameters
+        lora_params = []
+        for fp16_p, fp32_p in zip(self.fp16_params, self.fp32_params):
+            name = self.param2name[fp16_p]
+            save_flag = False
+
+            # lora modules should be saved
+            if "lora_" in name:
+                save_flag = True
+
+            # bias parameters should be selectively saved based on bias config
+            if "bias" in name:
+                if bias_config == "all":
+                    save_flag = True
+
+                if bias_config == "lora_only":
+                    save_flag = getattr(self.module, name.split("bias")[0] + "lora_A", None) is not None
+
+            # modules with pattern in self.modules_to_save_for_lora should be saved
+            if self.modules_to_save_for_lora is not None:
+                save_flag = any(
+                    f"{module_name}.modules_to_save" in name for module_name in self.modules_to_save_for_lora
+                )
+
+            if save_flag:
+                if self.reuse_fp16_chunk:
+                    lora_params.append(fp32_p)
+                else:
+                    lora_params.append(fp16_p)
+
+        param_to_save_data = self._get_param_to_save_data(lora_params, only_rank_0)
+
+        # get the mapping between fp16 parameters and saved copies
+        p_mapping = dict()
+        if self.reuse_fp16_chunk:
+            for fp16_p, fp32_p in zip(self.fp16_params, self.fp32_params):
+                if fp32_p in lora_params:
+                    record_parameter = param_to_save_data[fp32_p]
+                    p_mapping[fp16_p] = record_parameter
+        else:
+            p_mapping = param_to_save_data
+
+        # save the lora params in fp16
+        for fp16_p, copy_to_save in p_mapping.items():
+            if fp16_p is None:
+                continue
+            name = self.param2name[fp16_p]
+            destination[prefix + name] = copy_to_save
+
+        del p_mapping
+        del param_to_save_data
 
     def load_state_dict(self, state_dict: "OrderedDict[str, torch.Tensor]", strict: bool = True):
         r"""Copies parameters and buffers from :attr:`state_dict` into
