@@ -73,9 +73,9 @@ def run_fwd_bwd(
 def get_config():
     config = LlamaConfig(
         vocab_size=300,
-        hidden_size=8,
-        intermediate_size=8,
-        num_hidden_layers=1,
+        hidden_size=16,
+        intermediate_size=32,
+        num_hidden_layers=3,
         num_attention_heads=2,
         head_dim=4,
         dropout_rate=0.0,
