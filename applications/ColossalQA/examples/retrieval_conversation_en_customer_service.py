@@ -109,7 +109,7 @@ if __name__ == "__main__":
         [["../data/data_sample/custom_service_preprocessed.json", "CustomerServiceDemo"]],
         content_key="key", 
         metadata_func=metadata_func,
-    ).all_data
+    ).all_data 
 
     # Split
     text_splitter = RecursiveCharacterTextSplitter(chunk_size = 100, chunk_overlap  = 20) 
