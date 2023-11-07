@@ -180,7 +180,6 @@ class ModelSharder(object):
             assert target_module is not None, "target_module should not be None"
 
             native_sub_module = getattr_(org_layer, suffix, ignore=True)
-
             # Skip replacement if submodule is not kept by current device when pipeline parallel is enabled.
             if (include is not None) and (native_sub_module is not None) and (native_sub_module not in include):
                 continue

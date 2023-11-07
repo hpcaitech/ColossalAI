@@ -104,7 +104,6 @@ class ChatGLMPolicy(Policy):
                     ),
                 ],
             )
-
         # optimization configuration
         self.append_or_create_submodule_replacement(
             description=[
