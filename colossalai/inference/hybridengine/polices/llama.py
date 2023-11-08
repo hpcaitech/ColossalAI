@@ -45,14 +45,15 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
 
     def module_policy(self):
         policy = super().module_policy()
-
-        if self.shard_config.inference_gptq:
+        decoder_attribute_replacement = {
+            "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+            "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+            "self_attn.num_key_value_heads": self.model.config.num_key_value_heads
+            // self.shard_config.tensor_parallel_size,
+        }
+        if self.shard_config.quant == "gptq":
             from colossalai.inference.quant.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
 
-            decoder_attribute_replacement = {
-                "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
-            }
             policy[LlamaDecoderLayer] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
                 sub_module_replacement=[
@@ -94,6 +95,55 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
                 ],
             )
 
+        elif self.shard_config.quant == "smoothquant":
+            from colossalai.inference.quant.smoothquant.models.llama import LlamaSmoothquantDecoderLayer
+            from colossalai.inference.quant.smoothquant.models.parallel_linear import (
+                ColW8A8BFP32OFP32Linear,
+                RowW8A8B8O8Linear,
+                RowW8A8BFP32O32LinearSiLU,
+                RowW8A8BFP32OFP32Linear,
+            )
+
+            policy[LlamaSmoothquantDecoderLayer] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.q_proj",
+                        target_module=RowW8A8B8O8Linear,
+                        kwargs={"split_num": 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.k_proj",
+                        target_module=RowW8A8B8O8Linear,
+                        kwargs={"split_num": 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.v_proj",
+                        target_module=RowW8A8B8O8Linear,
+                        kwargs={"split_num": 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.o_proj",
+                        target_module=ColW8A8BFP32OFP32Linear,
+                        kwargs={"split_num": 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.gate_proj",
+                        target_module=RowW8A8BFP32O32LinearSiLU,
+                        kwargs={"split_num": 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.up_proj",
+                        target_module=RowW8A8BFP32OFP32Linear,
+                        kwargs={"split_num": 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.down_proj",
+                        target_module=ColW8A8BFP32OFP32Linear,
+                        kwargs={"split_num": 1},
+                    ),
+                ],
+            )
         self.shard_config._infer()
 
         infer_forward = LlamaInferenceForwards.llama_model_forward
