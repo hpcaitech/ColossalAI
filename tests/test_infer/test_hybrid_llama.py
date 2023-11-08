@@ -9,6 +9,10 @@ from colossalai.inference import CaiInferEngine, LlamaModelInferPolicy
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
+try:
+    HAS_LIGHTLLM_KERNEL = True
+except:
+    HAS_LIGHTLLM_KERNEL = False
 
 
 def data_gen():
@@ -90,7 +94,10 @@ def check_tp_inference(rank, world_size, port):
     run_tp_inference_test()
 
 
-@pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
+@pytest.mark.skipif(
+    not CUDA_SUPPORT or not HAS_LIGHTLLM_KERNEL,
+    reason="kv-cache manager engine requires cuda version to be higher than 11.5",
+)
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
