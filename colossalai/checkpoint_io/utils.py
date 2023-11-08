@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 from packaging.version import Version
 from torch.optim import Optimizer
+from torch.utils._pytree import tree_map
 
 from colossalai.tensor.d_tensor import (
     is_customized_distributed_tensor,
@@ -293,23 +294,6 @@ def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> 
 # Helper functions for saving state dict
 # ======================================
 
-def move_to_cpu(obj):
-    """
-    Recursively move tensors to CPU to avoid serialization issues with CUDA tensors.
-    """
-    if torch.is_tensor(obj):
-        return obj.cpu()
-    elif isinstance(obj, dict):
-        return {k: move_to_cpu(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [move_to_cpu(o) for o in obj]
-    elif isinstance(obj, tuple):
-        return tuple(move_to_cpu(o) for o in obj)
-    elif isinstance(obj, OrderedDict):
-        return OrderedDict((k, move_to_cpu(v)) for k, v in obj.items())
-    else:
-        return obj
-
 def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors: bool) -> None:
     """
     Save state dict to checkpoint.
@@ -320,7 +304,7 @@ def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors
         use_safetensors (bool): whether to use safetensors to save the checkpoint.
     """
     # Move all tensors in the state_dict to CPU before saving to avoid serialization issues
-    state_dict_cpu = move_to_cpu(state_dict)
+    state_dict_cpu = tree_map(lambda x: x.cpu() if torch.is_tensor(x) else x, state_dict)
     
     if use_safetensors:
         assert is_safetensors_available(), "safetensors is not available."
