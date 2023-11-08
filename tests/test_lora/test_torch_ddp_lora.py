@@ -37,28 +37,35 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
 
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
-    data = data_gen_fn()
-    data = {k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
+    for _ in range(2):
+        data = data_gen_fn()
+        data = {
+            k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
+        }
 
-    output = model(**data)
-    output = output_transform_fn(output)
-    loss = criterion(output)
+        output = model(**data)
+        output = output_transform_fn(output)
+        loss = criterion(output)
 
-    booster.backward(loss, optimizer)
-    optimizer.clip_grad_by_norm(1.0)
-    optimizer.step()
+        booster.backward(loss, optimizer)
+        optimizer.clip_grad_by_norm(1.0)
+        optimizer.step()
 
-    for (n1, p1), (n2, p2) in zip(model.named_parameters(), model_copy.named_parameters()):
+    for (n1, p1), (_, p2) in zip(model.named_parameters(), model_copy.named_parameters()):
+        p2 = p2.to(p1.device).to(p1.dtype)
         if "lora_" in n1:
             # lora modules require gradients, thus updated
             assert p1.requires_grad
-            assert_not_equal(p1.to(p2.device), p2)
+            assert_not_equal(p1, p2)
         else:
-            # if a non-lora module isn't supposed to be saved, it shouldn't be updated
             modules_to_save = model.unwrap().modules_to_save
-            if (modules_to_save is None) or all((key not in n1) for key in modules_to_save):
-                assert not p1.requires_grad
-                assert_equal(p1.to(p2.device), p2)
+            if (modules_to_save is not None) and any(f"{key}.modules_to_save" in n1 for key in modules_to_save):
+                # if a non-lora module should be saved, it should be updated
+                assert p1.requires_grad
+                assert_not_equal(p1, p2)
+            else:
+                # if a non-lora module isn't supposed to be saved, it shouldn't be updated
+                assert_equal(p1, p2)
 
 
 @clear_cache_before_run()
@@ -95,8 +102,9 @@ def check_checkpoint(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_t
         dist.barrier()
 
         # The Lora checkpoint should be small in size
-        checkpoint_size_mb = os.path.getsize(os.path.join(lora_ckpt_path, "adapter_model.bin")) / (1024 * 1024)
-        assert checkpoint_size_mb < 1
+        model_checkpoint_size_mb = os.path.getsize(os.path.join(lora_ckpt_path, "adapter_model.bin")) / (1024 * 1024)
+        optimizer_checkpoint_size_mb = os.path.getsize(optimizer_ckpt_path) / (1024 * 1024)
+        assert model_checkpoint_size_mb < 1 and optimizer_checkpoint_size_mb < 1
 
         model_load = booster.enable_lora(model_load, pretrained_dir=lora_ckpt_path)
         optimizer_load = AdamW(model_save.parameters(), lr=0.001)
