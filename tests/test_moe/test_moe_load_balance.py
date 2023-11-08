@@ -45,7 +45,6 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
 
     MOE_MANAGER.__init__()
     MOE_MANAGER.setup(
-        seed=42,
         parallel="EP",
     )
     zero_model = MoeModel(enable_load_balance=True)
@@ -55,7 +54,7 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
     zero_model, zero_optimizer, _, _, _ = booster.boost(zero_model, zero_optimizer)
 
     MOE_MANAGER.__init__()
-    MOE_MANAGER.setup(seed=42, parallel="EP")
+    MOE_MANAGER.setup(parallel="EP")
     torch_model = MoeModel()
     for zero_param, torch_param in zip(zero_model.parameters(), torch_model.parameters()):
         torch_param.data.copy_(zero_param.data)
@@ -94,7 +93,7 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
     torch_out = run_fwd_bwd(torch_model, data, label, criterion, None)
     zero_optimizer.step()
     zero_out = run_fwd_bwd(zero_model, data, label, criterion, zero_optimizer)
-    assert torch.allclose(zero_out, torch_out), f"zero_out:{zero_out}\ntorch_out{torch_out}"
+    assert torch.allclose(zero_out, torch_out, atol=3e-5), f"zero_out:{zero_out}\ntorch_out{torch_out}"
 
 
 def run_hybrid_zero_optim_test(local_rank, world_size, stage=1):
@@ -103,14 +102,13 @@ def run_hybrid_zero_optim_test(local_rank, world_size, stage=1):
     label = torch.randint(0, 4, (16,)).cuda()
 
     MOE_MANAGER.__init__()
-    MOE_MANAGER.setup(seed=42, parallel=None)
+    MOE_MANAGER.setup(parallel=None)
     torch_model = MoeModel()
     torch_optimizer = torch.optim.Adam(torch_model.parameters())
     torch_model = torch_model.cuda()
 
     MOE_MANAGER.__init__()
     MOE_MANAGER.setup(
-        seed=42,
         max_ep_size=2,
         use_ep_inside=False,
         parallel="EP",

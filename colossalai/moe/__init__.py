@@ -1,4 +1,4 @@
-from .checkpoint import MoeCheckpintIO
+from .checkpoint import MoECheckpintIO
 from .experts import MLPExperts
 from .layers import SparseMLP
 from .routers import MoeRouter, Top1Router, Top2Router, TopKRouter
@@ -13,5 +13,5 @@ __all__ = [
     "NormalNoiseGenerator",
     "UniformNoiseGenerator",
     "SparseMLP",
-    "MoeCheckpintIO",
+    "MoECheckpintIO",
 ]

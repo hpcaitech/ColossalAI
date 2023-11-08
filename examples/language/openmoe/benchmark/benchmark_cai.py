@@ -155,9 +155,7 @@ def main():
         "precision": "bf16",
         "zero_stage": args.zero_stage,
     }
-    mgr_dict = {
-        "seed": 42,
-    }
+    mgr_dict = {}
     if args.plugin == "ep":
         dp_size = dist.get_world_size()
         plugin = MoeHybridParallelPlugin(

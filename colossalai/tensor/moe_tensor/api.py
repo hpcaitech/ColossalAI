@@ -72,6 +72,19 @@ def get_ep_size(tensor: torch.Tensor) -> int:
     return tensor.moe_info.ep_size
 
 
+def get_dp_size(tensor: torch.Tensor) -> int:
+    """
+    Get the data parallel size of the given tensor.
+
+    Args:
+        tensor (torch.Tensor): The tensor to be checked.
+
+    Returns:
+        int: The data parallel size of the given tensor.
+    """
+    return tensor.moe_info.dp_size
+
+
 def get_dp_group(tensor: torch.Tensor) -> ProcessGroup:
     """
     Get the data parallel group of the given tensor.

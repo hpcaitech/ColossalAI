@@ -35,13 +35,13 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
     label = torch.randint(0, 4, (16,)).cuda()
 
     MOE_MANAGER.__init__()
-    MOE_MANAGER.setup(seed=42, parallel=None)
+    MOE_MANAGER.setup(parallel=None)
     torch_model = MoeModel()
     torch_optimizer = torch.optim.Adam(torch_model.parameters())
     torch_model = torch_model.cuda()
 
     MOE_MANAGER.__init__()
-    MOE_MANAGER.setup(seed=42, max_ep_size=2, use_ep_inside=False, parallel="EP")
+    MOE_MANAGER.setup(max_ep_size=2, use_ep_inside=False, parallel="EP")
     zero_model = MoeModel()
     extra_dp_group = MOE_MANAGER.parallel_info_dict[2].dp_group
     ep_rank = dist.get_rank(MOE_MANAGER.parallel_info_dict[2].ep_group)
