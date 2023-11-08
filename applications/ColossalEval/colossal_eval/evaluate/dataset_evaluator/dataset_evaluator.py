@@ -1,12 +1,15 @@
+import os
 from typing import Dict, List
 
 import colossal_eval.evaluate.dataset_evaluator.metrics as metric_helper
 import numpy as np
 import tqdm
+from colossal_eval.utils import jdump
 
 LabelBasedMetrics = ["first_token_accuracy", "matthews_correlation"]
 LossBasedMetrics = ["perplexity", "ppl_score", "ppl_score_over_choices", "per_byte_perplexity", "per_byte_ppl_score"]
 CombinedMetrics = ["combined_single_choice_accuracy"]
+GPTMetrics = ["mtbench_single_judge"]
 OtherMetrics = [
     "f1_score",
     "f1_zh_score",
@@ -29,8 +32,9 @@ class DatasetEvaluator(object):
 
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, config_path: str, save_path: str):
+        self.config_path = config_path
+        self.save_path = save_path
 
     def _calculate_label_metrics(self, metric: str, category: str):
         """Calculate label-based metrics."""
@@ -156,6 +160,24 @@ class DatasetEvaluator(object):
         self.evaluation_results[metric][category] = (total_score, len(self.data[category]["data"]))
         self.evaluation_results[metric]["ALL"] += total_score * weight
 
+    def _calculate_gpt_metrics(self, metric: str, category: str):
+        """Calculate gpt metrics."""
+        weight = len(self.data[category]["data"]) / self.metric_total_length[metric]
+
+        metric_method = eval("gpt_helper." + metric)
+
+        judgements, avg_ratings = metric_method(self.data[category]["data"], self.config_path)
+        self.judgements[category] = judgements
+
+        self.evaluation_results[metric][category] = (np.mean(avg_ratings), len(self.data[category]["data"]))
+        self.evaluation_results[metric]["ALL"] += np.mean(avg_ratings) * weight
+
+        for i in range(avg_ratings.shape[0]):
+            if f"{metric}_{i+1}" not in self.evaluation_results:
+                self.evaluation_results[f"{metric}_{i+1}"] = {cat: 0 for cat in (["ALL"] + self.categories)}
+            self.evaluation_results[f"{metric}_{i+1}"][category] = (avg_ratings[i], len(self.data[category]["data"]))
+            self.evaluation_results[f"{metric}_{i+1}"]["ALL"] += avg_ratings[i] * weight
+
     def _calculate_loss_metrics(self, metric: str, category: str):
         """Calculate perplexity."""
         if metric == "perplexity":
@@ -217,10 +239,20 @@ class DatasetEvaluator(object):
                 for category in self.suggested_categories[metric]:
                     self._calculate_combined_metrics(metric, category)
                     pbar.update(1)
+            elif metric in GPTMetrics:
+                for category in self.suggested_categories[metric]:
+                    self._calculate_gpt_metrics(metric, category)
+                    pbar.update(1)
             elif metric in OtherMetrics:
                 for category in self.suggested_categories[metric]:
                     self._calculate_other_metrics(metric, category)
                     pbar.update(1)
+            else:
+                raise Exception(f"{metric} not supported.")
+
+        if self.judgements:
+            judgement_path = os.path.join(self.save_path, f"{self.model_name}_judgements.json")
+            jdump(self.judgements, judgement_path)
 
         return self.evaluation_results
 
@@ -240,6 +272,7 @@ class DatasetEvaluator(object):
         self.model_name = model_name
         self.categories = list(data.keys())
         self.metrics = metrics
+        self.judgements = {}
 
         self.evaluation_results = {
             metric: {category: 0 for category in (["ALL"] + self.categories)} for metric in self.metrics
