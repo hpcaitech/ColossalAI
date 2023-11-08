@@ -5,7 +5,7 @@ import transformers
 from packaging import version
 
 import colossalai
-from colossalai.inference import CaiInferEngine, LlamaModelInferPolicy
+from colossalai.inference import BloomModelInferPolicy, CaiInferEngine
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
@@ -30,17 +30,15 @@ for k, v in inputs.items():
 
 
 def pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
-    model = transformers.LlamaForCausalLM(
-        transformers.LlamaConfig(
-            vocab_size=20000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=4
-        )
+    model = transformers.BloomForCausalLM(
+        transformers.BloomConfig(vocab_size=20000, hidden_size=512, n_head=4, n_layer=4)
     )
 
     engine = CaiInferEngine(
         tp_size=tp_size,
         pp_size=pp_size,
         model=model,
-        model_policy=LlamaModelInferPolicy(),
+        model_policy=BloomModelInferPolicy(),
         max_output_len=max_output_len,
         micro_batch_size=micro_batch_size,
     )

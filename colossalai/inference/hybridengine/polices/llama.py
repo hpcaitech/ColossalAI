@@ -45,13 +45,15 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
 
     def module_policy(self):
         policy = super().module_policy()
+        decoder_attribute_replacement = {
+            "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+            "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+            "self_attn.num_key_value_heads": self.model.config.num_key_value_heads
+            // self.shard_config.tensor_parallel_size,
+        }
         if "inference_gptq" in self.shard_config.extra_kwargs.keys() and self.shard_config.inference_gptq:
             from colossalai.inference.quant.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
 
-            decoder_attribute_replacement = {
-                "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
-            }
             policy[LlamaDecoderLayer] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
                 sub_module_replacement=[
@@ -93,6 +95,55 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
                 ],
             )
 
+        elif self.shard_config.quant == "smoothquant":
+            from colossalai.inference.quant.smoothquant.models.llama import LlamaSmoothquantDecoderLayer
+            from colossalai.inference.quant.smoothquant.models.parallel_linear import (
+                ColW8A8BFP32OFP32Linear,
+                RowW8A8B8O8Linear,
+                RowW8A8BFP32O32LinearSiLU,
+                RowW8A8BFP32OFP32Linear,
+            )
+
+            policy[LlamaSmoothquantDecoderLayer] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.q_proj",
+                        target_module=RowW8A8B8O8Linear,
+                        kwargs={"split_num": 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.k_proj",
+                        target_module=RowW8A8B8O8Linear,
+                        kwargs={"split_num": 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.v_proj",
+                        target_module=RowW8A8B8O8Linear,
+                        kwargs={"split_num": 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.o_proj",
+                        target_module=ColW8A8BFP32OFP32Linear,
+                        kwargs={"split_num": 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.gate_proj",
+                        target_module=RowW8A8BFP32O32LinearSiLU,
+                        kwargs={"split_num": 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.up_proj",
+                        target_module=RowW8A8BFP32OFP32Linear,
+                        kwargs={"split_num": 1},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.down_proj",
+                        target_module=ColW8A8BFP32OFP32Linear,
+                        kwargs={"split_num": 1},
+                    ),
+                ],
+            )
         self.shard_config._infer()
 
         infer_forward = LlamaInferenceForwards.llama_model_forward
@@ -111,11 +162,11 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
             description=method_replacement, policy=policy, target_key=LlamaAttention
         )
 
-        if self.pipeline_stage_manager:
-            # set None as default
-            self.set_pipeline_forward(
-                model_cls=LlamaForCausalLM, new_forward=LlamaInferenceForwards.llama_causal_lm_forward, policy=policy
-            )
+        # set as default, in inference we also use pipeline style forward, just setting stage as 1
+        self.set_pipeline_forward(
+            model_cls=LlamaForCausalLM, new_forward=LlamaInferenceForwards.llama_causal_lm_forward, policy=policy
+        )
+
         infer_forward = None
         if HAS_TRITON_RMSNORM:
             infer_forward = get_triton_rmsnorm_forward()
@@ -134,8 +185,22 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage."""
+        assert self.pipeline_stage_manager is not None
+
+        if self.model.__class__.__name__ == "LlamaModel":
+            module = self.model
+        else:
+            module = self.model.model
         stage_manager = self.pipeline_stage_manager
-        held_layers = super().get_held_layers()
+
+        held_layers = []
+        layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
         if stage_manager.is_first_stage():
+            held_layers.append(module.embed_tokens)
             held_layers.append(self.model.lm_head)
+        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        held_layers.extend(module.layers[start_idx:end_idx])
+        if stage_manager.is_last_stage():
+            held_layers.append(module.norm)
+
         return held_layers
