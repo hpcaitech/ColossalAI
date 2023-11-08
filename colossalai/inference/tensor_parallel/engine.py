@@ -110,7 +110,7 @@ class TPInferEngine:
         assert self.head_num % self.tp_size == 0, f"Cannot shard {self.head_num} heads with tp size {self.tp_size}"
         self.head_num //= self.tp_size  # update sharded number of heads
 
-        if self.multi_query_attention:
+        if hasattr(self, "multi_query_attention"):
             # NOTE the logic of MQA tensor parallelism should be specified.
             assert (
                 self.multi_query_group_num % self.tp_size == 0
