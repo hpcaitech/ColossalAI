@@ -460,7 +460,7 @@ class GeminiOptimizer(OptimizerWrapper):
         is_customized_distributed = is_customized_distributed_tensor(param)
         shard_spec = get_sharding_spec(param) if is_dtensor else None
         device_mesh = get_device_mesh(param) if is_dtensor else None
-        global_shape = get_global_shape(param) if is_dtensor else None
+        global_shape = self.optimizer_params_info["id2shape"][param_id]
 
         # If the chunk is kept gathered,
         # the parameteres are treated the same as that of those in strict DDP during training.
@@ -488,7 +488,7 @@ class GeminiOptimizer(OptimizerWrapper):
                             init_tensor_as_customization_distributed(state_tensor, shard_fn=param.shard_fn, gather_fn=param.gather_fn)
                         state_tensor = gather_distributed_param(state_tensor, keep_vars=False).cpu()
                     
-                        collected_states[state_name] = state_tensor
+                        collected_states[state_name] = state_tensor.reshape(global_shape)
             return collected_states
 
         # Check whether the param with given id is managed by current process.
@@ -705,7 +705,7 @@ class GeminiOptimizer(OptimizerWrapper):
                 ret_val = torch.zeros(
                     state_end - state_start, dtype=torch.float32, device=param.device, requires_grad=False
                 )
-
+                
                 if is_dtensor:
                     value = torch.reshape(value, global_shape)
                     value = distribute_tensor(value, sharding_spec=shard_spec, device_mesh=device_mesh)
@@ -730,14 +730,8 @@ class GeminiOptimizer(OptimizerWrapper):
         is_customized_distributed = is_customized_distributed_tensor(real_param)
         shard_spec = get_sharding_spec(real_param) if is_dtensor else None
         device_mesh = get_device_mesh(real_param) if is_dtensor else None
-        if is_dtensor:
-            global_shape = get_global_shape(real_param)
-        elif is_customized_distributed:
-            global_shape = self.optimizer_params_info["id2shape"][param_id]
-        else:
-            global_shape = None
+        global_shape = self.optimizer_params_info["id2shape"][param_id]
 
-        
         for k, v in saved_states.items():
             updated_states[k] = cast(fake_param, state_range, v, k)
             del v  # clean loaded states
