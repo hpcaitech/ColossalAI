@@ -9,8 +9,8 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
 
-from ..pipeline.microbatch_manager import MicroBatchManager
-from ..tensor_parallel.kvcache_manager import MemoryManager
+from ..kvcache_manager import MemoryManager
+from .microbatch_manager import MicroBatchManager
 
 PP_AXIS, TP_AXIS = 0, 1
 
