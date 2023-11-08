@@ -219,7 +219,7 @@ def _batch_send_recv_tensor(send_tensor_list, recv_tensor_metadata, send_dst, re
         for req in reqs:
             req.wait()
 
-    # Remove synchronization according to Pytorch' documentation
+    # Remove synchronization according to Pytorch's documentation
     # However, the Megatron-LM does synchronization here
     # https://github.com/microsoft/Megatron-DeepSpeed/blob/ef13d099c2a1609225a4ce4c1a1753cc76dd90a1/megatron/p2p_communication.py#L111-L112
     # In case there is potential error, uncomment the following `torch.cuda.synchronize()`
