@@ -21,7 +21,7 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.utils import add_start_docstrings_to_model_forward
 
-from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
+from colossalai.inference.kvcache_manager.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import (
     copy_kv_cache_to_dest,
     int8_rotary_embedding_fwd,
