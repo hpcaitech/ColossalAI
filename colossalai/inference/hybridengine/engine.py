@@ -14,8 +14,7 @@ from ..tensor_parallel.kvcache_manager import MemoryManager
 
 PP_AXIS, TP_AXIS = 0, 1
 
-_supported_models = ["LlamaForCausalLM", "BloomForCausalLM", "LlamaGPTQForCausalLM", "SmoothLlamaForCausalLM"]
-
+_supported_models = ["LlamaForCausalLM", "BloomForCausalLM", "LlamaGPTQForCausalLM", "SmoothLlamaForCausalLM", "ChatGLMForConditionalGeneration"]
 
 class CaiInferEngine:
     """
@@ -184,6 +183,16 @@ class CaiInferEngine:
             head_num = model.config.n_head // self.tp_size
             num_hidden_layers = model.config.n_layer
             layer_num = num_hidden_layers // self.pp_size
+        elif model.config.model_type == "chatglm":
+            head_dim = model.config.hidden_size // model.config.num_attention_heads
+            if model.config.multi_query_attention:
+                head_num = model.config.multi_query_group_num // self.tp_size
+            else:
+                head_num = model.config.num_attention_heads // self.tp_size
+            num_hidden_layers = model.config.num_layers
+            layer_num = num_hidden_layers // self.pp_size
+        else:
+            raise NotImplementedError("Only support llama, bloom and chatglm model.")
 
         if self.quant == "smoothquant":
             cache_manager = MemoryManager(max_total_token_num, torch.int8, head_num, head_dim, layer_num)
