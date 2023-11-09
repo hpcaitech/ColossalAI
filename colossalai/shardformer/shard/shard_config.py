@@ -44,10 +44,6 @@ class ShardConfig:
         return self._tensor_parallel_size
 
     def __post_init__(self):
-        if self.extra_kwargs:
-            for key, value in self.extra_kwargs.items():
-                setattr(self, key, value)
-
         if not self.enable_tensor_parallelism and self.enable_sequence_parallelism:
             raise ValueError(
                 "enable_sequence_parallelism can only be set to True when enable_tensor_parallelism is True"

@@ -38,10 +38,7 @@ class BloomModelInferPolicy(BloomForCausalLMPolicy):
 
         policy = super().module_policy()
 
-        if (
-            "inference_gptq" in self.shard_config.extra_kwargs.keys()
-            and self.shard_config.extra_kwargs["inference_gptq"]
-        ):
+        if self.shard_config.extra_kwargs.get("inference_gptq", False):
             from colossalai.inference.quant.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
 
             policy[BloomBlock] = ModulePolicyDescription(
