@@ -7,6 +7,7 @@
 - [Install](#install)
 - [How to Use](#how-to-use)
 - Examples
+  - [A Simple Web UI Demo](examples/ui/README.md)
   - [Local Chinese Retrieval QA + Chat](examples/retrieval_conversation_zh.py)
   - [Local English Retrieval QA + Chat](examples/retrieval_conversation_en.py)
   - [Local Bi-lingual Retrieval QA + Chat](examples/retrieval_conversation_universal.py)
@@ -60,14 +61,42 @@ We designed a memory module that incoporates both long-term memory and short-ter
 Fig.2. Design of the memory module
 </p>
 
-### Supported LLMs and Embedding Models
-We support all language models that can be loaded by [```transformers.AutoModel.from_pretrained```](https://huggingface.co/transformers/v3.0.2/model_doc/auto.html#transformers.AutoModel.from_pretrained). However, since retrieval QA relies heavily on language model's zero-shot, instruction following and logic reasoning ability, small models are generally not recommended. In the local demo, we use ChatGLM2 for Chinese and LLaMa2 for English. To change the base LLM, you also need to modify the prompt accordingly.
+### Supported Language Models (LLMs) and Embedding Models
 
-In this demo, we use ["moka-ai/m3e-base"](https://huggingface.co/moka-ai/m3e-base) as default embedding model. This model supports homogeneous text similarity calculation in both Chinese and English.
+Our platform accommodates two kinds of LLMs: API-accessible and locally run models. For the API-style LLMs, we support ChatGPT, Pangu, and models deployed through the vLLM API Server. For locally operated LLMs, we are compatible with any language model that can be initiated using [`transformers.AutoModel.from_pretrained`](https://huggingface.co/transformers/v3.0.2/model_doc/auto.html#transformers.AutoModel.from_pretrained). However, due to the dependence of retrieval-based QA on the language model's abilities in zero-shot learning, instruction following, and logical reasoning, smaller models are typically not advised. In our local demo, we utilize ChatGLM2 for Chinese and LLaMa2 for English. Modifying the base LLM requires corresponding adjustments to the prompts.
 
-### Serving
-Currently we provide an interface for infering with LLMs served by third party packages such as [vllm](https://github.com/vllm-project/vllm) we will replace it with colossal inference and serving when ready. Please refer class VllmLLM for more details.
+Here are some sample codes to load different types of LLM.
 
+```python
+# For locally-run LLM
+from colossalqa.local.llm import ColossalAPI, ColossalLLM
+api = ColossalAPI('chatglm2', 'path_to_chatglm2_checkpoint')
+llm = ColossalLLM(n=1, api=api)
+
+# For LLMs running on the vLLM API Server
+from colossalqa.local.llm import VllmAPI, VllmLLM
+vllm_api = VllmAPI("Your_vLLM_Host", "Your_vLLM_Port")
+llm = VllmLLM(n=1, api=vllm_api)
+
+# For ChatGPT LLM
+from langchain.llms import OpenAI
+llm = OpenAI(openai_api_key="YOUR_OPENAI_API_KEY")
+
+# For Pangu LLM
+# set up your authentification info
+from colossalqa.local.pangu_llm import Pangu
+os.environ["URL"] = ""
+os.environ["URLNAME"] = ""
+os.environ["PASSWORD"] = ""
+os.environ["DOMAIN_NAME"] = ""
+
+llm = Pangu(id=1)
+llm.set_auth_config()
+```
+
+Regarding embedding models, we support all models that can be loaded via ["langchain.embeddings.HuggingFaceEmbeddings"](https://api.python.langchain.com/en/latest/embeddings/langchain.embeddings.huggingface.HuggingFaceEmbeddings.html). The default embedding model used in this demo is ["moka-ai/m3e-base"](https://huggingface.co/moka-ai/m3e-base), which enables consistent text similarity computations in both Chinese and English.
+
+In the future, supported LLM will also include models running on colossal inference and serving framework.
 
 ## Install
 
@@ -78,17 +107,7 @@ cd ColossalAI/applications/ColossalQA
 pip install -e .
 ```
 
-To use the vllm server, please refer to the official guide [here](https://github.com/vllm-project/vllm/tree/main) for installation instruction. Simply run the following command from another terminal.
-```
-# Install vllm
-git clone https://github.com/vllm-project/vllm.git
-cd vllm
-pip install -e .  # This may take 5-10 minutes.
-```
-```bash
-cd ./vllm/entrypoints
-python api_server.py --host localhost --port $PORT_NUMBER --model $PATH_TO_MODEL --swap-space $SWAP_SPACE_IN_GB
-```
+To use the vLLM for providing LLM services via an API, please consult the official guide [here](https://vllm.readthedocs.io/en/latest/getting_started/quickstart.html#api-server) to start the API server. It's important to set up a new virtual environment for installing vLLM, as there are currently some dependency conflicts between vLLM and ColossalQA when installed on the same machine.  
 
 ## How to Use
 
@@ -101,7 +120,10 @@ Read comments under ./colossalqa/data_loader for more detail regarding supported
 
 ### Run The Script
 
-We provided scripts for Chinese document retrieval based conversation system, English document retrieval based conversation system, Bi-lingual document retrieval based conversation system and an experimental AI agent with document retrieval and SQL query functionality. The Bi-lingual one is a high-level wrapper for the other two clases. We write different scripts for different languages because retrieval QA requires different embedding models, LLMs, prompts for different language setting. For now, we use LLaMa2 for English retrieval QA and ChatGLM2 for Chinese retrieval QA for better performance.
+We provide a simple Web UI demo of ColossalQA, enabling you to upload your files as a knowledge base and interact with them through a chat interface in your browser. More details can be found [here](examples/ui/README.md)
+![ColossalQA Demo](examples/ui/img/image.png)
+
+We also provided some scripts for Chinese document retrieval based conversation system, English document retrieval based conversation system, Bi-lingual document retrieval based conversation system and an experimental AI agent with document retrieval and SQL query functionality. The Bi-lingual one is a high-level wrapper for the other two clases. We write different scripts for different languages because retrieval QA requires different embedding models, LLMs, prompts for different language setting. For now, we use LLaMa2 for English retrieval QA and ChatGLM2 for Chinese retrieval QA for better performance.
 
 To run the bi-lingual scripts.
 ```bash

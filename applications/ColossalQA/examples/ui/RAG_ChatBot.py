@@ -19,7 +19,7 @@ from colossalqa.prompt.prompt import (
 )
 
 from langchain import LLMChain
-from pangu_llm import Pangu
+from colossalqa.local.pangu_llm import Pangu
 
 logger = get_logger()
 

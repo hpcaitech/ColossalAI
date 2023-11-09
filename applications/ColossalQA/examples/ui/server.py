@@ -65,7 +65,7 @@ class ColossalQAServerRequestHandler(BaseHTTPRequestHandler):
                     # ---- Intialize LLM, QA_chatbot here ----
                     print("Initializing LLM...")
                     if llm_path == "Pangu_API":
-                        from pangu_llm import Pangu
+                        from colossalqa.local.pangu_llm import Pangu
                         self.llm = Pangu(id=1)
                         self.llm.set_auth_config()  # verify user's auth info here
                         self.rag_config["mem_llm_kwargs"] = None
