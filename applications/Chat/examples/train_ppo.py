@@ -50,21 +50,14 @@ def main(args):
         else:
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
-        if args.rm_model is None:
-            rm_model_name = args.model
-        else:
-            rm_model_name = args.rm_model
-
-        if rm_model_name == "gpt2":
+        if args.model == "gpt2":
             reward_model = GPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        elif rm_model_name == "bloom":
+        elif args.model == "bloom":
             reward_model = BLOOMRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        elif rm_model_name == "opt":
+        elif args.model == "opt":
             reward_model = OPTRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        elif rm_model_name == "llama":
+        elif args.model == "llama":
             reward_model = LlamaRM(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
-        else:
-            raise ValueError(f'Unsupported reward model "{rm_model_name}"')
 
         if args.rm_path is not None:
             reward_model.load_state_dict(state_dict, strict=True)
@@ -98,15 +91,16 @@ def main(args):
             raise ValueError(f'Unsupported actor model "{args.model}"')
 
         if args.model == "gpt2":
-            critic = GPTCritic(pretrained="gpt2", lora_rank=args.lora_rank)
+            critic = GPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         elif args.model == "bloom":
-            critic = BLOOMCritic(pretrained="bigscience/bloom-560m", lora_rank=args.lora_rank)
+            critic = BLOOMCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         elif args.model == "opt":
-            critic = OPTCritic(pretrained="facebook/opt-350m", lora_rank=args.lora_rank)
+            critic = OPTCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
         elif args.model == "llama":
-            critic = LlamaCritic(pretrained=args.pretrain, lora_rank=args.lora_rank)
-        else:
-            raise ValueError(f'Unsupported reward model "{rm_model_name}"')
+            critic = LlamaCritic(pretrained=args.rm_pretrain, lora_rank=args.lora_rank)
+
+        if args.rm_path is not None:
+            critic.load_state_dict(state_dict, strict=True)
 
         actor.to(torch.cuda.current_device())
         critic.to(torch.cuda.current_device())
@@ -141,10 +135,6 @@ def main(args):
         raise ValueError(f'Unsupported model "{args.model}"')
     # NOTE: generate() requires padding_side to be "left"
     tokenizer.padding_side = "left"
-
-    # configure tokenizer
-    rm_model_tokenizer = AutoTokenizer.from_pretrained(args.reward_model_tokenizer)
-    rm_model_tokenizer.pad_token = rm_model_tokenizer.eos_token
 
     prompt_dataset = PromptDataset(
         tokenizer=tokenizer,
@@ -196,7 +186,6 @@ def main(args):
         critic_optim,
         actor_lr_scheduler,
         tokenizer=tokenizer,
-        rm_model_tokenizer=rm_model_tokenizer,
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
         train_batch_size=args.train_batch_size,
@@ -218,6 +207,10 @@ def main(args):
         pretrain_dataloader=pretrain_dataloader,
         log_dir=args.log_dir,
         use_wandb=args.use_wandb,
+        lora_rank=args.lora_rank,
+        merge_lora_weights=args.merge_lora_weights,
+        need_optim_ckpt=args.need_optim_ckpt,
+        save_path=args.save_path,
     )
 
     if args.lora_rank > 0 and args.merge_lora_weights:
@@ -231,7 +224,7 @@ def main(args):
     # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(
-            actor_optim, "actor_optim_checkpoint_prompts_%d.pt" % (torch.cuda.current_device()), only_rank0=False
+            actor_optim, "actor_optim_checkpoint_prompts_%d.pt" % (torch.cuda.current_device()), only_rank0=True
         )
 
 
@@ -248,9 +241,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--model", default="gpt2", choices=["gpt2", "bloom", "opt", "llama"])
     parser.add_argument("--tokenizer", type=str, default=None)
-    parser.add_argument("--reward_model_tokenizer", type=str, default=None)
     parser.add_argument("--pretrain", type=str, default=None)
-    parser.add_argument("--rm_model", default=None, choices=["gpt2", "bloom", "opt", "llama"])
     parser.add_argument("--rm_path", type=str, default=None)
     parser.add_argument("--rm_pretrain", type=str, default=None)
     parser.add_argument("--save_path", type=str, default="actor_checkpoint_prompts")

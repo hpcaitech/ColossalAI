@@ -71,7 +71,6 @@ class PPOTrainer(OnPolicyTrainer):
         critic_optim: Optimizer,
         actor_lr_scheduler: _LRScheduler,
         tokenizer: PreTrainedTokenizerBase,
-        rm_model_tokenizer: PreTrainedTokenizerBase,
         kl_coef: float = 0.1,
         ptx_coef: float = 0.9,
         train_batch_size: int = 8,
@@ -98,9 +97,8 @@ class PPOTrainer(OnPolicyTrainer):
         self.critic = critic
         self.actor_scheduler = actor_lr_scheduler
         self.tokenizer = tokenizer
-        self.rm_model_tokenizer = rm_model_tokenizer
         self.experience_maker = NaiveExperienceMaker(
-            self.actor, self.critic, reward_model, initial_model, self.tokenizer, self.rm_model_tokenizer, kl_coef
+            self.actor, self.critic, reward_model, initial_model, self.tokenizer, kl_coef
         )
 
         self.actor_loss_fn = PolicyLoss(eps_clip)

@@ -20,14 +20,12 @@ class NaiveExperienceMaker(ExperienceMaker):
         reward_model: RewardModel,
         initial_model: Actor,
         tokenizer: PreTrainedTokenizer,
-        rm_model_tokenizer: PreTrainedTokenizer,
         kl_coef: float = 0.01,
         gamma: float = 1.0,
         lam: float = 0.95,
     ) -> None:
         super().__init__(actor, critic, reward_model, initial_model)
         self.tokenizer = tokenizer
-        self.rm_model_tokenizer = rm_model_tokenizer
         self.kl_coef = kl_coef
         self.gamma = gamma
         self.lam = lam
@@ -81,19 +79,29 @@ class NaiveExperienceMaker(ExperienceMaker):
 
         base_action_log_probs = calc_action_log_probs(base_model_output, sequences, num_actions)
         value = self.critic(sequences, attention_mask)
-        sequences_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True)
 
-        sequences_rm = self.rm_model_tokenizer(
-            sequences_text, return_tensors="pt", padding="max_length", truncation=True, max_length=300
+        # convert from left_padding, prompt, answer, right_padding to prompt, answer, right_padding
+        sequences_rm = {}
+        reversed_sequences = sequences.flip(dims=[1])
+        indices = (
+            torch.arange(1, sequences.size(1) + 1, requires_grad=False, device=sequences.device)
+            .unsqueeze(0)
+            .tile((sequences.size(0), 1))
         )
+        mask = reversed_sequences != pad_token_id
+        _, sorted_indices = (indices * mask).sort(dim=1, descending=False)
+        sorted_sequences = torch.gather(reversed_sequences, 1, sorted_indices)
+        sequences_rm["input_ids"] = sorted_sequences.flip(dims=[1])
+        sequences_rm["attention_mask"] = sequences_rm["input_ids"] != pad_token_id
+
         r = self.reward_model(
-            sequences = sequences_rm["input_ids"].to(dtype=torch.long, device=sequences.device),
-            attention_mask = sequences_rm["attention_mask"].to(device=sequences.device)
+            sequences=sequences_rm["input_ids"].to(dtype=torch.long, device=sequences.device),
+            attention_mask=sequences_rm["attention_mask"].to(device=sequences.device),
         )
         reward, kl = compute_reward(r, self.kl_coef, action_log_probs, base_action_log_probs, action_mask=action_mask)
 
         value = value[:, -num_actions:] * action_mask
-        
+
         advantages = self.calculate_advantage(reward, value, num_actions)
 
         advantages = advantages.detach()

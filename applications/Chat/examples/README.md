@@ -253,7 +253,7 @@ Before you move on the next stage, please check the following list to ensure tha
 
 Your training reward curves should look similar to the following charts.
 <p align="center">
-<img width="1000" alt="image" src="https://raw.githubusercontent.com/YeAnbang/imagehostingrepo/main/mean_reward_chart.png">
+<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/mean_reward_chart.png">
 </p>
 
 ## Stage3 - Training model using prompts with RL
@@ -281,10 +281,8 @@ colossalai run --nproc_per_node=1 --master_port 12345 --hostfile train_prompts.p
     --train_batch_size 32 \
     --save_path 'path to save the trained model' \
     --ptx_coef 0.0 \
-    --rm_model 'gpt2' \
     --rm_pretrain 'gpt2' \
     --rm_path 'path to reward model trained in stage 2' \
-    --reward_model_tokenizer 'gpt2' \
     --pretrain '/home/lcyab/data/Anthropic_rlhf/actor/pretrain_v3' \
     --use_wandb
 
@@ -326,12 +324,12 @@ Pretrain dataset: the pretrain dataset including the instruction and correspondi
 ### Sample Training Results Using Default Script
 #### Reward
 <p align="center">
-<img width="700" alt="image" src="https://raw.githubusercontent.com/YeAnbang/imagehostingrepo/main/reward.png">
+<img width="700" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/reward.png">
 </p>
 
 #### Approximate KL Divergence
 <p align="center">
-<img width="700" alt="image" src="https://raw.githubusercontent.com/YeAnbang/imagehostingrepo/main/KL.png">
+<img width="700" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/KL.png">
 </p>
 
 ### Note on PPO Training
