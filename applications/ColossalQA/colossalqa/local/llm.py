@@ -20,19 +20,16 @@ class ColossalAPI:
 
     __instances = dict()
 
-    def __init__(self, model_type: str, pretrain: str, ckpt_path: str = None) -> None:
+    def __init__(self, model_type: str, model_path: str, ckpt_path: str = None) -> None:
         """
         Configurate model
         """
-        if model_type + pretrain + (ckpt_path or "") in ColossalAPI.__instances:
+        if model_type + model_path + (ckpt_path or "") in ColossalAPI.__instances:
             return
         else:
-            ColossalAPI.__instances[model_type + pretrain + (ckpt_path or "")] = self
+            ColossalAPI.__instances[model_type + model_path + (ckpt_path or "")] = self
         self.model_type = model_type
-        if model_type == "llama":
-            self.actor = LlamaForCausalLM.from_pretrained(pretrain, torch_dtype=torch.float16)
-        else:
-            self.actor = AutoModelForCausalLM.from_pretrained(pretrain, torch_dtype=torch.float16, trust_remote_code=True)
+        self.actor = AutoModel.from_pretrained(model_path, torch_dtype=torch.float16, trust_remote_code=True)
 
         if ckpt_path is not None:
             state_dict = torch.load(ckpt_path)
@@ -40,19 +37,16 @@ class ColossalAPI:
         self.actor.to(torch.cuda.current_device())
 
         # Configurate tokenizer
-        if model_type == "llama":
-            self.tokenizer = LlamaTokenizer.from_pretrained(pretrain)
-        else:
-            self.tokenizer = AutoTokenizer.from_pretrained(pretrain, trust_remote_code=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
         self.actor.eval()
 
     @staticmethod
-    def get_api(model_type: str, pretrain: str, ckpt_path: str = None):
-        if model_type + pretrain + (ckpt_path or "") in ColossalAPI.__instances:
-            return ColossalAPI.__instances[model_type + pretrain + (ckpt_path or "")]
+    def get_api(model_type: str, model_path: str, ckpt_path: str = None):
+        if model_type + model_path + (ckpt_path or "") in ColossalAPI.__instances:
+            return ColossalAPI.__instances[model_type + model_path + (ckpt_path or "")]
         else:
-            return ColossalAPI(model_type, pretrain, ckpt_path)
+            return ColossalAPI(model_type, model_path, ckpt_path)
 
     def generate(self, input: str, **kwargs) -> str:
         """
@@ -99,7 +93,7 @@ class ColossalLLM(LLM):
 
     n: int
     api: Any
-    kwargs = {}
+    kwargs = {"max_new_tokens": 100}
 
     @property
     def _llm_type(self) -> str:
@@ -139,7 +133,7 @@ class VllmLLM(LLM):
 
     n: int
     api: Any
-    kwargs = {}
+    kwargs = {"max_new_tokens": 100}
 
     @property
     def _llm_type(self) -> str:
@@ -166,10 +160,10 @@ class VllmLLM(LLM):
         return out
 
     def set_host_port(self, host: str = "localhost", port: int = 8077, **kwargs) -> None:
-        self.kwargs = kwargs
         if "max_tokens" not in kwargs:
             kwargs["max_tokens"] = 100
-        self.api = VllmAPI(host=host, port=port) 
+        self.kwargs = kwargs
+        self.api = VllmAPI(host=host, port=port)
 
     @property
     def _identifying_params(self) -> Mapping[str, int]:
@@ -179,7 +173,6 @@ class VllmLLM(LLM):
 
 if __name__ == "__main__":
     import os
-
     model_path = os.environ.get("ZH_MODEL_PATH")
     model_name = "chatglm2"
     colossal_api = ColossalAPI(model_name, model_path)

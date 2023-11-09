@@ -140,7 +140,6 @@ if __name__ == "__main__":
     )
     # Set disambiguity handler
     information_retriever.set_rephrase_handler(disambiguity)
-
     # Start conversation
     while True:
         user_input = input("User: ")
