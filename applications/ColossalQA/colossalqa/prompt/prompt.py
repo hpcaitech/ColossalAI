@@ -38,7 +38,7 @@ _ZH_RETRIEVAL_QA_PROMPT = """<指令>根据下列支持文档和对话历史，�
 </对话历史>
 
 <问题>{question}</问题>
-<答案>"""
+答案："""
 
 ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS = ["无法回答该问题"]
 ZH_RETRIEVAL_QA_REJECTION_ANSWER = "抱歉，根据提供的信息无法回答该问题。"

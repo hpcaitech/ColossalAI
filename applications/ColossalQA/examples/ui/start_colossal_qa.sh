@@ -7,8 +7,6 @@ cleanup() {
 # 'cleanup' is trigered when receive SIGINT(Ctrl+C) OR SIGTERM(kill) signal
 trap cleanup INT TERM
 
-# Activate your virtual environment
-conda activate colossalqa_test  
 # Disable your proxy
 # unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
 
@@ -16,13 +14,13 @@ conda activate colossalqa_test
 export TMP=$HOME
 
 # Use m3e as embedding model
-export EMB_MODEL="m3e"
-export EMB_MODEL_PATH="PATH_TO_MODEL_CHECKPOINT/m3e-base"
+export EMB_MODEL="m3e"  # moka-ai/m3e-base model will be download automatically
+# export EMB_MODEL_PATH="PATH_TO_LOCAL_CHECKPOINT/m3e-base"  # you can also specify the local path to embedding model
 
-# Choose backend LLM
+# Choose a backend LLM
 # - ChatGLM2
 # export CHAT_LLM="chatglm2"  
-# export CHAT_LLM_PATH="PATH_TO_MODEL_CHECKPOINT/chatglm2-6b"
+# export CHAT_LLM_PATH="PATH_TO_LOCAL_CHECKPOINT/chatglm2-6b"
 
 # - ChatGPT
 export CHAT_LLM="chatgpt"
@@ -39,7 +37,7 @@ export OPENAI_API_KEY="YOUR_OPENAI_API_KEY"
 
 # Run server.py and colossalqa_webui.py in the background
 python server.py &
-python colossalqa_webui.py &
+python webui.py &
 
 # Wait for all processes to finish
 wait

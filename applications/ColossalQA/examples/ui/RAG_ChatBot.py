@@ -34,7 +34,7 @@ DEFAULT_RAG_CFG = {
     "mem_llm_kwargs": {"max_new_tokens": 50, "temperature": 1, "do_sample": True},
     "disambig_prompt": PROMPT_DISAMBIGUATE_ZH,
     "disambig_llm_kwargs": {"max_new_tokens": 30, "temperature": 1, "do_sample": True},
-    "embed_model_name_or_path": "/home/lczza/data/embed_model_ckpt/m3e-base",
+    "embed_model_name_or_path": "moka-ai/m3e-base",
     "embed_model_device": {"device": "cpu"},
     "gen_llm_kwargs": {"max_new_tokens": 100, "temperature": 1, "do_sample": True},
     "gen_qa_prompt": PROMPT_RETRIEVAL_QA_ZH
@@ -173,9 +173,9 @@ class RAG_ChatBot:
             print(f"Agent: {agent_response}")
 
 if __name__ == "__main__":
-    # Initialize an Langchain LLM(here we use pangu as an example)
+    # Initialize an Langchain LLM(here we use ChatGPT as an example)
     from langchain.llms import OpenAI
-    llm = OpenAI(openai_api_key="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")
+    llm = OpenAI(openai_api_key="YOUR_OPENAI_API_KEY")
 
     # chatgpt cannot control temperature, do_sample, etc.
     DEFAULT_RAG_CFG["mem_llm_kwargs"] = None

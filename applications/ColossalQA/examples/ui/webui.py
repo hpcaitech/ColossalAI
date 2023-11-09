@@ -55,7 +55,7 @@ def bot(history):
 
 
 CSS = """
-.contain { display: flex; flex-direction: column; }
+.contain { display: flex; flex-direction: column; height: 100vh }
 #component-0 { height: 100%; }
 #chatbot { flex-grow: 1; }
 """

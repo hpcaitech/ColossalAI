@@ -15,11 +15,11 @@ from RAG_ChatBot import RAG_ChatBot, DEFAULT_RAG_CFG
 
 # Define the mapping between embed_model_name(passed from Front End) and the actual path on the back end server
 EMBED_MODEL_DICT = {
-    "m3e": os.environ["EMB_MODEL_PATH"]
+    "m3e": os.environ.get("EMB_MODEL_PATH", DEFAULT_RAG_CFG["embed_model_name_or_path"])
 }
 # Define the mapping between LLM_name(passed from Front End) and the actual path on the back end server
 LLM_DICT = {  
-    "chatglm2": os.environ.get("CHAT_LLM_PATH", None),
+    "chatglm2": os.environ.get("CHAT_LLM_PATH", "THUDM/chatglm-6b"),
     "pangu": "Pangu_API",
     "chatgpt": "OpenAI_API"
 }
@@ -43,7 +43,7 @@ class ColossalQAServerRequestHandler(BaseHTTPRequestHandler):
         post_data = self.rfile.read(content_length)
         received_json = json.loads(post_data.decode("utf-8"))
         print(received_json)
-        # conversation_ready is False(the first request): Need to upload files and initialize the RAG chain
+        # conversation_ready is False(user's first request): Need to upload files and initialize the RAG chain
         if received_json["conversation_ready"] is False: 
             self.rag_config = DEFAULT_RAG_CFG.copy()
             try:
