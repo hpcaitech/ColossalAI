@@ -7,7 +7,7 @@
 - [Install](#install)
 - [How to Use](#how-to-use)
 - Examples
-  - [A Simple Web UI Demo](examples/ui/README.md)
+  - [A Simple Web UI Demo](examples/webui_demo/README.md)
   - [Local Chinese Retrieval QA + Chat](examples/retrieval_conversation_zh.py)
   - [Local English Retrieval QA + Chat](examples/retrieval_conversation_en.py)
   - [Local Bi-lingual Retrieval QA + Chat](examples/retrieval_conversation_universal.py)
@@ -120,8 +120,8 @@ Read comments under ./colossalqa/data_loader for more detail regarding supported
 
 ### Run The Script
 
-We provide a simple Web UI demo of ColossalQA, enabling you to upload your files as a knowledge base and interact with them through a chat interface in your browser. More details can be found [here](examples/ui/README.md)
-![ColossalQA Demo](examples/ui/img/image.png)
+We provide a simple Web UI demo of ColossalQA, enabling you to upload your files as a knowledge base and interact with them through a chat interface in your browser. More details can be found [here](examples/webui_demo/README.md)
+![ColossalQA Demo](examples/webui_demo/img/image.png)
 
 We also provided some scripts for Chinese document retrieval based conversation system, English document retrieval based conversation system, Bi-lingual document retrieval based conversation system and an experimental AI agent with document retrieval and SQL query functionality. The Bi-lingual one is a high-level wrapper for the other two clases. We write different scripts for different languages because retrieval QA requires different embedding models, LLMs, prompts for different language setting. For now, we use LLaMa2 for English retrieval QA and ChatGLM2 for Chinese retrieval QA for better performance.
 
