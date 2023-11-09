@@ -384,6 +384,7 @@ class GeminiDDP(ModelWrapper):
                         grad_chunk = self.chunk_manager.rearrange_accumulated_grad_chunk(chunk)
                     else:
                         grad_chunk = chunk.grad_chunk
+                        chunk.grad_chunk.l2_norm = None
 
                 # hold -> compute -> hold after bwd
                 grad_chunk.tensor_trans_state(p, TensorState.COMPUTE)
@@ -605,13 +606,13 @@ class GeminiDDP(ModelWrapper):
             destination (dict): a dict where state will be stored
             prefix (str): the prefix for parameters and buffers used in this
                 module
-            bias_config (optional, str): A string indicating the bias parameters to finetune and save.
+            bias_config (str, optional): A string indicating the bias parameters to finetune and save.
                 If set to "none", no bias parameters are saved; If set to "all", all bias parameters are saved;
                 If set to "lora_only", only bias parameters attached to a module owning lora are saved.
                 Defaults to "none".
-            modules_to_save (optional, Optional[List[str]]): A list of string containing patterns for modules to
+            modules_to_save (Optional[List[str]], optional): A list of string containing patterns for modules to
                 be saved for lora checkpoint. Defaults to None.
-            only_rank_0 (optional, bool): Whether to collect state dict only on master rank. Defaults to True.
+            only_rank_0 (bool, optional): Whether to collect state dict only on master rank. Defaults to True.
         """
         assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
 
@@ -619,8 +620,14 @@ class GeminiDDP(ModelWrapper):
         # if fp16_chunks are reused by gradients, pick the fp32 parameters, else pick fp16 parameters
         lora_params = []
         saved_param_names = []
-        for fp16_p, fp32_p in zip(self.fp16_params, self.fp32_params):
-            name = self.param2name[fp16_p]
+
+        # get the mapping between copies and fp16 parameters, this mapping will be empty when self.reuse_fp16_chunks is False.
+        fp16_to_fp32 = dict()
+        for p, fp32_p in zip(self.fp16_params, self.fp32_params):
+            fp16_to_fp32[p] = fp32_p
+
+        for p in self.fp16_params:
+            name = self.param2name[p]
             save_flag = False
 
             # lora modules should be saved
@@ -637,13 +644,15 @@ class GeminiDDP(ModelWrapper):
 
             # modules with pattern in self.modules_to_save_for_lora should be saved
             if modules_to_save is not None:
-                save_flag = any(f"{module_name}.modules_to_save" in name for module_name in modules_to_save)
+                save_flag = save_flag or any(
+                    f"{module_name}.modules_to_save" in name for module_name in modules_to_save
+                )
 
             if save_flag:
                 if self.reuse_fp16_chunk:
-                    lora_params.append(fp32_p)
+                    lora_params.append(fp16_to_fp32[p])
                 else:
-                    lora_params.append(fp16_p)
+                    lora_params.append(p)
                 saved_param_names.append(name)
 
         param_to_save_data = self._get_param_to_save_data(lora_params, only_rank_0)
