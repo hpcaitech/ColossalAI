@@ -1,11 +1,9 @@
 import torch.nn as nn
 from torch.nn.modules.loss import _Loss
 
-from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.legacy.registry import LOSSES
+from colossalai.moe.manager import MOE_MANAGER
 
 
-@LOSSES.register_module
 class MoeCrossEntropyLoss(_Loss):
     r"""torch.nn.CrossEntropyLoss added with auxiliary loss.
 
@@ -45,11 +43,10 @@ class MoeCrossEntropyLoss(_Loss):
         `Cross_entropy <https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html#torch.nn.functional.cross_entropy>`_.
         """
         main_loss = self.loss(*args)
-        aux_loss = MOE_CONTEXT.get_loss()
+        aux_loss = MOE_MANAGER.get_loss()
         return main_loss + self.aux_weight * aux_loss
 
 
-@LOSSES.register_module
 class MoeLoss(_Loss):
     """A wrapper class for any loss module to add with auxiliary loss.
 
@@ -77,5 +74,5 @@ class MoeLoss(_Loss):
             The ``args`` and ``kwargs`` may include different parameters varying with different loss function.
         """
         main_loss = self.loss_fn(*args, **kwargs)
-        aux_loss = MOE_CONTEXT.get_loss()
+        aux_loss = MOE_MANAGER.get_loss()
         return main_loss + self.aux_weight * aux_loss

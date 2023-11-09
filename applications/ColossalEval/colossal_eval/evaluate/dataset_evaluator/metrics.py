@@ -185,6 +185,7 @@ metrics4subcategory = {
         "ppl_score_over_choices": ["ALL"],
         "ppl_score": ["ALL"],
     },
+    "mtbench": {"mtbench_single_judge": ["ALL"]},
 }
 
 

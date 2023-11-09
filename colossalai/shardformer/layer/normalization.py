@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import warnings
+from abc import ABC, abstractmethod
 import torch.nn as nn
 from colossalai.lazy import LazyInitContext
 from ._operation import hook_paramter_in_backward
 
-__all__ = ["FusedLayerNorm", "FusedRMSNorm"]
+from .utils import SeqParallelUtils
+
+__all__ = ["FusedLayerNorm", "FusedRMSNorm", "LayerNorm", "RMSNorm", "BaseLayerNorm"]
 
 try:
     from apex.contrib.layer_norm.layer_norm import FastLayerNorm
@@ -77,7 +80,103 @@ class FusedRMSNormWithHook(ApexFusedRMSNorm):
         return output
         
 
-class FusedLayerNorm:
+class BaseLayerNorm(ABC):
+    @abstractmethod
+    def from_native_module(module: nn.Module, sp_partial_derived: bool = False):
+        """
+        Convert a native PyTorch layer normalization module to a specific layer normalization module,
+        and optionally mark parameters for gradient aggregation.
+
+        Args:
+            module (nn.Module): The native PyTorch layer normalization module to be converted.
+            sp_partial_derived (bool): Whether this module's gradients are partially derived in sequence parallelism.
+
+        Returns:
+            nn.Module: The specific layer normalization module.
+
+        Raises:
+            AssertionError: If the provided module is not an instance of the supported layer normalization type.
+        """
+
+
+class RMSNorm(BaseLayerNorm):
+    r"""
+    This is a wrapper around the RMSNorm. It is meant to be used only with the from_native_module interface.
+    """
+
+    def __init__(self) -> None:
+        raise NotImplementedError(
+            "FusedLayerNorm is not implemented as a physical class. "
+            "It is meant to be used only with the from_native_module interface to convert a native RMSNorm module to colossalai layer norm module."
+        )
+
+    @staticmethod
+    def from_native_module(module: nn.Module, sp_partial_derived: bool = False, *args, **kwargs) -> nn.Module:
+        """
+        Convert a native RMSNorm module to colossalai layer norm module,
+        and optionally mark parameters for gradient aggregation.
+
+        Args:
+            module (nn.Module): The native RMSNorm module to be converted.
+            sp_partial_derived (bool): Whether this module's gradients are partially derived in sequence parallelism.
+
+        Returns:
+            nn.Module: The RMSNorm module.
+        """
+
+        LazyInitContext.materialize(module)
+
+        if sp_partial_derived:
+            # Since gradients are computed using only a subset of the data,
+            # aggregation of these gradients is necessary during backpropagation.
+            # Therefore, we annotate these parameters in advance to indicate the need for gradient aggregation.
+            SeqParallelUtils.marked_as_sp_partial_derived_param(module.weight)
+
+        return module
+
+
+class LayerNorm(BaseLayerNorm):
+    r"""
+    This is a wrapper around the torch.nn.LayerNorm. It is meant to be used only with the from_native_module interface.
+    """
+
+    def __init__(self) -> None:
+        raise NotImplementedError(
+            "LayerNorm is not implemented as a physical class. "
+            "It is meant to be used only with the from_native_module interface to convert a native pytorch layer norm module to colossalai layer norm module."
+        )
+
+    @staticmethod
+    def from_native_module(module: nn.LayerNorm, sp_partial_derived: bool = False, *args, **kwargs) -> nn.Module:
+        r"""
+        Convert a native pytorch layer norm module to colossalai layer norm module,
+        and optionally marking parameters for gradient aggregation.
+
+        Args:
+            module (nn.LayerNorm): The native PyTorch LayerNorm module to be converted.
+            sp_partial_derived (bool): Whether this module's gradients are partially derived in sequence parallelism.
+
+        Returns:
+            nn.Module: The LayerNorm module.
+
+        Raises:
+            AssertionError: If the provided module is not an instance of nn.LayerNorm.
+        """
+        assert isinstance(module, nn.LayerNorm), "Only support conversion from nn.LayerNorm."
+
+        LazyInitContext.materialize(module)
+
+        if sp_partial_derived:
+            # Since gradients are computed using only a subset of the data,
+            # aggregation of these gradients is necessary during backpropagation.
+            # Therefore, we annotate these parameters in advance to indicate the need for gradient aggregation.
+            SeqParallelUtils.marked_as_sp_partial_derived_param(module.weight)
+            SeqParallelUtils.marked_as_sp_partial_derived_param(module.bias)
+
+        return module
+
+
+class FusedLayerNorm(BaseLayerNorm):
     r"""
     This is a wrapper around the apex fused layernorm implementation. It is meant to be used only with the from_native_module interface.
     """
@@ -85,13 +184,24 @@ class FusedLayerNorm:
     def __init__(self) -> None:
         raise NotImplementedError(
             "FusedLayerNorm is not implemented as a physical class. "
-            "It is meant to be used only with the from_native_module interface to wrap the fused layernorm implementation provided by apex."
+            "It is meant to be used only with the from_native_module interface convert a native pytorch layer norm module to FusedLayerNorm module provided by apex."
         )
 
     @staticmethod
-    def from_native_module(module: nn.LayerNorm, *args, **kwargs) -> nn.Module:
+    def from_native_module(module: nn.LayerNorm, sp_partial_derived: bool = False, *args, **kwargs) -> nn.Module:
         r"""
-        Convert a native pytorch layer norm module to colossalai layer norm module
+        Convert a native pytorch layer norm module to FusedLayerNorm module provided by apex,
+        and optionally marking parameters for gradient aggregation.
+
+        Args:
+            module (nn.LayerNorm): The native PyTorch LayerNorm module to be converted.
+            sp_partial_derived (bool): Whether this module's gradients are partially derived in sequence parallelism.
+
+        Returns:
+            nn.Module: Union[FastLayerNorm, FusedLayerNorm].
+
+        Raises:
+            AssertionError: If the provided module is not an instance of nn.LayerNorm.
         """
 
         LazyInitContext.materialize(module)
@@ -120,21 +230,46 @@ class FusedLayerNorm:
         layernorm.weight = module.weight
         layernorm.bias = module.bias
 
+        if sp_partial_derived:
+            # Since gradients are computed using only a subset of the data,
+            # aggregation of these gradients is necessary during backpropagation.
+            # Therefore, we annotate these parameters in advance to indicate the need for gradient aggregation.
+            SeqParallelUtils.marked_as_sp_partial_derived_param(layernorm.weight)
+            SeqParallelUtils.marked_as_sp_partial_derived_param(layernorm.bias)
+
         return layernorm
 
 
-class FusedRMSNorm:
+class FusedRMSNorm(BaseLayerNorm):
     """
     This is a wrapper around the apex fused rms norm implementation. It is meant to be used only with the from_native_module interface.
     """
     def __init__(self) -> None:
         raise NotImplementedError(
             "FusedRMSNorm is not implemented as a physical class. "
-            "It is meant to be used only with the from_native_module interface to wrap the fused rms norm implementation provided by apex."
+            "It is meant to be used only with the from_native_module interface to Convert a native RMSNorm module to FusedRMSNorm module provided by apex."
         )
     
     @staticmethod
-    def from_native_module(module: nn.Module, *args, **kwargs) -> nn.Module:
+    def from_native_module(module: nn.Module, sp_partial_derived: bool = False, *args, **kwargs) -> nn.Module:
+        r"""
+        Convert a native RMSNorm module module to FusedRMSNorm module provided by apex,
+        and optionally marking parameters for gradient aggregation.
+
+        Args:
+            module (nn.LayerNorm): The native PyTorch LayerNorm module to be converted.
+            sp_partial_derived (bool): Whether this module's gradients are partially derived in sequence parallelism.
+
+        Returns:
+            nn.Module: FusedRMSNorm module.
+        """
+        try:
+            from apex.normalization import FusedRMSNorm as ApexFusedRMSNorm
+        except ImportError:
+            raise ImportError(
+                "Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMS normalization kernel"
+            )
+
         LazyInitContext.materialize(module)
         # to check if it is huggingface LlamaRMSNorm
         if module.__class__.__name__ == "LlamaRMSNorm":
@@ -150,5 +285,11 @@ class FusedRMSNorm:
         rmsnorm = FusedRMSNormWithHook(normalized_shape=normalized_shape, eps=eps, elementwise_affine=elementwise_affine)
 
         rmsnorm.weight = module.weight
+
+        if sp_partial_derived:
+            # Since gradients are computed using only a subset of the data,
+            # aggregation of these gradients is necessary during backpropagation.
+            # Therefore, we annotate these parameters in advance to indicate the need for gradient aggregation.
+            SeqParallelUtils.marked_as_sp_partial_derived_param(rmsnorm.weight)
 
         return rmsnorm

@@ -159,9 +159,6 @@ class ViTPolicy(Policy):
 
 # ViTModel
 class ViTModelPolicy(ViTPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.vit.modeling_vit import ViTModel
 
@@ -227,9 +224,6 @@ class ViTForImageClassificationPolicy(ViTPolicy):
 
 # ViTForMaskedImageModeling
 class ViTForMaskedImageModelingPolicy(ViTPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.vit.modeling_vit import ViTForMaskedImageModeling, ViTModel
 
