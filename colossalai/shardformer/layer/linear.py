@@ -149,7 +149,6 @@ class Linear1D_Col(ParallelModule):
         out_features = module.out_features
         bias = module.bias is not None
         device = module.weight.device
-
         # ensure only one process group is passed
         if isinstance(process_group, (list, tuple)):
             assert len(process_group) == 1, f"Expected only one process group, got {len(process_group)}."

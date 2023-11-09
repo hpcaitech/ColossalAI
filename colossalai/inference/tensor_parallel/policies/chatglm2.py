@@ -48,7 +48,10 @@ class ChatGLM2InferPolicy(ChatGLMModelPolicy):
         self.append_or_create_method_replacement(
             description=method_replacement, policy=policy, target_key=SelfAttention
         )
-
+        if self.shard_config.enable_tensor_parallelism:
+            policy[GLMBlock].attribute_replacement["self_attention.num_multi_query_groups_per_partition"] = (
+                self.model.config.multi_query_group_num // self.shard_config.tensor_parallel_size
+            )
         # for rmsnorm and others, we need to check the shape
         return policy
 

@@ -400,7 +400,6 @@ class SelfAttention(torch.nn.Module):
         )
 
         self.core_attention = CoreAttention(config, self.layer_number)
-
         # Output.
         self.dense = nn.Linear(
             self.projection_size,

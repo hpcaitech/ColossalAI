@@ -395,9 +395,9 @@ class ChatGLM2InferenceForwards:
         assert use_cache is True, "use_cache should be set to True using this chatglm attention"
         # hidden_states: original :[sq, b, h] --> this [b, sq, h]
         batch_size = hidden_states.shape[0]
+        hidden_size = hidden_states.shape[-1]
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
         mixed_x_layer = self.query_key_value(hidden_states)
-
         if self.multi_query_attention:
             (query_layer, key_layer, value_layer) = mixed_x_layer.split(
                 [
@@ -437,7 +437,6 @@ class ChatGLM2InferenceForwards:
             mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
             # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
             (query_layer, key_layer, value_layer) = split_tensor_along_last_dim(mixed_x_layer, 3)
-
         cos, sin = infer_state.position_cos, infer_state.position_sin
 
         chatglm2_rotary_emb_fwd(
@@ -466,10 +465,10 @@ class ChatGLM2InferenceForwards:
         value_layer = value_layer.reshape(
             -1, self.num_multi_query_groups_per_partition, self.hidden_size_per_attention_head
         )
+
         if infer_state.is_context_stage:
             # first token generation:
             # copy key and value calculated in current step to memory manager
-
             copy_kv_to_mem_cache(
                 infer_state.decode_layer_id,
                 key_layer,
@@ -477,8 +476,7 @@ class ChatGLM2InferenceForwards:
                 infer_state.context_mem_index,
                 infer_state.cache_manager,
             )
-
-            attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
+            attn_output = torch.empty_like(query_layer.contiguous().view(-1, self.projection_size))
 
             # NOTE: no bug in context attn fwd (del it )
             lightllm_llama2_context_attention_fwd(
@@ -514,7 +512,7 @@ class ChatGLM2InferenceForwards:
                 )
 
             # second token and follows
-            attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
+            attn_output = torch.empty_like(query_layer.contiguous().view(-1, self.projection_size))
             cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id][
                 : infer_state.decode_mem_end, :, :
             ]
@@ -542,6 +540,6 @@ class ChatGLM2InferenceForwards:
         # =================
         # Output:[b,sq, h]
         # =================
+        output = self.dense(attn_output).reshape(batch_size, -1, hidden_size)
 
-        output = self.dense(attn_output).reshape(batch_size, -1, self.projection_size)
         return output, kv_cache

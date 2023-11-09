@@ -49,7 +49,10 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 @parameterize("keep_gathered", [False, True])
 @parameterize("model_name", ["transformers_gpt_lm"])
 @parameterize("master_weights", [False, True])
-def exam_gemini_grad_acc(placement_config, keep_gathered: bool, model_name: str, master_weights: bool):
+@parameterize("use_grad_checkpoint", [False, True])
+def exam_gemini_grad_acc(
+    placement_config, keep_gathered: bool, model_name: str, master_weights: bool, use_grad_checkpoint: bool
+):
     init_device = get_current_device()
     model_builder, data_gen_fn, output_transform_fn, loss_fn, *_ = next(
         iter(model_zoo.get_sub_registry(model_name).values())
@@ -62,6 +65,10 @@ def exam_gemini_grad_acc(placement_config, keep_gathered: bool, model_name: str,
     torch_model = model_builder().cuda()
     for torch_p, p in zip(torch_model.parameters(), gemini_model.parameters()):
         torch_p.data.copy_(p.data)
+
+    if use_grad_checkpoint:
+        gemini_model.gradient_checkpointing_enable()
+        torch_model.gradient_checkpointing_enable()
 
     world_size = torch.distributed.get_world_size()
     config_dict, *_ = search_chunk_configuration(gemini_model, search_range_m=1, search_interval=100)
@@ -77,7 +84,7 @@ def exam_gemini_grad_acc(placement_config, keep_gathered: bool, model_name: str,
         **placement_config,
     )
     optimizer = HybridAdam(gemini_model.parameters(), lr=1e-3)
-    gemini_optim = GeminiOptimizer(optimizer, gemini_model, initial_scale=1)
+    gemini_optim = GeminiOptimizer(optimizer, gemini_model, initial_scale=1, max_norm=1.0)
 
     rank = dist.get_rank()
 
@@ -112,6 +119,7 @@ def exam_gemini_grad_acc(placement_config, keep_gathered: bool, model_name: str,
         check_grad(gemini_model, torch_model)
 
         if (i + 1) % accum_iter == 0:
+            torch.nn.utils.clip_grad_norm_(amp.master_params(torch_optim), 1.0)
             torch_optim.step()
             gemini_optim.step()
             torch_optim.zero_grad()
