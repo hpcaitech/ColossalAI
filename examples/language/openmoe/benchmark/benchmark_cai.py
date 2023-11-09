@@ -132,8 +132,10 @@ def parse_args():
     # load balance
     parser.add_argument("--load_balance", action="store_true")
 
-    # overlap
-    parser.add_argument("--overlap_alltoall", action="store_true")
+    # overlap communication
+    parser.add_argument("--overlap_comm", action="store_true")
+    # hierarchical all-to-all
+    parser.add_argument("--hierarchical_alltoall", action="store_true")
     args = parser.parse_args()
     return args
 
@@ -211,7 +213,8 @@ def main():
         moe_layer_interval=config.moe_layer_interval,
         enable_load_balance=args.load_balance,
         enable_kernel=args.use_kernel,
-        enable_comm_overlap=args.overlap_alltoall,
+        enable_comm_overlap=args.overlap_comm,
+        enable_hierarchical_alltoall=args.hierarchical_alltoall,
     )
     with skip_init():
         model = OpenMoeForCausalLM(config)

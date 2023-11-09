@@ -138,9 +138,10 @@ class Top1Router(MoeRouter):
         self.select_policy = select_policy
         assert select_policy in {"first", "random"}
         if select_policy == "random":
-            self.uniform = torch.distributions.uniform.Uniform(low=torch.tensor(0.0, device=get_current_device()),
-                                                               high=torch.tensor(1.0,
-                                                                                 device=get_current_device())).rsample
+            self.uniform = torch.distributions.uniform.Uniform(
+                low=torch.tensor(0.0, device=get_current_device()),
+                high=torch.tensor(1.0, device=get_current_device())
+            ).rsample
 
     def forward(self, inputs: torch.Tensor, use_kernel: bool = False, ep_group: Optional[ProcessGroup] = None) -> Tuple:
         """
@@ -165,7 +166,7 @@ class Top1Router(MoeRouter):
         top1_idx = torch.argmax(inputs, dim=-1)
         mask = F.one_hot(top1_idx, num_classes=num_experts).to(torch.int32)
 
-        # caculate router loss
+        # calculate router loss
         self.set_aux_loss(probs, top1_idx.unsqueeze(-1), num_experts)
         self.set_z_loss(inputs)
         self.pop_router_loss()
@@ -187,18 +188,19 @@ class Top1Router(MoeRouter):
             raise NotImplementedError("Not support such select policy yet.")
 
         ranks = torch.sum(mask * ranks, dim=-1)
+        used_capacity = mask.sum(dim=0)
 
         if use_kernel:
             mask = torch.sum(mask, dim=-1)
             mask = torch.stack([mask], dim=0).to(torch.int32)
             dest_idx = torch.stack([top1_idx * capacity + ranks], dim=0).to(torch.int32)
-            return probs, mask, dest_idx, num_experts * capacity
+            return used_capacity, probs, mask, dest_idx, num_experts * capacity
         else:
             ranks = F.one_hot(ranks, num_classes=capacity)
             weight = mask * probs.type_as(inputs)
             combine_weights = weight.unsqueeze(2) * ranks.unsqueeze(1)
             sec_mask = combine_weights.bool()
-            return combine_weights, sec_mask
+            return used_capacity, combine_weights, sec_mask
 
 
 class Top2Router(MoeRouter):
@@ -256,7 +258,7 @@ class Top2Router(MoeRouter):
         cmask = (mask1 + mask2)    # loss: [s, e]
         cmask = cmask.float() / 2.0    # div 2 to normalize it to 1
 
-        # caculate loss
+        # calculate loss
         expert_indices = torch.stack([top1_idx, top2_idx], dim=-1)
         self.set_aux_loss(probs, expert_indices, num_experts)
         self.set_z_loss(inputs)
@@ -273,6 +275,7 @@ class Top2Router(MoeRouter):
 
         mask1 *= torch.lt(rank1, capacity)
         mask2 *= torch.lt(rank2, capacity)
+        used_capacity = mask1.sum(dim=0) + mask2.sum(dim=0)
 
         rank1 = torch.sum(mask1 * rank1, dim=-1)
         rank2 = torch.sum(mask2 * rank2, dim=-1)
@@ -284,18 +287,23 @@ class Top2Router(MoeRouter):
             mask = torch.stack([mask1, mask2], dim=0).to(torch.int32)
             dest_idx = torch.stack([top1_idx * capacity + rank1, top2_idx * capacity + rank2], dim=0).to(torch.int32)
 
-            return probs, mask, dest_idx, num_experts * capacity
+            return used_capacity, probs, mask, dest_idx, num_experts * capacity
         else:
-            # >>> original code
-            # weight1 = mask1 * probs.type_as(inputs)
-            # weight2 = mask2 * probs.type_as(inputs)
-            # rank1_sc = F.one_hot(rank1, num_classes=capacity)
-            # rank2_sc = F.one_hot(rank2, num_classes=capacity)
+            """
+            The following code is equivalent to:
 
-            # cb_weight1 = weight1.unsqueeze(2) * rank1_sc.unsqueeze(1)
-            # cb_weight2 = weight2.unsqueeze(2) * rank2_sc.unsqueeze(1)
-            # cb_weight = cb_weight1 + cb_weight2
-            # sec_mask = cb_weight.bool()
+                ```
+                weight1 = mask1 * probs.type_as(inputs)
+                weight2 = mask2 * probs.type_as(inputs)
+                rank1_sc = F.one_hot(rank1, num_classes=capacity)
+                rank2_sc = F.one_hot(rank2, num_classes=capacity)
+
+                cb_weight1 = weight1.unsqueeze(2) * rank1_sc.unsqueeze(1)
+                cb_weight2 = weight2.unsqueeze(2) * rank2_sc.unsqueeze(1)
+                cb_weight = cb_weight1 + cb_weight2
+                sec_mask = cb_weight.bool()
+                ```
+            """
 
             weight1 = mask1 * probs.type_as(inputs)
             weight2 = mask2 * probs.type_as(inputs)
@@ -308,7 +316,7 @@ class Top2Router(MoeRouter):
             sec_mask[indices, top1_idx[indices], rank1[indices]] |= mask1.bool()[indices, top1_idx[indices]]
             sec_mask[indices, top2_idx[indices], rank2[indices]] |= mask2.bool()[indices, top2_idx[indices]]
 
-            return cb_weight, sec_mask
+            return used_capacity, cb_weight, sec_mask
 
 
 class TopKRouter(MoeRouter):
@@ -352,7 +360,7 @@ class TopKRouter(MoeRouter):
         Returns:
             Dispatch and combine arrays for routing with masked matmuls.
         """
-        # TODO: add parallel group
+        # TODO: FIXME: add parallel group
         num_groups, _, num_experts = router_probs.shape
 
         # Top-k router probability and corresponding expert indices for each token.

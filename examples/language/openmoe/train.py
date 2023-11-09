@@ -190,6 +190,12 @@ def parse_args():
         action="store_true",
         help="Use communication overlap for MoE. Recommended to enable for muiti-node training.",
     )
+    # hierarchical all-to-all
+    parser.add_argument(
+        "--hierarchical_alltoall",
+        action="store_true",
+        help="Use hierarchical all-to-all for MoE. Recommended to enable for muiti-node training.",
+    )
 
     args = parser.parse_args()
     return args
@@ -277,6 +283,7 @@ def main():
         z_loss_factor=args.z_loss_factor,
         enable_load_balance=args.load_balance,
         enable_comm_overlap=args.comm_overlap,
+        enable_hierarchical_alltoall=args.hierarchical_alltoall,
         enable_kernel=args.use_kernel,
     )
     with skip_init():

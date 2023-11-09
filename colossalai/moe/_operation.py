@@ -6,8 +6,6 @@ from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.distributed import ProcessGroup
 
-from colossalai.moe.manager import MOE_MANAGER
-
 MOE_KERNEL = None
 
 
@@ -64,7 +62,7 @@ class ReduceScatter(torch.autograd.Function):
     def forward(
         ctx: Any,
         inputs: Tensor,
-        group: Optional[ProcessGroup] = None,
+        group: ProcessGroup,
         overlap: bool = False,
     ) -> Tuple[Tensor, Any]:
         """
@@ -113,7 +111,7 @@ class AllToAll(torch.autograd.Function):
     def forward(
         ctx: Any,
         inputs: Tensor,
-        group: Optional[ProcessGroup] = None,
+        group: ProcessGroup,
         overlap: bool = False,
     ) -> Tuple[Tensor, Any]:
         """
@@ -121,6 +119,8 @@ class AllToAll(torch.autograd.Function):
             outputs: Tensor
             handle: Optional[Work], if overlap is True
         """
+        assert ctx is not None or not overlap
+
         if ctx is not None:
             ctx.comm_grp = group
         if not inputs.is_contiguous():
@@ -138,8 +138,67 @@ class AllToAll(torch.autograd.Function):
     @staticmethod
     def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None, None]:
         return (
-            AllToAll.forward(None, grad_outputs[0], ctx.comm_grp)[0],
+            AllToAll.forward(None, grad_outputs[0], ctx.comm_grp, False)[0],
             None,
+            None,
+        )
+
+
+class HierarchicalAllToAll(torch.autograd.Function):
+
+    @staticmethod
+    def forward(
+        ctx: Any,
+        inputs: Tensor,
+        groups: Tuple[ProcessGroup],
+    ) -> Tensor:
+        """
+        Returns:
+            outputs: Tensor
+        """
+        # TODO: we can reduce comm volume by removing empty capacity
+        if ctx is not None:
+            ctx.comm_grps = groups
+        intra_node_group, inter_node_group = groups
+
+        local_world_size = dist.get_world_size(intra_node_group)
+        num_group = dist.get_world_size(inter_node_group) if inter_node_group is not None else 1
+        world_size = local_world_size * num_group
+        src_rank = dist.get_process_group_ranks(intra_node_group)[0]
+        outputs = torch.empty_like(inputs)
+
+        if dist.get_rank() == src_rank:
+            # intra-node gather
+            intra_output = [torch.empty_like(inputs) for _ in range(local_world_size)]
+            dist.gather(inputs, intra_output, dst=src_rank, group=intra_node_group)
+
+            intra_output = [v.chunk(world_size, dim=0) for v in intra_output]
+            intra_output = torch.cat(sum(zip(*intra_output), ()))
+
+            # inter-node all-to-all
+            if inter_node_group is not None:
+                inter_output = torch.empty_like(intra_output)
+                dist.all_to_all_single(inter_output, intra_output, group=inter_node_group)
+
+                # layout transform
+                inter_output = inter_output.chunk(num_group, dim=0)
+                inter_output = [v.chunk(local_world_size, dim=0) for v in inter_output]
+                intra_output = torch.cat(sum(zip(*inter_output), ()))
+
+            # intra-node scatter
+            intra_output = list(intra_output.chunk(local_world_size, dim=0))
+            dist.scatter(outputs, intra_output, src=src_rank, group=intra_node_group)
+
+        else:
+            dist.gather(inputs, dst=src_rank, group=intra_node_group)
+            dist.scatter(outputs, src=src_rank, group=intra_node_group)
+
+        return outputs
+
+    @staticmethod
+    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None]:
+        return (
+            HierarchicalAllToAll.forward(None, grad_outputs[0], ctx.comm_grps),
             None,
         )
 

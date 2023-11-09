@@ -8,7 +8,6 @@ from colossalai.legacy.registry import GRADIENT_HANDLER
 from colossalai.moe import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_moe_epsize_param_dict
-from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_rank, get_ep_size, is_moe_tensor
 
 
 class MoeModel(nn.Module):
@@ -76,84 +75,6 @@ class MoeGradientHandler(BaseGradientHandler):
                     )
 
 
-def sync_tp_from_ep(tp_model: SparseMLP, ep_model: SparseMLP, assert_grad_flag: bool = False) -> None:
-    """Sync the parameters of tp model from ep model
-
-    Args:
-        tp_model (MoeModule)
-        ep_model (MoeModule)
-    """
-    for (tp_name, tp_param), (ep_name, ep_param) in zip(tp_model.named_parameters(), ep_model.named_parameters()):
-        assert tp_name == ep_name
-        if not is_moe_tensor(tp_param):
-            if assert_grad_flag:
-                assert torch.allclose(tp_param, ep_param)
-                assert torch.allclose(tp_param.grad, ep_param.grad)
-            else:
-                tp_param.data.copy_(ep_param.data)
-            continue
-
-        # gather param from ep model
-        param_list = [torch.zeros_like(ep_param) for _ in range(get_ep_size(ep_param))]
-        dist.all_gather(param_list, ep_param, group=get_ep_group(ep_param))
-        all_param = torch.cat(param_list, dim=0)
-        if assert_grad_flag:
-            grad_list = [torch.zeros_like(ep_param) for _ in range(get_ep_size(ep_param))]
-            dist.all_gather(grad_list, ep_param.grad, group=get_ep_group(ep_param))
-            all_grad = torch.cat(grad_list, dim=0)
-
-        # get tp param
-        tp_dim = [i for i, (d1, d2) in enumerate(zip(tp_param.shape[1:], all_param.shape[1:])) if d1 != d2]
-        tp_rank = get_ep_rank(tp_param)
-        tp_dim = tp_dim[0] + 1
-        tp_slice = [slice(None)] * tp_dim + [
-            slice(tp_param.shape[tp_dim] * tp_rank, tp_param.shape[tp_dim] * (tp_rank + 1))
-        ]
-        new_tp_param = all_param[tuple(tp_slice)]
-        if assert_grad_flag:
-            new_grad = all_grad[tuple(tp_slice)]
-        if assert_grad_flag:
-            assert torch.allclose(tp_param, new_tp_param)
-            assert torch.allclose(tp_param.grad, new_grad)
-        else:
-            tp_param.data.copy_(new_tp_param.data)
-
-
-def sync_local_from_ep(local_model: SparseMLP, ep_model: SparseMLP, assert_grad_flag: bool = False) -> None:
-    """Sync the parameters of tp model from ep model
-
-    Args:
-        local_model (MoeModule)
-        ep_model (MoeModule)
-    """
-    for (local_name, local_param), (ep_name, ep_param) in zip(
-        local_model.named_parameters(), ep_model.named_parameters()
-    ):
-        assert local_name == ep_name
-        if "experts" not in local_name:
-            if assert_grad_flag:
-                assert torch.allclose(local_param, ep_param)
-                assert torch.allclose(local_param.grad, ep_param.grad)
-            else:
-                local_param.data.copy_(ep_param.data)
-            continue
-
-        # gather param from ep model
-        param_list = [torch.zeros_like(ep_param) for _ in range(get_ep_size(ep_param))]
-        dist.all_gather(param_list, ep_param, group=get_ep_group(ep_param))
-        all_param = torch.cat(param_list, dim=0)
-        if assert_grad_flag:
-            grad_list = [torch.zeros_like(ep_param) for _ in range(get_ep_size(ep_param))]
-            dist.all_gather(grad_list, ep_param.grad, group=get_ep_group(ep_param))
-            all_grad = torch.cat(grad_list, dim=0)
-
-        if assert_grad_flag:
-            assert torch.allclose(local_param, all_param)
-            assert torch.allclose(local_param.grad, all_grad)
-        else:
-            local_param.data.copy_(all_param.data)
-
-
 def assert_not_equal_in_group(tensor, process_group=None):
     # all gather tensors from different ranks
     world_size = dist.get_world_size(process_group)
@@ -164,6 +85,6 @@ def assert_not_equal_in_group(tensor, process_group=None):
     for i in range(world_size - 1):
         a = tensor_list[i]
         b = tensor_list[i + 1]
-        assert not torch.allclose(
-            a, b
-        ), f"expected tensors on rank {i} and {i + 1} to be equal but they are not, {a} vs {b}"
+        assert not torch.allclose(a, b), \
+            (f"expected tensors on rank {i} and {i + 1} not to be equal "
+             f"but they are, {a} vs {b}")
