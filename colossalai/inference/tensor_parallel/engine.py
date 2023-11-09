@@ -221,11 +221,17 @@ class TPInferEngine:
         ), "Discrepancy between the tp size of TPInferEngine and the tp size of shard config"
         model_name = model.__class__.__name__
         assert model_name in self.supported_models, f"Unsupported model cls {model_name} for TP inference."
-        if "inference_gptq" in self.shard_config.extra_kwargs.keys() and self.shard_config.inference_gptq:
+        if (
+            "inference_gptq" in self.shard_config.extra_kwargs.keys()
+            and self.shard_config.extra_kwargs["inference_gptq"]
+        ):
             model = model.model
         policy = get_autopolicy(model, shard_config=self.shard_config)
         self.model, _ = shardformer.optimize(model, policy)
-        if "inference_gptq" in self.shard_config.extra_kwargs.keys() and self.shard_config.inference_gptq:
+        if (
+            "inference_gptq" in self.shard_config.extra_kwargs.keys()
+            and self.shard_config.extra_kwargs["inference_gptq"]
+        ):
             self._post_init_gptq_buffer(self.model)
 
         self.model = self.model.cuda()

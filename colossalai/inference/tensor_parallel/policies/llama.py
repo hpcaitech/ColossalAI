@@ -38,7 +38,10 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
     def module_policy(self):
         policy = super().module_policy()
 
-        if "inference_gptq" in self.shard_config.extra_kwargs.keys() and self.shard_config.inference_gptq:
+        if (
+            "inference_gptq" in self.shard_config.extra_kwargs.keys()
+            and self.shard_config.extra_kwargs["inference_gptq"]
+        ):
             from colossalai.inference.quant.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
 
             decoder_attribute_replacement = {

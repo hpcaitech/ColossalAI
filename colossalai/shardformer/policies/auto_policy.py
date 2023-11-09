@@ -222,5 +222,5 @@ def get_autopolicy(model: nn.Module, shard_config: ShardConfig = None) -> Policy
             f"Auto policy for {model.__class__.__qualname__} is not implemented\n. Supported models are {list(_POLICY_LIST.keys())} and {list(_INFER_POLICY_LIST.keys())}"
         )
     else:
-        policy = import_policy(policy_location, shard_config.inference_only)
+        policy = import_policy(policy_location, inference_only)
     return policy()
