@@ -10,6 +10,8 @@ from colossalai.utils import is_ddp_ignored
 from colossalai.zero.gemini import TensorState
 from colossalai.zero.gemini.gemini_mgr import GeminiManager
 
+from .utils import is_lora_ignored
+
 
 class TrainingPhase(Enum):
     FORWARD = 0
@@ -39,12 +41,15 @@ class GeminiZeROHook(ColoParamOpHook):
     def post_op(self, params):
         params = [p for p in params if not is_ddp_ignored(p)]
         for p in params:
-            tensor_state = (
-                TensorState.HOLD
-                if self._training_phase == TrainingPhase.FORWARD or not p.requires_grad
-                else TensorState.HOLD_AFTER_BWD
-            )
-            self._chunk_manager.trans_tensor_state(p, tensor_state)
+            if not is_lora_ignored(p):
+                tensor_state = (
+                    TensorState.HOLD
+                    if self._training_phase == TrainingPhase.FORWARD or not p.requires_grad
+                    else TensorState.HOLD_AFTER_BWD
+                )
+                self._chunk_manager.trans_tensor_state(p, tensor_state)
+            else:
+                self.lora_ignored_post_op_handler(p)
 
     def pre_forward(self, params: List[torch.Tensor]) -> None:
         self.pre_op(params)
@@ -57,6 +62,33 @@ class GeminiZeROHook(ColoParamOpHook):
 
     def post_backward(self, params: List[torch.Tensor]) -> None:
         self.post_op(params)
+
+    def lora_ignored_post_op_handler(self, p):
+        # This handler is desgined for model parameters not requiring gradients when lora is enabled.
+
+        # When doing forward, just transfer state to HOLD.
+        if self._training_phase == TrainingPhase.FORWARD:
+            self._chunk_manager.trans_tensor_state(p, TensorState.HOLD)
+            return
+
+        chunk = self._chunk_manager.get_chunk(p)
+
+        # Transfer state to READY_FOR_REDUCE after backward.
+        chunk.tensor_trans_state(p, TensorState.HOLD_AFTER_BWD)
+        chunk.tensor_trans_state(p, TensorState.READY_FOR_REDUCE)
+
+        # Use chunk.can_reduce as the flag for scattering
+        if chunk.can_reduce:
+            # Tranfer chunk state to HOLD.
+            for tensor in chunk.tensors_info.keys():
+                chunk.tensor_trans_state(tensor, TensorState.HOLD)
+            # Scatter parameter chunk.
+            if chunk.keep_gathered:
+                self._chunk_manager.fake_release_chunk(chunk)
+            else:
+                self._chunk_manager.release_chunk(chunk)
+            # Move chunk to its resident device.
+            self._chunk_manager.move_chunk(chunk, self.grads_device[p], force_copy=True)
 
     @contextmanager
     def switch_training_phase(self, training_phase: TrainingPhase = TrainingPhase.BACKWARD):

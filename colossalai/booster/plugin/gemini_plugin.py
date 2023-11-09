@@ -406,6 +406,7 @@ class GeminiPlugin(DPPluginBase):
             memstats=memstats,
             mixed_precision=PRECISION_STR_TO_DTYPE[precision],
             master_weights=master_weights,
+            enable_lora=False,
         )
         self.zero_optim_config = dict(
             gpu_margin_mem_ratio=gpu_margin_mem_ratio,
@@ -457,12 +458,10 @@ class GeminiPlugin(DPPluginBase):
                 model, PeftModel
             ), "The model should have been wrapped as a PeftModel when self.lora_enabled is True"
 
+            self.gemini_config["enable_lora"] = True
+
             # The optimizer will be small when enabling lora, so no need to offload.
             self.gemini_config["offload_optim_frac"] = 0.0
-
-            # The modules to be finetuned and saved should be passed to GeminiDDP for further processing.
-            # For example: the 'classifier'/'score' module in models for SequenceClassification
-            self.gemini_config["modules_to_save_for_lora"] = model.modules_to_save
 
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
@@ -502,6 +501,17 @@ class GeminiPlugin(DPPluginBase):
         self.lora_enabled = True
 
         if pretrained_dir is None:
-            return get_peft_model(model, lora_config)
+            peft_model = get_peft_model(model, lora_config)
         else:
-            return PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)
+            peft_model = PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)
+
+        # For parameters modules set to be fine-tuned and saved, their original copies don't participate in the calculation of loss.
+        # Thus their requires_grad attribute should be manually set to False to avoid bugs(Peft set them to True after initialization).
+        # e.g.: the 'classifier'/'score' modules in models for SequenceClassification
+        modules_to_save = peft_model.modules_to_save
+        if modules_to_save is not None:
+            for n, p in peft_model.named_parameters():
+                if any((f"{key}.original_module" in n) for key in modules_to_save):
+                    p.requires_grad_(False)
+
+        return peft_model

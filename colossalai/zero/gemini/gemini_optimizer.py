@@ -19,6 +19,7 @@ from colossalai.utils import disposable, get_current_device, is_ddp_ignored
 
 from .chunk import Chunk, ChunkManager
 from .gemini_ddp import GeminiDDP
+from .utils import is_lora_ignored
 
 __all__ = ["GeminiOptimizer", "GeminiAdamOptimizer"]
 
@@ -127,6 +128,8 @@ class GeminiOptimizer(OptimizerWrapper):
                         f"Parameter `{name}` is ignored by DDP but requires gradient! "
                         "You should handle its optimizer update by yourself!"
                     )
+            elif is_lora_ignored(param):
+                continue
             else:
                 ddp_param_list.append(param)
 
@@ -342,7 +345,7 @@ class GeminiOptimizer(OptimizerWrapper):
                 group_ids.append(param_id)
 
                 # If current param is controlled by current process, add it to fake_param.
-                if is_ddp_ignored(param):
+                if is_ddp_ignored(param) or is_lora_ignored(param):
                     continue
                 chunk16 = self.chunk_manager.get_chunk(param)
                 range_pair = get_range_pair(chunk16, param)

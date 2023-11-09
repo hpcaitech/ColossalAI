@@ -22,8 +22,7 @@ def assert_close_loose(a: Tensor, b: Tensor, rtol: float = 1e-3, atol: float = 1
         b,
         rtol=rtol,
         atol=atol,
-        msg=f"Tensor not close, shape: {a.shape} vs {b.shape}, \
-                                                   dtype: {a.dtype} vs {b.dtype}",
+        msg=f"Tensor not close, shape: {a.shape} vs {b.shape}, dtype: {a.dtype} vs {b.dtype}",
     )
 
 

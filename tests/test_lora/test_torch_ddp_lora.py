@@ -1,7 +1,6 @@
 import copy
 import os
 
-import torch
 from peft import LoraConfig
 from torch import distributed as dist
 from torch.optim import AdamW
@@ -9,16 +8,10 @@ from torch.optim import AdamW
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
-from colossalai.testing import (
-    assert_equal,
-    assert_not_equal,
-    check_state_dict_equal,
-    clear_cache_before_run,
-    rerun_if_address_is_in_use,
-    spawn,
-)
+from colossalai.testing import check_state_dict_equal, clear_cache_before_run, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 from tests.test_checkpoint_io.utils import shared_tempdir
+from tests.test_lora.utils import check_param_equality, do_fwd_bwd
 
 
 @clear_cache_before_run()
@@ -36,36 +29,10 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
     criterion = loss_fn
 
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
-
-    for _ in range(2):
-        data = data_gen_fn()
-        data = {
-            k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
-        }
-
-        output = model(**data)
-        output = output_transform_fn(output)
-        loss = criterion(output)
-
-        booster.backward(loss, optimizer)
-        optimizer.clip_grad_by_norm(1.0)
-        optimizer.step()
+    do_fwd_bwd(booster, model, optimizer, data_gen_fn, output_transform_fn, criterion)
 
     for (n1, p1), (_, p2) in zip(model.named_parameters(), model_copy.named_parameters()):
-        p2 = p2.to(p1.device).to(p1.dtype)
-        if "lora_" in n1:
-            # lora modules require gradients, thus updated
-            assert p1.requires_grad
-            assert_not_equal(p1, p2)
-        else:
-            modules_to_save = model.unwrap().modules_to_save
-            if (modules_to_save is not None) and any(f"{key}.modules_to_save" in n1 for key in modules_to_save):
-                # if a non-lora module should be saved, it should be updated
-                assert p1.requires_grad
-                assert_not_equal(p1, p2)
-            else:
-                # if a non-lora module isn't supposed to be saved, it shouldn't be updated
-                assert_equal(p1, p2)
+        check_param_equality(n1, p1, p2, modules_to_save=model.unwrap().modules_to_save)
 
 
 @clear_cache_before_run()
@@ -80,18 +47,9 @@ def check_checkpoint(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_t
     booster = Booster(plugin=plugin)
     model_save = booster.enable_lora(model_save, lora_config=lora_config)
     optimizer_save = AdamW(model_save.parameters(), lr=0.001)
+
     model_save, optimizer_save, _, _, _ = booster.boost(model_save, optimizer_save)
-
-    data = data_gen_fn()
-    data = {k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
-
-    output = model_save(**data)
-    output = output_transform_fn(output)
-    loss = criterion(output)
-
-    booster.backward(loss, optimizer_save)
-    optimizer_save.clip_grad_by_norm(1.0)
-    optimizer_save.step()
+    do_fwd_bwd(booster, model_save, optimizer_save, data_gen_fn, output_transform_fn, criterion)
 
     with shared_tempdir() as tempdir:
         lora_ckpt_path = os.path.join(tempdir, "model_ckpt")

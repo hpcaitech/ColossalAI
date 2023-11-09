@@ -13,7 +13,7 @@ from .chunk import Chunk
 
 def get_temp_total_chunk_on_cuda(chunk: Chunk, dtype: torch.dtype):
     if chunk.is_gathered:
-        return chunk.cuda_global_chunk
+        return chunk.cuda_global_chunk.to(dtype)
 
     if chunk.cuda_shard is not None:
         shard_temp = chunk.cuda_shard
@@ -105,3 +105,7 @@ def get_static_torch_model(
     dist.barrier()
 
     return torch_model
+
+
+def is_lora_ignored(p):
+    return getattr(p, "_ignored_by_lora", False)

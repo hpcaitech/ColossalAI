@@ -242,7 +242,19 @@ class TorchDDPPlugin(DPPluginBase):
         from peft import PeftModel, get_peft_model
 
         assert not isinstance(model, TorchDDPModel), "Lora should be enabled before boosting the model."
+
         if pretrained_dir is None:
-            return get_peft_model(model, lora_config)
+            peft_model = get_peft_model(model, lora_config)
         else:
-            return PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)
+            peft_model = PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)
+
+        # For parameters modules set to be fine-tuned and saved, their original copies don't participate in the calculation of loss.
+        # Thus their requires_grad attribute should be manually set to False to avoid bugs(Peft set them to True after initialization).
+        # e.g.: the 'classifier'/'score' modules in models for SequenceClassification
+        modules_to_save = peft_model.modules_to_save
+        if modules_to_save is not None:
+            for n, p in peft_model.named_parameters():
+                if any((f"{key}.original_module" in n) for key in modules_to_save):
+                    p.requires_grad_(False)
+
+        return peft_model
