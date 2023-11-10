@@ -9,12 +9,15 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
 
-from ..kvcache_manager import MemoryManager
-from .microbatch_manager import MicroBatchManager
+from ..pipeline.microbatch_manager import MicroBatchManager
+from ..tensor_parallel.kvcache_manager import MemoryManager
 
 PP_AXIS, TP_AXIS = 0, 1
 
-_supported_models = ["LlamaForCausalLM", "BloomForCausalLM", "LlamaGPTQForCausalLM", "SmoothLlamaForCausalLM", "ChatGLMForConditionalGeneration"]
+_supported_models = [
+    "LlamaForCausalLM",
+]
+
 
 class CaiInferEngine:
     """
@@ -66,21 +69,12 @@ class CaiInferEngine:
         max_batch_size: int = 4,
         max_input_len: int = 32,
         max_output_len: int = 32,
-        quant: str = None,
         verbose: bool = False,
         # TODO: implement early_stopping, and various gerneration options
         early_stopping: bool = False,
         do_sample: bool = False,
         num_beams: int = 1,
     ) -> None:
-        if quant == "gptq":
-            from ..quant.gptq import GPTQManager
-
-            self.gptq_manager = GPTQManager(model.quantize_config, max_input_len=max_input_len)
-            model = model.model
-        elif quant == "smoothquant":
-            model = model.model
-
         assert model.__class__.__name__ in _supported_models, f"Model {model.__class__.__name__} is not supported."
         assert (
             tp_size * pp_size == dist.get_world_size()
@@ -90,14 +84,11 @@ class CaiInferEngine:
 
         assert max_batch_size <= 64, "Max batch size exceeds the constraint"
         assert max_input_len + max_output_len <= 4096, "Max length exceeds the constraint"
-        assert quant in ["smoothquant", "gptq", None], "quant should be one of 'smoothquant', 'gptq'"
+
+        # TODO: support only tensor parallel inference
+        assert pp_size > 1, "Not support only tensor parallel inference."
         self.pp_size = pp_size
         self.tp_size = tp_size
-        self.quant = quant
-
-        if quant == "smoothquant" and dtype != "fp32":
-            dtype = "fp32"
-            print("Warning: smoothquant only support fp32 and int8 mix precision. set dtype to fp32")
 
         if dtype == "fp16":
             self.dtype = torch.float16
@@ -111,25 +102,25 @@ class CaiInferEngine:
         # Init pg mesh
         pg_mesh = ProcessGroupMesh(pp_size, tp_size)
 
-        stage_manager = PipelineStageManager(pg_mesh, PP_AXIS, True)
-        self.cache_manager_list = [
-            self._init_manager(model, max_batch_size, max_input_len, max_output_len)
-            for _ in range(micro_batch_buffer_size or pp_size)
-        ]
-        self.mb_manager = MicroBatchManager(
-            stage_manager.stage,
-            micro_batch_size,
-            micro_batch_buffer_size or pp_size,
-            max_input_len,
-            max_output_len,
-            self.cache_manager_list,
-        )
-        self.verbose = verbose
-        self.schedule = GenerateSchedule(stage_manager, self.mb_manager, verbose)
+        stage_manager = None
+        if pp_size > 1:
+            stage_manager = PipelineStageManager(pg_mesh, PP_AXIS, True)
+            self.cache_manager_list = [
+                self._init_manager(model, max_batch_size, max_input_len, max_output_len)
+                for _ in range(micro_batch_buffer_size or pp_size)
+            ]
+            self.mb_manager = MicroBatchManager(
+                stage_manager.stage,
+                micro_batch_size,
+                micro_batch_buffer_size or pp_size,
+                max_input_len,
+                max_output_len,
+                self.cache_manager_list,
+            )
+            self.verbose = verbose
+            self.schedule = GenerateSchedule(stage_manager, self.mb_manager, verbose)
 
         self.model = self._shardformer(model, model_policy, stage_manager, pg_mesh.get_group_along_axis(TP_AXIS))
-        if quant == "gptq":
-            self.gptq_manager.post_init_gptq_buffer(self.model)
 
     def inference(self, input_list):
         """
@@ -155,13 +146,12 @@ class CaiInferEngine:
         shardconfig = ShardConfig(
             tensor_parallel_process_group=tp_group,
             pipeline_stage_manager=stage_manager,
-            enable_tensor_parallelism=True if self.tp_size > 1 else False,
+            enable_tensor_parallelism=False,
             enable_fused_normalization=False,
             enable_all_optimization=False,
             enable_flash_attention=False,
             enable_jit_fused=False,
             enable_sequence_parallelism=False,
-            quant=self.quant,
         )
         shardformer = ShardFormer(shard_config=shardconfig)
         shard_model, _ = shardformer.optimize(model, model_policy)
@@ -169,33 +159,12 @@ class CaiInferEngine:
 
     def _init_manager(self, model, max_batch_size: int, max_input_len: int, max_output_len: int) -> None:
         max_total_token_num = max_batch_size * (max_input_len + max_output_len)
-        if model.config.model_type == "llama":
-            head_dim = model.config.hidden_size // model.config.num_attention_heads
-            head_num = model.config.num_key_value_heads // self.tp_size
-            num_hidden_layers = (
-                model.config.num_hidden_layers
-                if hasattr(model.config, "num_hidden_layers")
-                else model.config.num_layers
-            )
-            layer_num = num_hidden_layers // self.pp_size
-        elif model.config.model_type == "bloom":
-            head_dim = model.config.hidden_size // model.config.n_head
-            head_num = model.config.n_head // self.tp_size
-            num_hidden_layers = model.config.n_layer
-            layer_num = num_hidden_layers // self.pp_size
-        elif model.config.model_type == "chatglm":
-            head_dim = model.config.hidden_size // model.config.num_attention_heads
-            if model.config.multi_query_attention:
-                head_num = model.config.multi_query_group_num // self.tp_size
-            else:
-                head_num = model.config.num_attention_heads // self.tp_size
-            num_hidden_layers = model.config.num_layers
-            layer_num = num_hidden_layers // self.pp_size
-        else:
-            raise NotImplementedError("Only support llama, bloom and chatglm model.")
+        head_dim = model.config.hidden_size // model.config.num_attention_heads
+        head_num = model.config.num_attention_heads
+        num_hidden_layers = (
+            model.config.num_hidden_layers if hasattr(model.config, "num_hidden_layers") else model.config.num_layers
+        )
+        layer_num = num_hidden_layers // self.pp_size
 
-        if self.quant == "smoothquant":
-            cache_manager = MemoryManager(max_total_token_num, torch.int8, head_num, head_dim, layer_num)
-        else:
-            cache_manager = MemoryManager(max_total_token_num, self.dtype, head_num, head_dim, layer_num)
+        cache_manager = MemoryManager(max_total_token_num, self.dtype, head_num, head_dim, layer_num)
         return cache_manager

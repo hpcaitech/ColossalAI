@@ -20,7 +20,10 @@ from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferSta
 from colossalai.kernel.triton import bloom_context_attn_fwd, copy_kv_cache_to_dest, token_attention_fwd
 
 try:
-    from lightllm.models.bloom.triton_kernel.context_flashattention_nopad import context_attention_fwd as lightllm_bloom_context_attention_fwd
+    from lightllm.models.bloom.triton_kernel.context_flashattention_nopad import (
+        context_attention_fwd as lightllm_bloom_context_attention_fwd,
+    )
+
     HAS_LIGHTLLM_KERNEL = True
 except:
     HAS_LIGHTLLM_KERNEL = False
