@@ -6,7 +6,7 @@ import torch
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaForCausalLM, LlamaModel
 from transformers.utils import logging
 
-from colossalai.inference.kvcache_manager.batch_infer_state import BatchInferState
+from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import llama_context_attn_fwd, token_attention_fwd
 from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -167,7 +167,7 @@ class LlamaInferenceForwards:
             logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
-        # If is first stage and hidden_states is None, go throught lm_head first
+        # If is first stage and after warmup, go throught lm_head first
         if stage_manager.is_first_stage() and hidden_states is not None:
             lm_logits = self.lm_head(hidden_states)
             return {"logits": lm_logits}
@@ -327,6 +327,15 @@ class LlamaInferenceForwards:
         infer_state.seq_len += 1
         infer_state.max_len_in_batch += 1
 
+        # if not return_dict:
+        #     return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
+
+        # return BaseModelOutputWithPast(
+        #     last_hidden_state=hidden_states,
+        #     past_key_values=next_cache,
+        #     hidden_states=all_hidden_states,
+        #     attentions=all_self_attns,
+        # )
         return {"hidden_states": hidden_states}
 
     @staticmethod

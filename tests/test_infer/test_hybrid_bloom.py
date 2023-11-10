@@ -1,3 +1,5 @@
+import importlib.util
+
 import pytest
 import torch
 import torch.distributed as dist
@@ -9,9 +11,9 @@ from colossalai.inference import BloomModelInferPolicy, CaiInferEngine
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
-try:
-    HAS_LIGHTLLM_KERNEL = True
-except:
+HAS_LIGHTLLM_KERNEL = True
+
+if importlib.util.find_spec("lightllm") is None:
     HAS_LIGHTLLM_KERNEL = False
 
 
