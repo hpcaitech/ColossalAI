@@ -398,9 +398,9 @@ class HybridParallelPlugin(PipelinePluginBase):
                 assert num_model_chunks > 1, "number of model chunks must be > 1 when using interleaved"
                 self.schedule = InterleavedSchedule(
                     stage_manager=self.stage_manager,
+                    num_model_chunks=num_model_chunks,
                     num_microbatch=num_microbatches,
                     microbatch_size=microbatch_size,
-                    num_model_chunks=num_model_chunks,
                 )
             elif pp_style == "1f1b":
                 self.schedule = OneForwardOneBackwardSchedule(

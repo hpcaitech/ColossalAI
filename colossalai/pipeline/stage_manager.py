@@ -66,8 +66,11 @@ class PipelineStageManager:
         Returns:
             bool: Whether the current stage is the first stage.
         """
-        assert not self.is_interleave or model_chunk_id is not None
-        return self.stage and (not self.is_interleave or model_chunk_id == 0)
+        assert self.is_interleave or model_chunk_id is None
+        if not self.is_interleave or model_chunk_id is None:
+            return self.stage == 0
+        else:
+            return self.stage == 0 and model_chunk_id == 0
 
     def is_last_stage(self, model_chunk_id: Optional[int] = None) -> bool:
         """Is the current stage the last stage.
@@ -75,8 +78,11 @@ class PipelineStageManager:
         Returns:
             bool: Whether the current stage is the last stage.
         """
-        assert not self.is_interleave or model_chunk_id is not None
-        return self.stage == self.num_stages - 1 and (not self.is_interleave or model_chunk_id == self.num_model_chunks - 1)
+        assert self.is_interleave or model_chunk_id is None
+        if not self.is_interleave or model_chunk_id is None:
+            return self.stage == self.num_stages - 1
+        else:
+            return self.stage == self.num_stages - 1 and model_chunk_id == self.num_model_chunks - 1
 
     @property
     def num_stages(self) -> int:
