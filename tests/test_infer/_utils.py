@@ -19,7 +19,7 @@ def build_model(
         enable_tensor_parallelism=enable_tensor_parallelism,
         enable_flash_attention=enable_flash_attention,
         enable_jit_fused=enable_jit_fused,
-        inference_only=True,
+        extra_kwargs={"inference_only": True},
     )
     model_copy = copy.deepcopy(org_model)
     shard_former = ShardFormer(shard_config=shard_config)

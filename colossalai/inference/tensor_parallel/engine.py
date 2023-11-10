@@ -44,7 +44,7 @@ class TPInferEngine:
         >>> # define model and shard config for your inference
         >>> model = ...
         >>> generate_kwargs = ...
-        >>> shard_config = ShardConfig(enable_tensor_parallelism=True, inference_only=True)
+        >>> shard_config = ShardConfig(enable_tensor_parallelism=True, extra_kwargs={"inference_only": True})
         >>> infer_engine = TPInferEngine(model, shard_config, MAX_BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
         >>> outputs = infer_engine.generate(input_ids, **generate_kwargs)
     """
@@ -181,7 +181,7 @@ class TPInferEngine:
         In further generation, use the sharded model instead of original model.
         """
         # NOTE we will change to use an inference config later with additional attrs we want
-        assert self.shard_config.inference_only is True
+        assert self.shard_config.extra_kwargs["inference_only"] is True
         shardformer = ShardFormer(shard_config=self.shard_config)
         self._prepare_with_shard_config(shard_config=self.shard_config)
         self._shard_model_by(shardformer, model)
@@ -203,10 +203,10 @@ class TPInferEngine:
                 enable_all_optimization=False,
                 enable_flash_attention=False,
                 enable_jit_fused=False,
-                inference_only=True,
+                extra_kwargs={"inference_only": True},
             )
         else:
-            shard_config.inference_only = True
+            shard_config.extra_kwargs = {"inference_only": True}
             shard_config.pipeline_stage_manager = None
             if shard_config.enable_tensor_parallelism:
                 self.tp_size = shard_config.tensor_parallel_size
@@ -221,13 +221,11 @@ class TPInferEngine:
         ), "Discrepancy between the tp size of TPInferEngine and the tp size of shard config"
         model_name = model.__class__.__name__
         assert model_name in self.supported_models, f"Unsupported model cls {model_name} for TP inference."
-
-        model = model.model if self.shard_config.inference_gptq else model
+        if self.shard_config.extra_kwargs.get("inference_gptq", False):
+            model = model.model
         policy = get_autopolicy(model, shard_config=self.shard_config)
-
         self.model, _ = shardformer.optimize(model, policy)
-
-        if self.shard_config.inference_gptq:
+        if self.shard_config.extra_kwargs.get("inference_gptq", False):
             self._post_init_gptq_buffer(self.model)
 
         self.model = self.model.cuda()
