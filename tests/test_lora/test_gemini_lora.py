@@ -29,14 +29,17 @@ PLACEMENT_CONFIGS = [
 
 
 @clear_cache_before_run()
-def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type, placement_config, master_weights):
+def check_fn(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type, placement_config, master_weights):
     model = model_fn()
     model.gradient_checkpointing_enable()
+    model_load = copy.deepcopy(model)
+    enable_gradient_accumulation = master_weights
 
     plugin = GeminiPlugin(
         max_norm=1.0,
         initial_scale=2**5,
         master_weights=master_weights,
+        enable_gradient_accumulation=enable_gradient_accumulation,
         **placement_config,
     )
     booster = Booster(plugin=plugin)
@@ -49,7 +52,26 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
     criterion = loss_fn
 
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
-    do_fwd_bwd(booster, model, optimizer, data_gen_fn, output_transform_fn, criterion)
+
+    if enable_gradient_accumulation:
+        # Do forward and backward under grad accum setting.
+        accum_iter = 2
+        for i in range(2 * accum_iter):
+            data = data_gen_fn()
+            data = {
+                k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v
+                for k, v in data.items()
+            }
+            output = model(**data)
+            output = output_transform_fn(output)
+            loss = criterion(output) / accum_iter
+            booster.backward(loss, optimizer)
+
+            if (i + 1) % accum_iter == 0:
+                optimizer.clip_grad_by_norm(1.0)
+                optimizer.step()
+    else:
+        do_fwd_bwd(booster, model, optimizer, data_gen_fn, output_transform_fn, criterion)
 
     # Check parameters
     gemini_dict = model.state_dict(only_rank_0=False)
@@ -60,34 +82,13 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
             name, gemini_dict[name], model_copy_dict[name], modules_to_save=model.unwrap().modules_to_save
         )
 
-
-@clear_cache_before_run()
-def check_checkpoint(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type, placement_config, master_weights):
-    plugin = GeminiPlugin(
-        max_norm=1.0,
-        initial_scale=2**5,
-        master_weights=master_weights,
-        **placement_config,
-    )
-    booster = Booster(plugin=plugin)
-    lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
-    criterion = loss_fn
-
-    model_save = model_fn()
-    model_load = copy.deepcopy(model_save)
-
-    model_save = booster.enable_lora(model_save, lora_config=lora_config)
-    optimizer_save = HybridAdam(model_save.parameters(), lr=0.001)
-
-    model_save, optimizer_save, _, _, _ = booster.boost(model_save, optimizer_save)
-    do_fwd_bwd(booster, model_save, optimizer_save, data_gen_fn, output_transform_fn, criterion)
-
+    # check the checkpointio function
     with shared_tempdir() as tempdir:
         lora_ckpt_path = os.path.join(tempdir, "model_ckpt")
         optimizer_ckpt_path = os.path.join(tempdir, "optimizer_ckpt")
 
-        booster.save_lora_as_pretrained(model_save, lora_ckpt_path)
-        booster.save_optimizer(optimizer_save, optimizer_ckpt_path, shard=False)
+        booster.save_lora_as_pretrained(model, lora_ckpt_path)
+        booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=False)
         dist.barrier()
 
         # The Lora checkpoint should be small in size
@@ -108,62 +109,8 @@ def check_checkpoint(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_t
 
         booster.load_optimizer(optimizer_load, optimizer_ckpt_path)
 
-        check_state_dict_equal(model_save.state_dict(only_rank_0=False), model_load.state_dict(only_rank_0=False))
-        check_state_dict_equal(
-            optimizer_save.state_dict(only_rank_0=False), optimizer_load.state_dict(only_rank_0=False)
-        )
-
-
-@clear_cache_before_run()
-def check_grad_accum(placement_config):
-    model_fn, data_gen_fn, output_transform_fn, loss_fn, _ = next(
-        iter(model_zoo.get_sub_registry("transformers_llama_for_casual_lm").values())
-    )
-
-    model = model_fn()
-    model.gradient_checkpointing_enable()
-
-    plugin = GeminiPlugin(
-        max_norm=1.0,
-        initial_scale=2**5,
-        enable_gradient_accumulation=True,
-        **placement_config,
-    )
-    booster = Booster(plugin=plugin)
-
-    lora_config = LoraConfig(task_type="CAUSAL_LM", r=8, lora_alpha=32, lora_dropout=0.1)
-    model = booster.enable_lora(model, lora_config=lora_config)
-    model_copy = copy.deepcopy(model)
-
-    optimizer = HybridAdam(model.parameters(), lr=0.001)
-    criterion = loss_fn
-
-    model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
-
-    # Do forward and backward under grad accum setting.
-    accum_iter = 2
-    for i in range(2 * accum_iter):
-        data = data_gen_fn()
-        data = {
-            k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
-        }
-        output = model(**data)
-        output = output_transform_fn(output)
-        loss = criterion(output) / accum_iter
-        booster.backward(loss, optimizer)
-
-        if (i + 1) % accum_iter == 0:
-            optimizer.clip_grad_by_norm(1.0)
-            optimizer.step()
-
-    # Check parameters
-    gemini_dict = model.state_dict(only_rank_0=False)
-    model_copy_dict = model_copy.state_dict()
-
-    for name in gemini_dict:
-        check_param_equality(
-            name, gemini_dict[name], model_copy_dict[name], modules_to_save=model.unwrap().modules_to_save
-        )
+        check_state_dict_equal(model.state_dict(only_rank_0=False), model_load.state_dict(only_rank_0=False))
+        check_state_dict_equal(optimizer.state_dict(only_rank_0=False), optimizer_load.state_dict(only_rank_0=False))
 
 
 @parameterize("placement_config", PLACEMENT_CONFIGS)
@@ -177,12 +124,7 @@ def run_lora_test(placement_config: dict, master_weights: bool):
         if name == "transformers_llama_for_sequence_classification":
             task_type = "SEQ_CLS"
 
-        check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type, placement_config, master_weights)
-        check_checkpoint(
-            model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type, placement_config, master_weights
-        )
-    if master_weights:
-        check_grad_accum(placement_config)
+        check_fn(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type, placement_config, master_weights)
 
 
 def run_dist(rank, world_size, port):
