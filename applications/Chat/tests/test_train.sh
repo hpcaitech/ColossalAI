@@ -232,7 +232,7 @@ for model in ${MODELS_PPO[@]}; do
                     --experience_batch_size 1 --train_batch_size 1 --lora_rank $lora_rank \
                     --pretrain $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank} \
                     $rm_pretrain_model --rm_path $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt \
-                    --reward_model_tokenizer $MODELS_DIR/$model --max_input_len 10 --max_seq_len 20 \
+                    --max_input_len 10 --max_seq_len 20 \
                     --save_path $EXAMPLES_DIR/rlhf_models/actor_checkpoint_prompts.pt
                 passed=$?
                 if [ $passed -eq 0 ]; then
