@@ -184,14 +184,6 @@ class T5BasePolicy(Policy):
             target_key=T5LayerFF,
         )
         self.append_or_create_submodule_replacement(
-            description=SubModuleReplacementDescription(
-                suffix="layer_norm",
-                target_module=norm_cls,
-            ),
-            policy=policy,
-            target_key=T5LayerFF,
-        )
-        self.append_or_create_submodule_replacement(
             description=SubModuleReplacementDescription(suffix="layer_norm", target_module=norm_cls),
             policy=policy,
             target_key=T5LayerSelfAttention,

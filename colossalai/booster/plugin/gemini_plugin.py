@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable, Iterator, List, Optional, Tuple
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
@@ -19,8 +20,9 @@ from colossalai.checkpoint_io.utils import (
     save_state_dict,
     save_state_dict_shards,
 )
-from colossalai.cluster import DistCoordinator
+from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.utils import get_current_device
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.memory_tracer import MemStats
@@ -32,7 +34,25 @@ __all__ = ["GeminiPlugin"]
 SUPPORTED_PRECISION = ["fp16", "bf16"]
 PRECISION_STR_TO_DTYPE = {"fp16": torch.half, "bf16": torch.bfloat16}
 
+DP_AXIS = 0
+TP_AXIS = 1
 
+def get_param_info(optim: Optimizer):
+    # Get a backup of necessary information of parameters for future use, which includes:
+    # 1. A mapping from integer param_id to param32 shape.
+
+    if optim is None:
+        return {}
+    param_info = {"id2shape": {}}
+    start_index = 0
+    for group in optim.param_groups:
+        for param_id, param in enumerate(group["params"], start_index):
+            original_shape = param.shape if isinstance(param, torch.Tensor) else None
+            param_info["id2shape"][param_id] = original_shape
+
+        start_index += len(group["params"])
+
+    return param_info
 class GeminiCheckpointIO(GeneralCheckpointIO):
     def __init__(self) -> None:
         super().__init__()
@@ -284,6 +304,16 @@ class GeminiPlugin(DPPluginBase):
         max_norm (float, optional): max_norm used for `clip_grad_norm`. You should notice that you shall not do
             clip_grad_norm by yourself when using ZeRO DDP. The ZeRO optimizer will take care of clip_grad_norm.
         norm_type (float, optional): norm_type used for `clip_grad_norm`.
+        enable_tensor_parallelism (bool, optional): Whether to use tensor parallelism strategy, which is implemented in Shardformer. Default to False.
+        tp_size (int, optional): If 'enable_tensor_parallelism' is set to true, please configure 'tp_size' which determines the size of the tensor parallel process group. Default to 1.
+        enable_all_optimization (bool, optional): Whether to switch on all the optimizations supported by Shardformer.
+                                                    Currently all the optimization methods include fused normalization, flash attention and JIT.
+                                                    Defaults to False.
+        enable_fused_normalization (bool, optional): Whether to switch on fused normalization in Shardformer. Defaults to False.
+        enable_flash_attention (bool, optional): Whether to switch on flash attention in Shardformer. Defaults to False.
+        enable_jit_fused (bool, optional): Whether to switch on JIT in Shardformer. Default to False.
+        enable_sequence_parallelism (bool): Whether to turn on sequence parallelism in Shardformer. Defaults to False.
+        enable_sequence_overlap (bool): Whether to turn on sequence overlap in Shardformer. Defaults to False.
         verbose (bool, optional): verbose mode. Debug info including chunk search result will be printed. Defaults to False.
     """
 
@@ -317,6 +347,14 @@ class GeminiPlugin(DPPluginBase):
         max_scale: float = 2**32,
         max_norm: float = 0.0,
         norm_type: float = 2.0,
+        enable_tensor_parallelism: bool = False,
+        tp_size: int = 1,
+        enable_all_optimization: bool = False,
+        enable_fused_normalization: bool = False,
+        enable_flash_attention: bool = False,
+        enable_sequence_parallelism: bool = False,
+        enable_jit_fused: bool = False,
+        enable_sequence_overlap: bool = False,
         verbose: bool = False,
     ) -> None:
         super().__init__()
@@ -355,7 +393,31 @@ class GeminiPlugin(DPPluginBase):
             max_norm=max_norm,
             norm_type=norm_type,
         )
+        self.enable_tensor_parallelism = enable_tensor_parallelism
+        self.enable_all_optimization = enable_all_optimization
+        self.enable_fused_normalization = enable_fused_normalization
+        self.enable_flash_attention = enable_flash_attention
+        self.enable_sequence_parallelism = enable_sequence_parallelism if self.enable_tensor_parallelism else False
+        self.enable_jit_fused = enable_jit_fused
+        self.enable_sequence_overlap = enable_sequence_overlap
         self.verbose = verbose
+
+        self.tp_size = tp_size if self.enable_tensor_parallelism else 1
+        self.dp_size = dist.get_world_size() // self.tp_size
+        assert self.dp_size > 1, f"The size of the DP group should be greater than 1. Please reduce the TP group size."
+        self.pg_mesh = ProcessGroupMesh(self.dp_size, self.tp_size)
+        self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
+        self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
+        self.shard_config = ShardConfig(
+            tensor_parallel_process_group=self.tp_group,
+            enable_tensor_parallelism=self.enable_tensor_parallelism,
+            enable_all_optimization=self.enable_all_optimization,
+            enable_fused_normalization=self.enable_fused_normalization,
+            enable_flash_attention=self.enable_flash_attention,
+            enable_jit_fused=self.enable_jit_fused,
+            enable_sequence_parallelism=self.enable_sequence_parallelism,
+            enable_sequence_overlap=self.enable_sequence_overlap,
+        )
 
     def support_no_sync(self) -> bool:
         return False
@@ -380,6 +442,7 @@ class GeminiPlugin(DPPluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
+        optimizer_params_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
             # FIXME(ver217): gemini does not support sync bn
@@ -391,11 +454,21 @@ class GeminiPlugin(DPPluginBase):
             # model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
 
             # wrap the model with Gemini
-            model = GeminiDDP(model, **self.gemini_config, verbose=self.verbose)
+            if self.enable_tensor_parallelism:
+                shardformer = ShardFormer(self.shard_config)
+                model, _ = shardformer.optimize(model)
+
+            model = GeminiDDP(model, **self.gemini_config, process_group=self.dp_group, verbose=self.verbose)
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer = GeminiOptimizer(
-                optimizer, model, **self.zero_optim_config, **self.optim_kwargs, verbose=self.verbose
+                optimizer,
+                model,
+                **self.zero_optim_config,
+                **self.optim_kwargs,
+                tp_group=self.tp_group,
+                optimizer_params_info=optimizer_params_info,
+                verbose=self.verbose,
             )
 
         return model, optimizer, criterion, dataloader, lr_scheduler
