@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple
 import torch
 from transformers.utils import logging
 
-from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
+from colossalai.inference.kvcache_manager import BatchInferState
 from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
