@@ -175,7 +175,8 @@ def train(args):
     trainer.fit(train_dataloader=train_dataloader,
                 eval_dataloader=eval_dataloader,
                 logger=logger,
-                use_wandb=args.use_wandb)
+                use_wandb=args.use_wandb,
+                tensorboard_dir=args.tensorboard_dir)
 
     # save model checkpoint after fitting on only rank0
     strategy.save_pretrained(model, path=args.save_path, only_rank0=True, tokenizer=tokenizer)
@@ -207,5 +208,6 @@ if __name__ == '__main__':
     parser.add_argument('--accumulation_steps', type=int, default=8)
     parser.add_argument('--use_wandb', default=False, action='store_true')
     parser.add_argument('--grad_checkpoint', default=False, action='store_true')
+    parser.add_argument('--tensorboard_dir', type=str, default="")
     args = parser.parse_args()
     train(args)
