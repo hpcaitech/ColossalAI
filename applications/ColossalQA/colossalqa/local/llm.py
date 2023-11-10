@@ -29,7 +29,7 @@ class ColossalAPI:
         else:
             ColossalAPI.__instances[model_type + model_path + (ckpt_path or "")] = self
         self.model_type = model_type
-        self.actor = AutoModel.from_pretrained(model_path, torch_dtype=torch.float16, trust_remote_code=True)
+        self.actor = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, trust_remote_code=True)
 
         if ckpt_path is not None:
             state_dict = torch.load(ckpt_path)
