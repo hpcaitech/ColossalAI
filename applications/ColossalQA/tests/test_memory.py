@@ -107,7 +107,7 @@ def test_memory_short():
         chat_history = memory.load_memory_variables({"question": "this is a test input.", "input_documents": docs})[
             "chat_history"
         ]
-        assert chat_history.count("AI: this is a test output.") == i
+        assert chat_history.count("Assistant: this is a test output.") == i
         assert chat_history.count("Human: this is a test input.") == i
         memory.save_context({"question": "this is a test input."}, {"output": "this is a test output."})
 
