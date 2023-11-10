@@ -71,7 +71,7 @@ if __name__ == "__main__":
     {chat_history}
 
     Human: {question}
-    AI:"""
+    Assistant:"""
 
     prompt_template_disambiguate = """You are a helpful, respectful and honest assistant. You always follow the instruction.
     Please replace any ambiguous references in the given sentence with the specific names or entities mentioned in the chat history or just output the original sentence if no chat history is provided or if the sentence doesn't contain ambiguous references. Your output should be the disambiguated sentence itself (in the same line as "disambiguated sentence:") and contain nothing else.
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     Here is an example:
     Chat history:
     Human: I have a friend, Mike. Do you know him?
-    AI: Yes, I know a person named Mike
+    Assistant: Yes, I know a person named Mike
 
     sentence: What's his favorite food?
     disambiguated sentence: What's Mike's favorite food?

@@ -1,16 +1,18 @@
-'''
+"""
 Implement a memory class for storing conversation history
 Support long term and short term memory
-'''
-from typing import List, Dict, Any
-from pydantic import Field
-from langchain.schema.messages import BaseMessage
-from langchain.schema import BaseChatMessageHistory
-from langchain.memory.chat_message_histories.in_memory import ChatMessageHistory
-from langchain.schema.retriever import BaseRetriever
-from langchain.chains.combine_documents.base import BaseCombineDocumentsChain
-from colossalqa.chain.retrieval_qa.load_chain import load_qa_chain
+"""
+from typing import Any, Dict, List
+
 from colossalqa.chain.memory.summary import ConversationSummaryMemory
+from colossalqa.chain.retrieval_qa.load_chain import load_qa_chain
+from langchain.chains.combine_documents.base import BaseCombineDocumentsChain
+from langchain.memory.chat_message_histories.in_memory import ChatMessageHistory
+from langchain.schema import BaseChatMessageHistory
+from langchain.schema.messages import BaseMessage
+from langchain.schema.retriever import BaseRetriever
+from pydantic import Field
+
 
 class ConversationBufferWithSummary(ConversationSummaryMemory):
     """Memory class for storing information about entities."""
@@ -21,13 +23,13 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
     # Temp buffer
     summarized_history_temp: BaseChatMessageHistory = Field(default_factory=ChatMessageHistory)
     human_prefix: str = "Human"
-    ai_prefix: str = "AI"
-    buffer: str = ''    # Formated conversation in str
-    existing_summary: str = ''  # Summarization of stale converstion in str
+    ai_prefix: str = "Assistant"
+    buffer: str = ""  # Formated conversation in str
+    existing_summary: str = ""  # Summarization of stale converstion in str
     # Define key to pass information about entities into prompt.
     memory_key: str = "chat_history"
-    input_key: str='question'
-    retriever: BaseRetriever=None
+    input_key: str = "question"
+    retriever: BaseRetriever = None
     max_tokens: int = 2000
     chain: BaseCombineDocumentsChain = None
     input_chain_type_kwargs: List = {}
@@ -49,14 +51,15 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
         return self.buffered_history.messages
 
     def clear(self):
-        '''Clear all the memory'''
+        """Clear all the memory"""
         self.buffered_history.clear()
         self.summarized_history_temp.clear()
 
-    def initiate_document_retrieval_chain(self, llm: Any, prompt_template: Any, retriever: Any,
-                            chain_type_kwargs: Dict[str, Any]={}) -> None:
-        '''
-        Since we need to calculate the length of the prompt, we need to initiate a retrieval chain 
+    def initiate_document_retrieval_chain(
+        self, llm: Any, prompt_template: Any, retriever: Any, chain_type_kwargs: Dict[str, Any] = {}
+    ) -> None:
+        """
+        Since we need to calculate the length of the prompt, we need to initiate a retrieval chain
         to calculate the length of the prompt.
         Args:
             llm: the language model for the retrieval chain (we won't actually return the output)
@@ -66,39 +69,44 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
             chain_type_kwargs: the kwargs for the retrieval chain
             memory_key: the key for the chat history
             input_key: the key for the input query
-        '''
+        """
         self.retriever = retriever
         input_chain_type_kwargs = {k: v for k, v in chain_type_kwargs.items() if k not in [self.memory_key]}
         self.input_chain_type_kwargs = input_chain_type_kwargs
-        self.chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt_template,
-                                    **self.input_chain_type_kwargs)
+        self.chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt_template, **self.input_chain_type_kwargs)
 
     @property
     def memory_variables(self) -> List[str]:
         """Define the variables we are providing to the prompt."""
         return [self.memory_key]
-    
-    def format_dialogue(self, lang:str='en') -> str:
-        '''Format memory into two parts--- summarization of historical conversation and most recent conversation'''
-        if len(self.summarized_history_temp.messages)!=0:
-            for i in range(int(len(self.summarized_history_temp.messages)/2)):
-                self.existing_summary = self.predict_new_summary(self.summarized_history_temp.messages[i*2:i*2+2], 
-                                                self.existing_summary, stop=['\n\n']).strip().split('\n')[0].strip()
-            for i in range(int(len(self.summarized_history_temp.messages)/2)):
+
+    def format_dialogue(self, lang: str = "en") -> str:
+        """Format memory into two parts--- summarization of historical conversation and most recent conversation"""
+        if len(self.summarized_history_temp.messages) != 0:
+            for i in range(int(len(self.summarized_history_temp.messages) / 2)):
+                self.existing_summary = (
+                    self.predict_new_summary(
+                        self.summarized_history_temp.messages[i * 2 : i * 2 + 2], self.existing_summary, stop=["\n\n"]
+                    )
+                    .strip()
+                    .split("\n")[0]
+                    .strip()
+                )
+            for i in range(int(len(self.summarized_history_temp.messages) / 2)):
                 self.summarized_history_temp.messages.pop(0)
                 self.summarized_history_temp.messages.pop(0)
         conversation_buffer = []
         for t in self.buffered_history.messages:
-            if t.type=='human':
+            if t.type == "human":
                 prefix = self.human_prefix
             else:
                 prefix = self.ai_prefix
-            conversation_buffer.append(prefix+': '+t.content)
-        conversation_buffer = '\n'.join(conversation_buffer)
-        if len(self.existing_summary)>0:
-            if lang=='en':
+            conversation_buffer.append(prefix + ": " + t.content)
+        conversation_buffer = "\n".join(conversation_buffer)
+        if len(self.existing_summary) > 0:
+            if lang == "en":
                 message = f"A summarization of historical conversation:\n{self.existing_summary}\nMost recent conversation:\n{conversation_buffer}"
-            elif lang=='zh':
+            elif lang == "zh":
                 message = f"历史对话概要:\n{self.existing_summary}\n最近的对话:\n{conversation_buffer}"
             else:
                 raise ValueError("Unsupported language")
@@ -108,7 +116,7 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
             return message
 
     def get_conversation_length(self):
-        '''Get the length of the formatted conversation'''
+        """Get the length of the formatted conversation"""
         prompt = self.format_dialogue()
         length = self.llm.get_num_tokens(prompt)
         return length
@@ -126,27 +134,27 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
                 {summarization}
                 Most recent conversation:
                 Human: XXX
-                AI: XXX
+                Assistant: XXX
                 ...
             otherwise
                 Human: XXX
-                AI: XXX
+                Assistant: XXX
                 ...
         """
         # Calculate remain length
-        if 'input_documents' in inputs:
+        if "input_documents" in inputs:
             # Run in a retrieval qa chain
-            docs = inputs['input_documents']
+            docs = inputs["input_documents"]
         else:
             # For test
             docs = self.retriever.get_relevant_documents(inputs[self.input_key])
-        inputs[self.memory_key] = ''
-        inputs = {k:v for k,v in inputs.items() if k in [self.chain.input_key, self.input_key, self.memory_key]}
+        inputs[self.memory_key] = ""
+        inputs = {k: v for k, v in inputs.items() if k in [self.chain.input_key, self.input_key, self.memory_key]}
         prompt_length = self.chain.prompt_length(docs, **inputs)
         remain = self.max_tokens - prompt_length
         while self.get_conversation_length() > remain:
-            if len(self.buffered_history.messages)<=2:
-                raise RuntimeError('Exeeed max_tokens, trunck size of retrieved documents is too large')
+            if len(self.buffered_history.messages) <= 2:
+                raise RuntimeError("Exeeed max_tokens, trunck size of retrieved documents is too large")
             temp = self.buffered_history.messages.pop(0)
             self.summarized_history_temp.messages.append(temp)
             temp = self.buffered_history.messages.pop(0)

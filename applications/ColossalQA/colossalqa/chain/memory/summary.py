@@ -27,7 +27,7 @@ class SummarizerMixin(BaseModel):
     """
 
     human_prefix: str = "Human"
-    ai_prefix: str = "AI"
+    ai_prefix: str = "Assistant"
     llm: BaseLanguageModel
     prompt: BasePromptTemplate = SUMMARY_PROMPT
     summary_message_cls: Type[BaseMessage] = SystemMessage

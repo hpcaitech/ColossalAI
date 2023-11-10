@@ -9,11 +9,11 @@ from colossalqa.data_loader.document_loader import DocumentLoader
 from colossalqa.local.llm import ColossalAPI, ColossalLLM
 from colossalqa.memory import ConversationBufferWithSummary
 from colossalqa.prompt.prompt import (
-    PROMPT_DISAMBIGUATE_ZH, 
-    PROMPT_RETRIEVAL_QA_ZH, 
+    PROMPT_DISAMBIGUATE_ZH,
+    PROMPT_RETRIEVAL_QA_ZH,
     SUMMARY_PROMPT_ZH,
-    ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS, 
-    ZH_RETRIEVAL_QA_REJECTION_ANSWER
+    ZH_RETRIEVAL_QA_REJECTION_ANSWER,
+    ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS,
 )
 from colossalqa.retriever import CustomRetriever
 from colossalqa.text_splitter import ChineseTextSplitter
@@ -49,7 +49,7 @@ if __name__ == "__main__":
         llm=llm,
         prompt=SUMMARY_PROMPT_ZH,
         human_prefix="用户",
-        ai_prefix="AI",
+        ai_prefix="Assistant",
         max_tokens=2000,
         llm_kwargs={"max_new_tokens": 50, "temperature": 0.6, "do_sample": True},
     )
@@ -103,7 +103,11 @@ if __name__ == "__main__":
         if "END" == user_input:
             print("Agent: Happy to chat with you ：)")
             break
-        agent_response = llm_chain.run(query=user_input, stop=["</答案>"], doc_prefix="支持文档",
-            rejection_trigger_keywrods = ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS,
-            rejection_answer = ZH_RETRIEVAL_QA_REJECTION_ANSWER)
+        agent_response = llm_chain.run(
+            query=user_input,
+            stop=["</答案>"],
+            doc_prefix="支持文档",
+            rejection_trigger_keywrods=ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS,
+            rejection_answer=ZH_RETRIEVAL_QA_REJECTION_ANSWER,
+        )
         print(f"Agent: {agent_response}")

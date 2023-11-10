@@ -8,14 +8,14 @@ _CUSTOM_SUMMARIZER_TEMPLATE_ZH = """请递进式地总结所提供的当前对�
 
 例1:
 已有的摘要:
-人类问AI对人工智能的看法。人工智能认为人工智能是一种善的力量。
+人类问Assistant对人工智能的看法。人工智能认为人工智能是一种善的力量。
 
 新的对话内容:
 人类: 为什么你认为人工智能是一种好的力量?
-人工智能: 因为人工智能将帮助人类充分发挥潜力。
+Assistant: 因为人工智能将帮助人类充分发挥潜力。
 
 新的摘要:
-人类问AI对人工智能的看法。人工智能认为人工智能是一种积极的力量，因为它将帮助人类充分发挥潜力。
+人类问Assistant对人工智能的看法。人工智能认为人工智能是一种积极的力量，因为它将帮助人类充分发挥潜力。
 示例结束
 
 已有的摘要:
@@ -59,7 +59,7 @@ _ZH_DISAMBIGUATION_PROMPT = """你是一个乐于助人、恭敬而诚实的助�
 下面是一个例子:
 聊天记录:
 用户: 我有一个朋友，张三。你认识他吗?
-AI: 我认识一个叫张三的人
+Assistant: 我认识一个叫张三的人
 
 句子: 他最喜欢的食物是什么?
 消除歧义的句子: 张三最喜欢的食物是什么?
@@ -93,7 +93,7 @@ Please replace any ambiguous references in the given sentence with the specific 
 Here is an example:
 Chat history:
 Human: I have a friend, Mike. Do you know him?
-AI: Yes, I know a person named Mike
+Assistant: Yes, I know a person named Mike
 
 sentence: What's his favorate food?
 disambiguated sentence: What's Mike's favorate food?

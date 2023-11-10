@@ -46,7 +46,7 @@ class ChineseRetrievalConversation:
             llm=self.llm,
             prompt=SUMMARY_PROMPT_ZH,
             human_prefix="用户",
-            ai_prefix="AI",
+            ai_prefix="Assistant",
             max_tokens=2000,
             llm_kwargs={"max_new_tokens": 50, "temperature": 0.6, "do_sample": True},
         )
