@@ -3,7 +3,7 @@ import types
 from time import time
 from typing import List
 
-from colossalai.utils.cuda import get_current_device
+from colossalai.utils.device import get_current_device
 
 from .stateful_tensor import StatefulTensor, TensorState
 from .tensor_placement_policy import TensorPlacementPolicy

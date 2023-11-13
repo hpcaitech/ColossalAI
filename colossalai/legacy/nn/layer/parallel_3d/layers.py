@@ -27,7 +27,7 @@ from colossalai.legacy.utils.checkpointing import (
     partition_tensor_parallel_state_dict,
 )
 from colossalai.nn import init as init
-from colossalai.utils.cuda import get_current_device
+from colossalai.utils.device import get_current_device
 
 from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
 from ._operation import (

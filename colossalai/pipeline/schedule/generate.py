@@ -10,7 +10,7 @@ from torch.utils._pytree import tree_map
 from colossalai.inference.pipeline.microbatch_manager import MicroBatchManager, Status
 from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.utils.cuda import get_current_device
+from colossalai.utils.device import get_current_device
 
 from ._utils import get_batch_size, get_micro_batch, model_forward, to_device
 from .base import PipelineSchedule
@@ -93,9 +93,7 @@ class GenerateSchedule(PipelineSchedule):
         Returns:
             dict: inputs for interval stage, `{'past_key_values': torch.Tensor}` or `None`
         """
-        model_inputs = {
-            'infer_state': self.mb_manager.cur_descrption.infer_state
-        }
+        model_inputs = {"infer_state": self.mb_manager.cur_descrption.infer_state}
         return model_inputs
 
     def _prepare_inputs_for_new_token(self, new_token: torch.Tensor):
@@ -129,8 +127,8 @@ class GenerateSchedule(PipelineSchedule):
 
     def _init_infer_state_action(self) -> None:
         """
-        This action is only for no first stage, to load batch and init infer_state. 
-        1.Load micro_batch 2.Use the current micro_batch to init the current infer_state 
+        This action is only for no first stage, to load batch and init infer_state.
+        1.Load micro_batch 2.Use the current micro_batch to init the current infer_state
         """
         inputs_dict = self.load_micro_batch()
         self.mb_manager.add_descrption(inputs_dict)
@@ -145,19 +143,19 @@ class GenerateSchedule(PipelineSchedule):
         if self.verbose and self.stage_manager.is_first_stage():
             torch.cuda.synchronize()
             self.timestamps[self.mb_manager.idx].append(time.time())
-        interval_inputs = {'infer_state': self.mb_manager.cur_infer_state}
+        interval_inputs = {"infer_state": self.mb_manager.cur_infer_state}
         output_dict = model_forward(model, inputs_dict, interval_inputs)
 
-        self.action_interval_buffer.hidden_states = output_dict['hidden_states']
+        self.action_interval_buffer.hidden_states = output_dict["hidden_states"]
 
     def _gen_token_action(self, model: Module):
         """
-        This action is only for first stage 
+        This action is only for first stage
         1.do the forward with hidden_states to generate new tokens 2.step to update
         """
         hidden_states = self.action_interval_buffer.hidden_states
         assert hidden_states is not None, "When first stage in GENERATE phase, the hidden states should not be None"
-        interval_inputs = {'hidden_states': hidden_states, 'infer_state': self.mb_manager.cur_infer_state}
+        interval_inputs = {"hidden_states": hidden_states, "infer_state": self.mb_manager.cur_infer_state}
         logits = model_forward(model, None, interval_inputs)
         if self.verbose and self.stage_manager.is_first_stage():
             torch.cuda.synchronize()
@@ -178,18 +176,18 @@ class GenerateSchedule(PipelineSchedule):
         new_token = self.action_interval_buffer.new_token
         assert new_token is not None, "When first stage in GENERATE phase, the new token should not be None"
         inputs_dict = self._prepare_inputs_for_new_token(new_token)
-        interval_inputs = {'infer_state': self.mb_manager.cur_infer_state}
+        interval_inputs = {"infer_state": self.mb_manager.cur_infer_state}
         output_dict = model_forward(model, inputs_dict, interval_inputs)
 
-        self.action_interval_buffer.hidden_states = output_dict['hidden_states']
+        self.action_interval_buffer.hidden_states = output_dict["hidden_states"]
 
     def _body_encoding_action(self, model: Module):
         hidden_states = self.action_interval_buffer.hidden_states
         assert hidden_states is not None, "When not first stage, the hidden states should not be None"
-        interval_inputs = {'hidden_states': hidden_states, 'infer_state': self.mb_manager.cur_infer_state}
+        interval_inputs = {"hidden_states": hidden_states, "infer_state": self.mb_manager.cur_infer_state}
         output_dict = model_forward(model, None, interval_inputs)
 
-        self.action_interval_buffer.hidden_states = output_dict['hidden_states']
+        self.action_interval_buffer.hidden_states = output_dict["hidden_states"]
 
     def _comm_action(self, recv_pre: bool) -> torch.Tensor:
         """
@@ -319,7 +317,7 @@ class GenerateSchedule(PipelineSchedule):
                         torch.cuda.synchronize()
                         self.timestamps[self.mb_manager.idx].append(time.time())
                     self.mb_manager.add_descrption(inputs_dict)
-                    interval_inputs = {'infer_state': self.mb_manager.cur_infer_state}
+                    interval_inputs = {"infer_state": self.mb_manager.cur_infer_state}
                     output_dict = model_forward(model, inputs_dict, interval_inputs)
                 # In GENERATE phase
                 else:
@@ -330,18 +328,23 @@ class GenerateSchedule(PipelineSchedule):
                         assert (
                             hidden_states is not None
                         ), "When first stage in GENERATE phase, the hidden states should not be None"
-                        interval_inputs = {'hidden_states': hidden_states['hidden_states'], 'infer_state': self.mb_manager.cur_infer_state}
+                        interval_inputs = {
+                            "hidden_states": hidden_states["hidden_states"],
+                            "infer_state": self.mb_manager.cur_infer_state,
+                        }
                         logits = model_forward(model, None, interval_inputs)
                         if self.verbose and self.stage_manager.is_first_stage():
                             torch.cuda.synchronize()
                             self.timestamps[self.mb_manager.idx].append(time.time())
-                        assert 'logits' in logits, f"When first stage in GENERATE phase, the ouput should have attribute `logits`, but has {logits.keys()}"
-                        new_token = self._get_token_id(logits['logits'])
+                        assert (
+                            "logits" in logits
+                        ), f"When first stage in GENERATE phase, the ouput should have attribute `logits`, but has {logits.keys()}"
+                        new_token = self._get_token_id(logits["logits"])
                         self.mb_manager.step(new_token)
                         # If the current micro batch is not DONE, go through blocks
                         if self.mb_manager.cur_state in (Status.GENERATE, Status.COOLDOWN):
                             inputs_dict = self._prepare_inputs_for_new_token(new_token)
-                            interval_inputs = {'infer_state': self.mb_manager.cur_infer_state}
+                            interval_inputs = {"infer_state": self.mb_manager.cur_infer_state}
                             output_dict = model_forward(model, inputs_dict, interval_inputs)
                     else:
                         assert hidden_states is not None, "When not first stage, the hidden states should not be None"
@@ -350,7 +353,10 @@ class GenerateSchedule(PipelineSchedule):
                         if self.mb_manager.cur_state is Status.PREFILL:
                             inputs_dict = self.load_micro_batch()
                             self.mb_manager.add_descrption(inputs_dict)
-                        interval_inputs = {'hidden_states': hidden_states['hidden_states'], 'infer_state': self.mb_manager.cur_infer_state}
+                        interval_inputs = {
+                            "hidden_states": hidden_states["hidden_states"],
+                            "infer_state": self.mb_manager.cur_infer_state,
+                        }
                         output_dict = model_forward(model, inputs_dict, interval_inputs)
 
                 # Current microbatch is not DONE, send hidden_state to next stage
