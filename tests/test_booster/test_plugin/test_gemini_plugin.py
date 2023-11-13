@@ -17,14 +17,14 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
 
-def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, enable_tensor_parallelism) -> Optional[str]:
+def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, enable_tensor_parallelism, tp_size, ddp_size) -> Optional[str]:
     try:
         if init_method == "lazy":
             ctx = LazyInitContext()
         else:
             ctx = nullcontext()
         enable_all_optimization = True if enable_tensor_parallelism else False
-        plugin = GeminiPlugin(max_norm=1.0, initial_scale=2**5, enable_tensor_parallelism=enable_tensor_parallelism, enable_all_optimization=enable_all_optimization)
+        plugin = GeminiPlugin(max_norm=1.0, initial_scale=2**5, enable_tensor_parallelism=enable_tensor_parallelism, tp_size=tp_size, ddp_size=ddp_size, enable_all_optimization=enable_all_optimization)
         booster = Booster(plugin=plugin)
         with ctx:
             model = model_fn()
@@ -63,7 +63,9 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, enable_tenso
 @parameterize("subset", ["torchvision", "transformers", "diffusers"])
 @parameterize("init_method", ["none"])
 @parameterize("enable_tensor_parallelism", [True, False])
-def check_gemini_plugin(subset: str, init_method: str = "none", enable_tensor_parallelism: bool = True, early_stop: bool = True):
+@parameterize("tp_size", [1])
+@parameterize("ddp_size", [2])
+def check_gemini_plugin(subset: str, init_method: str = "none", enable_tensor_parallelism: bool = True, early_stop: bool = True, tp_size: int = 1, ddp_size: int = 1):
     """check gemini plugin over model zoo
 
     Args:
@@ -127,7 +129,7 @@ def check_gemini_plugin(subset: str, init_method: str = "none", enable_tensor_pa
         if "transformers_blip2" in name:
             enable_tensor_parallelism = False
 
-        err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, enable_tensor_parallelism)
+        err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, enable_tensor_parallelism, tp_size, ddp_size)
         torch.cuda.empty_cache()
         if err is None:
             passed_models.append(name)
