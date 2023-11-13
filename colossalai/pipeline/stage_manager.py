@@ -23,8 +23,10 @@ class PipelineStageManager:
         pg_mesh: ProcessGroupMesh,
         pipeline_axis: int,
         enable_interleave: bool = False,
-        num_model_chunks: Optional[int] = None,
+        num_model_chunks: int = 1,
     ) -> None:
+        assert enable_interleave or num_model_chunks == 1, "num_model_chunks must be 1 when enable_interleave is False"
+
         self.pg_mesh = pg_mesh
         self.pipeline_axis = pipeline_axis
         self.prev_rank: Optional[Tuple[int, ...]] = None
@@ -59,6 +61,9 @@ class PipelineStageManager:
 
             # for interleaved pipeline parallel, each device is responsible for multiple chunk of layers
             self.num_model_chunks: int = num_model_chunks
+
+            # for shardformer, hold stage indices of model
+            self.stage_indices: List[Tuple[int, int]]
 
     def is_first_stage(self, model_chunk_id: Optional[int] = None) -> bool:
         """Is the current stage the first stage.

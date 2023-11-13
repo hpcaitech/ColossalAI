@@ -186,13 +186,11 @@ class InterleavedSchedule(PipelineSchedule):
         if isinstance(model_chunk, ModuleList):
             output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)
         else:
-            # TODO
-            raise NotImplementedError()
-            # in shardformer, each device still has the entire model, so we need to pass the relevant stage layers
-            # if input_obj is None:
-            #     input_obj = {}
-            # input_obj["stage_index"] = self.stage_manager.layers[model_chunk_id]
-            # output_obj = model_forward(model_chunk, micro_batch, input_obj)
+            # NOTE: in shardformer, each device still has the entire model, so we need to use relevant stage layers
+            internal_inputs = {} if input_obj is None else input_obj
+            internal_inputs["stage_index"] = self.stage_manager.stage_indices[model_chunk_id]
+            internal_inputs["model_chunk_id"] = model_chunk_id
+            output_obj = model_forward(model_chunk, micro_batch, internal_inputs)
 
         if self.stage_manager.is_last_stage(model_chunk_id):
             loss = criterion(output_obj, micro_batch) / self.num_microbatch
