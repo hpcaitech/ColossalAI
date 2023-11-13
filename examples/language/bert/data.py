@@ -89,19 +89,19 @@ class GLUEDataBuilder:
 
     def val_dataloader(self):
         if len(self.eval_splits) == 1:
-            return self.plugin.prepare_dataloader(self.dataset["validation"], batch_size=self.eval_batch_size)
+            return self.plugin.prepare_dataloader(self.dataset["validation"], batch_size=self.eval_batch_size, drop_last=True)
         elif len(self.eval_splits) > 1:
             return [
-                self.plugin.prepare_dataloader(self.dataset[x], batch_size=self.eval_batch_size)
+                self.plugin.prepare_dataloader(self.dataset[x], batch_size=self.eval_batch_size, drop_last=True)
                 for x in self.eval_splits
             ]
 
     def test_dataloader(self):
         if len(self.eval_splits) == 1:
-            return self.plugin.prepare_dataloader(self.dataset["test"], batch_size=self.eval_batch_size)
+            return self.plugin.prepare_dataloader(self.dataset["test"], batch_size=self.eval_batch_size, drop_last=True)
         elif len(self.eval_splits) > 1:
             return [
-                self.plugin.prepare_dataloader(self.dataset[x], batch_size=self.eval_batch_size)
+                self.plugin.prepare_dataloader(self.dataset[x], batch_size=self.eval_batch_size, drop_last=True)
                 for x in self.eval_splits
             ]
 

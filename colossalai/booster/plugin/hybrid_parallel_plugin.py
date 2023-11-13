@@ -383,6 +383,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
             assert pp_style in ["1f1b", "interleaved"], "Unsupported pipeline parallelism style"
+            assert pp_style == "interleaved" or num_model_chunks == 1, "num_model_chunks must be 1 when using 1f1b"
             assert (
                 num_microbatches is not None or microbatch_size is not None
             ), "num_microbatches or microbatch_size must be specified when using pipeline parallelism"
@@ -390,7 +391,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             self.stage_manager = PipelineStageManager(
                 self.pg_mesh,
                 pipeline_axis=PP_AXIS,
-                enable_interleave=True,
+                enable_interleave=pp_style == "interleaved",
                 num_model_chunks=num_model_chunks
             )
 

@@ -57,18 +57,13 @@ def evaluate_model(
 
     def evaluate_subset(dataloader: DataLoader):
         use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
-        is_pp_last_device = use_pipeline and booster.plugin.stage_manager.is_last_device()
+        is_pp_last_device = use_pipeline and booster.plugin.stage_manager.is_last_stage()
 
         accum_loss = torch.zeros(1, device=get_current_device())
         for batch in dataloader:
             batch = move_to_cuda(batch)
             labels = batch["labels"]
             if use_pipeline:
-                """skip the last batch with batch size 31 for interleaved pipeline parallel
-                as the number of microbatches needs to be a multiple of pipeline parallel devices
-                """
-                if booster.plugin.pp_style == "interleaved" and len(labels) < 32:
-                    continue
                 pg_mesh = booster.plugin.pg_mesh
                 pp_group = booster.plugin.pp_group
                 current_pp_group_ranks = pg_mesh.get_ranks_in_group(pp_group)
@@ -93,6 +88,7 @@ def evaluate_model(
                 elif current_rank in current_pp_group_ranks:
                     object_list = [None, None]
                     dist.broadcast_object_list(object_list, src=current_pp_group_ranks[-1], group=pp_group)
+
                     metric.add_batch(predictions=object_list[0].to(get_current_device()), references=labels)
                     accum_loss.add_(object_list[1].to(get_current_device()))
 
@@ -138,7 +134,7 @@ def train_epoch(
     coordinator: DistCoordinator,
 ):
     use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
-    is_pp_last_device = use_pipeline and booster.plugin.stage_manager.is_last_device()
+    is_pp_last_device = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     print_flag = (not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_device)
     total_step = len(train_dataloader)
 
