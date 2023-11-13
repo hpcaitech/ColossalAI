@@ -418,7 +418,6 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
             pipeline_stage_manager=self.stage_manager,
-            pipeline_scheduler=self.schedule,
             enable_tensor_parallelism=self.tp_size > 1,
             enable_all_optimization=self.enable_all_optimization,
             enable_fused_normalization=self.enable_fused_normalization,

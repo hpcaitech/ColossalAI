@@ -63,6 +63,10 @@ class PipelineStageManager:
     def is_first_stage(self, model_chunk_id: Optional[int] = None) -> bool:
         """Is the current stage the first stage.
 
+        NOTE: 
+            1. if using interleaved pipeline parallel, the first stage is the first chunk of the first device.
+            2. invoke is_first_stage() with model_chunk_id=None is equivalent to invoke is_first_device()
+
         Returns:
             bool: Whether the current stage is the first stage.
         """
@@ -74,6 +78,10 @@ class PipelineStageManager:
 
     def is_last_stage(self, model_chunk_id: Optional[int] = None) -> bool:
         """Is the current stage the last stage.
+
+        NOTE: 
+            1. if using interleaved pipeline parallel, the last stage is the last chunk of the last device.
+            2. invoke is_last_stage() with model_chunk_id=None is equivalent to invoke is_last_device()
 
         Returns:
             bool: Whether the current stage is the last stage.
