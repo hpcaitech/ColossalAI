@@ -363,7 +363,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         if len(missing_keys) == 0:
             raise RuntimeError(
-                "No weigth is loaded into the model. Please check the checkpoint file and the model structure."
+                "No weigth is loaded into the model. Please check the checkpoint files and the model structure."
             )
 
         remain_keys = reduce(lambda a, b: a & b, map(set, missing_keys))
