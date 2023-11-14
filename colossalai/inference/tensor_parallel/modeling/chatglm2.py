@@ -6,8 +6,6 @@ from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
-from colossalai.kernel.triton.context_attention import llama2_context_attn_fwd
-from colossalai.kernel.triton.rotary_embedding_kernel import Llama2Forwards
 from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
 from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     ChatGLMForConditionalGeneration,
@@ -19,6 +17,17 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
 )
 
 from ._utils import copy_kv_to_mem_cache
+
+try:
+    from lightllm.models.chatglm2.triton_kernel.rotary_emb import rotary_emb_fwd as chatglm2_rotary_emb_fwd
+    from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import (
+        context_attention_fwd as lightllm_llama2_context_attention_fwd,
+    )
+
+    HAS_LIGHTLLM_KERNEL = True
+except:
+    print("please install lightllm from source to run inference: https://github.com/ModelTC/lightllm")
+    HAS_LIGHTLLM_KERNEL = False
 
 
 # This func is same as Llama model init_to_get_rotary, we should move them into _utils.py
@@ -112,13 +121,12 @@ class ChatGLM2InferenceForwards:
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
-        past_key_values_length = 0
+        if infer_state.is_context_stage:
+            past_key_values_length = 0
+        else:
+            past_key_values_length = infer_state.max_len_in_batch - 1
 
-        #  NOT READY FOR PRIME TIME
-        #  dummy but work, revise it
-        past_key_values_length = infer_state.cache_manager.past_key_values_length
         seq_length_with_past = seq_length + past_key_values_length
-        infer_state.seq_length_with_past = seq_length_with_past
 
         # prefill stage at first
         if use_cache and seq_length != 1:
@@ -266,7 +274,6 @@ class ChatGLM2InferenceForwards:
         infer_state.start_loc = infer_state.start_loc + torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.seq_len += 1
         infer_state.max_len_in_batch += 1
-        infer_state.cache_manager.past_key_values_length += seq_length
 
         if not return_dict:
             return tuple(
@@ -388,9 +395,9 @@ class ChatGLM2InferenceForwards:
         assert use_cache is True, "use_cache should be set to True using this chatglm attention"
         # hidden_states: original :[sq, b, h] --> this [b, sq, h]
         batch_size = hidden_states.shape[0]
+        hidden_size = hidden_states.shape[-1]
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
         mixed_x_layer = self.query_key_value(hidden_states)
-
         if self.multi_query_attention:
             (query_layer, key_layer, value_layer) = mixed_x_layer.split(
                 [
@@ -430,20 +437,19 @@ class ChatGLM2InferenceForwards:
             mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
             # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
             (query_layer, key_layer, value_layer) = split_tensor_along_last_dim(mixed_x_layer, 3)
-
         cos, sin = infer_state.position_cos, infer_state.position_sin
 
-        Llama2Forwards.rotary_emb_fwd(
+        chatglm2_rotary_emb_fwd(
             query_layer.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head), cos, sin
         )
         if self.multi_query_attention:
-            Llama2Forwards.rotary_emb_fwd(
+            chatglm2_rotary_emb_fwd(
                 key_layer.view(-1, self.num_multi_query_groups_per_partition, self.hidden_size_per_attention_head),
                 cos,
                 sin,
             )
         else:
-            Llama2Forwards.rotary_emb_fwd(
+            chatglm2_rotary_emb_fwd(
                 key_layer.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head),
                 cos,
                 sin,
@@ -459,10 +465,10 @@ class ChatGLM2InferenceForwards:
         value_layer = value_layer.reshape(
             -1, self.num_multi_query_groups_per_partition, self.hidden_size_per_attention_head
         )
+
         if infer_state.is_context_stage:
             # first token generation:
             # copy key and value calculated in current step to memory manager
-
             copy_kv_to_mem_cache(
                 infer_state.decode_layer_id,
                 key_layer,
@@ -470,18 +476,17 @@ class ChatGLM2InferenceForwards:
                 infer_state.context_mem_index,
                 infer_state.cache_manager,
             )
-
-            attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
+            attn_output = torch.empty_like(query_layer.contiguous().view(-1, self.projection_size))
 
             # NOTE: no bug in context attn fwd (del it )
-            llama2_context_attn_fwd(
+            lightllm_llama2_context_attention_fwd(
                 query_layer,
                 key_layer,
                 value_layer,
                 attn_output.view(-1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head),
                 infer_state.start_loc,
                 infer_state.seq_len,
-                infer_state.seq_length_with_past,
+                infer_state.max_len_in_batch,
             )
 
         else:
@@ -507,7 +512,7 @@ class ChatGLM2InferenceForwards:
                 )
 
             # second token and follows
-            attn_output = torch.empty_like(query_layer.view(-1, self.projection_size))
+            attn_output = torch.empty_like(query_layer.contiguous().view(-1, self.projection_size))
             cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id][
                 : infer_state.decode_mem_end, :, :
             ]
@@ -535,6 +540,6 @@ class ChatGLM2InferenceForwards:
         # =================
         # Output:[b,sq, h]
         # =================
+        output = self.dense(attn_output).reshape(batch_size, -1, hidden_size)
 
-        output = self.dense(attn_output).reshape(batch_size, -1, self.projection_size)
         return output, kv_cache

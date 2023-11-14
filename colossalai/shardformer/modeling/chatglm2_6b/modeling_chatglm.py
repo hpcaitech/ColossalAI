@@ -400,7 +400,6 @@ class SelfAttention(torch.nn.Module):
         )
 
         self.core_attention = CoreAttention(config, self.layer_number)
-
         # Output.
         self.dense = nn.Linear(
             self.projection_size,
@@ -873,7 +872,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
 
         self.rotary_pos_emb = RotaryEmbedding(
             rotary_dim // 2,
-            original_impl=config.original_rope,
+            # original_impl=config.original_rope, # config has no attribute original_rope
             device=device,
             dtype=config.torch_dtype,
         )

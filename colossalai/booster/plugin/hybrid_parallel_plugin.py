@@ -1,5 +1,6 @@
+import ctypes
 import random
-from contextlib import nullcontext
+from contextlib import contextmanager
 from functools import partial
 from types import MethodType
 from typing import Any, Callable, Iterator, List, Optional, OrderedDict, Tuple, Union
@@ -7,7 +8,8 @@ from typing import Any, Callable, Iterator, List, Optional, OrderedDict, Tuple, 
 import numpy as np
 import torch
 import torch.distributed as dist
-from torch.distributed import ProcessGroup
+from torch import Tensor, inf
+from torch.distributed import ProcessGroup, get_world_size
 from torch.nn import Module, SyncBatchNorm
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
@@ -23,7 +25,9 @@ from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.shardformer.layer.utils import SeqParallelUtils
 from colossalai.shardformer.policies.base_policy import Policy
+from colossalai.tensor.d_tensor.api import is_distributed_tensor
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 from .pp_plugin_base import PipelinePluginBase
@@ -44,12 +48,17 @@ class HybridParallelModule(ModelWrapper):
         precision: str,
         shard_config: ShardConfig,
         dp_group: ProcessGroup,
+        tp_group: ProcessGroup,
         use_ddp: bool,
         ddp_config: dict,
         custom_policy: Policy,
     ) -> None:
         self.stage_manager = shard_config.pipeline_stage_manager
+        self.shard_config = shard_config
         self.dp_group = dp_group
+        self.tp_group = tp_group
+        self.use_dpp = use_ddp
+        self.require_grad_sync = True
 
         shardformer = ShardFormer(shard_config)
         if custom_policy is not None:
@@ -95,18 +104,74 @@ class HybridParallelModule(ModelWrapper):
                 dist.all_reduce(param.grad, group=group)
             dist.barrier()
 
-    def no_sync(self) -> Iterator[None]:
-        # no sync grads across data parallel
-        return nullcontext()
+    @contextmanager
+    def no_sync(self):
+        r"""
+        A context manager to disable automatic gradient synchronization (all-reduce) and allow manual synchronization
+        when 'no_sync' is active. Alternatively, synchronization will occur in the first forward-backward pass
+        when exiting the context.
+        """
 
-    def sync_grads(self):
-        # sync grad across data parallel
+        # Store the current value of 'require_grad_sync' to restore it later.
+        old_require_grad_sync = self.require_grad_sync
+        # Disable automatic gradient synchronization.
+        self.require_grad_sync = False
+        try:
+            if self.use_dpp:
+                # If using data parallel processing (use_dpp), disable synchronization too.
+                with self.module.no_sync():
+                    yield
+            else:
+                yield
+        finally:
+            # Restore the original value of 'require_grad_sync'.
+            self.require_grad_sync = old_require_grad_sync
+
+    def sync_dp_grads(self):
+        r"""
+        Synchronize gradients across data parallelism (DP) if the DP group size is greater than 1.
+        This function performs an all-reduce operation to combine gradients from different devices in the DP group.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+
+        # Check if the DP group size is 1, meaning no synchronization is needed.
         if self.dp_group.size() == 1:
             return
+
+        # Iterate through the model's parameters and perform gradient synchronization.
         for p in self.module.parameters():
             if p.grad is not None:
+                # Perform all-reduce to combine gradients from different devices.
                 dist.all_reduce(p.grad, group=self.dp_group)
+                # Normalize the gradient by dividing it by the DP group size.
                 p.grad.div_(self.dp_group.size())
+
+    def sync_sp_grads(self, grads: Optional[List[torch.Tensor]] = None):
+        r"""
+        Synchronize gradients that are partially derived within sequence parallelism
+        if sequence parallelism is enabled. Gradients can be provided explicitly or extracted
+        from the module.
+
+        Args:
+            grads (Optional[List[torch.Tensor]]): A list of gradient tensors to synchronize. If not
+                provided, gradients will be extracted from the model.
+
+        Returns:
+            None
+        """
+
+        if self.tp_group.size() > 1 and self.shard_config.enable_sequence_parallelism:
+            if grads is not None:
+                # Synchronize provided gradient tensors across the tensor parallelism group.
+                SeqParallelUtils.allreduce_partial_data_grad(tp_group=self.tp_group, grads=grads)
+            else:
+                # Synchronize gradients from the model across the tensor parallelism group.
+                SeqParallelUtils.allreduce_partial_data_grad(tp_group=self.tp_group, model=self.module)
 
     def forward(self, *args, **kwargs):
         if self.convert_fn is not None:
@@ -160,11 +225,196 @@ def init_pipeline_optimizer(optim: Optimizer, model: Module):
 
 
 class HybridParallelNaiveOptimizer(OptimizerWrapper):
-    def __init__(self, optim: Optimizer, model: Module, use_pipeline: bool, param_info: OrderedDict):
+    def __init__(
+        self,
+        optim: Optimizer,
+        model: HybridParallelModule,
+        use_pipeline: bool,
+        param_info: OrderedDict,
+        max_norm: float = 0,
+        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
+        pp_process_group: Optional[ProcessGroup] = None,  # if using pp
+    ):
         self.param_info = param_info
         if use_pipeline:
             init_pipeline_optimizer(optim, model)
+        self.model = model
+        self.stage_manager = model.stage_manager
+        self.shared_params = model.shared_params
+        self.max_norm = max_norm
+        self.tp_pg = tp_process_group
+        self.pp_pg = pp_process_group
+        self.tp_size = get_world_size(self.tp_pg) if self.tp_pg is not None else 1
+        self.pp_size = get_world_size(self.pp_pg) if self.pp_pg is not None else 1
         super().__init__(optim)
+
+    def backward(self, loss: Tensor, *args, **kwargs):
+        r"""
+        Backpropagate gradients through the model and optionally synchronize sequence parallelism gradients.
+
+        This method performs backward pass for gradient computation. If sequence parallelism is enabled
+        and gradient synchronization is required, it will synchronize gradients that are partially derived
+        within sequence parallelism across tp parallelism groups.
+
+        Args:
+            loss (Tensor): The loss tensor to compute gradients with respect to.
+            *args: Additional positional arguments to be passed to the superclass backward method.
+            **kwargs: Additional keyword arguments to be passed to the superclass backward method.
+
+        Returns:
+            None
+        """
+
+        # Call the superclass backward method to compute gradients.
+        super().backward(loss, *args, **kwargs)
+
+        if self.model.require_grad_sync:
+            # If gradient synchronization is required, sync sequence parallelism gradients.
+            self.model.sync_sp_grads()
+        else:
+            # If gradient synchronization is is not required, return.
+            return
+
+    def backward_by_grad(self, tensor: Tensor, grad: Tensor):
+        """
+        Backpropagate gradients through the model using a precomputed gradient and optionally synchronize sequence parallelism gradients.
+
+        This method performs a backward pass for gradient computation using a precomputed gradient tensor.
+        If sequence parallelism is enabled and gradient synchronization is required, it will synchronize
+        gradients that are partially derived within sequence parallelism across tp parallelism groups.
+
+        Args:
+            tensor (Tensor): The input tensor for which gradients are computed.
+            grad (Tensor): The precomputed gradient tensor to compute gradients with respect to the input tensor.
+
+        Returns:
+            None
+        """
+
+        # Call the superclass backward method to compute gradients.
+        super().backward_by_grad(tensor, grad)
+
+        if self.model.require_grad_sync:
+            # If gradient synchronization is required, sync sequence parallelism gradients.
+            self.model.sync_sp_grads()
+        else:
+            # If gradient synchronization is is not required, return.
+            return
+
+    def step(self, *args, **kwargs):
+        r"""
+        Perform an optimization step.
+
+        Args:
+            *args: Variable-length positional arguments to be passed to the optimizer's step function.
+            **kwargs: Keyword arguments to be passed to the optimizer's step function.
+        """
+
+        if self.max_norm > 0:
+            # Compute the total gradient norm.
+            param_gradient_pairs = [
+                (p, p.grad) for group in self.optim.param_groups for p in group["params"] if p.grad is not None
+            ]
+            total_norm = self._compute_grad_norm(param_gradient_pairs)
+
+            # Clip the gradients to prevent exploding gradients.
+            self._clip_grad_norm(total_norm)
+
+        # Perform the optimization step using the underlying optimizer.
+        self.optim.step(*args, **kwargs)
+
+    def _compute_grad_norm(self, param_gradient_pairs: List[Tuple[Tensor]], norm_type: int = 2) -> int:
+        r"""
+        Compute and return the gradient norm for gradient clipping.
+
+        Args:
+            param_gradient_pairs (List[Tuple[Tensor]]): List of (parameter, gradient) pairs; gradients are used for norm calculation.
+            norm_type (int, optional): Type of the norm used (e.g., 2 for L2 norm). Defaults to 2.
+
+        Returns:
+            float: The total norm of the given gradients.
+        """
+
+        if len(param_gradient_pairs) == 0:
+            return 0.0
+
+        norm_type = float(norm_type)
+
+        # gradients used for norm calculation.
+        gradients = [grad for param, grad in param_gradient_pairs]
+
+        if norm_type == inf:
+            total_norm = max(grad.data.abs().max() for grad in gradients)
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+            if self.tp_size > 1:
+                dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.tp_pg)
+            if self.pp_size > 1:
+                dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.pp_pg)
+            total_norm = total_norm_cuda.item()
+        else:
+            # gradients used for norm calculation.
+            gradients = [grad for param, grad in param_gradient_pairs]
+            # grad_to_param_mapping is used to check which gradients are not distributed across devices of the 'tp_group'.
+            grad_to_param_mapping = {id(grad): param for param, grad in param_gradient_pairs}
+
+            total_norm_exponentiated = 0.0
+            for grad in gradients:
+                grad_norm_exponentiated = grad.data.double().norm(norm_type) ** norm_type
+
+                # If 'tp_size' is greater than 1 and the parameter for the gradient is not a distributed tensor,
+                # it indicates that the parameter is not distributed across devices of the 'tp_group'.
+                # Consequently, there is no need to perform an 'all_reduce' operation for 'grad_norm'.
+                # However, we still perform the 'all_reduce' operation for the sake of good coding practices.
+                # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
+                if self.tp_size > 1:
+                    param_for_grad = grad_to_param_mapping[id(grad)]
+                    if not is_distributed_tensor(param_for_grad):
+                        grad_norm_exponentiated /= self.tp_size
+
+                # If 'pp_size' is greater than 1 and the gradient belongs to shared parameters,
+                # it means that this parameter is used in two different pipeline stages.
+                # To avoid redundant norm calculations, we divide the exponent of this norm by
+                # the number of shared stages.
+                if self.pp_size > 1:
+                    for shared_param in self.shared_params:
+                        if self.stage_manager.stage in shared_param:
+                            stage_shared_param = shared_param[self.stage_manager.stage]
+                            if grad is stage_shared_param.grad:
+                                grad_norm_exponentiated /= len(shared_param)
+
+                total_norm_exponentiated += grad_norm_exponentiated
+
+            total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
+            if self.tp_size > 1:
+                # compute norm in tp process group
+                dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.tp_pg)
+            if self.pp_size > 1:
+                # compute norm in pp process group
+                dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
+
+            # compute the total_norm
+            total_norm = total_norm_exponentiated_cuda.item() ** (1.0 / norm_type)
+
+        return total_norm
+
+    def _clip_grad_norm(self, total_norm: float) -> None:
+        r"""
+        Clips the gradients of the model's parameters to prevent exploding gradients.
+
+        Args:
+            total_norm (float): The computed total gradient norm.
+
+        Returns:
+            None
+        """
+        clip_coef = torch.tensor(self.max_norm / (total_norm + 1e-6))
+        clip_coef_clamped = torch.clamp(clip_coef, max=1.0)
+
+        for group in self.optim.param_groups:
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                p.grad.data.mul_(clip_coef_clamped)
 
     def update_master_params(self, model: Module):
         pass
@@ -180,7 +430,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
     def __init__(
         self,
         optim: Optimizer,
-        model: Module,
+        model: HybridParallelModule,
         use_pipeline: bool,
         param_info: OrderedDict,
         precision: str = "fp16",
@@ -192,29 +442,168 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
         hysteresis: int = 2,
         max_scale: float = 2**32,
         max_norm: float = 0,
+        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
+        pp_process_group: Optional[ProcessGroup] = None,  # if using pp
     ):
+        self.model = model
         self.param_info = param_info
+        self.stage_manager = model.stage_manager
+        self.shared_params = model.shared_params
+        self.tp_pg = tp_process_group
+        self.pp_pg = pp_process_group
+        self.tp_size = get_world_size(self.tp_pg) if self.tp_pg is not None else 1
+        self.pp_size = get_world_size(self.pp_pg) if self.pp_pg is not None else 1
         if use_pipeline:
             init_pipeline_optimizer(optim, model)
         super().__init__(
             optim,
-            precision,
-            initial_scale,
-            min_scale,
-            growth_factor,
-            backoff_factor,
-            growth_interval,
-            hysteresis,
-            max_scale,
-            max_norm,
+            precision=precision,
+            initial_scale=initial_scale,
+            min_scale=min_scale,
+            growth_factor=growth_factor,
+            backoff_factor=backoff_factor,
+            growth_interval=growth_interval,
+            hysteresis=hysteresis,
+            max_scale=max_scale,
+            max_norm=max_norm,
         )
+
+    def backward(self, loss: Tensor, *args, **kwargs):
+        r"""
+        Backpropagate gradients through the model and optionally synchronize sequence parallelism gradients.
+
+        This method performs backward pass for gradient computation. If sequence parallelism is enabled
+        and gradient synchronization is required, it will synchronize gradients that are partially derived
+        within sequence parallelism across tp parallelism groups.
+
+        Args:
+            loss (Tensor): The loss tensor to compute gradients with respect to.
+            *args: Additional positional arguments to be passed to the superclass backward method.
+            **kwargs: Additional keyword arguments to be passed to the superclass backward method.
+
+        Returns:
+            None
+        """
+
+        # Call the superclass backward method to compute gradients.
+        super().backward(loss, *args, **kwargs)
+
+        if self.model.require_grad_sync:
+            # If gradient synchronization is required, sync sequence parallelism gradients.
+            self.model.sync_sp_grads()
+        else:
+            # If gradient synchronization is is not required, return.
+            return
+
+    def backward_by_grad(self, tensor: Tensor, grad: Tensor):
+        """
+        Backpropagate gradients through the model using a precomputed gradient and optionally synchronize sequence parallelism gradients.
+
+        This method performs a backward pass for gradient computation using a precomputed gradient tensor.
+        If sequence parallelism is enabled and gradient synchronization is required, it will synchronize
+        gradients that are partially derived within sequence parallelism across tp parallelism groups.
+
+        Args:
+            tensor (Tensor): The input tensor for which gradients are computed.
+            grad (Tensor): The precomputed gradient tensor to compute gradients with respect to the input tensor.
+
+        Returns:
+            None
+        """
+
+        # Call the superclass backward method to compute gradients.
+        super().backward_by_grad(tensor, grad)
+
+        if self.model.require_grad_sync:
+            # If gradient synchronization is required, sync sequence parallelism gradients.
+            self.model.sync_sp_grads()
+        else:
+            # If gradient synchronization is is not required, return.
+            return
+
+    def _compute_grad_norm(self, param_gradient_pairs: List[Tuple[Tensor]], norm_type: int = 2) -> int:
+        r"""
+        Compute and return the gradient norm for gradient clipping.
+
+        Args:
+            param_gradient_pairs (List[Tuple[Tensor]]): List of (parameter, gradient) pairs; gradients are used for norm calculation.
+            norm_type (int, optional): Type of the norm used (e.g., 2 for L2 norm). Defaults to 2.
+
+        Returns:
+            float: The total norm of the given gradients.
+        """
+        if len(param_gradient_pairs) == 0:
+            return 0.0
+
+        norm_type = float(norm_type)
+
+        if norm_type == inf:
+            # The parent class calculates the norm of 'dp' gradients,
+            # so we need to calculate the norm of 'tp' and 'pp' gradients.
+            total_norm = super()._compute_grad_norm(param_gradient_pairs, norm_type)
+
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+
+            if self.tp_size > 1:
+                dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.tp_pg)
+            if self.pp_size > 1:
+                dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.pp_pg)
+
+            total_norm = total_norm_cuda.item()
+
+        else:
+            # gradients used for norm calculation.
+            gradients = [grad for param, grad in param_gradient_pairs]
+            # grad_to_param_mapping is used to check which gradients are not distributed in tensor parallelism.
+            grad_to_param_mapping = {id(grad): param for param, grad in param_gradient_pairs}
+
+            total_norm_exponentiated = 0.0
+            for grad in gradients:
+                grad_norm_exponentiated = grad.data.double().norm(norm_type) ** norm_type
+
+                # If 'tp_size' is greater than 1 and the parameter for the gradient is not a distributed tensor,
+                # it indicates that the parameter is not distributed across devices of the 'tp_group'.
+                # Consequently, there is no need to perform an 'all_reduce' operation for 'grad_norm'.
+                # However, we still perform the 'all_reduce' operation for the sake of good coding practices.
+                # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
+                if self.tp_size > 1:
+                    param_for_grad = grad_to_param_mapping[id(grad)]
+                    if not is_distributed_tensor(param_for_grad):
+                        grad_norm_exponentiated /= self.tp_size
+
+                # If 'pp_size' is greater than 1 and the gradient belongs to shared parameters,
+                # it means that this parameter is used in two different pipeline stages.
+                # To avoid redundant norm calculations, we divide the exponent of this norm by
+                # the number of shared stages.
+                if self.pp_size > 1:
+                    for shared_param in self.shared_params:
+                        if self.stage_manager.stage in shared_param:
+                            stage_working_shared_param = shared_param[self.stage_manager.stage]
+                            stage_master_shared_param = self.working_to_master_map[stage_working_shared_param]
+                            if grad is stage_master_shared_param.grad:
+                                grad_norm_exponentiated /= len(shared_param)
+
+                total_norm_exponentiated += grad_norm_exponentiated
+
+            total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
+            if self.tp_size > 1:
+                # compute norm in tp process group
+                dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.tp_pg)
+            if self.pp_size > 1:
+                # compute norm in pp process group
+                dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
+
+            # compute the total_norm
+            total_norm = total_norm_exponentiated_cuda.item() ** (1.0 / norm_type)
+
+        return total_norm
 
 
 class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
     def __init__(
         self,
         optimizer: Optimizer,
-        model: Module,
+        model: HybridParallelModule,
         use_pipeline: bool,
         param_info: OrderedDict,
         initial_scale: int = 2**16,  # grad scaler config
@@ -233,31 +622,235 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         cpu_offload: bool = False,  # cpu offload
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
         tp_process_group: Optional[ProcessGroup] = None,  # if using tp
+        pp_process_group: Optional[ProcessGroup] = None,  # if using pp
         forced_dtype: Optional[torch.dtype] = None,
     ):
+        self.model = model
         self.param_info = param_info
+        self.stage_manager = model.stage_manager
+        self.shared_params = model.shared_params
+        self.dp_pg = dp_process_group
+        self.tp_pg = tp_process_group
+        self.pp_pg = pp_process_group
         if use_pipeline:
             init_pipeline_optimizer(optimizer, model)
         super().__init__(
-            optimizer,
-            initial_scale,
-            min_scale,
-            growth_factor,
-            backoff_factor,
-            growth_interval,
-            hysteresis,
-            max_scale,
-            clip_grad_norm,
-            verbose,
-            reduce_bucket_size,
-            communication_dtype,
-            overlap_communication,
-            partition_grad,
-            cpu_offload,
-            dp_process_group,
-            tp_process_group,
-            forced_dtype,
+            optimizer=optimizer,
+            initial_scale=initial_scale,
+            min_scale=min_scale,
+            growth_factor=growth_factor,
+            backoff_factor=backoff_factor,
+            growth_interval=growth_interval,
+            hysteresis=hysteresis,
+            max_scale=max_scale,
+            clip_grad_norm=clip_grad_norm,
+            verbose=verbose,
+            reduce_bucket_size=reduce_bucket_size,
+            communication_dtype=communication_dtype,
+            overlap_communication=overlap_communication,
+            partition_grad=partition_grad,
+            cpu_offload=cpu_offload,
+            dp_process_group=dp_process_group,
+            forced_dtype=forced_dtype,
         )
+
+    def sync_dp_grads(self):
+        r"""
+        Synchronize gradients in the data parallelism dimension.
+
+        This method wraps the existing `_sync_grad` method in order to explicitly synchronize gradients
+        in the data parallelism dimension. It is necessary due to the introduction of new parallel dimensions,
+        namely tp (tensor parallelism) and pp (pipeline parallelism). This ensures better code organization
+        and readability.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+
+        # Call the superclass `_sync_grad` method to synchronize gradients.
+        super()._sync_grad()
+
+    def _sync_sp_grads(self):
+        r"""
+        Synchronize gradients that are partially derived within sequence parallelism.
+
+        This method is responsible for synchronizing partially derived gradients across tp parallelism groups.
+        It identifies gradients that ara partially derived or not and synchronizes them.
+        If synchronization is required and gradients are found to be synchronized,
+        it performs the synchronization.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+
+        def _get_all_working_grads() -> List[Tensor]:
+            """Retrieve all working gradients from different parameter groups."""
+            all_working_grads = []
+            for group_id in range(self.num_param_groups):
+                working_grads = self._grad_store.get_working_grads_by_group_id(group_id)
+                all_working_grads.extend(working_grads)
+            return all_working_grads
+
+        def _get_grads_to_sync(all_working_grads) -> Union[List[Tensor], None]:
+            """Identify gradients to be synchronized in the sequence parallelism."""
+            grads_to_sync = []
+            for grad in all_working_grads:
+                param_id_for_grad = self._grad_store.get_param_id_for_grad(grad)
+                param_for_grad = ctypes.cast(param_id_for_grad, ctypes.py_object).value
+                if SeqParallelUtils.is_sp_partial_derived_param(param_for_grad):
+                    grads_to_sync.append(grad)
+
+            if len(grads_to_sync) > 0:
+                return grads_to_sync
+            else:
+                return None
+
+        # Get all working gradients and gradients to be synchronized.
+        all_working_grads = _get_all_working_grads()
+        grads_to_sync = _get_grads_to_sync(all_working_grads)
+
+        if self.require_grad_sync and grads_to_sync is not None:
+            # Synchronize sequence parallelism gradients if required.
+            SeqParallelUtils.allreduce_partial_data_grad(tp_group=self.tp_pg, grads=grads_to_sync)
+        else:
+            return
+
+    def backward(self, loss, retain_graph=False):
+        """
+        Backpropagate gradients through the model and optionally synchronize sequence parallelism gradients.
+
+        This method performs the backward pass for gradient computation based on a given loss tensor.
+        If sequence parallelism is enabled and gradient synchronization is required, it will synchronize
+        gradients that are partially derived within sequence parallelism across TP parallelism groups.
+
+        Args:
+            loss: The loss tensor to compute gradients with respect to.
+            retain_graph (bool): Whether to retain the computation graph.
+
+        Returns:
+            None
+        """
+        # Call the superclass backward method to compute gradients.
+        super().backward(loss, retain_graph)
+
+        if self.require_grad_sync and self.model.shard_config.enable_sequence_parallelism:
+            # If gradient synchronization is required, sync sequence parallelism gradients.
+            self._sync_sp_grads()
+        else:
+            # If gradient synchronization is is not required, return.
+            return
+
+    def backward_by_grad(self, tensor, grad):
+        """
+        Backpropagate gradients through the model using a precomputed gradient and optionally synchronize sequence parallelism gradients.
+
+        This method performs a backward pass for gradient computation based on a precomputed gradient tensor.
+        If sequence parallelism is enabled and gradient synchronization is required, it will synchronize
+        gradients that are partially derived within sequence parallelism across TP parallelism groups.
+
+        Args:
+            tensor: The input tensor for which gradients are computed.
+            grad: The precomputed gradient tensor to compute gradients with respect to the input tensor.
+
+        Returns:
+            None
+        """
+        # Call the superclass backward_by_grad method to compute gradients.
+        super().backward_by_grad(tensor, grad)
+
+        if self.require_grad_sync and self.model.shard_config.enable_sequence_parallelism:
+            # If gradient synchronization is required, sync sequence parallelism gradients.
+            self._sync_sp_grads()
+        else:
+            # If gradient synchronization is is not required, return.
+            return
+
+    def _compute_grad_norm(self, gradients: List[Tensor], norm_type: int = 2) -> float:
+        r"""
+        Compute and return the gradient norm for gradient clipping.
+
+        Args:
+            gradients (List[Tensor]): A list of tensors containing gradients.
+            norm_type (int, optional): Type of the p-norm to be computed. Defaults to 2.
+
+        Returns:
+            float: The computed gradient norm.
+        """
+
+        # Check if the list of gradients is empty
+        if len(gradients) == 0:
+            return 0.0
+
+        dp_size = get_world_size(self.dp_pg) if self.dp_pg is not None else 1
+        tp_size = get_world_size(self.tp_pg) if self.tp_pg is not None else 1
+        pp_size = get_world_size(self.pp_pg) if self.pp_pg is not None else 1
+        norm_type = float(norm_type)
+
+        if norm_type == inf:
+            # The parent class calculates the norm of 'dp' gradients,
+            # so we only need to calculate the norm 'tp' of 'pp' gradients.
+            total_norm = super()._compute_grad_norm(gradients, norm_type)
+
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+
+            if tp_size > 1:
+                dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.tp_pg)
+            if pp_size > 1:
+                dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.pp_pg)
+
+            total_norm = total_norm_cuda.item()
+        else:
+            total_norm_exponentiated = 0.0
+            for grad in gradients:
+                grad_norm_exponentiated = grad.data.double().norm(norm_type) ** norm_type
+
+                # If 'tp_size' is greater than 1 and the parameter for the gradient is not a distributed tensor,
+                # it indicates that the parameter is not distributed across devices of the 'tp_group'.
+                # Consequently, there is no need to perform an 'all_reduce' operation for 'grad_norm'.
+                # However, we still perform the 'all_reduce' operation for the sake of good coding practices.
+                # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
+                if tp_size > 1:
+                    param_id_for_grad = self._grad_store.get_param_id_for_grad(grad)
+                    param_for_grad = ctypes.cast(param_id_for_grad, ctypes.py_object).value
+
+                    if not is_distributed_tensor(param_for_grad):
+                        grad_norm_exponentiated /= tp_size
+
+                # If 'pp_size' is greater than 1 and the gradient belongs to shared parameters,
+                # it means that this parameter is used in two different pipeline stages.
+                # To avoid redundant norm calculations, we divide the exponent of this norm by
+                # the number of shared stages.
+                if pp_size > 1:
+                    for shared_param in self.shared_params:
+                        if self.stage_manager.stage in shared_param:
+                            stage_shared_param = shared_param[self.stage_manager.stage]
+                            working_grad = self._grad_store.get_working_grad_by_param_id(id(stage_shared_param))
+                            if grad is working_grad:
+                                grad_norm_exponentiated /= len(shared_param)
+
+                total_norm_exponentiated += grad_norm_exponentiated
+
+            total_norm_exponentiated_cuda = torch.cuda.FloatTensor([float(total_norm_exponentiated)])
+            if dp_size > 1:
+                # compute norm in dp process group
+                dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.dp_pg)
+            if tp_size > 1:
+                # compute norm in tp process group
+                dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.tp_pg)
+            if pp_size > 1:
+                # compute norm in pp process group
+                dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
+
+            # Compute the 'total_norm' from 'total_norm_exponentiated'
+            total_norm = total_norm_exponentiated_cuda.item() ** (1.0 / norm_type)
+
+        return total_norm
 
 
 class HybridParallelPlugin(PipelinePluginBase):
@@ -463,7 +1056,14 @@ class HybridParallelPlugin(PipelinePluginBase):
         if not isinstance(model, ModelWrapper):
             use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
             model = HybridParallelModule(
-                model, self.precision, self.shard_config, self.dp_group, use_ddp, self.ddp_config, self.custom_policy
+                model,
+                precision=self.precision,
+                shard_config=self.shard_config,
+                dp_group=self.dp_group,
+                tp_group=self.tp_group,
+                use_ddp=use_ddp,
+                ddp_config=self.ddp_config,
+                custom_policy=self.custom_policy,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
@@ -475,11 +1075,19 @@ class HybridParallelPlugin(PipelinePluginBase):
                         param_info=param_info,
                         precision=self.precision,
                         max_norm=self.max_norm,
+                        pp_process_group=self.pp_group,
+                        tp_process_group=self.tp_group,
                         **self.amp_config,
                     )
                 else:
                     optimizer = HybridParallelNaiveOptimizer(
-                        optimizer, model, use_pipeline=self.enable_pipeline_parallelism, param_info=param_info
+                        optimizer,
+                        model,
+                        use_pipeline=self.enable_pipeline_parallelism,
+                        param_info=param_info,
+                        max_norm=self.max_norm,
+                        pp_process_group=self.pp_group,
+                        tp_process_group=self.tp_group,
                     )
             else:
                 assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
@@ -491,6 +1099,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     param_info=param_info,
                     dp_process_group=self.dp_group,
                     tp_process_group=self.tp_group,
+                    pp_process_group=self.pp_group,
                     verbose=True,
                     clip_grad_norm=self.max_norm,
                     **self.zero_config,
@@ -512,17 +1121,32 @@ class HybridParallelPlugin(PipelinePluginBase):
         return_outputs: bool = False,
     ) -> dict:
         assert self.enable_pipeline_parallelism, "pipeline parallelism is not enabled"
-        # return loss or outputs if needed
+
+        # Create a context for gradient synchronization based on the optimizer type.
+        # If it's a HybridParallelZeroOptimizer, use optimizer.no_sync(); otherwise, use model.no_sync().
+        # This is to avoid redundant gradient reduction in pipeline parallelism (multiple microbatch values should be reduced once),
+        # so we disable it, performing manual reduction instead.
         ctx = optimizer.no_sync() if isinstance(optimizer, HybridParallelZeroOptimizer) else model.no_sync()
+
         with ctx:
             outputs = self.schedule.forward_backward_step(
                 model, data_iter, criterion, optimizer, return_loss, return_outputs
             )
+
+        # Synchronize the grads of shared parameters of the model.
         model.sync_shared_params()
+
+        # Synchronize sequence parallelism gradients of the model.
+        model.sync_sp_grads()
+
+        # Check if the optimizer is a HybridParallelZeroOptimizer and synchronize data parallelism gradients if so.
+        # Otherwise, synchronize data parallelism gradients of the model.
+        # This is because these are two different forms of data parallelism.
         if isinstance(optimizer, HybridParallelZeroOptimizer):
-            optimizer.sync_grad()
+            optimizer.sync_dp_grads()
         else:
-            model.sync_grads()
+            model.sync_dp_grads()
+
         return outputs
 
     def prepare_dataloader(

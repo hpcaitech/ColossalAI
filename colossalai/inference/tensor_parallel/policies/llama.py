@@ -3,15 +3,16 @@ from functools import partial
 import torch
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel, LlamaRMSNorm
 
-from colossalai.shardformer.layer import VocabParallelEmbedding1D
-from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
+
 # import colossalai
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
 
-from ..modeling.llama import LlamaInferenceForwards, get_llama_vllm_rmsnorm_forward
+from ..modeling._utils import init_to_get_rotary
+from ..modeling.llama import LlamaInferenceForwards
 
 try:
-    from colossalai.kernel.triton import rmsnorm_forward
+    from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward as lightllm_rmsnorm_forward
 
     HAS_TRITON_RMSNORM = True
 except:
@@ -23,7 +24,7 @@ def get_triton_rmsnorm_forward():
     if HAS_TRITON_RMSNORM:
 
         def _triton_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
-            return rmsnorm_forward(hidden_states, self.weight.data, self.variance_epsilon)
+            return lightllm_rmsnorm_forward(hidden_states, self.weight.data, self.variance_epsilon)
 
         return _triton_rmsnorm_forward
     else:
@@ -37,7 +38,7 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
     def module_policy(self):
         policy = super().module_policy()
 
-        if self.shard_config.inference_gptq:
+        if self.shard_config.extra_kwargs.get("inference_gptq", False):
             from colossalai.inference.quant.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
 
             decoder_attribute_replacement = {
@@ -50,38 +51,38 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=ColCaiQuantLinear,
-                        kwargs={'split_num': 1},
+                        kwargs={"split_num": 1},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=ColCaiQuantLinear,
-                        kwargs={'split_num': 1},
+                        kwargs={"split_num": 1},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=ColCaiQuantLinear,
-                        kwargs={'split_num': 1},
+                        kwargs={"split_num": 1},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=RowCaiQuantLinear,
-                        kwargs={'split_num': 1},
+                        kwargs={"split_num": 1},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.gate_proj",
                         target_module=ColCaiQuantLinear,
-                        kwargs={'split_num': 1},
+                        kwargs={"split_num": 1},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.up_proj",
                         target_module=ColCaiQuantLinear,
-                        kwargs={'split_num': 1},
+                        kwargs={"split_num": 1},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.down_proj",
                         target_module=RowCaiQuantLinear,
-                        kwargs={'split_num': 1},
-                    )
+                        kwargs={"split_num": 1},
+                    ),
                 ],
             )
 
@@ -106,9 +107,6 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
         infer_forward = None
         if HAS_TRITON_RMSNORM:
             infer_forward = get_triton_rmsnorm_forward()
-        else:
-            # NOTE: adding rms_norm from cuda kernels caused precision issue, fix @tiandiao123
-            infer_forward = get_llama_vllm_rmsnorm_forward()
 
         if infer_forward is not None:
             method_replacement = {"forward": partial(infer_forward)}
@@ -117,3 +115,7 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
             )
 
         return policy
+
+    def postprocess(self):
+        init_to_get_rotary(self.model.model)
+        return self.model

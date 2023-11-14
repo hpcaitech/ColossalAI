@@ -171,6 +171,9 @@ def get_batch_prompt(
         for b in batch:
             few_shot_prefix = ""
             if few_shot_data is not None:
+                assert not isinstance(b["instruction"], list), print(
+                    f"When performing few-shot, {b['dataset']} shouldn't be a multiturn dataset."
+                )
                 # For few-shot, only need input. Otherwise use instruction (in AGIEval).
                 query_text = b["input"] if b.get("input", "") != "" else b["instruction"]
 
@@ -181,11 +184,24 @@ def get_batch_prompt(
                     raise Exception("When using few-shot, target answer should be a string.")
 
                 few_shot_prefix = get_few_shot_prefix(conv, few_shot_data, tokenizer, language, max_tokens)
-            else:
-                query_text = b["instruction"] + "\n\n" + b["input"] if b.get("input", "") != "" else b["instruction"]
 
-            conv.append_message(conv.roles[0], few_shot_prefix + query_text)
-            conv.append_message(conv.roles[1], None)
+                conv.append_message(conv.roles[0], few_shot_prefix + query_text)
+                conv.append_message(conv.roles[1], None)
+            else:
+                if not isinstance(b["instruction"], list):
+                    query_text = (
+                        b["instruction"] + "\n\n" + b["input"] if b.get("input", "") != "" else b["instruction"]
+                    )
+                    conv.append_message(conv.roles[0], query_text)
+                    conv.append_message(conv.roles[1], None)
+                else:
+                    assert len(b["instruction"]) >= len(b["output"]) + 1
+                    cur_turns = len(b["output"])
+                    for turn in range(cur_turns):
+                        conv.append_message(conv.roles[0], b["instruction"][turn])
+                        conv.append_message(conv.roles[1], b["output"][turn])
+                    conv.append_message(conv.roles[0], b["instruction"][cur_turns])
+                    conv.append_message(conv.roles[1], None)
 
             batch_prompt.append(conv.get_prompt())
 

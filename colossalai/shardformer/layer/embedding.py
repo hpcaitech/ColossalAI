@@ -309,7 +309,8 @@ class VocabParallelEmbedding1D(ParallelModule):
         )
 
         # Mask the output embedding.
-        output_parallel[input_mask, :] = 0.0
+        embedding_output = output_parallel.clone()
+        embedding_output[input_mask, :] = 0.0
         # Reduce across all the model parallel GPUs.
-        output = reduce_forward(output_parallel, self.process_group)
+        output = reduce_forward(embedding_output, self.process_group)
         return output

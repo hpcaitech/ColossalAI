@@ -96,7 +96,7 @@ class HuggingFaceModel(BaseModel):
             self.logger.warning("pad_token_id is not set for the tokenizer. " "Using eos_token_id as pad_token_id.")
             if self.tokenizer.eos_token:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
-            elif self.tokenizer.eod_id:
+            elif hasattr(self.tokenizer, "eod_id"):
                 # Qwen has an eod token "<|endoftext|>".
                 self.tokenizer.pad_token_id = self.tokenizer.eod_id
 
@@ -333,9 +333,12 @@ class HuggingFaceModel(BaseModel):
 
             self.str_label_map = {choice: idx for idx, choice in enumerate(self.choices)}
 
+        turn = 0 if not isinstance(data[0]["output"], list) else len(data[0]["output"]) + 1
+        turn_desc = "" if turn == 0 else f"-turn{turn}"
+
         bar = tqdm(
             range(math.ceil(len(data) / self.batch_size)),
-            desc=f"{data[0]['dataset']}-{data[0]['category']} Inference steps",
+            desc=f"{data[0]['dataset']}-{data[0]['category']}{turn_desc} Inference steps",
             disable=not is_rank_0(),
         )
         loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
@@ -384,7 +387,10 @@ class HuggingFaceModel(BaseModel):
 
             for j in range(len(batch_prompt)):
                 if not pretrain:
-                    answers[i + j]["output"] = batch_decodes[j].strip()
+                    if isinstance(answers[i + j]["output"], list):
+                        answers[i + j]["output"].append(batch_decodes[j].strip())
+                    else:
+                        answers[i + j]["output"] = batch_decodes[j].strip()
 
                     if isinstance(scores, torch.Tensor):
                         answers[i + j]["softmax_over_choices"] = probs[j]

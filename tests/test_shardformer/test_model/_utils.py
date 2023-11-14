@@ -10,6 +10,7 @@ from torch import distributed as dist
 from torch.distributed import ProcessGroup
 from torch.nn import Module
 from torch.optim import Adam, Optimizer
+from torch.testing import assert_close
 
 from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
@@ -160,7 +161,7 @@ def run_forward_backward_with_hybrid_plugin(
         input_shape = data["input_ids"].shape
         for k, v in data.items():
             if v.shape == input_shape:
-                data[k] = v.repeat(input_shape[:-1] + (input_shape[-1] * times,))
+                data[k] = v.repeat((1,) * (v.dim() - 1) + (times,))
 
     sharded_model.train()
     if booster.plugin.stage_manager is not None:
@@ -207,15 +208,11 @@ def check_output_hidden_state(
     else:
         sharded_hidden_state = sharded_output.last_hidden_state
 
-    assert torch.allclose(
-        org_hidden_state.float(), sharded_hidden_state.float(), atol=atol, rtol=rtol
-    ), f"shard model's output hidden state is not equal to origin model's last hidden state\n{org_hidden_state}\n{sharded_hidden_state}"
+    assert_close(org_hidden_state.float(), sharded_hidden_state.float(), atol=atol, rtol=rtol)
 
 
 def check_loss(org_loss: Tensor, sharded_loss: Tensor, atol: float = 1e-5, rtol: float = 1e-3):
-    assert torch.allclose(
-        org_loss.float(), sharded_loss.float(), atol=atol, rtol=rtol
-    ), f"shard model loss is not equal to origin model loss\n{org_loss}\n{sharded_loss}"
+    assert torch.allclose(org_loss.float(), sharded_loss.float(), atol=atol, rtol=rtol)
 
 
 def check_weight(
@@ -242,9 +239,7 @@ def check_weight(
         if verbose and dist.get_rank() == 0:
             print(f"'{suffix}' weight: {org_weight}, {sharded_weight}")
 
-        assert torch.allclose(
-            org_weight.float(), sharded_weight.float(), atol=atol, rtol=rtol
-        ), f"shard model weight {suffix} is not equal to origin model weight\n{org_weight}\n{sharded_weight}"
+        assert_close(org_weight.float(), sharded_weight.float(), atol=atol, rtol=rtol)
 
 
 def get_grad_tensors_for_check(
@@ -310,9 +305,7 @@ def check_grad(
         if verbose and dist.get_rank() == 0:
             print(f"'{suffix}' grad: {org_grad}, {shard_grad}")
 
-        assert torch.allclose(
-            org_grad.float(), shard_grad.float(), rtol=rtol, atol=atol
-        ), f"error attribute '{suffix}', orgin model grad is not equal to shard model grad\n{org_grad}\n{shard_grad}"
+        assert_close(org_grad.float(), shard_grad.float(), rtol=rtol, atol=atol)
 
 
 def unwrap_model(
@@ -337,6 +330,4 @@ def check_all_grad_tensors(check_tensors):
         shard_grad = check_info["shard_grad"]
         rtol = check_info["rtol"]
         atol = check_info["atol"]
-        assert torch.allclose(
-            org_grad, shard_grad, atol=atol, rtol=rtol
-        ), f"error attribute '{suffix}', orgin model grad is not equal to shard model grad\n{org_grad}\n{shard_grad}"
+        assert_close(org_grad, shard_grad, atol=atol, rtol=rtol)

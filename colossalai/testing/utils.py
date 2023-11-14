@@ -273,3 +273,24 @@ def clear_cache_before_run():
         return _clear_cache
 
     return _wrap_func
+
+
+class DummyDataloader:
+    def __init__(self, data_gen_fn: Callable, length: int = 10):
+        self.data_gen_fn = data_gen_fn
+        self.length = length
+        self.step = 0
+
+    def __iter__(self):
+        self.step = 0
+        return self
+
+    def __next__(self):
+        if self.step < self.length:
+            self.step += 1
+            return self.data_gen_fn()
+        else:
+            raise StopIteration
+
+    def __len__(self):
+        return self.length

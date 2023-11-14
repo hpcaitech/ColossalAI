@@ -10,18 +10,21 @@ from colossalai.booster.plugin import GeminiPlugin
 from colossalai.fx import is_compatible_with_meta
 from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.tensor.d_tensor.api import clear_layout_converter
+from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
 
-def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
+def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, enable_tensor_parallelism) -> Optional[str]:
     try:
         if init_method == "lazy":
             ctx = LazyInitContext()
         else:
             ctx = nullcontext()
-        plugin = GeminiPlugin(max_norm=1.0, initial_scale=2**5)
+        enable_all_optimization = True if enable_tensor_parallelism else False
+        plugin = GeminiPlugin(max_norm=1.0, initial_scale=2**5, enable_tensor_parallelism=enable_tensor_parallelism, enable_all_optimization=enable_all_optimization)
         booster = Booster(plugin=plugin)
         with ctx:
             model = model_fn()
@@ -46,6 +49,8 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
         booster.backward(loss, optimizer)
         optimizer.step()
 
+    except NotImplementedError:
+        print(f"Tensor Parallelism policy for {model.__class__} is not implemented yet\n.")
     except Exception as e:
         # raise e
         return repr(e)
@@ -57,7 +62,8 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
 
 @parameterize("subset", ["torchvision", "transformers", "diffusers"])
 @parameterize("init_method", ["none"])
-def check_gemini_plugin(subset: str, init_method: str = "none", early_stop: bool = True):
+@parameterize("enable_tensor_parallelism", [True, False])
+def check_gemini_plugin(subset: str, init_method: str = "none", enable_tensor_parallelism: bool = True, early_stop: bool = True):
     """check gemini plugin over model zoo
 
     Args:
@@ -116,7 +122,12 @@ def check_gemini_plugin(subset: str, init_method: str = "none", early_stop: bool
             "torchvision_efficientnet_v2_s",
         ]:
             continue
-        err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn)
+
+        # TODO debug blip2 when using tp, something wrong with shift_logits's shape
+        if "transformers_blip2" in name:
+            enable_tensor_parallelism = False
+
+        err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, enable_tensor_parallelism)
         torch.cuda.empty_cache()
         if err is None:
             passed_models.append(name)

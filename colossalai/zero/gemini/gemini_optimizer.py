@@ -6,8 +6,10 @@ from typing import Any, Dict, Iterator, OrderedDict, Set, Tuple, Union
 
 import torch
 import torch.distributed as dist
+from packaging.version import Version
 from torch.nn import Parameter
 from torch.optim import Optimizer
+from torch.distributed import ProcessGroup
 
 from colossalai.amp.naive_amp.mixed_precision_mixin import BF16MixedPrecisionMixin, FP16MixedPrecisionMixin
 from colossalai.checkpoint_io.utils import StateDictSharder
@@ -18,6 +20,18 @@ from colossalai.utils import disposable, get_current_device, is_ddp_ignored
 
 from .chunk import Chunk, ChunkManager
 from .gemini_ddp import GeminiDDP
+from colossalai.checkpoint_io.utils import gather_distributed_param
+from colossalai.tensor.d_tensor import (
+    distribute_tensor,
+    distribute_tensor_with_customization,
+    init_tensor_as_customization_distributed,
+    get_device_mesh,
+    get_sharding_spec,
+    is_customized_distributed_tensor,
+    is_distributed_tensor,
+    get_global_shape,
+    init_as_dtensor
+)
 
 __all__ = ["GeminiOptimizer", "GeminiAdamOptimizer"]
 
@@ -92,6 +106,8 @@ class GeminiOptimizer(OptimizerWrapper):
         max_scale: float = 2**32,
         max_norm: float = 0.0,
         norm_type: float = 2.0,
+        tp_group: ProcessGroup = None,
+        optimizer_params_info=None,
         verbose: bool = False,
         **defaults: Any,
     ):
@@ -104,10 +120,14 @@ class GeminiOptimizer(OptimizerWrapper):
         self.gemini_manager = module.gemini_manager
         self.chunk_manager: ChunkManager = self.gemini_manager.chunk_manager
         self.param_to_range: Dict[Parameter, Tuple[int, int]] = dict()
-        self.param_to_chunk32: Dict[Parameter, Chunk] = dict()
+        self.param_to_chunk16: Dict[Parameter, Chunk] = dict()
         self.chunk16_set: Set[Chunk] = set()
         self.clipping_flag = max_norm > 0.0
         self.max_norm = max_norm
+        self.tp_group = tp_group
+        self.optimizer_params_info = optimizer_params_info
+        self.tp_size = dist.get_world_size(tp_group) if tp_group is not None else 1
+        self.tp_rank = dist.get_rank(tp_group) if tp_group is not None else 0
         self.verbose = verbose
         self.param_groups_backup = list()
 
@@ -129,7 +149,7 @@ class GeminiOptimizer(OptimizerWrapper):
             else:
                 ddp_param_list.append(param)
 
-        for p, fp32_p in zip(ddp_param_list, module.fp32_params):
+        for p in ddp_param_list:
             chunk_16 = self.chunk_manager.get_chunk(p)
             if chunk_16 not in self.chunk16_set:
                 chunk_16.l2_norm_flag = self.clipping_flag
@@ -173,13 +193,15 @@ class GeminiOptimizer(OptimizerWrapper):
     def _set_grad_ptr(self):
         for group in self.param_groups:
             for fake_param in group["params"]:
-                chunk32 = self.param_to_chunk32[fake_param]
+                chunk16 = self.param_to_chunk16[fake_param]
                 begin, end = self.param_to_range[fake_param]
-                chunk16 = chunk32.paired_chunk
 
-                fake_param.data = chunk16.payload[begin:end]
+                grad_chunk16 = chunk16 if self.module.reuse_fp16_chunk else chunk16.grad_chunk
+                fake_param.data = grad_chunk16.payload[begin:end]
                 fake_param.grad = fake_param.data
-                fake_param.data = chunk32.payload[begin:end]
+
+                to_update_chunk = chunk16.paired_chunk if self.module.master_weights else chunk16
+                fake_param.data = to_update_chunk.payload[begin:end]
 
     def _update_fp16_params(self):
         none_tensor = torch.empty([0])
@@ -193,23 +215,25 @@ class GeminiOptimizer(OptimizerWrapper):
 
     def _clear_global_norm(self) -> None:
         for c16 in self.chunk16_set:
-            c16.l2_norm = None
+            grad_chunk = c16 if self.module.reuse_fp16_chunk else c16.grad_chunk
+            grad_chunk.l2_norm = None
 
     def _calc_global_norm(self) -> float:
         norm_sqr: float = 0.0
         group_to_norm = dict()
         for c16 in self.chunk16_set:
-            assert c16.l2_norm is not None
+            grad_chunk = c16 if self.module.reuse_fp16_chunk else c16.grad_chunk
+            assert grad_chunk.l2_norm is not None
 
-            if c16.is_gathered:
-                norm_sqr += c16.l2_norm
+            if grad_chunk.is_gathered:
+                norm_sqr += grad_chunk.l2_norm
             else:
                 # this chunk is sharded, use communication to collect total norm
-                if c16.torch_pg not in group_to_norm:
-                    group_to_norm[c16.torch_pg] = 0.0
-                group_to_norm[c16.torch_pg] += c16.l2_norm
+                if grad_chunk.torch_pg not in group_to_norm:
+                    group_to_norm[grad_chunk.torch_pg] = 0.0
+                group_to_norm[grad_chunk.torch_pg] += grad_chunk.l2_norm
 
-            c16.l2_norm = None  # clear l2 norm
+            grad_chunk.l2_norm = None  # clear l2 norm
 
         comm_buffer = torch.zeros(1, dtype=torch.float, device=get_current_device())
         for group, part_norm in group_to_norm.items():
@@ -236,7 +260,8 @@ class GeminiOptimizer(OptimizerWrapper):
         return self.optim.zero_grad(set_to_none=True)
 
     def step(self, *args, **kwargs):
-        self._maybe_move_fp32_params()
+        if self.module.master_weights:
+            self._maybe_move_fp32_params()
         self._set_grad_ptr()
 
         if self.mix_precision_mixin.should_skip_step():
@@ -244,7 +269,8 @@ class GeminiOptimizer(OptimizerWrapper):
                 self._logger.info(f"Found overflow. Skip step")
             self._clear_global_norm()  # clear recorded norm
             self.zero_grad()  # reset all gradients
-            self._update_fp16_params()
+            if self.module.reuse_fp16_chunk:
+                self._update_fp16_params()
             return
 
         # get combined scale. combined scale = loss scale * clipping norm
@@ -254,7 +280,9 @@ class GeminiOptimizer(OptimizerWrapper):
         ret = self.optim.step(div_scale=combined_scale, *args, **kwargs)
         self._register_states()
         self.zero_grad()
-        self._update_fp16_params()
+        if self.module.master_weights:
+            self._update_fp16_params()
+        self.module.accumulating_grads = False
         return ret
 
     def clip_grad_norm(self, model: torch.nn.Module, max_norm: float, norm_type: float = 2.0):
@@ -281,8 +309,8 @@ class GeminiOptimizer(OptimizerWrapper):
 
             for group in self.param_groups:
                 for fake_param in group["params"]:
-                    chunk32 = self.param_to_chunk32[fake_param]
-                    chunk16 = chunk32.paired_chunk
+                    chunk16 = self.param_to_chunk16[fake_param]
+                    chunk32 = chunk16.paired_chunk
 
                     if chunk32.device_type == "cuda":
                         continue
@@ -296,7 +324,8 @@ class GeminiOptimizer(OptimizerWrapper):
 
             for group in self.param_groups:
                 for fake_param in group["params"]:
-                    chunk32 = self.param_to_chunk32[fake_param]
+                    chunk16 = self.param_to_chunk16[fake_param]
+                    chunk32 = chunk16.paired_chunk
                     if chunk32.device_type == "cuda":
                         state = self.optim.state[fake_param]
                         for k, v in state.items():
@@ -340,7 +369,7 @@ class GeminiOptimizer(OptimizerWrapper):
                     continue
                 grad_device = self.module.grads_device[param]
                 fake_param = torch.nn.Parameter(torch.empty([0], device=grad_device))
-                self.param_to_chunk32[fake_param] = chunk16.paired_chunk
+                self.param_to_chunk16[fake_param] = chunk16
                 self.param_to_range[fake_param] = range_pair
                 self.id_to_fake_params[param_id] = fake_param
                 fake_params_list.append(fake_param)
@@ -365,7 +394,7 @@ class GeminiOptimizer(OptimizerWrapper):
         if param_id not in self.id_to_fake_params:
             return -1, -1, -1
         fake_param = self.id_to_fake_params[param_id]
-        chunk = self.param_to_chunk32[fake_param].paired_chunk
+        chunk = self.param_to_chunk16[fake_param]
         param = self.id_to_real_params[param_id]
         param_info = chunk.tensors_info[param]
 
@@ -396,8 +425,8 @@ class GeminiOptimizer(OptimizerWrapper):
         param = self.id_to_real_params[param_id]
         fake_param = self.id_to_fake_params.get(param_id, None)
         chunk = self.chunk_manager.get_chunk(param)
-        process_group = chunk.torch_pg
-        rank = dist.get_rank(process_group)
+        dp_group = chunk.torch_pg
+        rank = dist.get_rank(dp_group)
         master_rank = 0
         collected_states = {}
 
@@ -405,9 +434,9 @@ class GeminiOptimizer(OptimizerWrapper):
         local_state_names = None
         if fake_param is not None:
             local_state_names = list(self.optim.state[fake_param].keys())
-        gathered_state_names = [None for _ in range(dist.get_world_size(process_group))]
+        gathered_state_names = [None for _ in range(dist.get_world_size(dp_group))]
         dist.barrier()
-        dist.all_gather_object(gathered_state_names, local_state_names)
+        dist.all_gather_object(gathered_state_names, local_state_names, dp_group)
         state_names = None
         for names in gathered_state_names:
             if names is not None:
@@ -426,6 +455,13 @@ class GeminiOptimizer(OptimizerWrapper):
         # Every rank is collector when only_rank_0 is False.
         is_collector = (rank == master_rank) or (not only_rank_0)
 
+        # get tensor parallelism information
+        is_dtensor = is_distributed_tensor(param)
+        is_customized_distributed = is_customized_distributed_tensor(param)
+        shard_spec = get_sharding_spec(param) if is_dtensor else None
+        device_mesh = get_device_mesh(param) if is_dtensor else None
+        global_shape = self.optimizer_params_info["id2shape"][param_id]
+
         # If the chunk is kept gathered,
         # the parameteres are treated the same as that of those in strict DDP during training.
         # So states can be directly fetched from current device.
@@ -441,7 +477,18 @@ class GeminiOptimizer(OptimizerWrapper):
                         ).cpu()
                     else:
                         state_tensor = states[state_name].detach().clone().to(torch.float32).cpu()
-                        collected_states[state_name] = torch.reshape(state_tensor, param.shape)
+                        if is_dtensor:
+                            state_tensor = torch.reshape(state_tensor, param.shape).to(param.device)
+                            state_tensor = init_as_dtensor(state_tensor, 
+                                                      device_mesh=device_mesh, 
+                                                      sharding_spec=shard_spec,
+                                                      global_shape = global_shape)
+                        elif is_customized_distributed:
+                            state_tensor = torch.reshape(state_tensor, param.shape).to(param.device)
+                            init_tensor_as_customization_distributed(state_tensor, shard_fn=param.shard_fn, gather_fn=param.gather_fn)
+                        state_tensor = gather_distributed_param(state_tensor, keep_vars=False).cpu()
+                    
+                        collected_states[state_name] = state_tensor.reshape(global_shape)
             return collected_states
 
         # Check whether the param with given id is managed by current process.
@@ -463,7 +510,7 @@ class GeminiOptimizer(OptimizerWrapper):
         _, shard_offset, shard_size = self.get_offsets(param_id)
 
         # Collectors gather state shards through all_gathering.
-        gathered_state_shards = [None for _ in range(dist.get_world_size(process_group))]
+        gathered_state_shards = [None for _ in range(dist.get_world_size(dp_group))]
 
         dist.barrier()
         dist.all_gather_object(gathered_state_shards, [compacted_states, shard_offset, shard_size])
@@ -484,6 +531,16 @@ class GeminiOptimizer(OptimizerWrapper):
             for state_name, state_tensor in collected_states.items():
                 if state_tensor.numel() == param.numel():
                     collected_states[state_name] = torch.reshape(state_tensor, param.shape)
+                if is_dtensor:
+                    state_tensor = state_tensor.to(param.device)
+                    state_tensor = init_as_dtensor(state_tensor, 
+                                                   sharding_spec=shard_spec,
+                                                   device_mesh=device_mesh,
+                                                   global_shape=global_shape)
+                elif is_customized_distributed:
+                    state_tensor = state_tensor.to(param.device)
+                    init_tensor_as_customization_distributed(state_tensor, shard_fn=param.shard_fn, gather_fn=param.gather_fn)
+                state_tensor = gather_distributed_param(state_tensor, keep_vars=False).cpu()
 
         return collected_states
 
@@ -648,6 +705,14 @@ class GeminiOptimizer(OptimizerWrapper):
                 ret_val = torch.zeros(
                     state_end - state_start, dtype=torch.float32, device=param.device, requires_grad=False
                 )
+                
+                if is_dtensor:
+                    value = torch.reshape(value, global_shape)
+                    value = distribute_tensor(value, sharding_spec=shard_spec, device_mesh=device_mesh)
+                elif is_customized_distributed:
+                    value = torch.reshape(value, global_shape)
+                    value = distribute_tensor_with_customization(value, real_param.shard_fn, real_param.gather_fn)
+
                 ret_val.copy_(value.flatten()[state_start:state_end])
             return ret_val
 
@@ -658,6 +723,15 @@ class GeminiOptimizer(OptimizerWrapper):
 
         # Copy states assigned to param (and cast tensors to appropriate types).
         updated_states = dict()
+
+        # get tensor parallelism information
+        real_param = self.id_to_real_params[param_id]
+        is_dtensor = is_distributed_tensor(real_param)
+        is_customized_distributed = is_customized_distributed_tensor(real_param)
+        shard_spec = get_sharding_spec(real_param) if is_dtensor else None
+        device_mesh = get_device_mesh(real_param) if is_dtensor else None
+        global_shape = self.optimizer_params_info["id2shape"][param_id]
+
         for k, v in saved_states.items():
             updated_states[k] = cast(fake_param, state_range, v, k)
             del v  # clean loaded states
@@ -676,7 +750,10 @@ class GeminiOptimizer(OptimizerWrapper):
 
     def optimizer_loading_epilogue(self):
         # Epilogue when loading state_dict to pytorch optimizer.
-        self.optim._hook_for_profile()  # To support multiprocessing pickle/unpickle.
+        if Version(torch.__version__) >= Version("2.0.0"):
+            self.optim._patch_step_function()  # To support multiprocessing pickle/unpickle
+        else:
+            self.optim._hook_for_profile()  # To support multiprocessing pickle/unpickle.
         self.optim.defaults.setdefault("differentiable", False)
 
     def load_state_dict(self, state_dict: dict):
