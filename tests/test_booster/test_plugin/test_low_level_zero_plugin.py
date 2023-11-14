@@ -2,11 +2,14 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
+from torch.optim import Adam
 
 import colossalai
+import colossalai.utils.device as device_utils
 from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
-from colossalai.nn.optimizer import HybridAdam
+
+# from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
@@ -19,16 +22,17 @@ _STUCK_MODELS = ["transformers_albert_for_multiple_choice"]
 
 
 def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
+    device = device_utils.get_current_device()
     try:
         plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=2**5)
         booster = Booster(plugin=plugin)
         model = model_fn()
-        optimizer = HybridAdam(model.parameters(), lr=1e-3)
+        optimizer = Adam(model.parameters(), lr=1e-3)
         criterion = lambda x: x.mean()
         data = data_gen_fn()
 
         data = {
-            k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
+            k: v.to(device) if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
         }
 
         model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
@@ -42,6 +46,8 @@ def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
         optimizer.step()
 
     except Exception as e:
+        print(e)
+        raise e
         return repr(e)
 
 
@@ -65,7 +71,7 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
             continue
         err = run_fn(stage, model_fn, data_gen_fn, output_transform_fn)
 
-        torch.cuda.empty_cache()
+        device_utils.empty_cache()
 
         if err is None:
             passed_models.append(name)
@@ -93,4 +99,4 @@ def test_low_level_zero_plugin(early_stop: bool = True):
 
 
 if __name__ == "__main__":
-    test_low_level_zero_plugin(early_stop=False)
+    test_low_level_zero_plugin(early_stop=True)

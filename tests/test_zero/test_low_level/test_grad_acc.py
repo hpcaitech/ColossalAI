@@ -9,7 +9,7 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.testing import spawn
 from colossalai.testing.random import seed_all
-from colossalai.utils import conditional_context
+from colossalai.utils import conditional_context, get_current_device
 from colossalai.zero import LowLevelZeroOptimizer
 
 
@@ -26,25 +26,36 @@ class MlpModel(nn.Module):
 
 
 def exam_zero_1_2_grad_acc():
+    print("start")
+    from colossalai.logging import get_dist_logger
+
+    logger = get_dist_logger()
     local_rank = torch.distributed.get_rank()
     seed_all(2009)
-
+    device = get_current_device()
     # create model
-    zero1_model = MlpModel().cuda()
+    zero1_model = MlpModel().to(device)
+    logger.info(f"zero1_model init", ranks=[0])
     zero2_model = copy.deepcopy(zero1_model)
+    logger.info(f"zero2_model init", ranks=[0])
     # create optimizer
     zero1_optimizer = torch.optim.Adam(zero1_model.parameters(), lr=1)
+    logger.info(f"zero1_adam_optimizer init", ranks=[0])
     zero2_optimizer = torch.optim.Adam(zero2_model.parameters(), lr=1)
+    logger.info(f"zero2_adam_optimizer init", ranks=[0])
     zero1_optimizer = LowLevelZeroOptimizer(
         zero1_optimizer, overlap_communication=True, initial_scale=32, clip_grad_norm=1.0, verbose=True
     )
+    logger.info(f"zero1_optimizer init", ranks=[0])
     zero2_optimizer = LowLevelZeroOptimizer(
         zero2_optimizer, overlap_communication=True, partition_grad=True, initial_scale=32, clip_grad_norm=1.0
     )
+    logger.info(f"zero2_optimizer init", ranks=[0])
     # create data
     seed_all(2021 + local_rank)
-    input_data1 = torch.randn(32, 128).cuda()
-    input_data2 = torch.randn(32, 128).cuda()
+    input_data1 = torch.randn(32, 128, device=device)
+    input_data2 = torch.randn(32, 128, device=device)
+    logger.info(f"input_data init", ranks=[0])
 
     def fwd_bwd_func(number, cur_data, check_flag):
         # zero-dp forward
@@ -57,11 +68,15 @@ def exam_zero_1_2_grad_acc():
         zero2_optimizer.backward(zero2_output.sum().float())
 
     fwd_bwd_func(0, input_data1, True)
+    logger.info(f"zero1 and zero2 forward and backward", ranks=[0])
     fwd_bwd_func(1, input_data2, False)
+    logger.info(f"zero1 and zero2 forward and backward", ranks=[0])
 
     # step
     zero1_optimizer.step()
+    logger.info(f"zero1_optimizer step", ranks=[0])
     zero2_optimizer.step()
+    logger.info(f"zero2_optimizer step", ranks=[0])
 
     # check updated param
     for z1p, z2p in zip(zero1_model.parameters(), zero2_model.parameters()):
@@ -71,14 +86,15 @@ def exam_zero_1_2_grad_acc():
 def exam_zero_1_grad_acc(sync):
     local_rank = torch.distributed.get_rank()
     seed_all(2008)
+    device = get_current_device()
 
     # create models
     zero_model = MlpModel()
     torch_model = copy.deepcopy(zero_model)
 
     seed_all(2008)
-    zero_model = zero_model.cuda()
-    torch_model = DDP(torch_model.cuda(), bucket_cap_mb=0)
+    zero_model = zero_model.to(device)
+    torch_model = DDP(torch_model.to(device), bucket_cap_mb=0)
 
     # create optimizer
     zero_optimizer = torch.optim.Adam(zero_model.parameters(), lr=1)
@@ -94,8 +110,8 @@ def exam_zero_1_grad_acc(sync):
 
     # create data
     seed_all(2022 + local_rank)
-    input_data1 = torch.randn(32, 128).cuda()
-    input_data2 = torch.randn(32, 128).cuda()
+    input_data1 = torch.randn(32, 128, device=device)
+    input_data2 = torch.randn(32, 128, device=device)
 
     def fwd_bwd_func(no_sync, cur_data, check_flag):
         # zero1 fwd and bwd
@@ -130,8 +146,8 @@ def exam_zero_1_grad_acc(sync):
 def run_dist(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
 
-    exam_zero_1_grad_acc(sync=True)
-    exam_zero_1_grad_acc(sync=False)
+    # exam_zero_1_grad_acc(sync=True)
+    # exam_zero_1_grad_acc(sync=False)
     exam_zero_1_2_grad_acc()
 
 

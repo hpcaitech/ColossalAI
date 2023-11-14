@@ -47,6 +47,9 @@ def launch(
     if rank == 0:
         warnings.warn("`config` is deprecated and will be removed soon.")
 
+    if IS_NPU_AVAILABLE and backend == "nccl":
+        backend = "hccl"
+
     # init default process group
     init_method = f"tcp://[{host}]:{port}"
     dist.init_process_group(rank=rank, world_size=world_size, backend=backend, init_method=init_method)
