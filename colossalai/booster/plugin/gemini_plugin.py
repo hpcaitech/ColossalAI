@@ -10,7 +10,6 @@ import torch.nn as nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
-from torch.nn.parallel import DistributedDataParallel as DDP
 
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO
 from colossalai.checkpoint_io.utils import (
@@ -317,12 +316,6 @@ class GeminiPlugin(DPPluginBase):
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism in Shardformer. Defaults to False.
         enable_sequence_overlap (bool): Whether to turn on sequence overlap in Shardformer. Defaults to False.
         verbose (bool, optional): verbose mode. Debug info including chunk search result will be printed. Defaults to False.
-        broadcast_buffers (bool, optional): Whether to broadcast buffers in the beginning of training when using DDP. Defaults to True.
-        ddp_bucket_cap_mb (int, optional): The bucket size in MB when using DDP. Defaults to 25.
-        find_unused_parameters (bool, optional): Whether to find unused parameters when using DDP. Defaults to False.
-        check_reduction (bool, optional): Whether to check reduction when using DDP. Defaults to False.
-        gradient_as_bucket_view (bool, optional): Whether to use gradient as bucket view when using DDP. Defaults to False.
-        static_graph (bool, optional): Whether to use static graph when using DDP. Defaults to False.
     """
 
     def __init__(
@@ -364,12 +357,6 @@ class GeminiPlugin(DPPluginBase):
         enable_sequence_parallelism: bool = False,
         enable_jit_fused: bool = False,
         enable_sequence_overlap: bool = False,
-        broadcast_buffers: bool = True,
-        ddp_bucket_cap_mb: int = 25,
-        find_unused_parameters: bool = False,
-        check_reduction: bool = False,
-        gradient_as_bucket_view: bool = False,
-        static_graph: bool = False,
         verbose: bool = False,
     ) -> None:
         super().__init__()
@@ -435,14 +422,6 @@ class GeminiPlugin(DPPluginBase):
             enable_sequence_parallelism=self.enable_sequence_parallelism,
             enable_sequence_overlap=self.enable_sequence_overlap,
         )
-        self.ddp_config = dict(
-            broadcast_buffers=broadcast_buffers,
-            bucket_cap_mb=ddp_bucket_cap_mb,
-            find_unused_parameters=find_unused_parameters,
-            check_reduction=check_reduction,
-            gradient_as_bucket_view=gradient_as_bucket_view,
-            static_graph=static_graph,
-        )
 
     def support_no_sync(self) -> bool:
         return False
@@ -482,10 +461,6 @@ class GeminiPlugin(DPPluginBase):
             if self.enable_tensor_parallelism:
                 shardformer = ShardFormer(self.shard_config)
                 model, _ = shardformer.optimize(model)
-
-            if self.use_ddp:
-                model = model.cuda()
-                model = DDP(model, process_group=self.ddp_group, **self.ddp_config)
 
             model = GeminiDDP(model, **self.gemini_config, zero_group=self.zero_group, ddp_group=self.ddp_group, use_ddp=self.use_ddp, verbose=self.verbose)
 

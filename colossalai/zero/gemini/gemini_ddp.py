@@ -271,10 +271,8 @@ class GeminiDDP(ModelWrapper):
             outputs = self._inference_forward(*args, **kwargs)
         else:
             self.gemini_manager.pre_iter(*args)
-            sync_ctx = self.module.no_sync() if self.use_ddp else nullcontext()
             with ColoParamOpHookManager.use_hooks(self.param_op_hook):
-                with sync_ctx:
-                    outputs = self.module(*args, **kwargs)
+                outputs = self.module(*args, **kwargs)
 
         if self.force_outputs_fp32:
             return _cast_float(outputs, torch.float)
