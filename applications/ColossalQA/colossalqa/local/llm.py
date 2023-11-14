@@ -4,7 +4,7 @@ API and LLM warpper class for running LLMs locally
 from typing import Any, List, Mapping, Optional
 
 import torch
-from colossalqa.local.utils import TEST_PROMPT_CHATGLM, get_response, post_http_request
+from colossalqa.local.utils import get_response, post_http_request
 from colossalqa.mylogging import get_logger
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
@@ -178,4 +178,5 @@ if __name__ == "__main__":
     model_name = "chatglm2"
     colossal_api = ColossalAPI(model_name, model_path)
     llm = ColossalLLM(n=1, api=colossal_api)
+    TEST_PROMPT_CHATGLM="续写文章：惊蛰一过，春寒加剧。先是料料峭峭，继而雨季开始，时而淋淋漓漓，时而淅淅沥沥，天潮潮地湿湿，即连在梦里，也似乎有把伞撑着。而就凭一把伞，躲过一阵潇潇的冷雨，也躲不过整个雨季。连思想也都是潮润润的。每天回家，曲折穿过金门街到厦门街迷宫式的长巷短巷，雨里风里，走入霏霏令人更想入非非。想这样子的台北凄凄切切完全是黑白片的味道，想整个中国整部中国的历史无非是一张黑白片子，片头到片尾，一直是这样下着雨的。这种感觉，"
     logger.info(llm(TEST_PROMPT_CHATGLM, max_new_tokens=100), verbose=True)
