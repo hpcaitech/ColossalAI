@@ -75,7 +75,7 @@ def train(args):
         tokenizer = LlamaTokenizer.from_pretrained(
             "hf-internal-testing/llama-tokenizer" if args.tokenizer is None else args.tokenizer
         )
-        tokenizer.eos_token = "<\s>"
+        tokenizer.eos_token = "</s>"
         tokenizer.pad_token = tokenizer.unk_token
     elif args.model == "chatglm":
         tokenizer = ChatGLMTokenizer.from_pretrained(

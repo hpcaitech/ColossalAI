@@ -68,7 +68,7 @@ def train(args):
             padding_side="right",
             use_fast=False,
         )
-        tokenizer.eos_token = "<\s>"
+        tokenizer.eos_token = "</s>"
         tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
