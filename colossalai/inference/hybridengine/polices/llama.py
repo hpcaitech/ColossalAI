@@ -51,7 +51,7 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
             "self_attn.num_key_value_heads": self.model.config.num_key_value_heads
             // self.shard_config.tensor_parallel_size,
         }
-        if self.shard_config.quant == "gptq":
+        if self.shard_config.extra_kwargs.get("quant", None) == "gptq":
             from colossalai.inference.quant.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
 
             policy[LlamaDecoderLayer] = ModulePolicyDescription(
@@ -95,7 +95,7 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
                 ],
             )
 
-        elif self.shard_config.quant == "smoothquant":
+        elif self.shard_config.extra_kwargs.get("quant", None) == "smoothquant":
             from colossalai.inference.quant.smoothquant.models.llama import LlamaSmoothquantDecoderLayer
             from colossalai.inference.quant.smoothquant.models.parallel_linear import (
                 ColW8A8BFP32OFP32Linear,
