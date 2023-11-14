@@ -228,7 +228,10 @@ def main():
             pp_style="interleaved",
             num_model_chunks=2,
             microbatch_size=16,
-            enable_all_optimization=True,
+            # FIXME: TODO:
+            #   This is disable as fused layer lead to results with huge error
+            #   The result can be retrieved at colossalai/shardformer/modeling/bert.py:224
+            # enable_all_optimization=True,
             zero_stage=1,
             precision="fp16",
             initial_scale=1,
