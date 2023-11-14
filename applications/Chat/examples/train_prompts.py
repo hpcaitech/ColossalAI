@@ -125,7 +125,7 @@ def main(args):
         tokenizer = LlamaTokenizer.from_pretrained(
             "hf-internal-testing/llama-tokenizer" if args.tokenizer is None else args.tokenizer
         )
-        tokenizer.eos_token = "<\s>"
+        tokenizer.eos_token = "</s>"
         tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')

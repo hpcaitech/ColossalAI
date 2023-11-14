@@ -118,7 +118,7 @@ def main(args):
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == "llama":
         tokenizer = LlamaTokenizer.from_pretrained(args.pretrain)
-        tokenizer.eos_token = "<\s>"
+        tokenizer.eos_token = "</s>"
         tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')
