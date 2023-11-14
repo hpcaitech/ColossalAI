@@ -77,8 +77,11 @@ class EnglishRetrievalConversation:
             self.memory.buffered_history.messages = memory.buffered_history.messages
             self.memory.summarized_history_temp.messages = memory.summarized_history_temp.messages
         return (
-            self.retrieval_chain.run(query=user_input, stop=[self.memory.human_prefix + ": "],
-            rejection_trigger_keywrods = ["cannot answer the question"],
-            rejection_answer="Sorry, this question cannot be answered based on the information provided.").split("\n")[0],
-            self.memory
-        ) 
+            self.retrieval_chain.run(
+                query=user_input,
+                stop=[self.memory.human_prefix + ": "],
+                rejection_trigger_keywrods=["cannot answer the question"],
+                rejection_answer="Sorry, this question cannot be answered based on the information provided.",
+            ).split("\n")[0],
+            self.memory,
+        )

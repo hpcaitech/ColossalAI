@@ -8,7 +8,7 @@ from colossalqa.local.utils import TEST_PROMPT_CHATGLM, get_response, post_http_
 from colossalqa.mylogging import get_logger
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
-from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaForCausalLM, LlamaTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 logger = get_logger()
 
@@ -29,17 +29,17 @@ class ColossalAPI:
         else:
             ColossalAPI.__instances[model_type + model_path + (ckpt_path or "")] = self
         self.model_type = model_type
-        self.actor = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, trust_remote_code=True)
+        self.model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, trust_remote_code=True)
 
         if ckpt_path is not None:
             state_dict = torch.load(ckpt_path)
-            self.actor.load_state_dict(state_dict)
-        self.actor.to(torch.cuda.current_device())
+            self.model.load_state_dict(state_dict)
+        self.model.to(torch.cuda.current_device())
 
         # Configurate tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
-        self.actor.eval()
+        self.model.eval()
 
     @staticmethod
     def get_api(model_type: str, model_path: str, ckpt_path: str = None):
@@ -65,8 +65,8 @@ class ColossalAPI:
             inputs = {
                 "input_ids": self.tokenizer(input, return_tensors="pt")["input_ids"].to(torch.cuda.current_device())
             }
-        # print(kwargs)
-        output = self.actor.generate(**inputs, **kwargs)
+
+        output = self.model.generate(**inputs, **kwargs)
         output = output.cpu()
         prompt_len = inputs["input_ids"].size(1)
         response = output[0, prompt_len:]
@@ -173,6 +173,7 @@ class VllmLLM(LLM):
 
 if __name__ == "__main__":
     import os
+
     model_path = os.environ.get("ZH_MODEL_PATH")
     model_name = "chatglm2"
     colossal_api = ColossalAPI(model_name, model_path)

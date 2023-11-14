@@ -34,13 +34,6 @@ if __name__ == "__main__":
     if not os.path.exists(args.sql_file_path):
         os.makedirs(args.sql_file_path)
 
-    # Vllm
-    # Start the vllm server with
-    # python -m vllm.entrypoints.api_server --model "/path to model/Llama-2-7b-hf" --swap-space 16 --disable-log-requests --host localhost --port 8077 --max-num-seqs 256 --gpu-memory-utilization 0.5
-
-    # Setup LLM
-    # llm = VllmLLM(n=1)
-
     colossal_api = ColossalAPI.get_api(args.model_name, args.model_path)
     llm = ColossalLLM(n=1, api=colossal_api)
 

@@ -18,7 +18,7 @@ This is the prompt for retrieval QA, the input is user's inputs, the retrieved d
 [historical conversation, overlength chat history will be summarized]
 
 用户: [question]
-AI:
+Assistant:
 ```
 
 ### English
@@ -34,7 +34,7 @@ chat history
 [historical conversation, overlength chat history will be summarized]
 
 Human: {question}
-AI:
+Assistant:
 ```
 
 ## Summarization Prompt
@@ -47,6 +47,7 @@ This prompt is used to perform zero-shot reference resolution to disambiguate en
 Assume k=3 for the retriever.
 
 ### English
+Note that the "[INST] <<SYS>>...<</SYS>>" template is the specific prompt format used in LLaMA2.
 #### Normal Length
 ```
 [INST] <<SYS>>Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.
@@ -62,14 +63,14 @@ context:
 
 chat history
 Human: XXX
-AI: XXX
+Assistant: XXX
 ...
 
 Human: {question}
-AI:
+Assistant:
 ```
 
-#### overlength
+#### Overlength
 ```
 [INST] <<SYS>>Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.
 If the answer cannot be infered based on the given context, please don't share false information.<</SYS>>
@@ -87,11 +88,11 @@ A summarization of historical conversation:
 [one line summary of historical conversation]
 Most recent conversation:
 Human: XXX
-AI: XXX
+Assistant: XXX
 ...
 
 Human: {question}
-AI:
+Assistant:
 ```
 
 ### Chinese
@@ -110,14 +111,14 @@ AI:
 
 聊天记录:
 用户: XXX
-AI: XXX
+Assistant: XXX
 ...
 
 用户: [question]
-AI:
+Assistant:
 ```
 
-#### overlength
+#### Overlength
 ```
 你是一个善于解答用户问题的AI助手。在保证安全的前提下，回答问题要尽可能有帮助。你的答案不应该包含任何有害的、不道德的、种族主义的、性别歧视的、危险的或非法的内容。请确保你的回答是公正和积极的。
 如果不能根据给定的上下文推断出答案，请不要分享虚假、不确定的信息。
@@ -135,9 +136,9 @@ AI:
 [one line summary of historical conversation]
 最近的对话:
 用户: XXX
-AI: XXX
+Assistant: XXX
 ...
 
 用户: [question]
-AI:
+Assistant:
 ```

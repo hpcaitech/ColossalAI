@@ -4,8 +4,9 @@ We used ChatGPT as the language model
 You need openai api key to run this script
 """
 
-import os
 import argparse
+import os
+
 from colossalqa.data_loader.document_loader import DocumentLoader
 from colossalqa.data_loader.table_dataloader import TableLoader
 from langchain import LLMChain, OpenAI

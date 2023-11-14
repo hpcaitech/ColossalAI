@@ -52,14 +52,13 @@ class ConversationSummaryMemory(BaseChatMemory, SummarizerMixin):
     """Conversation summarizer to chat memory."""
 
     buffer: str = ""
-    memory_key: str = "history"  #: :meta private:
+    memory_key: str = "history"
 
     @classmethod
     def from_messages(
         cls,
         llm: BaseLanguageModel,
         chat_memory: BaseChatMessageHistory,
-        *,
         summarize_step: int = 2,
         **kwargs: Any,
     ) -> ConversationSummaryMemory:

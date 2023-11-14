@@ -26,7 +26,7 @@
 ![Alt text](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/colossalqa/diagram.png "Fig.1. Design of the document retrieval conversation system")
 <p align="center">
 Fig.1. Design of the document retrieval conversation system
-</p> 
+</p>
 
 Retrieval-based Question Answering (QA) is a crucial application of natural language processing that aims to find the most relevant answers based on the information from a corpus of text documents in response to user queries. Vector stores, which represent documents and queries as vectors in a high-dimensional space, have gained popularity for their effectiveness in retrieval QA tasks.
 
@@ -50,11 +50,11 @@ Upon querying, we will run a reference resolution on user's input, the goal of t
 #### Step 5: Format Prompt
 The prompt carries essential information including task description, conversation history, retrived documents, and user's query for the LLM to generate a response. Please refer to this [README](./colossalqa/prompt/README.md) for more details.
 
-#### Step 6: Infer
+#### Step 6: Inference
 Pass the prompt to the LLM with additional generaton arguments to get agent response. You can control the generation with additional arguments such as temperature, top_k, top_p, max_new_tokens. You can also define when to stop by passing the stop substring to the retrieval QA chain.
 
 #### Step 7: Update Memory
-We designed a memory module that incoporates both long-term memory and short-term memory. In this step, we update the memory with the newly generated response. To fix into the context length of a given LLM, we sumarize the overlength part of historical conversation and present the rest in round-based conversation format. Fig.2. shows how long-term and short-term memory are update. Please refer to this [README](./colossalqa/prompt/README.md) for dialogue format.
+We designed a memory module that automatically summarize overlength conversation to fit the max context length of LLM. In this step, we update the memory with the newly generated response. To fix into the context length of a given LLM, we sumarize the overlength part of historical conversation and present the rest in round-based conversation format. Fig.2. shows how the memory is updated. Please refer to this [README](./colossalqa/prompt/README.md) for dialogue format.
 
 ![Alt text](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/colossalqa/memory.png "Fig.2. Design of the memory module")
 <p align="center">
@@ -107,7 +107,7 @@ cd ColossalAI/applications/ColossalQA
 pip install -e .
 ```
 
-To use the vLLM for providing LLM services via an API, please consult the official guide [here](https://vllm.readthedocs.io/en/latest/getting_started/quickstart.html#api-server) to start the API server. It's important to set up a new virtual environment for installing vLLM, as there are currently some dependency conflicts between vLLM and ColossalQA when installed on the same machine.  
+To use the vLLM for providing LLM services via an API, please consult the official guide [here](https://vllm.readthedocs.io/en/latest/getting_started/quickstart.html#api-server) to start the API server. It's important to set up a new virtual environment for installing vLLM, as there are currently some dependency conflicts between vLLM and ColossalQA when installed on the same machine.
 
 ## How to Use
 
@@ -121,7 +121,7 @@ Read comments under ./colossalqa/data_loader for more detail regarding supported
 ### Run The Script
 
 We provide a simple Web UI demo of ColossalQA, enabling you to upload your files as a knowledge base and interact with them through a chat interface in your browser. More details can be found [here](examples/webui_demo/README.md)
-![ColossalQA Demo](examples/webui_demo/img/image.png)
+![ColossalQA Demo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/colossalqa/ui.png)
 
 We also provided some scripts for Chinese document retrieval based conversation system, English document retrieval based conversation system, Bi-lingual document retrieval based conversation system and an experimental AI agent with document retrieval and SQL query functionality. The Bi-lingual one is a high-level wrapper for the other two clases. We write different scripts for different languages because retrieval QA requires different embedding models, LLMs, prompts for different language setting. For now, we use LLaMa2 for English retrieval QA and ChatGLM2 for Chinese retrieval QA for better performance.
 
@@ -193,7 +193,7 @@ python retrieval_conversation_en_customer_service.py \
 ## The Plan
 
 - [x] build document retrieval QA tool
-- [x] Add long + short term memory
+- [x] Add memory
 - [x] Add demo for AI agent with SQL query
 - [x] Add customer retriever for fast construction and retrieving (with incremental update)
 
