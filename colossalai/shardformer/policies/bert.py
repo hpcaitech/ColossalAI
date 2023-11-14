@@ -313,11 +313,11 @@ class BertPolicy(Policy):
                 num_model_chunks=stage_manager.num_model_chunks,
                 num_stages=stage_manager.num_stages
             )
-            if stage_manager.is_first_stage():
+            if stage_manager.is_first_stage(-1):
                 held_layers.append(module.embeddings)
             for start_idx, end_idx in stage_indices:
                 held_layers.extend(module.encoder.layer[start_idx:end_idx])
-            if stage_manager.is_last_stage():
+            if stage_manager.is_last_stage(-1):
                 held_layers.append(module.pooler)
 
         else:
@@ -518,7 +518,8 @@ class BertForSequenceClassificationPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_stage(
+                None if not stage_manager.is_interleave else -1):
             held_layers.append(self.model.dropout)
             held_layers.append(self.model.classifier)
         return held_layers

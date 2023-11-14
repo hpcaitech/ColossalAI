@@ -126,7 +126,7 @@ def run_pp(
     )
 
     # check loss
-    if stage_manager.is_last_stage():
+    if stage_manager.is_last_stage(-1):
         assert torch.allclose(torch_loss, pp_ret["loss"])
 
     # check gradients

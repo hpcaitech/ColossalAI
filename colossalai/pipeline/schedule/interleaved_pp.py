@@ -183,14 +183,15 @@ class InterleavedSchedule(PipelineSchedule):
         # for the first stage, input_obj is None
         # for the non-first stage, input_obj is the output of the previous stage and it's must be a dict
 
+        self.stage_manager.model_chunk_id = model_chunk_id
         if isinstance(model_chunk, ModuleList):
             output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)
         else:
             # NOTE: in shardformer, each device still has the entire model, so we need to use relevant stage layers
             internal_inputs = {} if input_obj is None else input_obj
             internal_inputs["stage_index"] = self.stage_manager.stage_indices[model_chunk_id]
-            internal_inputs["model_chunk_id"] = model_chunk_id
             output_obj = model_forward(model_chunk, micro_batch, internal_inputs)
+        self.stage_manager.model_chunk_id = None
 
         if self.stage_manager.is_last_stage(model_chunk_id):
             loss = criterion(output_obj, micro_batch) / self.num_microbatch
@@ -293,9 +294,9 @@ class InterleavedSchedule(PipelineSchedule):
             input_objs = [[] for _ in range(self.num_model_chunks)]
             output_objs = [[] for _ in range(self.num_model_chunks)]
 
-        outputs = [] if return_outputs and self.stage_manager.is_last_stage() else None
+        outputs = [] if return_outputs and self.stage_manager.is_last_stage(-1) else None
 
-        if return_loss and self.stage_manager.is_last_stage():
+        if return_loss and self.stage_manager.is_last_stage(-1):
             accum_loss = torch.zeros(1, device=get_current_device())
         else:
             accum_loss = None
@@ -309,7 +310,7 @@ class InterleavedSchedule(PipelineSchedule):
         for i in range(num_warmup_microbatch):
             model_chunk_id = self.get_model_chunk_id(i, is_forward=True)
             # recv first on first rank to avoid sending or receiving at the same time
-            if self.stage_manager.is_first_stage():
+            if self.stage_manager.is_first_stage(-1):
                 input_obj = self.recv_forward(model_chunk_id)
                 output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
                 self.send_forward(model_chunk_id, output_obj)

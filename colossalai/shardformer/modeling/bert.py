@@ -661,7 +661,6 @@ class BertPipelineForwards:
         hidden_states: Optional[torch.Tensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         stage_index: Optional[List[int]] = None,
-        model_chunk_id: Optional[int] = None,
         shard_config: ShardConfig = None,
     ):
         r"""
@@ -698,7 +697,7 @@ class BertPipelineForwards:
             shard_config=shard_config,
         )
 
-        if stage_manager.is_last_stage(model_chunk_id):
+        if stage_manager.is_last_stage():
             pooled_output = outputs[1]
 
             pooled_output = self.dropout(pooled_output)
