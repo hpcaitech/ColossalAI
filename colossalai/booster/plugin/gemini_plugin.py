@@ -34,10 +34,6 @@ __all__ = ["GeminiPlugin"]
 SUPPORTED_PRECISION = ["fp16", "bf16"]
 PRECISION_STR_TO_DTYPE = {"fp16": torch.half, "bf16": torch.bfloat16}
 
-ZERO_AXIS = 0
-TP_AXIS = 1
-DDP_AXIS = 2
-
 def get_param_info(optim: Optimizer):
     # Get a backup of necessary information of parameters for future use, which includes:
     # 1. A mapping from integer param_id to param32 shape.
@@ -305,8 +301,8 @@ class GeminiPlugin(DPPluginBase):
         max_norm (float, optional): max_norm used for `clip_grad_norm`. You should notice that you shall not do
             clip_grad_norm by yourself when using ZeRO DDP. The ZeRO optimizer will take care of clip_grad_norm.
         norm_type (float, optional): norm_type used for `clip_grad_norm`.
-        enable_tensor_parallelism (bool, optional): Whether to use tensor parallelism strategy, which is implemented in Shardformer. Default to False.
-        tp_size (int, optional): If 'enable_tensor_parallelism' is set to true, please configure 'tp_size' which determines the size of the tensor parallel process group. Default to 1.
+        tp_size (int, optional): If 'tp_size' is set to be greater than 1, it means using tensor parallelism strategy, which is implemented in Shardformer, 'tp_size' determines the size of the tensor parallel process group. Default to 1.
+        extra_dp_size (int, optional): If 'extra_dp_size' is set to be greater than 1, it means creating another group to run with a ddp-like strategy. Default to 1.
         enable_all_optimization (bool, optional): Whether to switch on all the optimizations supported by Shardformer.
                                                     Currently all the optimization methods include fused normalization, flash attention and JIT.
                                                     Defaults to False.
@@ -350,7 +346,7 @@ class GeminiPlugin(DPPluginBase):
         norm_type: float = 2.0,
         enable_tensor_parallelism: bool = False,
         tp_size: int = 1,
-        ddp_size:int = 1,
+        extra_dp_size:int = 1,
         enable_all_optimization: bool = False,
         enable_fused_normalization: bool = False,
         enable_flash_attention: bool = False,
@@ -395,7 +391,7 @@ class GeminiPlugin(DPPluginBase):
             max_norm=max_norm,
             norm_type=norm_type,
         )
-        self.enable_tensor_parallelism = enable_tensor_parallelism
+        self.enable_tensor_parallelism = tp_size > 1
         self.enable_all_optimization = enable_all_optimization
         self.enable_fused_normalization = enable_fused_normalization
         self.enable_flash_attention = enable_flash_attention
@@ -404,14 +400,32 @@ class GeminiPlugin(DPPluginBase):
         self.enable_sequence_overlap = enable_sequence_overlap
         self.verbose = verbose
 
-        self.tp_size = tp_size if self.enable_tensor_parallelism else 1
-        self.ddp_size = ddp_size
-        self.use_ddp = self.ddp_size > 1
-        self.zero_size = dist.get_world_size() // (self.tp_size * self.ddp_size)
-        self.pg_mesh = ProcessGroupMesh(self.zero_size, self.tp_size, self.ddp_size)
-        self.zero_group = self.pg_mesh.get_group_along_axis(ZERO_AXIS)
-        self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
-        self.ddp_group = self.pg_mesh.get_group_along_axis(DDP_AXIS)
+        self.tp_size = tp_size
+        self.extra_dp_size = extra_dp_size
+        world_size = dist.get_world_size()
+        self.zero_size = world_size // (self.tp_size * self.extra_dp_size)
+        assert world_size == (self.tp_size * self.extra_dp_size) * self.zero_size, f"The global group size can't be evenly divided by the subgroup size."
+        assert self.zero_size > 1, f"Gemini's group size should greater than 1, please reduce tensor paralllelism group size or extra-dp group size."
+        if self.tp_size == 1 and self.extra_dp_size == 1:
+            self.extra_dp_group = None
+            self.tp_group = None
+            self.zero_group = None
+        elif self.tp_size == 1:
+            self.tp_group = None
+            self.pg_mesh = ProcessGroupMesh(self.zero_size, self.extra_dp_size)
+            self.zero_group = self.pg_mesh.get_group_along_axis(0)
+            self.extra_dp_group = self.pg_mesh.get_group_along_axis(1)
+        elif self.extra_dp_size == 1:
+            self.extra_dp_group = None
+            self.pg_mesh = ProcessGroupMesh(self.zero_size, self.tp_size)
+            self.zero_group = self.pg_mesh.get_group_along_axis(0)
+            self.tp_group = self.pg_mesh.get_group_along_axis(1)
+        else:
+            self.pg_mesh = ProcessGroupMesh(self.zero_size, self.extra_dp_size, self.tp_size)
+            self.zero_group = self.pg_mesh.get_group_along_axis(0)
+            self.extra_dp_group = self.pg_mesh.get_group_along_axis(1)
+            self.tp_group = self.pg_mesh.get_group_along_axis(2)
+
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
             enable_tensor_parallelism=self.enable_tensor_parallelism,
@@ -462,7 +476,7 @@ class GeminiPlugin(DPPluginBase):
                 shardformer = ShardFormer(self.shard_config)
                 model, _ = shardformer.optimize(model)
 
-            model = GeminiDDP(model, **self.gemini_config, zero_group=self.zero_group, ddp_group=self.ddp_group, use_ddp=self.use_ddp, verbose=self.verbose)
+            model = GeminiDDP(model, **self.gemini_config, zero_group=self.zero_group, extra_dp_group=self.extra_dp_group, verbose=self.verbose)
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer = GeminiOptimizer(

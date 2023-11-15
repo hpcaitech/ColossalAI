@@ -89,8 +89,7 @@ class GeminiDDP(ModelWrapper):
         zero_group: Optional[ProcessGroup] = None,
         memstats: Optional[MemStats] = None,  # genimi memory stats
         master_weights: bool = True,
-        ddp_group: Optional[ProcessGroup] = None,
-        use_ddp: bool = False,
+        extra_dp_group: Optional[ProcessGroup] = None,
         verbose: bool = False,
     ) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
@@ -131,8 +130,7 @@ class GeminiDDP(ModelWrapper):
         self.scatter_after_inference = scatter_after_inference
         self.mixed_precision = mixed_precision
         self.zero_group = zero_group or _get_default_group()
-        self.ddp_group = ddp_group
-        self.use_ddp = use_ddp
+        self.extra_dp_group = extra_dp_group
 
         self.reuse_fp16_chunk = master_weights
         self.master_weights = master_weights
@@ -381,12 +379,12 @@ class GeminiDDP(ModelWrapper):
                         self.chunk_manager.release_chunk(chunk)
                 if grad_chunk.is_gathered:
                     grad_chunk.cuda_global_chunk.div_(chunk.pg_size)
-                    if self.use_ddp:
-                        grad_chunk.cuda_global_chunk.div_(chunk.ddp_size)
+                    if self.extra_dp_group is not None:
+                        grad_chunk.cuda_global_chunk.div_(chunk.extra_dp_size)
                 else:
                     grad_chunk.cuda_shard.div_(chunk.pg_size)
-                    if self.use_ddp:
-                        grad_chunk.cuda_shard.div_(chunk.ddp_size)
+                    if self.extra_dp_group is not None:
+                        grad_chunk.cuda_shard.div_(chunk.extra_dp_size)
                 # check overflow elements
                 self.overflow_counter += grad_chunk.has_inf_or_nan
                 # record l2 norm for gradient clipping. flag is bound to fp16 chunk
@@ -763,8 +761,7 @@ class GeminiDDP(ModelWrapper):
                 group_type="fp16_param",
                 config_key=zero_world_size,
                 zero_group=self.zero_group,
-                ddp_group=self.ddp_group,
-                use_ddp=self.use_ddp,
+                extra_dp_group=self.extra_dp_group,
                 cpu_offload=cpu_offload,
                 pin_memory=pin_memory,
             )
@@ -779,8 +776,7 @@ class GeminiDDP(ModelWrapper):
                     group_type="fp32_param",
                     config_key=zero_world_size,
                     zero_group=self.zero_group,
-                    ddp_group=self.ddp_group,
-                    use_ddp=self.use_ddp,
+                    extra_dp_group=self.extra_dp_group,
                     cpu_offload=cpu_offload,
                     pin_memory=pin_memory,
                 )

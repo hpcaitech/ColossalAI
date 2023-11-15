@@ -67,8 +67,7 @@ class Chunk:
         cpu_shard_init: bool = False,
         keep_gathered: bool = False,
         pin_memory: bool = False,
-        ddp_group: ProcessGroup = None,
-        use_ddp: bool = False,
+        extra_dp_group: ProcessGroup = None,
     ) -> None:
         """
         Chunk: A container owning a piece of contiguous memory space for tensors
@@ -95,9 +94,8 @@ class Chunk:
         self.torch_pg = zero_group
         self.pg_size = dist.get_world_size(self.torch_pg)
         self.pg_rank = dist.get_rank(self.torch_pg)
-        self.ddp_group = ddp_group
-        self.use_ddp = use_ddp
-        self.ddp_size = dist.get_world_size(self.ddp_group) if use_ddp else 1
+        self.extra_dp_group = extra_dp_group
+        self.extra_dp_size = dist.get_world_size(self.extra_dp_group)
 
         # the chunk size should be divisible by the dp degree
         if not keep_gathered:
@@ -389,20 +387,20 @@ class Chunk:
             # just move cuda_global_chunk to cuda_shard
             # the communication is not necessary
             self.__scatter()
-            if self.use_ddp:
-                dist.all_reduce(self.cuda_shard, group=self.ddp_group)
+            if self.extra_dp_group is not None:
+                dist.all_reduce(self.cuda_shard, group=self.extra_dp_group)
         elif self.keep_gathered:
             # we use all-reduce here
             dist.all_reduce(self.cuda_global_chunk, group=self.torch_pg)
-            if self.use_ddp:
-                dist.all_reduce(self.cuda_global_chunk, group=self.ddp_group)
+            if self.extra_dp_group is not None:
+                dist.all_reduce(self.cuda_global_chunk, group=self.extra_dp_group)
         else:
             self.cuda_shard = torch.empty(self.shard_size, dtype=self.dtype, device=get_current_device())
 
             input_list = list(torch.chunk(self.cuda_global_chunk, chunks=self.pg_size, dim=0))
             dist.reduce_scatter(self.cuda_shard, input_list, group=self.torch_pg)
-            if self.use_ddp:
-                dist.all_reduce(self.cuda_shard, group=self.ddp_group)
+            if self.extra_dp_group is not None:
+                dist.all_reduce(self.cuda_shard, group=self.extra_dp_group)
 
             free_storage(self.cuda_global_chunk)
             self.is_gathered = False
@@ -623,7 +621,7 @@ class Chunk:
                 dtype=self.dtype,
                 keep_gathered=self.keep_gathered,
                 pin_memory=self.pin_memory,
-                ddp_group=self.ddp_group,
+                extra_dp_group=self.extra_dp_group,
             )
             grad_chunk.num_tensors = self.num_tensors
             grad_chunk.utilized_size = self.utilized_size

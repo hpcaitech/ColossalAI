@@ -39,8 +39,7 @@ class ChunkManager:
         group_type: str,
         config_key: int,
         zero_group: ProcessGroup,
-        ddp_group: ProcessGroup = None,
-        use_ddp: bool = False,
+        extra_dp_group: ProcessGroup = None,
         cpu_offload: bool = False,
         pin_memory: bool = False,
     ) -> None:
@@ -87,8 +86,7 @@ class ChunkManager:
                 dtype=tensor.dtype,
                 cpu_shard_init=cpu_offload,
                 pin_memory=pin_memory,
-                ddp_group=ddp_group,
-                use_ddp=use_ddp,
+                extra_dp_group=extra_dp_group,
                 **chunk_kwargs,
             )
 
