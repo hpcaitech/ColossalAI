@@ -4,6 +4,7 @@ import warnings
 import pytest
 import torch
 import torch.distributed as dist
+import argparse
 from packaging import version
 from transformers import LlamaForCausalLM, LlamaTokenizer
 from transformers import BloomForCausalLM, BloomTokenizerFast
@@ -13,9 +14,10 @@ from colossalai.inference.tensor_parallel.engine import TPInferEngine
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# MODEL_PATH = "/home/lclcq/share/models--bigscience--bloom-560m/snapshots/4f42c91d806a19ae1a46af6c3fb5f4990d884cd6"
-MODEL_PATH = "/home/lclcq/share/llama-7b"
+# # MODEL_PATH = "/home/lclcq/share/models--bigscience--bloom-560m/snapshots/4f42c91d806a19ae1a46af6c3fb5f4990d884cd6"
+# MODEL_PATH = "/home/lclcq/share/llama-7b"
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 TPSIZE = 1
@@ -29,18 +31,13 @@ CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse('11.5')
 @parameterize('test_config', [{
     'tp_size': TPSIZE,
 }])
-def run_llama_test(test_config):
+def run_llama_test(test_config, args):
 
-    model_path = MODEL_PATH
-    if os.path.isdir(model_path) is False:
-        warnings.warn("Model path does not exist")
-        return
+    model_path = args.path
     
-    # tokenizer = BloomTokenizerFast.from_pretrained(model_path)
-    tokenizer = LlamaTokenizer.from_pretrained(model_path)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
     tokenizer.pad_token_id = tokenizer.unk_token_id
-    # model = BloomForCausalLM.from_pretrained(model_path, pad_token_id=tokenizer.eos_token_id)
-    model = LlamaForCausalLM.from_pretrained(model_path, pad_token_id=tokenizer.eos_token_id)
+    model = AutoModelForCausalLM.from_pretrained(model_path, pad_token_id=tokenizer.eos_token_id)
     model = model.half()
 
     text = ["Introduce London.", "What is the genus of Poodle?"]
@@ -49,7 +46,7 @@ def run_llama_test(test_config):
     print(input_ids)
 
     shard_config = ShardConfig(enable_tensor_parallelism=True if test_config['tp_size'] > 1 else False,
-                               inference_only=True)
+                               extra_kwargs={"inference_only": True})
     infer_engine = TPInferEngine(model, shard_config, BATCH_SIZE, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
 
     generate_kwargs = dict(max_new_tokens=MAX_OUTPUT_LEN, do_sample=False)
@@ -63,19 +60,29 @@ def run_llama_test(test_config):
             print(output_text)
 
 
-def check_llama(rank, world_size, port):
+def check_llama(rank, world_size, port, args):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_llama_test()
+    run_llama_test(args=args)
 
 
 @pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
-def test_llama():
-    spawn(check_llama, TPSIZE)
+def test_llama(args):
+    spawn(check_llama, args.tp_size, args=args)
 
 
 if __name__ == "__main__":
-    test_llama()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-p", "--path", type=str, default = "hpcai-tech/Colossal-LLaMA-2-7b-base", help="Model path")
+    parser.add_argument("-tp", "--tp_size", type=int, default=1, help="Tensor parallel size")
+    parser.add_argument("-b", "--batch_size", type=int, default=32, help="Maximum batch size")
+    parser.add_argument("--input_len", type=int, default=1024, help="Maximum input length")
+    parser.add_argument("--output_len", type=int, default=128, help="Maximum output length")
+    parser.add_argument(
+        "--test_mode", type=str, help="Test mode", default="e2e_test", choices=["e2e_test", "decoder_test"]
+    )
+    args = parser.parse_args()
+    test_llama(args)

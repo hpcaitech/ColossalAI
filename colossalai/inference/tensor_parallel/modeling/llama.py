@@ -76,17 +76,6 @@ def llama_triton_context_attention(
             # infer_state.cache_manager.past_key_values_length,
             infer_state.max_len_in_batch,
         )
-    # else:
-    #     llama_context_attn_fwd(
-    #         query_states,
-    #         key_states,
-    #         value_states,
-    #         attn_output,
-    #         infer_state.start_loc,
-    #         infer_state.seq_len,
-    #         # infer_state.cache_manager.past_key_values_length,
-    #         infer_state.max_len_in_batch,
-    #     )
 
 
 def llama_triton_token_attention(query_states, attn_output, infer_state, num_key_value_groups=1):
