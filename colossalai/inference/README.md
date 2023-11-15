@@ -28,7 +28,7 @@ Colossal Inference is composed of two main components:
    3. `policies.llama.LlamaModelInferPolicy` : contains the policies for `llama` models, which is used to call `shardformer` and segmentate the model forward in tensor parallelism way.
 
 
-## Pipeline of inference:
+## Architecture of inference:
 
 In this section we discuss how the colossal inference works and integrates with the `Shardformer` . The details can be found in our codes.
 
@@ -121,9 +121,6 @@ source environment.sh
 bash build_cutlass.sh
 python setup.py install
 ```
-
-
-
 
 ## Usage
 ### Quick start
