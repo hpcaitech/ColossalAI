@@ -6,8 +6,6 @@ import torch
 import torch.distributed as dist
 import argparse
 from packaging import version
-from transformers import LlamaForCausalLM, LlamaTokenizer
-from transformers import BloomForCausalLM, BloomTokenizerFast
 
 import colossalai
 from colossalai.inference.tensor_parallel.engine import TPInferEngine
@@ -16,8 +14,6 @@ from colossalai.shardformer import ShardConfig
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# # MODEL_PATH = "/home/lclcq/share/models--bigscience--bloom-560m/snapshots/4f42c91d806a19ae1a46af6c3fb5f4990d884cd6"
-# MODEL_PATH = "/home/lclcq/share/llama-7b"
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 TPSIZE = 1
