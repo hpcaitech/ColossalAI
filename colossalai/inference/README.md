@@ -1,6 +1,14 @@
 # 🚀 Colossal-Inference
 
-## Table of contents
+
+## Table of Contents
+- [💡 Introduction](#introduction)
+- [🔗 Design](#design)
+- [🔨 Usage](#usage)
+    - [Quick start](#quick-start)
+    - [Example](#example)
+
+- [📊 Performance](#performance)
 
 ## Introduction
 
@@ -114,13 +122,55 @@ bash build_cutlass.sh
 python setup.py install
 ```
 
-### Dive into fast-inference!
+
+
+
+## Usage
+### Quick start
 
 example files are in
 
 ```bash
 cd colossalai.examples
 python xx
+```
+
+### Example
+```python
+from colossalai.inference import PPInferEngine
+from colossalai.inference.pipeline.policies import LlamaModelInferPolicy
+import colossalai
+from transformers import LlamaForCausalLM, LlamaTokenizer
+
+colossalai.launch_from_torch(config={})
+
+model = LlamaForCausalLM.from_pretrained("/path/to/model")
+tokenizer = LlamaTokenizer.from_pretrained("/path/to/model")
+
+
+
+input = ["Introduce a landmark in London","Introduce a landmark in Singapore"]
+data = tokenizer(input, return_tensors='pt')
+output = inferengine.inference(data.to('cuda'))
+print(tokenizer.batch_decode(output))
+
+tp_size=2
+pp_size=2
+max_output_len=32
+micro_batch_size=1
+
+engine = CaiInferEngine(
+    tp_size=tp_size,
+    pp_size=pp_size,
+    model=model,
+    model_policy=LlamaModelInferPolicy(),
+    max_output_len=max_output_len,
+    micro_batch_size=micro_batch_size,
+)
+output = engine.inference(data)
+if dist.get_rank() == 0:
+    assert len(output[0]) == max_output_len, f"{len(output)}, {max_output_len}"
+
 ```
 
 ## Performance
@@ -135,7 +185,9 @@ For various models, experiments were conducted using multiple batch sizes under 
 
 Currently the stats below are calculated based on A100 (single GPU), and we calculate token latency based on average values of context-forward and decoding forward process, which means we combine both of processes to calculate token generation times. We are actively developing new features and methods to further optimize the performance of LLM models. Please stay tuned.
 
-#### Llama
+### Tensor Parallelism Inference
+
+##### Llama
 
 |       batch_size        |   8    |   16   |   32   |
 | :---------------------: | :----: | :----: | :----: |
@@ -144,7 +196,7 @@ Currently the stats below are calculated based on A100 (single GPU), and we calc
 
 ![llama](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/Infer-llama7b.png)
 
-### Bloom
+#### Bloom
 
 |       batch_size        |   8    |   16   |   32   |
 | :---------------------: | :----: | :----: | :----: |
@@ -154,6 +206,32 @@ Currently the stats below are calculated based on A100 (single GPU), and we calc
 ![bloom](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/Infer-bloom7b.png)
 
 
+### Pipline Parallelism Inference
+We conducted multiple benchmark tests to evaluate the performance. We compared the inference `latency` and `throughputs` between `Pipeline Inference` and `hugging face` pipeline. The test environment is 2 * A10, 20G / 2 * A800, 80G. We set  input length=1024, output length=128.
+
+
+#### A10 7b, fp16
+| batch_size(micro_batch size)| 2(1) | 4(2) | 8(4) | 16(8) | 32(8) | 32(16)|
+| :---: | :---: | :---: | :---: | :---: | :---: | :---:|
+| Pipeline Inference | 40.35 | 77.1 | 139.03 | 232.7 | 257.81 | OOM |
+| Hugging Face |  41.43 | 65.30 | 91.93 | 114.62 | OOM| OOM |
+
+![ppllama7b](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/pp-a10-llama7b.png)
+
+#### A10 13b, fp16
+| batch_size(micro_batch size)| 2(1) | 4(2) | 8(4) | 16(4) |
+| :---: | :---: | :---: | :---: | :---: |
+| Pipeline Inference | 25.39 | 47.09 | 83.7 | 89.46 |
+| Hugging Face | 23.48 | 37.59 | 53.44 | OOM |
+![ppllama13](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/pp-a10-llama13b.png)
+
+
+#### A800 7b, fp16
+| batch_size(micro_batch size) | 2(1) | 4(2) | 8(4) | 16(8) | 32(16) |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| Pipeline Inference| 57.97 | 110.13 | 213.33 | 389.86 | 670.12  |
+| Hugging Face  | 42.44 | 76.5 | 151.97 | 212.88 | 256.13 |
+![ppllama7b_a800](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/pp-a800-llama7b.png)
 
 ### Quantization LLama
 
