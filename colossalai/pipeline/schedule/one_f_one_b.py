@@ -325,12 +325,14 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
 
             output_obj = self.forward_step(model, input_obj, criterion, accum_loss, outputs)
             if forward_only:
-                if last_iteration:
-                    self.send_forward(output_obj)
-                else:
-                    input_obj = self.send_forward_recv_forward(output_obj)
+                self.send_forward(output_obj)
+
+                if not last_iteration:
+                    input_obj = self.recv_forward()
             else:
-                output_obj_grad = self.send_forward_recv_backward(output_obj)
+                # TODO adjust here
+                self.send_forward(output_obj)
+                output_obj_grad = self.recv_backward()
 
                 # Add input_obj and output_obj to end of list.
                 input_objs.append(input_obj)
@@ -343,10 +345,10 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
                 input_obj_grad = self.backward_step(optimizer, input_obj, output_obj, output_obj_grad)
 
                 if last_iteration:
-                    self.send_backward(input_obj_grad)
                     input_obj = None
                 else:
-                    input_obj = self.send_backward_recv_forward(input_obj_grad)
+                    input_obj = self.recv_forward()
+                self.send_backward(input_obj_grad)
 
         # Run cooldown backward passes.
         if not forward_only:
