@@ -177,10 +177,12 @@ class P2PMetadata:
 
 def filling_ops_queue(obj, comm_op, comm_rank, ops_queue, group):
     if isinstance(obj, torch.Tensor):
+        obj = obj.contiguous()
         op_to_add = dist.P2POp(comm_op, obj, comm_rank, group)
         ops_queue.append(op_to_add)
     else:
         for tensor_to_comm in obj:
+            tensor_to_comm = tensor_to_comm.contiguous()
             op_to_add = dist.P2POp(comm_op, tensor_to_comm, comm_rank, group)
             ops_queue.append(op_to_add)
 
