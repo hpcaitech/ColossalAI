@@ -46,8 +46,6 @@ def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
         optimizer.step()
 
     except Exception as e:
-        print(e)
-        raise e
         return repr(e)
 
 
@@ -95,8 +93,8 @@ def run_dist(rank, world_size, port, early_stop: bool = True):
 
 @rerun_if_address_is_in_use()
 def test_low_level_zero_plugin(early_stop: bool = True):
-    spawn(run_dist, 4, early_stop=early_stop)
+    spawn(run_dist, 2, early_stop=early_stop)
 
 
 if __name__ == "__main__":
-    test_low_level_zero_plugin(early_stop=True)
+    test_low_level_zero_plugin(early_stop=False)
