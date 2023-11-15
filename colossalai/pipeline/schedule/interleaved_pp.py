@@ -303,8 +303,6 @@ class InterleavedSchedule(PipelineSchedule):
 
         # for ranks except the first one, get into recv state
         input_obj = self.recv_forward(0)
-        if not forward_only:
-            input_objs[0].append(input_obj)
 
         # Run warmup forward passes.
         for i in range(num_warmup_microbatch):
@@ -320,6 +318,7 @@ class InterleavedSchedule(PipelineSchedule):
             else:
                 output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
                 if not forward_only:
+                    input_objs[model_chunk_id].append(input_obj)
                     output_objs[model_chunk_id].append(output_obj)
                 self.send_forward(model_chunk_id, output_obj)
 
@@ -329,8 +328,6 @@ class InterleavedSchedule(PipelineSchedule):
             
                 model_chunk_id = self.get_model_chunk_id(i + 1, is_forward=True)
                 input_obj = self.recv_forward(model_chunk_id)
-                if not forward_only:
-                    input_objs[model_chunk_id].append(input_obj)
 
         # Run 1F1B in steady state.
         for i in range(num_microbatch_remaining):
@@ -366,6 +363,7 @@ class InterleavedSchedule(PipelineSchedule):
                 else:
                     model_chunk_id = self.get_model_chunk_id(i + num_warmup_microbatch + 1, is_forward=True)
                     input_obj = self.recv_forward(model_chunk_id)
+
                 model_chunk_id = self.get_model_chunk_id(i, is_forward=False)
                 self.send_backward(model_chunk_id, input_obj_grad)
 
@@ -378,6 +376,9 @@ class InterleavedSchedule(PipelineSchedule):
                 output_obj_grad = self.recv_backward(model_chunk_id)
                 input_obj_grad = self.backward_step(optimizer, input_obj, output_obj, output_obj_grad)
                 self.send_backward(model_chunk_id, input_obj_grad)
+
+        if not forward_only:
+            assert all(len(v) == 0 for v in input_objs) and all(len(v) == 0 for v in output_objs)
 
         if outputs is not None:
             outputs = merge_batch(outputs)

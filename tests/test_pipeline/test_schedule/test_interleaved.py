@@ -109,7 +109,7 @@ def run_pp(
     input_list = [torch.rand(batch_size, DIM).cuda()]
     dist.all_reduce(input_list[0])
 
-    def criterion(x, *args, **kwargs): return torch.mean(x)
+    def criterion(x, *args, **kwargs): return (x * x).mean()
 
     # forward and backward
     torch_output = torch_model(input_list[0])
