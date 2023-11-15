@@ -3,7 +3,7 @@ import pytest
 import colossalai
 from colossalai.legacy.utils.memory import colo_device_memory_capacity, colo_set_process_memory_fraction
 from colossalai.testing import spawn
-from colossalai.utils.cuda import get_current_device
+from colossalai.utils.device import get_current_device
 
 
 def _run_colo_set_process_memory_fraction_and_colo_device_memory_capacity():

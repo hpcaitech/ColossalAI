@@ -306,7 +306,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         return True
 
     def supported_devices(self) -> List[str]:
-        return ["cuda"]
+        return ["cuda", "npu"]
 
     def configure(
         self,

@@ -11,7 +11,7 @@ import torch.distributed as dist
 
 from colossalai.context import Config
 from colossalai.logging import get_dist_logger
-from colossalai.utils import set_device, set_seed
+from colossalai.utils import IS_NPU_AVAILABLE, set_device, set_seed
 
 
 def launch(
@@ -47,12 +47,15 @@ def launch(
     if rank == 0:
         warnings.warn("`config` is deprecated and will be removed soon.")
 
+    if IS_NPU_AVAILABLE and backend == "nccl":
+        backend = "hccl"
+
     # init default process group
     init_method = f"tcp://[{host}]:{port}"
     dist.init_process_group(rank=rank, world_size=world_size, backend=backend, init_method=init_method)
 
     # set cuda device
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() or IS_NPU_AVAILABLE:
         # if local rank is not given, calculate automatically
         set_device(local_rank)
 
