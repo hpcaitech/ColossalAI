@@ -8,7 +8,8 @@ import torch.distributed as dist
 
 IS_NPU_AVAILABLE: bool = False
 try:
-    # noqa
+    import torch_npu  # noqa
+
     IS_NPU_AVAILABLE = torch.npu.is_available()
 except ImportError:
     pass
