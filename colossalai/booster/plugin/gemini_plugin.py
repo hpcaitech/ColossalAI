@@ -404,7 +404,7 @@ class GeminiPlugin(DPPluginBase):
         world_size = dist.get_world_size()
         self.zero_size = world_size // (self.tp_size * self.extra_dp_size)
         assert world_size == (self.tp_size * self.extra_dp_size) * self.zero_size, f"The global group size can't be evenly divided by the subgroup size."
-        assert self.zero_size > 1, f"Gemini's group size should greater than 1, please reduce tensor paralllelism group size or extra-dp group size."
+        assert self.zero_size > 1, f"Gemini's group size should be greater than 1, please reduce tensor paralllelism group size or extra-dp group size."
         if self.tp_size == 1 and self.extra_dp_size == 1:
             self.extra_dp_group = None
             self.tp_group = None

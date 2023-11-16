@@ -130,7 +130,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "use_lazy_init": False,
             "precision": "bf16",
             "max_norm": 5,
-        }
+        },
         {
             "tp_size": 1,
             "pp_size": 2,
