@@ -43,7 +43,7 @@ done
 
 # 13b, fp16, 2 gpu, 512, 512
 for BATCH_SIZE in 2 4 8 16; do
-    CUDA_VISIBLE_DEVICES0,1,2,3 python ./benchmark.py \
+    CUDA_VISIBLE_DEVICES=0,1,2,3 python ./benchmark.py \
         --model="13b" \
         --dtype="fp16" \
         --batch_size=${BATCH_SIZE} \
