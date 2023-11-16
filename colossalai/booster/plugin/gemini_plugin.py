@@ -34,6 +34,8 @@ __all__ = ["GeminiPlugin"]
 SUPPORTED_PRECISION = ["fp16", "bf16"]
 PRECISION_STR_TO_DTYPE = {"fp16": torch.half, "bf16": torch.bfloat16}
 
+ZERO_AXIS, DP_AXIS, TP_AXIS = 0, 1, 2
+
 def get_param_info(optim: Optimizer):
     # Get a backup of necessary information of parameters for future use, which includes:
     # 1. A mapping from integer param_id to param32 shape.
@@ -404,26 +406,11 @@ class GeminiPlugin(DPPluginBase):
         world_size = dist.get_world_size()
         self.zero_size = world_size // (self.tp_size * self.extra_dp_size)
         assert world_size == (self.tp_size * self.extra_dp_size) * self.zero_size, f"The global group size can't be evenly divided by the subgroup size."
-        assert self.zero_size > 1, f"Gemini's group size should be greater than 1, please reduce tensor paralllelism group size or extra-dp group size."
-        if self.tp_size == 1 and self.extra_dp_size == 1:
-            self.extra_dp_group = None
-            self.tp_group = None
-            self.zero_group = None
-        elif self.tp_size == 1:
-            self.tp_group = None
-            self.pg_mesh = ProcessGroupMesh(self.zero_size, self.extra_dp_size)
-            self.zero_group = self.pg_mesh.get_group_along_axis(0)
-            self.extra_dp_group = self.pg_mesh.get_group_along_axis(1)
-        elif self.extra_dp_size == 1:
-            self.extra_dp_group = None
-            self.pg_mesh = ProcessGroupMesh(self.zero_size, self.tp_size)
-            self.zero_group = self.pg_mesh.get_group_along_axis(0)
-            self.tp_group = self.pg_mesh.get_group_along_axis(1)
-        else:
-            self.pg_mesh = ProcessGroupMesh(self.zero_size, self.extra_dp_size, self.tp_size)
-            self.zero_group = self.pg_mesh.get_group_along_axis(0)
-            self.extra_dp_group = self.pg_mesh.get_group_along_axis(1)
-            self.tp_group = self.pg_mesh.get_group_along_axis(2)
+
+        self.pg_mesh = ProcessGroupMesh(self.zero_size, self.extra_dp_size, self.tp_size)
+        self.zero_group = self.pg_mesh.get_group_along_axis(ZERO_AXIS)
+        self.extra_dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
+        self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,

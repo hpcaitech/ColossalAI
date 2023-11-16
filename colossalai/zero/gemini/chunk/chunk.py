@@ -95,7 +95,7 @@ class Chunk:
         self.pg_size = dist.get_world_size(self.torch_pg)
         self.pg_rank = dist.get_rank(self.torch_pg)
         self.extra_dp_group = extra_dp_group
-        self.extra_dp_size = dist.get_world_size(self.extra_dp_group)
+        self.extra_dp_size = dist.get_world_size(self.extra_dp_group) if self.extra_dp_group is not None else 1
 
         # the chunk size should be divisible by the dp degree
         if not keep_gathered:
