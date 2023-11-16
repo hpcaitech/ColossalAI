@@ -183,7 +183,11 @@ def main():
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")
     performance_evaluator = PerformanceEvaluator(
-        model_numel, args.grad_checkpoint, args.ignore_steps, dp_world_size=dp_size
+        model_numel,
+        model.config.num_hidden_layers,
+        model.config.hidden_size,
+        model.config.vocab_size,
+        args.grad_checkpoint, args.ignore_steps, dp_world_size=dp_size
     )
 
     optimizer = HybridAdam(model.parameters())
