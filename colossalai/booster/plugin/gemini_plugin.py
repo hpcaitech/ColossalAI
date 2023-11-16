@@ -24,6 +24,7 @@ from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.utils import get_current_device
+from colossalai.utils.device import IS_NPU_AVAILABLE
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.memory_tracer import MemStats
 
@@ -36,6 +37,7 @@ PRECISION_STR_TO_DTYPE = {"fp16": torch.half, "bf16": torch.bfloat16}
 
 DP_AXIS = 0
 TP_AXIS = 1
+
 
 def get_param_info(optim: Optimizer):
     # Get a backup of necessary information of parameters for future use, which includes:
@@ -53,6 +55,8 @@ def get_param_info(optim: Optimizer):
         start_index += len(group["params"])
 
     return param_info
+
+
 class GeminiCheckpointIO(GeneralCheckpointIO):
     def __init__(self) -> None:
         super().__init__()
@@ -359,6 +363,8 @@ class GeminiPlugin(DPPluginBase):
     ) -> None:
         super().__init__()
         assert precision in SUPPORTED_PRECISION, f"precision {precision} is not supported"
+        if IS_NPU_AVAILABLE:
+            assert placement_policy == "static", "NPU only supports static placement policy"
         self.gemini_config = dict(
             chunk_config_dict=chunk_config_dict,
             chunk_init_device=(chunk_init_device or get_current_device()),
@@ -432,7 +438,7 @@ class GeminiPlugin(DPPluginBase):
         return True
 
     def supported_devices(self) -> List[str]:
-        return ["cuda"]
+        return ["cuda", "npu"]
 
     def configure(
         self,
