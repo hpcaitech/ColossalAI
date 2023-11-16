@@ -8,10 +8,7 @@ from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecode
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import llama_context_attn_fwd, token_attention_fwd
 from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
-from lightllm.models.llama.triton_kernel.flash_decoding import token_decode_attention_flash_decoding
-
 from ._utils import copy_kv_to_mem_cache
-
 try:
     from lightllm.models.llama.triton_kernel.context_flashattention_nopad import (
         context_attention_fwd as lightllm_llama_context_attention_fwd,
