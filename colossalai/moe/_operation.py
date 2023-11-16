@@ -150,7 +150,8 @@ class HierarchicalAllToAll(torch.autograd.Function):
     def forward(
         ctx: Any,
         inputs: Tensor,
-        groups: Tuple[ProcessGroup],
+        groups: Tuple[ProcessGroup, ProcessGroup],
+        src_rank: int
     ) -> Tensor:
         """
         Returns:
@@ -159,12 +160,12 @@ class HierarchicalAllToAll(torch.autograd.Function):
         # TODO: we can reduce comm volume by removing empty capacity
         if ctx is not None:
             ctx.comm_grps = groups
+            ctx.src_rank = src_rank
         intra_node_group, inter_node_group = groups
 
         local_world_size = dist.get_world_size(intra_node_group)
         num_group = dist.get_world_size(inter_node_group) if inter_node_group is not None else 1
         world_size = local_world_size * num_group
-        src_rank = dist.get_process_group_ranks(intra_node_group)[0]
         outputs = torch.empty_like(inputs)
 
         if dist.get_rank() == src_rank:
@@ -196,9 +197,10 @@ class HierarchicalAllToAll(torch.autograd.Function):
         return outputs
 
     @staticmethod
-    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None]:
+    def backward(ctx: Any, *grad_outputs) -> Tuple[Tensor, None, None]:
         return (
-            HierarchicalAllToAll.forward(None, grad_outputs[0], ctx.comm_grps),
+            HierarchicalAllToAll.forward(None, grad_outputs[0], ctx.comm_grps, ctx.src_rank),
+            None,
             None,
         )
 
