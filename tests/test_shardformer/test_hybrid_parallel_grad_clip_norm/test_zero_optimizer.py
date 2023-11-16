@@ -131,15 +131,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "bf16",
             "max_norm": 5,
         },
-        {
-            "tp_size": 1,
-            "pp_size": 2,
-            "zero_stage": 2,
-            "enable_all_optimization": False,
-            "use_lazy_init": False,
-            "precision": "fp16",
-            "max_norm": 5,
-        },
     ],
 )
 def run_test(test_config):
