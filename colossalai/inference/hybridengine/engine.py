@@ -14,7 +14,14 @@ from .microbatch_manager import MicroBatchManager
 
 PP_AXIS, TP_AXIS = 0, 1
 
-_supported_models = ["LlamaForCausalLM", "BloomForCausalLM", "LlamaGPTQForCausalLM", "SmoothLlamaForCausalLM", "ChatGLMForConditionalGeneration"]
+_supported_models = [
+    "LlamaForCausalLM",
+    "BloomForCausalLM",
+    "LlamaGPTQForCausalLM",
+    "SmoothLlamaForCausalLM",
+    "ChatGLMForConditionalGeneration",
+]
+
 
 class CaiInferEngine:
     """
@@ -161,7 +168,7 @@ class CaiInferEngine:
             enable_flash_attention=False,
             enable_jit_fused=False,
             enable_sequence_parallelism=False,
-            quant=self.quant,
+            extra_kwargs={"quant": self.quant},
         )
         shardformer = ShardFormer(shard_config=shardconfig)
         shard_model, _ = shardformer.optimize(model, model_policy)
