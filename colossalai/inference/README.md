@@ -209,27 +209,31 @@ We conducted multiple benchmark tests to evaluate the performance. We compared t
 
 #### A10 7b, fp16
 
-| batch_size(micro_batch size)| 2(1) | 4(2) | 8(4) | 16(8) | 32(8) | 32(16)|
-| :---: | :---: | :---: | :---: | :---: | :---: | :---:|
-| Pipeline Inference | 40.35 | 77.1 | 139.03 | 232.7 | 257.81 | OOM |
-| Hugging Face |  41.43 | 65.30 | 91.93 | 114.62 | OOM| OOM |
+| batch_size(micro_batch size)|  2(1)  | 4(2) |  8(4) | 16(8) | 32(8) | 32(16)|
+| :-------------------------: | :---:  | :---:| :---: | :---: | :---: | :---: |
+|      Pipeline Inference     | 40.35  | 77.10| 139.03| 232.70| 257.81|  OOM  |
+|          Hugging Face       | 41.43  | 65.30| 91.93 | 114.62|  OOM  |  OOM  |
 
 
 ![ppllama7b](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/pp-a10-llama7b.png)
 
 #### A10 13b, fp16
+
 | batch_size(micro_batch size)| 2(1) | 4(2) | 8(4) | 16(4) |
 | :---: | :---: | :---: | :---: | :---: |
 | Pipeline Inference | 25.39 | 47.09 | 83.7 | 89.46 |
 | Hugging Face | 23.48 | 37.59 | 53.44 | OOM |
+
 ![ppllama13](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/pp-a10-llama13b.png)
 
 
 #### A800 7b, fp16
+
 | batch_size(micro_batch size) | 2(1) | 4(2) | 8(4) | 16(8) | 32(16) |
 | :---: | :---: | :---: | :---: | :---: | :---: |
 | Pipeline Inference| 57.97 | 110.13 | 213.33 | 389.86 | 670.12  |
 | Hugging Face  | 42.44 | 76.5 | 151.97 | 212.88 | 256.13 |
+
 ![ppllama7b_a800](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/pp-a800-llama7b.png)
 
 ### Quantization LLama
