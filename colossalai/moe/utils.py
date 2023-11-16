@@ -181,8 +181,7 @@ def set_moe_args(config: Any, args: dict):
 def create_ep_hierarchical_group(
     ep_group_ranks: List[int],
     nproc_per_node: Optional[int] = None,
-) -> Tuple[Optional[dist.ProcessGroup],
-           Optional[dist.ProcessGroup]]:
+) -> Tuple[int, dist.ProcessGroup, Optional[dist.ProcessGroup]]:
     """
     e.g., If ep_group = [1, 2, 5, 6], and nproc_per_node = 4
         Then, ep_intra_group = [1, 2] & [5, 6], ep_inter_group = [1, 5] & None
@@ -198,6 +197,7 @@ def create_ep_hierarchical_group(
             "nproc_per_node should be a divisor of world_size."
     num_node = dist.get_world_size() // nproc_per_node
 
+    intra_src_rank = None
     ep_intra_node_group = None
     for i in range(num_node):
         ep_intra_ranks = [
@@ -209,6 +209,7 @@ def create_ep_hierarchical_group(
         if rank in ep_intra_ranks:
             assert ep_intra_node_group is None
             ep_intra_node_group = group
+            intra_src_rank = ep_intra_ranks[0]
 
     ep_inter_node_group = None
     ep_inter_ranks = [
@@ -220,4 +221,4 @@ def create_ep_hierarchical_group(
         if rank in ep_inter_ranks:
             ep_inter_node_group = group
 
-    return ep_intra_node_group, ep_inter_node_group
+    return intra_src_rank, ep_intra_node_group, ep_inter_node_group
