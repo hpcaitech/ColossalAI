@@ -16,7 +16,7 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 try:
     from transformers.models.llama.modeling_llama import _prepare_4d_causal_attention_mask
     LATEST_VERSION = True
-except:
+except ImportError:
     LATEST_VERSION = False
 
 class LlamaPipelineForwards:
