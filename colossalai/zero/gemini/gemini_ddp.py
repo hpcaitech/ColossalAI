@@ -86,9 +86,10 @@ class GeminiDDP(ModelWrapper):
         strict_ddp_mode: bool = False,
         scatter_after_inference: bool = True,
         mixed_precision: torch.dtype = torch.float16,
-        process_group: Optional[ProcessGroup] = None,
+        zero_group: Optional[ProcessGroup] = None,
         memstats: Optional[MemStats] = None,  # genimi memory stats
         master_weights: bool = True,
+        extra_dp_group: Optional[ProcessGroup] = None,
         verbose: bool = False,
     ) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
@@ -105,7 +106,7 @@ class GeminiDDP(ModelWrapper):
                 search_range_m=search_range_m,
                 min_chunk_size_m=min_chunk_size_m,
                 strict_ddp_flag=strict_ddp_mode,
-                process_group=process_group,
+                process_group=zero_group,
                 verbose=verbose,
             )
         self.gemini_manager = GeminiManager(
@@ -128,7 +129,8 @@ class GeminiDDP(ModelWrapper):
         self.name2param: Dict[str, nn.Parameter] = dict()
         self.scatter_after_inference = scatter_after_inference
         self.mixed_precision = mixed_precision
-        self.dp_process_group = process_group or _get_default_group()
+        self.zero_group = zero_group or _get_default_group()
+        self.extra_dp_group = extra_dp_group
 
         self.reuse_fp16_chunk = master_weights
         self.master_weights = master_weights
@@ -377,8 +379,12 @@ class GeminiDDP(ModelWrapper):
                         self.chunk_manager.release_chunk(chunk)
                 if grad_chunk.is_gathered:
                     grad_chunk.cuda_global_chunk.div_(chunk.pg_size)
+                    if self.extra_dp_group is not None:
+                        grad_chunk.cuda_global_chunk.div_(chunk.extra_dp_size)
                 else:
                     grad_chunk.cuda_shard.div_(chunk.pg_size)
+                    if self.extra_dp_group is not None:
+                        grad_chunk.cuda_shard.div_(chunk.extra_dp_size)
                 # check overflow elements
                 self.overflow_counter += grad_chunk.has_inf_or_nan
                 # record l2 norm for gradient clipping. flag is bound to fp16 chunk
@@ -733,7 +739,7 @@ class GeminiDDP(ModelWrapper):
                         unexpected_keys.append(key)
 
     def _init_chunks(self, param_order, strict_ddp_mode: bool, cpu_offload: bool, pin_memory: bool):
-        dp_world_size = dist.get_world_size(self.dp_process_group)
+        zero_world_size = dist.get_world_size(self.zero_group)
         for p in param_order.generate():
             self._preprocess_param(p)
             assert type(p) is ColoParameter
@@ -753,8 +759,9 @@ class GeminiDDP(ModelWrapper):
             self.chunk_manager.register_tensor(
                 tensor=p,
                 group_type="fp16_param",
-                config_key=dp_world_size,
-                process_group=self.dp_process_group,
+                config_key=zero_world_size,
+                zero_group=self.zero_group,
+                extra_dp_group=self.extra_dp_group,
                 cpu_offload=cpu_offload,
                 pin_memory=pin_memory,
             )
@@ -767,8 +774,9 @@ class GeminiDDP(ModelWrapper):
                 self.chunk_manager.register_tensor(
                     tensor=fp32_p,
                     group_type="fp32_param",
-                    config_key=dp_world_size,
-                    process_group=self.dp_process_group,
+                    config_key=zero_world_size,
+                    zero_group=self.zero_group,
+                    extra_dp_group=self.extra_dp_group,
                     cpu_offload=cpu_offload,
                     pin_memory=pin_memory,
                 )
