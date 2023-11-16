@@ -1,7 +1,6 @@
 import os
 import warnings
 
-import pytest
 import torch
 import torch.distributed as dist
 import argparse
