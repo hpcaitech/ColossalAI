@@ -69,11 +69,11 @@ cd lightllm
 git checkout 28c1267cfca536b7b4f28e921e03de735b003039
 pip3 install -e .
 
-# also, install xformers from source: 
-pip install ninja
-# Set TORCH_CUDA_ARCH_LIST if running and building on different GPU types
-pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers
 
+# install flash-attention
+git clone -recursive https://github.com/Dao-AILab/flash-attention
+cd flash-attention
+pip install -e . 
 ```
 
 ### Docker
@@ -95,10 +95,11 @@ cd lightllm
 git checkout 28c1267cfca536b7b4f28e921e03de735b003039
 pip3 install -e .
 
-# install xformers from source 
-pip install ninja
-# Set TORCH_CUDA_ARCH_LIST if running and building on different GPU types
-pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers 
+# install flash-attention
+git clone -recursive https://github.com/Dao-AILab/flash-attention
+cd flash-attention
+pip install -e . 
+
 ```
 
 ### Dive into fast-inference!

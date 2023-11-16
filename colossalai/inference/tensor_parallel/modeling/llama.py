@@ -8,15 +8,10 @@ from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecode
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import llama_context_attn_fwd, token_attention_fwd
 from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
-
 from ._utils import copy_kv_to_mem_cache
-
 try:
-    from lightllm.models.llama2.triton_kernel.context_flashattention_nopad import (
-        context_attention_fwd as lightllm_llama2_context_attention_fwd,
-    )
     from lightllm.models.llama.triton_kernel.context_flashattention_nopad import (
-        context_attention_fwd as lightllm_context_attention_fwd,
+        context_attention_fwd as lightllm_llama_context_attention_fwd,
     )
     from lightllm.models.llama.triton_kernel.rotary_emb import rotary_emb_fwd as llama_rotary_embedding_fwd
 
@@ -56,32 +51,20 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
 def llama_triton_context_attention(
     query_states, key_states, value_states, attn_output, infer_state, num_key_value_groups=1
 ):
-    if num_key_value_groups == 1:
-        if HAS_LIGHTLLM_KERNEL is False:
-            llama_context_attn_fwd(
-                query_states,
-                key_states,
-                value_states,
-                attn_output,
-                infer_state.start_loc,
-                infer_state.seq_len,
-                # infer_state.cache_manager.past_key_values_length,
-                infer_state.max_len_in_batch,
-            )
-        else:
-            lightllm_context_attention_fwd(
-                query_states,
-                key_states,
-                value_states,
-                attn_output,
-                infer_state.start_loc,
-                infer_state.seq_len,
-                # infer_state.cache_manager.past_key_values_length,
-                infer_state.max_len_in_batch,
-            )
+    # if num_key_value_groups == 1:
+    if HAS_LIGHTLLM_KERNEL is False:
+        llama_context_attn_fwd(
+            query_states,
+            key_states,
+            value_states,
+            attn_output,
+            infer_state.start_loc,
+            infer_state.seq_len,
+            # infer_state.cache_manager.past_key_values_length,
+            infer_state.max_len_in_batch,
+        )
     else:
-        assert HAS_LIGHTLLM_KERNEL is True, "You have to install lightllm kernels to run llama2 model"
-        lightllm_llama2_context_attention_fwd(
+        lightllm_llama_context_attention_fwd(
             query_states,
             key_states,
             value_states,
@@ -107,6 +90,7 @@ def llama_triton_token_attention(query_states, attn_output, infer_state, num_key
             # infer_state.cache_manager.past_key_values_length,
             infer_state.max_len_in_batch,
         )
+        
     else:
         Llama2TokenAttentionForwards.token_attn(
             query_states,

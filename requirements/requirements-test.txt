@@ -12,7 +12,7 @@ torchx-nightly==2022.6.29 # torchrec 0.2.0 requires torchx-nightly. This package
 torchrec==0.2.0
 contexttimer
 einops
-triton==2.0.0.dev20221202
+triton==2.1.0
 requests==2.27.1 # downgrade to avoid huggingface error https://github.com/huggingface/transformers/issues/17611
 SentencePiece
 ninja

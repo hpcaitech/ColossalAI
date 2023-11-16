@@ -13,17 +13,7 @@ except ImportError:
     print("please install triton from https://github.com/openai/triton")
 
 try:
-    from lightllm.models.llama2.triton_kernel.token_attention_nopad_att1 import (
-        token_att_fwd as lightllm_llama2_token_att_fwd,
-    )
-    from lightllm.models.llama2.triton_kernel.token_attention_nopad_reduceV import (
-        token_att_fwd2 as lightllm_llama2_token_att_fwd2,
-    )
-    from lightllm.models.llama2.triton_kernel.token_attention_nopad_softmax import (
-        token_softmax_fwd as lightllm_llama2_token_softmax_fwd,
-    )
-    
-    from lightllm.models.llama.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2 as lightllm_llama_token_att_fw2
+    from lightllm.models.llama.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2 as lightllm_llama_token_att_fwd2
     from lightllm.models.llama.triton_kernel.token_attention_nopad_att1 import token_att_fwd as lightllm_llama_token_att_fwd
     from lightllm.models.llama.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd as lightllm_llama_token_softmax_fwd
     from lightllm.models.bloom.triton_kernel.token_attention_nopad_att1 import token_att_fwd as lightllm_bloom_token_att_fwd
@@ -72,7 +62,7 @@ if HAS_TRITON:
 
         lightllm_llama_token_softmax_fwd(att_m_tensor, kv_cache_start_loc, kv_cache_seq_len, prob, max_len_in_batch)
         att_m_tensor = None
-        lightllm_llama_token_att_fw2(
+        lightllm_llama_token_att_fwd2(
             prob, v, attn_out.view(calcu_shape1), kv_cache_loc, kv_cache_start_loc, kv_cache_seq_len, max_len_in_batch
         )
         prob = None
@@ -203,7 +193,7 @@ class Llama2TokenAttentionForwards:
         calcu_shape1 = (batch_size, head_num, head_dim)
         att_m_tensor = torch.empty((head_num, total_token_num), dtype=q.dtype, device="cuda")
 
-        lightllm_llama2_token_att_fwd(
+        lightllm_llama_token_att_fwd(
             q,
             k,
             att_m_tensor,
@@ -215,12 +205,12 @@ class Llama2TokenAttentionForwards:
 
         if triton.__version__ == "2.0.0":
             prob = torch.empty_like(att_m_tensor)
-            lightllm_llama2_token_softmax_fwd(
+            lightllm_llama_token_softmax_fwd(
                 att_m_tensor, kv_cache_start_loc, kv_cache_seq_len, prob, max_len_in_batch
             )
             att_m_tensor = None
 
-            lightllm_llama2_token_att_fwd2(
+            lightllm_llama_token_att_fwd2(
                 prob,
                 v,
                 attn_out.view(calcu_shape1),
