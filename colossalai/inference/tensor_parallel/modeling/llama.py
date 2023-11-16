@@ -8,6 +8,7 @@ from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecode
 from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import llama_context_attn_fwd, token_attention_fwd
 from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
+from lightllm.models.llama.triton_kernel.flash_decoding import token_decode_attention_flash_decoding
 
 from ._utils import copy_kv_to_mem_cache
 
@@ -92,6 +93,7 @@ def llama_triton_token_attention(query_states, attn_output, infer_state, num_key
             # infer_state.cache_manager.past_key_values_length,
             infer_state.max_len_in_batch,
         )
+        
     else:
         Llama2TokenAttentionForwards.token_attn(
             query_states,
