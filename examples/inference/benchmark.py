@@ -1,4 +1,5 @@
 import argparse
+import os
 import time
 
 import torch
@@ -6,13 +7,11 @@ import torch.distributed as dist
 import transformers
 
 import colossalai
-from colossalai.inference import PPInferEngine
-from colossalai.inference.pipeline.policies import LlamaModelInferPolicy
+from colossalai.inference import CaiInferEngine, LlamaModelInferPolicy
+from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 
 GIGABYTE = 1024**3
 MEGABYTE = 1024 * 1024
-
-colossalai.launch_from_torch(config={})
 
 
 def data_gen(batch_size: int = 4, seq_len: int = 512):
@@ -28,6 +27,9 @@ def data_gen(batch_size: int = 4, seq_len: int = 512):
 
 
 def print_details_info(timestamps, model_config, args, whole_end2end):
+    log_file_name = f"{args.log_path}/llama-{args.model}{args.dtype}_pp{args.pp_size}_{args.seq_len}_{args.output_len}_bsz{args.batch_size}_mbsz{args.mb_size}.log"
+    os.makedirs(os.path.dirname(log_file_name), exist_ok=True)
+
     if dist.get_rank() == 0:
         prefill = []
         encoder = []
@@ -39,13 +41,14 @@ def print_details_info(timestamps, model_config, args, whole_end2end):
             )
             end2end.append(timestamp[-1] - timestamp[0])
         print(whole_end2end)
+
         with open(
-            f"{args.log_path}/llama-{args.model}{args.dtype}_pp{args.pp_size}_{args.seq_len}_{args.new_length}_bsz{args.batch_size}_mbsz{args.mb_size}.log",
+            log_file_name,
             "w+",
         ) as f:
             mb_avg_end2end = sum(end2end) / len(end2end)
-            mb_avg_latency = mb_avg_end2end / (args.new_length * args.mb_size)
-            whole_avg_latency = whole_end2end / (args.new_length * args.batch_size)
+            mb_avg_latency = mb_avg_end2end / (args.output_len * args.mb_size)
+            whole_avg_latency = whole_end2end / (args.output_len * args.batch_size)
             num_layers = getattr(model_config, "num_layers", model_config.num_hidden_layers)
             num_parameters = num_layers * model_config.hidden_size * model_config.hidden_size * 12 / args.pp_size
             if args.dtype in ["fp16", "bf16"]:
@@ -54,7 +57,7 @@ def print_details_info(timestamps, model_config, args, whole_end2end):
                 num_bytes = 4
 
             f.write(
-                f"llama-{args.model}{args.dtype}_pp{args.pp_size}, input_len:{args.seq_len}, output_len:{args.new_length}, bsz:{args.batch_size}, mbsz:{args.mb_size}\n"
+                f"llama-{args.model}{args.dtype}_pp{args.pp_size}, input_len:{args.seq_len}, output_len:{args.output_len}, bsz:{args.batch_size}, mbsz:{args.mb_size}\n"
             )
             f.write("Average prefill time: {0:8.2f} ms\n".format(sum(prefill) / len(prefill) * 1000))
             f.write("Average encode time: {0:8.2f} ms\n".format(sum(encoder) / len(encoder) * 1000))
@@ -76,7 +79,7 @@ def print_details_info(timestamps, model_config, args, whole_end2end):
         memory_reserved = torch.cuda.memory_reserved()
         max_memory_reserved = torch.cuda.max_memory_reserved()
         with open(
-            f"{args.log_path}/llama-{args.model}{args.dtype}_pp{args.pp_size}_{args.seq_len}_{args.new_length}_bsz{args.batch_size}_mbsz{args.mb_size}.log",
+            log_file_name,
             "a",
         ) as f:
             f.write(
@@ -90,18 +93,7 @@ def print_details_info(timestamps, model_config, args, whole_end2end):
             )
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="toy", help="the size of model")
-    parser.add_argument("-b", "--batch_size", type=int, default=8, help="batch size")
-    parser.add_argument("-s", "--seq_len", type=int, default=8, help="sequence length")
-    parser.add_argument("--new_length", type=int, default=4, help="new tokens length")
-    parser.add_argument("--mb_size", type=int, default=1, help="micro_batch_size")
-    parser.add_argument("--pp_size", type=int, default=2, help="pipeline size")
-    parser.add_argument("--log_path", type=str, default="./log", help="where to store the benchmark log")
-    parser.add_argument("--dtype", type=str, default="fp16", help="data type")
-    args = parser.parse_args()
-
+def benchmark_inference(args):
     if args.model == "toy":
         model = transformers.LlamaForCausalLM(transformers.LlamaConfig(num_hidden_layers=8))
     elif args.model == "7b":
@@ -111,24 +103,50 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
 
-    engine = PPInferEngine(
+    engine = CaiInferEngine(
         pp_size=args.pp_size,
+        tp_size=args.tp_size,
         dtype=args.dtype,
         micro_batch_size=args.mb_size,
-        new_length=args.new_length,
         model=model,
         model_policy=LlamaModelInferPolicy(),
         verbose=True,
         max_batch_size=args.mb_size,
         max_input_len=args.seq_len,
-        max_output_len=args.seq_len + args.new_length + 256,
+        max_output_len=args.output_len,
     )
     data = data_gen(args.batch_size, args.seq_len)
 
     torch.cuda.synchronize()
     whole_end2end = time.time()
-    output, timestamps = engine.inference([data])
+    output, timestamps = engine.inference(data)
     torch.cuda.synchronize()
     whole_end2end = time.time() - whole_end2end
 
     print_details_info(timestamps, model.config, args, whole_end2end)
+
+
+def hybrid_inference(rank, world_size, port, args):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    benchmark_inference(args)
+
+
+@rerun_if_address_is_in_use()
+@clear_cache_before_run()
+def benchmark(args):
+    spawn(hybrid_inference, nprocs=args.tp_size * args.pp_size, args=args)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", default="toy", help="the size of model")
+    parser.add_argument("-b", "--batch_size", type=int, default=8, help="batch size")
+    parser.add_argument("-s", "--seq_len", type=int, default=8, help="sequence length")
+    parser.add_argument("--mb_size", type=int, default=1, help="micro_batch_size")
+    parser.add_argument("--pp_size", type=int, default=2, help="pipeline size")
+    parser.add_argument("--tp_size", type=int, default=2, help="pipeline size")
+    parser.add_argument("--output_len", type=int, default=16, help="Output length")
+    parser.add_argument("--log_path", type=str, default="./log", help="where to store the benchmark log")
+    parser.add_argument("--dtype", type=str, default="fp16", help="data type")
+    args = parser.parse_args()
+    benchmark(args)
