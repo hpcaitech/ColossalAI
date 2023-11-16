@@ -10,6 +10,7 @@ import torch.nn as nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
+from torch.distributed.distributed_c10d import _get_default_group
 
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO
 from colossalai.checkpoint_io.utils import (
@@ -408,9 +409,9 @@ class GeminiPlugin(DPPluginBase):
         assert world_size == (self.tp_size * self.extra_dp_size) * self.zero_size, f"The global group size can't be evenly divided by the subgroup size."
 
         self.pg_mesh = ProcessGroupMesh(self.zero_size, self.extra_dp_size, self.tp_size)
-        self.zero_group = self.pg_mesh.get_group_along_axis(ZERO_AXIS)
-        self.extra_dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
-        self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
+        self.zero_group = self.pg_mesh.get_group_along_axis(ZERO_AXIS) if self.zero_size < world_size else _get_default_group()
+        self.extra_dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS) if self.extra_dp_size > 1 else None
+        self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS) if self.tp_size > 1 else None
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
