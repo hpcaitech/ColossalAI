@@ -270,6 +270,7 @@ class InterleavedSchedule(PipelineSchedule):
         Returns:
             dict: A dict with keys: 'loss' and 'outputs'.
         """
+        # TODO: handle arbitrary batch size when forward_only == True
         forward_only = not torch.is_grad_enabled()
         if optimizer is None:
             assert forward_only, "Optimizer should be passed when doing backward."
