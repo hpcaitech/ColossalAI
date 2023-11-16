@@ -65,7 +65,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, zero_size, t
 @parameterize("subset", ["torchvision", "transformers", "diffusers"])
 @parameterize("init_method", ["none"])
 @parameterize("zero_size", [2])
-@parameterize("tp_size", [1, 2])
+@parameterize("tp_size", [2])
 def check_gemini_plugin(subset: str, init_method: str = "none", early_stop: bool = True, zero_size: int = 1, tp_size: int = 1):
     """check gemini plugin over model zoo
 

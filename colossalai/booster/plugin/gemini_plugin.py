@@ -344,7 +344,6 @@ class GeminiPlugin(DPPluginBase):
         max_scale: float = 2**32,
         max_norm: float = 0.0,
         norm_type: float = 2.0,
-        enable_tensor_parallelism: bool = False,
         tp_size: int = 1,
         extra_dp_size:int = 1,
         enable_all_optimization: bool = False,
