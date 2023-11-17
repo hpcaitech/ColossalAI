@@ -68,6 +68,7 @@ Install dependencies.
 
 ```bash
 pip install -r requirements.txt
+pip install transformers==4.34.0
 
 # install lightllm since we depend on lightllm triton kernels
 git clone https://github.com/ModelTC/lightllm
@@ -84,6 +85,16 @@ pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=
 git clone -recursive https://github.com/Dao-AILab/flash-attention
 cd flash-attention
 pip install -e .
+
+# for gptq quantization
+pip install auto-gptq
+
+# for smoothquant quantization
+git clone --recurse-submodules https://github.com/Guangxuan-Xiao/torch-int.git
+pip install -r requirements.txt
+source environment.sh
+bash build_cutlass.sh
+python setup.py install
 ```
 
 ### Docker
