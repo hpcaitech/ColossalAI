@@ -1,9 +1,5 @@
 from dataclasses import dataclass, field
-<<<<<<< HEAD
-from typing import Dict, Optional
-=======
 from typing import Any, Dict, Optional
->>>>>>> [Refactor] refactor policy search and quant type controlling in inference (#5035)
 
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
