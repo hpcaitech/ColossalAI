@@ -179,15 +179,15 @@ def set_moe_args(config: Any, args: dict):
 
 
 def create_ep_hierarchical_group(
-    ep_group: dist.ProcessGroup,
+    ep_group_ranks: List[int],
     nproc_per_node: Optional[int] = None,
-) -> Tuple[Optional[dist.ProcessGroup],
-           Optional[dist.ProcessGroup]]:
+) -> Tuple[int, dist.ProcessGroup, Optional[dist.ProcessGroup]]:
     """
     e.g., If ep_group = [1, 2, 5, 6], and nproc_per_node = 4
         Then, ep_intra_group = [1, 2] & [5, 6], ep_inter_group = [1, 5] & None
     """
     assert dist.is_initialized(), "Please initialize torch.distributed first."
+    rank = dist.get_rank()
     if nproc_per_node is None:
         nproc_per_node = os.environ.get("LOCAL_WORLD_SIZE")
         assert nproc_per_node is not None, "Please use torchrun to launch the job, or specify nproc_per_node manually."
@@ -197,24 +197,23 @@ def create_ep_hierarchical_group(
             "nproc_per_node should be a divisor of world_size."
     num_node = dist.get_world_size() // nproc_per_node
 
-    rank = dist.get_rank()
-    ep_ranks = dist.get_process_group_ranks(ep_group)
-
+    intra_src_rank = None
     ep_intra_node_group = None
     for i in range(num_node):
         ep_intra_ranks = [
             i * nproc_per_node + j
             for j in range(nproc_per_node)
-            if j in ep_ranks
+            if j in ep_group_ranks
         ]
         group = dist.new_group(ep_intra_ranks)
         if rank in ep_intra_ranks:
             assert ep_intra_node_group is None
             ep_intra_node_group = group
+            intra_src_rank = ep_intra_ranks[0]
 
     ep_inter_node_group = None
     ep_inter_ranks = [
-        ep_ranks[0] + i * nproc_per_node
+        ep_group_ranks[0] + i * nproc_per_node
         for i in range(num_node)
     ]
     if len(ep_inter_ranks) > 1:
@@ -222,4 +221,4 @@ def create_ep_hierarchical_group(
         if rank in ep_inter_ranks:
             ep_inter_node_group = group
 
-    return ep_intra_node_group, ep_inter_node_group
+    return intra_src_rank, ep_intra_node_group, ep_inter_node_group
