@@ -19,13 +19,20 @@ class PipelineStageManager:
     """
 
     def __init__(
-        self, pg_mesh: ProcessGroupMesh, pipeline_axis: int, is_virtual: bool = False, num_model_chunks=1
+        self,
+        pg_mesh: ProcessGroupMesh,
+        pipeline_axis: int,
+        enable_interleave: bool = False,
+        num_model_chunks: int = 1,
     ) -> None:
+        assert enable_interleave or num_model_chunks == 1, "num_model_chunks must be 1 when enable_interleave is False"
+
         self.pg_mesh = pg_mesh
         self.pipeline_axis = pipeline_axis
         self.prev_rank: Optional[Tuple[int, ...]] = None
         self.next_rank: Optional[Tuple[int, ...]] = None
         self.p2p_groups: Dict[Tuple[int, int], ProcessGroup] = {}
+
         # init prev and next coord
         coord = self.pg_mesh.coordinate()
         # the prev rank of rank0 is the last rank
@@ -34,10 +41,6 @@ class PipelineStageManager:
         # the next rank of the last rank is rank0
         next_coord = coord[: self.pipeline_axis] + (coord[self.pipeline_axis] + 1,) + coord[self.pipeline_axis + 1 :]
         self.next_rank = self.pg_mesh.ravel(next_coord, self.pg_mesh.shape, mode="wrap")
-        # for interleaved pipeline parallel, each device is responsible for multiple chunk of layers
-        self.num_model_chunks = num_model_chunks
-        self.model_chunk_id = 0
-        self.layers = Optional[List[List[int]]]
 
         # init p2p process groups
         stages = list(range(self.num_stages))
@@ -47,46 +50,60 @@ class PipelineStageManager:
                 ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
                 self.p2p_groups[tuple(ranks_in_group)] = group
 
-        if is_virtual:
+        self.is_interleave = enable_interleave
+        if enable_interleave:
+            # use circle p2p communication
             # add the process group of the first rank and the last rank
-            # only used in interleaved pipeline for now
             group = self.pg_mesh.get_group_along_axis(self.pipeline_axis, [stages[0], stages[-1]])
             if self.stage in [stages[0], stages[-1]]:
                 ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
                 self.p2p_groups[tuple(ranks_in_group)] = group
 
-    def is_first_stage(self) -> bool:
+            # for interleaved pipeline parallel, each device is responsible for multiple chunk of layers
+            self.num_model_chunks: int = num_model_chunks
+
+            # for shardformer, hold stage indices of model
+            self.stage_indices: List[Tuple[int, int]]
+            # for shardformer, hold model chunk id
+            self.model_chunk_id: Optional[int] = None
+
+    def is_first_stage(self, model_chunk_id: Optional[int] = None) -> bool:
         """Is the current stage the first stage.
+
+        NOTE: 
+            1. if using interleaved pipeline parallel, the first stage is the first chunk of the first device.
+            2. invoke is_first_stage() with model_chunk_id < 0 is equivalent to invoke is_first_device()
 
         Returns:
             bool: Whether the current stage is the first stage.
         """
-        return self.stage == 0 and self.model_chunk_id == 0
+        if self.is_interleave and model_chunk_id is None:
+            model_chunk_id = self.model_chunk_id
+        assert self.is_interleave ^ (model_chunk_id is None), \
+            "model_chunk_id must be specified when using interleaved pipeline"
+        if not self.is_interleave or model_chunk_id < 0:
+            return self.stage == 0
+        else:
+            return self.stage == 0 and model_chunk_id == 0
 
-    def is_last_stage(self) -> bool:
+    def is_last_stage(self, model_chunk_id: Optional[int] = None) -> bool:
         """Is the current stage the last stage.
+
+        NOTE: 
+            1. if using interleaved pipeline parallel, the last stage is the last chunk of the last device.
+            2. invoke is_last_stage() with model_chunk_id < 0 is equivalent to invoke is_last_device()
 
         Returns:
             bool: Whether the current stage is the last stage.
         """
-        return self.stage == self.num_stages - 1 and self.model_chunk_id == self.num_model_chunks - 1
-
-    # introduced due to interleaved pipeline parallel, as the first/last device may also hold intermediate stages
-    def is_first_device(self) -> bool:
-        """Is the current stage on the first device.
-
-        Returns:
-            bool: Whether the current stage is on the first device.
-        """
-        return self.stage == 0
-
-    def is_last_device(self) -> bool:
-        """Is the current stage on the last device.
-
-        Returns:
-            bool: Whether the current stage on the last device.
-        """
-        return self.stage == self.num_stages - 1
+        if self.is_interleave and model_chunk_id is None:
+            model_chunk_id = self.model_chunk_id
+        assert self.is_interleave ^ (model_chunk_id is None), \
+            "model_chunk_id must be specified when using interleaved pipeline"
+        if not self.is_interleave or model_chunk_id < 0:
+            return self.stage == self.num_stages - 1
+        else:
+            return self.stage == self.num_stages - 1 and model_chunk_id == self.num_model_chunks - 1
 
     @property
     def num_stages(self) -> int:
@@ -154,17 +171,3 @@ class PipelineStageManager:
             ProcessGroup: Process group of the given stages.
         """
         return self.pg_mesh.get_group_along_axis(self.pipeline_axis, stages)
-
-    def set_interleaved_model_chunk_id(self, model_chunk_id: int):
-        """For interleaved pipeline parallel, set the model chunk id for the device at the current stage.
-        Args:
-            model_chunk_id (int): the id of the current model chunk for the device.
-        """
-        self.model_chunk_id = model_chunk_id
-
-    def set_interleaved_device_layers(self, layers: List[List[int]]):
-        """For interleaved pipeline parallel, set the layer chunks for the device.
-        Args:
-            layers (List[List[int]]): list of layer chunks for the device.
-        """
-        self.layers = layers

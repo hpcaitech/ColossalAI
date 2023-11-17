@@ -2,14 +2,13 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
 
-from colossalai.pipeline.schedule import PipelineSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 from ..layer.parallel_module import ParallelModule
@@ -98,12 +97,6 @@ class Policy(ABC):
     def pipeline_stage_manager(self) -> Optional[PipelineStageManager]:
         if self.shard_config is not None:
             return self.shard_config.pipeline_stage_manager
-        return None
-
-    @property
-    def scheduler(self) -> Optional[PipelineSchedule]:
-        if self.shard_config is not None:
-            return self.shard_config.scheduler
         return None
 
     @abstractmethod
@@ -222,29 +215,31 @@ class Policy(ABC):
 
     @staticmethod
     def get_stage_index(
-        layers_per_stage: List[int], stage: int, num_stages=None, num_model_chunks=1
-    ) -> Union[List[int], List[List[int]]]:
-        # num_stages info is only needed for interleaved pipeline stage assignment
-        if num_stages is None:
-            """
-            get the start index and end index of layers for each stage.
-            """
-            num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
+        layers_per_stage: List[int],
+        stage: int,
+        num_model_chunks: int = 1,
+        num_stages: int = 0,
+    ) -> Union[Tuple[int, int], List[Tuple[int, int]]]:
+        """
+        Get the start index and end index of layers for each stage.
 
-            start_idx = num_layers_per_stage_accumulated[stage]
-            end_idx = num_layers_per_stage_accumulated[stage + 1]
+        Args:
+            layers_per_stage (List[int]): number of layers for each stage
+            stage (int): the stage index
+            num_stages (int): number of stages
+            num_model_chunks (int): number of model chunks
 
-            return [start_idx, end_idx]
-        else:
-            """
-            interleaved pipeline: get the start index and end index PAIRS for each stage.
-            """
-            num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
+        Returns:
+            - Tuple[int, int]: the start index and end index of this stage
+            - List[Tuple[int, int]]: the start index and end index of this stage for each model chunk
 
-            stage_indexes = []
-            for model_chunk in range(num_model_chunks):
-                start_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages]
-                end_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages + 1]
-                stage_indexes.append([start_idx, end_idx])
+        """
+        num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
 
-            return stage_indexes
+        stage_indices = []
+        for model_chunk in range(num_model_chunks):
+            start_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages]
+            end_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages + 1]
+            stage_indices.append([start_idx, end_idx])
+
+        return stage_indices[0] if num_model_chunks == 1 else stage_indices
