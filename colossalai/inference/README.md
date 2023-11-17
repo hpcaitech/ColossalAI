@@ -66,7 +66,7 @@ flash-attention
 # install lightllm since we depend on lightllm triton kernels
 git clone https://github.com/ModelTC/lightllm 
 cd lightllm
-git checkout 28c1267cfca536b7b4f28e921e03de735b003039
+git checkout ece7b43f8a6dfa74027adc77c2c176cff28c76c8
 pip3 install -e .
 
 
