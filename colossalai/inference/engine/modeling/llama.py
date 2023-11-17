@@ -6,7 +6,7 @@ import torch
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaForCausalLM, LlamaModel
 from transformers.utils import logging
 
-from colossalai.inference.kvcache_manager.batch_infer_state import BatchInferState
+from colossalai.inference.kv_cache.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import llama_context_attn_fwd, token_attention_fwd
 from colossalai.kernel.triton.token_attention_kernel import Llama2TokenAttentionForwards
 from colossalai.pipeline.stage_manager import PipelineStageManager

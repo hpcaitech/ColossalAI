@@ -1,3 +1,5 @@
+import importlib.util
+
 import pytest
 import torch
 import torch.distributed as dist
@@ -10,6 +12,10 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLM
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
+HAS_LIGHTLLM_KERNEL = True
+
+if importlib.util.find_spec("lightllm") is None:
+    HAS_LIGHTLLM_KERNEL = False
 
 
 def data_gen():
@@ -81,29 +87,27 @@ def run_tp_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
     torch.cuda.empty_cache()
 
 
-def check_pipeline_inference(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    run_pipeline_inference_test()
-
-
 def check_tp_pipeline_inference(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_tp_pipeline_inference_test()
 
 
-def check_tp_inference(rank, world_size, port):
+def check_single_inference(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_tp_inference_test()
+    run_pipeline_inference_test()
 
 
-@pytest.mark.skipif(not CUDA_SUPPORT, reason="kv-cache manager engine requires cuda version to be higher than 11.5")
+@pytest.mark.skipif(
+    not CUDA_SUPPORT or not HAS_LIGHTLLM_KERNEL,
+    reason="kv-cache manager engine requires cuda version to be higher than 11.5",
+)
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_pipeline_inference():
-    spawn(check_pipeline_inference, nprocs=2)
     spawn(check_tp_pipeline_inference, nprocs=4)
-    spawn(check_tp_inference, nprocs=2)
+    spawn(check_single_inference, nprocs=2)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ import torch.cuda
 from torch.nn import Module
 from torch.utils._pytree import tree_map
 
-from colossalai.inference.hybridengine.microbatch_manager import MicroBatchManager, Status
+from colossalai.inference.engine.microbatch_manager import MicroBatchManager, Status
 from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.utils.cuda import get_current_device

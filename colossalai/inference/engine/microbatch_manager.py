@@ -3,7 +3,7 @@ from typing import Dict
 
 import torch
 
-from ..kvcache_manager import BatchInferState, MemoryManager
+from ..kv_cache import BatchInferState, MemoryManager
 
 __all__ = "MicroBatchManager"
 

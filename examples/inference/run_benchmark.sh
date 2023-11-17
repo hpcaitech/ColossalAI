@@ -4,7 +4,7 @@ cd "${script_dir}"
 
 # 7b, fp16, 2 gpu, 1024, 128
 for BATCH_SIZE in 2 4 8 16; do
-    CUDA_VISIBLE_DEVICES=0,1,2,3 python ./benchmark.py \
+    python ./benchmark.py \
         --model="7b" \
         --dtype="fp16" \
         --batch_size=${BATCH_SIZE} \
@@ -17,7 +17,7 @@ done
 
 # 7b, fp16, 2 gpu, 512, 512
 for BATCH_SIZE in 2 4 8 16 32; do
-    CUDA_VISIBLE_DEVICES=0,1,2,3 python ./benchmark.py \
+    python ./benchmark.py \
         --model="7b" \
         --dtype="fp16" \
         --batch_size=${BATCH_SIZE} \
@@ -30,7 +30,7 @@ done
 
 # 7b, fp16, 2 gpu, 1024, 128
 for BATCH_SIZE in 2 4 8; do
-    CUDA_VISIBLE_DEVICES=0,1,2,3 python ./benchmark.py \
+    python ./benchmark.py \
         --model="13b" \
         --dtype="fp16" \
         --batch_size=${BATCH_SIZE} \
@@ -43,7 +43,7 @@ done
 
 # 13b, fp16, 2 gpu, 512, 512
 for BATCH_SIZE in 2 4 8 16; do
-    CUDA_VISIBLE_DEVICES=0,1,2,3 python ./benchmark.py \
+    python ./benchmark.py \
         --model="13b" \
         --dtype="fp16" \
         --batch_size=${BATCH_SIZE} \

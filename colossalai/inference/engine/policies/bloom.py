@@ -38,7 +38,7 @@ class BloomModelInferPolicy(BloomForCausalLMPolicy):
         from transformers.models.bloom.modeling_bloom import BloomAttention, BloomBlock, BloomForCausalLM, BloomModel
 
         policy = super().module_policy()
-        if self.shard_config.inference_gptq:
+        if self.shard_config.extra_kwargs.get("quant", None) == "gptq":
             from colossalai.inference.quant.gptq.cai_gptq import ColCaiQuantLinear, RowCaiQuantLinear
 
             policy[BloomBlock] = ModulePolicyDescription(

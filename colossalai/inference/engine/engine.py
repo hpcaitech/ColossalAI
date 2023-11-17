@@ -2,6 +2,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from transformers.tokenization_utils_base import BatchEncoding
+from transformers.utils import logging
 
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.pipeline.schedule.generate import GenerateSchedule
@@ -9,7 +10,7 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
 
-from ..kvcache_manager import MemoryManager
+from ..kv_cache import MemoryManager
 from .microbatch_manager import MicroBatchManager
 
 PP_AXIS, TP_AXIS = 0, 1
@@ -102,9 +103,10 @@ class CaiInferEngine:
         self.tp_size = tp_size
         self.quant = quant
 
+        logger = logging.get_logger(__name__)
         if quant == "smoothquant" and dtype != "fp32":
             dtype = "fp32"
-            print("Warning: smoothquant only support fp32 and int8 mix precision. set dtype to fp32")
+            logger.warning_once("Warning: smoothquant only support fp32 and int8 mix precision. set dtype to fp32")
 
         if dtype == "fp16":
             self.dtype = torch.float16
@@ -162,7 +164,7 @@ class CaiInferEngine:
         shardconfig = ShardConfig(
             tensor_parallel_process_group=tp_group,
             pipeline_stage_manager=stage_manager,
-            enable_tensor_parallelism=True if self.tp_size > 1 else False,
+            enable_tensor_parallelism=(self.tp_size > 1),
             enable_fused_normalization=False,
             enable_all_optimization=False,
             enable_flash_attention=False,

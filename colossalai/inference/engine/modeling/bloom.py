@@ -14,7 +14,7 @@ from transformers.models.bloom.modeling_bloom import (
 )
 from transformers.utils import logging
 
-from colossalai.inference.kvcache_manager.batch_infer_state import BatchInferState
+from colossalai.inference.kv_cache.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import bloom_context_attn_fwd, copy_kv_cache_to_dest, token_attention_fwd
 from colossalai.pipeline.stage_manager import PipelineStageManager
 

@@ -20,7 +20,7 @@ from transformers.modeling_utils import no_init_weights
 from transformers.utils.generic import ContextManagers
 from transformers.utils.hub import PushToHubMixin, cached_file
 
-from colossalai.inference.kvcache_manager.batch_infer_state import BatchInferState, MemoryManager
+from colossalai.inference.kv_cache.batch_infer_state import BatchInferState, MemoryManager
 
 try:
     import accelerate

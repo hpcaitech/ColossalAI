@@ -2,12 +2,12 @@
 
 
 ## Table of Contents
+
 - [💡 Introduction](#introduction)
 - [🔗 Design](#design)
 - [🔨 Usage](#usage)
     - [Quick start](#quick-start)
     - [Example](#example)
-
 - [📊 Performance](#performance)
 
 ## Introduction
@@ -16,7 +16,7 @@
 
 ## Design
 
-Colossal Inference is composed of two main components:
+Colossal Inference is composed of three main components:
 
 1. High performance kernels and ops: which are inspired from existing libraries and modified correspondingly.
 2. Efficient memory management mechanism：which includes the key-value cache manager, allowing for zero memory waste during inference.
@@ -44,12 +44,12 @@ In this section we discuss how the colossal inference works and integrates with 
   - [x] context forward
   - [x] token forward
   - [x] support flash-decoding
-- [ ] Support all models
+- [x] Support all models
   - [x] Llama
   - [x] Llama-2
   - [x] Bloom
   - [x] Chatglm2
-- [ ] Quantization
+- [x] Quantization
   - [x] GPTQ
   - [x] SmoothQuant
 - [ ] Benchmarking for all models
@@ -64,15 +64,10 @@ pip install -e .
 
 ### Requirements
 
-dependencies
+Install dependencies.
 
 ```bash
-pytorch= 1.13.1 (gpu)
-cuda>= 11.6
-transformers= 4.30.2
-triton
-# for install flash-attention
-flash-attention
+pip install -r requirements.txt
 
 # install lightllm since we depend on lightllm triton kernels
 git clone https://github.com/ModelTC/lightllm
@@ -88,7 +83,7 @@ pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=
 # install flash-attention
 git clone -recursive https://github.com/Dao-AILab/flash-attention
 cd flash-attention
-pip install -e . 
+pip install -e .
 ```
 
 ### Docker
@@ -113,7 +108,7 @@ pip3 install -e .
 # install flash-attention
 git clone -recursive https://github.com/Dao-AILab/flash-attention
 cd flash-attention
-pip install -e . 
+pip install -e .
 
 # install xformers from source
 pip install ninja
@@ -137,34 +132,37 @@ python setup.py install
 example files are in
 
 ```bash
-cd colossalai.examples
-python xx
+cd ColossalAI/examples
+python hybrid_llama.py --path /path/to/model --tp_size 2 --pp_size 2 --batch_size 4 --max_input_size 32 --max_out_len 16 --micro_batch_size 2
 ```
+
+
 
 ### Example
 ```python
-from colossalai.inference import PPInferEngine
-from colossalai.inference.pipeline.policies import LlamaModelInferPolicy
+# import module
+from colossalai.inference import CaiInferEngine, LlamaModelInferPolicy
 import colossalai
 from transformers import LlamaForCausalLM, LlamaTokenizer
 
+#launch distributed environment
 colossalai.launch_from_torch(config={})
 
+# load original model and tokenizer
 model = LlamaForCausalLM.from_pretrained("/path/to/model")
 tokenizer = LlamaTokenizer.from_pretrained("/path/to/model")
 
-
-
+# generate token ids
 input = ["Introduce a landmark in London","Introduce a landmark in Singapore"]
 data = tokenizer(input, return_tensors='pt')
-output = inferengine.inference(data.to('cuda'))
-print(tokenizer.batch_decode(output))
 
+# set parallel parameters
 tp_size=2
 pp_size=2
 max_output_len=32
 micro_batch_size=1
 
+# initial inference engine
 engine = CaiInferEngine(
     tp_size=tp_size,
     pp_size=pp_size,
@@ -173,7 +171,11 @@ engine = CaiInferEngine(
     max_output_len=max_output_len,
     micro_batch_size=micro_batch_size,
 )
+
+# inference
 output = engine.inference(data)
+
+# get results
 if dist.get_rank() == 0:
     assert len(output[0]) == max_output_len, f"{len(output)}, {max_output_len}"
 
