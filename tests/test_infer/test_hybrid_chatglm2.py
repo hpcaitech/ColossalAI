@@ -51,7 +51,7 @@ def pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
         max_output_len=max_output_len,
         micro_batch_size=micro_batch_size,
     )
-    output = engine.inference(inputs)
+    output = engine.generate(inputs)
     if dist.get_rank() == 0:
         assert len(output[0]) == max_output_len, f"{len(output)}, {max_output_len}"
 

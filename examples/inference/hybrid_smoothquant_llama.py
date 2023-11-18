@@ -44,7 +44,7 @@ def run_llama_inference(args):
         quant="smoothquant",
     )
 
-    output = engine.inference(inputs)
+    output = engine.generate(inputs)
     if dist.get_rank() == 0:
         assert len(output[0]) == 32, f"{len(output)}, {32}"
 

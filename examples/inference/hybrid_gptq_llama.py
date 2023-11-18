@@ -47,7 +47,7 @@ def run_llama_inference(args):
             new_shape[0] = 16
             inputs[k] = v.to("cuda").repeat(*new_shape)
 
-    output = engine.inference(inputs)
+    output = engine.generate(inputs)
     if dist.get_rank() == 0:
         assert len(output[0]) == max_output_len, f"{len(output)}, {max_output_len}"
 

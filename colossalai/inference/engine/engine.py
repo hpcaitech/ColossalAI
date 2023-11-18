@@ -1,3 +1,5 @@
+from typing import Union
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -144,7 +146,7 @@ class CaiInferEngine:
         if quant == "gptq":
             self.gptq_manager.post_init_gptq_buffer(self.model)
 
-    def inference(self, input_list):
+    def generate(self, input_list: Union[BatchEncoding, dict]):
         """
         Args:
             input_list (list): a list of input data, each element is a `BatchEncoding` or `dict`.

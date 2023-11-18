@@ -119,7 +119,7 @@ def benchmark_inference(args):
 
     torch.cuda.synchronize()
     whole_end2end = time.time()
-    output, timestamps = engine.inference(data)
+    output, timestamps = engine.generate(data)
     torch.cuda.synchronize()
     whole_end2end = time.time() - whole_end2end
 

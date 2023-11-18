@@ -52,7 +52,7 @@ def run_inference(args):
     for i in range(iters):
         torch.cuda.synchronize()
         start = time.time()
-        outputs = engine.inference(input_tokens)
+        outputs = engine.generate(input_tokens)
         torch.cuda.synchronize()
         end = time.time()
         if rank == 0:
