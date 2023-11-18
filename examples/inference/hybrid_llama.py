@@ -1,18 +1,17 @@
 import argparse
 import time
 
-import pytest
 import torch
 import torch.distributed as dist
 import transformers
 from transformers import LlamaForCausalLM, LlamaTokenizer
 
 import colossalai
-from colossalai.inference import CaiInferEngine, LlamaModelInferPolicy
-from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
+from colossalai.inference import CaiInferEngine
+from colossalai.testing import spawn
 
 
-def pipeline_inference_test(args):
+def run_inference(args):
     llama_model_path = args.path
     max_input_len = args.max_input_len
     max_output_len = args.max_output_len
@@ -37,7 +36,6 @@ def pipeline_inference_test(args):
         tp_size=tp_size,
         pp_size=pp_size,
         model=model,
-        model_policy=LlamaModelInferPolicy(),
         max_output_len=max_output_len,
         micro_batch_size=micro_batch_size,
     )
@@ -69,16 +67,9 @@ def pipeline_inference_test(args):
         print("total throughput is : " + str(1 / latency * max_batch_size))
 
 
-def check_tp_pipeline_inference(rank, world_size, port, args):
+def run_tp_pipeline_inference(rank, world_size, port, args):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    run_tp_pipeline_inference_test(args)
-
-
-@pytest.mark.dist
-@rerun_if_address_is_in_use()
-@clear_cache_before_run()
-def test_inference(args):
-    spawn(check_tp_pipeline_inference, nprocs=args.tp_size * args.pp_size, args=args)
+    run_inference(args)
 
 
 if __name__ == "__main__":
@@ -92,5 +83,4 @@ if __name__ == "__main__":
     parser.add_argument("--micro_batch_size", type=int, default=2, help="Micro batch size")
 
     args = parser.parse_args()
-
-    test_inference(args)
+    spawn(run_tp_pipeline_inference, nprocs=args.tp_size * args.pp_size, args=args)

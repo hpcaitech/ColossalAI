@@ -4,14 +4,14 @@ import torch
 import torch.distributed as dist
 
 import colossalai
-from colossalai.inference import CaiInferEngine, LlamaModelInferPolicy
+from colossalai.inference import CaiInferEngine
 from colossalai.inference.quant.smoothquant.models.llama import SmoothLlamaForCausalLM
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
+from colossalai.testing import spawn
 
 
 @torch.no_grad()
-def run_llama_test(args):
+def run_llama_inference(args):
     quantized_model_dir = args.quantized_path
     max_batch_size = args.max_batch_size
     max_input_len = args.max_input_len
@@ -37,7 +37,6 @@ def run_llama_test(args):
         tp_size=2,
         pp_size=2,
         model=model,
-        model_policy=LlamaModelInferPolicy(),
         max_batch_size=max_batch_size,
         max_input_len=max_input_len,
         max_output_len=max_output_len,
@@ -50,16 +49,10 @@ def run_llama_test(args):
         assert len(output[0]) == 32, f"{len(output)}, {32}"
 
 
-def check_llama(rank, world_size, port, args):
+def run_smoothquant_inference(rank, world_size, port, args):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    run_llama_test(args)
-
-
-@rerun_if_address_is_in_use()
-@clear_cache_before_run()
-def test_smoothquant_llama():
-    spawn(check_llama, args.tp_size * args.pp_size, args=args)
+    run_llama_inference(args)
 
 
 if __name__ == "__main__":
@@ -73,4 +66,4 @@ if __name__ == "__main__":
     parser.add_argument("--max_output_len", type=int, default=32, help="Maximum output length")
 
     args = parser.parse_args()
-    test_smoothquant_llama()
+    spawn(run_smoothquant_inference, args.tp_size * args.pp_size, args=args)

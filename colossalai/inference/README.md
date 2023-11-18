@@ -87,10 +87,12 @@ cd flash-attention
 pip install -e .
 
 # for gptq quantization
-pip install auto-gptq
+pip install auto-gptq==0.5.0.dev0
 
 # for smoothquant quantization
 git clone --recurse-submodules https://github.com/Guangxuan-Xiao/torch-int.git
+cd torch-int
+git checkout 65266db1eadba5ca78941b789803929e6e6c6856
 pip install -r requirements.txt
 source environment.sh
 bash build_cutlass.sh
@@ -110,31 +112,6 @@ docker run -it --gpus all --name ANY_NAME -v $PWD:/workspace -w /workspace hpcai
 cd /path/to/CollossalAI
 pip install -e .
 
-# install lightllm
-git clone https://github.com/ModelTC/lightllm
-cd lightllm
-git checkout 28c1267cfca536b7b4f28e921e03de735b003039
-pip3 install -e .
-
-# install flash-attention
-git clone -recursive https://github.com/Dao-AILab/flash-attention
-cd flash-attention
-pip install -e .
-
-# install xformers from source
-pip install ninja
-# Set TORCH_CUDA_ARCH_LIST if running and building on different GPU types
-pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers
-
-# for gptq quantization
-pip install auto-gptq
-
-# for smoothquant quantization
-git clone --recurse-submodules https://github.com/Guangxuan-Xiao/torch-int.git
-pip install -r requirements.txt
-source environment.sh
-bash build_cutlass.sh
-python setup.py install
 ```
 
 ## Usage

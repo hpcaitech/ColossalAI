@@ -6,7 +6,7 @@ import torch.distributed as dist
 from packaging import version
 
 import colossalai
-from colossalai.inference import CaiInferEngine, ChatGLM2InferPolicy
+from colossalai.inference import CaiInferEngine
 from colossalai.shardformer.modeling.chatglm2_6b.configuration_chatglm import ChatGLMConfig
 from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
@@ -48,7 +48,6 @@ def pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
         tp_size=tp_size,
         pp_size=pp_size,
         model=model,
-        model_policy=ChatGLM2InferPolicy(),
         max_output_len=max_output_len,
         micro_batch_size=micro_batch_size,
     )

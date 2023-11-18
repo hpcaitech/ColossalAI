@@ -7,7 +7,7 @@ import transformers
 from packaging import version
 
 import colossalai
-from colossalai.inference import BloomModelInferPolicy, CaiInferEngine
+from colossalai.inference import CaiInferEngine
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
@@ -40,7 +40,6 @@ def pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
         tp_size=tp_size,
         pp_size=pp_size,
         model=model,
-        model_policy=BloomModelInferPolicy(),
         max_output_len=max_output_len,
         micro_batch_size=micro_batch_size,
     )

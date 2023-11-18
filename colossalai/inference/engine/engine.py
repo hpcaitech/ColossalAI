@@ -12,6 +12,7 @@ from colossalai.shardformer.policies.base_policy import Policy
 
 from ..kv_cache import MemoryManager
 from .microbatch_manager import MicroBatchManager
+from .policies import model_policy_map
 
 PP_AXIS, TP_AXIS = 0, 1
 
@@ -93,7 +94,7 @@ class CaiInferEngine:
         assert (
             tp_size * pp_size == dist.get_world_size()
         ), f"TP size({tp_size}) * PP size({pp_size}) should be equal to the global world size ({dist.get_world_size()})"
-        assert model and model_policy, "Model with model_policy should be provided."
+        assert model, "Model should be provided."
         assert dtype in ["fp16", "fp32", "bf16"], "dtype should be one of 'fp16', 'fp32', 'bf16'"
 
         assert max_batch_size <= 64, "Max batch size exceeds the constraint"
@@ -116,6 +117,9 @@ class CaiInferEngine:
             model.to(torch.bfloat16)
         else:
             self.dtype = torch.float32
+
+        if model_policy is None:
+            model_policy = model_policy_map[model.config.model_type]()
 
         # Init pg mesh
         pg_mesh = ProcessGroupMesh(pp_size, tp_size)
