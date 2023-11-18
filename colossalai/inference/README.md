@@ -129,7 +129,7 @@ python hybrid_llama.py --path /path/to/model --tp_size 2 --pp_size 2 --batch_siz
 ### Example
 ```python
 # import module
-from colossalai.inference import CaiInferEngine, LlamaModelInferPolicy
+from colossalai.inference import CaiInferEngine
 import colossalai
 from transformers import LlamaForCausalLM, LlamaTokenizer
 
@@ -155,13 +155,12 @@ engine = CaiInferEngine(
     tp_size=tp_size,
     pp_size=pp_size,
     model=model,
-    model_policy=LlamaModelInferPolicy(),
     max_output_len=max_output_len,
     micro_batch_size=micro_batch_size,
 )
 
 # inference
-output = engine.inference(data)
+output = engine.generate(data)
 
 # get results
 if dist.get_rank() == 0:
