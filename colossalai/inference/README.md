@@ -67,29 +67,9 @@ pip install -e .
 Install dependencies.
 
 ```bash
-pip install -r requirements.txt
-pip install transformers==4.34.0
+pip install -r requirements/requirements-infer.txt
 
-# install lightllm since we depend on lightllm triton kernels
-git clone https://github.com/ModelTC/lightllm
-cd lightllm
-git checkout 28c1267cfca536b7b4f28e921e03de735b003039
-pip3 install -e .
-
-# also, install xformers from source:
-pip install ninja
-# Set TORCH_CUDA_ARCH_LIST if running and building on different GPU types
-pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers
-
-# install flash-attention
-git clone -recursive https://github.com/Dao-AILab/flash-attention
-cd flash-attention
-pip install -e .
-
-# for gptq quantization
-pip install auto-gptq==0.5.0.dev0
-
-# for smoothquant quantization
+# if you want use smoothquant quantization, please install torch-int
 git clone --recurse-submodules https://github.com/Guangxuan-Xiao/torch-int.git
 cd torch-int
 git checkout 65266db1eadba5ca78941b789803929e6e6c6856
