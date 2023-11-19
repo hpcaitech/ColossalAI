@@ -8,6 +8,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch_int.nn.bmm import BMM_S8T_S8N_F32T, BMM_S8T_S8N_S8T
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.llama.configuration_llama import LlamaConfig
@@ -17,11 +18,12 @@ from transformers.models.llama.modeling_llama import (
     LlamaDecoderLayer,
     LlamaMLP,
     LlamaRotaryEmbedding,
+    repeat_kv,
     rotate_half,
 )
 from transformers.utils import add_start_docstrings_to_model_forward
 
-from colossalai.inference.kv_cache.batch_infer_state import BatchInferState
+from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
 from colossalai.kernel.triton import (
     copy_kv_cache_to_dest,
     int8_rotary_embedding_fwd,
@@ -29,29 +31,8 @@ from colossalai.kernel.triton import (
     smooth_token_attention_fwd,
 )
 
-try:
-    from torch_int.nn.bmm import BMM_S8T_S8N_F32T, BMM_S8T_S8N_S8T
-
-    HAS_TORCH_INT = True
-except ImportError:
-    HAS_TORCH_INT = False
-    print("Not install torch_int. Please install torch_int from https://github.com/Guangxuan-Xiao/torch-int")
-
-
 from .base_model import BaseSmoothForCausalLM
 from .linear import W8A8B8O8Linear, W8A8BFP32O32LinearSiLU, W8A8BFP32OFP32Linear
-
-
-def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
-    """
-    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
-    num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
-    """
-    batch, num_key_value_heads, slen, head_dim = hidden_states.shape
-    if n_rep == 1:
-        return hidden_states
-    hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
-    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
 
 class LLamaSmoothquantAttention(nn.Module):
@@ -135,6 +116,7 @@ class LLamaSmoothquantAttention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
+        rotary_emb: Tuple[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
@@ -149,7 +131,8 @@ class LLamaSmoothquantAttention(nn.Module):
         key_states = self.k_proj(hidden_states)
         value_states = self.v_proj(hidden_states)
 
-        cos, sin = infer_state.position_cos, infer_state.position_sin
+        cos = rotary_emb[0]
+        sin = rotary_emb[1]
 
         int8_rotary_embedding_fwd(
             query_states.view(-1, self.num_heads, self.head_dim),
@@ -365,6 +348,7 @@ class LlamaSmoothquantDecoderLayer(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
+        rotary_emb: Tuple[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
@@ -394,6 +378,7 @@ class LlamaSmoothquantDecoderLayer(nn.Module):
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
+            rotary_emb=rotary_emb,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
@@ -665,15 +650,15 @@ def llama_model_forward(
         raise NotImplementedError("not implement gradient_checkpointing and training options ")
 
     if past_key_values_length == 0:
-        infer_state.position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(
+        position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(
             position_ids.view(-1).shape[0], -1
         )
-        infer_state.position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(
+        position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(
             position_ids.view(-1).shape[0], -1
         )
     else:
-        infer_state.position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(batch_size, -1)
-        infer_state.position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(batch_size, -1)
+        position_cos = torch.index_select(self._cos_cached, 0, position_ids.view(-1)).view(batch_size, -1)
+        position_sin = torch.index_select(self._sin_cached, 0, position_ids.view(-1)).view(batch_size, -1)
 
     # decoder layers
     all_hidden_states = () if output_hidden_states else None
@@ -688,6 +673,7 @@ def llama_model_forward(
 
         layer_outputs = decoder_layer(
             hidden_states,
+            rotary_emb=(position_cos, position_sin),
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
@@ -34,7 +34,7 @@ class ShardConfig:
     enable_all_optimization: bool = False
     enable_sequence_parallelism: bool = False
     enable_sequence_overlap: bool = False
-    extra_kwargs: Dict[str, bool] = field(default_factory=dict)
+    extra_kwargs: Dict[str, Any] = field(default_factory=dict)
     # pipeline_parallel_size: int
     # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']
