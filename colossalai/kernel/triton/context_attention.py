@@ -126,7 +126,6 @@ if HAS_TRITON:
 
                 p = p.to(v.dtype)
                 acc += tl.dot(p, v)
-                # update m_i and l_i
                 l_i = l_i_new
                 m_i = m_i_new
 
@@ -190,7 +189,6 @@ if HAS_TRITON:
 
             for start_n in range(0, block_mask * (start_m + 1) * BLOCK_M, BLOCK_N):
                 start_n = tl.multiple_of(start_n, BLOCK_N)
-                # -- compute qk ----
                 k = tl.load(k_ptrs + (cur_batch_in_all_start_index + start_n) * stride_kbs,
                             mask=(start_n + offs_n[None, :]) < cur_batch_seq_len, other=0.0)
 
@@ -207,28 +205,23 @@ if HAS_TRITON:
                 m_ij = tl.max(qk, 1)
                 p = tl.exp(qk - m_ij[:, None])
                 l_ij = tl.sum(p, 1)
-                # -- update m_i and l_i
                 m_i_new = tl.maximum(m_i, m_ij)
                 alpha = tl.exp(m_i - m_i_new)
                 beta = tl.exp(m_ij - m_i_new)
                 l_i_new = alpha * l_i + beta * l_ij
-                # -- update output accumulator --
-                # scale p
                 p_scale = beta / l_i_new
                 p = p * p_scale[:, None]
-                # scale acc
                 acc_scale = l_i / l_i_new * alpha
                 acc = acc * acc_scale[:, None]
-                # update acc
                 v = tl.load(v_ptrs + (cur_batch_in_all_start_index + start_n) * stride_vbs,
                             mask=(start_n + offs_n[:, None]) < cur_batch_seq_len, other=0.0)
 
                 p = p.to(v.dtype)
                 acc += tl.dot(p, v)
-                # update m_i and l_i
                 l_i = l_i_new
                 m_i = m_i_new
-            # initialize pointers to output
+                
+
             off_o = (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs + cur_head * stride_oh + offs_d[None, :] * stride_od
             out_ptrs = Out + off_o
             tl.store(out_ptrs, acc, mask=offs_m[:, None] < cur_batch_seq_len)
