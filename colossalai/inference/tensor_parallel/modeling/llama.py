@@ -82,16 +82,15 @@ def llama_triton_context_attention(
 
 
 def llama_triton_token_attention(query_states, attn_output, infer_state, num_key_value_groups=1, q_head_num = -1, head_dim = -1):
-    assert HAS_LIGHTLLM_KERNEL is True, "You have to install lightllm kernel to run token attention for llama models"
     
     if HAS_TRITON_FLASH_DECODING_KERNEL and q_head_num != -1 and head_dim != -1:
         token_flash_decoding(q = query_states, 
-                             o_tensor = attn_output, 
-                             infer_state = infer_state, 
-                             q_head_num = q_head_num, 
-                             head_dim = head_dim, 
-                             cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id], 
-                             cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id])
+                                o_tensor = attn_output, 
+                                infer_state = infer_state, 
+                                q_head_num = q_head_num, 
+                                head_dim = head_dim, 
+                                cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id], 
+                                cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id])
         return 
         
     if num_key_value_groups == 1:
@@ -103,7 +102,6 @@ def llama_triton_token_attention(query_states, attn_output, infer_state, num_key
             infer_state.block_loc,
             infer_state.start_loc,
             infer_state.seq_len,
-            # infer_state.cache_manager.past_key_values_length,
             infer_state.max_len_in_batch,
         )
         
@@ -116,7 +114,6 @@ def llama_triton_token_attention(query_states, attn_output, infer_state, num_key
             infer_state.block_loc,
             infer_state.start_loc,
             infer_state.seq_len,
-            # infer_state.cache_manager.past_key_values_length,
             infer_state.max_len_in_batch,
             infer_state.other_kv_index,
         )

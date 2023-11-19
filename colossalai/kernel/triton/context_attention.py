@@ -137,6 +137,7 @@ if HAS_TRITON:
             tl.store(out_ptrs, acc, mask=offs_m[:, None] < cur_batch_seq_len)
             return
     else:
+        # this function is modified from https://github.com/ModelTC/lightllm/blob/main/lightllm/models/llama/triton_kernel/context_flashattention_nopad.py#L11
         @triton.jit
         def _context_flash_attention_kernel_2(
             Q, K, V, sm_scale, Alibi, B_Start_Loc, B_Seqlen,

@@ -106,7 +106,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--path", type=str, help="Model path", required=True)
     parser.add_argument("-tp", "--tp_size", type=int, default=1, help="Tensor parallel size")
-    parser.add_argument("-b", "--batch_size", type=int, default=32, help="Maximum batch size")
+    parser.add_argument("-b", "--batch_size", type=int, default=8, help="Maximum batch size")
     parser.add_argument("--input_len", type=int, default=1024, help="Maximum input length")
     parser.add_argument("--output_len", type=int, default=128, help="Maximum output length")
     parser.add_argument(
