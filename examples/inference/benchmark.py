@@ -7,7 +7,7 @@ import torch.distributed as dist
 import transformers
 
 import colossalai
-from colossalai.inference import CaiInferEngine, LlamaModelInferPolicy
+from colossalai.inference import CaiInferEngine
 from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 
 GIGABYTE = 1024**3
@@ -109,7 +109,6 @@ def benchmark_inference(args):
         dtype=args.dtype,
         micro_batch_size=args.mb_size,
         model=model,
-        model_policy=LlamaModelInferPolicy(),
         verbose=True,
         max_batch_size=args.mb_size,
         max_input_len=args.seq_len,
