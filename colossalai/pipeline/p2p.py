@@ -13,6 +13,7 @@ import torch
 import torch.distributed as dist
 from packaging.version import Version
 from torch.distributed import ProcessGroup
+from torch.utils._pytree import tree_flatten, tree_unflatten
 from torch.distributed import distributed_c10d as c10d
 
 from .stage_manager import PipelineStageManager
@@ -155,20 +156,7 @@ def check_device(group):
     return current_device, is_nccl_backend
 
 
-TensorMetadata = namedtuple("TensorMetadata", ["key", "shape", "dtype", "requires_grad"])
-
-
-class P2PDataType(Enum):
-    Serialization = 0
-    Tensor = 1
-    List = 2
-    Dict = 3
-
-
-@dataclass
-class P2PMetadata:
-    data_type: P2PDataType
-    content: Union[List[TensorMetadata], TensorMetadata, Any]
+TensorMetadata = namedtuple('TensorMetadata', ['shape', 'dtype', 'requires_grad'])
 
 
 def filling_ops_queue(obj: Any, comm_op: Callable, comm_rank: int, ops_queue: List, group: ProcessGroup):
@@ -182,23 +170,12 @@ def filling_ops_queue(obj: Any, comm_op: Callable, comm_rank: int, ops_queue: Li
             filling_ops_queue(tensor_to_comm, comm_op, comm_rank, ops_queue, group)
 
 
-def create_recv_buffer(p2p_metadata: P2PMetadata, current_device: Any):
-    if p2p_metadata.data_type == P2PDataType.Tensor:
-        metadata = p2p_metadata.content
-        tensor_recv = torch.empty(
-            metadata.shape, requires_grad=metadata.requires_grad, device=current_device, dtype=metadata.dtype
-        )
-        return tensor_recv
-    elif p2p_metadata.data_type in (P2PDataType.List, P2PDataType.Dict):
-        buffer_recv = []
-        for metadata in p2p_metadata.content:
-            tensor_recv = torch.empty(
-                metadata.shape, requires_grad=metadata.requires_grad, device=current_device, dtype=metadata.dtype
-            )
-            buffer_recv.append(tensor_recv)
-        return buffer_recv
-    else:
-        raise ValueError(f"Unknown data_type: {p2p_metadata.data_type}")
+def create_recv_buffer(tensor_metadata: List[TensorMetadata], current_device):
+    buffer_recv = []
+    for metadata in tensor_metadata:
+        tensor_recv = torch.empty(metadata.shape, requires_grad=metadata.requires_grad, device=current_device, dtype=metadata.dtype)
+        buffer_recv.append(tensor_recv)
+    return buffer_recv
 
 
 def create_fast_send_metadata(object: Any) -> P2PMetadata:
@@ -442,6 +419,56 @@ def _communicate(
                 return {k: v for k, v in zip([m.key for m in metadata_recv.content], recv_buffer)}
             else:
                 raise ValueError("Unknown data type {}".format(metadata_recv.data_type))
+
+
+    send_metadata = None
+    tensor_objs = None
+    if send_dst is not None:
+        objs, tree_spec = tree_flatten(object)
+        non_tensor_obj_idx = []
+        non_tensor_objs = []
+        tensor_objs = []
+        tensor_metadata = []
+        for idx, obj in enumerate(objs):
+            if type(obj) is torch.Tensor:
+                tensor_objs.append(obj)
+                tensor_metadata.append(TensorMetadata(
+                    obj.shape, obj.dtype, obj.requires_grad
+                ))
+            else:
+                non_tensor_obj_idx.append(idx)
+                non_tensor_objs.append(obj)
+        send_metadata = {
+            'non_tensor_objs': non_tensor_objs,
+            'non_tensor_obj_idx': non_tensor_obj_idx,
+            'tree_spec': tree_spec,
+            'tensor_metadata': tensor_metadata,
+        }
+
+    recv_metadata = _send_recv_serialization_object(send_metadata, send_dst, recv_src, send_group, recv_group, current_device, is_nccl_backend)
+
+    recv_tensor_metadata = None
+    if recv_metadata is not None:
+        assert type(recv_metadata) is dict
+        recv_tensor_metadata = recv_metadata['tensor_metadata']
+
+    recv_tensor_objs = _batch_send_recv_tensor(
+        tensor_objs,
+        recv_tensor_metadata, send_dst, recv_src, send_group, recv_group, current_device)
+
+    if recv_metadata is not None:
+        non_tensor_obj_idx = recv_metadata['non_tensor_obj_idx']
+        non_tensor_objs = recv_metadata['non_tensor_objs']
+        tree_spec = recv_metadata['tree_spec']
+
+        if recv_tensor_objs is None:
+            recv_tensor_objs = []
+
+        for idx in non_tensor_obj_idx:
+            recv_tensor_objs.insert(idx, non_tensor_objs.pop(0))
+        recv_object = tree_unflatten(recv_tensor_objs, tree_spec)
+
+        return recv_object
 
 
 def _send_object(object: Any, src: int, dst: int, group: ProcessGroup, **kwargs) -> None:
