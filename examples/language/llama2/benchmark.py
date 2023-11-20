@@ -188,7 +188,9 @@ def main():
         model.config.num_hidden_layers,
         model.config.hidden_size,
         model.config.vocab_size,
-        args.grad_checkpoint, args.ignore_steps, dp_world_size=dp_size
+        args.grad_checkpoint,
+        args.ignore_steps,
+        dp_world_size=dp_size,
     )
 
     optimizer = HybridAdam(model.parameters())

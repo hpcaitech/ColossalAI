@@ -7,10 +7,10 @@ from typing import Callable, Iterator, List, Optional, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.distributed.distributed_c10d import _get_default_group
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
-from torch.distributed.distributed_c10d import _get_default_group
 
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO
 from colossalai.checkpoint_io.utils import (
@@ -352,7 +352,7 @@ class GeminiPlugin(DPPluginBase):
         max_norm: float = 0.0,
         norm_type: float = 2.0,
         tp_size: int = 1,
-        extra_dp_size:int = 1,
+        extra_dp_size: int = 1,
         enable_all_optimization: bool = False,
         enable_fused_normalization: bool = False,
         enable_flash_attention: bool = False,
@@ -412,10 +412,14 @@ class GeminiPlugin(DPPluginBase):
         self.extra_dp_size = extra_dp_size
         world_size = dist.get_world_size()
         self.zero_size = world_size // (self.tp_size * self.extra_dp_size)
-        assert world_size == (self.tp_size * self.extra_dp_size) * self.zero_size, f"The global group size can't be evenly divided by the subgroup size."
+        assert (
+            world_size == (self.tp_size * self.extra_dp_size) * self.zero_size
+        ), f"The global group size can't be evenly divided by the subgroup size."
 
         self.pg_mesh = ProcessGroupMesh(self.zero_size, self.extra_dp_size, self.tp_size)
-        self.zero_group = self.pg_mesh.get_group_along_axis(ZERO_AXIS) if self.zero_size < world_size else _get_default_group()
+        self.zero_group = (
+            self.pg_mesh.get_group_along_axis(ZERO_AXIS) if self.zero_size < world_size else _get_default_group()
+        )
         self.extra_dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS) if self.extra_dp_size > 1 else None
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS) if self.tp_size > 1 else None
 
@@ -469,7 +473,13 @@ class GeminiPlugin(DPPluginBase):
                 shardformer = ShardFormer(self.shard_config)
                 model, _ = shardformer.optimize(model)
 
-            model = GeminiDDP(model, **self.gemini_config, zero_group=self.zero_group, extra_dp_group=self.extra_dp_group, verbose=self.verbose)
+            model = GeminiDDP(
+                model,
+                **self.gemini_config,
+                zero_group=self.zero_group,
+                extra_dp_group=self.extra_dp_group,
+                verbose=self.verbose,
+            )
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer = GeminiOptimizer(
