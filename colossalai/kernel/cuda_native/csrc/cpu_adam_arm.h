@@ -22,10 +22,10 @@ inline float32x4_t simd_load_offset(const void *ptr, at::ScalarType dtype,
       auto ptr_h = reinterpret_cast<const float16_t *>(ptr);
       return vcvt_f32_f16(vld1_f16(ptr_h + offset));
     }
-    case at::ScalarType::BFloat16: {
-      auto ptr_b = reinterpret_cast<const bfloat16_t *>(ptr);
-      return vcvt_f32_bf16(vld1_bf16(ptr_b + offset));
-    }
+    // case at::ScalarType::BFloat16: {
+    //   auto ptr_b = reinterpret_cast<const bfloat16_t *>(ptr);
+    //   return vcvt_f32_bf16(vld1_bf16(ptr_b + offset));
+    // }
     default:
       AT_ERROR("Unsupported dtype");
       break;
@@ -48,11 +48,11 @@ inline void simd_store_offset(void *ptr, at::ScalarType dtype, float32x4_t data,
       vst1_f16(ptr_h + offset, vcvt_f16_f32(data));
       break;
     }
-    case at::ScalarType::BFloat16: {
-      auto ptr_b = reinterpret_cast<bfloat16_t *>(ptr);
-      vst1_bf16(ptr_b + offset, vcvt_bf16_f32(data));
-      break;
-    }
+    // case at::ScalarType::BFloat16: {
+    //   auto ptr_b = reinterpret_cast<bfloat16_t *>(ptr);
+    //   vst1_bf16(ptr_b + offset, vcvt_bf16_f32(data));
+    //   break;
+    // }
     default:
       AT_ERROR("Unsupported dtype");
       break;
@@ -78,9 +78,9 @@ inline float scalar_load_offset(const void *ptr, at::ScalarType dtype,
     case at::ScalarType::Half:
       return static_cast<float>(
           *(reinterpret_cast<const at::Half *>(ptr) + offset));
-    case at::ScalarType::BFloat16:
-      return static_cast<float>(
-          *(reinterpret_cast<const at::BFloat16 *>(ptr) + offset));
+    // case at::ScalarType::BFloat16:
+    //   return static_cast<float>(
+    //       *(reinterpret_cast<const at::BFloat16 *>(ptr) + offset));
     default:
       AT_ERROR("Unsupported dtype");
       break;
@@ -96,8 +96,8 @@ inline void scalar_store_offset(void *ptr, at::ScalarType dtype, float data,
     case at::ScalarType::Half:
       *(reinterpret_cast<at::Half *>(ptr) + offset) = data;
       break;
-    case at::ScalarType::BFloat16:
-      *(reinterpret_cast<at::BFloat16 *>(ptr) + offset) = data;
+      // case at::ScalarType::BFloat16:
+      //   *(reinterpret_cast<at::BFloat16 *>(ptr) + offset) = data;
       break;
     default:
       AT_ERROR("Unsupported dtype");
@@ -112,8 +112,8 @@ inline void *scalar_seek_offset(void *ptr, at::ScalarType dtype,
       return reinterpret_cast<float *>(ptr) + offset;
     case at::ScalarType::Half:
       return reinterpret_cast<at::Half *>(ptr) + offset;
-    case at::ScalarType::BFloat16:
-      return reinterpret_cast<at::BFloat16 *>(ptr) + offset;
+    // case at::ScalarType::BFloat16:
+    //   return reinterpret_cast<at::BFloat16 *>(ptr) + offset;
     default:
       AT_ERROR("Unsupported dtype");
       break;
