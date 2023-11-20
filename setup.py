@@ -182,6 +182,7 @@ setup(
     ext_modules=ext_modules,
     cmdclass={"build_ext": BuildExtension} if ext_modules else {},
     install_requires=fetch_requirements("requirements/requirements.txt"),
+    extras_require={"infer": fetch_requirements("requirements/requirements-infer.txt")},
     entry_points="""
         [console_scripts]
         colossalai=colossalai.cli:cli
