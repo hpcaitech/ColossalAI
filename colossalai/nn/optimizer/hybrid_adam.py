@@ -84,9 +84,10 @@ class HybridAdam(CPUAdam):
             nvme_offload_fraction,
             nvme_offload_dir,
         )
-        fused_optim = FusedOptimBuilder().load()
-        self.gpu_adam_op = fused_optim.multi_tensor_adam
-        self._dummy_overflow_buf = torch.cuda.IntTensor([0])
+        if torch.cuda.is_available():
+            fused_optim = FusedOptimBuilder().load()
+            self.gpu_adam_op = fused_optim.multi_tensor_adam
+            self._dummy_overflow_buf = torch.cuda.IntTensor([0])
 
     @torch.no_grad()
     def step(self, closure=None, div_scale: float = -1):
@@ -118,11 +119,11 @@ class HybridAdam(CPUAdam):
                 group_step = state["step"]
                 beta1, beta2 = group["betas"]
 
-                if target_device.type == "cpu":
-                    assert state["exp_avg"].device.type == "cpu", "exp_avg should stay on cpu"
-                    assert state["exp_avg_sq"].device.type == "cpu", "exp_avg should stay on cpu"
+                if target_device.type == "cpu" or target_device.type == "npu":
+                    assert state["exp_avg"].device.type in ("cpu", "npu"), "exp_avg should stay on cpu"
+                    assert state["exp_avg_sq"].device.type in ("cpu", "npu"), "exp_avg should stay on cpu"
                     self._pre_update(p, "exp_avg", "exp_avg_sq")
-                    if p.grad.dtype is torch.bfloat16:
+                    if p.grad.dtype is torch.bfloat16 or p.grad.device.type == "npu":
                         # cpu adam kernel does not support bf16 now
                         bias_correction1 = 1 - beta1 ** state["step"]
                         bias_correction2 = 1 - beta2 ** state["step"]
