@@ -84,7 +84,7 @@ if __name__ == "__main__":
         "-q",
         "--quant",
         type=str,
-        choice=["gptq", "smoothquant"],
+        choices=["gptq", "smoothquant"],
         default=None,
         help="quantization type: 'gptq' or 'smoothquant'",
     )
