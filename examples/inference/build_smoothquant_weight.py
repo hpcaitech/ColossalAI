@@ -54,15 +54,6 @@ def main():
 
     model.save_quantized(output_path, model_basename="llama-7b")
 
-    model = SmoothLlamaForCausalLM.from_quantized(output_path, model_basename="llama-7b")
-    model = model.cuda()
-
-    generate_kwargs = dict(max_new_tokens=16, do_sample=False, use_cache=True)
-    input_tokens = tokenizer(["today is "], return_tensors="pt").to("cuda")
-    out = model.generate(**input_tokens, **generate_kwargs)
-    text = tokenizer.batch_decode(out)
-    print("out is:", text)
-
 
 if __name__ == "__main__":
     main()

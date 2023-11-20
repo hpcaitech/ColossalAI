@@ -1,65 +1,15 @@
-script_dir=$(cd "$(dirname "$0")" && pwd)
-cd "${script_dir}"
+ROOT=$(realpath $(dirname $0))
+PY_SCRIPT=${ROOT}/benchmark_llama.py
+GPU=$(nvidia-smi -L | head -1 | cut -d' ' -f4 | cut -d'-' -f1)
 
-# toy model, 2tp*2pp 1024, 128
-python ./benchmark.py \
-    --model="toy" \
-    --dtype="fp16" \
-    --batch_size=2 \
-    --seq_len=1024 \
-    --output_len=128 \
-    --mb_size=1 \
-    --pp_size=2 \
-    --tp_size=2
+mkdir -p logs
 
-# 7b, fp16, 2 gpu, 1024, 128
-for BATCH_SIZE in 2 4 8 16; do
-    python ./benchmark.py \
-        --model="7b" \
-        --dtype="fp16" \
-        --batch_size=${BATCH_SIZE} \
-        --seq_len=1024 \
-        --output_len=128 \
-        --mb_size=$((${BATCH_SIZE}/2)) \
-        --pp_size=2 \
-        --tp_size=2
+# benchmark llama2-7b one single GPU
+for bsz in 16 32 64; do
+    python3 ${PY_SCRIPT} -m llama2-7b --tp_size 1 --pp_size 1 -b $bsz -s 256 --output_len 128 | tee logs/${GPU}_${bsz}_256.txt
 done
 
-# 7b, fp16, 2 gpu, 512, 512
-for BATCH_SIZE in 2 4 8 16 32; do
-    python ./benchmark.py \
-        --model="7b" \
-        --dtype="fp16" \
-        --batch_size=${BATCH_SIZE} \
-        --seq_len=512 \
-        --output_len=512 \
-        --mb_size=$((${BATCH_SIZE}/2)) \
-        --pp_size=2 \
-        --tp_size=2
-done
 
-# 7b, fp16, 2 gpu, 1024, 128
-for BATCH_SIZE in 2 4 8; do
-    python ./benchmark.py \
-        --model="13b" \
-        --dtype="fp16" \
-        --batch_size=${BATCH_SIZE} \
-        --seq_len=1024 \
-        --output_len=128 \
-        --mb_size=$((${BATCH_SIZE}/2)) \
-        --pp_size=2 \
-        --tp_size=2
-done
-
-# 13b, fp16, 2 gpu, 512, 512
-for BATCH_SIZE in 2 4 8 16; do
-    python ./benchmark.py \
-        --model="13b" \
-        --dtype="fp16" \
-        --batch_size=${BATCH_SIZE} \
-        --seq_len=512 \
-        --output_len=512 \
-        --mb_size=$((${BATCH_SIZE}/2)) \
-        --pp_size=2 \
-        --tp_size=2
+for bsz in 4 8 16 32 64; do
+    python3 ${PY_SCRIPT} -m llama2-7b --tp_size 1 --pp_size 1 -b $bsz -s 1024 --output_len 128 | tee logs/${GPU}_${bsz}_1024.txt
 done
