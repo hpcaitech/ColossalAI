@@ -272,9 +272,8 @@ class FusedRMSNorm(BaseLayerNorm):
         Returns:
             nn.Module: FusedRMSNorm module.
         """
-        try:
-            pass
-        except ImportError:
+
+        if not HAS_APEX_FUSED_NORM:
             raise ImportError(
                 "Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMS normalization kernel"
             )
