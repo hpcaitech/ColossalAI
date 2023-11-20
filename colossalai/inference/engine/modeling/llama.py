@@ -48,7 +48,6 @@ def rotate_half(x):
     x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1)
 
-
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
     cos = cos.squeeze(1).squeeze(0)  # [seq_len, dim]
@@ -73,7 +72,6 @@ def llama_triton_context_attention(
                 attn_output,
                 infer_state.start_loc,
                 infer_state.seq_len,
-                # infer_state.cache_manager.past_key_values_length,
                 infer_state.max_len_in_batch,
             )
         else:
@@ -84,7 +82,6 @@ def llama_triton_context_attention(
                 attn_output,
                 infer_state.start_loc,
                 infer_state.seq_len,
-                # infer_state.cache_manager.past_key_values_length,
                 infer_state.max_len_in_batch,
             )
     else:
@@ -96,7 +93,6 @@ def llama_triton_context_attention(
             attn_output,
             infer_state.start_loc,
             infer_state.seq_len,
-            # infer_state.cache_manager.past_key_values_length,
             infer_state.max_len_in_batch,
         )
 
