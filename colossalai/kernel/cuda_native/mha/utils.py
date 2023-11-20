@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from einops import rearrange
 
-from colossalai.utils.cuda import get_current_device
+from colossalai.utils.device import get_current_device
 
 
 class Unpad(torch.autograd.Function):

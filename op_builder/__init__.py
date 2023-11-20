@@ -1,3 +1,4 @@
+from .arm_cpu_adam import ArmCPUAdamBuilder
 from .cpu_adam import CPUAdamBuilder
 from .fused_optim import FusedOptimBuilder
 from .layernorm import LayerNormBuilder
@@ -29,4 +30,5 @@ __all__ = [
     "MultiTensorLambBuilder",
     "MultiTensorScaleBuilder",
     "MultiTensorL2NormBuilder",
+    "ArmCPUAdamBuilder",
 ]

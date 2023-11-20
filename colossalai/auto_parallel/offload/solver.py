@@ -11,7 +11,7 @@ except:
 import torch
 from torch.fx.node import Node
 
-from colossalai.utils.cuda import get_current_device
+from colossalai.utils.device import get_current_device
 
 from .region import Region
 from .training_simulator import AsynTrainingSimulator, SynTrainingSimulator, TrainingSimulator

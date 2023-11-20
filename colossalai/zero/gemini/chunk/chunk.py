@@ -7,6 +7,7 @@ import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
 from colossalai.utils import get_current_device
+from colossalai.utils.device import IS_NPU_AVAILABLE
 
 
 class TensorState(Enum):
@@ -172,7 +173,7 @@ class Chunk:
 
         if self.chunk_temp is not None:
             # this chunk is not closed
-            if self.chunk_temp.device.type == "cuda":
+            if self.chunk_temp.device.type == "cuda" or self.chunk_temp.device.type == "npu":
                 cuda_memory += self.chunk_mem
             else:
                 cpu_memory += self.chunk_mem
@@ -191,10 +192,8 @@ class Chunk:
         if self.chunk_temp is not None:
             return self.chunk_temp.device.type
         else:
-            if self.is_gathered:
-                return "cuda"
-            elif self.cuda_shard is not None:
-                return "cuda"
+            if self.is_gathered or self.cuda_shard is not None:
+                return "npu" if IS_NPU_AVAILABLE else "cuda"
             else:
                 return "cpu"
 
@@ -329,12 +328,12 @@ class Chunk:
         # when the current chunk is not synchronized with the optimizer
         # just use another way for the movement
         if not self.optim_sync_flag:
-            assert device.type == "cuda", "each chunk should first be moved to CUDA"
+            assert device.type == "cuda" or device.type == "npu", "each chunk should first be moved to CUDA"
             self.__paired_shard_move()
             self.optim_sync_flag = True
             return
 
-        if device.type == "cuda":
+        if device.type == "cuda" or device.type == "npu":
             assert device == get_current_device(), "can't move chunk to another device"
 
             if self.cuda_shard:
@@ -484,7 +483,7 @@ class Chunk:
             assert friend_chunk.is_gathered is True
             self.cuda_global_chunk.copy_(friend_chunk.cuda_global_chunk)
             self.optim_sync_flag = True
-        elif friend_chunk.device_type == "cuda" and self.device_type == "cuda":
+        elif friend_chunk.device_type in ("cuda", "npu") and self.device_type in ("cuda", "npu"):
             self.cuda_shard.copy_(friend_chunk.cuda_shard)
             self.optim_sync_flag = True
             self.cpu_vis_flag = False

@@ -206,7 +206,10 @@ class ChunkManager:
             tensor (torch.Tensor): An extern static tensor. E.g. optimizer state.
         """
         assert tensor not in self.tensor_chunk_map
-        self.total_mem[tensor.device.type] += tensor.numel() * tensor.element_size()
+        device_type = tensor.device.type
+        if device_type == "npu":
+            device_type = "cuda"
+        self.total_mem[device_type] += tensor.numel() * tensor.element_size()
 
     def __repr__(self) -> str:
         msg = [
