@@ -78,15 +78,30 @@ def run_tp_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
     torch.cuda.empty_cache()
 
 
-def check_tp_pipeline_inference(rank, world_size, port):
+@parameterize("tp_size", [1])
+@parameterize("pp_size", [1])
+@parameterize("max_output_len", [2])
+@parameterize("micro_batch_size", [1])
+@clear_cache_before_run()
+def run_single_inference_test(tp_size, pp_size, max_output_len, micro_batch_size):
+    pipeline_inference_test(tp_size, pp_size, max_output_len, micro_batch_size)
+    torch.cuda.empty_cache()
+
+
+def check_tp_pp_inference(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_tp_pipeline_inference_test()
 
 
-def check_single_inference(rank, world_size, port):
+def check_tp_or_pp_inference(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_tp_inference_test()
     run_pipeline_inference_test()
+
+
+def check_single_inference(rank, world_size, port):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    run_single_inference_test
 
 
 @pytest.mark.skipif(
@@ -97,8 +112,9 @@ def check_single_inference(rank, world_size, port):
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_pipeline_inference():
-    spawn(check_tp_pipeline_inference, nprocs=4)
-    spawn(check_single_inference, nprocs=2)
+    spawn(check_tp_pp_inference, nprocs=4)
+    spawn(check_tp_or_pp_inference, nprocs=2)
+    spawn(check_single_inference, nprocs=1)
 
 
 if __name__ == "__main__":
