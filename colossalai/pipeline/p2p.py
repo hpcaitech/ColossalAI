@@ -350,7 +350,7 @@ def _communicate(
                 raise ValueError("Unknown data type {}".format(metadata_recv.data_type))
 
 
-def _send_object(object: Any, src: int, dst: int, group: ProcessGroup) -> None:
+def _send_object(object: Any, src: int, dst: int, group: ProcessGroup, send_metadata: bool = True) -> None:
     """send anything to dst rank
 
     Args:
@@ -360,10 +360,10 @@ def _send_object(object: Any, src: int, dst: int, group: ProcessGroup) -> None:
     Returns:
         None
     """
-    _communicate(object, send_dst=dst, recv_src=None, send_group=group)
+    _communicate(object, send_dst=dst, recv_src=None, send_group=group, send_metadata=send_metadata)
 
 
-def _recv_object(src: int, dst: int, group: ProcessGroup) -> Any:
+def _recv_object(src: int, dst: int, group: ProcessGroup, metadata_recv: Optional[P2PMetadata] = None) -> Any:
     """recv anything from src
 
     Args:
@@ -372,7 +372,7 @@ def _recv_object(src: int, dst: int, group: ProcessGroup) -> Any:
     Returns:
         Any: Object received from src.
     """
-    return _communicate(None, send_dst=None, recv_src=src, recv_group=group)
+    return _communicate(None, send_dst=None, recv_src=src, recv_group=group, metadata_recv=metadata_recv)
 
 
 def _p2p_comm(
@@ -457,7 +457,7 @@ class PipelineP2PCommunication:
     def __init__(self, stage_manager: PipelineStageManager) -> None:
         self.stage_manager = stage_manager
 
-    def recv_forward(self, prev_rank: Optional[int] = None) -> Any:
+    def recv_forward(self, prev_rank: Optional[int] = None, metadata_recv: Optional[P2PMetadata] = None) -> Any:
         """Copy the forward output from the previous stage in pipeline as the input tensor of this stage.
 
         Args:
@@ -469,11 +469,13 @@ class PipelineP2PCommunication:
         if prev_rank is None:
             prev_rank = self.stage_manager.get_prev_rank()
         cur_rank = self.stage_manager.get_rank()
-        input_tensor = _recv_object(prev_rank, cur_rank, self.stage_manager.get_p2p_process_group(prev_rank, cur_rank))
+        input_tensor = _recv_object(
+            prev_rank, cur_rank, self.stage_manager.get_p2p_process_group(prev_rank, cur_rank), metadata_recv
+        )
 
         return input_tensor
 
-    def recv_backward(self, next_rank: Optional[int] = None) -> Any:
+    def recv_backward(self, next_rank: Optional[int] = None, metadata_recv: Optional[P2PMetadata] = None) -> Any:
         """Copy the gradient tensor from the next stage in pipeline as the input gradient of this stage.
 
         Args:
@@ -486,12 +488,12 @@ class PipelineP2PCommunication:
             next_rank = self.stage_manager.get_next_rank()
         cur_rank = self.stage_manager.get_rank()
         output_tensor_grad = _recv_object(
-            next_rank, cur_rank, self.stage_manager.get_p2p_process_group(next_rank, cur_rank)
+            next_rank, cur_rank, self.stage_manager.get_p2p_process_group(next_rank, cur_rank), metadata_recv
         )
 
         return output_tensor_grad
 
-    def send_forward(self, output_object: Any, next_rank: Optional[int] = None) -> None:
+    def send_forward(self, output_object: Any, next_rank: Optional[int] = None, send_metadata: bool = True) -> None:
         """Sends the input tensor to the next stage in pipeline.
 
         Args:
@@ -501,9 +503,15 @@ class PipelineP2PCommunication:
         if next_rank is None:
             next_rank = self.stage_manager.get_next_rank()
         cur_rank = self.stage_manager.get_rank()
-        _send_object(output_object, cur_rank, next_rank, self.stage_manager.get_p2p_process_group(cur_rank, next_rank))
+        _send_object(
+            output_object,
+            cur_rank,
+            next_rank,
+            self.stage_manager.get_p2p_process_group(cur_rank, next_rank),
+            send_metadata,
+        )
 
-    def send_backward(self, input_object: Any, prev_rank: Optional[int] = None) -> None:
+    def send_backward(self, input_object: Any, prev_rank: Optional[int] = None, send_metadata: bool = True) -> None:
         """Sends the gradient tensor to the previous stage in pipeline.
 
         Args:
@@ -513,9 +521,21 @@ class PipelineP2PCommunication:
         if prev_rank is None:
             prev_rank = self.stage_manager.get_prev_rank()
         cur_rank = self.stage_manager.get_rank()
-        _send_object(input_object, cur_rank, prev_rank, self.stage_manager.get_p2p_process_group(cur_rank, prev_rank))
+        _send_object(
+            input_object,
+            cur_rank,
+            prev_rank,
+            self.stage_manager.get_p2p_process_group(cur_rank, prev_rank),
+            send_metadata,
+        )
 
-    def send_forward_recv_backward(self, input_object: Any, next_rank: Optional[int] = None) -> Any:
+    def send_forward_recv_backward(
+        self,
+        input_object: Any,
+        next_rank: Optional[int] = None,
+        send_metadata: bool = True,
+        metadata_recv: Optional[P2PMetadata] = None,
+    ) -> Any:
         """Sends the gradient tensor to and copy the gradient tensor from the next stage in pipeline
 
         Args:
@@ -533,9 +553,17 @@ class PipelineP2PCommunication:
             next_rank,
             send_group=group,
             recv_group=group,
+            send_metadata=send_metadata,
+            metadata_recv=metadata_recv,
         )
 
-    def send_backward_recv_forward(self, input_object: Any, prev_rank: Optional[int] = None) -> Any:
+    def send_backward_recv_forward(
+        self,
+        input_object: Any,
+        prev_rank: Optional[int] = None,
+        send_metadata: bool = True,
+        metadata_recv: Optional[P2PMetadata] = None,
+    ) -> Any:
         """Sends the gradient tensor to and copy the gradient tensor from the previous stage in pipeline
 
         Args:
@@ -553,6 +581,8 @@ class PipelineP2PCommunication:
             prev_rank,
             send_group=group,
             recv_group=group,
+            send_metadata=send_metadata,
+            metadata_recv=metadata_recv,
         )
 
     def p2p_communicate(
