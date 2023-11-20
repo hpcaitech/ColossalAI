@@ -3,11 +3,10 @@ import time
 
 import torch
 import torch.distributed as dist
-import transformers
 from transformers import LlamaForCausalLM, LlamaTokenizer
 
 import colossalai
-from colossalai.inference import CaiInferEngine
+from colossalai.inference import InferenceEngine
 from colossalai.testing import spawn
 
 
@@ -21,18 +20,24 @@ def run_inference(args):
     pp_size = args.pp_size
     rank = dist.get_rank()
 
-    tokenizer = LlamaTokenizer.from_pretrained(llama_model_path)
-    tokenizer.pad_token_id = tokenizer.unk_token_id
-    model = LlamaForCausalLM.from_pretrained(llama_model_path, pad_token_id=tokenizer.eos_token_id)
-    model = model.half()
+    if args.quant is None:
+        tokenizer = LlamaTokenizer.from_pretrained(llama_model_path)
+        tokenizer.pad_token_id = tokenizer.unk_token_id
+        model = LlamaForCausalLM.from_pretrained(llama_model_path, pad_token_id=tokenizer.eos_token_id)
+        model = model.half()
+    elif args.quant == "gptq":
+        from auto_gptq import AutoGPTQForCausalLM
 
-    model = transformers.LlamaForCausalLM(
-        transformers.LlamaConfig(
-            vocab_size=20000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=4
+        model = AutoGPTQForCausalLM.from_quantized(
+            llama_model_path, inject_fused_attention=False, device=torch.cuda.current_device()
         )
-    )
+    elif args.quant == "smoothquant":
+        from colossalai.inference.quant.smoothquant.models.llama import SmoothLlamaForCausalLM
 
-    engine = CaiInferEngine(
+        model = SmoothLlamaForCausalLM.from_quantized(llama_model_path, model_basename=args.smoothquant_base_name)
+        model = model.cuda()
+
+    engine = InferenceEngine(
         tp_size=tp_size,
         pp_size=pp_size,
         model=model,
@@ -75,6 +80,15 @@ def run_tp_pipeline_inference(rank, world_size, port, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--path", type=str, help="Model path", required=True)
+    parser.add_argument(
+        "-q",
+        "--quant",
+        type=str,
+        choice=["gptq", "smoothquant"],
+        default=None,
+        help="quantization type: 'gptq' or 'smoothquant'",
+    )
+    parser.add_argument("--smoothquant_base_name", type=str, default=None, help="soothquant base name")
     parser.add_argument("-tp", "--tp_size", type=int, default=1, help="Tensor parallel size")
     parser.add_argument("-pp", "--pp_size", type=int, default=1, help="Tensor parallel size")
     parser.add_argument("-b", "--batch_size", type=int, default=64, help="Maximum batch size")

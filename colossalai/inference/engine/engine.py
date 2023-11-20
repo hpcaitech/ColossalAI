@@ -27,9 +27,9 @@ _supported_models = [
 ]
 
 
-class CaiInferEngine:
+class InferenceEngine:
     """
-    CaiInferEngine is a class that handles the pipeline parallel inference.
+    InferenceEngine is a class that handles the pipeline parallel inference.
 
     Args:
         tp_size (int): the size of tensor parallelism.

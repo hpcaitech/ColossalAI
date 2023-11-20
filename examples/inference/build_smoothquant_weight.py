@@ -29,7 +29,7 @@ def parse_args():
         type=str,
         help="location of the calibration dataset",
     )
-    parser.add_argument("--num-samples", type=int, default=512)
+    parser.add_argument("--num-samples", type=int, default=10)
     parser.add_argument("--seq-len", type=int, default=512)
     args = parser.parse_args()
     return args
@@ -41,13 +41,12 @@ def main():
     model_path = args.model_name
     dataset_path = args.dataset_path
     output_path = args.output_path
-    num_samples = 10
-    seq_len = 512
+    num_samples = args.num_samples
+    seq_len = args.seq_len
 
     model, tokenizer = build_model_and_tokenizer(model_path)
     if not os.path.exists(dataset_path):
-        print(f"Cannot find the dataset at {args.dataset_path}")
-        raise FileNotFoundError
+        raise FileNotFoundError(f"Cannot find the dataset at {args.dataset_path}")
     dataset = load_dataset("json", data_files=dataset_path, split="train")
 
     model.quantized(tokenizer, dataset, num_samples=num_samples, seq_len=seq_len)

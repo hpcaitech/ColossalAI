@@ -1,3 +1,3 @@
-from .engine import CaiInferEngine
+from .engine import InferenceEngine
 
-__all__ = ["CaiInferEngine"]
+__all__ = ["InferenceEngine"]
