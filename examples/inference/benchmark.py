@@ -95,11 +95,27 @@ def print_details_info(timestamps, model_config, args, whole_end2end):
 
 def benchmark_inference(args):
     if args.model == "toy":
-        model = transformers.LlamaForCausalLM(transformers.LlamaConfig(num_hidden_layers=8))
+        model = transformers.LlamaForCausalLM(transformers.LlamaConfig(num_hidden_layers=4))
     elif args.model == "7b":
-        model = transformers.LlamaForCausalLM(transformers.AutoConfig.from_pretrained("decapoda-research/llama-7b-hf"))
+        model = transformers.LlamaForCausalLM(
+            transformers.LlamaConfig(
+                hidden_size=4096,
+                intermediate_size=11008,
+                num_attention_heads=32,
+                num_hidden_layers=32,
+                num_key_value_heads=32,
+            )
+        )
     elif args.model == "13b":
-        model = transformers.LlamaForCausalLM(transformers.AutoConfig.from_pretrained("decapoda-research/llama-13b-hf"))
+        model = transformers.LlamaForCausalLM(
+            transformers.LlamaConfig(
+                hidden_size=5120,
+                intermediate_size=13824,
+                num_attention_heads=40,
+                num_hidden_layers=40,
+                num_key_value_heads=40,
+            )
+        )
     else:
         raise NotImplementedError
 
