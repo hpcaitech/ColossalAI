@@ -1,10 +1,12 @@
+import warnings
+
 import pytest
 import torch
 import torch.distributed as dist
 
 import colossalai
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.pipeline.p2p import PipelineP2PCommunication
+from colossalai.pipeline.p2p import P2PDataType, P2PMetadata, PipelineP2PCommunication, TensorMetadata
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
@@ -30,9 +32,11 @@ def check_p2p_communication():
     if rank == 0:
         for obj in data:
             p2p.send_forward(obj)
-        for i in range(len(data)):
-            recv_obj = p2p.send_forward_recv_backward(data[i])
-            assert recv_obj == data[-(i + 1)]
+        with warnings.catch_warnings(record=True) as w:
+            for i in range(len(data)):
+                recv_obj = p2p.send_forward_recv_backward(data[i])
+                assert recv_obj == data[-(i + 1)]
+            assert "Fall back" in str(w[-1].message)
     elif rank == 1:
         for obj in data:
             recv_obj = p2p.recv_forward()
@@ -45,9 +49,11 @@ def check_p2p_communication():
     if rank == 1:
         for obj in data:
             p2p.send_backward(obj)
-        for i in range(len(data)):
-            recv_obj = p2p.send_backward_recv_forward(data[i])
-            assert recv_obj == data[-(i + 1)]
+        with warnings.catch_warnings(record=True) as w:
+            for i in range(len(data)):
+                recv_obj = p2p.send_backward_recv_forward(data[i])
+                assert recv_obj == data[-(i + 1)]
+            assert "Fall back" in str(w[-1].message)
     elif rank == 0:
         for obj in data:
             recv_obj = p2p.recv_backward()
@@ -56,6 +62,23 @@ def check_p2p_communication():
             recv_obj = p2p.recv_backward()
             p2p.send_forward(data[-(i + 1)])
             assert recv_obj == data[i]
+
+    warnings.filterwarnings("error")
+    tensor_metadata = TensorMetadata(
+        key=None, shape=tensor.shape, dtype=tensor.dtype, requires_grad=tensor.requires_grad
+    )
+    comm_metadata = P2PMetadata(data_type=P2PDataType.Tensor, content=tensor_metadata)
+    if rank == 0:
+        recv_obj = p2p.send_forward_recv_backward(
+            tensor,
+            send_metadata=False,
+            metadata_recv=comm_metadata,
+        )
+        assert recv_obj == tensor
+    elif rank == 1:
+        recv_obj = p2p.recv_forward(metadata_recv=comm_metadata)
+        assert recv_obj == tensor
+        p2p.send_backward(tensor, send_metadata=False)
 
 
 def run_dist(rank, world_size, port):
