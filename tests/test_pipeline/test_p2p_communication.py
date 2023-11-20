@@ -30,24 +30,32 @@ def check_p2p_communication():
     if rank == 0:
         for obj in data:
             p2p.send_forward(obj)
-        for obj in data:
-            recv_obj = p2p.send_forward_recv_backward(obj)
-            assert recv_obj == obj
+        for i in range(len(data)):
+            recv_obj = p2p.send_forward_recv_backward(data[i])
+            assert recv_obj == data[-(i + 1)]
     elif rank == 1:
         for obj in data:
             recv_obj = p2p.recv_forward()
             assert recv_obj == obj
-        for obj in data:
-            recv_obj = p2p.send_backward_recv_forward(obj)
-            assert recv_obj == obj
+        for i in range(len(data)):
+            p2p.send_backward(data[-(i + 1)])
+            recv_obj = p2p.recv_forward()
+            assert recv_obj == data[i]
 
     if rank == 1:
         for obj in data:
             p2p.send_backward(obj)
+        for i in range(len(data)):
+            recv_obj = p2p.send_backward_recv_forward(data[i])
+            assert recv_obj == data[-(i + 1)]
     elif rank == 0:
         for obj in data:
             recv_obj = p2p.recv_backward()
             assert recv_obj == obj
+        for i in range(len(data)):
+            recv_obj = p2p.recv_backward()
+            p2p.send_forward(data[-(i + 1)])
+            assert recv_obj == data[i]
 
 
 def run_dist(rank, world_size, port):
