@@ -75,11 +75,11 @@ def run_tp_pipeline_inference(rank, world_size, port, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--path", type=str, help="Model path", required=True)
-    parser.add_argument("-tp", "--tp_size", type=int, default=2, help="Tensor parallel size")
-    parser.add_argument("-pp", "--pp_size", type=int, default=2, help="Tensor parallel size")
-    parser.add_argument("-b", "--batch_size", type=int, default=8, help="Maximum batch size")
-    parser.add_argument("--max_input_len", type=int, default=32, help="Maximum input length")
-    parser.add_argument("--max_output_len", type=int, default=16, help="Maximum output length")
+    parser.add_argument("-tp", "--tp_size", type=int, default=1, help="Tensor parallel size")
+    parser.add_argument("-pp", "--pp_size", type=int, default=1, help="Tensor parallel size")
+    parser.add_argument("-b", "--batch_size", type=int, default=64, help="Maximum batch size")
+    parser.add_argument("--max_input_len", type=int, default=512, help="Maximum input length")
+    parser.add_argument("--max_output_len", type=int, default=256, help="Maximum output length")
     parser.add_argument("--micro_batch_size", type=int, default=2, help="Micro batch size")
 
     args = parser.parse_args()
