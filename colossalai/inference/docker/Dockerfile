@@ -1,4 +1,4 @@
-FROM hpcaitech/cuda-conda:11.7
+FROM hpcaitech/cuda-conda:11.8
 
 # metainformation
 LABEL org.opencontainers.image.source = "https://github.com/hpcaitech/ColossalAI"
@@ -11,19 +11,23 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu118
+WORKDIR /workspace
+RUN git clone --recursive https://github.com/hpcaitech/ColossalAI
+WORKDIR ColossalAI && pip install -e .
 
-RUN pip install triton 
-RUN pip install git+https://github.com/ModelTC/lightllm.git@ece7b43f8a6dfa74027adc77c2c176cff28c76c8
-RUN pip install transformers==4.34.0
-RUN pip install auto-gptq==0.5.0
+# install packages from requirements-infer.txt
+WORKDIR requirements
+RUN pip install triton
+RUN pip install --upgrade pip
+COPY requirements-infer.txt requirements-infer.txt
+RUN pip install -r requirements-infer.txt
 
-RUN cd /workspace
+
+# install flash-attention
+WORKDIR /workspace
 RUN git clone --recursive https://github.com/Dao-AILab/flash-attention
 RUN cd flash-attention && pip install -e .
 RUN cd ../
 
-RUN git clone --recursive https://github.com/hpcaitech/ColossalAI
-RUN cd ColossalAI && pip install -e .
 
 
