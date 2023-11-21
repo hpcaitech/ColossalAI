@@ -39,7 +39,7 @@ def get_triton_rmsnorm_forward():
 
         return _triton_rmsnorm_forward
     else:
-        return None
+        raise RuntimeError("Did not find rms-norm triton kernel")
 
 
 class ChatGLM2InferPolicy(ChatGLMForConditionalGenerationPolicy):
