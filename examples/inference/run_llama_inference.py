@@ -78,12 +78,12 @@ if __name__ == "__main__":
         help="quantization type: 'gptq' or 'smoothquant'",
     )
     parser.add_argument("--smoothquant_base_name", type=str, default=None, help="soothquant base name")
-    parser.add_argument("-tp", "--tp_size", type=int, default=2, help="Tensor parallel size")
-    parser.add_argument("-pp", "--pp_size", type=int, default=2, help="Pipeline parallel size")
-    parser.add_argument("-b", "--batch_size", type=int, default=4, help="Maximum batch size")
-    parser.add_argument("--max_input_len", type=int, default=32, help="Maximum input length")
-    parser.add_argument("--max_output_len", type=int, default=16, help="Maximum output length")
-    parser.add_argument("--micro_batch_size", type=int, default=1, help="Micro batch size")
+    parser.add_argument("-tp", "--tp_size", type=int, default=1, help="Tensor parallel size")
+    parser.add_argument("-pp", "--pp_size", type=int, default=1, help="Pipeline parallel size")
+    parser.add_argument("-b", "--batch_size", type=int, default=32, help="Maximum batch size")
+    parser.add_argument("--max_input_len", type=int, default=1024, help="Maximum input length")
+    parser.add_argument("--max_output_len", type=int, default=128, help="Maximum output length")
+    parser.add_argument("--micro_batch_size", type=int, default=32, help="Micro batch size")
 
     args = parser.parse_args()
     spawn(run_tp_pipeline_inference, nprocs=args.tp_size * args.pp_size, args=args)
