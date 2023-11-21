@@ -23,7 +23,8 @@ try:
     from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward as lightllm_rmsnorm_forward
     HAS_TRITON_RMSNORM = True
 except:
-    print("Did not find rms-norm triton kernel")
+    print("Did not find rmsnorm lightllm triton kernel")
+    print("Make sure you should install triton using the following command: pip install triton")
     print("You can use the following command to install: pip install git+https://github.com/ModelTC/lightllm.git@ece7b43f8a6dfa74027adc77c2c176cff28c76c8")
     HAS_TRITON_RMSNORM = False
 
