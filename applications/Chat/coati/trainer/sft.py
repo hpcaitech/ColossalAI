@@ -1,16 +1,19 @@
+import os
 from typing import Optional
 
 import torch
-import torch.distributed as dist
-import tqdm
+from coati.models import save_checkpoint
+from coati.trainer.utils import all_reduce_mean
+from coati.utils import AccumulativeMeanMeter
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
+from tqdm import trange
 
-from colossalai.logging import DistributedLogger
+from colossalai.booster import Booster
+from colossalai.cluster import DistCoordinator
 
 from .base import SLTrainer
-from .strategies import GeminiStrategy, Strategy
 from .utils import is_rank_0, to_device
 
 
@@ -30,75 +33,31 @@ class SFTTrainer(SLTrainer):
     def __init__(
         self,
         model,
-        strategy: Strategy,
+        booster: Booster,
         optim: Optimizer,
         lr_scheduler: _LRScheduler,
         max_epochs: int = 2,
         accumulation_steps: int = 8,
+        start_epoch=0,
+        save_interval: int = None,
+        save_dir: str = None,
+        coordinator: Optional[DistCoordinator] = None,
     ) -> None:
-        if accumulation_steps > 1:
-            assert not isinstance(
-                strategy, GeminiStrategy
-            ), "Accumulation steps are not supported in stage 3 of ColossalAI"
-
-        super().__init__(strategy, max_epochs, model, optim)
+        super().__init__(booster, max_epochs, model, optim, start_epoch=start_epoch)
 
         self.accumulation_steps = accumulation_steps
         self.scheduler = lr_scheduler
-
+        self.save_interval = save_interval
+        self.save_dir = save_dir
+        self.coordinator = coordinator
         self.num_train_step = 0
         self.num_eval_step = 0
-
-    def _train(self, epoch: int):
-        self.model.train()
-        step_bar = tqdm.trange(
-            len(self.train_dataloader) // self.accumulation_steps,
-            desc=f"Epoch {epoch + 1}/{self.max_epochs}",
-            disable=not is_rank_0(),
-        )
-        for i, batch in enumerate(self.train_dataloader):
-            batch = to_device(batch, torch.cuda.current_device())
-            outputs = self.model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
-            loss = outputs.loss / self.accumulation_steps
-            self.total_loss += loss.item()
-            self.strategy.backward(loss, self.model, self.optimizer)
-            # gradient accumulation
-            if (i + 1) % self.accumulation_steps == 0:
-                self.strategy.optimizer_step(self.optimizer)
-                self.optimizer.zero_grad()
-                self.scheduler.step()
-                if self.writer:
-                    self.writer.add_scalar("train/loss", self.total_loss, self.num_train_step)
-                    self.writer.add_scalar("train/lr", self.scheduler.get_last_lr()[0], self.num_train_step)
-                    self.num_train_step += 1
-                self.total_loss = 0
-                step_bar.update()
-        step_bar.close()
-
-    def _eval(self, epoch: int):
-        if self.eval_dataloader is not None:
-            self.model.eval()
-            with torch.no_grad():
-                loss_sum, num_seen = 0, 0
-                for batch in self.eval_dataloader:
-                    batch = to_device(batch, torch.cuda.current_device())
-                    outputs = self.model(
-                        batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"]
-                    )
-                    loss_sum += outputs.loss.item()
-                    num_seen += batch["input_ids"].size(0)
-                loss_mean = loss_sum / num_seen
-                if dist.get_rank() == 0:
-                    self.logger.info(f"Eval Epoch {epoch}/{self.max_epochs} loss {loss_mean}")
-                if self.writer:
-                    self.writer.add_scalar("eval/loss", loss_mean, self.num_eval_step)
-                    self.num_eval_step += 1
+        self.accumulative_meter = AccumulativeMeanMeter()
 
     def _before_fit(
         self,
         train_dataloader: DataLoader,
         eval_dataloader: Optional[DataLoader] = None,
-        logger: Optional[DistributedLogger] = None,
         log_dir: Optional[str] = None,
         use_wandb: bool = False,
     ):
@@ -110,7 +69,6 @@ class SFTTrainer(SLTrainer):
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
 
-        self.logger = logger
         self.writer = None
         if use_wandb and is_rank_0():
             assert log_dir is not None, "log_dir must be provided when use_wandb is True"
@@ -127,4 +85,81 @@ class SFTTrainer(SLTrainer):
             log_dir = os.path.join(log_dir, time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime()))
             self.writer = SummaryWriter(log_dir=log_dir)
 
-        self.total_loss = 0
+    def _train(self, epoch: int):
+        self.model.train()
+        step_bar = trange(
+            len(self.train_dataloader) // self.accumulation_steps,
+            desc=f"Epoch {epoch + 1}/{self.max_epochs}",
+            disable=not is_rank_0(),
+        )
+        for i, batch in enumerate(self.train_dataloader):
+            batch = to_device(batch, torch.cuda.current_device())
+            batch_size = batch["input_ids"].size(0)
+            outputs = self.model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
+            loss = outputs.loss
+            loss_mean = all_reduce_mean(tensor=loss)
+            self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
+            self.booster.backward(loss=loss, optimizer=self.optimizer)
+
+            # gradient accumulation
+            if (i + 1) % self.accumulation_steps == 0:
+                self.optimizer.step()
+                self.scheduler.step()
+                self.optimizer.zero_grad()
+
+                if self.writer:
+                    self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
+                    self.writer.add_scalar("train/lr", self.scheduler.get_last_lr()[0], self.num_train_step)
+                    self.num_train_step += 1
+                self.accumulative_meter.reset()
+                step_bar.update()
+
+            # save checkpoint
+            if (
+                self.save_dir is not None
+                and self.save_interval is not None
+                and (self.save_interval and (i + 1) % (self.save_interval * self.accumulation_steps) == 0)
+                or (i + 1) == len(self.train_dataloader)
+            ):
+                save_checkpoint(
+                    save_dir=self.save_dir,
+                    booster=self.booster,
+                    model=self.model,
+                    optimizer=self.optimizer,
+                    lr_scheduler=self.scheduler,
+                    epoch=epoch,
+                    step=i + 1,
+                    batch_size=batch_size,
+                    coordinator=self.coordinator,
+                )
+                self.coordinator.print_on_master(
+                    f"Saved checkpoint at epoch {epoch} step {i + 1} at folder {self.save_dir}"
+                )
+        step_bar.close()
+
+    def _eval(self, epoch: int):
+        if self.eval_dataloader is None:
+            self.coordinator.print_on_master("No eval dataloader is provided, skip evaluation")
+            return
+        self.accumulative_meter.reset()
+        self.model.eval()
+        with torch.no_grad():
+            step_bar = trange(
+                len(self.eval_dataloader),
+                desc=f"Epoch {epoch + 1}/{self.max_epochs}",
+                disable=not is_rank_0(),
+            )
+            for batch in self.eval_dataloader:
+                batch = to_device(batch, torch.cuda.current_device())
+                outputs = self.model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
+                self.accumulative_meter.add("loss", outputs.loss.item(), count_update=batch["input_ids"].size(0))
+                step_bar.update()
+            loss_mean = self.accumulative_meter.get("loss")
+            loss_mean = all_reduce_mean(tensor=loss_mean)
+            msg = "Evaluation Result:\n"
+            for tag in ["loss"]:
+                msg = msg + f"{tag}: {self.accumulative_meter.get(tag)}\n"
+            self.coordinator.print_on_master(msg)
+            with open(os.path.join(self.save_dir, f"eval_result_epoch{epoch}.txt"), "w") as f:
+                f.write(msg)
+            step_bar.close()

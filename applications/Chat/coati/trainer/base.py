@@ -8,6 +8,8 @@ from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import Experience
 from torch.optim import Optimizer
 
+from colossalai.booster import Booster
+
 from .callbacks import Callback
 from .strategies import Strategy
 from .utils import is_rank_0
@@ -26,16 +28,18 @@ class SLTrainer(ABC):
 
     def __init__(
         self,
-        strategy: Strategy,
+        booster: Booster,
         max_epochs: int,
         model: nn.Module,
         optimizer: Optimizer,
+        start_epoch: int = 0,
     ) -> None:
         super().__init__()
-        self.strategy = strategy
+        self.booster = booster
         self.max_epochs = max_epochs
         self.model = model
         self.optimizer = optimizer
+        self.start_epoch = start_epoch
 
     @abstractmethod
     def _train(self, epoch):
@@ -45,19 +49,20 @@ class SLTrainer(ABC):
     def _eval(self, epoch):
         raise NotImplementedError()
 
+    @abstractmethod
     def _before_fit(self):
         raise NotImplementedError()
 
     def fit(self, *args, **kwargs):
         self._before_fit(*args, **kwargs)
-        for epoch in tqdm.trange(self.max_epochs, desc="Epochs", disable=not is_rank_0()):
+        for epoch in tqdm.trange(self.start_epoch, self.max_epochs, desc="Epochs", disable=not is_rank_0()):
             self._train(epoch)
             self._eval(epoch)
 
 
-class OnPolicyTrainer(ABC):
+class OLTrainer(ABC):
     """
-        Base class for on-policy rl trainers, e.g. PPO.
+        Base class for online learning trainers, e.g. PPO.
 
     Args:
         strategy (Strategy):the strategy to use for training
@@ -160,6 +165,7 @@ class OnPolicyTrainer(ABC):
         num_episodes: int,
         num_collect_steps: int,
         num_update_steps: int,
+        save_per_num_episodes: int,
         *args,
         **kwargs,
     ):
@@ -186,3 +192,21 @@ class OnPolicyTrainer(ABC):
                         self._update_phase(update_step)
                     # NOTE: this is for on-policy algorithms
                     self.data_buffer.clear()
+                if is_rank_0() and (episode + 1) % save_per_num_episodes == 0:
+                    if args.lora_rank > 0 and args.merge_lora_weights:
+                        from coati.models.lora import LORA_MANAGER
+
+                        # NOTE: set model to eval to merge LoRA weights
+                        LORA_MANAGER.merge_weights = True
+                        self.actor.eval()
+                    # save model checkpoint after fitting
+                    self.strategy.save_model(self.actor, args.save_path, only_rank0=True)
+                    # save optimizer checkpoint on all ranks
+                    if args.need_optim_ckpt:
+                        self.strategy.save_optimizer(
+                            self.actor_optim,
+                            "actor_optim_checkpoint_prompts_%d.pt" % (torch.cuda.current_device()),
+                            only_rank0=False,
+                        )
+
+                    self.strategy.save_checkpoint(episode)

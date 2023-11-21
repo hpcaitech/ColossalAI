@@ -1,0 +1,1319 @@
+GPU Memory Usage:
+Now CUDA_VISIBLE_DEVICES is set to:
+CUDA_VISIBLE_DEVICES=0
+[11/16/23 11:17:06] INFO     colossalai - colossalai - INFO:
+                             /home/lcyab/data/anaconda/envs/colossal-llama2/lib/
+                             python3.8/site-packages/colossalai/initialize.py:63
+                              launch
+                    INFO     colossalai - colossalai - INFO: Distributed
+                             environment is initialized, world size: 1
+trainable params: 8110080 || all params: 567324672 || trainable%: 1.43
+BloomForCausalLM(
+  (transformer): BloomModel(
+    (word_embeddings): Embedding(250880, 1024)
+    (word_embeddings_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+    (h): ModuleList(
+      (0): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (1): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (2): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (3): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (4): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (5): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (6): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (7): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (8): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (9): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (10): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (11): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (12): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (13): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (14): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (15): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (16): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (17): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (18): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (19): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (20): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (21): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (22): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+      (23): BloomBlock(
+        (input_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (self_attention): BloomAttention(
+          (query_key_value): Linear(
+            in_features=1024, out_features=3072, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=3072, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (dense): Linear(
+            in_features=1024, out_features=1024, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=1024, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (attention_dropout): Dropout(p=0.0, inplace=False)
+        )
+        (post_attention_layernorm): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (mlp): BloomMLP(
+          (dense_h_to_4h): Linear(
+            in_features=1024, out_features=4096, bias=True
+            (lora_dropout): ModuleDict(
+              (default): Dropout(p=0.1, inplace=False)
+            )
+            (lora_A): ModuleDict(
+              (default): Linear(in_features=1024, out_features=30, bias=False)
+            )
+            (lora_B): ModuleDict(
+              (default): Linear(in_features=30, out_features=4096, bias=False)
+            )
+            (lora_embedding_A): ParameterDict()
+            (lora_embedding_B): ParameterDict()
+          )
+          (gelu_impl): BloomGelu()
+          (dense_4h_to_h): Linear(in_features=4096, out_features=1024, bias=True)
+        )
+      )
+    )
+    (ln_f): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+  )
+  (lm_head): Linear(in_features=1024, out_features=250880, bias=False)
+)
+Gradient checkpointing enabled successfully
+Loading data...
+Loaded 52002 examples.
+Limiting dataset to 200 examples.
+Formatting inputs...
+Tokenizing inputs... This may take some time...
+Loaded dataset.
+Warmup steps is set to 0
+Booster init max CUDA memory: 1113.03 MB
+Booster init max CPU memory: 4792.71 MB
+Error: failed to run torchrun --nproc_per_node=1 --nnodes=1 --node_rank=0 --master_addr=127.0.0.1 --master_port=28535 train_sft.py --pretrain bigscience/bloom-560m --plugin zero2 --save_path /home/lcyab/data/test_folder/model_checkpoint/gpt2 --dataset tatsu-lab/alpaca --batch_size 4 --max_epochs 1 --max_datasets_size 200 --accumulation_steps 8 --lr 2e-2 --lora_rank 30 --max_len 512 --max_epochs 1 --grad_checkpoint on 192.168.0.32, is localhost: False, exception: Encountered a bad command exit code!
+
+Command: 'cd /mnt/vepfs/lcyab/ColossalAI/applications/Chat/examples && export SHELL="/bin/bash" COLORTERM="truecolor" TERM_PROGRAM_VERSION="1.84.1" CONDA_EXE="/home/lcyab/data/anaconda/bin/conda" _LMFILES__modshare="/mnt/vepfs/modulefiles/cuda/11.7:1:/mnt/vepfs/modulefiles/clash:1" ENV="/usr/share/modules/init/profile.sh" PWD="/home/lcyab/data/ColossalAI/applications/Chat/examples" LOGNAME="lcyab" XDG_SESSION_TYPE="tty" CONDA_PREFIX="/home/lcyab/data/anaconda/envs/colossal-llama2" MODULESHOME="/usr/share/modules" MANPATH=":" C_INCLUDE_PATH_modshare="/mnt/vepfs/softwares/cuda-toolkits/11.7/include:1" MOTD_SHOWN="pam" HOME="/home/lcyab" LANG="en_US.UTF-8" LS_COLORS="rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:" LD_LIBRARY_PATH_modshare="/mnt/vepfs/softwares/cuda-toolkits/11.7/lib64:1" CONDA_PROMPT_MODIFIER="(colossal-llama2) " https_proxy="http://192.168.0.32:7890" SSH_CONNECTION="223.25.80.122 57221 192.168.0.36 22" PATH_modshare="/usr/bin:1:/home/lcyab/.local/bin:1:/usr/local/bin:1:/mnt/vepfs/softwares/cuda-toolkits/11.7/bin:1:/home/lcyab/data/anaconda/envs/colossal-llama2/bin:1:/home/lcyab/.vscode-server/bin/2b35e1e6d88f1ce073683991d1eff5284a32690f/bin/remote-cli:1:/bin:1:/snap/bin:1:/sbin:1:/home/lcyab/data/anaconda/condabin:1:/usr/sbin:1:/usr/games:1:/usr/local/sbin:1:/usr/local/games:1" CUDA_VISIBLE_DEVICES="0" LESSCLOSE="/usr/bin/lesspipe %s %s" MODULEPATH_modshare="/etc/environment-modules/modules:1:/usr/share/modules/$MODULE_VERSION/modulefiles:1:/usr/share/modules/modulefiles:1:/usr/share/modules/versions:1" XDG_SESSION_CLASS="user" LOADEDMODULES_modshare="cuda/11.7:1:clash:1" TERM="xterm-256color" CPLUS_INCLUDE_PATH="/mnt/vepfs/softwares/cuda-toolkits/11.7/include" LESSOPEN="| /usr/bin/lesspipe %s" USER="lcyab" VSCODE_GIT_IPC_HANDLE="/run/user/1002/vscode-git-3a0159ec83.sock" CONDA_SHLVL="3" LOADEDMODULES="clash:cuda/11.7" NCCL_IB_TIMEOUT="23" SHLVL="2" BASH_ENV="/usr/share/modules/init/bash" XDG_SESSION_ID="6941" http_proxy="http://192.168.0.32:7890" CONDA_PYTHON_EXE="/home/lcyab/data/anaconda/bin/python" LD_LIBRARY_PATH="/mnt/vepfs/softwares/cuda-toolkits/11.7/lib64" CPLUS_INCLUDE_PATH_modshare="/mnt/vepfs/softwares/cuda-toolkits/11.7/include:1" XDG_RUNTIME_DIR="/run/user/1002" SSH_CLIENT="223.25.80.122 57221 22" CONDA_DEFAULT_ENV="colossal-llama2" CUDA_HOME="/mnt/vepfs/softwares/cuda-toolkits/11.7" BROWSER="/home/lcyab/.vscode-server/bin/2b35e1e6d88f1ce073683991d1eff5284a32690f/bin/helpers/browser.sh" PATH="/mnt/vepfs/softwares/cuda-toolkits/11.7/bin:/home/lcyab/.vscode-server/bin/2b35e1e6d88f1ce073683991d1eff5284a32690f/bin/remote-cli:/home/lcyab/.local/bin:/home/lcyab/data/anaconda/envs/colossal-llama2/bin:/home/lcyab/data/anaconda/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin" MODULEPATH="/mnt/vepfs/modulefiles:/mnt/vepfs/modulefiles:/mnt/vepfs/modulefiles" NCCL_IB_RETRY_CNT="7" _LMFILES_="/mnt/vepfs/modulefiles/clash:/mnt/vepfs/modulefiles/cuda/11.7" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1002/bus" C_INCLUDE_PATH="/mnt/vepfs/softwares/cuda-toolkits/11.7/include" CONDA_PREFIX_1="/home/lcyab/data/anaconda" CONDA_PREFIX_2="/home/lcyab/data/anaconda/envs/colossalqa" OLDPWD="/home/lcyab" MODULES_CMD="/usr/lib/x86_64-linux-gnu/modulecmd.tcl" TERM_PROGRAM="vscode" VSCODE_IPC_HOOK_CLI="/run/user/1002/vscode-ipc-6a17d9e7-4845-4f65-b164-b8e69318ffe4.sock" _="/home/lcyab/data/anaconda/envs/colossal-llama2/bin/colossalai" && torchrun --nproc_per_node=1 --nnodes=1 --node_rank=0 --master_addr=127.0.0.1 --master_port=28535 train_sft.py --pretrain bigscience/bloom-560m --plugin zero2 --save_path /home/lcyab/data/test_folder/model_checkpoint/gpt2 --dataset tatsu-lab/alpaca --batch_size 4 --max_epochs 1 --max_datasets_size 200 --accumulation_steps 8 --lr 2e-2 --lora_rank 30 --max_len 512 --max_epochs 1 --grad_checkpoint'
+
+Exit code: 1
+
+Stdout: already printed
+
+Stderr: already printed
+
+
+
+====== Training on All Nodes =====
+192.168.0.32: failure
+
+====== Stopping All Nodes =====
+192.168.0.32: finish

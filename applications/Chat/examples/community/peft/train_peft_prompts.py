@@ -24,7 +24,9 @@ def main(args):
     if args.strategy == "ddp":
         strategy = DDPStrategy()
     elif args.strategy == "colossalai_gemini":
-        strategy = GeminiStrategy(placement_policy="static", offload_optim_frac=1.0, offload_param_frac=1.0, initial_scale=2**5)
+        strategy = GeminiStrategy(
+            placement_policy="static", offload_optim_frac=1.0, offload_param_frac=1.0, initial_scale=2**5
+        )
     elif args.strategy == "colossalai_zero2":
         strategy = LowLevelZeroStrategy(stage=2, placement_policy="cpu")
     else:
@@ -118,7 +120,7 @@ def main(args):
         tokenizer.pad_token = tokenizer.eos_token
     elif args.model == "llama":
         tokenizer = LlamaTokenizer.from_pretrained(args.pretrain)
-        tokenizer.eos_token = "</s>"
+        tokenizer.eos_token = "<\s>"
         tokenizer.pad_token = tokenizer.unk_token
     else:
         raise ValueError(f'Unsupported model "{args.model}"')

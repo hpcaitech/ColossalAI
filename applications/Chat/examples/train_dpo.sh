@@ -25,7 +25,7 @@ export NCCL_IB_RETRY_CNT=7
 export OMP_NUM_THREADS=8
 
 
-PROJECT_NAME="llama2-rm"
+PROJECT_NAME="llama2-dpo"
 PARENT_SAVE_DIR="./output/ckpt"
 PARENT_TENSORBOARD_DIR="./output/tensorboard"
 PARENT_CONFIG_FILE="./output/train_config"
@@ -49,18 +49,20 @@ FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
 
-colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 30035 train_reward_model.py \
+colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 30035 train_dpo.py \
     --pretrain $PRETRAINED_MODEL_PATH \
+    --checkpoint_path $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
     --dataset ${dataset[@]} \
-    --plugin "zero2" \
-    --save_interval 100 \
+    --plugin "3d" \
+    --save_interval 500 \
     --save_dir $SAVE_DIR \
     --config_file $CONFIG_FILE \
     --max_epochs 5 \
-    --accumulation_steps 1 \
-    --batch_size 8 \
-    --lr 9e-6 \
+    --accumulation_steps 4 \
+    --batch_size 4 \
+    --tp 8 \
+    --lr 5e-6 \
     --mixed_precision "bf16" \
     --grad_clip 1.0 \
     --weight_decay 0.01 \

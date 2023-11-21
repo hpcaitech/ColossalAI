@@ -131,23 +131,3 @@ def convert_to_lora_module(module: nn.Module, lora_rank: int, lora_train_bias: s
     _convert_to_lora_recursively(module, lora_rank)
     lora.mark_only_lora_as_trainable(module, lora_train_bias)
     return module
-
-
-class LoRAModule(nn.Module):
-    """A LoRA module base class. All derived classes should call `convert_to_lora()` at the bottom of `__init__()`.
-    This class will convert all torch.nn.Linear layer to LoraLinear layer.
-
-    Args:
-        lora_rank (int, optional): LoRA rank. 0 means LoRA is not applied. Defaults to 0.
-        lora_train_bias (str, optional): Whether LoRA train biases.
-            'none' means it doesn't train biases. 'all' means it trains all biases. 'lora_only' means it only trains biases of LoRA layers.
-            Defaults to 'none'.
-    """
-
-    def __init__(self, lora_rank: int = 0, lora_train_bias: str = "none") -> None:
-        super().__init__()
-        self.lora_rank = lora_rank
-        self.lora_train_bias = lora_train_bias
-
-    def convert_to_lora(self) -> None:
-        convert_to_lora_module(self, self.lora_rank, self.lora_train_bias)

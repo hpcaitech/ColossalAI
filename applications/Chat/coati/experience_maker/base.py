@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import torch
-from coati.models.base import Actor, Critic, RewardModel
+from coati.models import Actor, Critic, RewardModel
 
 
 @dataclass
@@ -28,6 +28,7 @@ class Experience:
     action_log_probs: torch.Tensor
     values: torch.Tensor
     reward: torch.Tensor
+    kl: torch.Tensor
     advantages: torch.Tensor
     attention_mask: Optional[torch.LongTensor]
     action_mask: Optional[torch.BoolTensor]
