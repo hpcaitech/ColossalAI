@@ -1,4 +1,4 @@
-FROM hpcaitech/cuda-conda:11.8
+FROM hpcaitech/cuda-conda:11.7
 
 # metainformation
 LABEL org.opencontainers.image.source = "https://github.com/hpcaitech/ColossalAI"
@@ -11,7 +11,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+RUN pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu118
 
 RUN pip install triton 
 RUN pip install git+https://github.com/ModelTC/lightllm.git@ece7b43f8a6dfa74027adc77c2c176cff28c76c8
