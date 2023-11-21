@@ -69,6 +69,8 @@ class GenerateSchedule(PipelineSchedule):
             batch = tree_map(partial(to_device, device=device), batch)
         self.batch = batch
         self.batch_size = get_batch_size(batch)
+        if self.stage_manager.num_stages == 1:
+            self.microbatch_size = self.batch_size
         self.microbatch_offset = 0
         assert (
             self.batch_size % self.microbatch_size == 0
