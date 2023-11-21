@@ -11,9 +11,7 @@ from tensorrt_llm.runtime import ModelConfig, SamplingConfig
 from transformers import AutoTokenizer, LlamaTokenizer
 from utils import get_engine_name, process_output, throttle_generator
 
-
 class EngineRunnerBase:
-    # 从engine保存的“config.json”中读取并处理相应config
     def _read_config(self, config_path: Path) -> Tuple[ModelConfig, int, int, str]:
         with open(config_path, "r") as f:
             config = json.load(f)
@@ -34,9 +32,6 @@ class EngineRunnerBase:
             logger.warning("`multi_query_mode` config is deprecated. Please rebuild the engine.")
             num_kv_heads = 1
         num_kv_heads = (num_kv_heads + tp_size - 1) // tp_size
-
-        # use_custom_all_reduce = config['plugin_config'].get('use_custom_all_reduce',
-        #                                                     False)
 
         remove_input_padding = config["plugin_config"].get("remove_input_padding", False)
         model_name = config["plugin_config"].get("name", "")
@@ -129,9 +124,7 @@ class EngineRunnerBase:
         torch.cuda.set_device(runtime_rank % runtime_mapping.gpus_per_node)
 
         if model_name == "llama":
-            # tokenizer = LlamaTokenizer.from_pretrained(tokenizer_dir, legacy=False)
-            tokenizer = LlamaTokenizer.from_pretrained(tokenizer_dir, legacy=False, padding_side="left")
-            tokenizer.pad_token = tokenizer.eos_token
+            tokenizer = LlamaTokenizer.from_pretrained(tokenizer_dir, legacy=False)
         else:
             tokenizer = AutoTokenizer.from_pretrained(
                 tokenizer_dir, use_fast=use_fast, trust_remote_code=trust_remote_code

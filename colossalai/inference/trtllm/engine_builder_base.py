@@ -10,7 +10,6 @@ from tensorrt_llm.logger import logger
 from tensorrt_llm.network import Network, net_guard
 from utils import get_engine_name, serialize_engine, to_onnx
 
-
 class EngineBuilderBase:
     def __init__(self):
         self._builder_args_config: BuilderArgsConfig = None

@@ -426,7 +426,6 @@ class LlamaEngineBuilder(EngineBuilderBase):
 
 
 class LlamaEngineRunner(EngineRunnerBase):
-    # 处理input text
     def _parse_input(
         self, input_text: str, input_file: str, tokenizer, end_id: int, remove_input_padding: bool
     ) -> Tuple[torch.Tensor, torch.Tensor]:

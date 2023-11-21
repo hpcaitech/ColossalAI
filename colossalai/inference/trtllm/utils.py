@@ -77,17 +77,17 @@ def serialize_engine(engine: trt.IHostMemory, path: Path) -> None:
 
 def process_output(output_ids, input_lengths, max_output_len, tokenizer, output_csv, output_npy):
     num_beams = output_ids.size(1)
+    outputs_text = []
     if output_csv is None and output_npy is None:
         for b in range(input_lengths.size(0)):
             inputs = output_ids[b][0][: input_lengths[b]].tolist()
             input_text = tokenizer.decode(inputs)
-            print(f'Input: "{input_text}"')
             for beam in range(num_beams):
                 output_begin = input_lengths[b]
                 output_end = input_lengths[b] + max_output_len
                 outputs = output_ids[b][beam][output_begin:output_end].tolist()
                 output_text = tokenizer.decode(outputs)
-                print(f'Output: "{output_text}"')
+                outputs_text.append(output_text)
 
     output_ids = output_ids.reshape((-1, output_ids.size(2)))
 
@@ -104,6 +104,8 @@ def process_output(output_ids, input_lengths, max_output_len, tokenizer, output_
         output_file.parent.mkdir(exist_ok=True, parents=True)
         outputs = np.array(output_ids.cpu().contiguous(), dtype="int32")
         np.save(output_file, outputs)
+        
+    return outputs_text
 
 
 def throttle_generator(generator, stream_interval):
