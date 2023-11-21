@@ -108,7 +108,7 @@ def print_details_info(outputs, model_config, args, whole_end2end):
 def benchmark_inference(args):
 
     quant = None
-    if args.bench_type == "cai-gptq":
+    if args.quant == "cai-gptq":
         from auto_gptq import AutoGPTQForCausalLM
 
         # load quantized model to the first GPU
@@ -201,7 +201,7 @@ def benchmark_auto_gptq_inference(args):
 
 def hybrid_inference(rank, world_size, port, args):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    if args.bench_type == "auto-gptq":
+    if args.quant == "auto-gptq":
         benchmark_auto_gptq_inference(args)
     else:
         benchmark_inference(args)
@@ -228,7 +228,7 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "--bench_type",
+        "--quant",
         help="the type of benchmark type: 'cai-gptq', 'auto-gptq'",
         type=str,
         choices=["cai-gptq", "auto-gptq"],
