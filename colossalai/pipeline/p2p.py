@@ -117,6 +117,22 @@ def create_recv_buffer(p2p_metadata: P2PMetadata, current_device: Any):
         raise ValueError(f"Unknown data_type: {p2p_metadata.data_type}")
 
 
+def create_fast_send_metadata(object: Any) -> P2PMetadata:
+    assert _check_if_fast_send_available(object)
+    if isinstance(object, torch.Tensor):
+        data_type = P2PDataType.Tensor
+        content = TensorMetadata(None, object.shape, object.dtype, object.requires_grad)
+    elif isinstance(object, list):
+        data_type = P2PDataType.List
+        content = [TensorMetadata(None, v.shape, v.dtype, v.requires_grad) for v in object]
+    elif isinstance(object, dict):
+        data_type = P2PDataType.Dict
+        content = [TensorMetadata(k, v.shape, v.dtype, v.requires_grad) for k, v in object.items()]
+    else:
+        raise RuntimeError("Cannot handle object of type {}".format(type(object)))
+    return P2PMetadata(data_type, content)
+
+
 def _batch_send_recv_tensor(
     send_tensor_list: Optional[Union[torch.Tensor, List[torch.Tensor]]],
     recv_tensor_metadata: Optional[P2PMetadata],
@@ -290,25 +306,14 @@ def _communicate(
     assert current_send_device == current_recv_device
     current_device = current_send_device
 
-    if send_metadata or metadata_recv is None:
+    if (send_dst is not None and send_metadata) or (recv_src is not None and metadata_recv is None):
         metadata_send = None
         if send_dst is not None and send_metadata:
             can_fast_send = _check_if_fast_send_available(object) and is_nccl_backend
             if not can_fast_send:
                 metadata_send = P2PMetadata(P2PDataType.Serialization, object)
             else:
-                if isinstance(object, torch.Tensor):
-                    data_type = P2PDataType.Tensor
-                    content = TensorMetadata(None, object.shape, object.dtype, object.requires_grad)
-                elif isinstance(object, list):
-                    data_type = P2PDataType.List
-                    content = [TensorMetadata(None, v.shape, v.dtype, v.requires_grad) for v in object]
-                elif isinstance(object, dict):
-                    data_type = P2PDataType.Dict
-                    content = [TensorMetadata(k, v.shape, v.dtype, v.requires_grad) for k, v in object.items()]
-                else:
-                    raise ValueError("Cannot send object of type {}".format(type(object)))
-                metadata_send = P2PMetadata(data_type, content)
+                metadata_send = create_fast_send_metadata(object)
 
         # Send and receive metadata
         _metadata_recv = _send_recv_serialization_object(
@@ -350,7 +355,7 @@ def _communicate(
                 raise ValueError("Unknown data type {}".format(metadata_recv.data_type))
 
 
-def _send_object(object: Any, src: int, dst: int, group: ProcessGroup, send_metadata: bool = True) -> None:
+def _send_object(object: Any, src: int, dst: int, group: ProcessGroup, send_metadata: bool) -> None:
     """send anything to dst rank
 
     Args:
@@ -363,7 +368,7 @@ def _send_object(object: Any, src: int, dst: int, group: ProcessGroup, send_meta
     _communicate(object, send_dst=dst, recv_src=None, send_group=group, send_metadata=send_metadata)
 
 
-def _recv_object(src: int, dst: int, group: ProcessGroup, metadata_recv: Optional[P2PMetadata] = None) -> Any:
+def _recv_object(src: int, dst: int, group: ProcessGroup, metadata_recv: Optional[P2PMetadata]) -> Any:
     """recv anything from src
 
     Args:
