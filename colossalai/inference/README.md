@@ -67,6 +67,7 @@ pip install -e .
 Install dependencies.
 
 ```bash
+# Make sure you installed torch and related requirements first.
 pip install -r requirements/requirements-infer.txt
 
 # if you want use smoothquant quantization, please install torch-int

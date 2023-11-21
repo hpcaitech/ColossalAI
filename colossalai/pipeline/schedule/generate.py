@@ -147,8 +147,18 @@ class GenerateSchedule(PipelineSchedule):
             self.timestamps[self.mb_manager.idx].append(time.time())
         interval_inputs = {"infer_state": self.mb_manager.cur_infer_state}
         output_dict = model_forward(model, inputs_dict, interval_inputs)
+        if self.stage_manager.num_stages == 1:
+            self.action_interval_buffer.new_token = self._get_token_id(output_dict["logits"])
+            self.mb_manager.step(self.action_interval_buffer.new_token)
+            self.action_interval_buffer.hidden_states = None
+        else:
+            self.action_interval_buffer.hidden_states = output_dict["hidden_states"]
 
-        self.action_interval_buffer.hidden_states = output_dict["hidden_states"]
+    def _gen_token_with_input_action(self, model: Module):
+        """
+        This action only serves the case when num_stages == 1
+        """
+        self.action_interval_buffer.new_token
 
     def _gen_token_action(self, model: Module):
         """
@@ -156,7 +166,7 @@ class GenerateSchedule(PipelineSchedule):
         1.do the forward with hidden_states to generate new tokens 2.step to update
         """
         hidden_states = self.action_interval_buffer.hidden_states
-        assert hidden_states is not None, "When first stage in GENERATE phase, the hidden states should not be None"
+        # assert hidden_states is not None, "When first stage in GENERATE phase, the hidden states should not be None"
         interval_inputs = {"hidden_states": hidden_states, "infer_state": self.mb_manager.cur_infer_state}
         logits = model_forward(model, None, interval_inputs)
         if self.verbose and self.stage_manager.is_first_stage():
@@ -180,8 +190,12 @@ class GenerateSchedule(PipelineSchedule):
         inputs_dict = self._prepare_inputs_for_new_token(new_token)
         interval_inputs = {"infer_state": self.mb_manager.cur_infer_state}
         output_dict = model_forward(model, inputs_dict, interval_inputs)
-
-        self.action_interval_buffer.hidden_states = output_dict["hidden_states"]
+        if self.stage_manager.num_stages == 1:
+            self.action_interval_buffer.new_token = self._get_token_id(output_dict["logits"])
+            self.mb_manager.step(self.action_interval_buffer.new_token)
+            self.action_interval_buffer.hidden_states = None
+        else:
+            self.action_interval_buffer.hidden_states = output_dict["hidden_states"]
 
     def _body_encoding_action(self, model: Module):
         hidden_states = self.action_interval_buffer.hidden_states
@@ -244,14 +258,12 @@ class GenerateSchedule(PipelineSchedule):
             List[Callable]: A list of action, each action is a callable function, and it will be called in order.
         """
         actions = []
-
         if self.mb_manager.cur_state is Status.PREFILL:
             actions.append(partial(self._load_stage_action, model))
         elif self.mb_manager.cur_state is Status.GENERATE:
-            actions.append(partial(self._gen_token_action, model))
             actions.append(partial(self._head_encoding_action, model))
         elif self.mb_manager.cur_state is Status.COOLDOWN:
-            actions.append(partial(self._gen_token_action, model))
+            actions.append(partial(self._head_encoding_action, model))
 
         return actions
 
@@ -279,7 +291,6 @@ class GenerateSchedule(PipelineSchedule):
         self.load_batch(data_iter)
         model.eval()
         self.comm_dtype = model.dtype
-
         whole_timestamp = []
 
         # run by round
