@@ -23,7 +23,7 @@ try:
     from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward as lightllm_rmsnorm_forward
     HAS_TRITON_RMSNORM = True
 except:
-    print("you should install triton from GitHub - openai/triton: Development repository for the Triton language and compiler")
+    print("you should install triton from GitHub: https://github.com/ModelTC/lightllm.git@ece7b43f8a6dfa74027adc77c2c176cff28c76c8")
     HAS_TRITON_RMSNORM = False
 
 
