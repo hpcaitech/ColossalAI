@@ -3,11 +3,10 @@
 
 ## Table of Contents
 
--   📚 Introduction
-
-- 🔨 Installation
-- 🚀 Quick Start
-- 💡Usage
+- 📚 [Introduction](#📚-introduction)
+- 🔨 [Installation](#🔨-installation)
+- 🚀 [Quick Start](#🚀-quick-start)
+- 💡 [Usage](#💡-usage)
 
 ## 📚 Introduction
 
@@ -46,7 +45,7 @@ git clone https://github.com/hpcaitech/ColossalAI.git
 cd ColossalAI
 
 # Install Colossal-AI from source
-CUDA_EXT=1 pip install .
+pip install .
 ```
 
 Install inference dependencies:
@@ -65,14 +64,12 @@ pip install -r requirements/requirements-infer.txt
 You can directly pull the docker image from our [DockerHub page](https://hub.docker.com/r/hpcaitech/colossalai). The image is automatically uploaded upon release.
 
 ```shell
-docker pull hpcaitech/colossalai-inference:v2
+docker pull hpcaitech/colossal-inference:latest
 ```
 
 #### Build On Your Own
 
 Run the following command to build a docker image from Dockerfile provided.
-
->   Building Colossal-AI from scratch requires GPU support, you need to use Nvidia Docker Runtime as the default when doing `docker build`. More details can be found [here](https://stackoverflow.com/questions/59691207/docker-build-with-nvidia-runtime). We recommend you install Colossal-AI from our [project page](https://www.colossalai.org/) directly.
 
 ```shell
 cd ColossalAI/inference/dokcer
@@ -82,21 +79,21 @@ docker build
 Run the following command to start the docker container in interactive mode.
 
 ```shell
-docker run -it --gpus all --name ANY_NAME -v $PWD:/workspace -w /workspace hpcaitech/colossalai-inference:v2 /bin/bash
+docker run -it --gpus all --name Colossal-Inference -v $PWD:/workspace -w /workspace hpcaitech/colossal-inference:latest /bin/bash
 ```
 
-\[Todo\]: Waiting for Docker file (Li Cuiqing)
+\[Todo\]: Waiting for new Docker file (Li Cuiqing)
 
 ## 🚀 Quick Start
 
-You can try the example following the instructions below:
+You can try the inference example using [`Colossal-LLaMA-2-7B`](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base) following the instructions below:
 
 ```shell
 cd ColossalAI/examples/inference
-python run_llama_inference.py -p [xxxxx] -b 4 --max_input_len 128 --max_output_len 64 --dtype fp16
+python example.py -m hpcai-tech/Colossal-LLaMA-2-7b-base -b 4 --max_input_len 128 --max_output_len 64 --dtype fp16
 ```
 
-\[Todo\]: Waiting for new examples (quant: Xu Kai; Inference output: Zhao Yuanheng)
+Examples for quantized inference will coming soon!
 
 ## 💡 Usage
 
