@@ -19,15 +19,27 @@ parser.add_argument(
     help="the path of out gptq model",
     type=str,
 )
+parser.add_argument(
+    "--bits",
+    type=int,
+    default=4,
+    help="quantize model bits",
+)
+parser.add_argument(
+    "--group_size",
+    type=int,
+    default=128,
+    help="the group size of model",
+)
+
 args = parser.parse_args()
+
 pretrained_model_dir = args.pretrained_model_dir
 quantized_model_dir = args.quantized_model_dir
 
-
 quantize_config = BaseQuantizeConfig(
-    bits=4,  # quantize model to 4-bit
-    group_size=128,  # it is recommended to set the value to 128
-    desc_act=False,  # set to False can significantly speed up inference but the perplexity may slightly bad
+    bits=args.bits,  # quantize model to 4-bit
+    group_size=args.group_size,  # it is recommended to set the value to 128
 )
 
 tokenizer = AutoTokenizer.from_pretrained(pretrained_model_dir)

@@ -1,5 +1,5 @@
 ROOT=$(realpath $(dirname $0))
-PY_SCRIPT=${ROOT}/benchmark_gptq_llama.py
+PY_SCRIPT=${ROOT}/benchmark_llama.py
 GPU=$(nvidia-smi -L | head -1 | cut -d' ' -f4 | cut -d'-' -f1)
 
 mkdir -p logs

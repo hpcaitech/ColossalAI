@@ -106,9 +106,21 @@ def print_details_info(outputs, model_config, args, whole_end2end):
 
 
 def benchmark_inference(args):
-    config = CONFIG_MAP[args.model]
-    config.pad_token_id = config.eos_token_id
-    model = transformers.LlamaForCausalLM(config)
+
+    quant = None
+    if args.bench_type == "cai-gptq":
+        from auto_gptq import AutoGPTQForCausalLM
+
+        # load quantized model to the first GPU
+        model = AutoGPTQForCausalLM.from_quantized(
+            args.gptq_model, device=torch.cuda.current_device(), inject_fused_attention=False
+        )
+        quant = "gptq"
+    else:
+        config = CONFIG_MAP[args.model]
+        config.pad_token_id = config.eos_token_id
+        model = transformers.LlamaForCausalLM(config)
+
     if dist.get_rank() == 0:
         print("Model loaded")
     engine = InferenceEngine(
@@ -121,6 +133,7 @@ def benchmark_inference(args):
         max_batch_size=args.batch_size,
         max_input_len=args.seq_len,
         max_output_len=args.output_len,
+        quant=quant,
     )
     data = data_gen(args.batch_size, args.seq_len)
 
@@ -161,9 +174,37 @@ def benchmark_inference(args):
     print_details_info(outputs, model.config, args, whole_end2end)
 
 
+def benchmark_auto_gptq_inference(args):
+    from auto_gptq import AutoGPTQForCausalLM
+
+    # load quantized model to the first GPU
+    model = AutoGPTQForCausalLM.from_quantized(args.gptq_model, device=torch.cuda.current_device())
+
+    if dist.get_rank() == 0:
+        print("Model loaded")
+
+    data = data_gen(args.batch_size, args.seq_len)
+    generate_kwargs = dict(max_new_tokens=args.output_len, do_sample=False, use_cache=True)
+    N_WARMUP_STEPS = 2
+
+    for _ in range(N_WARMUP_STEPS):
+        model.generate(**data, **generate_kwargs)
+
+    torch.cuda.synchronize()
+    whole_end2end = time.time()
+    outputs = model.generate(**data, **generate_kwargs)
+    torch.cuda.synchronize()
+    whole_end2end = time.time() - whole_end2end
+
+    print_details_info(outputs, model.config, args, whole_end2end)
+
+
 def hybrid_inference(rank, world_size, port, args):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    benchmark_inference(args)
+    if args.bench_type == "auto-gptq":
+        benchmark_auto_gptq_inference(args)
+    else:
+        benchmark_inference(args)
 
 
 @rerun_if_address_is_in_use()
@@ -180,6 +221,18 @@ if __name__ == "__main__":
         default="toy",
         help="the size of model",
         choices=["toy", "llama-7b", "llama-13b", "llama2-7b", "llama2-13b"],
+    )
+    parser.add_argument(
+        "--gptq_model",
+        help="the path of gptq model",
+        type=str,
+    )
+    parser.add_argument(
+        "--bench_type",
+        help="the type of benchmark type: 'cai-gptq', 'auto-gptq'",
+        type=str,
+        choices=["cai-gptq", "auto-gptq"],
+        default=None,
     )
     parser.add_argument("-b", "--batch_size", type=int, default=8, help="batch size")
     parser.add_argument("-s", "--seq_len", type=int, default=8, help="input sequence length")
