@@ -108,6 +108,8 @@ def get_whisper_flash_attention_forward():
                 flash_attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool).contiguous())
                 if not torch.all(flash_attention_mask):
                     attn_type = AttnMaskType.paddedcausal
+                else:
+                    attn_type = AttnMaskType.causal
 
         attention = ColoAttention(
             embed_dim=self.embed_dim, num_heads=self.num_heads, dropout=self.dropout, scale=self.scaling
