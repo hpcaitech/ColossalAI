@@ -2,17 +2,18 @@ from typing import Dict, List, Optional
 
 from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import Experience, NaiveExperienceMaker
-from coati.models.base import Actor, Critic, RewardModel, get_base_model
+from coati.models import Actor, Critic, RewardModel
 from coati.models.loss import GPTLMLoss, PolicyLoss, ValueLoss
 from coati.models.utils import calc_action_log_probs
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 
 from colossalai.utils import get_current_device
 
-from .base import OnPolicyTrainer
+from .base import OLTrainer
 from .callbacks import Callback
 from .strategies import GeminiStrategy, Strategy
 from .utils import CycledDataLoader, is_rank_0, to_device
@@ -20,7 +21,7 @@ from .utils import CycledDataLoader, is_rank_0, to_device
 
 def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> Dict:
     unwrapped_model = strategy.unwrap_model(actor)
-    hf_model = get_base_model(unwrapped_model)
+    hf_model = unwrapped_model.model
     new_kwargs = {**generate_kwargs}
     # use huggingface models method directly
     if "prepare_inputs_fn" not in generate_kwargs and hasattr(hf_model, "prepare_inputs_for_generation"):
@@ -32,7 +33,7 @@ def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, acto
     return new_kwargs
 
 
-class PPOTrainer(OnPolicyTrainer):
+class PPOTrainer(OLTrainer):
     """
         Trainer for PPO algorithm.
 
@@ -68,7 +69,9 @@ class PPOTrainer(OnPolicyTrainer):
         initial_model: Actor,
         actor_optim: Optimizer,
         critic_optim: Optimizer,
+        actor_lr_scheduler: _LRScheduler,
         tokenizer: PreTrainedTokenizerBase,
+        rm_model_tokenizer: PreTrainedTokenizerBase,
         kl_coef: float = 0.1,
         ptx_coef: float = 0.9,
         train_batch_size: int = 8,
@@ -76,7 +79,7 @@ class PPOTrainer(OnPolicyTrainer):
         buffer_cpu_offload: bool = True,
         eps_clip: float = 0.2,
         vf_coef: float = 1.0,
-        value_clip: float = 0.4,
+        value_clip: float = 0.2,
         sample_buffer: bool = False,
         dataloader_pin_memory: bool = True,
         offload_inference_models: bool = True,
@@ -90,11 +93,15 @@ class PPOTrainer(OnPolicyTrainer):
         super().__init__(strategy, data_buffer, sample_buffer, dataloader_pin_memory, callbacks)
 
         self.generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
-        self.experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, tokenizer, kl_coef)
 
         self.actor = actor
         self.critic = critic
+        self.actor_scheduler = actor_lr_scheduler
         self.tokenizer = tokenizer
+        self.rm_model_tokenizer = rm_model_tokenizer
+        self.experience_maker = NaiveExperienceMaker(
+            self.actor, self.critic, reward_model, initial_model, self.tokenizer, self.rm_model_tokenizer, kl_coef
+        )
 
         self.actor_loss_fn = PolicyLoss(eps_clip)
         self.critic_loss_fn = ValueLoss(value_clip)
@@ -103,6 +110,7 @@ class PPOTrainer(OnPolicyTrainer):
         self.ptx_coef = ptx_coef
         self.actor_optim = actor_optim
         self.critic_optim = critic_optim
+        self.num_train_step = 0
 
         self.offload_inference_models = offload_inference_models
         self.device = get_current_device()
@@ -127,7 +135,7 @@ class PPOTrainer(OnPolicyTrainer):
             assert log_dir is not None, "log_dir must be provided when use_wandb is True"
             import wandb
 
-            wandb.init(project="Coati-ppo", sync_tensorboard=True)
+            self.wandb_run = wandb.init(project="Coati-ppo", sync_tensorboard=True)
         if log_dir is not None and is_rank_0():
             import os
             import time
@@ -148,13 +156,23 @@ class PPOTrainer(OnPolicyTrainer):
         return self.experience_maker.make_experience(**prompts, **self.generate_kwargs)
 
     def _training_step(self, experience: Experience):
+        """
+        Args:
+            experience:
+                sequences: [batch_size, prompt_length + response_length] --- <PAD>...<PAD><PROMPT>...<PROMPT><RESPONSE>...<RESPONSE><PAD>...<PAD>
+        """
+        self.num_train_step += 1
         self.actor.train()
         self.critic.train()
-        # policy loss
         num_actions = experience.action_log_probs.size(1)
-        actor_logits = self.actor(experience.sequences, experience.attention_mask)["logits"]
+        # policy loss
+
+        actor_logits = self.actor(experience.sequences, experience.attention_mask)[
+            "logits"
+        ]  # [batch size, prompt_length + response_length]
         action_log_probs = calc_action_log_probs(actor_logits, experience.sequences, num_actions)
-        actor_loss = self.actor_loss_fn(
+
+        actor_loss, to_skip, max_ratio = self.actor_loss_fn(
             action_log_probs, experience.action_log_probs, experience.advantages, action_mask=experience.action_mask
         )
         actor_loss = (1 - self.ptx_coef) * actor_loss
@@ -168,16 +186,54 @@ class PPOTrainer(OnPolicyTrainer):
             ptx_loss = self.ptx_coef * self.ptx_loss_fn(ptx_log_probs, batch["labels"])
             self.strategy.backward(ptx_loss, self.actor, self.actor_optim)
 
-        self.strategy.optimizer_step(self.actor_optim)
-        self.actor_optim.zero_grad()
-
         # value loss
-        values = self.critic(experience.sequences, attention_mask=experience.attention_mask)
-        critic_loss = self.critic_loss_fn(values, experience.values, experience.reward)
+        values = self.critic(
+            experience.sequences, attention_mask=experience.attention_mask
+        )  # [batch size, prompt_length + response_length]
+        critic_loss = self.critic_loss_fn(
+            values[:, -num_actions:], experience.values, experience.advantages, action_mask=experience.action_mask
+        )
         critic_loss = critic_loss * self.vf_coef
         self.strategy.backward(critic_loss, self.critic, self.critic_optim)
+
+        if not to_skip:
+            self.strategy.optimizer_step(self.actor_optim)
         self.strategy.optimizer_step(self.critic_optim)
+        self.actor_optim.zero_grad()
         self.critic_optim.zero_grad()
+        if self.actor_scheduler:
+            self.actor_scheduler.step()
+
+        # preparing logging model output and corresponding rewards.
+        response_text = self.experience_maker.tokenizer.batch_decode(experience.sequences, skip_special_tokens=True)
+        for i in range(len(response_text)):
+            response_text[i] = response_text[i] + f"\n\nReward: {experience.reward[i]}"
+
+        if self.writer:
+            # use wandb
+            import wandb
+
+            if self.num_train_step % 50 == 1 and "wandb_run" in self.__dict__:
+                my_table = wandb.Table(
+                    columns=[f"sample response {i}" for i in range(len(response_text))], data=[response_text]
+                )
+                try:
+                    self.wandb_run.log({"sample_response": my_table})
+                except OSError as e:
+                    print(e)
+
+            self.writer.add_scalar("train/max_ratio", max_ratio, self.num_train_step)
+            self.writer.add_scalar("train/skip", 1 if to_skip else 0, self.num_train_step)
+            self.writer.add_scalar("train/actor_loss", actor_loss.mean().item(), self.num_train_step)
+            self.writer.add_scalar("train/lr_actor", self.actor_optim.param_groups[0]["lr"], self.num_train_step)
+            self.writer.add_scalar("train/lr_critic", self.critic_optim.param_groups[0]["lr"], self.num_train_step)
+            self.writer.add_scalar("train/critic_loss", critic_loss.mean().item(), self.num_train_step)
+            if self.ptx_coef != 0:
+                self.writer.add_scalar("train/ptx_loss", ptx_loss.mean().item(), self.num_train_step)
+            self.writer.add_scalar("reward", experience.reward.mean().item(), self.num_train_step)
+            self.writer.add_scalar("approx_kl", experience.kl.mean().item(), self.num_train_step)
+            self.writer.add_scalar("value", experience.values.mean().item(), self.num_train_step)
+            self.writer.add_scalar("advantages", experience.advantages.mean().item(), self.num_train_step)
 
     def _learn(self, update_step: int):
         if self.offload_inference_models:

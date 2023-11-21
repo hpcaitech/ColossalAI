@@ -1,179 +1,229 @@
 import argparse
+import json
 import math
-import warnings
+import os
+import resource
+from contextlib import nullcontext
 
 import torch
-import torch.distributed as dist
-from coati.dataset import SFTDataset, SupervisedDataset
-from coati.models.bloom import BLOOMActor
-from coati.models.chatglm import ChatGLMActor
-from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
-from coati.models.gpt import GPTActor
-from coati.models.llama import LlamaActor
-from coati.models.opt import OPTActor
+from coati.dataset import DataCollatorForSupervisedDataset, load_tokenized_dataset, setup_distributed_dataloader
+from coati.models import convert_to_lora_module, load_checkpoint
 from coati.trainer import SFTTrainer
-from coati.trainer.strategies import DDPStrategy, GeminiStrategy, LowLevelZeroStrategy
-from datasets import load_dataset
-from torch.optim import Adam
-from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
-from transformers import AutoTokenizer, BloomTokenizerFast, LlamaTokenizer
-from transformers.models.gpt2.tokenization_gpt2 import GPT2Tokenizer
-from transformers.trainer import get_scheduler
+from coati.utils import replace_with_flash_attention
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
+import colossalai
+from colossalai.booster import Booster
+from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.cluster import DistCoordinator
+from colossalai.lazy import LazyInitContext
 from colossalai.logging import get_dist_logger
+from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.utils import get_current_device
 
 
 def train(args):
-    # configure strategy
-    if args.strategy == "ddp":
-        strategy = DDPStrategy()
-    elif args.strategy == "colossalai_gemini":
-        strategy = GeminiStrategy(placement_policy="auto")
-    elif args.strategy == "colossalai_zero2":
-        strategy = LowLevelZeroStrategy(stage=2, placement_policy="cuda")
-    elif args.strategy == "colossalai_zero2_cpu":
-        strategy = LowLevelZeroStrategy(stage=2, placement_policy="cpu")
+    # ==============================
+    # Initialize Distributed Training
+    # ==============================
+    colossalai.launch_from_torch({})
+    coordinator = DistCoordinator()
+
+    # ==============================
+    # Initialize Booster
+    # ==============================
+    if args.plugin == "ddp":
+        # default torch ddp plugin without any acceleration, for debugging purpose acceleration, for debugging purpose
+        plugin = TorchDDPPlugin(find_unused_parameters=True)
+    elif args.plugin == "gemini":
+        plugin = GeminiPlugin(
+            precision=args.mixed_precision,
+            initial_scale=2**16,
+            max_norm=args.grad_clip,
+        )
+    elif args.plugin == "gemini_auto":
+        plugin = GeminiPlugin(
+            precision=args.mixed_precision,
+            placement_policy="auto",
+            initial_scale=2**16,
+            max_norm=args.grad_clip,
+        )
+    elif args.plugin == "zero2":
+        plugin = LowLevelZeroPlugin(
+            stage=2,
+            precision=args.mixed_precision,
+            initial_scale=2**16,
+            max_norm=args.grad_clip,
+        )
+    elif args.plugin == "zero2_cpu":
+        plugin = LowLevelZeroPlugin(
+            stage=2,
+            precision=args.mixed_precision,
+            initial_scale=2**16,
+            cpu_offload=True,
+            max_norm=args.grad_clip,
+        )
+    elif args.plugin == "3d":
+        plugin = HybridParallelPlugin(
+            tp_size=args.tp,
+            pp_size=1,
+            zero_stage=args.zero,
+            max_norm=args.grad_clip,
+            precision=args.mixed_precision,
+        )
     else:
-        raise ValueError(f'Unsupported strategy "{args.strategy}"')
+        raise ValueError(f"Unknown plugin {args.plugin}")
 
-    # configure model
-    if args.lora_rank > 0:
-        warnings.warn("Lora is not supported yet.")
-        args.lora_rank = 0
+    booster = Booster(plugin=plugin)
 
-    with strategy.model_init_context():
-        if args.model == "bloom":
-            model = BLOOMActor(pretrained=args.pretrain, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
-        elif args.model == "opt":
-            model = OPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
-        elif args.model == "gpt2":
-            model = GPTActor(pretrained=args.pretrain, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
-        elif args.model == "llama":
-            model = LlamaActor(pretrained=args.pretrain, lora_rank=args.lora_rank, checkpoint=args.grad_checkpoint)
-        elif args.model == "chatglm":
-            model = ChatGLMActor(pretrained=args.pretrain)
-        else:
-            raise ValueError(f'Unsupported model "{args.model}"')
+    # ======================================================
+    # Initialize Model, Objective, Optimizer and LR Scheduler
+    # ======================================================
+    init_ctx = (
+        LazyInitContext(default_device=get_current_device()) if isinstance(plugin, (GeminiPlugin,)) else nullcontext()
+    )
+    with init_ctx:
+        model = AutoModelForCausalLM.from_pretrained(args.pretrain)
+        if args.lora_rank > 0:
+            model = convert_to_lora_module(model, args.lora_rank, lora_train_bias=args.lora_train_bias)
 
-        model.to(torch.bfloat16).to(torch.cuda.current_device())
+    if args.grad_checkpoint and args.lora_rank == 0:
+        # lora layers are not supported by gradient checkpointing
+        model.gradient_checkpointing_enable()
+        coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
+    elif args.lora_rank > 0:
+        coordinator.print_on_master(msg="Gradient checkpointing will be disabled when LoRA is enabled")
+
+    if args.use_flash_attn:
+        replace_with_flash_attention(model=model)
+        coordinator.print_on_master(msg="Flash-attention enabled successfully")
 
     # configure tokenizer
-    if args.model == "gpt2":
-        tokenizer = GPT2Tokenizer.from_pretrained("gpt2" if args.tokenizer is None else args.tokenizer)
-        tokenizer.pad_token = tokenizer.eos_token
-    elif args.model == "bloom":
-        tokenizer = BloomTokenizerFast.from_pretrained(
-            "bigscience/bloom-560m" if args.tokenizer is None else args.tokenizer
-        )
-        tokenizer.pad_token = tokenizer.eos_token
-    elif args.model == "opt":
-        tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m" if args.tokenizer is None else args.tokenizer)
-        tokenizer.pad_token = tokenizer.eos_token
-    elif args.model == "llama":
-        tokenizer = LlamaTokenizer.from_pretrained(
-            "hf-internal-testing/llama-tokenizer" if args.tokenizer is None else args.tokenizer
-        )
-        tokenizer.eos_token = "</s>"
-        tokenizer.pad_token = tokenizer.unk_token
-    elif args.model == "chatglm":
-        tokenizer = ChatGLMTokenizer.from_pretrained(
-            "THUDM/chatglm-6b" if args.tokenizer is None else args.tokenizer, trust_remote_code=True
-        )
-    else:
-        raise ValueError(f'Unsupported model "{args.model}"')
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir or args.pretrain)
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.add_bos_token = False
+    tokenizer.add_eos_token = False
 
+    coordinator.print_on_master(f"Configuration file will be saved at: {args.config_file}")
+    coordinator.print_on_master(f"Model checkpoint will be saved at: {args.save_path}")
+
+    print([name for name, p in model.named_parameters() if p.requires_grad])
     # configure optimizer
-    if args.strategy.startswith("colossalai"):
-        optim = HybridAdam(model.parameters(), lr=args.lr, clipping_norm=1.0)
-    else:
-        optim = Adam(model.parameters(), lr=args.lr)
+    optim = HybridAdam(
+        model_params=model.parameters(),
+        lr=args.lr,
+        betas=(0.9, 0.95),
+        weight_decay=args.weight_decay,
+        adamw_mode=True,
+    )
+    # if is_rank_0():
+    #     print(optim.state_dict())
+    #     print("debug")
+    # optim_param = optim.state_dict()['param_groups'][0]['params']
+    # for id in optim_param:
+    #     for idx, (name, p) in enumerate(model.named_parameters()):
+    #         if idx == id:
+    #             print(name, p.size())
 
     # configure dataset
-    if args.dataset == "yizhongw/self_instruct":
-        train_data = load_dataset(args.dataset, "super_natural_instructions", split="train")
-        eval_data = load_dataset(args.dataset, "super_natural_instructions", split="test")
-
-        if args.max_datasets_size is not None:
-            train_data = train_data.select(range(min(args.max_datasets_size, len(train_data))))
-            eval_data = eval_data.select(range(min(args.max_datasets_size, len(eval_data))))
-
-        train_dataset = SFTDataset(train_data, tokenizer, args.max_len)
-        eval_dataset = SFTDataset(eval_data, tokenizer, args.max_len)
-
-    else:
-        train_dataset = SupervisedDataset(
-            tokenizer=tokenizer,
-            data_path=args.dataset,
-            max_datasets_size=args.max_datasets_size,
-            max_length=args.max_len,
-        )
-        eval_dataset = None
-
-    if dist.is_initialized() and dist.get_world_size() > 1:
-        train_sampler = DistributedSampler(
-            train_dataset,
-            shuffle=True,
-            seed=42,
-            drop_last=True,
-            rank=dist.get_rank(),
-            num_replicas=dist.get_world_size(),
-        )
-        if eval_dataset is not None:
-            eval_sampler = DistributedSampler(
-                eval_dataset,
-                shuffle=False,
-                seed=42,
-                drop_last=False,
-                rank=dist.get_rank(),
-                num_replicas=dist.get_world_size(),
-            )
-    else:
-        train_sampler = None
-        eval_sampler = None
-
-    train_dataloader = DataLoader(
-        train_dataset,
-        shuffle=(train_sampler is None),
-        sampler=train_sampler,
-        batch_size=args.batch_size,
-        pin_memory=True,
+    coordinator.print_on_master(
+        f"Max CUDA memory before data loader: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB"
     )
-    if eval_dataset is not None:
-        eval_dataloader = DataLoader(
-            eval_dataset,
-            shuffle=(eval_sampler is None),
-            sampler=eval_sampler,
-            batch_size=args.batch_size,
-            pin_memory=True,
-        )
-    else:
-        eval_dataloader = None
+    dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train")
+    data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer, max_length=args.max_len)
+    train_dataloader = setup_distributed_dataloader(
+        dataset=dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        drop_last=True,
+        collate_fn=data_collator,
+    )
+    coordinator.print_on_master(
+        f"Max CUDA memory after data loader: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB"
+    )
 
     num_update_steps_per_epoch = len(train_dataloader) // args.accumulation_steps
-    max_steps = math.ceil(args.max_epochs * num_update_steps_per_epoch)
-    lr_scheduler = get_scheduler(
-        "cosine", optim, num_warmup_steps=math.ceil(max_steps * 0.03), num_training_steps=max_steps
+    math.ceil(args.max_epochs * num_update_steps_per_epoch)
+
+    if args.warmup_steps is None:
+        args.warmup_steps = int(args.max_epochs * 0.025 * (len(train_dataloader) // args.accumulation_steps))
+        coordinator.print_on_master(f"Warmup steps is set to {args.warmup_steps}")
+
+    lr_scheduler = CosineAnnealingWarmupLR(
+        optimizer=optim,
+        total_steps=args.max_epochs * num_update_steps_per_epoch,
+        warmup_steps=args.warmup_steps,
+        eta_min=0.1 * args.lr,
     )
-    strategy_dict = strategy.prepare(dict(model=model, optimizer=optim, lr_scheduler=lr_scheduler))
-    model = strategy_dict["model"]
-    optim = strategy_dict["optimizer"]
-    lr_scheduler = strategy_dict["lr_scheduler"]
+
+    # Flash attention will be disabled because it does NOT support fp32.
+    default_dtype = torch.float16 if args.mixed_precision == "fp16" else torch.bfloat16
+    torch.set_default_dtype(default_dtype)
+    model, optim, _, train_dataloader, lr_scheduler = booster.boost(
+        model=model,
+        optimizer=optim,
+        lr_scheduler=lr_scheduler,
+        dataloader=train_dataloader,
+    )
+    # model = model.to(get_current_device())
+    torch.set_default_dtype(torch.float)
+
+    coordinator.print_on_master(f"Booster init max CUDA memory: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
+    coordinator.print_on_master(
+        f"Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
+    )
+
+    start_epoch = 0
+    sampler_start_idx = 0
+    start_step = 0
+    if args.checkpoint_path is not None:
+        if "modeling" in args.checkpoint_path:
+            coordinator.print_on_master(f"Continued pretrain from checkpoint {args.checkpoint_path}")
+            booster.load_model(model, args.checkpoint_path)
+        else:
+            coordinator.print_on_master(f"Load model checkpoint from {args.checkpoint_path}")
+            start_epoch, start_step, sampler_start_idx = load_checkpoint(
+                load_dir=args.checkpoint_path,
+                booster=booster,
+                model=model,
+                optimizer=optim,
+                lr_scheduler=lr_scheduler,
+            )
+            train_dataloader.sampler.set_start_index(start_index=sampler_start_idx)
+
+            coordinator.print_on_master(
+                f"Loaded checkpoint {args.checkpoint_path} at epoch {start_epoch} step {start_step}"
+            )
+            coordinator.print_on_master(f"Loaded sample at index {sampler_start_idx}")
+
+        coordinator.print_on_master(
+            f"Checkpoint loaded max CUDA memory: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB"
+        )
+        coordinator.print_on_master(
+            f"Checkpoint loaded CUDA memory: {torch.cuda.memory_allocated() / 1024 ** 2:.2f} MB"
+        )
+        coordinator.print_on_master(
+            f"Checkpoint loaded max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
+        )
+
     trainer = SFTTrainer(
         model=model,
-        strategy=strategy,
+        booster=booster,
         optim=optim,
         lr_scheduler=lr_scheduler,
         max_epochs=args.max_epochs,
         accumulation_steps=args.accumulation_steps,
+        start_epoch=start_epoch,
+        save_interval=args.save_interval,
+        save_dir=args.save_path,
+        coordinator=coordinator,
     )
 
-    logger = get_dist_logger()
+    get_dist_logger()
     trainer.fit(
         train_dataloader=train_dataloader,
-        eval_dataloader=eval_dataloader,
-        logger=logger,
+        eval_dataloader=None,
         log_dir=args.log_dir,
         use_wandb=args.use_wandb,
     )
@@ -185,37 +235,59 @@ def train(args):
         LORA_MANAGER.merge_weights = True
         model.eval()
     # save model checkpoint after fitting on only rank0
-    strategy.save_pretrained(model, path=args.save_path, tokenizer=tokenizer)
-    # save optimizer checkpoint on all ranks
-    if args.need_optim_ckpt:
-        strategy.save_optimizer(
-            trainer.optimizer, "rm_optim_checkpoint_%d.pt" % (torch.cuda.current_device()), only_rank0=False
-        )
+    coordinator.print_on_master("Start saving final model checkpoint")
+    booster.save_model(model, os.path.join(args.save_path, "modeling"), shard=True)
+    coordinator.print_on_master(f"Saved final model checkpoint at epoch {args.max_epochs} at folder {args.save_path}")
+
+    coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
 
 
 if __name__ == "__main__":
+    # ==============================
+    # Parse Arguments
+    # ==============================
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--strategy",
-        choices=["ddp", "colossalai_gemini", "colossalai_zero2", "colossalai_zero2_cpu"],
-        default="colossalai_zero2",
+        "--plugin",
+        type=str,
+        default="gemini",
+        choices=["gemini", "gemini_auto", "zero2", "zero2_cpu", "3d", "ddp"],
+        help="Choose which plugin to use",
     )
-    parser.add_argument("--model", choices=["gpt2", "bloom", "opt", "llama", "chatglm"], default="bloom")
-    parser.add_argument("--tokenizer", type=str, default=None)
+    parser.add_argument("--grad_clip", type=float, default=1.0, help="Gradient clipping value")
+    parser.add_argument("--weight_decay", type=float, default=0.1, help="Weight decay")
+    parser.add_argument("--warmup_steps", type=int, default=None, help="Warmup steps")
+    parser.add_argument("--tp", type=int, default=1)
+    parser.add_argument("--zero", type=int, default=1)
     parser.add_argument("--pretrain", type=str, default=None)
-    parser.add_argument("--dataset", type=str, default=None)
-    parser.add_argument("--max_datasets_size", type=int, default=None)
+    parser.add_argument("--tokenizer_dir", type=str, default=None)
+    parser.add_argument("--dataset", nargs="+", default=[])
+    parser.add_argument(
+        "--checkpoint_path", type=str, default=None, help="Checkpoint path if need to resume training form a checkpoint"
+    )
     parser.add_argument("--save_path", type=str, default="output")
-    parser.add_argument("--need_optim_ckpt", type=bool, default=False)
     parser.add_argument("--max_epochs", type=int, default=3)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--max_len", type=int, default=512)
+    parser.add_argument("--mixed_precision", type=str, default="fp16", choices=["fp16", "bf16"], help="Mixed precision")
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
+    parser.add_argument(
+        "--lora_train_bias",
+        type=str,
+        default="none",
+        help="'none' means it doesn't train biases. 'all' means it trains all biases. 'lora_only' means it only trains biases of LoRA layers",
+    )
+    parser.add_argument("--save_interval", type=int, default=1000, help="number of step between two checkpoints")
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
     parser.add_argument("--lr", type=float, default=5e-6)
+    parser.add_argument("--config_file", type=str, default="config_file", help="Config file")
     parser.add_argument("--accumulation_steps", type=int, default=8)
     parser.add_argument("--log_dir", default="logs", type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
+    parser.add_argument("--use_flash_attn", default=False, action="store_true")
     args = parser.parse_args()
+    os.makedirs(os.path.dirname(args.config_file), exist_ok=True)
+    with open(args.config_file, "w") as f:
+        json.dump(args.__dict__, f, indent=4)
     train(args)

@@ -48,3 +48,14 @@ def to_device(x: Any, device: torch.device) -> Any:
         return t
 
     return tree_map(_to, x)
+
+
+def all_reduce_mean(tensor: torch.Tensor) -> torch.Tensor:
+    dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM)
+    tensor.div_(dist.get_world_size())
+    return tensor
+
+
+def all_reduce_sum(tensor: torch.Tensor) -> torch.Tensor:
+    dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM)
+    return tensor

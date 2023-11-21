@@ -4,8 +4,6 @@ import torch
 import torch.distributed as dist
 from transformers import PreTrainedTokenizer
 
-from .base import Actor
-
 try:
     from transformers.generation_logits_process import (
         LogitsProcessorList,
@@ -39,7 +37,7 @@ def _is_sequence_finished(unfinished_sequences: torch.Tensor) -> bool:
 
 
 def _sample(
-    model: Actor,
+    model: Any,
     input_ids: torch.Tensor,
     max_length: int,
     early_stopping: bool = False,
@@ -94,7 +92,7 @@ def _sample(
 
 @torch.no_grad()
 def generate(
-    model: Actor,
+    model: Any,
     input_ids: torch.Tensor,
     tokenizer: PreTrainedTokenizer,
     max_length: int,

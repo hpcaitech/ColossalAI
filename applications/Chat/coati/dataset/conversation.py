@@ -18,7 +18,7 @@ from typing import List
 
 
 class SeparatorStyle(Enum):
-    ADD_EOS_TOKEN = auto()
+    ADD_BOS_EOS_TOKEN = auto()
 
 
 @dataclasses.dataclass
@@ -27,34 +27,41 @@ class Conversation:
     roles: List[str]
     messages: List[List[str]]
     offset: int
-    sep_style: SeparatorStyle = SeparatorStyle.ADD_EOS_TOKEN
-    sep: str = "</s>"
+    sep_style: SeparatorStyle
+    seps: List[str]
 
-    skip_next: bool = False
+    def clear(self):
+        self.messages = []
 
-    def get_prompt(self):
-        if self.sep_style == SeparatorStyle.ADD_EOS_TOKEN:
+    def get_prompt(self, length: int = None):
+        if length is None:
+            length = len(self.messages)
+
+        if self.sep_style == SeparatorStyle.ADD_BOS_EOS_TOKEN:
+            ret = self.system
+            for role, message in self.messages[0:length]:
+                if message:
+                    ret += role + ": " + self.seps[0] + message + self.seps[1]
+                else:
+                    ret += role + ": " + self.seps[0]
+            return ret
+        else:
+            raise ValueError(f"Invalid style: {self.sep_style}")
+
+    def save_prompt(self):
+        if self.sep_style == SeparatorStyle.ADD_BOS_EOS_TOKEN:
             ret = self.system
             for role, message in self.messages:
                 if message:
-                    ret += role + ": " + message + self.sep
+                    ret += role + ": " + self.seps[0] + message + self.seps[1] + "\n"
                 else:
-                    ret += role + ": "
+                    ret += role + ": " + self.seps[0]
             return ret
         else:
             raise ValueError(f"Invalid style: {self.sep_style}")
 
     def append_message(self, role, message):
         self.messages.append([role, message])
-
-    def to_gradio_chatbot(self):
-        ret = []
-        for i, (role, msg) in enumerate(self.messages[self.offset :]):
-            if i % 2 == 0:
-                ret.append([msg, None])
-            else:
-                ret[-1][-1] = msg
-        return ret
 
     def copy(self):
         return Conversation(
@@ -63,7 +70,7 @@ class Conversation:
             messages=[[x, y] for x, y in self.messages],
             offset=self.offset,
             sep_style=self.sep_style,
-            sep=self.sep,
+            seps=self.seps,
         )
 
     def dict(self):
@@ -72,7 +79,7 @@ class Conversation:
             "roles": self.roles,
             "messages": self.messages,
             "offset": self.offset,
-            "sep": self.sep,
+            "seps": self.seps,
         }
 
 
@@ -80,10 +87,10 @@ conv = Conversation(
     system="A chat between a curious human and an artificial intelligence assistant. "
     "The assistant gives helpful, detailed, and polite answers to the human's questions.\n\n",
     roles=("Human", "Assistant"),
-    messages=(),
+    messages=[],
     offset=0,
-    sep_style=SeparatorStyle.ADD_EOS_TOKEN,
-    sep="</s>",
+    sep_style=SeparatorStyle.ADD_BOS_EOS_TOKEN,
+    seps=["<s>", "</s>"],
 )
 
 default_conversation = conv

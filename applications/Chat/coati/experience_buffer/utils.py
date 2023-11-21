@@ -26,6 +26,7 @@ class BufferItem:
     action_log_probs: torch.Tensor
     values: torch.Tensor
     reward: torch.Tensor
+    kl: torch.Tensor
     advantages: torch.Tensor
     attention_mask: Optional[torch.LongTensor]
     action_mask: Optional[torch.BoolTensor]
@@ -34,7 +35,7 @@ class BufferItem:
 def split_experience_batch(experience: Experience) -> List[BufferItem]:
     batch_size = experience.sequences.size(0)
     batch_kwargs = [{} for _ in range(batch_size)]
-    keys = ("sequences", "action_log_probs", "values", "reward", "advantages", "attention_mask", "action_mask")
+    keys = ("sequences", "action_log_probs", "values", "reward", "kl", "advantages", "attention_mask", "action_mask")
     for key in keys:
         value = getattr(experience, key)
         if isinstance(value, torch.Tensor):
@@ -63,7 +64,7 @@ def _zero_pad_sequences(sequences: List[torch.Tensor], side: str = "left") -> to
 def make_experience_batch(items: List[BufferItem]) -> Experience:
     kwargs = {}
     to_pad_keys = set(("action_log_probs", "action_mask"))
-    keys = ("sequences", "action_log_probs", "values", "reward", "advantages", "attention_mask", "action_mask")
+    keys = ("sequences", "action_log_probs", "values", "reward", "kl", "advantages", "attention_mask", "action_mask")
     for key in keys:
         vals = [getattr(item, key) for item in items]
         if key in to_pad_keys:

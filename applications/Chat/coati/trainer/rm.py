@@ -1,117 +1,92 @@
-from typing import Callable, Optional
+import os
+from typing import Any, Callable, Optional
 
 import torch
 import tqdm
+from coati.models import LogSigLoss
+from coati.trainer.utils import all_reduce_mean
+from coati.utils import AccumulativeMeanMeter, save_checkpoint
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
+from transformers import PreTrainedTokenizerBase
+
+from colossalai.booster import Booster
+from colossalai.cluster import DistCoordinator
+from colossalai.utils import get_current_device
 
 from .base import SLTrainer
-from .strategies import Strategy
-from .utils import is_rank_0
+from .utils import is_rank_0, to_device
 
 
 class RewardModelTrainer(SLTrainer):
     """
-        Trainer to use while training reward model.
+        Trainer for PPO algorithm.
 
     Args:
-        model (torch.nn.Module): the model to train
-        strategy (Strategy): the strategy to use for training
-        optim (Optimizer): the optimizer to use for training
-        lr_scheduler (_LRScheduler): the lr scheduler to use for training
-        loss_fn (callable): the loss function to use for training
-        max_epochs (int, defaults to 2): the number of epochs to train
+        actor (Actor): the actor model in ppo algorithm
+        ref_model (Critic): the reference model in ppo algorithm
+        booster (Strategy): the strategy to use for training
+        actor_optim (Optimizer): the optimizer to use for actor model
+        actor_lr_scheduler (_LRScheduler): the lr scheduler to use for actor model
+        tokenizer (PreTrainedTokenizerBase): the tokenizer to use for encoding
+        max_epochs (int, defaults to 1): the max number of epochs to train
+        beta (float, defaults to 0.1): the beta parameter in dpo loss
+        accumulation_steps (int): the number of steps to accumulate gradients
+        start_epoch (int, defaults to 0): the start epoch, non-zero if resumed from a checkpoint
+        save_interval (int): the interval to save model checkpoints, default to 0, which means no checkpoint will be saved during trainning
+        save_dir (str): the directory to save checkpoints
+        coordinator (DistCoordinator): the coordinator to use for distributed logging
     """
 
     def __init__(
         self,
-        model,
-        strategy: Strategy,
-        optim: Optimizer,
+        model: Any,
+        booster: Booster,
+        optimizer: Optimizer,
         lr_scheduler: _LRScheduler,
-        loss_fn: Callable,
+        tokenizer: PreTrainedTokenizerBase,
+        loss_fn: Optional[Callable] = None,
         max_epochs: int = 1,
+        beta: float = 0.1,
+        accumulation_steps: int = 1,
+        start_epoch: int = 0,
+        save_interval: int = 0,
+        save_dir: str = None,
+        coordinator: DistCoordinator = None,
     ) -> None:
-        super().__init__(strategy, max_epochs, model, optim)
-
-        self.loss_fn = loss_fn
-        self.scheduler = lr_scheduler
-
+        super().__init__(booster, max_epochs=max_epochs, model=model, optimizer=optimizer, start_epoch=start_epoch)
+        self.actor_scheduler = lr_scheduler
+        self.tokenizer = tokenizer
+        self.loss_fn = loss_fn if loss_fn is not None else LogSigLoss(beta=beta)
+        self.save_interval = save_interval
+        self.coordinator = coordinator
+        self.save_dir = save_dir
         self.num_train_step = 0
-
-    def _eval(self, epoch):
-        if self.eval_dataloader is not None:
-            self.model.eval()
-            dist, num_correct, num_samples = 0, 0, 0
-            with torch.no_grad():
-                for chosen_ids, c_mask, reject_ids, r_mask in self.eval_dataloader:
-                    chosen_ids = chosen_ids.squeeze(1).to(torch.cuda.current_device())
-                    c_mask = c_mask.squeeze(1).to(torch.cuda.current_device())
-                    reject_ids = reject_ids.squeeze(1).to(torch.cuda.current_device())
-                    r_mask = r_mask.squeeze(1).to(torch.cuda.current_device())
-                    chosen_reward = self.model(chosen_ids, attention_mask=c_mask)
-                    reject_reward = self.model(reject_ids, attention_mask=r_mask)
-                    num_samples += chosen_ids.size(0)
-                    num_correct += (chosen_reward > reject_reward).sum().item()
-                    dist += (chosen_reward - reject_reward).mean().item()
-                self.dist = dist / len(self.eval_dataloader)
-                self.acc = num_correct / num_samples
-
-            if self.writer:
-                self.writer.add_scalar("eval/dist", self.dist, epoch)
-                self.writer.add_scalar("eval/acc", self.acc, epoch)
-
-    def _train(self, epoch):
-        self.model.train()
-        step_bar = tqdm.trange(
-            len(self.train_dataloader), desc=f"Epoch {epoch + 1}/{self.max_epochs}", disable=not is_rank_0()
-        )
-        for chosen_ids, c_mask, reject_ids, r_mask in self.train_dataloader:
-            chosen_ids = chosen_ids.squeeze(1).to(torch.cuda.current_device())
-            c_mask = c_mask.squeeze(1).to(torch.cuda.current_device())
-            reject_ids = reject_ids.squeeze(1).to(torch.cuda.current_device())
-            r_mask = r_mask.squeeze(1).to(torch.cuda.current_device())
-            chosen_reward = self.model(chosen_ids, attention_mask=c_mask)
-            reject_reward = self.model(reject_ids, attention_mask=r_mask)
-            loss = self.loss_fn(chosen_reward, reject_reward)
-            self.strategy.backward(loss, self.model, self.optimizer)
-            self.strategy.optimizer_step(self.optimizer)
-            self.optimizer.zero_grad()
-            if self.writer:
-                self.writer.add_scalar("train/loss", loss.item(), self.num_train_step)
-                self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
-                self.writer.add_scalar("train/dist", (chosen_reward - reject_reward).mean().item(), self.num_train_step)
-                self.writer.add_scalar(
-                    "train/acc", (chosen_reward > reject_reward).float().mean().item(), self.num_train_step
-                )
-            self.num_train_step += 1
-            if self.num_train_step % 100 == 0:
-                self.scheduler.step()
-            step_bar.update()
-        step_bar.close()
+        self.accumulation_steps = accumulation_steps
+        self.device = get_current_device()
+        self.accumulative_meter = AccumulativeMeanMeter()
 
     def _before_fit(
         self,
-        train_dataloader: DataLoader,
-        eval_dataloader: DataLoader,
+        train_preference_dataloader: DataLoader = None,
+        eval_preference_dataloader: DataLoader = None,
         log_dir: Optional[str] = None,
         use_wandb: bool = False,
     ):
         """
         Args:
-            train_dataloader (DataLoader): the dataloader to use for training
-            eval_dataloader (DataLoader): the dataloader to use for evaluation
+            prompt_dataloader (DataLoader): the dataloader to use for prompt data
+            pretrain_dataloader (DataLoader): the dataloader to use for pretrain data
         """
-        self.train_dataloader = train_dataloader
-        self.eval_dataloader = eval_dataloader
-
+        self.train_dataloader = train_preference_dataloader
+        self.eval_dataloader = eval_preference_dataloader
         self.writer = None
         if use_wandb and is_rank_0():
             assert log_dir is not None, "log_dir must be provided when use_wandb is True"
             import wandb
 
-            wandb.init(project="Coati-rm", sync_tensorboard=True)
+            self.wandb_run = wandb.init(project="Coati-rm", sync_tensorboard=True)
         if log_dir is not None and is_rank_0():
             import os
             import time
@@ -121,3 +96,137 @@ class RewardModelTrainer(SLTrainer):
             log_dir = os.path.join(log_dir, "rm")
             log_dir = os.path.join(log_dir, time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime()))
             self.writer = SummaryWriter(log_dir=log_dir)
+
+    def _train(self, epoch):
+        self.model.train()
+        step_bar = tqdm.trange(
+            len(self.train_dataloader), desc=f"Epoch {epoch + 1}/{self.max_epochs}", disable=not is_rank_0()
+        )
+        for i, batch in enumerate(self.train_dataloader):
+            batch = to_device(batch, self.device)
+
+            (
+                chosen_input_ids,
+                chosen_attention_mask,
+                reject_input_ids,
+                reject_attention_mask,
+            ) = (
+                batch["chosen_input_ids"],
+                batch["chosen_attention_mask"],
+                batch["reject_input_ids"],
+                batch["reject_attention_mask"],
+            )
+            batch_size = chosen_input_ids.size()[0]
+
+            # concatenate for better parrallelism
+            reward = self.model(
+                torch.cat([chosen_input_ids, reject_input_ids], dim=0),
+                attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask], dim=0),
+            )
+            chosen_reward = reward[:batch_size]
+            reject_reward = reward[batch_size:]
+            loss = self.loss_fn(chosen_reward, reject_reward).mean()
+
+            self.booster.backward(loss=loss, optimizer=self.optimizer)
+            if self.num_train_step % self.accumulation_steps == self.accumulation_steps - 1:
+                self.optimizer.step()
+                self.optimizer.zero_grad()
+                self.actor_scheduler.step()
+
+            # sync
+            loss_mean = all_reduce_mean(tensor=loss)
+            chosen_rewards_mean = all_reduce_mean(tensor=chosen_reward)
+            rejected_rewards_mean = all_reduce_mean(tensor=reject_reward)
+            self.accumulative_meter.add("chosen_rewards", chosen_rewards_mean.to(torch.float16).mean().item())
+            self.accumulative_meter.add("rejected_rewards", rejected_rewards_mean.to(torch.float16).mean().item())
+            self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
+
+            if self.writer and is_rank_0():
+                self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
+                self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
+                self.writer.add_scalar(
+                    "train/dist",
+                    self.accumulative_meter.get("chosen_rewards") - self.accumulative_meter.get("rejected_rewards"),
+                    self.num_train_step,
+                )
+                self.writer.add_scalar(
+                    "train/reward_chosen", self.accumulative_meter.get("chosen_rewards"), self.num_train_step
+                )
+                self.writer.add_scalar(
+                    "train/reward_reject", self.accumulative_meter.get("rejected_rewards"), self.num_train_step
+                )
+
+            if i % self.accumulation_steps == self.accumulation_steps - 1:
+                self.num_train_step += 1
+                step_bar.update()
+                self.accumulative_meter.reset()
+
+            if (self.save_interval > 0 and (i + 1) % (self.save_interval * self.accumulation_steps) == 0) or (
+                i + 1
+            ) == len(self.train_dataloader):
+                self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
+                save_checkpoint(
+                    save_dir=self.save_dir,
+                    booster=self.booster,
+                    model=self.model,
+                    optimizer=self.optimizer,
+                    lr_scheduler=self.actor_scheduler,
+                    epoch=epoch,
+                    step=i + 1,
+                    batch_size=batch_size,
+                    coordinator=self.coordinator,
+                )
+                self.coordinator.print_on_master(
+                    f"Saved checkpoint at epoch {epoch} step {(i + 1)/self.accumulation_steps} at folder {self.save_dir}"
+                )
+        step_bar.close()
+
+    def _eval(self, epoch):
+        if self.eval_dataloader is None:
+            self.coordinator.print_on_master("No eval dataloader is provided, skip evaluation")
+            return
+        self.model.eval()
+        step_bar = tqdm.trange(
+            len(self.eval_dataloader), desc=f"Epoch {epoch + 1}/{self.max_epochs}", disable=not is_rank_0()
+        )
+        with torch.no_grad():
+            for i, batch in enumerate(self.eval_dataloader):
+                batch = to_device(batch, self.device)
+                # print(batch)
+                (
+                    chosen_input_ids,
+                    chosen_attention_mask,
+                    reject_input_ids,
+                    reject_attention_mask,
+                ) = (
+                    batch["chosen_input_ids"],
+                    batch["chosen_attention_mask"],
+                    batch["reject_input_ids"],
+                    batch["reject_attention_mask"],
+                )
+
+                chosen_reward = self.model(chosen_input_ids, attention_mask=chosen_attention_mask)
+                reject_reward = self.model(reject_input_ids, attention_mask=reject_attention_mask)
+                loss = self.loss_fn(chosen_reward, reject_reward).mean()
+
+                # sync
+                loss_mean = all_reduce_mean(tensor=loss)
+                chosen_rewards_mean = all_reduce_mean(tensor=chosen_reward)
+                rejected_rewards_mean = all_reduce_mean(tensor=reject_reward)
+                self.accumulative_meter.add("chosen_rewards", chosen_rewards_mean.to(torch.float16).mean().item())
+                self.accumulative_meter.add("rejected_rewards", rejected_rewards_mean.to(torch.float16).mean().item())
+                self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
+
+                step_bar.update()
+
+            msg = "Evaluation Result:\n"
+            for tag in ["loss", "chosen_rewards", "rejected_rewards"]:
+                msg = msg + f"{tag}: {self.accumulative_meter.get(tag)}\n"
+            msg = (
+                msg
+                + f"distance: {self.accumulative_meter.get('chosen_rewards')-self.accumulative_meter.get('rejected_rewards')}\n"
+            )
+            self.coordinator.print_on_master(msg)
+            with open(os.path.join(self.save_dir, f"eval_result_epoch{epoch}.txt"), "w") as f:
+                f.write(msg)
+            step_bar.close()

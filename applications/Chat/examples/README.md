@@ -4,17 +4,19 @@
 
 - [Examples](#examples)
   - [Table of Contents](#table-of-contents)
-  - [Install requirements](#install-requirements)
-  - [Supervised datasets collection](#supervised-datasets-collection)
-    - [Conversation dataset generation](#conversation-dataset-generation)
-  - [Stage1 - Supervised instructs tuning](#stage1---supervised-instructs-tuning)
-    - [Arg List](#arg-list)
-  - [Stage2 - Training reward model](#stage2---training-reward-model)
-    - [Features and tricks in RM training](#features-and-tricks-in-rm-training)
-    - [Experiment result](#experiment-result)
-    - [Arg List](#arg-list-1)
-  - [Stage3 - Training model using prompts with RL](#stage3---training-model-using-prompts-with-rl)
-    - [Arg List](#arg-list-2)
+  - [Install Requirements](#install-requirements)
+  - [Supervised Datasets Collection](#supervised-datasets-collection)
+    - [Conversation Dataset Generation](#conversation-dataset-generation)
+  - [Task I: Supervised Instruction Tuning](#task-i-supervised-instructs-tuning)
+  - [Task II: Reinforcement Learning from Human Feedback](#task-ii-reinforcement-learning-from-human-feedback)
+    - [Stage1 - Supervised instructs tuning](#stage1---supervised-instructs-tuning)
+      - [Arg List](#arg-list)
+    - [Stage2 - Training reward model](#stage2---training-reward-model)
+      - [Features and tricks in RM training](#features-and-tricks-in-rm-training)
+      - [Experiment result](#experiment-result)
+      - [Arg List](#arg-list-1)
+    - [Stage3 - Training model using prompts with RL](#stage3---training-model-using-prompts-with-rl)
+      - [Arg List](#arg-list-2)
   - [Inference example - After Stage3](#inference-example---after-stage3)
   - [Attention](#attention)
     - [data](#data)
@@ -35,6 +37,29 @@
 ```shell
 pip install -r requirements.txt
 ```
+
+## Get Start with ColossalRun
+
+You can use colossalai run to launch multi-nodes training:
+```
+colossalai run --nproc_per_node YOUR_GPU_PER_NODE --hostfile YOUR_HOST_FILE \
+train.py --OTHER_CONFIGURATIONS
+```
+Here is a sample hostfile:
+
+```
+hostname1
+hostname2
+hostname3
+hostname4
+```
+
+Make sure master node can access all nodes (including itself) by ssh without password. Here are some other arguments.
+
+- nnodes: number of nodes used in the training
+- nproc-per-node: specifies the number of processes to be launched per node
+- rdzv-endpoint: address of the host node
+
 
 ## Supervised datasets collection
 
@@ -92,9 +117,9 @@ python generate_conversation_dataset.py \
     --save_path "/path/to/dataset"
 ```
 
-## Stage1 - Supervised instructs tuning
+## Task I: Supervised Instructs Tuning
 
-Stage1 is supervised instructs fine-tuning, which uses the datasets mentioned earlier to fine-tune the model.
+In the task of supervised instructs fine-tuning, we will uses the datasets mentioned earlier to fine-tune the model.
 [[Stage1 tutorial video]](https://www.youtube.com/watch?v=-qFBZFmOJfg)
 
 You can run the `examples/train_sft.sh` to start a supervised instructs fine-tuning.
@@ -102,7 +127,7 @@ You can run the `examples/train_sft.sh` to start a supervised instructs fine-tun
 You can also use the following cmd to start a supervised instructs fine-tuning with your own settings.
 
 ```bash
-torchrun --standalone --nproc_per_node=4 train_sft.py \
+colossalai run --nproc_per_node 1 --hostfile ./hostfile train_sft.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy colossalai_zero2 \
@@ -113,7 +138,8 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
     --lr 2e-5 \
     --max_datasets_size 512 \
     --max_epochs 1 \
-    --grad_checkpoint
+    --grad_checkpoint \
+    --use_wandb
 ```
 
 **Note**: the supervised dataset follows the following format,
@@ -131,7 +157,6 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
 ```
 
 ### Arg List
-
 - `--strategy`: the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
 - `--model`: model type, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
 - `--pretrain`: pretrain model, type=str, default=None
@@ -142,8 +167,40 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
 - `--batch_size`: batch size while training, type=int, default=4
 - `--lora_rank`: low-rank adaptation matrices rank, type=int, default=0
 - `--grad_checkpoint`: enable gradient checkpointing, type=bool, default=False
+- `use_wandb`: whether to use [wandb](https://wandb.ai/site)
 
-## Stage2 - Training reward model
+## Task II: Reinforcement Learning from Human Feedback
+### Stage1 - Supervised Instructs Tuning
+
+The first stage of RLHF is supervised instructs fine-tuning (SFT). This stage is basically the same as the first task, which uses the same datasets but with different prompt format.
+
+You can run the `examples/train_rlhf_sft.sh` to start a supervised instructs fine-tuning.
+
+You can also use the following cmd to start a supervised instructs fine-tuning with your own settings.
+
+```bash
+colossalai run --nproc_per_node 1 --hostfile ./hostfile train_rlhf_sft.py \
+    --pretrain "gpt2" \
+    --model 'gpt2' \
+    --strategy colossalai_zero2 \
+    --save_path 'path to a directory where you want to stre the weights of the model' \
+    --dataset 'path to your dataset, which should be a json file' \
+    --batch_size 4 \
+    --accumulation_steps 8 \
+    --lr 2e-5 \
+    --max_datasets_size 60000 \
+    --max_epochs 1 \
+    --use_wandb
+```
+
+**Note**: the supervised dataset follows the same format as in Task I.
+
+### Arg List
+
+The same as in Task I.
+
+
+### Stage2 - Training reward model
 
 We train a reward model in stage 2, which obtains corresponding scores by manually ranking different outputs for the same prompt and supervises the training of the reward model.
 [[Stage2 tutorial video]](https://www.youtube.com/watch?v=gMx2CApKhuo)
@@ -153,7 +210,7 @@ You can run the `examples/train_rm.sh` to start a reward model training.
 You can also use the following cmd to start training a reward model.
 
 ```bash
-torchrun --standalone --nproc_per_node=4 train_reward_model.py \
+colossalai run --nproc_per_node 1 --hostfile ./hostfile train_reward_model.py \
     --pretrain "/path/to/LLaMa-7B/" \
     --model 'llama' \
     --strategy colossalai_zero2 \
@@ -198,6 +255,20 @@ Model performance in [Anthropics paper](https://arxiv.org/abs/2204.05862):
 - `--lora_rank`: low-rank adaptation matrices rank, type=int, default=0
 - `--loss_func`: which kind of loss function, choices=['log_sig', 'log_exp']
 - `--max_len`: max sentence length for generation, type=int, default=512
+- `--use_wandb`: whether to use wandb
+
+
+### Note on Reward Model Training
+
+Before you move on the next stage, please check the following list to ensure that your reward model is stable and robust. You can check the reward chart and the accuracy chart on wandb.
+- The mean reward for chosen data is much higher than those for rejected data
+- The accuracy is larger than 0.5 by a significant margin (usually should be greater than 0.6)
+- Optional：check the reward is positive for chosen data vice versa
+
+Your training reward curves should look similar to the following charts.
+<p align="center">
+<img width="1000" alt="image" src="https://raw.githubusercontent.com/YeAnbang/imagehostingrepo/main/mean_reward_chart.png">
+</p>
 
 ## Stage3 - Training model using prompts with RL
 
@@ -212,17 +283,26 @@ You can run the `examples/train_prompts.sh` to start PPO training.
 You can also use the cmd following to start PPO training.
 [[Stage3 tutorial video]](https://www.youtube.com/watch?v=Z8wwSHxPL9g)
 
-```bash
-torchrun --standalone --nproc_per_node=4 train_prompts.py \
-    --pretrain "/path/to/LLaMa-7B/" \
-    --model 'llama' \
-    --strategy colossalai_zero2 \
-    --prompt_dataset /path/to/your/prompt_dataset \
-    --pretrain_dataset /path/to/your/pretrain_dataset \
-    --rm_pretrain /your/pretrain/rm/definition \
-    --rm_path /your/rm/model/path
-```
 
+PPO Training Script
+```bash
+colossalai run --nproc_per_node 1 --hostfile ./hostfile train_prompts.py \
+    --pretrain_dataset 'path to sft dataset used in stage 1'  \
+    --prompt_dataset 'dataset that contains prompt (queries) for PPO training' \
+    --strategy colossalai_zero2 \
+    --num_episodes 8000 --num_collect_steps 1 --num_update_steps 1 \
+    --experience_batch_size 32 \
+    --train_batch_size 32 \
+    --save_path 'path to save the trained model' \
+    --ptx_coef 0.0 \
+    --rm_model 'gpt2' \
+    --rm_pretrain 'gpt2' \
+    --rm_path 'path to reward model trained in stage 2' \
+    --reward_model_tokenizer 'gpt2' \
+    --pretrain '/home/lcyab/data/Anthropic_rlhf/actor/pretrain_v3' \
+    --use_wandb
+
+```
 Prompt dataset: the instruction dataset mentioned in the above figure which includes the instructions, e.g. you can use the [script](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples/generate_prompt_dataset.py) which samples `instinwild_en.json` or `instinwild_ch.json` in [InstructionWild](https://github.com/XueFuzhao/InstructionWild/tree/main/data#instructwild-data) to generate the prompt dataset.
 Pretrain dataset: the pretrain dataset including the instruction and corresponding response, e.g. you can use the [InstructWild Data](https://github.com/XueFuzhao/InstructionWild/tree/main/data) in stage 1 supervised instructs tuning.
 
@@ -257,6 +337,29 @@ Pretrain dataset: the pretrain dataset including the instruction and correspondi
       ...
   ]
   ```
+### Sample Training Results Using Default Script
+#### Reward
+<p align="center">
+<img width="700" alt="image" src="https://raw.githubusercontent.com/YeAnbang/imagehostingrepo/main/reward.png">
+</p>
+
+#### Approximate KL Divergence
+<p align="center">
+<img width="700" alt="image" src="https://raw.githubusercontent.com/YeAnbang/imagehostingrepo/main/KL.png">
+</p>
+
+### Note on PPO Training
+#### Q1: My reward is nagtive
+Answer: Check your reward model trained in stage 1. If the reward model only generate negative reward, we actually will expect a negative reward. However, even though the reward is negative, the reward should go up.
+
+#### Q2: My actor loss is negative
+Answer: This is normal for actor loss as PPO doesn't restrict the actor loss to be positive.
+
+#### Q3: My reward doesn't go up (decreases)
+Answer: The causes to this problem are two-fold. Check your reward model, make sure that it gives positive and strong reward for good cases and negative, strong reward for bad responses. You should also try different hyperparameter settings.
+
+#### Q4: Generation is garbage
+Answer: Yes, this happens and is well documented by other implementations. After training for too many episodes, the actor gradually deviate from its original state, which may leads to decrease in language modeling capabilities. A way to fix this is to add suppervised loss during PPO. Set ptx_coef to a none-zero value (between 0 and 1), which balances PPO loss and sft loss.
 
 ### Arg List
 
@@ -279,6 +382,7 @@ Pretrain dataset: the pretrain dataset including the instruction and correspondi
 - `--lora_rank`: low-rank adaptation matrices rank, type=int, default=0
 - `--kl_coef`: kl_coef using for computing reward, type=float, default=0.1
 - `--ptx_coef`: ptx_coef using for computing policy loss, type=float, default=0.9
+- `--use_wandb`
 
 ## Inference example - After Stage3
 

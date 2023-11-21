@@ -12,16 +12,17 @@ from coati.dataset import (
     load_tokenized_dataset,
     setup_distributed_dataloader,
 )
-from coati.models import LogExpLoss, LogSigLoss, RewardModel, convert_to_lora_module
-from coati.trainer import RewardModelTrainer
+from coati.models import convert_to_lora_module
+from coati.trainer import DPOTrainer
 from coati.utils import load_checkpoint, replace_with_flash_attention
-from transformers import AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
+from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
@@ -76,6 +77,7 @@ def train(args):
         raise ValueError(f"Unknown plugin {args.plugin}")
 
     booster = Booster(plugin=plugin)
+    ref_booster = Booster(plugin=plugin)
 
     # ======================================================
     # Initialize Model, Objective, Optimizer and LR Scheduler
@@ -84,10 +86,15 @@ def train(args):
         LazyInitContext(default_device=get_current_device()) if isinstance(plugin, (GeminiPlugin,)) else nullcontext()
     )
     with init_ctx:
-        model = RewardModel(args.pretrain)
+        model = AutoModelForCausalLM.from_pretrained(args.pretrain)
+        ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain)
 
         # debug tiny model
-        # model = RewardModel(
+        # model = transformers.LlamaForCausalLM(
+        #     transformers.LlamaConfig(hidden_size=512, intermediate_size=1536, num_attention_heads=8, num_hidden_layers=4
+        #     )
+        # )
+        # ref_model = transformers.LlamaForCausalLM(
         #     transformers.LlamaConfig(hidden_size=512, intermediate_size=1536, num_attention_heads=8, num_hidden_layers=4
         #     )
         # )
@@ -98,7 +105,7 @@ def train(args):
             model = convert_to_lora_module(model, args.lora_rank, lora_train_bias=args.lora_train_bias)
 
     if args.grad_checkpoint and args.lora_rank == 0:
-        model.model.gradient_checkpointing_enable()  # TODO: support gradient checkpoint for the last linear layer
+        model.gradient_checkpointing_enable()
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
     elif args.lora_rank > 0:
         coordinator.print_on_master(msg="Gradient checkpointing will be disabled when LoRA is enabled")
@@ -112,15 +119,13 @@ def train(args):
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
     tokenizer.padding_side = "right"
     tokenizer.pad_token = tokenizer.eos_token
+    coordinator.print_on_master(
+        f"Tokenizer pad token: {tokenizer.pad_token}, Tokenizer padding side: {tokenizer.padding_side}"
+    )
 
-    # configure loss function
-    if args.loss_fn == "log_sig":
-        loss_fn = LogSigLoss()
-    elif args.loss_fn == "log_exp":
-        loss_fn = LogExpLoss()
-    else:
-        raise ValueError(f'Unsupported loss function "{args.loss_fn}"')
-
+    # test_res = model.generate(tokenizer.encode("tell a story about a cat.\n", return_tensors='pt'),
+    #                           max_length=200, do_sample=True, top_k=50, top_p=0.95, temperature=0.9)
+    # coordinator.print_on_master(f"Test generate: {tokenizer.decode(test_res[0])}")
     # configure optimizer
     optim = HybridAdam(
         model_params=model.parameters(),
@@ -166,6 +171,12 @@ def train(args):
         lr_scheduler=lr_scheduler,
         dataloader=train_dataloader,
     )
+
+    # test_res = model.generate(tokenizer.encode("tell a story about a cat.\n", return_tensors='pt').to(get_current_device()),
+    #                           max_length=200, do_sample=True, top_k=50, top_p=0.95, temperature=0.9)
+    # coordinator.print_on_master(f"Test generate: {tokenizer.decode(test_res[0])}")
+
+    ref_model, _, _, _, _ = ref_booster.boost(model=ref_model, dataloader=train_dataloader)
     torch.set_default_dtype(torch.float)
 
     coordinator.print_on_master(f"Booster init max CUDA memory: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
@@ -207,13 +218,13 @@ def train(args):
             f"Checkpoint loaded max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
         )
 
-    trainer = RewardModelTrainer(
-        model,
-        booster,
-        optim,
-        lr_scheduler,
-        tokenizer,
-        loss_fn=loss_fn,
+    trainer = DPOTrainer(
+        actor=model,
+        ref_model=ref_model,
+        booster=booster,
+        actor_optim=optim,
+        actor_lr_scheduler=lr_scheduler,
+        tokenizer=tokenizer,
         max_epochs=args.max_epochs,
         accumulation_steps=args.accumulation_steps,
         start_epoch=start_epoch,
@@ -222,6 +233,7 @@ def train(args):
         coordinator=coordinator,
     )
 
+    get_dist_logger()
     trainer.fit(
         train_preference_dataloader=train_dataloader,
         eval_preference_dataloader=None,
@@ -272,7 +284,6 @@ if __name__ == "__main__":
     parser.add_argument("--max_epochs", type=int, default=3)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--mixed_precision", type=str, default="fp16", choices=["fp16", "bf16"], help="Mixed precision")
-    parser.add_argument("--loss_fn", type=str, default="log_sig", choices=["log_sig", "log_exp"], help="Loss function")
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument(
         "--lora_train_bias",

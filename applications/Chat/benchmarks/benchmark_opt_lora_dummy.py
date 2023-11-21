@@ -76,9 +76,11 @@ def main(args):
     if args.strategy == "ddp":
         strategy = DDPStrategy()
     elif args.strategy == "colossalai_gemini":
-        strategy = GeminiStrategy(placement_policy="static",initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy="static", initial_scale=2**5)
     elif args.strategy == "colossalai_gemini_cpu":
-        strategy = GeminiStrategy(placement_policy="static", offload_optim_frac=1.0, offload_param_frac=1.0, initial_scale=2**5)
+        strategy = GeminiStrategy(
+            placement_policy="static", offload_optim_frac=1.0, offload_param_frac=1.0, initial_scale=2**5
+        )
     elif args.strategy == "colossalai_zero2":
         strategy = LowLevelZeroStrategy(stage=2, placement_policy="cuda")
     elif args.strategy == "colossalai_zero2_cpu":
@@ -155,7 +157,9 @@ def main(args):
         initial_model,
         actor_optim,
         critic_optim,
+        None,
         tokenizer=tokenizer,
+        rm_model_tokenizer=tokenizer,
         ptx_coef=0,
         train_batch_size=args.train_batch_size,
         offload_inference_models=args.offload_inference_models,
@@ -173,6 +177,7 @@ def main(args):
         num_episodes=args.num_episodes,
         num_update_steps=args.num_update_steps,
         num_collect_steps=args.num_collect_steps,
+        save_per_num_episodes=args.save_per_num_episodes,
     )
 
     print_rank_0(f"Peak CUDA mem: {torch.cuda.max_memory_allocated()/1024**3:.2f} GB")
@@ -199,6 +204,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_collect_steps", type=int, default=8)
     parser.add_argument("--num_update_steps", type=int, default=1)
     parser.add_argument("--train_batch_size", type=int, default=8)
+    parser.add_argument("--save_per_num_episodes", type=int, default=1000)
     parser.add_argument("--experience_batch_size", type=int, default=8)
     parser.add_argument("--lora_rank", type=int, default=0)
     parser.add_argument("--cuda_mem_frac", type=float, default=1.0)

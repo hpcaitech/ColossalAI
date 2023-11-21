@@ -17,15 +17,14 @@ from typing import Dict, Optional, Sequence, Tuple
 
 import torch
 from coati.models.chatglm.chatglm_tokenizer import ChatGLMTokenizer
+from datasets import load_dataset
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
-from colossalai.logging import get_dist_logger
+from colossalai.cluster import DistCoordinator
 
-from .utils import is_rank_0, jload
-
-logger = get_dist_logger()
+from .utils import is_rank_0, jload, read_string_by_schema
 
 IGNORE_INDEX = -100
 PROMPT_DICT = {
@@ -120,16 +119,28 @@ class SFTDataset(Dataset):
         dataset: dataset for supervised model
         tokenizer: tokenizer for supervised model
         max_length: max length of input
+        dataset_schema: schema for reading the dataset. cascaded feild names seperated by '.'.
+             e.g. person.name.first will access data['person']['name']['first']
     """
 
-    def __init__(self, dataset: Dict, tokenizer: PreTrainedTokenizer, max_length: int = 512) -> None:
+    def __init__(
+        self,
+        dataset: Dict,
+        tokenizer: PreTrainedTokenizer,
+        max_length: int = 512,
+        dataset_schema: Dict[str, str] = {"prompt": "prompt", "completion": "completion"},
+    ) -> None:
         super().__init__()
         self.input_ids = []
+        self.coordinator = DistCoordinator()
 
-        sources = [data["prompt"] for data in dataset]
-        targets = [data["completion"] + tokenizer.eos_token for data in tqdm(dataset, disable=not is_rank_0())]
+        sources = [read_string_by_schema(data, dataset_schema["prompt"]) for data in dataset]
+        targets = [
+            read_string_by_schema(data, dataset_schema["completion"]) + tokenizer.eos_token
+            for data in tqdm(dataset, disable=not is_rank_0())
+        ]
 
-        logger.info("Tokenizing inputs... This may take some time...")
+        self.coordinator.print_on_master("Tokenizing inputs... This may take some time...")
         if isinstance(tokenizer, ChatGLMTokenizer):
             self.input_ids, self.labels, self.attention_mask = _preprocess_chatglm(
                 sources, targets, tokenizer, max_length
@@ -137,7 +148,7 @@ class SFTDataset(Dataset):
         else:
             self.input_ids, self.labels, self.attention_mask = _preprocess(sources, targets, tokenizer, max_length)
 
-        logger.info("Loaded dataset.")
+        self.coordinator.print_on_master("Loaded dataset.")
 
     def __len__(self):
         length = self.input_ids.shape[0]
@@ -151,7 +162,17 @@ class SFTDataset(Dataset):
 
 
 class SupervisedDataset(Dataset):
-    """Dataset for supervised fine-tuning."""
+    """Dataset for supervised fine-tuning.
+
+    Args:
+        dataset: dataset for supervised model
+        tokenizer: tokenizer for supervised model
+        max_datasets_size: number of examples to use from the dataset
+        max_length: max length of input
+        prompt_dict: prompts for the dataset used to format prompt
+        dataset_schema: schema for reading the dataset. cascaded feild names seperated by '.'.
+             e.g. person.name.first will access data['person']['name']['first']
+    """
 
     def __init__(
         self,
@@ -159,25 +180,35 @@ class SupervisedDataset(Dataset):
         tokenizer: PreTrainedTokenizer,
         max_datasets_size: Optional[int] = None,
         max_length: int = 512,
+        prompt_dict: Optional[Dict[str, str]] = PROMPT_DICT,
+        split: str = "train",
+        dataset_schema: Dict[str, str] = {"instruction": "instruction", "input": "input", "output": "output"},
     ):
         super().__init__()
-        logger.info("Loading data...")
-        list_data_dict = jload(data_path)
-        logger.info(f"Loaded {len(list_data_dict)} examples.")
+        self.coordinator = DistCoordinator()
+        self.coordinator.print_on_master("Loading data...")
+        try:
+            dataset = load_dataset(data_path)
+            list_data_dict = list(dataset[split])
+        except FileNotFoundError:
+            list_data_dict = jload(data_path)
+        self.coordinator.print_on_master(f"Loaded {len(list_data_dict)} examples.")
 
         if max_datasets_size is not None:
-            logger.info(f"Limiting dataset to {max_datasets_size} examples.")
+            self.coordinator.print_on_master(f"Limiting dataset to {max_datasets_size} examples.")
             list_data_dict = list_data_dict[:max_datasets_size]
 
-        logger.info("Formatting inputs...")
-        prompt_input, prompt_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
+        self.coordinator.print_on_master("Formatting inputs...")
+        prompt_input, prompt_no_input = prompt_dict["prompt_input"], prompt_dict["prompt_no_input"]
+        list_data_dict = [
+            {k: read_string_by_schema(example, dataset_schema[k]) for k in dataset_schema} for example in list_data_dict
+        ]
         sources = [
-            prompt_input.format_map(example) if "input" in example else prompt_no_input.format_map(example)
+            prompt_input.format_map(example) if example["input"] != "" else prompt_no_input.format_map(example)
             for example in list_data_dict
         ]
         targets = [example["output"] + tokenizer.eos_token for example in list_data_dict]
-
-        logger.info("Tokenizing inputs... This may take some time...")
+        self.coordinator.print_on_master("Tokenizing inputs... This may take some time...")
         if isinstance(tokenizer, ChatGLMTokenizer):
             self.input_ids, self.labels, self.attention_mask = _preprocess_chatglm(
                 sources, targets, tokenizer, max_length
@@ -185,7 +216,7 @@ class SupervisedDataset(Dataset):
         else:
             self.input_ids, self.labels, self.attention_mask = _preprocess(sources, targets, tokenizer, max_length)
 
-        logger.info("Loaded dataset.")
+        self.coordinator.print_on_master("Loaded dataset.")
 
     def __len__(self):
         length = self.input_ids.shape[0]
