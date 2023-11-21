@@ -11,10 +11,18 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
 RUN pip install triton 
 RUN pip install git+https://github.com/ModelTC/lightllm.git@ece7b43f8a6dfa74027adc77c2c176cff28c76c8
+RUN pip install transformers==4.34.0
+RUN pip install auto-gptq==0.5.0
 
-cd /workspace
+RUN cd /workspace
+RUN git clone --recursive https://github.com/Dao-AILab/flash-attention
+RUN cd flash-attention && pip install -e .
+RUN cd ../
+
 RUN git clone --recursive https://github.com/hpcaitech/ColossalAI
 RUN cd ColossalAI && pip install -e .
 
