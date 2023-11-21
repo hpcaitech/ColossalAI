@@ -12,8 +12,6 @@ from vllm import LLM, SamplingParams
 
 
 def main(args: argparse.Namespace):
-    print(args)
-
     # Process all the requests in a single batch if possible.
     # NOTE(woosuk): If the request cannot be processed in a single batch,
     # the engine will automatically process the request in multiple batches.
@@ -36,7 +34,6 @@ def main(args: argparse.Namespace):
         ignore_eos=True,
         max_tokens=args.output_len,
     )
-    print(sampling_params)
     dummy_prompt_token_ids = [[0] * args.input_len] * args.batch_size
 
     def run_to_completion(profile: bool = False):
