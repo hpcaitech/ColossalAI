@@ -14,6 +14,7 @@ from colossalqa.prompt.prompt import (
 from colossalqa.retriever import CustomRetriever
 from colossalqa.text_splitter import ChineseTextSplitter
 from langchain import LLMChain
+from langchain.embeddings import HuggingFaceEmbeddings
 
 logger = get_logger()
 
