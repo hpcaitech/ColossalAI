@@ -4,6 +4,7 @@ from types import MethodType
 
 import pytest
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 
 import colossalai
@@ -14,12 +15,17 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 
+WORLD_SIZE = 2
+DIM = 8
+NUM_MICRO_BATCHS = 4
+BATCH_SIZE = 4
+
 
 class MlpModel(nn.Module):
     def __init__(self):
         super(MlpModel, self).__init__()
-        self.linear1 = nn.Linear(4, 8)
-        self.linear2 = nn.Linear(8, 4)
+        self.linear1 = nn.Linear(DIM, DIM)
+        self.linear2 = nn.Linear(DIM, DIM)
 
     def forward(self, x):
         x = self.linear1(x)
@@ -43,12 +49,9 @@ def examine_pp():
     This test is to examine the correctness of 1F1B, compared with torch.
     Be aware it contains some hardcodes.
     """
-    world_size = torch.distributed.get_world_size()
-    local_rank = torch.distributed.get_rank()
+    world_size = dist.get_world_size()
+    local_rank = dist.get_rank()
     seed_all(1453)
-
-    NUM_MICRO_BATCHS = 4
-    BATCH_SIZE = 4
 
     # create models
     torch_model = MlpModel().cuda()
@@ -73,13 +76,10 @@ def examine_pp():
 
     # create
     seed_all(1453)
-    if stage_manager.is_first_stage():
-        input_list = [torch.rand(BATCH_SIZE, 4).cuda()]
-    else:
-        input_list = [torch.zeros(BATCH_SIZE, 4).cuda()]
-    torch.distributed.all_reduce(input_list[0])
+    input_list = [torch.rand(BATCH_SIZE, DIM).cuda()]
+    dist.all_reduce(input_list[0])
 
-    criterion = lambda x, y: torch.mean(x)
+    criterion = lambda x, y: (x * x).mean()
 
     # forward and backward
     torch_output = torch_model(input_list[0])
@@ -113,7 +113,7 @@ def examine_pp():
         assert torch.allclose(torch_param[idx + local_rank * 2], pp_p.data)
 
 
-def run_dist(rank, world_size, port):
+def run_dist(rank: int, world_size: int, port: int):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
     examine_pp()
 
@@ -121,7 +121,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_pp():
-    spawn(run_dist, 2)
+    spawn(run_dist, WORLD_SIZE)
 
 
 if __name__ == "__main__":
