@@ -1,6 +1,5 @@
 import argparse
 
-import torch
 import torch.distributed as dist
 from transformers import LlamaForCausalLM, LlamaTokenizer
 
@@ -16,9 +15,7 @@ INPUT_TEXTS = [
 
 
 def run_inference(args):
-    llama_model_path = args.model_path
-    llama_tokenize_path = args.tokenizer_path or args.model_path
-
+    model_name_or_path = args.model_name_or_path
     max_input_len = args.max_input_len
     max_output_len = args.max_output_len
     max_batch_size = args.batch_size
@@ -27,32 +24,19 @@ def run_inference(args):
     pp_size = args.pp_size
     rank = dist.get_rank()
 
-    tokenizer = LlamaTokenizer.from_pretrained(llama_tokenize_path, padding_side="left")
+    tokenizer = LlamaTokenizer.from_pretrained(model_name_or_path, padding_side="left")
     tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    if args.quant is None:
-        model = LlamaForCausalLM.from_pretrained(llama_model_path, pad_token_id=tokenizer.pad_token_id)
-    elif args.quant == "gptq":
-        from auto_gptq import AutoGPTQForCausalLM
-
-        model = AutoGPTQForCausalLM.from_quantized(
-            llama_model_path, inject_fused_attention=False, device=torch.cuda.current_device()
-        )
-    elif args.quant == "smoothquant":
-        from colossalai.inference.quant.smoothquant.models.llama import SmoothLlamaForCausalLM
-
-        model = SmoothLlamaForCausalLM.from_quantized(llama_model_path, model_basename=args.smoothquant_base_name)
-        model = model.cuda()
+    model = LlamaForCausalLM.from_pretrained(model_name_or_path, pad_token_id=tokenizer.pad_token_id)
 
     engine = InferenceEngine(
+        model,
         tp_size=tp_size,
         pp_size=pp_size,
-        model=model,
         max_input_len=max_input_len,
         max_output_len=max_output_len,
         max_batch_size=max_batch_size,
         micro_batch_size=micro_batch_size,
-        quant=args.quant,
         dtype=args.dtype,
     )
 
@@ -63,8 +47,8 @@ def run_inference(args):
     if rank == 0:
         output_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)
         for input_text, output_text in zip(INPUT_TEXTS, output_texts):
-            print(f"Input: {input_text}")
-            print(f"Output: {output_text}")
+            print(f"\n[Input]:\n {input_text}")
+            print(f"[Output]:\n {output_text}")
 
 
 def run_tp_pipeline_inference(rank, world_size, port, args):
@@ -74,18 +58,10 @@ def run_tp_pipeline_inference(rank, world_size, port, args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--model_path", type=str, help="Model path", required=True)
-    parser.add_argument("-i", "--input", default="What is the longest river in the world?")
-    parser.add_argument("-t", "--tokenizer_path", type=str, help="Tokenizer path", default=None)
     parser.add_argument(
-        "-q",
-        "--quant",
-        type=str,
-        choices=["gptq", "smoothquant"],
-        default=None,
-        help="quantization type: 'gptq' or 'smoothquant'",
+        "-m", "--model_name_or_path", type=str, help="Model name from huggingface or local path", default=None
     )
-    parser.add_argument("--smoothquant_base_name", type=str, default=None, help="soothquant base name")
+    parser.add_argument("-t", "--tokenizer_path", type=str, help="Tokenizer path", default=None)
     parser.add_argument("--tp_size", type=int, default=1, help="Tensor parallel size")
     parser.add_argument("--pp_size", type=int, default=1, help="Pipeline parallel size")
     parser.add_argument("-b", "--batch_size", type=int, default=4, help="Maximum batch size")
