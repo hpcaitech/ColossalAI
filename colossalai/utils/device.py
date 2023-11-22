@@ -44,18 +44,6 @@ def get_current_device() -> torch.device:
         return torch.device("cpu")
 
 
-def get_current_device_id() -> int:
-    """
-    Returns currently selected device (gpu/cpu/npu) index.
-    """
-    if torch.cuda.is_available():
-        return torch.cuda.current_device()
-    elif IS_NPU_AVAILABLE:
-        return torch.npu.current_device()
-    else:
-        raise RuntimeError("No device available")
-
-
 def _dispatch_device_func(fn_name: str, *args, **kwargs):
     if torch.cuda.is_available():
         return getattr(torch.cuda, fn_name)(*args, **kwargs)
