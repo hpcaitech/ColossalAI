@@ -3,6 +3,7 @@ import math
 from typing import List, Optional, Tuple
 
 import torch
+from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaForCausalLM, LlamaModel
 from transformers.utils import logging
 
@@ -29,13 +30,17 @@ except:
 
 try:
     from colossalai.kernel.triton.flash_decoding import token_flash_decoding
+
     HAS_TRITON_FLASH_DECODING_KERNEL = True
 except:
-    print("no triton flash decoding support, please install lightllm from https://github.com/ModelTC/lightllm/blob/ece7b43f8a6dfa74027adc77c2c176cff28c76c8")
+    print(
+        "no triton flash decoding support, please install lightllm from https://github.com/ModelTC/lightllm/blob/ece7b43f8a6dfa74027adc77c2c176cff28c76c8"
+    )
     HAS_TRITON_FLASH_DECODING_KERNEL = False
-    
+
 try:
     from flash_attn import flash_attn_with_kvcache
+
     HAS_FLASH_KERNEL = True
 except:
     HAS_FLASH_KERNEL = False
@@ -47,6 +52,7 @@ def rotate_half(x):
     x1 = x[..., : x.shape[-1] // 2]
     x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1)
+
 
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
@@ -96,17 +102,22 @@ def llama_triton_context_attention(
             infer_state.max_len_in_batch,
         )
 
-def llama_triton_token_attention(query_states, attn_output, infer_state, num_key_value_groups=1, q_head_num = -1, head_dim = -1):
+
+def llama_triton_token_attention(
+    query_states, attn_output, infer_state, num_key_value_groups=1, q_head_num=-1, head_dim=-1
+):
     if HAS_TRITON_FLASH_DECODING_KERNEL and q_head_num != -1 and head_dim != -1:
-        token_flash_decoding(q = query_states, 
-                                o_tensor = attn_output, 
-                                infer_state = infer_state, 
-                                q_head_num = q_head_num, 
-                                head_dim = head_dim, 
-                                cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id], 
-                                cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id])
-        return 
-    
+        token_flash_decoding(
+            q=query_states,
+            o_tensor=attn_output,
+            infer_state=infer_state,
+            q_head_num=q_head_num,
+            head_dim=head_dim,
+            cache_k=infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+            cache_v=infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+        )
+        return
+
     if num_key_value_groups == 1:
         token_attention_fwd(
             query_states,
@@ -157,6 +168,7 @@ class LlamaInferenceForwards:
         stage_index: Optional[List[int]] = None,
     ):
         r"""
+        This function is only used when pipeline is enabled.
         Args:
             labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
                 Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
@@ -217,6 +229,8 @@ class LlamaInferenceForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
     ):
+        """This function is always used."""
+        infer_state = infer_state or getattr(self, "infer_state", None)
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         use_cache = use_cache if use_cache is not None else self.config.use_cache
@@ -307,10 +321,14 @@ class LlamaInferenceForwards:
         # decoder layers
         infer_state.decode_layer_id = 0
 
+        if stage_index is None:
+            stage_index = (0, len(self.layers))
         start_idx, end_idx = stage_index[0], stage_index[1]
         if past_key_values is None:
             past_key_values = tuple([None] * (end_idx - start_idx + 1))
 
+        # for HF api compatibility, kv-cache must be returned
+        next_decoder_cache = () if use_cache else None
         for idx, past_key_value in zip(range(start_idx, end_idx), past_key_values):
             decoder_layer = self.layers[idx]
             # NOTE: modify here for passing args to decoder layer
@@ -325,8 +343,10 @@ class LlamaInferenceForwards:
             )
             infer_state.decode_layer_id += 1
             hidden_states = layer_outputs[0]
+            if use_cache:
+                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
 
-        if stage_manager.is_last_stage() or stage_manager.num_stages == 1:
+        if stage_manager is None or stage_manager.is_last_stage() or stage_manager.num_stages == 1:
             hidden_states = self.norm(hidden_states)
 
         # update indices
@@ -334,6 +354,12 @@ class LlamaInferenceForwards:
         infer_state.start_loc += torch.arange(0, batch_size, dtype=torch.int32, device="cuda")
         infer_state.seq_len += 1
         infer_state.max_len_in_batch += 1
+
+        next_cache = next_decoder_cache if use_cache else None
+        if stage_manager is None:
+            if not return_dict:
+                return (hidden_states, next_cache)
+            return BaseModelOutputWithPast(last_hidden_state=hidden_states, past_key_values=next_cache)
 
         return {"hidden_states": hidden_states}
 
@@ -459,14 +485,15 @@ class LlamaInferenceForwards:
                 )
 
             if HAS_LIGHTLLM_KERNEL:
-                
                 attn_output = torch.empty_like(query_states)
-                llama_triton_token_attention(query_states = query_states, 
-                                             attn_output = attn_output, 
-                                             infer_state = infer_state, 
-                                             num_key_value_groups = self.num_key_value_groups, 
-                                             q_head_num = q_len * self.num_heads, 
-                                             head_dim = self.head_dim)
+                llama_triton_token_attention(
+                    query_states=query_states,
+                    attn_output=attn_output,
+                    infer_state=infer_state,
+                    num_key_value_groups=self.num_key_value_groups,
+                    q_head_num=q_len * self.num_heads,
+                    head_dim=self.head_dim,
+                )
             else:
                 self.num_heads // self.num_key_value_heads
                 cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id]
