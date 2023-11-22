@@ -44,6 +44,7 @@ class GPTJPolicy(Policy):
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn("GPTJ doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
+        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
 
         overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
