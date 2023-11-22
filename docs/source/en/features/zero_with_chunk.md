@@ -1,6 +1,6 @@
 # Zero Redundancy Optimizer with chunk-based memory management
 
-Author: [Hongxiu Liu](https://github.com/ver217), [Jiarui Fang](https://github.com/feifeibear), [Zijian Ye](https://github.com/ZijianYY)
+Author: [Hongxin Liu](https://github.com/ver217), [Jiarui Fang](https://github.com/feifeibear), [Zijian Ye](https://github.com/ZijianYY)
 
 **Prerequisite:**
 - [Train with booster](../basics/booster_api.md)

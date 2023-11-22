@@ -1,6 +1,6 @@
 # Lazy initialization
 
-Author: [Hongxiu Liu](https://github.com/ver217)
+Author: [Hongxin Liu](https://github.com/ver217)
 
 **Prerequisite:**
 - [Train with booster](../basics/booster_api.md)
