@@ -1,5 +1,6 @@
 import argparse
 import time
+from contextlib import nullcontext
 
 import torch
 import torch.distributed as dist
@@ -124,14 +125,37 @@ def benchmark_inference(args):
 
     N_WARMUP_STEPS = 2
 
-    for _ in range(N_WARMUP_STEPS):
-        engine.generate(data)
+    ctx = (
+        torch.profiler.profile(
+            record_shapes=True,
+            with_stack=True,
+            with_modules=True,
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            schedule=torch.profiler.schedule(wait=0, warmup=N_WARMUP_STEPS, active=1),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler("./tb_log"),
+        )
+        if args.profile
+        else nullcontext()
+    )
 
-    torch.cuda.synchronize()
-    whole_end2end = time.time()
-    outputs = engine.generate(data)
-    torch.cuda.synchronize()
-    whole_end2end = time.time() - whole_end2end
+    with ctx:
+        for _ in range(N_WARMUP_STEPS):
+            engine.generate(data)
+            if args.profile:
+                ctx.step()
+
+        if args.nsys:
+            torch.cuda.cudart().cudaProfilerStart()
+        whole_end2end = time.perf_counter()
+        outputs = engine.generate(data)
+        whole_end2end = time.perf_counter() - whole_end2end
+        if args.nsys:
+            torch.cuda.cudart().cudaProfilerStop()
+        if args.profile:
+            ctx.step()
 
     print_details_info(outputs, model.config, args, whole_end2end)
 
@@ -164,5 +188,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_len", type=int, default=128, help="Output length")
     parser.add_argument("--dtype", type=str, default="fp16", help="data type")
     parser.add_argument("-v", "--verbose", default=False, action="store_true")
+    parser.add_argument("--profile", default=False, action="store_true")
+    parser.add_argument("--nsys", default=False, action="store_true")
     args = parser.parse_args()
     benchmark(args)
