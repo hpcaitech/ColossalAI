@@ -298,9 +298,7 @@ class ChatGLM2InferenceForwards:
 
         hidden_states = hidden_states.transpose(0, 1).contiguous()
 
-        if self.post_layer_norm and (
-            stage_manager is None or stage_manager.is_last_stage() or stage_manager.num_stages == 1
-        ):
+        if self.post_layer_norm and (stage_manager is None or stage_manager.is_last_stage()):
             # Final layer norm.
             hidden_states = self.final_layernorm(hidden_states)
 
