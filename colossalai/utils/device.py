@@ -216,8 +216,8 @@ def reset_peak_memory_stats(device=None) -> None:
 
 def autocast() -> Callable:
     if torch.cuda.is_available():
-        return torch.cuda.amp.autocast
+        return torch.cuda.amp.autocast()
     elif IS_NPU_AVAILABLE:
-        return torch.npu.amp.autocast
+        return torch.npu.amp.autocast()
     else:
         raise RuntimeError("No device available")
