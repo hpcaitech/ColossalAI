@@ -1,6 +1,6 @@
 # 懒惰初始化
 
-作者: [Hongxiu Liu](https://github.com/ver217)
+作者: [Hongxin Liu](https://github.com/ver217)
 
 **前置教程:**
 - [Train with booster](../basics/booster_api.md)

@@ -9,7 +9,7 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.testing import spawn
 from colossalai.testing.random import seed_all
-from colossalai.utils import conditional_context
+from colossalai.utils import conditional_context, get_current_device
 from colossalai.zero import LowLevelZeroOptimizer
 
 
@@ -28,9 +28,9 @@ class MlpModel(nn.Module):
 def exam_zero_1_2_grad_acc():
     local_rank = torch.distributed.get_rank()
     seed_all(2009)
-
+    device = get_current_device()
     # create model
-    zero1_model = MlpModel().cuda()
+    zero1_model = MlpModel().to(device)
     zero2_model = copy.deepcopy(zero1_model)
     # create optimizer
     zero1_optimizer = torch.optim.Adam(zero1_model.parameters(), lr=1)
@@ -43,8 +43,8 @@ def exam_zero_1_2_grad_acc():
     )
     # create data
     seed_all(2021 + local_rank)
-    input_data1 = torch.randn(32, 128).cuda()
-    input_data2 = torch.randn(32, 128).cuda()
+    input_data1 = torch.randn(32, 128, device=device)
+    input_data2 = torch.randn(32, 128, device=device)
 
     def fwd_bwd_func(number, cur_data, check_flag):
         # zero-dp forward
@@ -71,14 +71,15 @@ def exam_zero_1_2_grad_acc():
 def exam_zero_1_grad_acc(sync):
     local_rank = torch.distributed.get_rank()
     seed_all(2008)
+    device = get_current_device()
 
     # create models
     zero_model = MlpModel()
     torch_model = copy.deepcopy(zero_model)
 
     seed_all(2008)
-    zero_model = zero_model.cuda()
-    torch_model = DDP(torch_model.cuda(), bucket_cap_mb=0)
+    zero_model = zero_model.to(device)
+    torch_model = DDP(torch_model.to(device), bucket_cap_mb=0)
 
     # create optimizer
     zero_optimizer = torch.optim.Adam(zero_model.parameters(), lr=1)
@@ -94,8 +95,8 @@ def exam_zero_1_grad_acc(sync):
 
     # create data
     seed_all(2022 + local_rank)
-    input_data1 = torch.randn(32, 128).cuda()
-    input_data2 = torch.randn(32, 128).cuda()
+    input_data1 = torch.randn(32, 128, device=device)
+    input_data2 = torch.randn(32, 128, device=device)
 
     def fwd_bwd_func(no_sync, cur_data, check_flag):
         # zero1 fwd and bwd

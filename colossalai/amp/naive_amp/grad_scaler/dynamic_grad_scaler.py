@@ -5,6 +5,8 @@ from typing import Optional
 
 import torch
 
+from colossalai.utils.device import get_current_device
+
 from .base_grad_scaler import BaseGradScaler
 
 __all__ = ["DynamicGradScaler"]
@@ -37,12 +39,12 @@ class DynamicGradScaler(BaseGradScaler):
     ):
         super().__init__(initial_scale, verbose)
         if min_scale:
-            self._min_scale = torch.cuda.FloatTensor([min_scale])
+            self._min_scale = torch.tensor([min_scale], device=get_current_device(), dtype=torch.float)
         else:
             self._min_scale = None
 
         if max_scale:
-            self._max_scale = torch.cuda.FloatTensor([max_scale])
+            self._max_scale = torch.tensor([max_scale], device=get_current_device(), dtype=torch.float)
         else:
             self._max_scale = None
 
@@ -115,7 +117,7 @@ class DynamicGradScaler(BaseGradScaler):
         return state_dict
 
     def load_state_dict(self, state_dict):
-        self._scale = state_dict["scale"].cuda(torch.cuda.current_device())
+        self._scale = state_dict["scale"].to(get_current_device())
         self._growth_factor = state_dict["growth_factor"]
         self._backoff_factor = state_dict["backoff_factor"]
         self._hysteresis = state_dict["hysteresis"]

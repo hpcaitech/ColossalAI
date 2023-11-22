@@ -4,7 +4,7 @@ import pytest
 import torch
 from packaging import version
 
-from colossalai.inference.tensor_parallel import MemoryManager
+from colossalai.inference.kv_cache import MemoryManager
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 

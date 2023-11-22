@@ -17,9 +17,7 @@ class GeminiManager:
     https://arxiv.org/abs/2108.05818
 
     Args:
-        placement_policy (str): Which device to place *held* tensors. It can be 'cpu', 'cuda' and 'auto'.
-            If it's 'cpu', parameters, gradients and optimizer states will be offloaded to CPU, which means min CUDA memory will be used.
-            If it's 'cuda', they won't be offloaded, which means max CUDA memory will be used.
+        placement_policy (str): Which device to place *held* tensors. It can be 'static' and 'auto'.
             If it's 'auto', they are moving dynamically based on CPU and CUDA memory usage. It will utilize heterogeneous memory space evenly and well.
             Note that 'auto' policy can only work well when no other processes use CUDA during your training.
         chunk_manager (ChunkManager): A ``ChunkManager`` instance.
@@ -121,7 +119,7 @@ class GeminiManager:
         start = time()
         cuda_demand = 0
         for chunk in chunks:
-            if chunk.device_type == "cuda":
+            if chunk.device_type == "cuda" or chunk.device_type == "npu":
                 if chunk.is_gathered:
                     pass
                 else:

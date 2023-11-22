@@ -3,7 +3,7 @@
 import time
 from typing import Tuple
 
-from .cuda import synchronize
+from .device import synchronize
 
 
 class Timer:

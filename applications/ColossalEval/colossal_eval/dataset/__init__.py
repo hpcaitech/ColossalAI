@@ -9,6 +9,7 @@ from .mmlu import MMLUDataset
 from .mtbench import MTBenchDataset
 from .safetybench_en import SafetyBenchENDataset
 from .safetybench_zh import SafetyBenchZHDataset
+from .cvalues import CValuesDataset
 
 __all__ = [
     "AGIEvalDataset",

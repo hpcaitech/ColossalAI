@@ -20,7 +20,7 @@ Author: [Baizhou Zhang](https://github.com/Fridge003), [Bin Jia](https://github.
 
 ## Introduction
 
-When training large transformer models such as LLaMa-2 70B or OPT 175B, model parallelism methods that divide a huge model into smaller shards, including tensor parallelism or pipeline parallism, are essential so as to meet the limitation of GPU memory.
+When training large transformer models such as LLaMa-2 70B or OPT 175B, model parallelism methods that divide a huge model into smaller shards, including tensor parallelism or pipeline parallelism, are essential so as to meet the limitation of GPU memory.
 However, manually cutting model and rewriting its forward/backword logic could be difficult for users who are not familiar with distributed training.
 Meanwhile, the Huggingface transformers library has gradually become users' first choice of model source, and most mainstream large models have been open-sourced in Huggingface transformers model library.
 
@@ -321,7 +321,7 @@ For example, when training LlaMa-2 with tensor parallel size as 2, the attribute
 
 3. Replacing the `forward` methods implemented by original Huggingface
 Transformers libraries with our customized `forward` methods.
-This replacement is essential for pipeline paralellism, where a customiozed function is needed to pass intermediate hidden states between different pipeline stages.
+This replacement is essential for pipeline parallelism, where a customized function is needed to pass intermediate hidden states between different pipeline stages.
 Also, optimization methods such as flash attention or sequence parallel can be injected into the `forward` process through our customized `forward` method.
 
 4. Replacing the whole copy of model parameters and optimizer states with incomplete ones controlled by current device (this is why it's called Shardformer).

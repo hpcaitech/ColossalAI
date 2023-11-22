@@ -12,7 +12,7 @@ from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.utils import switch_virtual_pipeline_parallel_rank
 from colossalai.logging import get_dist_logger
-from colossalai.utils.cuda import get_current_device
+from colossalai.utils.device import get_current_device
 
 from ._base_schedule import BaseSchedule
 

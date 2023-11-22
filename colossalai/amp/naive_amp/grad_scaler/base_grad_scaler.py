@@ -8,6 +8,7 @@ import torch
 from torch import Tensor
 
 from colossalai.logging import get_dist_logger
+from colossalai.utils.device import get_current_device
 
 __all__ = ["BaseGradScaler"]
 
@@ -22,7 +23,7 @@ class BaseGradScaler(ABC):
 
     def __init__(self, initial_scale: float, verbose: bool):
         assert initial_scale > 0
-        self._scale = torch.cuda.FloatTensor([initial_scale])
+        self._scale = torch.tensor([initial_scale], device=get_current_device(), dtype=torch.float)
         self._verbose = verbose
 
         if self._verbose:
