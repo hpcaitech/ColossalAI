@@ -55,8 +55,7 @@ class MemoryManager:
     def alloc(self, required_size):
         """allocate space of required_size by providing indexes representing available physical spaces"""
         if required_size > self.available_size:
-            self.logger.warning(f"No enough cache: required_size {required_size} " f"left_size {self.available_size}")
-            return None
+            raise RuntimeError(f"No enough cache: required_size {required_size} " f"left_size {self.available_size}")
         torch.cumsum(self.mem_state, dim=0, dtype=torch.int32, out=self.mem_cum_sum)
         select_index = torch.logical_and(self.mem_cum_sum <= required_size, self.mem_state == 1)
         select_index = self.indexes[select_index]
