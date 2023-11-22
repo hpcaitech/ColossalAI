@@ -7,6 +7,8 @@ from .gaokaobench import GaoKaoBenchDataset
 from .longbench import LongBenchDataset
 from .mmlu import MMLUDataset
 from .mtbench import MTBenchDataset
+from .safetybench_en import SafetyBenchENDataset
+from .safetybench_zh import SafetyBenchZHDataset
 
 __all__ = [
     "AGIEvalDataset",
@@ -18,4 +20,7 @@ __all__ = [
     "MMLUDataset",
     "ColossalDataset",
     "MTBenchDataset",
+    'SafetyBenchENDataset',
+    'SafetyBenchZHDataset',
+    'CValuesDataset'
 ]
