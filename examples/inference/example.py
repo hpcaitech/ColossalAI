@@ -30,9 +30,9 @@ def run_inference(args):
     model = LlamaForCausalLM.from_pretrained(model_name_or_path, pad_token_id=tokenizer.pad_token_id)
 
     engine = InferenceEngine(
+        model,
         tp_size=tp_size,
         pp_size=pp_size,
-        model=model,
         max_input_len=max_input_len,
         max_output_len=max_output_len,
         max_batch_size=max_batch_size,
@@ -61,7 +61,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "-m", "--model_name_or_path", type=str, help="Model name from huggingface or local path", default=None
     )
-    parser.add_argument("-i", "--input", default="What is the longest river in the world?")
     parser.add_argument("-t", "--tokenizer_path", type=str, help="Tokenizer path", default=None)
     parser.add_argument("--tp_size", type=int, default=1, help="Tensor parallel size")
     parser.add_argument("--pp_size", type=int, default=1, help="Pipeline parallel size")

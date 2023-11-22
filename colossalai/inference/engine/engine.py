@@ -157,10 +157,12 @@ class InferenceEngine:
             )
             # bind the infer state to the model (not lm model)
             self.model.model.infer_state = batch_infer_state
-            if generation_config is None:
+            if generation_config is not None:
                 generation_config.max_new_tokens = self.max_output_len
             else:
-                generation_config = GenerationConfig(max_new_tokens=self.max_output_len, pad_token_id=2)
+                generation_config = GenerationConfig(
+                    max_new_tokens=self.max_output_len, pad_token_id=self.model.config.pad_token_id
+                )
             out = self.model.generate(**input_list, generation_config=generation_config)
             # free the cache
             self.cache_manager_list[0].free_all()

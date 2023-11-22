@@ -107,15 +107,16 @@ def print_details_info(outputs, model_config, args, whole_end2end):
 
 def benchmark_inference(args):
     config = CONFIG_MAP[args.model]
+    config.pad_token_id = config.eos_token_id
     model = transformers.LlamaForCausalLM(config)
     if dist.get_rank() == 0:
         print("Model loaded")
     engine = InferenceEngine(
+        model,
         pp_size=args.pp_size,
         tp_size=args.tp_size,
         dtype=args.dtype,
         micro_batch_size=args.mb_size,
-        model=model,
         verbose=args.verbose,
         max_batch_size=args.batch_size,
         max_input_len=args.seq_len,
@@ -181,14 +182,14 @@ if __name__ == "__main__":
         choices=["toy", "llama-7b", "llama-13b", "llama2-7b", "llama2-13b"],
     )
     parser.add_argument("-b", "--batch_size", type=int, default=8, help="batch size")
-    parser.add_argument("-s", "--seq_len", type=int, default=8, help="sequence length")
+    parser.add_argument("-s", "--seq_len", type=int, default=8, help="input sequence length")
     parser.add_argument("--mb_size", type=int, default=1, help="micro_batch_size")
     parser.add_argument("--pp_size", type=int, default=1, help="pipeline size")
     parser.add_argument("--tp_size", type=int, default=1, help="pipeline size")
     parser.add_argument("--output_len", type=int, default=128, help="Output length")
-    parser.add_argument("--dtype", type=str, default="fp16", help="data type")
+    parser.add_argument("--dtype", type=str, default="fp16", help="data type", choices=["fp16", "fp32", "bf16"])
     parser.add_argument("-v", "--verbose", default=False, action="store_true")
-    parser.add_argument("--profile", default=False, action="store_true")
-    parser.add_argument("--nsys", default=False, action="store_true")
+    parser.add_argument("--profile", default=False, action="store_true", help="enable torch profiler")
+    parser.add_argument("--nsys", default=False, action="store_true", help="enable nsys profiler")
     args = parser.parse_args()
     benchmark(args)
