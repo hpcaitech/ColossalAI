@@ -408,12 +408,20 @@ class ChatGLM2InferenceForwards:
         query_layer = query_layer.reshape(
             -1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head
         )
-        key_layer = key_layer.reshape(
-            -1, self.num_multi_query_groups_per_partition, self.hidden_size_per_attention_head
-        )
-        value_layer = value_layer.reshape(
-            -1, self.num_multi_query_groups_per_partition, self.hidden_size_per_attention_head
-        )
+        if self.multi_query_attention:
+            key_layer = key_layer.reshape(
+                -1, self.num_multi_query_groups_per_partition, self.hidden_size_per_attention_head
+            )
+            value_layer = value_layer.reshape(
+                -1, self.num_multi_query_groups_per_partition, self.hidden_size_per_attention_head
+            )
+        else:
+            key_layer = key_layer.reshape(
+                -1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head
+            )
+            value_layer = value_layer.reshape(
+                -1, self.num_attention_heads_per_partition, self.hidden_size_per_attention_head
+            )
 
         if infer_state.is_context_stage:
             # first token generation:

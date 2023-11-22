@@ -1,5 +1,7 @@
+from functools import partial
 from typing import List
 
+import torch
 import torch.nn as nn
 
 from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
@@ -7,23 +9,40 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     ChatGLMModel,
     GLMBlock,
     GLMTransformer,
+    RMSNorm,
     SelfAttention,
 )
 
 # import colossalai
-from colossalai.shardformer.policies.chatglm2 import ChatGLMModelPolicy
+from colossalai.shardformer.policies.chatglm2 import ChatGLMForConditionalGenerationPolicy
 
 from ..modeling._utils import init_to_get_rotary
 from ..modeling.chatglm2 import ChatGLM2InferenceForwards
 
 try:
+    from lightllm.models.llama.triton_kernel.rmsnorm import rmsnorm_forward as lightllm_rmsnorm_forward
+
     HAS_TRITON_RMSNORM = True
 except:
-    print("you should install triton from https://github.com/openai/triton")
+    print("Did not find rms-norm triton kernel")
+    print(
+        "You can use the following command to install: pip install git+https://github.com/ModelTC/lightllm.git@ece7b43f8a6dfa74027adc77c2c176cff28c76c8"
+    )
     HAS_TRITON_RMSNORM = False
 
 
-class ChatGLM2InferPolicy(ChatGLMModelPolicy):
+def get_triton_rmsnorm_forward():
+    if HAS_TRITON_RMSNORM:
+
+        def _triton_rmsnorm_forward(self: RMSNorm, hidden_states: torch.Tensor):
+            return lightllm_rmsnorm_forward(hidden_states, self.weight.data, self.eps)
+
+        return _triton_rmsnorm_forward
+    else:
+        raise RuntimeError("Did not find rms-norm triton kernel")
+
+
+class ChatGLM2InferPolicy(ChatGLMForConditionalGenerationPolicy):
     def __init__(self) -> None:
         super().__init__()
 
@@ -55,6 +74,16 @@ class ChatGLM2InferPolicy(ChatGLMModelPolicy):
                 self.model.config.multi_query_group_num // self.shard_config.tensor_parallel_size
             )
         # for rmsnorm and others, we need to check the shape
+
+        infer_forward = None
+
+        if HAS_TRITON_RMSNORM:
+            infer_forward = get_triton_rmsnorm_forward()
+            if infer_forward is not None:
+                method_replacement = {"forward": partial(infer_forward)}
+                self.append_or_create_method_replacement(
+                    description=method_replacement, policy=policy, target_key=RMSNorm
+                )
 
         self.set_pipeline_forward(
             model_cls=ChatGLMForConditionalGeneration,
