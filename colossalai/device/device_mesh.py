@@ -38,7 +38,7 @@ class DeviceMesh:
         device (str): the device for the process groups used by the DeviceMesh instance. (default: 'cuda')
     """
 
-    _DIST_BACKEND = {"cuda": "nccl", "cpu": "gloo"}
+    _DIST_BACKEND = {"cuda": "nccl", "cpu": "gloo", "npu": "hccl"}
 
     def __init__(
         self,

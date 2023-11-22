@@ -131,7 +131,7 @@ def main():
             tp_size=args.tp,
             pp_size=args.pp,
             zero_stage=args.zero,
-            enable_fused_normalization=True,
+            enable_fused_normalization=torch.cuda.is_available(),
             num_microbatches=args.mbs,
             precision="bf16",
         )
@@ -141,7 +141,7 @@ def main():
             pp_size=args.pp,
             zero_stage=args.zero,
             cpu_offload=True,
-            enable_fused_normalization=True,
+            enable_fused_normalization=torch.cuda.is_available(),
             num_microbatches=args.mbs,
             initial_scale=2**8,
             precision="bf16",

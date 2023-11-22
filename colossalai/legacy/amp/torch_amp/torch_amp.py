@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-import torch.cuda.amp as torch_amp
+from colossalai.utils.device import autocast
+
 import torch.nn as nn
 from torch import Tensor
 from torch.nn.modules.loss import _Loss
@@ -70,7 +71,7 @@ class TorchAMPModel(nn.Module):
         super().__init__()
         self.model = model
 
-    @torch_amp.autocast()
+    @autocast()
     def forward(self, *args, **kwargs):
         """
         Execute forward under the torch amp context
@@ -89,7 +90,7 @@ class TorchAMPLoss(nn.Module):
         super().__init__()
         self.loss = loss
 
-    @torch_amp.autocast()
+    @autocast()
     def forward(self, *args, **kwargs):
         """
         Execute forward under the torch amp context
