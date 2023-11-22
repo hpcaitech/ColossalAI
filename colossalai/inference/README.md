@@ -96,7 +96,7 @@ pip install -e .
 
 or, you can build docker image using our docker file. The docker image has cuda 11.8, pytorch 2.1.0, triton 2.1.0, flash-attention and colossal-ai installation. 
 ```
-cd ./colossal/inference
+cd ./colossal/inference/docker
 docker build -t ${image_name}:${version_id} .
 
 ```
