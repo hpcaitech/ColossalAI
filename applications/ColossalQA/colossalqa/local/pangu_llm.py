@@ -34,13 +34,12 @@ class Pangu(LLM):
 
     """
 
-    id: int
+    n: int
     gen_config: dict = None
     auth_config: dict = None
 
     def __init__(self, gen_config=None, **kwargs):
         super(Pangu, self).__init__(**kwargs)
-        self.id = id
         if gen_config is None:
             self.gen_config = {"user": "User", "max_tokens": 50, "temperature": 0.95, "n": 1}
         else:
@@ -49,7 +48,7 @@ class Pangu(LLM):
     @property
     def _identifying_params(self) -> Mapping[str, Any]:
         """Get the identifying parameters."""
-        return {"id": self.id}
+        return {"n": self.n}
 
     @property
     def _llm_type(self) -> str:

@@ -41,8 +41,8 @@ Document data is usually too long to fit into the prompt due to the context leng
 #### Step 3: Construct Vector Stores
 Choose a embedding function and embed your text chunk into high dimensional vectors. Once you have vectors for your documents, you need to create a vector store. The vector store should efficiently index and retrieve documents based on vector similarity. In this demo, we use [Chroma](https://python.langchain.com/docs/integrations/vectorstores/chroma) and incrementally update indexes of vector stores. Through incremental update, one can update and maintain a vector store without recalculating every embedding.
 You are free to choose any vectorstore from a varity of [vector stores](https://python.langchain.com/docs/integrations/vectorstores/) supported by Langchain. However, the incremental update only works with LangChain vectorstore's that support:
-- document addition by id (add_documents method with ids argument)
-- delete by id (delete method with)
+- Document addition by id (add_documents method with ids argument)
+- Delete by id (delete method with)
 
 #### Step 4: Retrieve Relative Text
 Upon querying, we will run a reference resolution on user's input, the goal of this step is to remove ambiguous reference in user's query such as "this company", "him". We then embed the query with the same embedding function and query the vectorstore to retrieve the top-k most similar documents.

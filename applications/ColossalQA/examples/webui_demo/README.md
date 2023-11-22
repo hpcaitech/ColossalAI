@@ -34,4 +34,4 @@ bash start_colossal_qa.sh
 
 After launching the script, you can upload files and engage with the chatbot through your web browser.
 
-![ColossalQA Demo](img/image.png)
+![ColossalQA Demo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/colossalqa/img/qa_demo.png)
