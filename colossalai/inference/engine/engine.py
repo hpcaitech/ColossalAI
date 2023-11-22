@@ -156,7 +156,8 @@ class InferenceEngine:
                 input_list, self.max_input_len, self.max_output_len, self.cache_manager_list[0]
             )
             # bind the infer state to the model (not lm model)
-            self.model.model.infer_state = batch_infer_state
+            model_to_bind = self.model.model if hasattr(self.model, "model") else self.model.transformer
+            model_to_bind.infer_state = batch_infer_state
             if generation_config is not None:
                 generation_config.max_new_tokens = self.max_output_len
             else:
