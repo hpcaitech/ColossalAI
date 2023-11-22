@@ -28,14 +28,12 @@ except:
     print("You can use the following command to install: pip install git+https://github.com/ModelTC/lightllm.git@ece7b43f8a6dfa74027adc77c2c176cff28c76c8")
     HAS_TRITON_RMSNORM = False
 
-
+if HAS_TRITON_RMSNORM:
 def get_triton_rmsnorm_forward():
-    if HAS_TRITON_RMSNORM:
-        def _triton_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
-            return lightllm_rmsnorm_forward(hidden_states, self.weight.data, self.variance_epsilon)
-        return _triton_rmsnorm_forward
-    else:
-        return None
+    def _triton_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor):
+        return lightllm_rmsnorm_forward(hidden_states, self.weight.data, self.variance_epsilon)
+    return _triton_rmsnorm_forward
+
 
 
 class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
