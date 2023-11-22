@@ -392,7 +392,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 self.pg_mesh,
                 pipeline_axis=PP_AXIS,
                 enable_interleave=pp_style == "interleaved",
-                num_model_chunks=num_model_chunks
+                num_model_chunks=num_model_chunks,
             )
 
             if pp_style == "interleaved":
@@ -405,9 +405,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 )
             elif pp_style == "1f1b":
                 self.schedule = OneForwardOneBackwardSchedule(
-                    self.stage_manager,
-                    num_microbatches=num_microbatches,
-                    microbatch_size=microbatch_size
+                    self.stage_manager, num_microbatches=num_microbatches, microbatch_size=microbatch_size
                 )
             else:
                 raise NotImplementedError()

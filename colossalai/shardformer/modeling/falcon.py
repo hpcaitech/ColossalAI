@@ -1,16 +1,9 @@
-
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
-from colossalai.pipeline.stage_manager import PipelineStageManager
 from torch.distributed import ProcessGroup
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-from torch.nn import functional as F
-
-from transformers.utils import logging
-
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
@@ -18,17 +11,19 @@ from transformers.modeling_outputs import (
     SequenceClassifierOutputWithPast,
     TokenClassifierOutput,
 )
-
 from transformers.models.falcon.modeling_falcon import (
     FalconForCausalLM,
     FalconForQuestionAnswering,
     FalconForSequenceClassification,
     FalconForTokenClassification,
     FalconModel,
+    build_alibi_tensor,
 )
-from transformers.models.falcon.modeling_falcon import build_alibi_tensor
+from transformers.utils import logging
 
+from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
+
 
 def build_falcon_alibi_tensor_fn(process_group: ProcessGroup) -> torch.Tensor:
     def build_falcon_alibi_tensor(
@@ -98,7 +93,7 @@ def build_falcon_alibi_tensor_fn(process_group: ProcessGroup) -> torch.Tensor:
 
 def get_tp_falcon_decoder_layer_forward():
     from transformers.models.falcon.modeling_falcon import FalconDecoderLayer, dropout_add
-    
+
     def forward(
         self: FalconDecoderLayer,
         hidden_states: torch.Tensor,
@@ -155,8 +150,9 @@ def get_tp_falcon_decoder_layer_forward():
             outputs = (output,) + outputs[1:]
 
         return outputs  # hidden_states, present, attentions
-    
+
     return forward
+
 
 def get_falcon_flash_attention_forward():
     try:
@@ -164,7 +160,6 @@ def get_falcon_flash_attention_forward():
     except:
         raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
     from transformers.models.falcon.modeling_falcon import FalconAttention
-    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
 
     def forward(
         self: FalconAttention,
@@ -191,10 +186,8 @@ def get_falcon_flash_attention_forward():
         )
         value_layer = value_layer.transpose(1, 2).reshape(batch_size * num_kv_heads, query_length, self.head_dim)
 
-
         past_kv_length = 0 if layer_past is None else layer_past[0].shape[1]
         query_layer, key_layer = self.maybe_rotary(query_layer, key_layer, past_kv_length)
-
 
         if layer_past is not None:
             past_key, past_value = layer_past
@@ -220,12 +213,10 @@ def get_falcon_flash_attention_forward():
             attention_mask_float = (
                 attention_mask_float + alibi.view(batch_size, self.num_heads, 1, kv_length) * self.beta
             )
- 
+
         batch_size, src_len = query_layer_.size()[0], query_layer_.size()[1]
         tgt_len = key_layer_.size()[1]
-        attention_mask_float = attention_mask_float.expand(
-            batch_size, self.num_heads, src_len, tgt_len
-        ).contiguous()
+        attention_mask_float = attention_mask_float.expand(batch_size, self.num_heads, src_len, tgt_len).contiguous()
         context_layer = me_attention(
             query_layer_,
             key_layer_,
@@ -236,7 +227,7 @@ def get_falcon_flash_attention_forward():
         )
         batch_size, seq_length, _, _ = context_layer.shape
         context_layer = context_layer.reshape(batch_size, seq_length, -1)
-        
+
         output_tensor = self.dense(context_layer)
 
         return output_tensor, present
@@ -280,7 +271,7 @@ class FalconPipelineForwards:
         if past_key_values is not None:
             logger.warning_once("past_key_values is not supported for pipeline models at the moment.")
             past_key_values = None
-            
+
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if past_key_values is None:
@@ -394,10 +385,11 @@ class FalconPipelineForwards:
         if presents is not None:
             presents = self._convert_cache_to_standard_format(presents, batch_size)
 
-
         if stage_manager.is_last_stage():
             if not return_dict:
-                return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None)
+                return tuple(
+                    v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None
+                )
             return BaseModelOutputWithPastAndCrossAttentions(
                 last_hidden_state=hidden_states,
                 past_key_values=presents,
@@ -407,7 +399,6 @@ class FalconPipelineForwards:
         else:
             # always return dict for imediate stage
             return {"hidden_states": hidden_states}
-        
 
     @staticmethod
     def falcon_for_causal_lm_forward(
@@ -434,7 +425,7 @@ class FalconPipelineForwards:
             are ignored (masked), the loss is only computed for labels in `[0, ..., config.vocab_size]`
         """
         logger = logging.get_logger(__name__)
-        
+
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if output_attentions:
@@ -489,11 +480,10 @@ class FalconPipelineForwards:
                 hidden_states=transformer_outputs.hidden_states,
                 attentions=transformer_outputs.attentions,
             )
-        
+
         else:
             hidden_states = transformer_outputs.get("hidden_states")
             return {"hidden_states": hidden_states}
-        
 
     @staticmethod
     def falcon_for_sequence_classification_forward(
@@ -552,7 +542,7 @@ class FalconPipelineForwards:
             batch_size = hidden_states.shape[0]
             hidden_states = transformer_outputs[0]
             logits = self.score(hidden_states)
-            
+
             if self.config.pad_token_id is None and batch_size != 1:
                 raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
             if self.config.pad_token_id is None:
@@ -605,7 +595,6 @@ class FalconPipelineForwards:
         else:
             hidden_states = transformer_outputs.get("hidden_states")
             return {"hidden_states": hidden_states}
-        
 
     @staticmethod
     def falcon_for_token_classification_forward(
@@ -684,11 +673,11 @@ class FalconPipelineForwards:
                 hidden_states=transformer_outputs.hidden_states,
                 attentions=transformer_outputs.attentions,
             )
-        
+
         else:
             hidden_states = transformer_outputs.get("hidden_states")
             return {"hidden_states": hidden_states}
-        
+
     @staticmethod
     def falcon_for_question_answering_forward(
         self: FalconForQuestionAnswering,
