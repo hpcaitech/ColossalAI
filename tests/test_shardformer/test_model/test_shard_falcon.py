@@ -18,6 +18,7 @@ from tests.test_shardformer.test_model._utils import (
     unwrap_model,
 )
 
+
 def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
         model_fn, loss_fn, test_config
@@ -80,6 +81,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     torch.cuda.empty_cache()
 
+
 @parameterize(
     "test_config",
     [
@@ -100,20 +102,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "use_lazy_init": False,
             "precision": "fp32",
         },
-        {   
-            "tp_size": 4, 
-            "pp_size": 1, 
-            "enable_all_optimization": True, 
-            "use_lazy_init": False, 
-            "precision": "fp32"
-        },
-        {
-            "tp_size": 2, 
-            "pp_size": 1, 
-            "enable_all_optimization": True, 
-            "use_lazy_init": False, 
-            "precision": "fp32"
-        },
+        {"tp_size": 4, "pp_size": 1, "enable_all_optimization": True, "use_lazy_init": False, "precision": "fp32"},
+        {"tp_size": 2, "pp_size": 1, "enable_all_optimization": True, "use_lazy_init": False, "precision": "fp32"},
         {
             "tp_size": 2,
             "pp_size": 1,
@@ -145,6 +135,7 @@ def run_falcon_test(test_config):
     Randomizer.reset_index()
     torch.cuda.empty_cache()
 
+
 @parameterize(
     "test_config",
     [
@@ -169,7 +160,6 @@ def run_falcon_test(test_config):
         },
     ],
 )
-
 def run_falcon_3d_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_falcon")
 
@@ -185,6 +175,7 @@ def check_falcon(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_falcon_test()
+
 
 def check_falcon_3d(rank, world_size, port):
     disable_existing_loggers()
@@ -204,6 +195,7 @@ def test_falcon():
 @clear_cache_before_run()
 def test_falcon_3d():
     spawn(check_falcon_3d, 8)
+
 
 if __name__ == "__main__":
     test_falcon()

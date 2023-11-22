@@ -70,7 +70,7 @@ class PipelineStageManager:
     def is_first_stage(self, model_chunk_id: Optional[int] = None) -> bool:
         """Is the current stage the first stage.
 
-        NOTE: 
+        NOTE:
             1. if using interleaved pipeline parallel, the first stage is the first chunk of the first device.
             2. invoke is_first_stage() with model_chunk_id < 0 is equivalent to invoke is_first_device()
 
@@ -79,8 +79,9 @@ class PipelineStageManager:
         """
         if self.is_interleave and model_chunk_id is None:
             model_chunk_id = self.model_chunk_id
-        assert self.is_interleave ^ (model_chunk_id is None), \
-            "model_chunk_id must be specified when using interleaved pipeline"
+        assert self.is_interleave ^ (
+            model_chunk_id is None
+        ), "model_chunk_id must be specified when using interleaved pipeline"
         if not self.is_interleave or model_chunk_id < 0:
             return self.stage == 0
         else:
@@ -89,7 +90,7 @@ class PipelineStageManager:
     def is_last_stage(self, model_chunk_id: Optional[int] = None) -> bool:
         """Is the current stage the last stage.
 
-        NOTE: 
+        NOTE:
             1. if using interleaved pipeline parallel, the last stage is the last chunk of the last device.
             2. invoke is_last_stage() with model_chunk_id < 0 is equivalent to invoke is_last_device()
 
@@ -98,8 +99,9 @@ class PipelineStageManager:
         """
         if self.is_interleave and model_chunk_id is None:
             model_chunk_id = self.model_chunk_id
-        assert self.is_interleave ^ (model_chunk_id is None), \
-            "model_chunk_id must be specified when using interleaved pipeline"
+        assert self.is_interleave ^ (
+            model_chunk_id is None
+        ), "model_chunk_id must be specified when using interleaved pipeline"
         if not self.is_interleave or model_chunk_id < 0:
             return self.stage == self.num_stages - 1
         else:

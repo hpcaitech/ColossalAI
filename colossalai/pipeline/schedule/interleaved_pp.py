@@ -50,16 +50,13 @@ class InterleavedSchedule(PipelineSchedule):
         self.batch_size = get_batch_size(batch)
         self.microbatch_offset = [0 for _ in range(self.num_model_chunks)]
         if self.num_microbatch is not None:
-            assert (
-                self.batch_size % self.num_microbatch == 0
-            ), "Batch size should divided by the number of microbatch"
+            assert self.batch_size % self.num_microbatch == 0, "Batch size should divided by the number of microbatch"
             self.microbatch_size = self.batch_size // self.num_microbatch
         elif self.microbatch_size is not None:
             assert self.batch_size % self.microbatch_size == 0, "Batch size should divided by the microbatch size"
             self.num_microbatch = self.batch_size // self.microbatch_size
         else:
-            raise ValueError(
-                "Either num_microbatch or microbatch_size should be provided")
+            raise ValueError("Either num_microbatch or microbatch_size should be provided")
 
         assert (
             self.num_microbatch % self.num_model_chunks == 0
@@ -323,10 +320,9 @@ class InterleavedSchedule(PipelineSchedule):
                     output_objs[model_chunk_id].append(output_obj)
                 self.send_forward(model_chunk_id, output_obj)
 
-                if num_microbatch_remaining == 0 \
-                        and i + 1 == num_warmup_microbatch:
+                if num_microbatch_remaining == 0 and i + 1 == num_warmup_microbatch:
                     break
-            
+
                 model_chunk_id = self.get_model_chunk_id(i + 1, is_forward=True)
                 input_obj = self.recv_forward(model_chunk_id)
 

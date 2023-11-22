@@ -22,9 +22,7 @@ DIM = 4
 class MlpModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.layers = nn.ModuleList(
-            [nn.Linear(DIM, DIM) for _ in range(NUM_LAYER)]
-        )
+        self.layers = nn.ModuleList([nn.Linear(DIM, DIM) for _ in range(NUM_LAYER)])
 
     def forward(self, x):
         for layer in self.layers:
@@ -59,13 +57,7 @@ def run_pp(
     This test is to examine the correctness of interleaved 1F1B, compared with torch.
     Be aware it contains some hardcodes.
     """
-    colossalai.launch(
-        config=dict(),
-        rank=rank,
-        world_size=world_size,
-        port=port,
-        host="localhost"
-    )
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
 
     # create model
     seed_all(1453)
@@ -74,10 +66,7 @@ def run_pp(
 
     pg_mesh = ProcessGroupMesh(world_size)
     stage_manager = PipelineStageManager(
-        pg_mesh,
-        pipeline_axis=0,
-        enable_interleave=True,
-        num_model_chunks=num_model_chunk
+        pg_mesh, pipeline_axis=0, enable_interleave=True, num_model_chunks=num_model_chunk
     )
     schedule = InterleavedSchedule(
         stage_manager=stage_manager,
@@ -90,11 +79,7 @@ def run_pp(
         if idx % world_size == rank:
             sub_model._forward = sub_model.forward
             sub_model.forward = MethodType(
-                partial(
-                    pp_linear_fwd,
-                    stage_mgr=stage_manager,
-                    model_chunk_id=len(sharded_model)
-                ),
+                partial(pp_linear_fwd, stage_mgr=stage_manager, model_chunk_id=len(sharded_model)),
                 sub_model._forward,
             )
             sharded_model.append(sub_model.cuda())
@@ -109,7 +94,8 @@ def run_pp(
     input_list = [torch.rand(batch_size, DIM).cuda()]
     dist.all_reduce(input_list[0])
 
-    def criterion(x, *args, **kwargs): return (x * x).mean()
+    def criterion(x, *args, **kwargs):
+        return (x * x).mean()
 
     # forward and backward
     torch_output = torch_model(input_list[0])
@@ -117,12 +103,7 @@ def run_pp(
     torch_loss.backward()
 
     pp_ret = schedule.forward_backward_step(
-        sharded_model,
-        iter(input_list),
-        criterion,
-        pp_optimizer,
-        return_loss=True,
-        return_outputs=True
+        sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True, return_outputs=True
     )
 
     # check loss
@@ -132,14 +113,8 @@ def run_pp(
     # check gradients
     for i in range(num_model_chunk):
         idx = world_size * i + rank
-        assert torch.allclose(
-            torch_model.layers[idx].weight.grad,
-            sharded_model[i].weight.grad
-        )
-        assert torch.allclose(
-            torch_model.layers[idx].bias.grad,
-            sharded_model[i].bias.grad
-        )
+        assert torch.allclose(torch_model.layers[idx].weight.grad, sharded_model[i].weight.grad)
+        assert torch.allclose(torch_model.layers[idx].bias.grad, sharded_model[i].bias.grad)
 
     # step
     torch_optimizer.step()
@@ -148,14 +123,8 @@ def run_pp(
     # check updated param
     for i in range(num_model_chunk):
         idx = world_size * i + rank
-        assert torch.allclose(
-            torch_model.layers[idx].weight,
-            sharded_model[i].weight
-        )
-        assert torch.allclose(
-            torch_model.layers[idx].bias,
-            sharded_model[i].bias
-        )
+        assert torch.allclose(torch_model.layers[idx].weight, sharded_model[i].weight)
+        assert torch.allclose(torch_model.layers[idx].bias, sharded_model[i].bias)
 
 
 @pytest.mark.dist
@@ -170,7 +139,7 @@ def test_pp(num_microbatch: int, batch_size: int, num_model_chunk: int):
         nprocs=NUM_LAYER // num_model_chunk,
         num_microbatch=num_microbatch,
         batch_size=batch_size,
-        num_model_chunk=num_model_chunk
+        num_model_chunk=num_model_chunk,
     )
 
 

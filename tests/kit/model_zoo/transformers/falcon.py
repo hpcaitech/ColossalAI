@@ -16,7 +16,7 @@ def data_gen():
     # tokenized_input = tokenizer(input, return_tensors='pt')
     # input_ids = tokenized_input['input_ids']
     # attention_mask = tokenized_input['attention_mask']
-    input_ids = torch.tensor([[15496,    11, 616, 3290, 318, 13779, 318, 13779]], dtype=torch.int64)
+    input_ids = torch.tensor([[15496, 11, 616, 3290, 318, 13779, 318, 13779]], dtype=torch.int64)
     attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
     return dict(input_ids=input_ids, attention_mask=attention_mask)
 
@@ -36,6 +36,7 @@ def data_gen_for_token_classification():
     data["labels"] = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0]], dtype=torch.int64)
     return data
 
+
 def data_gen_for_sequence_classification():
     # sequence classification data gen
     data = data_gen()
@@ -44,7 +45,6 @@ def data_gen_for_sequence_classification():
 
 
 def data_gen_for_question_answering():
-
     input_ids = torch.tensor(
         [[57647, 1620, 23967, 620, 107373, 34, 91514, 620, 107373, 1620, 267, 35378, 48946, 18161, 48946, 18161]],
         dtype=torch.int64,
@@ -55,6 +55,7 @@ def data_gen_for_question_answering():
     return dict(
         input_ids=input_ids, attention_mask=attention_mask, start_positions=start_positions, end_positions=end_positions
     )
+
 
 # define output transform function
 output_transform_fn = lambda x: x
@@ -68,15 +69,15 @@ loss_fn_for_classification = lambda x: x.loss
 loss_fn_for_question_answering = lambda x: x.loss
 
 config = transformers.FalconConfig(
-    num_hidden_layers=2, 
-    num_attention_heads=4, 
-    vocab_size=250880, 
-    hidden_dropout=0, 
-    attention_dropout=0, 
-    hidden_size=64, 
+    num_hidden_layers=2,
+    num_attention_heads=4,
+    vocab_size=250880,
+    hidden_dropout=0,
+    attention_dropout=0,
+    hidden_size=64,
     multi_query=False,
-    new_decoder_architecture=True, 
-    pad_token_id = -1
+    new_decoder_architecture=True,
+    pad_token_id=-1,
 )
 
 model_zoo.register(

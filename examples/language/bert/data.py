@@ -91,7 +91,9 @@ class GLUEDataBuilder:
         # TODO: drop_last is set to True for now to avoid error when using PP
         #   as the last batch may not be divisible by the number of microbatches
         if len(self.eval_splits) == 1:
-            return self.plugin.prepare_dataloader(self.dataset["validation"], batch_size=self.eval_batch_size, drop_last=True)
+            return self.plugin.prepare_dataloader(
+                self.dataset["validation"], batch_size=self.eval_batch_size, drop_last=True
+            )
         elif len(self.eval_splits) > 1:
             return [
                 self.plugin.prepare_dataloader(self.dataset[x], batch_size=self.eval_batch_size, drop_last=True)
