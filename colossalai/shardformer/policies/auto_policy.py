@@ -184,7 +184,7 @@ def get_autopolicy(model: nn.Module) -> Policy:
 
     if policy_location is None:
         raise NotImplementedError(
-            f"Auto policy for {model.__class__.__qualname__} is not implemented\n. Supported models are {list(_POLICY_LIST.keys())} and {list(_INFER_POLICY_LIST.keys())}"
+            f"Auto policy for {model.__class__.__qualname__} is not implemented\n. Supported models are {list(_POLICY_LIST.keys())}"
         )
     else:
         policy = import_policy(policy_location)
