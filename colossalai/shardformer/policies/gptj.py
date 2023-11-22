@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List
 
@@ -5,7 +6,7 @@ from torch import Tensor, nn
 
 import colossalai.shardformer.layer as col_nn
 
-from ..modeling.gptj import GPTJPipelineForwards, get_gptj_flash_attention_forward, gptj_sequence_parallel_forward_fn
+from ..modeling.gptj import GPTJPipelineForwards, get_gptj_flash_attention_forward
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -40,7 +41,10 @@ class GPTJPolicy(Policy):
         from transformers.models.gptj.modeling_gptj import GPTJAttention, GPTJBlock, GPTJModel
 
         policy = {}
-        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
+        if self.shard_config.enable_sequence_parallelism:
+            self.shard_config.enable_sequence_parallelism = False
+            warnings.warn("GPTJ doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
+
         overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
             policy[GPTJModel] = ModulePolicyDescription(
@@ -138,9 +142,6 @@ class GPTJPolicy(Policy):
                 policy=policy,
                 target_key=GPTJAttention,
             )
-
-        if self.shard_config.enable_sequence_parallelism:
-            policy[GPTJModel].method_replacement = {"forward": gptj_sequence_parallel_forward_fn(self.shard_config)}
 
         return policy
 
