@@ -2,15 +2,16 @@ import torch
 
 
 class GPTQManager:
-    def __init__(self, quant_config, max_input_len: int = 1):
+    def __init__(self, quant_config, max_input_len: int = 1, max_batch_size: int = 1):
         self.max_dq_buffer_size = 1
         self.max_inner_outer_dim = 1
         self.bits = quant_config.bits
         self.use_act_order = quant_config.desc_act
-        self.max_input_len = 1
+        self.max_input_len = max_input_len
         self.gptq_temp_state_buffer = None
         self.gptq_temp_dq_buffer = None
         self.quant_config = quant_config
+        self.max_batch_size = max_batch_size
 
     def post_init_gptq_buffer(self, model: torch.nn.Module) -> None:
         from .cai_gptq import CaiQuantLinear
@@ -22,6 +23,8 @@ class GPTQManager:
             gptq_cuda = GPTQBuilder().load()
             HAS_GPTQ_CUDA = True
         except ImportError:
+            import warnings
+
             warnings.warn("CUDA gptq is not installed")
             HAS_GPTQ_CUDA = False
 
@@ -43,7 +46,9 @@ class GPTQManager:
         # The temp_state buffer is required to reorder X in the act-order case.
         # The temp_dq buffer is required to dequantize weights when using cuBLAS, typically for the prefill.
         self.gptq_temp_state_buffer = torch.zeros(
-            (max_input_len, self.max_inner_outer_dim), dtype=torch.float16, device=torch.cuda.current_device()
+            (max_input_len * self.max_batch_size, self.max_inner_outer_dim),
+            dtype=torch.float16,
+            device=torch.cuda.current_device(),
         )
         self.gptq_temp_dq_buffer = torch.zeros(
             (1, self.max_dq_buffer_size), dtype=torch.float16, device=torch.cuda.current_device()

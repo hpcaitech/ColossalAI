@@ -77,7 +77,9 @@ class InferenceEngine:
         if quant == "gptq":
             from ..quant.gptq import GPTQManager
 
-            self.gptq_manager = GPTQManager(model.quantize_config, max_input_len=max_input_len)
+            self.gptq_manager = GPTQManager(
+                model.quantize_config, max_input_len=max_input_len, max_batch_size=max_batch_size
+            )
             model = model.model
         elif quant == "smoothquant":
             import triton
