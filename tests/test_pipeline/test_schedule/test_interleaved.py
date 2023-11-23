@@ -119,12 +119,35 @@ def run_pp(
     # step
     torch_optimizer.step()
     pp_optimizer.step()
+    pp_optimizer.zero_grad()
 
     # check updated param
     for i in range(num_model_chunk):
         idx = world_size * i + rank
         assert torch.allclose(torch_model.layers[idx].weight, sharded_model[i].weight)
         assert torch.allclose(torch_model.layers[idx].bias, sharded_model[i].bias)
+
+    # forward only
+    with torch.no_grad():
+        torch_output = torch_model(input_list[0])
+        torch_loss = criterion(torch_output)
+
+        pp_ret = schedule.forward_backward_step(
+            sharded_model,
+            iter(input_list),
+            criterion,
+            pp_optimizer,
+            return_loss=True,
+            return_outputs=True
+        )
+        if stage_manager.is_last_stage(-1):
+            assert torch.allclose(torch_loss, pp_ret["loss"])
+        
+        for layer in sharded_model:
+            assert torch.allclose(layer.weight.grad, torch.zeros_like(layer.weight.grad))
+            assert torch.allclose(layer.bias.grad, torch.zeros_like(layer.bias.grad))
+
+
 
 
 @pytest.mark.dist
