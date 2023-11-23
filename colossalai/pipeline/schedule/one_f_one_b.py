@@ -314,7 +314,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         if not self.forward_only:
             input_objs = []
             output_objs = []
-        
+
         accum_loss = None
         if return_loss and self.stage_manager.is_last_stage():
             accum_loss = torch.zeros(1, device=get_current_device())
@@ -374,6 +374,9 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
                 output_obj_grad = self.recv_backward()
                 input_obj_grad = self.backward_step(optimizer, input_obj, output_obj, output_obj_grad)
                 self.send_backward(input_obj_grad)
+
+        if not self.forward_only:
+            assert all(len(v) == 0 for v in input_objs) and all(len(v) == 0 for v in output_objs)
 
         if outputs is not None:
             if isinstance(model, ModelWrapper):
