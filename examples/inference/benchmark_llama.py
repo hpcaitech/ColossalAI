@@ -106,7 +106,6 @@ def print_details_info(outputs, model_config, args, whole_end2end):
 
 
 def benchmark_inference(args):
-
     quant = None
     if args.quant == "cai-gptq":
         from auto_gptq import AutoGPTQForCausalLM
@@ -116,12 +115,17 @@ def benchmark_inference(args):
             args.quant_model, device=torch.cuda.current_device(), inject_fused_attention=False
         )
         quant = "gptq"
-    if args.quant == "smoothquant":
+    elif args.quant == "smoothquant":
         from colossalai.inference.quant.smoothquant.models.llama import SmoothLlamaForCausalLM
 
         model = SmoothLlamaForCausalLM.from_quantized(args.quant_model, args.smooth_model_name)
         model = model.cuda()
         quant = "smoothquant"
+    elif args.quant == "auto-gptq":
+        from auto_gptq import AutoGPTQForCausalLM
+
+        model = AutoGPTQForCausalLM.from_quantized(args.gptq_model, device=torch.cuda.current_device())
+        generate_kwargs = dict(max_new_tokens=args.output_len, do_sample=False, use_cache=True)
     else:
         config = CONFIG_MAP[args.model]
         config.pad_token_id = config.eos_token_id
@@ -129,18 +133,19 @@ def benchmark_inference(args):
 
     if dist.get_rank() == 0:
         print("Model loaded")
-    engine = InferenceEngine(
-        model,
-        pp_size=args.pp_size,
-        tp_size=args.tp_size,
-        dtype=args.dtype,
-        micro_batch_size=args.mb_size,
-        verbose=args.verbose,
-        max_batch_size=args.batch_size,
-        max_input_len=args.seq_len,
-        max_output_len=args.output_len,
-        quant=quant,
-    )
+    if args.quant != "auto-gptq":
+        engine = InferenceEngine(
+            model,
+            pp_size=args.pp_size,
+            tp_size=args.tp_size,
+            dtype=args.dtype,
+            micro_batch_size=args.mb_size,
+            verbose=args.verbose,
+            max_batch_size=args.batch_size,
+            max_input_len=args.seq_len,
+            max_output_len=args.output_len,
+            quant=quant,
+        )
     data = data_gen(args.batch_size, args.seq_len)
 
     N_WARMUP_STEPS = 2
@@ -163,14 +168,20 @@ def benchmark_inference(args):
 
     with ctx:
         for _ in range(N_WARMUP_STEPS):
-            engine.generate(data)
+            if args.quant == "auto-gptq":
+                model.generate(**data, **generate_kwargs)
+            else:
+                engine.generate(data)
             if args.profile:
                 ctx.step()
 
         if args.nsys:
             torch.cuda.cudart().cudaProfilerStart()
         whole_end2end = time.perf_counter()
-        outputs = engine.generate(data)
+        if args.quant == "auto-gptq":
+            outputs = model.generate(**data, **generate_kwargs)
+        else:
+            outputs = engine.generate(data)
         whole_end2end = time.perf_counter() - whole_end2end
         if args.nsys:
             torch.cuda.cudart().cudaProfilerStop()
@@ -180,37 +191,9 @@ def benchmark_inference(args):
     print_details_info(outputs, model.config, args, whole_end2end)
 
 
-def benchmark_auto_gptq_inference(args):
-    from auto_gptq import AutoGPTQForCausalLM
-
-    # load quantized model to the first GPU
-    model = AutoGPTQForCausalLM.from_quantized(args.gptq_model, device=torch.cuda.current_device())
-
-    if dist.get_rank() == 0:
-        print("Model loaded")
-
-    data = data_gen(args.batch_size, args.seq_len)
-    generate_kwargs = dict(max_new_tokens=args.output_len, do_sample=False, use_cache=True)
-    N_WARMUP_STEPS = 2
-
-    for _ in range(N_WARMUP_STEPS):
-        model.generate(**data, **generate_kwargs)
-
-    torch.cuda.synchronize()
-    whole_end2end = time.time()
-    outputs = model.generate(**data, **generate_kwargs)
-    torch.cuda.synchronize()
-    whole_end2end = time.time() - whole_end2end
-
-    print_details_info(outputs, model.config, args, whole_end2end)
-
-
 def hybrid_inference(rank, world_size, port, args):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    if args.quant == "auto-gptq":
-        benchmark_auto_gptq_inference(args)
-    else:
-        benchmark_inference(args)
+    benchmark_inference(args)
 
 
 @rerun_if_address_is_in_use()
