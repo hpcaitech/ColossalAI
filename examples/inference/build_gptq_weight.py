@@ -36,7 +36,13 @@ parser.add_argument(
 parser.add_argument(
     "--dataset-path",
     type=str,
-    help="location of the  dataset",
+    help="location of the dataset",
+)
+parser.add_argument(
+    "--desc_act",
+    type=bool,
+    help="set to False can speed up inference but the perplexity may slightly bad",
+    default=False,
 )
 args = parser.parse_args()
 
@@ -46,6 +52,7 @@ quantized_model_dir = args.quantized_model_dir
 quantize_config = BaseQuantizeConfig(
     bits=args.bits,  # quantize model to 4-bit
     group_size=args.group_size,  # it is recommended to set the value to 128
+    desc_act=args.desc_act,  # set to False can speed up inference but the perplexity may slightly bad
 )
 
 tokenizer = AutoTokenizer.from_pretrained(pretrained_model_dir)
