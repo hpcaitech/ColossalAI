@@ -56,16 +56,12 @@ if args.dataset_path is not None:
         raise FileNotFoundError(f"Cannot find the dataset at {args.dataset_path}")
     else:
         dataset = load_dataset("json", data_files=args.dataset_path, split="train")
+    examples = []
+    for data in dataset:
+        examples.append(tokenizer(data))
 else:
-    dataset = [
-        "auto-gptq is an easy-to-use model quantization library with user-friendly apis, based on GPTQ algorithm."
-    ]
-
-examples = [
-    tokenizer(
-        "auto-gptq is an easy-to-use model quantization library with user-friendly apis, based on GPTQ algorithm."
-    )
-]
+    dataset = "auto-gptq is an easy-to-use model quantization library with user-friendly apis, based on GPTQ algorithm."
+    examples = [tokenizer(dataset)]
 
 # load un-quantized model, by default, the model will always be loaded into CPU memory
 model = AutoGPTQForCausalLM.from_pretrained(pretrained_model_dir, quantize_config)
