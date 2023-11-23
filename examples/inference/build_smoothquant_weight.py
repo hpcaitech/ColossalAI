@@ -48,7 +48,7 @@ def main():
     if not os.path.exists(dataset_path):
         raise FileNotFoundError(f"Cannot find the dataset at {args.dataset_path}")
     dataset = load_dataset("json", data_files=dataset_path, split="train")
-
+    dataset = ["Written by Adele and its producer, ", " brings you the latest celebrity & royal news from the U"]
     model.quantized(tokenizer, dataset, num_samples=num_samples, seq_len=seq_len)
     model = model.cuda()
 

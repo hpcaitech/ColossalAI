@@ -113,9 +113,15 @@ def benchmark_inference(args):
 
         # load quantized model to the first GPU
         model = AutoGPTQForCausalLM.from_quantized(
-            args.gptq_model, device=torch.cuda.current_device(), inject_fused_attention=False
+            args.quant_model, device=torch.cuda.current_device(), inject_fused_attention=False
         )
         quant = "gptq"
+    if args.quant == "smoothquant":
+        from colossalai.inference.quant.smoothquant.models.llama import SmoothLlamaForCausalLM
+
+        model = SmoothLlamaForCausalLM.from_quantized(args.quant_model, args.smooth_model_name)
+        model = model.cuda()
+        quant = "smoothquant"
     else:
         config = CONFIG_MAP[args.model]
         config.pad_token_id = config.eos_token_id
@@ -223,15 +229,21 @@ if __name__ == "__main__":
         choices=["toy", "llama-7b", "llama-13b", "llama2-7b", "llama2-13b"],
     )
     parser.add_argument(
-        "--gptq_model",
+        "--quant_model",
         help="the path of gptq model",
         type=str,
     )
     parser.add_argument(
+        "--smooth_model_name",
+        help="the smoothuant model name",
+        type=str,
+    )
+
+    parser.add_argument(
         "--quant",
         help="the type of benchmark type: 'cai-gptq', 'auto-gptq'",
         type=str,
-        choices=["cai-gptq", "auto-gptq"],
+        choices=["cai-gptq", "auto-gptq", "smoothquant"],
         default=None,
     )
     parser.add_argument("-b", "--batch_size", type=int, default=8, help="batch size")
