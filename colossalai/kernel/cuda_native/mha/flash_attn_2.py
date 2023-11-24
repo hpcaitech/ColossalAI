@@ -29,7 +29,6 @@ except ImportError:
     HAS_FLASH_ATTN = False
 
 if HAS_FLASH_ATTN:
-    pass
 
     from .utils import SeqLenInfo
 
