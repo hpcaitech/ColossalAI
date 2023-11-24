@@ -37,12 +37,13 @@ def pp_linear_fwd(
     stage_mgr: PipelineStageManager = None,
     model_chunk_id: int = None,
 ):
-    if stage_mgr.is_first_stage(model_chunk_id):
-        return {"input_obj": forward(data)}
-    elif stage_mgr.is_last_stage(model_chunk_id):
-        return forward(input_obj)
-    else:
-        return {"input_obj": forward(input_obj)}
+    with stage_mgr.set_model_chunk_id(model_chunk_id):
+        if stage_mgr.is_first_stage():
+            return {"input_obj": forward(data)}
+        elif stage_mgr.is_last_stage():
+            return forward(input_obj)
+        else:
+            return {"input_obj": forward(input_obj)}
 
 
 def run_pp(
@@ -107,7 +108,7 @@ def run_pp(
     )
 
     # check loss
-    if stage_manager.is_last_stage(-1):
+    if stage_manager.is_last_stage(ignore_chunk=True):
         assert torch.allclose(torch_loss, pp_ret["loss"])
 
     # check gradients
@@ -140,7 +141,7 @@ def run_pp(
             return_loss=True,
             return_outputs=True
         )
-        if stage_manager.is_last_stage(-1):
+        if stage_manager.is_last_stage(ignore_chunk=True):
             assert torch.allclose(torch_loss, pp_ret["loss"])
         
         for layer in sharded_model:

@@ -118,12 +118,13 @@ class InterleavedSchedule(PipelineSchedule):
         Returns:
             Any: The input tensor or input tensor list.
         """
-        if not self.stage_manager.is_first_stage(model_chunk_id):
-            input_tensor = self.comm.recv_forward(prev_rank, metadata_recv=self.metadata_recv_forward)
-            if self.metadata_recv_forward is None:
-                self.metadata_recv_forward = create_fast_send_metadata(input_tensor)
+        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+            if not self.stage_manager.is_first_stage():
+                input_tensor = self.comm.recv_forward(prev_rank, metadata_recv=self.metadata_recv_forward)
+                if self.metadata_recv_forward is None:
+                    self.metadata_recv_forward = create_fast_send_metadata(input_tensor)
 
-            return input_tensor
+                return input_tensor
 
     def recv_backward(self, model_chunk_id: int, next_rank: int = None) -> Any:
         """Copy the gradient tensor from the next stage in pipeline as the input gradient of this stage.
@@ -136,12 +137,13 @@ class InterleavedSchedule(PipelineSchedule):
         Returns:
             Any: The input gradient tensor or gradient tensor list.
         """
-        if not self.stage_manager.is_last_stage(model_chunk_id):
-            output_tensor_grad = self.comm.recv_backward(next_rank, metadata_recv=self.metadata_recv_backward)
-            if self.metadata_recv_backward is None:
-                self.metadata_recv_backward = create_fast_send_metadata(output_tensor_grad)
+        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+            if not self.stage_manager.is_last_stage():
+                output_tensor_grad = self.comm.recv_backward(next_rank, metadata_recv=self.metadata_recv_backward)
+                if self.metadata_recv_backward is None:
+                    self.metadata_recv_backward = create_fast_send_metadata(output_tensor_grad)
 
-            return output_tensor_grad
+                return output_tensor_grad
 
     def send_forward(self, model_chunk_id: int, output_object: Any, next_rank: int = None) -> None:
         """Sends the input tensor to the next stage in pipeline.
@@ -152,9 +154,10 @@ class InterleavedSchedule(PipelineSchedule):
             output_object (Any): Object to be sent.
             next_rank (int, optional): The rank of the recipient of the tensor.
         """
-        if not self.stage_manager.is_last_stage(model_chunk_id):
-            self.comm.send_forward(output_object, next_rank, send_metadata=self.send_metadata_forward)
-            self.send_metadata_forward = False
+        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+            if not self.stage_manager.is_last_stage():
+                self.comm.send_forward(output_object, next_rank, send_metadata=self.send_metadata_forward)
+                self.send_metadata_forward = False
 
     def send_backward(self, model_chunk_id: int, input_object: Any, prev_rank: int = None) -> None:
         """Sends the gradient tensor to the previous stage in pipeline.
@@ -165,41 +168,44 @@ class InterleavedSchedule(PipelineSchedule):
             input_object (Any): Object to be sent.
             prev_rank (int, optional): The rank of the recipient of the tensor
         """
-        if not self.stage_manager.is_first_stage(model_chunk_id):
-            self.comm.send_backward(input_object, prev_rank, send_metadata=self.send_metadata_backward)
-            self.send_metadata_backward = False
+        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+            if not self.stage_manager.is_first_stage():
+                self.comm.send_backward(input_object, prev_rank, send_metadata=self.send_metadata_backward)
+                self.send_metadata_backward = False
 
     def send_forward_recv_backward(
         self, model_chunk_id: int, output_object: Any, next_rank: Optional[int] = None
     ) -> Any:
-        if not self.stage_manager.is_last_stage(model_chunk_id):
-            output_tensor_grad = self.comm.send_forward_recv_backward(
-                output_object,
-                next_rank,
-                send_metadata=self.send_metadata_forward,
-                metadata_recv=self.metadata_recv_backward,
-            )
-            self.send_metadata_forward = False
-            if self.metadata_recv_backward is None:
-                self.metadata_recv_backward = create_fast_send_metadata(output_tensor_grad)
+        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+            if not self.stage_manager.is_last_stage():
+                output_tensor_grad = self.comm.send_forward_recv_backward(
+                    output_object,
+                    next_rank,
+                    send_metadata=self.send_metadata_forward,
+                    metadata_recv=self.metadata_recv_backward,
+                )
+                self.send_metadata_forward = False
+                if self.metadata_recv_backward is None:
+                    self.metadata_recv_backward = create_fast_send_metadata(output_tensor_grad)
 
-            return output_tensor_grad
+                return output_tensor_grad
 
     def send_backward_recv_forward(
         self, model_chunk_id: int, output_object: Any, prev_rank: Optional[int] = None
     ) -> Any:
-        if not self.stage_manager.is_first_stage(model_chunk_id):
-            input_tensor = self.comm.send_backward_recv_forward(
-                output_object,
-                prev_rank,
-                send_metadata=self.send_metadata_backward,
-                metadata_recv=self.metadata_recv_forward,
-            )
-            self.send_metadata_backward = False
-            if self.metadata_recv_forward is None:
-                self.metadata_recv_forward = create_fast_send_metadata(input_tensor)
+        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+            if not self.stage_manager.is_first_stage():
+                input_tensor = self.comm.send_backward_recv_forward(
+                    output_object,
+                    prev_rank,
+                    send_metadata=self.send_metadata_backward,
+                    metadata_recv=self.metadata_recv_forward,
+                )
+                self.send_metadata_backward = False
+                if self.metadata_recv_forward is None:
+                    self.metadata_recv_forward = create_fast_send_metadata(input_tensor)
 
-            return input_tensor
+                return input_tensor
 
     def forward_step(
         self,
@@ -226,25 +232,24 @@ class InterleavedSchedule(PipelineSchedule):
         # for the first stage, input_obj is None
         # for the non-first stage, input_obj is the output of the previous stage and it's must be a dict
 
-        self.stage_manager.model_chunk_id = model_chunk_id
-        if isinstance(model_chunk, ModuleList):
-            output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)
-        else:
-            # NOTE: in shardformer, each device still has the entire model, so we need to use relevant stage layers
-            internal_inputs = {} if input_obj is None else input_obj
-            internal_inputs["stage_index"] = self.stage_manager.stage_indices[model_chunk_id]
-            output_obj = model_forward(model_chunk, micro_batch, internal_inputs)
-        self.stage_manager.model_chunk_id = None
+        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+            if isinstance(model_chunk, ModuleList):
+                output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)
+            else:
+                # NOTE: in shardformer, each device still has the entire model, so we need to use relevant stage layers
+                internal_inputs = {} if input_obj is None else input_obj
+                internal_inputs["stage_index"] = self.stage_manager.stage_indices[model_chunk_id]
+                output_obj = model_forward(model_chunk, micro_batch, internal_inputs)
 
-        if self.stage_manager.is_last_stage(model_chunk_id):
-            loss = criterion(output_obj, micro_batch) / self.num_microbatch
-            if accum_loss is not None:
-                accum_loss.add_(loss.detach())
-            if outputs is not None:
-                outputs.append(tree_map(detach, output_obj))
-            return loss
-        else:
-            return output_obj
+            if self.stage_manager.is_last_stage():
+                loss = criterion(output_obj, micro_batch) / self.num_microbatch
+                if accum_loss is not None:
+                    accum_loss.add_(loss.detach())
+                if outputs is not None:
+                    outputs.append(tree_map(detach, output_obj))
+                return loss
+            else:
+                return output_obj
 
     def backward_step(
         self,
@@ -337,10 +342,10 @@ class InterleavedSchedule(PipelineSchedule):
             input_objs = [[] for _ in range(self.num_model_chunks)]
             output_objs = [[] for _ in range(self.num_model_chunks)]
 
-        outputs = [] if return_outputs and self.stage_manager.is_last_stage(-1) else None
+        outputs = [] if return_outputs and self.stage_manager.is_last_stage(ignore_chunk=True) else None
 
         accum_loss = None
-        if return_loss and self.stage_manager.is_last_stage(-1):
+        if return_loss and self.stage_manager.is_last_stage(ignore_chunk=True):
             accum_loss = torch.zeros(1, device=get_current_device())
 
         # Run warmup forward passes.
