@@ -57,9 +57,7 @@ def evaluate_model(
 
     def evaluate_subset(dataloader: DataLoader):
         use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
-        is_pp_last_device = use_pipeline and booster.plugin.stage_manager.is_last_stage(
-            None if not booster.plugin.stage_manager.is_interleave else -1
-        )
+        is_pp_last_device = use_pipeline and booster.plugin.stage_manager.is_last_stage(ignore_chunk=True)
 
         accum_loss = torch.zeros(1, device=get_current_device())
         for batch in dataloader:
@@ -136,9 +134,7 @@ def train_epoch(
     coordinator: DistCoordinator,
 ):
     use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
-    is_pp_last_device = use_pipeline and booster.plugin.stage_manager.is_last_stage(
-        None if not booster.plugin.stage_manager.is_interleave else -1
-    )
+    is_pp_last_device = use_pipeline and booster.plugin.stage_manager.is_last_stage(ignore_chunk=True)
     print_flag = (not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_device)
     total_step = len(train_dataloader)
 
