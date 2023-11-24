@@ -133,6 +133,12 @@ class MistralModelPolicy(MistralPolicy):
     def __init__(self) -> None:
         super().__init__()
 
+    def module_policy(self):
+        if self.pipeline_stage_manager:
+            warnings.warn("Mistral dosen't support pipeline parallelism now.")
+
+        return super().module_policy()
+
 class MistralForCausalLMPolicy(MistralPolicy):
     def module_policy(self):
         from transformers import MistralForCausalLM
@@ -150,6 +156,10 @@ class MistralForCausalLMPolicy(MistralPolicy):
                     ]
                 )
             }
+
+            if self.pipeline_stage_manager:
+                warnings.warn("Mistral dosen't support pipeline parallelism now.")
+
             policy.update(new_item)
 
         return policy
@@ -171,5 +181,9 @@ class MistralForSequenceClassificationPolicy(MistralPolicy):
                     ]
                 )
             }
+
+            if self.pipeline_stage_manager:
+                warnings.warn("Mistral dosen't support pipeline parallelism now.")
+
             policy.update(new_item)
         return policy

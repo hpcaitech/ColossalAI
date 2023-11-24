@@ -174,6 +174,15 @@ _POLICY_LIST = {
     "transformers.models.falcon.modeling_falcon.FalconForQuestionAnswering": PolicyLocation(
         file_name="falcon", class_name="FalconForQuestionAnsweringPolicy"
     ),
+    "transformers.models.mistral.modeling_mistral.MistralModel": PolicyLocation(
+        file_name="mistral", class_name="MistralModelPolicy"
+    ),
+    "transformers.models.mistral.modeling_mistral.MistralForCausalLM": PolicyLocation(
+        file_name="mistral", class_name="MistralForCausalLMPolicy"
+    ),
+    "transformers.models.mistral.modeling_mistral.MistralForSequenceClassification": PolicyLocation(
+        file_name="mistral", class_name="MistralForSequenceClassificationPolicy"
+    ),
 }
 
 _INFER_POLICY_LIST = {
