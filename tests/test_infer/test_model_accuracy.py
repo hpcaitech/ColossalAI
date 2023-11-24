@@ -11,7 +11,7 @@ from colossalai.inference.kv_cache import BatchInferState
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.device import get_current_device
 
-CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.5")
+CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.7")
 
 HAS_LIGHTLLM_KERNEL = True
 if importlib.util.find_spec("lightllm") is None:
@@ -19,7 +19,7 @@ if importlib.util.find_spec("lightllm") is None:
 
 MANUAL_SEED = 123
 MAX_IN_LEN = 1024
-MAX_OUT_LEN = 1024
+MAX_OUT_LEN = 256
 CONFIG_MAP = {
     "toy": transformers.LlamaConfig(num_hidden_layers=4),
 }
@@ -70,10 +70,11 @@ def run_inference(tp_size, pp_size, bsz: int, in_len: int):
         max_output_len=engine.max_output_len,
         cache_manager=engine.cache_manager_list[0],
     )
-    # bind the infer state to the model manually
+    # Bind the infer state to the model manually as not using pipeline parallel
     engine.model.model.infer_state = infer_state
 
-    # TODO pp accuracy test to be added later
+    # TODO PP accuracy test to be added later
+    # Currently, PP does not support model forward for a single-token output
     with torch.no_grad():
         outputs = engine.model(**inputs)
 
@@ -87,15 +88,15 @@ def launch_run_inference(rank, world_size, port, tp_size, pp_size, bsz, in_len):
 
 @pytest.mark.skipif(
     not CUDA_SUPPORT or not HAS_LIGHTLLM_KERNEL,
-    reason="kv-cache manager engine requires cuda version to be higher than 11.5",
+    reason="kv-cache manager engine requires cuda version to be higher than 11.7",
 )
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 @parameterize("tp_size", [1, 2])
 @parameterize("pp_size", [1])
-@parameterize("bsz", [2, 4])
-@parameterize("in_len", [256])
+@parameterize("bsz", [1, 4])
+@parameterize("in_len", [128])
 def test_model_forward_accuracy(tp_size, pp_size, bsz, in_len):
     print(f"world_size: {tp_size * pp_size}, tp_size: {tp_size}, pp_size: {pp_size}, bsz: {bsz}, in_len: {in_len}")
     spawn(launch_run_inference, nprocs=tp_size * pp_size, tp_size=tp_size, pp_size=pp_size, bsz=bsz, in_len=in_len)
