@@ -51,7 +51,8 @@ def get_flash_core_attention_forward():
                 attn_mask_type = AttnMaskType.causal
             else:
                 flash_attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool)).contiguous()
-                attn_mask_type = AttnMaskType.paddedcausal
+                if not torch.all(flash_attention_mask):
+                    attn_mask_type = AttnMaskType.paddedcausal
 
             attention = ColoAttention(
                 embed_dim=self.hidden_size_per_partition,

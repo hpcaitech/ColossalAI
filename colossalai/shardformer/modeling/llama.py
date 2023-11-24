@@ -413,8 +413,6 @@ def get_llama_flash_attention_forward():
         warnings.warn("using llamav1, llamav1 hasn't repeat_kv function")
         llama_version = 1
 
-    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
-
     def forward(
         self: LlamaAttention,
         hidden_states: torch.Tensor,
@@ -465,7 +463,8 @@ def get_llama_flash_attention_forward():
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
                 )
             flash_attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool)).contiguous()
-            attn_mask_type = AttnMaskType.paddedcausal
+            if not torch.all(flash_attention_mask):
+                attn_mask_type = AttnMaskType.paddedcausal
 
         attention = ColoAttention(embed_dim=self.hidden_size, num_heads=self.num_heads)
         attn_output = attention(
