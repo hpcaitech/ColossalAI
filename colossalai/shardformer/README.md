@@ -137,7 +137,6 @@ We will follow this roadmap to develop Shardformer:
 | swin |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | swin V2 |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | qwen |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
-| mistral |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
 
 
 ## 💡 API Design
