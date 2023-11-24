@@ -78,7 +78,7 @@ For Llama2-7B, input len = 1024, output len = 256
 |  batch_size            |   16   |   32   |   64   |
 | :--------------------: | :----: | :----: | :----: |
 | AutoGPTQ               | 247.64 | 269.60 |   OOM  |
-| ColossalAI SmoothQuant | 232.36 | 323.47 | 606.19 |
+| ColossalAI SmoothQuant | 232.36 | 323.47 | 410.14 |
 | ColossalAI GPTQ        | 410.73 | 650.99 | 911.29 |
 
 The results of more models are coming soon!
