@@ -1,5 +1,5 @@
 import torch
-import torch_npu  # noqa
+import torch_npu   # noqa
 from einops import rearrange
 
 

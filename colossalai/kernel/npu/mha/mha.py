@@ -1,5 +1,6 @@
 import math
 from typing import Optional
+from .triangle_attn import HAS_NPU_TRIANGLE_ATTENTION
 from .spda_attn import npu_sdpa_attention
 import torch
 
@@ -9,6 +10,12 @@ class NPUColoAttention(torch.nn.Module):
         self, embed_dim: int, num_heads: int, dropout: float = 0.0, scale: float = None
     ):
         super().__init__()
+
+        try:
+            import torch_npu
+        except ImportError:
+            raise Exception("torch_npu is not installed.")
+
         assert (
             embed_dim % num_heads == 0
         ), f"the embed dim ({embed_dim}) is not divisible by the number of attention heads ({num_heads})."
@@ -54,7 +61,12 @@ class NPUColoAttention(torch.nn.Module):
         assert bias is None, "bias is not supported in npu colo attention"
 
         causal = attn_mask_type is not None and attn_mask_type.value > 1
-        attn_fn = npu_sdpa_attention
+
+        if HAS_NPU_TRIANGLE_ATTENTION:
+            from .triangle_attn import npu_triangle_attention
+            attn_fn = npu_triangle_attention
+        else:
+            attn_fn = npu_sdpa_attention
 
         out = attn_fn(
             query,
