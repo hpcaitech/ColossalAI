@@ -19,7 +19,7 @@
 
 An overview of the Quantization is below:
 
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/quant-arch.png" alt="Colossal-quant" style="zoom:36%;" />
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/quant-arch.png" alt="Colossal-quant" style="zoom:30%;" />
 
 
 
@@ -59,13 +59,13 @@ An overview of the Quantization is below:
 
 We conducted multiple benchmark tests to evaluate the performance. We compared the inference `throughputs` between `colossal-inference` and `AutoGPTQ`.
 
-For various models, experiments were conducted using multiple batch sizes under the consistent model configuration of `7 billion(7b)` parameters, `1024` input length, and 128 output length. The obtained results are as follows (due to time constraints, the evaluation has currently been performed solely on the `A800` single GPU performance; multi-GPU performance will be addressed in the future):
+For various models, experiments were conducted using multiple batch sizes under the consistent model configuration of `7 billion(7b)` parameters. The obtained results are as follows (due to time constraints, the evaluation has currently been performed solely on the `A800` single GPU performance; multi-GPU performance will be addressed in the future):
 
 ### Single GPU Performance:
 
 Currently the stats below are calculated based on A800 (single GPU), and we calculate throughputs for ColossalAI GPTQ,  ColossalAI SmoothQuant and AutoGPTQ. We are actively developing new features and methods to further optimize the performance of LLM models. Please stay tuned.
 
-For input len = 512, output len = 256
+For Llama2-7B, input len = 512, output len = 256
 
 |  batch_size            |   16   |   32   |   64   |
 | :--------------------: | :----: | :----: | :----: |
@@ -73,7 +73,7 @@ For input len = 512, output len = 256
 | ColossalAI SmoothQuant | 275.96 | 443.64 | 606.19 |
 | ColossalAI GPTQ        | 464.23 | 803.97 | 1256.06 |
 
-For input len = 1024, output len = 256
+For Llama2-7B, input len = 1024, output len = 256
 
 |  batch_size            |   16   |   32   |   64   |
 | :--------------------: | :----: | :----: | :----: |
