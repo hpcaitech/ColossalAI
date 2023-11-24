@@ -3,6 +3,8 @@ import transformers
 
 from ..registry import ModelAttribute, model_zoo
 
+from transformers import MistralConfig
+
 # ===============================
 # Register single-sentence Mistral
 # ===============================
@@ -43,7 +45,7 @@ loss_fn_for_mistral_model = lambda x: torch.nn.functional.mse_loss(
 loss_fn = lambda x: x.loss
 loss_fn_for_seq_classification = lambda output: output.logits.mean()
 
-config = transformers.MistralConfig(
+config = MistralConfig(
     hidden_size=256,
     intermediate_size=256,
     num_attention_heads=64,

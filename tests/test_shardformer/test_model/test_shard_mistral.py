@@ -40,7 +40,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     shard_mistral_model = unwrap_model(sharded_model, "MistralModel", "model")
 
     row_layer_for_check = ["layers[0].self_attn.q_proj", "embed_tokens"]
-    # row_layer_for_check = ["layers[0].self_attn.q_proj"]
     col_layer_for_check = ["layers[0].self_attn.o_proj"]
 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
@@ -137,6 +136,7 @@ def check_mistral(rank, world_size, port):
 
 
 
+@pytest.mark.skip("This test should be run on a version of transformers not less than 4.35.2.")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
