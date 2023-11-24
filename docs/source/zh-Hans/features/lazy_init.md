@@ -73,4 +73,4 @@ model, *_ = booster.boost(model)
 | Blip2Model                    | transformers |
 | Blip2ForConditionalGeneration | transformers |
 
-<!-- doc-test-command: torchrun --standalone --nproc_per_node=2 lazy_iniy.py  -->
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=2 lazy_init.py  -->
