@@ -98,7 +98,6 @@ def launch_run_inference(rank, world_size, port, tp_size, pp_size, bsz, in_len):
 @parameterize("bsz", [1, 4])
 @parameterize("in_len", [128])
 def test_model_forward_accuracy(tp_size, pp_size, bsz, in_len):
-    print(f"world_size: {tp_size * pp_size}, tp_size: {tp_size}, pp_size: {pp_size}, bsz: {bsz}, in_len: {in_len}")
     spawn(launch_run_inference, nprocs=tp_size * pp_size, tp_size=tp_size, pp_size=pp_size, bsz=bsz, in_len=in_len)
 
 
