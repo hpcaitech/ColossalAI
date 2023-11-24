@@ -42,11 +42,11 @@ class GPTQManager:
 
         max_input_len = 1
         if self.use_act_order:
-            max_input_len = self.max_input_len
+            max_input_len = self.max_input_len * self.max_batch_size
         # The temp_state buffer is required to reorder X in the act-order case.
         # The temp_dq buffer is required to dequantize weights when using cuBLAS, typically for the prefill.
         self.gptq_temp_state_buffer = torch.zeros(
-            (max_input_len * self.max_batch_size, self.max_inner_outer_dim),
+            (max_input_len, self.max_inner_outer_dim),
             dtype=torch.float16,
             device=torch.cuda.current_device(),
         )
