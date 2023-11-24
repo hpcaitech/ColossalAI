@@ -15,7 +15,6 @@
 
 import logging
 import torch
-import torch.nn as nn
 from einops import rearrange
 
 HAS_NPU_TRIANGLE_ATTENTION = False
