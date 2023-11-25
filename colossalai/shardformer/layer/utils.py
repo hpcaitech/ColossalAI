@@ -6,7 +6,8 @@ import torch.distributed as dist
 from torch import nn
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.distributed import ProcessGroup, get_world_size
-from colossalai.utils.device import get_current_device, get_rng_state, set_rng_state, manual_seed
+
+from colossalai.utils.device import get_current_device, get_rng_state, manual_seed, set_rng_state
 
 
 class SeqParallelUtils:
@@ -292,7 +293,9 @@ def get_attention_kernel():
         from colossalai.kernel.cuda_native import ColoAttention as AttentionKernel
     else:
         try:
-            torch.npu.is_available()
+            from colossalai.kernel.npu import HAS_NPU
+
+            assert HAS_NPU
             from colossalai.kernel.npu import NPUColoAttention as AttentionKernel
         except:
             raise Exception("No available device for attention kernel!")

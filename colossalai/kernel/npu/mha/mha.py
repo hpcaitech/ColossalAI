@@ -1,13 +1,13 @@
 import math
 from typing import Optional
-from .spda_attn import npu_sdpa_attention
+
 import torch
+
+from .spda_attn import npu_sdpa_attention
 
 
 class NPUColoAttention(torch.nn.Module):
-    def __init__(
-        self, embed_dim: int, num_heads: int, dropout: float = 0.0, scale: float = None
-    ):
+    def __init__(self, embed_dim: int, num_heads: int, dropout: float = 0.0, scale: float = None):
         super().__init__()
         assert (
             embed_dim % num_heads == 0
@@ -47,9 +47,7 @@ class NPUColoAttention(torch.nn.Module):
             len(query.shape) == 4 and len(key.shape) == 4 and len(value.shape) == 4
         ), f"query, key, value should be 4D tensors, but got {query.shape}, {key.shape}, {value.shape}"
         assert (
-            query.device.type == "npu"
-            and key.device.type == "npu"
-            and value.device.type == "npu"
+            query.device.type == "npu" and key.device.type == "npu" and value.device.type == "npu"
         ), f"query, key, value should be on npu device, but got {query.device}, {key.device}, {value.device}"
         assert bias is None, "bias is not supported in npu colo attention"
 
