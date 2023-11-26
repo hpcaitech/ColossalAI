@@ -56,30 +56,29 @@ class ChatGLMConfig(PretrainedConfig):
 
     >>> # Accessing the model configuration
     >>> configuration = model.config
-    ```
-"""
+    ```"""
     model_type = "chatglm"
 
     def __init__(
-            self,
-            vocab_size=130528,
-            hidden_size=4096,
-            num_layers=28,
-            num_attention_heads=32,
-            layernorm_epsilon=1e-5,
-            use_cache=True,
-            bos_token_id=130004,
-            eos_token_id=130005,
-            mask_token_id=130000,
-            gmask_token_id=130001,
-            pad_token_id=3,
-            max_sequence_length=2048,
-            inner_hidden_size=16384,
-            position_encoding_2d=True,
-            quantization_bit=0,
-            pre_seq_len=None,
-            prefix_projection=False,
-            **kwargs
+        self,
+        vocab_size=130528,
+        hidden_size=4096,
+        num_layers=28,
+        num_attention_heads=32,
+        layernorm_epsilon=1e-5,
+        use_cache=True,
+        bos_token_id=130004,
+        eos_token_id=130005,
+        mask_token_id=130000,
+        gmask_token_id=130001,
+        pad_token_id=3,
+        max_sequence_length=2048,
+        inner_hidden_size=16384,
+        position_encoding_2d=True,
+        quantization_bit=0,
+        pre_seq_len=None,
+        prefix_projection=False,
+        **kwargs,
     ):
         self.num_layers = num_layers
         self.vocab_size = vocab_size
@@ -99,9 +98,4 @@ class ChatGLMConfig(PretrainedConfig):
         self.pre_seq_len = pre_seq_len
         self.prefix_projection = prefix_projection
 
-        super().__init__(
-            pad_token_id=pad_token_id,
-            bos_token_id=bos_token_id,
-            eos_token_id=eos_token_id,
-            **kwargs
-        )
+        super().__init__(pad_token_id=pad_token_id, bos_token_id=bos_token_id, eos_token_id=eos_token_id, **kwargs)

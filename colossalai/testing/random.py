@@ -11,7 +11,7 @@ def seed_all(seed, cuda_deterministic=False):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-    if cuda_deterministic:    # slower, more reproducible
+    if cuda_deterministic:  # slower, more reproducible
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
     else:

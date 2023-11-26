@@ -35,9 +35,9 @@ WEIGHT_DECAY=0.05
 WARMUP_RATIO=0.3
 
 # run the script for demo
-torchrun \
-  --standalone \
+colossalai run \
   --nproc_per_node ${GPUNUM} \
+  --master_port 29505 \
   vit_train_demo.py \
   --model_name_or_path ${MODEL} \
   --output_path ${OUTPUT_PATH} \

@@ -22,25 +22,21 @@ def get_data(batch_size: int, seq_len: int = 10) -> dict:
     return dict(input_ids=input_ids, attention_mask=attention_mask)
 
 
-def train_step(strategy: Strategy,
-               actor: GPTActor,
-               actor_optim: HybridAdam,
-               batch_size: int = 8):
+def train_step(strategy: Strategy, actor: GPTActor, actor_optim: HybridAdam, batch_size: int = 8):
     data = get_data(batch_size)
     action_mask = torch.ones_like(data["attention_mask"], dtype=torch.bool)
-    actor_output = actor(data["input_ids"], data["attention_mask"])
-    action_log_probs = calc_action_log_probs(actor_output, data["input_ids"], action_mask.size(1))
+    actor_logits = actor(data["input_ids"], data["attention_mask"])["logits"]
+    action_log_probs = calc_action_log_probs(actor_logits, data["input_ids"], action_mask.size(1))
     loss = action_log_probs.sum()
     strategy.backward(loss, actor, actor_optim)
     strategy.optimizer_step(actor_optim)
 
 
-def run_test_checkpoint(strategy_name: str,
-                        shard: bool):
+def run_test_checkpoint(strategy_name: str, shard: bool):
     if strategy_name == "ddp":
         strategy = DDPStrategy()
     elif strategy_name == "colossalai_gemini":
-        strategy = GeminiStrategy(placement_policy="cuda", initial_scale=2**5)
+        strategy = GeminiStrategy(placement_policy="auto", initial_scale=2**5)
     elif strategy_name == "colossalai_zero2":
         strategy = LowLevelZeroStrategy(stage=2, placement_policy="cuda")
     else:
@@ -60,12 +56,10 @@ def run_test_checkpoint(strategy_name: str,
         dist.broadcast_object_list(rank0_dirname)
         rank0_dirname = rank0_dirname[0]
 
-        model_path = os.path.join(
-            rank0_dirname, "model" if shard else f"model.pt")
-        strategy.save_model(actor, model_path, only_rank0=not shard)
-        optim_path = os.path.join(
-            rank0_dirname, "optim" if shard else "optim.pt")
-        strategy.save_optimizer(actor_optim, optim_path, only_rank0=not shard)
+        model_path = os.path.join(rank0_dirname, "model" if shard else f"model.pt")
+        strategy.save_model(actor, model_path)
+        optim_path = os.path.join(rank0_dirname, "optim" if shard else "optim.pt")
+        strategy.save_optimizer(actor_optim, optim_path)
         dist.barrier()
 
         strategy.load_model(actor, model_path, strict=False)
@@ -75,11 +69,7 @@ def run_test_checkpoint(strategy_name: str,
     train_step(strategy, actor, actor_optim)
 
 
-def run_dist(rank: int,
-             world_size: int,
-             port: int,
-             strategy_name: str,
-             shard: bool):
+def run_dist(rank: int, world_size: int, port: int, strategy_name: str, shard: bool):
     os.environ["RANK"] = str(rank)
     os.environ["LOCAL_RANK"] = str(rank)
     os.environ["WORLD_SIZE"] = str(world_size)
@@ -93,13 +83,8 @@ def run_dist(rank: int,
 @pytest.mark.parametrize("strategy_name", ["ddp", "colossalai_gemini", "colossalai_zero2"])
 @pytest.mark.parametrize("shard", [False, True])
 @rerun_if_address_is_in_use()
-def test_checkpoint(world_size: int,
-                    strategy_name: str,
-                    shard: bool):
-    spawn(run_dist,
-          world_size,
-          strategy_name=strategy_name,
-          shard=shard)
+def test_checkpoint(world_size: int, strategy_name: str, shard: bool):
+    spawn(run_dist, world_size, strategy_name=strategy_name, shard=shard)
 
 
 if __name__ == "__main__":

@@ -17,11 +17,9 @@ def check_linear_1d_col(lazy_init: bool, seq_parallel: bool, overlap: bool):
     linear = nn.Linear(32, 128).cuda()
     with ctx:
         linear_copy = nn.Linear(32, 128).cuda()
-    linear_col = Linear1D_Col.from_native_module(linear_copy,
-                                                 process_group=None,
-                                                 gather_output=True,
-                                                 seq_parallel=seq_parallel,
-                                                 overlap=overlap)
+    linear_col = Linear1D_Col.from_native_module(
+        linear_copy, process_group=None, gather_output=True, seq_parallel=seq_parallel, overlap=overlap
+    )
 
     # ensure that the parameters are distributed
     assert is_distributed_tensor(linear_col.weight)
@@ -60,8 +58,11 @@ def check_linear_1d_col(lazy_init: bool, seq_parallel: bool, overlap: bool):
     # check the input gradients
     assert x_for_shard.grad is not None
     assert x_for_unshard.grad is not None
-    target_unshard_gard = x_for_unshard.grad if seq_parallel is False else torch.chunk(
-        x_for_unshard.grad.clone(), 2, dim=1)[dist.get_rank()]
+    target_unshard_gard = (
+        x_for_unshard.grad
+        if seq_parallel is False
+        else torch.chunk(x_for_unshard.grad.clone(), 2, dim=1)[dist.get_rank()]
+    )
     assert_close(target_unshard_gard, x_for_shard.grad)
 
 
@@ -71,10 +72,9 @@ def check_linear_1d_row(lazy_init: bool, seq_parallel: bool):
     linear = nn.Linear(32, 128).cuda()
     with ctx:
         linear_copy = nn.Linear(32, 128).cuda()
-    linear_row = Linear1D_Row.from_native_module(linear_copy,
-                                                 process_group=None,
-                                                 parallel_input=False,
-                                                 seq_parallel=seq_parallel)
+    linear_row = Linear1D_Row.from_native_module(
+        linear_copy, process_group=None, parallel_input=False, seq_parallel=seq_parallel
+    )
 
     assert linear_row.weight.shape == torch.Size([128, 16])
     assert linear_row.bias.shape == torch.Size([128])
@@ -121,15 +121,12 @@ def check_linear_col_plus_row(lazy_init: bool, seq_parallel: bool, overlap: bool
     with ctx:
         linear_1_copy = nn.Linear(32, 128).cuda()
         linear_2_copy = nn.Linear(128, 32).cuda()
-    linear_col = Linear1D_Col.from_native_module(linear_1_copy,
-                                                 process_group=None,
-                                                 gather_output=False,
-                                                 seq_parallel=seq_parallel,
-                                                 overlap=overlap)
-    linear_row = Linear1D_Row.from_native_module(linear_2_copy,
-                                                 process_group=None,
-                                                 parallel_input=True,
-                                                 seq_parallel=seq_parallel)
+    linear_col = Linear1D_Col.from_native_module(
+        linear_1_copy, process_group=None, gather_output=False, seq_parallel=seq_parallel, overlap=overlap
+    )
+    linear_row = Linear1D_Row.from_native_module(
+        linear_2_copy, process_group=None, parallel_input=True, seq_parallel=seq_parallel
+    )
 
     linear_1.load_state_dict(linear_col.state_dict())
     linear_col.load_state_dict(linear_1.state_dict())
@@ -161,14 +158,17 @@ def check_linear_col_plus_row(lazy_init: bool, seq_parallel: bool, overlap: bool
     # check the input gradients
     assert x_for_shard.grad is not None
     assert x_for_unshard.grad is not None
-    target_unshard_gard = x_for_unshard.grad if seq_parallel is False else torch.chunk(
-        x_for_unshard.grad.clone(), 2, dim=1)[dist.get_rank()]
+    target_unshard_gard = (
+        x_for_unshard.grad
+        if seq_parallel is False
+        else torch.chunk(x_for_unshard.grad.clone(), 2, dim=1)[dist.get_rank()]
+    )
     assert_close(target_unshard_gard, x_for_shard.grad)
 
 
-@parameterize('lazy_init', [False, True])
-@parameterize('seq_parallel', [False, True])
-@parameterize('overlap', [True])
+@parameterize("lazy_init", [False, True])
+@parameterize("seq_parallel", [False, True])
+@parameterize("overlap", [True])
 def run_dist_linear_test(lazy_init, seq_parallel, overlap):
     check_linear_1d_col(lazy_init, seq_parallel, overlap)
     check_linear_1d_row(lazy_init, seq_parallel)
@@ -176,7 +176,7 @@ def run_dist_linear_test(lazy_init, seq_parallel, overlap):
 
 
 def check_dist_linear(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_dist_linear_test()
 
 
@@ -185,5 +185,5 @@ def test_linear():
     spawn(check_dist_linear, nprocs=2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_linear()

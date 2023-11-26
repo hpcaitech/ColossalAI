@@ -7,8 +7,13 @@ import fabric
 from .hostinfo import HostInfo, HostInfoList
 
 
-def run_on_host(hostinfo: HostInfo, workdir: str, recv_conn: mp_connection.Connection,
-                send_conn: mp_connection.Connection, env: dict) -> None:
+def run_on_host(
+    hostinfo: HostInfo,
+    workdir: str,
+    recv_conn: mp_connection.Connection,
+    send_conn: mp_connection.Connection,
+    env: dict,
+) -> None:
     """
     Use fabric connection to execute command on local or remote hosts.
 
@@ -22,14 +27,14 @@ def run_on_host(hostinfo: HostInfo, workdir: str, recv_conn: mp_connection.Conne
 
     fab_conn = fabric.Connection(hostinfo.hostname, port=hostinfo.port)
     finish = False
-    env_msg = ' '.join([f'{k}=\"{v}\"' for k, v in env.items()])
+    env_msg = " ".join([f'{k}="{v}"' for k, v in env.items()])
 
     # keep listening until exit
     while not finish:
         # receive cmd
         cmds = recv_conn.recv()
 
-        if cmds == 'exit':
+        if cmds == "exit":
             # exit from the loop
             finish = True
             break
@@ -46,12 +51,12 @@ def run_on_host(hostinfo: HostInfo, workdir: str, recv_conn: mp_connection.Conne
                         else:
                             # execute on the remote machine
                             fab_conn.run(cmds, hide=False)
-                    send_conn.send('success')
+                    send_conn.send("success")
             except Exception as e:
                 click.echo(
                     f"Error: failed to run {cmds} on {hostinfo.hostname}, is localhost: {hostinfo.is_local_host}, exception: {e}"
                 )
-                send_conn.send('failure')
+                send_conn.send("failure")
 
     # shutdown
     send_conn.send("finish")
@@ -96,8 +101,7 @@ class MultiNodeRunner:
             cmd (str): the command to execute
         """
 
-        assert hostinfo.hostname in self.master_send_conns, \
-            f'{hostinfo} is not found in the current connections'
+        assert hostinfo.hostname in self.master_send_conns, f"{hostinfo} is not found in the current connections"
         conn = self.master_send_conns[hostinfo.hostname]
         conn.send(cmd)
 
@@ -107,7 +111,7 @@ class MultiNodeRunner:
         """
 
         for hostname, conn in self.master_send_conns.items():
-            conn.send('exit')
+            conn.send("exit")
 
     def recv_from_all(self) -> dict:
         """

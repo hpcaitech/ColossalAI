@@ -15,25 +15,25 @@ from ..vanilla import VanillaPatchEmbedding
 from ._utils import ColossalaiModule
 
 _parallel_embedding = {
-    '1d': Embedding1D,
-    '2d': Embedding2D,
-    '2.5d': Embedding2p5D,
-    '3d': Embedding3D,
+    "1d": Embedding1D,
+    "2d": Embedding2D,
+    "2.5d": Embedding2p5D,
+    "3d": Embedding3D,
 }
 
 _vocab_parallel_embedding = {
-    '1d': VocabParallelEmbedding1D,
-    '2d': VocabParallelEmbedding2D,
-    '2.5d': VocabParallelEmbedding2p5D,
-    '3d': VocabParallelEmbedding3D
+    "1d": VocabParallelEmbedding1D,
+    "2d": VocabParallelEmbedding2D,
+    "2.5d": VocabParallelEmbedding2p5D,
+    "3d": VocabParallelEmbedding3D,
 }
 
 _parallel_patchembedding = {
     None: VanillaPatchEmbedding,
-    '1d': PatchEmbedding1D,
-    '2d': PatchEmbedding2D,
-    '2.5d': PatchEmbedding2p5D,
-    '3d': PatchEmbedding3D
+    "1d": PatchEmbedding1D,
+    "2d": PatchEmbedding2D,
+    "2.5d": PatchEmbedding2p5D,
+    "3d": PatchEmbedding3D,
 }
 
 
@@ -67,19 +67,24 @@ class Embedding(ColossalaiModule):
     `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_
     """
 
-    def __init__(self,
-                 num_embeddings: int,
-                 embedding_dim: int,
-                 padding_idx: int = None,
-                 dtype: dtype = None,
-                 weight_initializer: Callable = init.normal_(),
-                 vocab_parallel_limit: int = 2048,
-                 *args,
-                 **kwargs) -> None:
+    def __init__(
+        self,
+        num_embeddings: int,
+        embedding_dim: int,
+        padding_idx: int = None,
+        dtype: dtype = None,
+        weight_initializer: Callable = init.normal_(),
+        vocab_parallel_limit: int = 2048,
+        *args,
+        **kwargs,
+    ) -> None:
         tensor_parallel = get_tensor_parallel_mode()
         if tensor_parallel is None:
-            embed = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx, *args,
-                                 **kwargs).to(dtype).to(get_current_device())
+            embed = (
+                nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx, *args, **kwargs)
+                .to(dtype)
+                .to(get_current_device())
+            )
             weight_initializer(embed.weight, fan_in=num_embeddings, fan_out=embedding_dim)
         elif num_embeddings <= vocab_parallel_limit:
             embed = _parallel_embedding[tensor_parallel](
@@ -135,7 +140,7 @@ class PatchEmbedding(ColossalaiModule):
         flatten: bool = True,
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
-        position_embed_initializer: Callable = init.zeros_()
+        position_embed_initializer: Callable = init.zeros_(),
     ) -> None:
         tensor_parallel = get_tensor_parallel_mode()
         embed = _parallel_patchembedding[tensor_parallel](

@@ -3,7 +3,7 @@
 ## Introduction
 
 Welcome to the large-scale deep learning optimization techniques of [Colossal-AI](https://github.com/hpcaitech/ColossalAI),
-which has been accepted as official tutorials by top conference [NeurIPS](https://nips.cc/), [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/), 
+which has been accepted as official tutorials by top conference [NeurIPS](https://nips.cc/), [SC](https://sc22.supercomputing.org/), [AAAI](https://aaai.org/Conferences/AAAI-23/),
 [PPoPP](https://ppopp23.sigplan.org/), [CVPR](https://cvpr2023.thecvf.com/), [ISC](https://www.isc-hpc.com/), [NVIDIA GTC](https://www.nvidia.com/en-us/on-demand/session/gtcspring23-S51482/) ,etc.
 
 
@@ -18,7 +18,7 @@ quickly deploy large AI model training and inference, reducing large AI model tr
 [**Paper**](https://arxiv.org/abs/2110.14883) |
 [**Documentation**](https://www.colossalai.org/) |
 [**Forum**](https://github.com/hpcaitech/ColossalAI/discussions) |
-[**Slack**](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w)
+[**Slack**](https://github.com/hpcaitech/public_assets/tree/main/colossalai/contact/slack)
 
 
 ## Table of Content

@@ -207,8 +207,56 @@ Shardformer的配置由类`ShardConfig`的参数控制：
 
 通过用`HybridParallelPlugin`初始化的`Booster`来启动`Shardformer`是最推荐的用法。其主要原因是如果不调用`Booster`的`execute_pipeline`方法，流水线并行就无法正常工作。此外，`HybridParallelPlugin`提供了将`Shardformer`的功能与其他功能（例如混合精度训练或Zero）相结合的能力。
 
-更多关于这一用法的细节可以参考 [Booster API 文档](../basics/booster_api.md)以及[Booster 插件文档](../basics/booster_plugins.md)。[这里](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/bert)是一个通过`HybridParallelPlugin`启动`Shardformer`的示例。
+[这里](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/bert)是一个通过`HybridParallelPlugin`启动`Shardformer`的示例。
+移动到示例的根目录下，执行命令：
+```bash
+torchrun --standalone --nproc_per_node 4  finetune.py --target_f1 0.86 --plugin "hybrid_parallel" --model_type "bert"
+```
+你便可以微调一个被`Shardformer`封装过的Bert模型，而封装的操作是由`HybridParallelPlugin`完成的。
 
+接下来一起深入挖掘一下`finetune.py`里的代码：
+
+在`main`函数中，混合并行的插件通过以下的代码创建
+```python
+...
+elif args.plugin == "hybrid_parallel":
+    # modify the param accordingly for finetuning test cases
+    plugin = HybridParallelPlugin(
+        tp_size=1,
+        pp_size=2,
+        num_microbatches=None,
+        microbatch_size=1,
+        enable_all_optimization=True,
+        zero_stage=1,
+        precision="fp16",
+        initial_scale=1,
+    )
+```
+在这里你可以通过设置不同的`tp_size`, `pp_size` 或 `zero_stage`来改变插件的配置。更多关于插件配置的信息可以在[Booster 插件文档](../basics/booster_plugins.md)中被找到。
+
+当流水并行不被启用的时候，训练的流程和其他的插件是一样的 （先用Booster封装模型和优化器，再用正常的方式做前向和后向传递）。然而，当流水线并行被启用的时候，有几处不同于寻常情况的用法：
+
+1. 在进行前向和后向之前，criterion函数（loss函数）需要被处理以满足流水线并行的传参要求:
+    ```python
+    def _criterion(outputs, inputs):
+        outputs = output_transform_fn(outputs)
+        loss = criterion(outputs)
+        return loss
+    ```
+
+2. 在 `train_epoch` 函数中, dataloader 在进行流水线的前向后向操作之前需要被转换为 `Iterator` 类:
+    ```python
+    train_dataloader_iter = iter(train_dataloader)
+    ```
+
+3. 通过调用`Booster.execute_pipeline` 方法来执行前向和后向传递:
+    ```python
+    outputs = booster.execute_pipeline(
+        train_dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
+    )
+    ```
+    该方法会自动执行后向传递，所以在执行该方法后不需要再调用 `loss.backward()`方法。
+    更多关于 `Booster.execute_pipeline` 的信息可以参考 [Booster API 文档](../basics/booster_api.md)。
 
 #### 2. 通过Shardformer API启动Shardformer (不推荐)
 
@@ -216,7 +264,26 @@ Shardformer的配置由类`ShardConfig`的参数控制：
 
 [这里](https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/shardformer/examples/convergence_benchmark.py)
 是一个通过调用Shardformer的API启动`Shardformer`的示例。
+在示例代码的`train`函数中，模型被以下的几行代码进行封装：
+```python
+...
+if dist.get_world_size() > 1:
+    tp_group = dist.new_group(backend="nccl")
 
+    # First create configuration for Shardformer
+    shard_config = ShardConfig(
+        tensor_parallel_process_group=tp_group,
+        enable_tensor_parallelism=True,
+        enable_all_optimization=True
+    )
+
+    # Then create ShardFormer object with created config
+    shard_former = ShardFormer(shard_config=shard_config)
+
+    # Finally shard the model using ShardFormer.optimize method
+    model, _ = shard_former.optimize(model)
+...
+```
 
 ### 注意事项
 
@@ -233,6 +300,8 @@ Shardformer的配置由类`ShardConfig`的参数控制：
 
 
 ## Shardformer的工作原理
+
+### 设计思想
 
 通常来说，Shardformer通过以下四种“替换”进行工作：
 

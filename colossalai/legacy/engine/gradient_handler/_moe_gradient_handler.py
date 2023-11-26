@@ -1,6 +1,6 @@
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
+from colossalai.legacy.context.parallel_mode import ParallelMode
+from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.registry import GRADIENT_HANDLER
 from colossalai.utils.moe import get_moe_epsize_param_dict
 
@@ -42,5 +42,6 @@ class MoeGradientHandler(BaseGradientHandler):
 
             for ep_size in epsize_param_dict:
                 if ep_size != 1 and ep_size != MOE_CONTEXT.world_size:
-                    bucket_allreduce(param_list=epsize_param_dict[ep_size],
-                                     group=MOE_CONTEXT.parallel_info_dict[ep_size].dp_group)
+                    bucket_allreduce(
+                        param_list=epsize_param_dict[ep_size], group=MOE_CONTEXT.parallel_info_dict[ep_size].dp_group
+                    )

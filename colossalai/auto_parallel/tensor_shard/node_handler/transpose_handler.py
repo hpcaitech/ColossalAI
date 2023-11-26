@@ -7,7 +7,7 @@ from .node_handler import NodeHandler
 from .registry import operator_registry
 from .strategy import StrategyGenerator, TransposeGenerator
 
-__all__ = ['TransposeHandler']
+__all__ = ["TransposeHandler"]
 
 
 @operator_registry.register(torch.Tensor.transpose)
@@ -48,9 +48,9 @@ class TransposeHandler(NodeHandler):
             if transpose_dims[i] < 0:
                 transpose_dims[i] += num_dims
 
-        physical_shape_operand = OperationData(name='transpose_dims',
-                                               type=OperationDataType.ARG,
-                                               data=list(transpose_dims))
+        physical_shape_operand = OperationData(
+            name="transpose_dims", type=OperationDataType.ARG, data=list(transpose_dims)
+        )
 
         output_data = self.node._meta_data
         physical_output_operand = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=output_data)
@@ -58,7 +58,7 @@ class TransposeHandler(NodeHandler):
         mapping = {
             "input": physical_input_operand,
             "transpose_dims": physical_shape_operand,
-            "output": physical_output_operand
+            "output": physical_output_operand,
         }
 
         return mapping

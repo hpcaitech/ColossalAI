@@ -4,6 +4,7 @@ from .tracer import register_leaf_module, register_leaf_module_impl
 
 try:
     import apex
+
     register_leaf_module(apex.normalization.FusedLayerNorm)
     register_leaf_module(apex.normalization.FusedRMSNorm)
     register_leaf_module(apex.normalization.MixedFusedLayerNorm)

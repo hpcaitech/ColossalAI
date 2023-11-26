@@ -14,17 +14,22 @@ from ._gradient_accumulation import (
 )
 
 __all__ = [
-    'accumulate_gradient', 'GradAccumDataloader', 'GradAccumOptimizer', 'GradAccumLrSchedulerByStep',
-    'GradAccumGradientHandler'
+    "accumulate_gradient",
+    "GradAccumDataloader",
+    "GradAccumOptimizer",
+    "GradAccumLrSchedulerByStep",
+    "GradAccumGradientHandler",
 ]
 
 
-def accumulate_gradient(model: nn.Module,
-                        optimizer: Optimizer,
-                        dataloader: Iterable,
-                        accumulate_size: int,
-                        gradient_handlers: List[BaseGradientHandler] = None,
-                        lr_scheduler: _LRScheduler = None):
+def accumulate_gradient(
+    model: nn.Module,
+    optimizer: Optimizer,
+    dataloader: Iterable,
+    accumulate_size: int,
+    gradient_handlers: List[BaseGradientHandler] = None,
+    lr_scheduler: _LRScheduler = None,
+):
     r"""Turning model, optimizer, dataloader into corresponding object for gradient accumulation.
 
     Args:

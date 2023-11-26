@@ -3,8 +3,6 @@
 作者: Zhengda Bian, Yongbin Li
 
 **前置教程**
-- [定义配置文件](../basics/define_your_config.md)
-- [并行配置](../basics/configure_parallelization.md)
 - [1D 张量并行](./1D_tensor_parallel.md)
 
 **示例代码**

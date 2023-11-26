@@ -49,5 +49,5 @@ jobs:
           NCCL_SHM_DISABLE: 1
           MAX_JOBS: 8
           SFT_DATASET: /data/scratch/github_actions/chat/data.json
-          PROMPT_PATH: /data/scratch/github_actions/chat/prompts_en.jsonl
+          PROMPT_DATASET: /data/scratch/github_actions/chat/prompts_en.jsonl
           PRETRAIN_DATASET: /data/scratch/github_actions/chat/alpaca_data.json

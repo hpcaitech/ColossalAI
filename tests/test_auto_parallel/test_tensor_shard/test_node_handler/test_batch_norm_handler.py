@@ -16,7 +16,7 @@ from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import n
 
 def check_bn_module_handler(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = nn.Sequential(nn.BatchNorm2d(16)).cuda()
 
     physical_mesh_id = torch.arange(0, 4)
@@ -29,18 +29,20 @@ def check_bn_module_handler(rank, world_size, port):
     # the total number of bn strategies without sync bn mode
     # TODO: add sync bn strategies after related passes ready
     strategy_number = 4
-    numerical_test_for_node_strategy(model=model,
-                                     device_mesh=device_mesh,
-                                     node_index=node_index,
-                                     strategy_number=strategy_number,
-                                     input_args=[input],
-                                     meta_arg_names=['input'])
+    numerical_test_for_node_strategy(
+        model=model,
+        device_mesh=device_mesh,
+        node_index=node_index,
+        strategy_number=strategy_number,
+        input_args=[input],
+        meta_arg_names=["input"],
+    )
     tracer = ColoTracer(bias_addition_split=True)
     # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %_0 : [#users=1] = call_module[target=0](args = (%input_1,), kwargs = {})
     #     return _0
-    meta_args = {"input": torch.rand(4, 16, 64, 64).to('meta')}
+    meta_args = {"input": torch.rand(4, 16, 64, 64).to("meta")}
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
     shape_prop_pass(gm, *meta_args.values())
@@ -59,37 +61,37 @@ def check_bn_module_handler(rank, world_size, port):
         assert op_data.logical_shape is not None
         assert op_data.data is not None
 
-    assert mapping['input'].name == "input_1"
-    assert mapping['input'].data.shape == torch.Size([4, 16, 64, 64])
-    assert mapping['input'].type == OperationDataType.ARG
-    assert mapping['input'].logical_shape == torch.Size([4, 16, 64, 64])
+    assert mapping["input"].name == "input_1"
+    assert mapping["input"].data.shape == torch.Size([4, 16, 64, 64])
+    assert mapping["input"].type == OperationDataType.ARG
+    assert mapping["input"].logical_shape == torch.Size([4, 16, 64, 64])
 
-    assert mapping['other'].name == "weight"
-    assert mapping['other'].data.shape == torch.Size([16])
-    assert mapping['other'].type == OperationDataType.PARAM
-    assert mapping['other'].logical_shape == torch.Size([16])
+    assert mapping["other"].name == "weight"
+    assert mapping["other"].data.shape == torch.Size([16])
+    assert mapping["other"].type == OperationDataType.PARAM
+    assert mapping["other"].logical_shape == torch.Size([16])
 
-    assert mapping['bias'].name == "bias"
-    assert mapping['bias'].data.shape == torch.Size([16])
-    assert mapping['bias'].type == OperationDataType.PARAM
-    assert mapping['bias'].logical_shape == torch.Size([16])
+    assert mapping["bias"].name == "bias"
+    assert mapping["bias"].data.shape == torch.Size([16])
+    assert mapping["bias"].type == OperationDataType.PARAM
+    assert mapping["bias"].logical_shape == torch.Size([16])
 
-    assert mapping['output'].name == "_0"
-    assert mapping['output'].data.shape == torch.Size([4, 16, 64, 64])
-    assert mapping['output'].type == OperationDataType.OUTPUT
+    assert mapping["output"].name == "_0"
+    assert mapping["output"].data.shape == torch.Size([4, 16, 64, 64])
+    assert mapping["output"].type == OperationDataType.OUTPUT
 
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
 
     # RS = RS x S
-    assert 'RS0 = RS0 x S0' in strategy_name_list
-    assert 'RS1 = RS1 x S1' in strategy_name_list
+    assert "RS0 = RS0 x S0" in strategy_name_list
+    assert "RS1 = RS1 x S1" in strategy_name_list
 
     # RR = RR x R
-    assert 'RR = RR x R' in strategy_name_list
+    assert "RR = RR x R" in strategy_name_list
 
     # RS01 = RS01 x S01
-    assert 'RS01 = RS01 x S01' in strategy_name_list
+    assert "RS01 = RS01 x S01" in strategy_name_list
 
     # temporarily skip the sync bn test
     # TODO: test sync bn after the implicit runtime pass completed
@@ -105,12 +107,12 @@ def check_bn_module_handler(rank, world_size, port):
     # assert 'S01R = S01R x R WITH SYNC_BN' in strategy_name_list
 
 
-@run_on_environment_flag(name='AUTO_PARALLEL')
+@run_on_environment_flag(name="AUTO_PARALLEL")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_bn_module_handler():
     spawn(check_bn_module_handler, 4)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_bn_module_handler()

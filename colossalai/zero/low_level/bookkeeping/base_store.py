@@ -3,7 +3,6 @@ from torch.distributed import ProcessGroup
 
 
 class BaseStore:
-
     def __init__(self, torch_pg: ProcessGroup):
         self._world_size = dist.get_world_size(group=torch_pg)
         self._local_rank = dist.get_rank(group=torch_pg)

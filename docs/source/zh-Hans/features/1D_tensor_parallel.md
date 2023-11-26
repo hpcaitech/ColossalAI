@@ -2,11 +2,8 @@
 
 作者: Zhengda Bian, Yongbin Li
 
-**前置教程**
-- [定义配置文件](../basics/define_your_config.md)
-- [并行配置](../basics/configure_parallelization.md)
 
-**示例代码**xw
+**示例代码**
 - [Tensor Parallelism with Shardformer](https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/shardformer/examples)
 
 **相关论文**

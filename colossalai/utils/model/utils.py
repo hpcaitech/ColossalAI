@@ -27,19 +27,18 @@ def call_to_str(base, *args, **kwargs):
     Returns:
         str: A string representation of base(*args, **kwargs)
     """
-    name = f'{base}('
+    name = f"{base}("
     if args:
-        name += ', '.join(repr(arg) for arg in args)
+        name += ", ".join(repr(arg) for arg in args)
         if kwargs:
-            name += ', '
+            name += ", "
     if kwargs:
-        name += ', '.join(f'{key}={repr(arg)}' for key, arg in kwargs.items())
-    name += ')'
+        name += ", ".join(f"{key}={repr(arg)}" for key, arg in kwargs.items())
+    name += ")"
     return name
 
 
 class InsertPostInitMethodToModuleSubClasses(object):
-
     def __init__(self, default_dtype: Optional[torch.dtype] = None):
         self._old_default_dtype = None
         self._default_dtype = default_dtype
@@ -53,7 +52,6 @@ class InsertPostInitMethodToModuleSubClasses(object):
             torch.set_default_dtype(self._default_dtype)
 
         def preprocess_after(f):
-
             @functools.wraps(f)
             def wrapper(module: torch.nn.Module, *args, **kwargs):
                 f(module, *args, **kwargs)
@@ -74,7 +72,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         substitute_init_recursively(torch.nn.modules.module.Module, _enable_class, set())
 
         # holding on to the current __init__subclass__ for exit
-        torch.nn.modules.module.Module._old_init_subclass = (torch.nn.modules.module.Module.__init_subclass__)
+        torch.nn.modules.module.Module._old_init_subclass = torch.nn.modules.module.Module.__init_subclass__
         # Replace .__init__() for future subclasses of torch.nn.Module
         torch.nn.modules.module.Module.__init_subclass__ = classmethod(_init_subclass)
 
@@ -82,12 +80,11 @@ class InsertPostInitMethodToModuleSubClasses(object):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-
         if self._default_dtype is not None:
             torch.set_default_dtype(self._old_default_dtype)
 
         def _disable_class(cls):
-            if not hasattr(cls, '_old_init'):
+            if not hasattr(cls, "_old_init"):
                 raise AttributeError(
                     f"_old_init is not found in the {cls.__name__}, please make sure that you have imported {cls.__name__} before entering the context."
                 )
@@ -97,7 +94,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         substitute_init_recursively(torch.nn.modules.module.Module, _disable_class, set())
 
         # Replace .__init__() for future subclasses of torch.nn.Module
-        torch.nn.modules.module.Module.__init_subclass__ = (torch.nn.modules.module.Module._old_init_subclass)
+        torch.nn.modules.module.Module.__init_subclass__ = torch.nn.modules.module.Module._old_init_subclass
 
         self._post_context_exec()
         # Now that we cleaned up the metaclass injection, raise the exception.

@@ -22,7 +22,7 @@ def trace_and_compare(model_cls, data, output_fn):
     model.eval()
 
     concrete_args = {k: v for k, v in data.items() if not torch.is_tensor(v)}
-    meta_args = {k: v.to('meta') for k, v in data.items() if torch.is_tensor(v)}
+    meta_args = {k: v.to("meta") for k, v in data.items() if torch.is_tensor(v)}
     gm = symbolic_trace(model, concrete_args=concrete_args, meta_args=meta_args)
 
     # run forward
@@ -40,12 +40,12 @@ def trace_and_compare(model_cls, data, output_fn):
     assert_dict(transformed_fx_out, transformed_non_fx_out, assert_fn)
 
 
-@pytest.mark.skip(reason='cannot pass this test yet')
+@pytest.mark.skip(reason="cannot pass this test yet")
 @clear_cache_before_run()
 def test_diffusers():
     seed_all(9091, cuda_deterministic=True)
 
-    sub_model_zoo = model_zoo.get_sub_registry('diffusers')
+    sub_model_zoo = model_zoo.get_sub_registry("diffusers")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, _, _, attribute) in sub_model_zoo.items():
         data = data_gen_fn()
@@ -58,12 +58,12 @@ def test_diffusers():
 def test_torch_diffusers():
     seed_all(65535, cuda_deterministic=True)
 
-    sub_model_zoo = model_zoo.get_sub_registry('diffusers')
+    sub_model_zoo = model_zoo.get_sub_registry("diffusers")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, _, attribute) in sub_model_zoo.items():
         data = data_gen_fn()
         model = model_fn()
-        output = model(**data)
+        model(**data)
         torch.cuda.synchronize()
         print(f"{name:40s} √")
 

@@ -4,7 +4,7 @@ import diffusers
 import torch
 import transformers
 
-from ..registry import ModelAttribute, model_zoo
+from ..registry import model_zoo
 
 BATCH_SIZE = 2
 SEQ_LENGTH = 5
@@ -26,10 +26,9 @@ def data_clip_model():
     attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
     position_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
     pixel_values = torch.zeros((BATCH_SIZE, IN_CHANNELS, HEIGHT, WIDTH), dtype=torch.float32)
-    return dict(input_ids=input_ids,
-                pixel_values=pixel_values,
-                attention_mask=attention_mask,
-                position_ids=position_ids)
+    return dict(
+        input_ids=input_ids, pixel_values=pixel_values, attention_mask=attention_mask, position_ids=position_ids
+    )
 
 
 def data_clip_text():
@@ -43,32 +42,41 @@ def data_clip_vision():
     return dict(pixel_values=pixel_values)
 
 
-model_zoo.register(name='diffusers_auto_encoder_kl',
-                   model_fn=diffusers.AutoencoderKL,
-                   data_gen_fn=data_vae_fn,
-                   output_transform_fn=identity_output)
+model_zoo.register(
+    name="diffusers_auto_encoder_kl",
+    model_fn=diffusers.AutoencoderKL,
+    data_gen_fn=data_vae_fn,
+    output_transform_fn=identity_output,
+)
 
-model_zoo.register(name='diffusers_vq_model',
-                   model_fn=diffusers.VQModel,
-                   data_gen_fn=data_vae_fn,
-                   output_transform_fn=identity_output)
+model_zoo.register(
+    name="diffusers_vq_model", model_fn=diffusers.VQModel, data_gen_fn=data_vae_fn, output_transform_fn=identity_output
+)
 
-model_zoo.register(name='diffusers_clip_model',
-                   model_fn=partial(transformers.CLIPModel, config=transformers.CLIPConfig()),
-                   data_gen_fn=data_clip_model,
-                   output_transform_fn=identity_output)
+model_zoo.register(
+    name="diffusers_clip_model",
+    model_fn=partial(transformers.CLIPModel, config=transformers.CLIPConfig()),
+    data_gen_fn=data_clip_model,
+    output_transform_fn=identity_output,
+)
 
-model_zoo.register(name='diffusers_clip_text_model',
-                   model_fn=partial(transformers.CLIPTextModel, config=transformers.CLIPTextConfig()),
-                   data_gen_fn=data_clip_text,
-                   output_transform_fn=identity_output)
+model_zoo.register(
+    name="diffusers_clip_text_model",
+    model_fn=partial(transformers.CLIPTextModel, config=transformers.CLIPTextConfig()),
+    data_gen_fn=data_clip_text,
+    output_transform_fn=identity_output,
+)
 
-model_zoo.register(name='diffusers_clip_vision_model',
-                   model_fn=partial(transformers.CLIPVisionModel, config=transformers.CLIPVisionConfig()),
-                   data_gen_fn=data_clip_vision,
-                   output_transform_fn=clip_vision_model_output)
+model_zoo.register(
+    name="diffusers_clip_vision_model",
+    model_fn=partial(transformers.CLIPVisionModel, config=transformers.CLIPVisionConfig()),
+    data_gen_fn=data_clip_vision,
+    output_transform_fn=clip_vision_model_output,
+)
 
-model_zoo.register(name='diffusers_unet2d_model',
-                   model_fn=diffusers.UNet2DModel,
-                   data_gen_fn=data_unet_fn,
-                   output_transform_fn=identity_output)
+model_zoo.register(
+    name="diffusers_unet2d_model",
+    model_fn=diffusers.UNet2DModel,
+    data_gen_fn=data_unet_fn,
+    output_transform_fn=identity_output,
+)

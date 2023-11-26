@@ -5,11 +5,11 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationDat
 from colossalai.testing.utils import clear_cache_before_run
 from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import print_results
 
-if torch.__version__ >= '1.12.0':
-    from colossalai.auto_parallel.meta_profiler import ShardMetaInfo, meta_register
+if torch.__version__ >= "1.12.0":
+    from colossalai.auto_parallel.meta_profiler import meta_register
 
 
-@pytest.mark.skipif(torch.__version__ < '1.12.0', reason="need pytorch 1.12.0 or higher for aten level operations")
+@pytest.mark.skipif(torch.__version__ < "1.12.0", reason="need pytorch 1.12.0 or higher for aten level operations")
 @clear_cache_before_run()
 def test_where_meta_info():
     meta_func = meta_register.get(torch.where)
@@ -49,7 +49,7 @@ def test_where_meta_info():
 
     # construct args and kwargs
     args = [condition_data, x_data, y_data, output_data]
-    kwargs = {'inplace': False}
+    kwargs = {"inplace": False}
 
     # estimated results
     compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out = meta_func(*args, **kwargs)
@@ -81,9 +81,17 @@ def test_where_meta_info():
     compute_cost: TrainCycleItem
     memory_cost: TrainCycleItem
 
-    print_results([condition_real_tensor, x_real_tensor, y_real_tensor], [output_real_tensor], compute_cost,
-                  memory_cost, fwd_allocated, fwd_peak, bwd_allocated, bwd_peak)
+    print_results(
+        [condition_real_tensor, x_real_tensor, y_real_tensor],
+        [output_real_tensor],
+        compute_cost,
+        memory_cost,
+        fwd_allocated,
+        fwd_peak,
+        bwd_allocated,
+        bwd_peak,
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_where_meta_info()

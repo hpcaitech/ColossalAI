@@ -12,7 +12,6 @@ from colossalai.testing import clear_cache_before_run, parameterize
 
 
 class OutputModel(nn.Module):
-
     def __init__(self):
         super().__init__()
 
@@ -21,8 +20,8 @@ class OutputModel(nn.Module):
         return x, y
 
 
-@pytest.mark.skip('ShapeProp is not compatible with PyTorch 1.11.0')
-@parameterize('output_option', ['distributed', 'replicated'])
+@pytest.mark.skip("ShapeProp is not compatible with PyTorch 1.11.0")
+@parameterize("output_option", ["distributed", "replicated"])
 @clear_cache_before_run()
 def test_output_handler(output_option):
     model = OutputModel()
@@ -31,7 +30,7 @@ def test_output_handler(output_option):
     #     %x : torch.Tensor [#users=2] = placeholder[target=x]
     #     %mul : [#users=1] = call_function[target=operator.mul](args = (%x, 2), kwargs = {})
     #     return (x, mul)
-    meta_args = {'x': torch.rand(4, 4, 64, 64).to('meta')}
+    meta_args = {"x": torch.rand(4, 4, 64, 64).to("meta")}
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
     shape_prop_pass(gm, *meta_args.values())
@@ -43,10 +42,12 @@ def test_output_handler(output_option):
     output_strategies_vector = StrategiesVector(output_node)
 
     # build handler
-    output_handler = OutputHandler(node=output_node,
-                                   device_mesh=device_mesh,
-                                   strategies_vector=output_strategies_vector,
-                                   output_option=output_option)
+    output_handler = OutputHandler(
+        node=output_node,
+        device_mesh=device_mesh,
+        strategies_vector=output_strategies_vector,
+        output_option=output_option,
+    )
 
     output_handler.register_strategy(compute_resharding_cost=False)
     # check operation data mapping
@@ -57,14 +58,14 @@ def test_output_handler(output_option):
         # make sure they have valid values
         assert op_data.data is not None
 
-    assert mapping['output'].name == "output"
-    assert mapping['output'].type == OperationDataType.OUTPUT
+    assert mapping["output"].name == "output"
+    assert mapping["output"].type == OperationDataType.OUTPUT
     strategy_name_list = [val.name for val in output_handler.strategies_vector]
-    if output_option == 'distributed':
+    if output_option == "distributed":
         assert "Distributed Output" in strategy_name_list
     else:
         assert "Replica Output" in strategy_name_list
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_output_handler()

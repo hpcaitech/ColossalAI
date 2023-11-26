@@ -38,11 +38,9 @@ def assert_codegen_run(
     meta_tensors = [meta_args[i] if i in meta_args else concrete_args[i] for i in sequence]
     meta_tensors = [MetaTensor(i, fake_device="cuda:0") if isinstance(i, torch.Tensor) else i for i in meta_tensors]
     interp.propagate(*meta_tensors)
-    codegen = AutoChunkCodeGen(meta_graph,
-                               max_memory=max_memory,
-                               print_mem=print_est_mem,
-                               print_progress=print_progress,
-                               eval_mem=eval_mem)
+    codegen = AutoChunkCodeGen(
+        meta_graph, max_memory=max_memory, print_mem=print_est_mem, print_progress=print_progress, eval_mem=eval_mem
+    )
     chunks = codegen.chunk_infos
 
     # trace and recompile
@@ -85,9 +83,9 @@ def assert_allclose(out_model: Any, out_gm: Any) -> None:
     assert allclose for out
     """
     if isinstance(out_model, torch.Tensor):
-        assert torch.allclose(out_model, out_gm,
-                              atol=1e-4), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
-                                  torch.abs(out_model - out_gm))
+        assert torch.allclose(
+            out_model, out_gm, atol=1e-4
+        ), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(torch.abs(out_model - out_gm))
     elif isinstance(out_model, dict):
         for k in out_model.keys():
             assert_allclose(out_model[k], out_gm[k])
@@ -123,19 +121,21 @@ def run_test(
     )
 
     # build model and input
-    chunks = assert_codegen_run(model,
-                                data=data,
-                                max_memory=max_memory,
-                                print_code=print_code,
-                                print_est_mem=print_est_mem,
-                                print_mem=print_mem,
-                                print_progress=print_progress,
-                                eval_mem=eval_mem)
+    chunks = assert_codegen_run(
+        model,
+        data=data,
+        max_memory=max_memory,
+        print_code=print_code,
+        print_est_mem=print_est_mem,
+        print_mem=print_mem,
+        print_progress=print_progress,
+        eval_mem=eval_mem,
+    )
 
     if get_chunk_target is not None:
         chunk_found = [i["region"] for i in chunks]
         chunk_target = get_chunk_target()[max_memory]
-        assert (chunk_found == chunk_target), "found regions %s doesn't equal target regions %s" % (
+        assert chunk_found == chunk_target, "found regions %s doesn't equal target regions %s" % (
             str(chunk_found),
             str(chunk_target),
         )

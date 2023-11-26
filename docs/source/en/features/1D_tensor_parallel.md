@@ -2,10 +2,6 @@
 
 Author: Zhengda Bian, Yongbin Li
 
-**Prerequisite**
-- [Define Your Configuration](../basics/define_your_config.md)
-- [Configure Parallelization](../basics/configure_parallelization.md)
-
 **Example Code**
 - [Tensor Parallelism with Shardformer](https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/shardformer/examples)
 

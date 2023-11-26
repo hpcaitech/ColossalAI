@@ -105,14 +105,15 @@ def torch_cat(tensors, dim=None, axis=None, *, out=None):
     shapes = [t.shape for t in tensors]
     shape = list(shapes[0])
     concatenated_dim = sum(shape[dim] for shape in shapes)
-    final_shape = shape[:dim] + [concatenated_dim] + shape[dim + 1:]
+    final_shape = shape[:dim] + [concatenated_dim] + shape[dim + 1 :]
     return torch.empty(final_shape, device="meta")
 
 
 @meta_patched_function.register(torch.repeat_interleave)
 def torch_repeat_interleave(input, repeats, dim=None, output_size=None):
-    assert isinstance(repeats, int) or isinstance(repeats, torch.Tensor), \
-    "Argument 'repeats' should be of type 'torch.Tensor' or 'int'"
+    assert isinstance(repeats, int) or isinstance(
+        repeats, torch.Tensor
+    ), "Argument 'repeats' should be of type 'torch.Tensor' or 'int'"
 
     shape = list(input.shape) if dim is not None else [input.numel()]
     dim = dim if dim is not None else 0
@@ -132,36 +133,36 @@ def torch_tensor_repeat_interleave(self, repeats, dim=None, *, output_size=None)
 
 @meta_patched_function.register(torch.roll)
 def torch_roll(input, shifts, dims=None):
-    return torch.empty(input.shape, device='meta')
+    return torch.empty(input.shape, device="meta")
 
 
 @meta_patched_function.register(torch.full)
 def torch_full(size, fill_value, *, out=None, dtype=None, layout=torch.strided, device=None, requires_grad=False):
-    assert out is None, 'assigning result to out is not supported yet'
-    return torch.empty(size, device='meta', dtype=dtype, layout=layout, requires_grad=requires_grad)
+    assert out is None, "assigning result to out is not supported yet"
+    return torch.empty(size, device="meta", dtype=dtype, layout=layout, requires_grad=requires_grad)
 
 
 @meta_patched_function.register(torch.max)
 def torch_max(input, dim=None, keepdim=False, *, out=None):
-    assert out is None, 'assigning value to out is not supported yet'
+    assert out is None, "assigning value to out is not supported yet"
     if dim is not None:
         if isinstance(dim, int):
             shape = list(input.shape)
             shape.pop(dim)
             if keepdim:
                 shape.insert(dim, 1)
-            return torch.empty(shape, device='meta', dtype=input.dtype), torch.empty(shape,
-                                                                                     device='meta',
-                                                                                     dtype=input.dtype)
+            return torch.empty(shape, device="meta", dtype=input.dtype), torch.empty(
+                shape, device="meta", dtype=input.dtype
+            )
         elif isinstance(dim, torch.Tensor):
             # when dim is a 0D or 1D tensor, it will maintain the same shape
             num_dims = dim.dim()
             if num_dims in [0, 1]:
-                return torch.empty_like(input, device='meta')
+                return torch.empty_like(input, device="meta")
             else:
                 raise ValueError(f"Expected dim to a 0D or 1D tensor but got {num_dims} dimensions")
     else:
-        return torch.empty([], device='meta', dtype=input.dtype)
+        return torch.empty([], device="meta", dtype=input.dtype)
 
 
 @meta_patched_function.register(torch.Tensor.cpu)

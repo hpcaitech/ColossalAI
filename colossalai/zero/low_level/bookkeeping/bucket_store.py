@@ -9,7 +9,6 @@ from .base_store import BaseStore
 
 
 class BucketStore(BaseStore):
-
     def __init__(self, torch_pg: ProcessGroup):
         super().__init__(torch_pg)
 
@@ -38,8 +37,7 @@ class BucketStore(BaseStore):
         return self._num_elements_in_bucket
 
     def reset_num_elements_in_bucket(self):
-        """Set the number of elements in bucket to zero.
-        """
+        """Set the number of elements in bucket to zero."""
 
         self._num_elements_in_bucket = 0
 
@@ -54,7 +52,7 @@ class BucketStore(BaseStore):
 
         self._param_list.append(param)
         self._padding_size.append(padding_size)
-        self._num_elements_in_bucket += (param.numel() + padding_size)
+        self._num_elements_in_bucket += param.numel() + padding_size
         self.current_group_id = group_id
 
         # number of tensors in current bucket
@@ -94,7 +92,7 @@ class BucketStore(BaseStore):
 
     def get_flatten_grad(self) -> Tensor:
         """Return the flattened gradients slices in the bucket, the data orginization of the flattened tensor:
-        [grad0_rank0, grad1_rank0, ..., grad_1_rank0, grad1_rank1, ....]
+        [grad0_rank0, grad1_rank0, ..., grad_0_rank1, grad1_rank1, ....]
 
         Returns:
             Tensor: the flattened gradients slices in the bucket
@@ -119,8 +117,7 @@ class BucketStore(BaseStore):
         return self.grad_to_param_mapping[id(grad)]
 
     def reset(self):
-        """Reset the bucket storage after reduction, only release the tensors have been reduced
-        """
+        """Reset the bucket storage after reduction, only release the tensors have been reduced"""
         cur_offset = self.offset_list.pop(0)
         self._param_list = self._param_list[cur_offset:]
         self._padding_size = self._padding_size[cur_offset:]

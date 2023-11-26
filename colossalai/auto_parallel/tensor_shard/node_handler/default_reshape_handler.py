@@ -3,11 +3,11 @@ from typing import Dict, List
 import torch
 
 from ..sharding_strategy import OperationData, OperationDataType
-from .node_handler import MetaInfoNodeHandler, NodeHandler
+from .node_handler import MetaInfoNodeHandler
 from .registry import operator_registry
 from .strategy import DefaultReshapeGenerator, StrategyGenerator
 
-__all__ = ['DefaultReshapeHandler']
+__all__ = ["DefaultReshapeHandler"]
 
 
 @operator_registry.register(torch.flatten)
@@ -54,17 +54,15 @@ class DefaultReshapeHandler(MetaInfoNodeHandler):
 
         input_data = self.node.args[0]._meta_data
         input_logical_shape = self.infer_logical_shape(input_data)
-        physical_input_operand = OperationData(name=str(self.node.args[0]),
-                                               type=data_type,
-                                               data=input_data,
-                                               logical_shape=input_logical_shape)
+        physical_input_operand = OperationData(
+            name=str(self.node.args[0]), type=data_type, data=input_data, logical_shape=input_logical_shape
+        )
 
         output_data = self.node._meta_data
         output_logical_shape = self.infer_logical_shape(output_data)
-        physical_output = OperationData(name=str(self.node),
-                                        type=OperationDataType.OUTPUT,
-                                        data=output_data,
-                                        logical_shape=output_logical_shape)
+        physical_output = OperationData(
+            name=str(self.node), type=OperationDataType.OUTPUT, data=output_data, logical_shape=output_logical_shape
+        )
 
         mapping = {"input": physical_input_operand, "output": physical_output}
 

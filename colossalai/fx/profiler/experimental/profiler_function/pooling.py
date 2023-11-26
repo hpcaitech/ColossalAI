@@ -1,5 +1,7 @@
-from typing import Tuple, Union
+from typing import Tuple
+
 import torch
+
 from ..registry import meta_profiler_function
 
 

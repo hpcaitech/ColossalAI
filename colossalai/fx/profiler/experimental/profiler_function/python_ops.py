@@ -1,6 +1,6 @@
 import operator
 from typing import Any, Tuple
-import torch
+
 from ..registry import meta_profiler_function
 
 

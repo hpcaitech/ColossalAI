@@ -5,7 +5,6 @@ from typing import Callable
 from torch import dtype, nn
 
 from colossalai.nn import init
-from colossalai.utils import get_current_device
 
 from ..parallel_1d import *
 from ..parallel_2d import *
@@ -15,21 +14,21 @@ from ..utils import get_tensor_parallel_mode
 from ..vanilla import *
 from ._utils import ColossalaiModule
 
-_parallel_linear = {None: VanillaLinear, '1d': Linear1D, '2d': Linear2D, '2.5d': Linear2p5D, '3d': Linear3D}
+_parallel_linear = {None: VanillaLinear, "1d": Linear1D, "2d": Linear2D, "2.5d": Linear2p5D, "3d": Linear3D}
 
 _parallel_classifier = {
     None: VanillaClassifier,
-    '1d': Classifier1D,
-    '2d': Classifier2D,
-    '2.5d': Classifier2p5D,
-    '3d': Classifier3D
+    "1d": Classifier1D,
+    "2d": Classifier2D,
+    "2.5d": Classifier2p5D,
+    "3d": Classifier3D,
 }
 
 _vocab_parallel_classifier = {
-    '1d': VocabParallelClassifier1D,
-    '2d': VocabParallelClassifier2D,
-    '2.5d': VocabParallelClassifier2p5D,
-    '3d': VocabParallelClassifier3D
+    "1d": VocabParallelClassifier1D,
+    "2d": VocabParallelClassifier2D,
+    "2.5d": VocabParallelClassifier2p5D,
+    "3d": VocabParallelClassifier3D,
 }
 
 
@@ -65,19 +64,21 @@ class Linear(ColossalaiModule):
     `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
-    def __init__(self,
-                 in_features: int,
-                 out_features: int,
-                 bias: bool = True,
-                 dtype: dtype = None,
-                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
-                 **kwargs) -> None:
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        dtype: dtype = None,
+        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+        **kwargs,
+    ) -> None:
         tensor_parallel = get_tensor_parallel_mode()
         linear_cls = _parallel_linear[tensor_parallel]
-        gather_output = kwargs.pop('gather_output', None)
-        if 'gather_output' in inspect.signature(linear_cls.__init__).parameters.keys():    # gather_out arg is available
-            kwargs['gather_output'] = gather_output
+        gather_output = kwargs.pop("gather_output", None)
+        if "gather_output" in inspect.signature(linear_cls.__init__).parameters.keys():  # gather_out arg is available
+            kwargs["gather_output"] = gather_output
         layer = linear_cls(
             in_features,
             out_features,
@@ -108,15 +109,17 @@ class Classifier(ColossalaiModule):
     `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
-    def __init__(self,
-                 in_features: int,
-                 num_classes: int,
-                 weight: nn.Parameter = None,
-                 bias: bool = True,
-                 dtype: dtype = None,
-                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
-                 vocab_parallel_limit: int = 2048) -> None:
+    def __init__(
+        self,
+        in_features: int,
+        num_classes: int,
+        weight: nn.Parameter = None,
+        bias: bool = True,
+        dtype: dtype = None,
+        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+        vocab_parallel_limit: int = 2048,
+    ) -> None:
         tensor_parallel = get_tensor_parallel_mode()
         if num_classes <= vocab_parallel_limit or tensor_parallel is None:
             layer = _parallel_classifier[tensor_parallel](

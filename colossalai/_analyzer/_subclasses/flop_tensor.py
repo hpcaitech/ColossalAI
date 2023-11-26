@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from enum import Enum, auto
 from functools import partial, reduce
 from numbers import Number
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, List, Union
 
 import torch
 from packaging import version
@@ -36,15 +36,15 @@ def _format_flops(flop):
     B = 1e9
     T = 1e12
     if flop < K:
-        return f'{flop:.2f}'
+        return f"{flop:.2f}"
     elif flop < M:
-        return f'{flop / K:.2f}K'
+        return f"{flop / K:.2f}K"
     elif flop < B:
-        return f'{flop / M:.2f}M'
+        return f"{flop / M:.2f}M"
     elif flop < T:
-        return f'{flop / B:.2f}B'
+        return f"{flop / B:.2f}B"
     else:
-        return f'{flop / T:.2f}T'
+        return f"{flop / T:.2f}T"
 
 
 def flop_count(module: Union[torch.nn.Module, Callable] = None, *args, verbose: bool = False, **kwargs) -> Number:
@@ -59,11 +59,13 @@ def flop_count(module: Union[torch.nn.Module, Callable] = None, *args, verbose: 
     Returns:
         Number: The total number of floating point operations (FWD + BWD).
     """
-    maybe_inplace = (getattr(module, 'inplace', False) or kwargs.get('inplace', False)
-                     or getattr(module, '__name__', None) in ('add_', 'mul_', 'div_', 'sub_'))
+    maybe_inplace = (
+        getattr(module, "inplace", False)
+        or kwargs.get("inplace", False)
+        or getattr(module, "__name__", None) in ("add_", "mul_", "div_", "sub_")
+    )
 
     class DummyModule(torch.nn.Module):
-
         def __init__(self, func):
             super().__init__()
             self.func = func
@@ -74,21 +76,20 @@ def flop_count(module: Union[torch.nn.Module, Callable] = None, *args, verbose: 
 
     total_flop_count = {Phase.FWD: 0, Phase.BWD: 0}
     flop_counts = defaultdict(lambda: defaultdict(int))
-    parents = ['Global']
+    parents = ["Global"]
     module = module if isinstance(module, torch.nn.Module) else DummyModule(module)
 
     class FlopTensor(MetaTensor):
         _tensor: torch.Tensor
 
         def __repr__(self):
-            name = 'FlopParameter' if getattr(self, '_is_param', False) else 'FlopTensor'
+            name = "FlopParameter" if getattr(self, "_is_param", False) else "FlopTensor"
             if self.grad_fn:
                 return f"{name}(..., size={tuple(self.shape)}, device='{self.device}', dtype={self.dtype}, grad_fn={self.grad_fn})"
             return f"{name}(..., size={tuple(self.shape)}, device='{self.device}', dtype={self.dtype})"
 
         @classmethod
         def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
-
             # no_dispatch is only needed if you use enable_python_mode.
             # It prevents infinite recursion.
             rs = super().__torch_dispatch__(func, types, args, kwargs)
@@ -115,9 +116,7 @@ def flop_count(module: Union[torch.nn.Module, Callable] = None, *args, verbose: 
         return isinstance(x, torch.Tensor) and x.is_floating_point()
 
     def create_backwards_push(name):
-
         class PushState(torch.autograd.Function):
-
             @staticmethod
             def forward(ctx, *args):
                 args = tree_map(lambda x: x.clone() if isinstance(x, torch.Tensor) else x, args)
@@ -134,9 +133,7 @@ def flop_count(module: Union[torch.nn.Module, Callable] = None, *args, verbose: 
         return PushState.apply
 
     def create_backwards_pop(name):
-
         class PopState(torch.autograd.Function):
-
             @staticmethod
             def forward(ctx, *args):
                 args = tree_map(lambda x: x.clone() if isinstance(x, torch.Tensor) else x, args)
@@ -147,14 +144,13 @@ def flop_count(module: Union[torch.nn.Module, Callable] = None, *args, verbose: 
             @staticmethod
             def backward(ctx, *grad_outs):
                 nonlocal parents
-                assert (parents[-1] == name)
+                assert parents[-1] == name
                 parents.pop()
                 return grad_outs
 
         return PopState.apply
 
     def enter_module(name):
-
         def f(module, inputs):
             nonlocal parents
             parents.append(name)
@@ -165,10 +161,9 @@ def flop_count(module: Union[torch.nn.Module, Callable] = None, *args, verbose: 
         return f
 
     def exit_module(name):
-
         def f(module, inputs, outputs):
             nonlocal parents
-            assert (parents[-1] == name)
+            assert parents[-1] == name
             parents.pop()
             outputs = normalize_tuple(outputs)
             return create_backwards_push(name)(*outputs)
@@ -189,7 +184,7 @@ def flop_count(module: Union[torch.nn.Module, Callable] = None, *args, verbose: 
         for mod in flop_counts.keys():
             print(f"Module: ", mod)
             for k, v in flop_counts[mod].items():
-                print('\t', k, _format_flops(v))
+                print("\t", k, _format_flops(v))
             print()
 
     def detach_variables(r):
@@ -201,7 +196,7 @@ def flop_count(module: Union[torch.nn.Module, Callable] = None, *args, verbose: 
 
     def wrap(r):
         if isinstance(r, torch.Tensor):
-            data_ptr_fn = getattr(r, '_tensor', r).data_ptr
+            data_ptr_fn = getattr(r, "_tensor", r).data_ptr
             r = FlopTensor(detach_variables(r))
             if maybe_inplace:
                 r = r + 0
@@ -375,8 +370,11 @@ def norm_flop_counter(affine_arg_index: int, input_arg_index: int) -> Callable:
         # Inputs[0] contains the shape of the input.
         input_shape = inputs[input_arg_index].shape
 
-        has_affine = inputs[affine_arg_index].shape is not None if hasattr(inputs[affine_arg_index],
-                                                                           'shape') else inputs[affine_arg_index]
+        has_affine = (
+            inputs[affine_arg_index].shape is not None
+            if hasattr(inputs[affine_arg_index], "shape")
+            else inputs[affine_arg_index]
+        )
         assert 2 <= len(input_shape) <= 5, input_shape
         # 5 is just a rough estimate
         flop = reduce(operator.mul, input_shape) * (5 if has_affine else 4)
@@ -390,7 +388,7 @@ def batchnorm_flop_jit(inputs: List[Any], outputs: List[Any], training: bool = N
         training = inputs[-3]
     assert isinstance(training, bool), "Signature of aten::batch_norm has changed!"
     if training:
-        return norm_flop_counter(1, 0)(inputs, outputs)    # pyre-ignore
+        return norm_flop_counter(1, 0)(inputs, outputs)  # pyre-ignore
     has_affine = inputs[1].shape is not None
     input_shape = reduce(operator.mul, inputs[0].shape)
     return input_shape * (2 if has_affine else 1)
@@ -420,33 +418,30 @@ def ewise_flop_counter(input_scale: float = 1, output_scale: float = 0) -> Calla
 
 def zero_flop_jit(*args):
     """
-        Count flops for zero flop layers.
+    Count flops for zero flop layers.
     """
     return 0
 
 
-if version.parse(torch.__version__) >= version.parse('1.12.0'):
+if version.parse(torch.__version__) >= version.parse("1.12.0"):
     flop_mapping = {
-    # gemm
+        # gemm
         aten.mm.default: matmul_flop_jit,
         aten.matmul.default: matmul_flop_jit,
         aten.addmm.default: addmm_flop_jit,
         aten.bmm.default: bmm_flop_jit,
-
-    # convolution
+        # convolution
         aten.convolution.default: conv_flop_jit,
         aten._convolution.default: conv_flop_jit,
         aten.convolution_backward.default: conv_backward_flop_jit,
-
-    # normalization
+        # normalization
         aten.native_batch_norm.default: batchnorm_flop_jit,
         aten.native_batch_norm_backward.default: batchnorm_flop_jit,
         aten.cudnn_batch_norm.default: batchnorm_flop_jit,
         aten.cudnn_batch_norm_backward.default: partial(batchnorm_flop_jit, training=True),
         aten.native_layer_norm.default: norm_flop_counter(2, 0),
         aten.native_layer_norm_backward.default: norm_flop_counter(2, 0),
-
-    # pooling
+        # pooling
         aten.avg_pool1d.default: ewise_flop_counter(1, 0),
         aten.avg_pool2d.default: ewise_flop_counter(1, 0),
         aten.avg_pool2d_backward.default: ewise_flop_counter(0, 1),
@@ -469,7 +464,7 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
     }
 
     ewise_flop_aten = [
-    # basic op
+        # basic op
         aten.add.Tensor,
         aten.add_.Tensor,
         aten.div.Tensor,
@@ -485,8 +480,7 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
         aten.sum.default,
         aten.sum.dim_IntList,
         aten.mean.dim,
-
-    # activation op
+        # activation op
         aten.hardswish.default,
         aten.hardswish_.default,
         aten.hardswish_backward.default,
@@ -509,15 +503,12 @@ if version.parse(torch.__version__) >= version.parse('1.12.0'):
         aten.tanh.default,
         aten.tanh_backward.default,
         aten.threshold_backward.default,
-
-    # dropout
+        # dropout
         aten.native_dropout.default,
         aten.native_dropout_backward.default,
-
-    # distribution
+        # distribution
         aten.bernoulli_.float,
-
-    # where
+        # where
         aten.where.self,
     ]
     for op in ewise_flop_aten:

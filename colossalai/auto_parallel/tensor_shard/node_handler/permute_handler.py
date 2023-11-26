@@ -7,7 +7,7 @@ from .node_handler import NodeHandler
 from .registry import operator_registry
 from .strategy import PermuteGenerator, StrategyGenerator
 
-__all__ = ['PermuteHandler']
+__all__ = ["PermuteHandler"]
 
 
 @operator_registry.register(torch.Tensor.permute)
@@ -34,14 +34,14 @@ class PermuteHandler(NodeHandler):
         physical_input_operand = OperationData(name=str(self.node.args[0]), type=data_type, data=input_data)
 
         permute_dims = []
-        if self.node.op == 'call_method':
+        if self.node.op == "call_method":
             # torch.Tensor.permute (input, *dims)
             for arg in self.node.args:
                 if isinstance(arg, torch.fx.Node):
                     if isinstance(arg._meta_data, int):
                         permute_dims.append(arg._meta_data)
                 else:
-                    assert isinstance(arg, int), 'The argument in permute node should be either type of Node or int.'
+                    assert isinstance(arg, int), "The argument in permute node should be either type of Node or int."
                     permute_dims.append(arg)
         else:
             # torch.permute (input, dims)
@@ -51,8 +51,8 @@ class PermuteHandler(NodeHandler):
                         permute_dims.extend(arg._meta_data)
                 else:
                     assert isinstance(
-                        arg,
-                        (tuple, list)), 'The argument in permute node should be type of Node, Tuple[int] or List[int].'
+                        arg, (tuple, list)
+                    ), "The argument in permute node should be type of Node, Tuple[int] or List[int]."
                     permute_dims.extend(arg)
 
         num_dims = self.node._meta_data.dim()
@@ -61,7 +61,7 @@ class PermuteHandler(NodeHandler):
             if permute_dims[i] < 0:
                 permute_dims[i] += num_dims
 
-        physical_shape_operand = OperationData(name='permute_dims', type=OperationDataType.ARG, data=list(permute_dims))
+        physical_shape_operand = OperationData(name="permute_dims", type=OperationDataType.ARG, data=list(permute_dims))
 
         output_data = self.node._meta_data
         physical_output_operand = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=output_data)
@@ -69,7 +69,7 @@ class PermuteHandler(NodeHandler):
         mapping = {
             "input": physical_input_operand,
             "permute_dims": physical_shape_operand,
-            "output": physical_output_operand
+            "output": physical_output_operand,
         }
 
         return mapping

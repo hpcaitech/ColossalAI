@@ -1,7 +1,7 @@
-from diffusers import StableDiffusionPipeline, DiffusionPipeline
 import torch
+from diffusers import DiffusionPipeline
 
-model_id = <Your Model Path>
+model_id = "<Your Model Path>"
 print(f"Loading model... from{model_id}")
 
 pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")

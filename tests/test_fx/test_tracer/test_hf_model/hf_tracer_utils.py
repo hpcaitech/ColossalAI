@@ -1,9 +1,6 @@
 from typing import List
 
 import torch
-from numpy import isin
-from torch.fx import GraphModule
-from torch.utils._pytree import tree_flatten
 
 # from colossalai.fx import symbolic_trace
 from colossalai._analyzer.fx import symbolic_trace
@@ -20,7 +17,7 @@ def trace_model_and_compare_output(model, data_gen, ignore_data: List[str] = Non
         inputs = {k: v for k, v in inputs.items() if k not in ignore_data}
 
     try:
-        meta_args = {k: v.to('meta') for k, v in inputs.items()}
+        meta_args = {k: v.to("meta") for k, v in inputs.items()}
         gm = symbolic_trace(model, meta_args=meta_args)
 
     except Exception as e:
@@ -35,4 +32,4 @@ def trace_model_and_compare_output(model, data_gen, ignore_data: List[str] = Non
         if torch.is_tensor(fx_out[k]):
             assert torch.equal(
                 fx_out[k], non_fx_out[k]
-            ), f'{model.__class__.__name__} has incorrect output {k}, expect {non_fx_out[k]}, but got {fx_out[k]}'
+            ), f"{model.__class__.__name__} has incorrect output {k}, expect {non_fx_out[k]}, but got {fx_out[k]}"

@@ -1,4 +1,4 @@
-from colossalai.amp import AMP_TYPE
+from colossalai.legacy.amp import AMP_TYPE
 
 # hyperparameters
 # BATCH_SIZE is as per GPU

@@ -47,5 +47,5 @@ def test_conv():
     assert out_transpose_3d.shape == patched_out_transpose_3d.shape
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_conv()

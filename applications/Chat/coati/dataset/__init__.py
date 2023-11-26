@@ -4,7 +4,10 @@ from .sft_dataset import SFTDataset, SupervisedDataset
 from .utils import is_rank_0
 
 __all__ = [
-    'RmStaticDataset', 'HhRlhfDataset',
-    'SFTDataset', 'SupervisedDataset',
-    'PromptDataset', 'is_rank_0',
+    "RmStaticDataset",
+    "HhRlhfDataset",
+    "SFTDataset",
+    "SupervisedDataset",
+    "PromptDataset",
+    "is_rank_0",
 ]

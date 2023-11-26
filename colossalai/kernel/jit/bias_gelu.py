@@ -29,7 +29,6 @@ def bias_gelu_back(g, bias, y):
 
 
 class GeLUFunction(torch.autograd.Function):
-
     @staticmethod
     # bias is an optional argument
     def forward(ctx, input, bias):

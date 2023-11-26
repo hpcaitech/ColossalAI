@@ -16,7 +16,6 @@
 
 from .tokenizer import build_tokenizer
 
-
 _TOKENIZER = None
 _PADDED_VOCAB_SIZE = -1
 

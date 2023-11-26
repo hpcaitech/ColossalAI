@@ -19,7 +19,7 @@ class ProcessGroupManager:
     def __init__(self):
         self.pg_store = dict()
 
-    def create_process_group(self, name: str, ranks: List[int], backend: str = 'nccl') -> ProcessGroup:
+    def create_process_group(self, name: str, ranks: List[int], backend: str = "nccl") -> ProcessGroup:
         """
         Get a process group by name. If the process group does not exist, it will be created.
 
@@ -36,7 +36,7 @@ class ProcessGroupManager:
             self.pg_store[name] = pg
             return pg
         else:
-            raise ValueError(f'Process group {name} already exists.')
+            raise ValueError(f"Process group {name} already exists.")
 
     def get(self, name: str) -> ProcessGroup:
         """
@@ -51,7 +51,7 @@ class ProcessGroupManager:
         if name in self.pg_store:
             return self.pg_store[name]
         else:
-            raise ValueError(f'Process group {name} does not exist.')
+            raise ValueError(f"Process group {name} does not exist.")
 
     def destroy(self, name: str) -> None:
         """
@@ -64,7 +64,7 @@ class ProcessGroupManager:
             dist.destroy_process_group(self.pg_store[name])
             del self.pg_store[name]
         else:
-            raise ValueError(f'Process group {name} does not exist.')
+            raise ValueError(f"Process group {name} does not exist.")
 
     def destroy_all(self) -> None:
         """

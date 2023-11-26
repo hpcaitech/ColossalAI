@@ -1,19 +1,10 @@
-import copy
 from typing import List
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
-    CommAction,
-    CommType,
-    MemoryCost,
-    ShardingStrategy,
-    TrainCycleItem,
-)
-from colossalai.tensor.shape_consistency import CollectiveCommPattern
-from colossalai.tensor.sharding_spec import ShardingSpec
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, ShardingStrategy, TrainCycleItem
 
 from .strategy_generator import StrategyGenerator
 
-__all__ = ['TensorConstructorGenerator']
+__all__ = ["TensorConstructorGenerator"]
 
 
 class TensorConstructorGenerator(StrategyGenerator):
@@ -30,10 +21,10 @@ class TensorConstructorGenerator(StrategyGenerator):
         strategy.compute_cost = compute_cost
 
     def update_memory_cost(self, strategy: ShardingStrategy):
-        '''
+        """
         Compute the memory cost per device with this specific strategy.
-        '''
-        forward_size_mapping = {'output': self._compute_size_in_bytes(strategy, "output")}
+        """
+        forward_size_mapping = {"output": self._compute_size_in_bytes(strategy, "output")}
 
         # compute fwd cost incurred
         # fwd_cost = input + output
@@ -57,11 +48,13 @@ class TensorConstructorGenerator(StrategyGenerator):
         communication_action_mapping = {}
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-        name = 'Replica Tensor Constructor'
+        name = "Replica Tensor Constructor"
 
-        strategy = self.get_sharding_strategy(name=name,
-                                              sharding_spec_mapping=sharding_spec_mapping,
-                                              communication_action_mapping=communication_action_mapping)
+        strategy = self.get_sharding_strategy(
+            name=name,
+            sharding_spec_mapping=sharding_spec_mapping,
+            communication_action_mapping=communication_action_mapping,
+        )
         strategy_list.append(strategy)
 
         return strategy_list

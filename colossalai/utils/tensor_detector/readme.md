@@ -14,7 +14,7 @@ class MLP(nn.Module):
         super().__init__()
         self.mlp = nn.Sequential(nn.Linear(64, 8),
                                  nn.ReLU(),
-                                 nn.Linear(8, 32))   
+                                 nn.Linear(8, 32))
     def forward(self, x):
         return self.mlp(x)
 ```
@@ -125,4 +125,3 @@ Total GPU Memory Allocated on cuda:0 is 14.0 KB
 
  This tool was inspired by https://github.com/Stonesjtu/pytorch_memlab/blob/master/pytorch_memlab/mem_reporter.py
  and https://github.com/Oldpan/Pytorch-Memory-Utils
-

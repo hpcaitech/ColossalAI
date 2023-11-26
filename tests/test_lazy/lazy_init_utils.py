@@ -12,7 +12,7 @@ from colossalai.tensor.d_tensor import to_global
 from colossalai.tensor.d_tensor.layout import Layout
 from tests.kit.model_zoo.registry import ModelAttribute
 
-SUPPORT_LAZY = version.parse(torch.__version__) >= version.parse('1.12.0')
+SUPPORT_LAZY = version.parse(torch.__version__) >= version.parse("1.12.0")
 
 # model_fn, data_gen_fn, output_transform_fn, model_attr
 TestingEntry = Tuple[Callable[[], torch.nn.Module], Callable[[], dict], Callable[[], dict], Optional[ModelAttribute]]
@@ -28,18 +28,22 @@ def assert_model_equal(m1: torch.nn.Module, m2: torch.nn.Module) -> None:
     s1 = m1.state_dict()
     s2 = m2.state_dict()
 
-    assert len(s1) == len(s2), f'len {len(s1)} vs {len(s2)}'
+    assert len(s1) == len(s2), f"len {len(s1)} vs {len(s2)}"
 
     for (n1, t1), (n2, t2) in zip(s1.items(), s2.items()):
         assert n1 == n2
-        assert torch.equal(t1, t2), f'{n1} {t1} vs {t2}'
+        assert torch.equal(t1, t2), f"{n1} {t1} vs {t2}"
 
     for p1, p2 in zip(m1.parameters(), m2.parameters()):
         assert p1.requires_grad == p2.requires_grad
 
 
-def assert_forward_equal(m1: torch.nn.Module, m2: torch.nn.Module, data_gen_fn: Callable[[], dict],
-                         output_transform_fn: Callable[[Any], dict]) -> None:
+def assert_forward_equal(
+    m1: torch.nn.Module,
+    m2: torch.nn.Module,
+    data_gen_fn: Callable[[], dict],
+    output_transform_fn: Callable[[Any], dict],
+) -> None:
     data = data_gen_fn()
 
     m1.eval()
@@ -57,15 +61,14 @@ def assert_forward_equal(m1: torch.nn.Module, m2: torch.nn.Module, data_gen_fn: 
 
     for key, out1 in transformed_out1.items():
         out2 = transformed_out2[key]
-        assert torch.allclose(out1, out2, atol=1e-5), \
-            f'{m1.__class__.__name__} has inconsistent outputs, {out1} vs {out2}'
+        assert torch.allclose(
+            out1, out2, atol=1e-5
+        ), f"{m1.__class__.__name__} has inconsistent outputs, {out1} vs {out2}"
 
 
-def check_lazy_init(entry: TestingEntry,
-                    seed: int = 42,
-                    verbose: bool = False,
-                    check_forward: bool = False,
-                    default_device: str = 'cpu') -> None:
+def check_lazy_init(
+    entry: TestingEntry, seed: int = 42, verbose: bool = False, check_forward: bool = False, default_device: str = "cpu"
+) -> None:
     model_fn, data_gen_fn, output_transform_fn, _, model_attr = entry
     _MyTensor._pre_op_fn = lambda *args: set_seed(seed)
     LazyTensor._pre_op_fn = lambda *args: set_seed(seed)
@@ -84,15 +87,16 @@ def check_lazy_init(entry: TestingEntry,
         assert_forward_equal(model, deferred_model, data_gen_fn, output_transform_fn)
         assert_forward_equal(deferred_model, copied_deferred_model, data_gen_fn, output_transform_fn)
     if verbose:
-        print(f'{model.__class__.__name__} pass')
+        print(f"{model.__class__.__name__} pass")
 
 
-def assert_dist_model_equal(model: torch.nn.Module, distributed_model: torch.nn.Module, device_mesh: DeviceMesh,
-                            sharding_spec_dict: dict) -> None:
+def assert_dist_model_equal(
+    model: torch.nn.Module, distributed_model: torch.nn.Module, device_mesh: DeviceMesh, sharding_spec_dict: dict
+) -> None:
     state = model.state_dict()
     distributed_state = distributed_model.state_dict()
 
-    assert len(state) == len(distributed_state), f'len {len(state)} vs {len(distributed_state)}'
+    assert len(state) == len(distributed_state), f"len {len(state)} vs {len(distributed_state)}"
 
     for (n1, t1), (n2, t2) in zip(state.items(), distributed_state.items()):
         assert n1 == n2
@@ -102,4 +106,4 @@ def assert_dist_model_equal(model: torch.nn.Module, distributed_model: torch.nn.
             layout = Layout(device_mesh=device_mesh, sharding_spec=sharding_spec_dict[n2], global_shape=t1.shape)
             t2.dist_layout = layout
             t2 = to_global(t2)
-        assert torch.equal(t1, t2), f'{n1} {t1} vs {t2}'
+        assert torch.equal(t1, t2), f"{n1} {t1} vs {t2}"

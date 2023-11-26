@@ -8,8 +8,9 @@ import torch
 from torch import Tensor
 
 from colossalai.logging import get_dist_logger
+from colossalai.utils.device import get_current_device
 
-__all__ = ['BaseGradScaler']
+__all__ = ["BaseGradScaler"]
 
 
 class BaseGradScaler(ABC):
@@ -22,7 +23,7 @@ class BaseGradScaler(ABC):
 
     def __init__(self, initial_scale: float, verbose: bool):
         assert initial_scale > 0
-        self._scale = torch.cuda.FloatTensor([initial_scale])
+        self._scale = torch.tensor([initial_scale], device=get_current_device(), dtype=torch.float)
         self._verbose = verbose
 
         if self._verbose:
@@ -30,24 +31,21 @@ class BaseGradScaler(ABC):
 
     @property
     def scale(self) -> Tensor:
-        """Returns the loss scale.
-        """
+        """Returns the loss scale."""
 
         return self._scale
 
     @property
     def inv_scale(self) -> Tensor:
-        """Returns the inverse of the loss scale.
-        """
+        """Returns the inverse of the loss scale."""
 
         return self._scale.double().reciprocal().float()
 
     def state_dict(self) -> Dict:
-        """Returns the states of the gradient scaler as a dict object.
-        """
+        """Returns the states of the gradient scaler as a dict object."""
 
         state_dict = dict()
-        state_dict['scale'] = self.scale
+        state_dict["scale"] = self.scale
         return state_dict
 
     def load_state_dict(self, state_dict: Dict) -> None:
@@ -57,7 +55,7 @@ class BaseGradScaler(ABC):
             state_dict (dict): the states of the gradient scaler
         """
 
-        self._scale = state_dict['scale']
+        self._scale = state_dict["scale"]
 
     @abstractmethod
     def update(self, overflow: bool) -> None:
@@ -66,8 +64,6 @@ class BaseGradScaler(ABC):
         Args:
             overflow (bool): whether overflow occurs
         """
-
-        pass
 
     def log(self, message, *args, **kwargs):
         """Log messages.

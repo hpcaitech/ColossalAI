@@ -167,7 +167,7 @@ plugin = HybridParallelPlugin(tp_size=1,
 booster = Booster(plugin=plugin)
 ```
 
-Boost these train componts with the booster created.
+Boost these train components with the booster created.
 ```python
 model, optimizer, _criterion, _, lr_scheduler = booster.boost(model,
                                                                 optimizer,

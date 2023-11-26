@@ -20,35 +20,35 @@ def data_gen_for_sequence_classification(batch_size, seq_length):
     # LM data gen
     # the `labels` of LM is the token of the output, cause no padding, use `input_ids` as `labels`
     data = data_gen(batch_size, seq_length)
-    data['labels'] = torch.ones((batch_size), dtype=torch.long)
+    data["labels"] = torch.ones((batch_size), dtype=torch.long)
     return data
 
 
-MODEL_CONFIG = transformers.LlamaConfig(num_hidden_layers=4,
-                                        hidden_size=128,
-                                        intermediate_size=256,
-                                        num_attention_heads=4,
-                                        max_position_embeddings=128,
-                                        num_labels=16,
-                                        pad_token_id=2)
+MODEL_CONFIG = transformers.LlamaConfig(
+    num_hidden_layers=4,
+    hidden_size=128,
+    intermediate_size=256,
+    num_attention_heads=4,
+    max_position_embeddings=128,
+    num_labels=16,
+    pad_token_id=2,
+)
 BATCH, N_HEADS, N_CTX, D_HEAD = 4, 8, 4096, 64
 model_func = lambda: transformers.LlamaForSequenceClassification(MODEL_CONFIG)
 
 # vary seq length for fixed head and batch=4
 configs = [
-    triton.testing.Benchmark(x_names=['N_CTX'],
-                             x_vals=[2**i for i in range(8, 13)],
-                             line_arg='provider',
-                             line_vals=['org_model', 'shard_model'],
-                             line_names=['org_model', 'shard_model'],
-                             styles=[('red', '-'), ('blue', '-')],
-                             ylabel='ms',
-                             plot_name=f'lama_for_sequence_classification-batch-{BATCH}',
-                             args={
-                                 'BATCH': BATCH,
-                                 'dtype': torch.float16,
-                                 'model_func': model_func
-                             })
+    triton.testing.Benchmark(
+        x_names=["N_CTX"],
+        x_vals=[2**i for i in range(8, 13)],
+        line_arg="provider",
+        line_vals=["org_model", "shard_model"],
+        line_names=["org_model", "shard_model"],
+        styles=[("red", "-"), ("blue", "-")],
+        ylabel="ms",
+        plot_name=f"lama_for_sequence_classification-batch-{BATCH}",
+        args={"BATCH": BATCH, "dtype": torch.float16, "model_func": model_func},
+    )
 ]
 
 
@@ -85,4 +85,4 @@ def bench_shardformer(BATCH, N_CTX, provider, model_func, dtype=torch.float32, d
 # torchrun --standalone --nproc_per_node=2 performance_benchmark.py
 if __name__ == "__main__":
     colossalai.launch_from_torch({})
-    bench_shardformer.run(save_path='.', print_data=dist.get_rank() == 0)
+    bench_shardformer.run(save_path=".", print_data=dist.get_rank() == 0)

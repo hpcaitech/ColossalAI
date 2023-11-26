@@ -1,6 +1,6 @@
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, List
 
 import ray
 import torch
@@ -15,7 +15,7 @@ from .utils import is_rank_0
 
 
 class DetachedTrainer(ABC):
-    '''
+    """
         Base class for detached rlhf trainers.
         'detach' means that the experience maker is detached compared to a normal Trainer.
         Please set name attribute during init:
@@ -28,15 +28,17 @@ class DetachedTrainer(ABC):
         callbacks (List[Callback], defaults to []): the callbacks to call during training process
         generate_kwargs (dict, optional): the kwargs to use while model generating
 
-    '''
+    """
 
-    def __init__(self,
-                 experience_maker_holder_name_list: List[str],
-                 train_batch_size: int = 8,
-                 buffer_limit: int = 0,
-                 dataloader_pin_memory: bool = True,
-                 callbacks: List[TrainerCallback] = [],
-                 debug: bool = False) -> None:
+    def __init__(
+        self,
+        experience_maker_holder_name_list: List[str],
+        train_batch_size: int = 8,
+        buffer_limit: int = 0,
+        dataloader_pin_memory: bool = True,
+        callbacks: List[TrainerCallback] = [],
+        debug: bool = False,
+    ) -> None:
         super().__init__()
         self.detached_replay_buffer = DetachedReplayBuffer(train_batch_size, limit=buffer_limit)
         self.dataloader_pin_memory = dataloader_pin_memory
@@ -67,18 +69,16 @@ class DetachedTrainer(ABC):
     def _learn(self, update_steps: int, train_epochs: int) -> None:
         data = []
         # warmup
-        pbar = tqdm(range(update_steps), desc=f'Train epoch [1/{train_epochs}]', disable=not is_rank_0())
+        pbar = tqdm(range(update_steps), desc=f"Train epoch [1/{train_epochs}]", disable=not is_rank_0())
         self._on_epoch_start(0)
         self._learn_epoch(pbar, data)
         self._on_epoch_end(0)
         # item is already a batch
-        dataloader = DataLoader(data,
-                                batch_size=1,
-                                shuffle=True,
-                                pin_memory=self.dataloader_pin_memory,
-                                collate_fn=lambda x: x[0])
+        dataloader = DataLoader(
+            data, batch_size=1, shuffle=True, pin_memory=self.dataloader_pin_memory, collate_fn=lambda x: x[0]
+        )
         for epoch in range(1, train_epochs):
-            pbar = tqdm(dataloader, desc=f'Train epoch [{epoch + 1}/{train_epochs}]', disable=not is_rank_0())
+            pbar = tqdm(dataloader, desc=f"Train epoch [{epoch + 1}/{train_epochs}]", disable=not is_rank_0())
             self._on_epoch_start(epoch)
             self._learn_epoch(pbar, data)
             self._on_epoch_end(epoch)
@@ -104,7 +104,7 @@ class DetachedTrainer(ABC):
 
     def fit(self, total_steps: int, update_steps: int, train_epochs: int = 1) -> None:
         self._on_fit_start()
-        for i in tqdm(range(total_steps // update_steps), desc='Trainer', disable=not is_rank_0()):
+        for i in tqdm(range(total_steps // update_steps), desc="Trainer", disable=not is_rank_0()):
             self._on_episode_start(i)
             self._learn(update_steps, train_epochs)
             self._on_update_start()

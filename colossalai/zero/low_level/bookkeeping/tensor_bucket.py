@@ -2,7 +2,6 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
 
 class TensorBucket:
-
     def __init__(self, size):
         self._max_size = size
         self._current_size = 0
@@ -26,8 +25,7 @@ class TensorBucket:
         tensor_size = tensor.numel()
 
         if not allow_oversize and self.will_exceed_max_size(tensor_size):
-            msg = f"The param bucket max size {self._max_size} is exceeded" \
-                + f"by tensor (size {tensor_size})"
+            msg = f"The param bucket max size {self._max_size} is exceeded" + f"by tensor (size {tensor_size})"
             raise RuntimeError(msg)
 
         self._bucket.append(tensor)

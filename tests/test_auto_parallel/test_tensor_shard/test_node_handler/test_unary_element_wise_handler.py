@@ -12,7 +12,6 @@ from colossalai.testing import clear_cache_before_run, run_on_environment_flag
 
 
 class ReLuModel(nn.Module):
-
     def __init__(self):
         super().__init__()
         self.act = torch.nn.ReLU()
@@ -23,7 +22,7 @@ class ReLuModel(nn.Module):
         return relu_node
 
 
-@run_on_environment_flag(name='AUTO_PARALLEL')
+@run_on_environment_flag(name="AUTO_PARALLEL")
 @clear_cache_before_run()
 def test_elementwise_handler():
     model = ReLuModel()
@@ -35,8 +34,8 @@ def test_elementwise_handler():
     #     %act : [#users=1] = call_module[target=act](args = (%conv2d,), kwargs = {})
     #     return act
     meta_args = {
-        'input': torch.rand(4, 4, 64, 64).to('meta'),
-        'other': torch.rand(16, 4, 3, 3).to('meta'),
+        "input": torch.rand(4, 4, 64, 64).to("meta"),
+        "other": torch.rand(16, 4, 3, 3).to("meta"),
     }
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
@@ -51,14 +50,14 @@ def test_elementwise_handler():
     conv_strategies_vector = StrategiesVector(conv_mod_node)
 
     # build handler
-    conv_handler = ConvFunctionHandler(node=conv_mod_node,
-                                       device_mesh=device_mesh,
-                                       strategies_vector=conv_strategies_vector)
+    conv_handler = ConvFunctionHandler(
+        node=conv_mod_node, device_mesh=device_mesh, strategies_vector=conv_strategies_vector
+    )
     conv_handler.register_strategy(compute_resharding_cost=False)
-    setattr(conv_mod_node, 'strategies_vector', conv_strategies_vector)
-    relu_handler = UnaryElementwiseHandler(node=relu_mod_node,
-                                           device_mesh=device_mesh,
-                                           strategies_vector=relu_strategies_vector)
+    setattr(conv_mod_node, "strategies_vector", conv_strategies_vector)
+    relu_handler = UnaryElementwiseHandler(
+        node=relu_mod_node, device_mesh=device_mesh, strategies_vector=relu_strategies_vector
+    )
 
     relu_handler.register_strategy(compute_resharding_cost=False)
 
@@ -70,20 +69,20 @@ def test_elementwise_handler():
         # make sure they have valid values
         assert op_data.data is not None
 
-    assert mapping['input'].name == "conv2d"
-    assert mapping['input'].data.is_meta
-    assert mapping['input'].data.shape == torch.Size([4, 16, 62, 62])
-    assert mapping['input'].type == OperationDataType.ARG
-    assert mapping['input'].logical_shape == torch.Size([4, 16, 62, 62])
+    assert mapping["input"].name == "conv2d"
+    assert mapping["input"].data.is_meta
+    assert mapping["input"].data.shape == torch.Size([4, 16, 62, 62])
+    assert mapping["input"].type == OperationDataType.ARG
+    assert mapping["input"].logical_shape == torch.Size([4, 16, 62, 62])
 
-    assert mapping['output'].name == "act"
-    assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.Size([4, 16, 62, 62])
-    assert mapping['output'].type == OperationDataType.OUTPUT
+    assert mapping["output"].name == "act"
+    assert mapping["output"].data.is_meta
+    assert mapping["output"].data.shape == torch.Size([4, 16, 62, 62])
+    assert mapping["output"].type == OperationDataType.OUTPUT
 
     # getitem is a following strategy handler, so the number of strategies is equal to the predecessor node.
     assert len(relu_strategies_vector) == len(conv_strategies_vector)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_elementwise_handler()

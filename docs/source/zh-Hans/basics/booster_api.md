@@ -35,6 +35,8 @@ Booster 插件是管理并行配置的重要组件（eg：gemini 插件封装了
 
 若想了解更多关于插件的用法细节，请参考[Booster 插件](./booster_plugins.md)章节。
 
+有一些插件支持懒惰初始化，它能节省初始化大模型时的内存占用。详情请参考[懒惰初始化](../features/lazy_init.md)。
+
 ### Booster 接口
 
 <!--TODO: update autodoc -->

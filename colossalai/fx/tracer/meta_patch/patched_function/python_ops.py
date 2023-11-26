@@ -19,9 +19,9 @@ def operator_getitem(a, b):
         return t
 
     def _slice_convert(slice_obj):
-        attrs = {'start': slice_obj.start, 'stop': slice_obj.stop, 'step': slice_obj.step}
+        attrs = {"start": slice_obj.start, "stop": slice_obj.stop, "step": slice_obj.step}
         new_attrs = _slice_attr_convert(attrs)
-        attr_dict_to_tuple = (new_attrs['start'], new_attrs['stop'], new_attrs['step'])
+        attr_dict_to_tuple = (new_attrs["start"], new_attrs["stop"], new_attrs["step"])
         return slice(*attr_dict_to_tuple)
 
     def _slice_attr_convert(attrs):

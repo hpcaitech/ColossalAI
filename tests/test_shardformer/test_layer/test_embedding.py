@@ -11,7 +11,7 @@ from colossalai.shardformer.layer import Embedding1D
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 
-@parameterize('lazy_init', [False, True])
+@parameterize("lazy_init", [False, True])
 def check_embedding_1d(lazy_init: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
 
@@ -43,7 +43,7 @@ def check_embedding_1d(lazy_init: bool):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     check_embedding_1d()
 
 
@@ -52,5 +52,5 @@ def test_embedding_1d():
     spawn(run_dist, nprocs=2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_embedding_1d()

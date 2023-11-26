@@ -7,7 +7,12 @@ from .parallel_cached_embedding_tablewise import ParallelCachedEmbeddingBagTable
 from .parallel_cached_embedding_tablewise_split_cache import ParallelCachedEmbeddingBagTablewiseSpiltCache
 
 __all__ = [
-    'CachedParamMgr', 'LimitBuffIndexCopyer', 'CachedEmbeddingBag', 'ParallelCachedEmbeddingBag', 'EvictionStrategy',
-    'ParallelCachedEmbeddingBagTablewise', 'TablewiseEmbeddingBagConfig',
-    'ParallelCachedEmbeddingBagTablewiseSpiltCache'
+    "CachedParamMgr",
+    "LimitBuffIndexCopyer",
+    "CachedEmbeddingBag",
+    "ParallelCachedEmbeddingBag",
+    "EvictionStrategy",
+    "ParallelCachedEmbeddingBagTablewise",
+    "TablewiseEmbeddingBagConfig",
+    "ParallelCachedEmbeddingBagTablewiseSpiltCache",
 ]

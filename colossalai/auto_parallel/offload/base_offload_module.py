@@ -22,7 +22,6 @@ class BaseOffloadModule:
     """
 
     def __init__(self, model: nn.Module, region_manager: RegionManager, is_sync=True):
-
         self.model = model
         self.region_manager = region_manager
         self.grad_hook_list = []
@@ -91,17 +90,16 @@ class BaseOffloadModule:
     def parameters(self, recurse: bool = True):
         return self.model.parameters(recurse)
 
-    def named_parameters(self, prefix: str = '', recurse: bool = True):
+    def named_parameters(self, prefix: str = "", recurse: bool = True):
         return self.model.named_parameters(prefix, recurse)
 
-    def named_buffers(self, prefix: str = '', recurse: bool = True):
+    def named_buffers(self, prefix: str = "", recurse: bool = True):
         return self.model.named_buffers(prefix, recurse)
 
     def named_children(self):
         return self.model.named_children()
 
-    def named_modules(self,
-                      memo: Optional[Set[torch.nn.Module]] = None,
-                      prefix: str = '',
-                      remove_duplicate: bool = True):
+    def named_modules(
+        self, memo: Optional[Set[torch.nn.Module]] = None, prefix: str = "", remove_duplicate: bool = True
+    ):
         return self.model.named_modules(memo, prefix, remove_duplicate)

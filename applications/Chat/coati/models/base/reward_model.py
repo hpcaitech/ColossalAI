@@ -17,11 +17,13 @@ class RewardModel(LoRAModule):
         lora_train_bias (str): LoRA bias training mode.
     """
 
-    def __init__(self,
-                 model: nn.Module,
-                 value_head: Optional[nn.Module] = None,
-                 lora_rank: int = 0,
-                 lora_train_bias: str = 'none') -> None:
+    def __init__(
+        self,
+        model: nn.Module,
+        value_head: Optional[nn.Module] = None,
+        lora_rank: int = 0,
+        lora_train_bias: str = "none",
+    ) -> None:
         super().__init__(lora_rank=lora_rank, lora_train_bias=lora_train_bias)
         self.model = model
         self.convert_to_lora()
@@ -33,9 +35,12 @@ class RewardModel(LoRAModule):
         else:
             self.value_head = nn.Linear(model.config.n_embd, 1)
 
-    def forward(self, sequences: torch.LongTensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, sequences: torch.LongTensor, attention_mask: torch.Tensor) -> torch.Tensor:
         outputs = self.model(sequences, attention_mask=attention_mask)
-        last_hidden_states = outputs['last_hidden_state']
-        values = self.value_head(last_hidden_states)[:, :-1]
-        value = values.mean(dim=1).squeeze(1)    # ensure shape is (B)
-        return value
+        last_hidden_states = outputs["last_hidden_state"]
+        sequence_lengths = torch.max(attention_mask * torch.arange(sequences.size(1), device=sequences.device), dim=1)[
+            0
+        ]
+        sequence_hidden_states = last_hidden_states[torch.arange(last_hidden_states.size(0)), sequence_lengths]
+        values = self.value_head(sequence_hidden_states).squeeze(1)  # ensure shape is (B, )
+        return values

@@ -108,5 +108,5 @@ We support `autodoc` to extract the docstring and transform it into a Web elemen
 You just need to add `{{ autodoc:<mod-name> }}` in your markdown as a single line. An example is given below and you can see the outcome in [this PR](https://github.com/hpcaitech/ColossalAI-Documentation/pull/175).
 
 ```markdown
-{{ autodoc:colossalai.amp.apex_amp.convert_to_apex_amp }}
+{{ autodoc:colossalai.legacy.amp.apex_amp.convert_to_apex_amp }}
 ```

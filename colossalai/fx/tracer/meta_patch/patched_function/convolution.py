@@ -8,7 +8,6 @@ from ...registry import meta_patched_function
 
 
 def _ntuple(n, name="parse"):
-
     def parse(x):
         if isinstance(x, collections.abc.Iterable):
             return tuple(x)
@@ -24,21 +23,21 @@ _triple = _ntuple(3, "_triple")
 
 
 def _extract_kwargs(kwargs):
-    if 'stride' in kwargs:
-        stride = kwargs['stride']
+    if "stride" in kwargs:
+        stride = kwargs["stride"]
     else:
         stride = 1
     # TODO: process str type padding
-    if 'padding' in kwargs:
-        padding = kwargs['padding']
+    if "padding" in kwargs:
+        padding = kwargs["padding"]
     else:
         padding = 0
-    if 'dilation' in kwargs:
-        dilation = kwargs['dilation']
+    if "dilation" in kwargs:
+        dilation = kwargs["dilation"]
     else:
         dilation = 1
-    if 'output_padding' in kwargs:
-        output_padding = kwargs['output_padding']
+    if "output_padding" in kwargs:
+        output_padding = kwargs["output_padding"]
     else:
         output_padding = 0
 
@@ -61,7 +60,7 @@ def torch_nn_functional_conv1d(input, weight, **kwargs):
         c_out,
         l_out,
     )
-    return torch.empty(result_shape, device='meta')
+    return torch.empty(result_shape, device="meta")
 
 
 @meta_patched_function.register(torch.nn.functional.conv2d)
@@ -82,7 +81,7 @@ def torch_nn_functional_conv2d(input, weight, **kwargs):
         h_out,
         w_out,
     )
-    return torch.empty(result_shape, device='meta')
+    return torch.empty(result_shape, device="meta")
 
 
 @meta_patched_function.register(torch.nn.functional.conv3d)
@@ -105,7 +104,7 @@ def torch_nn_functional_conv3d(input, weight, **kwargs):
         h_out,
         w_out,
     )
-    return torch.empty(result_shape, device='meta')
+    return torch.empty(result_shape, device="meta")
 
 
 @meta_patched_function.register(torch.nn.functional.conv_transpose1d)
@@ -120,13 +119,14 @@ def torch_nn_functional_convtranspose1d(input, weight, **kwargs):
     kernel_size = weight.shape[2:]
     l_in = input.shape[-1]
     c_out = weight.shape[1]
-    l_out = math.floor((l_in - 1) * stride[0] - 2 * padding[0] + dilation[0] * (kernel_size[0] - 1) +
-                       output_padding[0] + 1)
+    l_out = math.floor(
+        (l_in - 1) * stride[0] - 2 * padding[0] + dilation[0] * (kernel_size[0] - 1) + output_padding[0] + 1
+    )
     result_shape = input.shape[:-2] + (
         c_out,
         l_out,
     )
-    return torch.empty(result_shape, device='meta')
+    return torch.empty(result_shape, device="meta")
 
 
 @meta_patched_function.register(torch.nn.functional.conv_transpose2d)
@@ -141,16 +141,18 @@ def torch_nn_functional_convtranspose2d(input, weight, **kwargs):
     kernel_size = weight.shape[2:]
     h_in, w_in = input.shape[-2:]
     c_out = weight.shape[1]
-    h_out = math.floor((h_in - 1) * stride[0] - 2 * padding[0] + dilation[0] * (kernel_size[0] - 1) +
-                       output_padding[0] + 1)
-    w_out = math.floor((w_in - 1) * stride[1] - 2 * padding[1] + dilation[1] * (kernel_size[1] - 1) +
-                       output_padding[1] + 1)
+    h_out = math.floor(
+        (h_in - 1) * stride[0] - 2 * padding[0] + dilation[0] * (kernel_size[0] - 1) + output_padding[0] + 1
+    )
+    w_out = math.floor(
+        (w_in - 1) * stride[1] - 2 * padding[1] + dilation[1] * (kernel_size[1] - 1) + output_padding[1] + 1
+    )
     result_shape = input.shape[:-3] + (
         c_out,
         h_out,
         w_out,
     )
-    return torch.empty(result_shape, device='meta')
+    return torch.empty(result_shape, device="meta")
 
 
 @meta_patched_function.register(torch.nn.functional.conv_transpose3d)
@@ -165,16 +167,19 @@ def torch_nn_functional_convtranspose3d(input, weight, **kwargs):
     kernel_size = weight.shape[2:]
     d_in, h_in, w_in = input.shape[-3:]
     c_out = weight.shape[1]
-    d_out = math.floor((d_in - 1) * stride[0] - 2 * padding[0] + dilation[0] * (kernel_size[0] - 1) +
-                       output_padding[0] + 1)
-    h_out = math.floor((h_in - 1) * stride[1] - 2 * padding[1] + dilation[1] * (kernel_size[1] - 1) +
-                       output_padding[1] + 1)
-    w_out = math.floor((w_in - 1) * stride[2] - 2 * padding[2] + dilation[2] * (kernel_size[2] - 1) +
-                       output_padding[2] + 1)
+    d_out = math.floor(
+        (d_in - 1) * stride[0] - 2 * padding[0] + dilation[0] * (kernel_size[0] - 1) + output_padding[0] + 1
+    )
+    h_out = math.floor(
+        (h_in - 1) * stride[1] - 2 * padding[1] + dilation[1] * (kernel_size[1] - 1) + output_padding[1] + 1
+    )
+    w_out = math.floor(
+        (w_in - 1) * stride[2] - 2 * padding[2] + dilation[2] * (kernel_size[2] - 1) + output_padding[2] + 1
+    )
     result_shape = input.shape[:-4] + (
         c_out,
         d_out,
         h_out,
         w_out,
     )
-    return torch.empty(result_shape, device='meta')
+    return torch.empty(result_shape, device="meta")

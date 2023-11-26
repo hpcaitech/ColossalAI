@@ -10,11 +10,22 @@ import torch.nn as nn
 from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import _get_default_group
 
-from colossalai.checkpoint_io.utils import StateDictSharder, calculate_tensor_size
+from colossalai.checkpoint_io.utils import StateDictSharder, gather_distributed_param
 from colossalai.interface import ModelWrapper
 from colossalai.lazy import LazyTensor
 from colossalai.logging import get_dist_logger
 from colossalai.tensor.colo_parameter import ColoParameter
+from colossalai.tensor.d_tensor import (
+    distribute_tensor,
+    distribute_tensor_with_customization,
+    get_device_mesh,
+    get_global_shape,
+    get_sharding_spec,
+    init_as_dtensor,
+    init_tensor_as_customization_distributed,
+    is_customized_distributed_tensor,
+    is_distributed_tensor,
+)
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.utils import _cast_float, free_storage, get_current_device, is_ddp_ignored
 
@@ -27,10 +38,10 @@ from .utils import get_temp_total_chunk_on_cuda
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX, _IncompatibleKeys
 except ImportError:
-    _EXTRA_STATE_KEY_SUFFIX = '_extra_state'
+    _EXTRA_STATE_KEY_SUFFIX = "_extra_state"
 
 __all__ = [
-    'GeminiDDP',
+    "GeminiDDP",
 ]
 
 
@@ -54,27 +65,31 @@ class GeminiDDP(ModelWrapper):
     """
 
     def __init__(
-            self,
-            module: torch.nn.Module,
-            chunk_config_dict: Optional[dict] = None,
-            chunk_init_device: torch.device = torch.device('cpu'),
-            placement_policy: str = "static",
-            shard_param_frac: float = 1.0,    # only for static placement
-            offload_optim_frac: float = 0.0,    # only for static placement
-            offload_param_frac: float = 0.0,    # only for static placement
-            warmup_non_model_data_ratio: float = 0.8,    # only for auto placement
-            steady_cuda_cap_ratio: float = 0.9,    # only for auto placement
-            search_range_m: int = 32,    # chunk search options
-            hidden_dim: Optional[int] = None,    # chunk search options
-            min_chunk_size_m: float = 32,    # chunk search options
-            pin_memory: bool = False,
-            force_outputs_fp32: bool = False,
-            strict_ddp_mode: bool = False,
-            scatter_after_inference: bool = True,
-            mixed_precision: torch.dtype = torch.float16,
-            process_group: Optional[ProcessGroup] = None,
-            memstats: Optional[MemStats] = None,    # genimi memory stats
-            verbose: bool = False) -> None:
+        self,
+        module: torch.nn.Module,
+        chunk_config_dict: Optional[dict] = None,
+        chunk_init_device: torch.device = torch.device("cpu"),
+        placement_policy: str = "static",
+        enable_gradient_accumulation: bool = False,
+        shard_param_frac: float = 1.0,  # only for static placement
+        offload_optim_frac: float = 0.0,  # only for static placement
+        offload_param_frac: float = 0.0,  # only for static placement
+        warmup_non_model_data_ratio: float = 0.8,  # only for auto placement
+        steady_cuda_cap_ratio: float = 0.9,  # only for auto placement
+        search_range_m: int = 32,  # chunk search options
+        hidden_dim: Optional[int] = None,  # chunk search options
+        min_chunk_size_m: float = 32,  # chunk search options
+        pin_memory: bool = False,
+        force_outputs_fp32: bool = False,
+        strict_ddp_mode: bool = False,
+        scatter_after_inference: bool = True,
+        mixed_precision: torch.dtype = torch.float16,
+        zero_group: Optional[ProcessGroup] = None,
+        memstats: Optional[MemStats] = None,  # genimi memory stats
+        master_weights: bool = True,
+        extra_dp_group: Optional[ProcessGroup] = None,
+        verbose: bool = False,
+    ) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
         if chunk_config_dict is not None:
             self.chunk_manager = ChunkManager(chunk_config_dict, chunk_init_device)
@@ -82,22 +97,26 @@ class GeminiDDP(ModelWrapper):
             # some ugly hotfix for the compatibility with Lightning
             if search_range_m is None:
                 search_range_m = 32
-            self.chunk_manager = init_chunk_manager(model=module,
-                                                    init_device=chunk_init_device,
-                                                    hidden_dim=hidden_dim,
-                                                    search_range_m=search_range_m,
-                                                    min_chunk_size_m=min_chunk_size_m,
-                                                    strict_ddp_flag=strict_ddp_mode,
-                                                    process_group=process_group,
-                                                    verbose=verbose)
-        self.gemini_manager = GeminiManager(placement_policy,
-                                            self.chunk_manager,
-                                            memstats,
-                                            shard_param_frac=shard_param_frac,
-                                            offload_optim_frac=offload_optim_frac,
-                                            offload_param_frac=offload_param_frac,
-                                            warmup_non_model_data_ratio=warmup_non_model_data_ratio,
-                                            steady_cuda_cap_ratio=steady_cuda_cap_ratio)
+            self.chunk_manager = init_chunk_manager(
+                model=module,
+                init_device=chunk_init_device,
+                hidden_dim=hidden_dim,
+                search_range_m=search_range_m,
+                min_chunk_size_m=min_chunk_size_m,
+                strict_ddp_flag=strict_ddp_mode,
+                process_group=zero_group,
+                verbose=verbose,
+            )
+        self.gemini_manager = GeminiManager(
+            placement_policy,
+            self.chunk_manager,
+            memstats,
+            shard_param_frac=shard_param_frac,
+            offload_optim_frac=offload_optim_frac,
+            offload_param_frac=offload_param_frac,
+            warmup_non_model_data_ratio=warmup_non_model_data_ratio,
+            steady_cuda_cap_ratio=steady_cuda_cap_ratio,
+        )
         self.force_outputs_fp32 = force_outputs_fp32
         self.param_op_hook = GeminiZeROHook(self.gemini_manager)
         self.fp32_params: List[torch.Tensor] = list()
@@ -108,7 +127,16 @@ class GeminiDDP(ModelWrapper):
         self.name2param: Dict[str, nn.Parameter] = dict()
         self.scatter_after_inference = scatter_after_inference
         self.mixed_precision = mixed_precision
-        self.dp_process_group = process_group or _get_default_group()
+        self.zero_group = zero_group or _get_default_group()
+        self.extra_dp_group = extra_dp_group
+
+        self.reuse_fp16_chunk = master_weights
+        self.master_weights = master_weights
+
+        self.enable_gradient_accumulation = enable_gradient_accumulation
+        if self.enable_gradient_accumulation:
+            self.reuse_fp16_chunk = False
+        self.accumulating_grads = False  # Whether model is accumulating gradients
 
         self._logger = get_dist_logger()
 
@@ -126,13 +154,15 @@ class GeminiDDP(ModelWrapper):
             self.param2name[param] = name
         for m_name, m_var in module.named_modules():
             for p_name, p_var in m_var.named_parameters(recurse=False):
-                param_name = m_name + '.' + p_name if m_name else p_name
+                param_name = m_name + "." + p_name if m_name else p_name
                 self.name2param[param_name] = p_var
 
-        self._init_chunks(param_order=param_order,
-                          strict_ddp_mode=strict_ddp_mode,
-                          cpu_offload=self.gemini_manager.policy_name != 'cuda',
-                          pin_memory=pin_memory)
+        self._init_chunks(
+            param_order=param_order,
+            strict_ddp_mode=strict_ddp_mode,
+            cpu_offload=not (self.gemini_manager.policy_name == "static" and offload_param_frac == 0),
+            pin_memory=pin_memory,
+        )
         super().__init__(module)
         self._non_persistent_buffers_set = self._get_non_persistent_buffers_set(module)
         self._cast_buffers()
@@ -146,19 +176,18 @@ class GeminiDDP(ModelWrapper):
     def parameters(self, recurse: bool = True):
         return self.module.parameters(recurse)
 
-    def named_parameters(self, prefix: str = '', recurse: bool = True):
+    def named_parameters(self, prefix: str = "", recurse: bool = True):
         return self.module.named_parameters(prefix, recurse)
 
-    def named_buffers(self, prefix: str = '', recurse: bool = True):
+    def named_buffers(self, prefix: str = "", recurse: bool = True):
         return self.module.named_buffers(prefix, recurse)
 
     def named_children(self):
         return self.module.named_children()
 
-    def named_modules(self,
-                      memo: Optional[Set[torch.nn.Module]] = None,
-                      prefix: str = '',
-                      remove_duplicate: bool = True):
+    def named_modules(
+        self, memo: Optional[Set[torch.nn.Module]] = None, prefix: str = "", remove_duplicate: bool = True
+    ):
         return self.module.named_modules(memo, prefix, remove_duplicate)
 
     @staticmethod
@@ -180,15 +209,9 @@ class GeminiDDP(ModelWrapper):
         for p in params_to_ignore:
             p._ddp_to_ignore = True
 
-    def unwrap(self):
-        # as save/load state dict is overwrited, only return self
-        return self
-
-    def _get_non_persistent_buffers_set(self,
-                                        module,
-                                        memo: Optional[Set[nn.Module]] = None,
-                                        prefix: str = '',
-                                        remove_duplicate: bool = True):
+    def _get_non_persistent_buffers_set(
+        self, module, memo: Optional[Set[nn.Module]] = None, prefix: str = "", remove_duplicate: bool = True
+    ):
         r"""
         Args:
             memo: a memo to store the set of modules already added to the result
@@ -204,19 +227,20 @@ class GeminiDDP(ModelWrapper):
             if remove_duplicate:
                 memo.add(module)
             self_non_persistent_set = set(
-                map(lambda key: prefix + ('.' if prefix else '') + key, module._non_persistent_buffers_set))
+                map(lambda key: prefix + ("." if prefix else "") + key, module._non_persistent_buffers_set)
+            )
             for name, sub_module in module._modules.items():
                 if sub_module is None:
                     continue
-                submodule_prefix = prefix + ('.' if prefix else '') + name
-                child_non_persistent_set = self._get_non_persistent_buffers_set(sub_module, memo, submodule_prefix,
-                                                                                remove_duplicate)
+                submodule_prefix = prefix + ("." if prefix else "") + name
+                child_non_persistent_set = self._get_non_persistent_buffers_set(
+                    sub_module, memo, submodule_prefix, remove_duplicate
+                )
                 self_non_persistent_set = set.union(self_non_persistent_set, child_non_persistent_set)
         return self_non_persistent_set
 
     def _post_forward(self):
-        """This function is only triggered for inference.
-        """
+        """This function is only triggered for inference."""
         access_list = list(self.chunk_manager.accessed_chunks)
         # we need to scatter all accessed chunks and move them to their original places
         for chunk in access_list:
@@ -233,7 +257,8 @@ class GeminiDDP(ModelWrapper):
         # check whether we are in a inference mode
         grad_flag = torch.is_grad_enabled()
         if not grad_flag:
-            assert not self.gemini_manager.need_warmup or not self.gemini_manager.is_warmup(
+            assert (
+                not self.gemini_manager.need_warmup or not self.gemini_manager.is_warmup()
             ), "You should run a completed iteration as your warmup iter"
 
         args, kwargs = _cast_float(args, self.mixed_precision), _cast_float(kwargs, self.mixed_precision)
@@ -250,8 +275,7 @@ class GeminiDDP(ModelWrapper):
         return outputs
 
     def _inference_forward(self, *args, **kwargs):
-        """This function is only triggered for inference.
-        """
+        """This function is only triggered for inference."""
         fwd_ctx = ColoParamOpHookManager.use_hooks(self.param_op_hook)
         if not self.scatter_after_inference:
             # gather all chunks
@@ -287,12 +311,16 @@ class GeminiDDP(ModelWrapper):
                 if not is_ddp_ignored(param) and not getattr(param, "_gemini_reduced"):
                     error_params.append(self.param2name[param])
             error_str = "\n\t".join(error_params)
-            raise RuntimeError("ZERO DDP error: the synchronization of gradients doesn't exit properly.",
-                               "The most possible reason is that the model is not compatible with GeminiDDP.\n",
-                               f"{error_str}")
+            raise RuntimeError(
+                "ZERO DDP error: the synchronization of gradients doesn't exit properly.",
+                "The most possible reason is that the model is not compatible with GeminiDDP.\n",
+                f"{error_str}",
+            )
         self._setup_grads_ptr()
+        if self.enable_gradient_accumulation and not self.accumulating_grads:
+            self.accumulating_grads = True  # Turn on the state of gradient accumulation.
         self._logger.debug(
-            f'comp cuda demand time: {self.gemini_manager._comp_cuda_demand_time}, layout time: {self.gemini_manager._layout_time}, evict time: {self.gemini_manager._evict_time}, CPU->CUDA vol: {self.gemini_manager._h2d_volume}B, CUDA->CPU vol: {self.gemini_manager._d2h_volume}'
+            f"comp cuda demand time: {self.gemini_manager._comp_cuda_demand_time}, layout time: {self.gemini_manager._layout_time}, evict time: {self.gemini_manager._evict_time}, CPU->CUDA vol: {self.gemini_manager._h2d_volume}B, CUDA->CPU vol: {self.gemini_manager._d2h_volume}"
         )
         self.gemini_manager.post_iter()
 
@@ -303,9 +331,7 @@ class GeminiDDP(ModelWrapper):
         self._post_backward()
 
     def backward_by_grad(self, tensor, grad):
-        with self.param_op_hook.switch_to_backward(), ColoParamOpHookManager.use_hooks(self.param_op_hook):
-            torch.autograd.backward(tensor, grad)
-        self._post_backward()
+        raise RuntimeError("Gemini is not compatible with pipeline. backward_by_grad shoudn't be called in Gemini.")
 
     def grad_handle(self, p, grad):
         setattr(p, "_gemini_reduced", True)
@@ -314,22 +340,57 @@ class GeminiDDP(ModelWrapper):
         with torch._C.DisableTorchFunction():
             chunk = self.chunk_manager.get_chunk(p)
             if chunk.tensors_info[p].state != TensorState.HOLD_AFTER_BWD:
-                raise RuntimeError(f"Parameter `{self.param2name[p]}` failed at the gradient reduction. "
-                                   "Some unsupported torch function is operated upon this parameter.")
-            self.chunk_manager.trans_tensor_state(p, TensorState.READY_FOR_REDUCE)
-            chunk.copy_tensor_to_chunk_slice(p, grad)
-            reduced = self.chunk_manager.reduce_chunk(chunk)
-            if reduced:
-                if chunk.is_gathered:
-                    chunk.cuda_global_chunk.div_(chunk.pg_size)
+                raise RuntimeError(
+                    f"Parameter `{self.param2name[p]}` failed at the gradient reduction. "
+                    "Some unsupported torch function is operated upon this parameter."
+                )
+            grad_chunk = chunk
+            if not self.reuse_fp16_chunk:
+                if not self.accumulating_grads:
+                    grad_chunk = self.chunk_manager.init_grad_chunk(chunk)
                 else:
-                    chunk.cuda_shard.div_(chunk.pg_size)
+                    assert chunk.grad_chunk is not None
+                    if chunk.grad_chunk not in self.chunk_manager.accessed_chunks:
+                        grad_chunk = self.chunk_manager.rearrange_accumulated_grad_chunk(chunk)
+                    else:
+                        grad_chunk = chunk.grad_chunk
+                        chunk.grad_chunk.l2_norm = None
+
+                # hold -> compute -> hold after bwd
+                grad_chunk.tensor_trans_state(p, TensorState.COMPUTE)
+                grad_chunk.tensor_trans_state(p, TensorState.HOLD_AFTER_BWD)
+                # fp16 param chunk: hold after bwd -> ready for reduce -> hold
+                chunk.tensor_trans_state(p, TensorState.READY_FOR_REDUCE)
+                chunk.tensor_trans_state(p, TensorState.HOLD)
+
+            grad_chunk.tensor_trans_state(p, TensorState.READY_FOR_REDUCE)
+            if not self.accumulating_grads:
+                grad_chunk.copy_tensor_to_chunk_slice(p, grad, update_ptr=self.reuse_fp16_chunk)
+            else:
+                grad_chunk.add_tensor_to_chunk_slice(p, grad)
+            reduced = self.chunk_manager.reduce_chunk(grad_chunk)
+            if reduced:
+                if not self.reuse_fp16_chunk:
+                    if chunk.keep_gathered:
+                        self.chunk_manager.fake_release_chunk(chunk)
+                    else:
+                        self.chunk_manager.release_chunk(chunk)
+                if grad_chunk.is_gathered:
+                    grad_chunk.cuda_global_chunk.div_(chunk.pg_size)
+                    if self.extra_dp_group is not None:
+                        grad_chunk.cuda_global_chunk.div_(chunk.extra_dp_size)
+                else:
+                    grad_chunk.cuda_shard.div_(chunk.pg_size)
+                    if self.extra_dp_group is not None:
+                        grad_chunk.cuda_shard.div_(chunk.extra_dp_size)
                 # check overflow elements
-                self.overflow_counter += chunk.has_inf_or_nan
-                # record l2 norm for gradient clipping
+                self.overflow_counter += grad_chunk.has_inf_or_nan
+                # record l2 norm for gradient clipping. flag is bound to fp16 chunk
                 if chunk.l2_norm_flag:
-                    chunk.set_l2_norm()
-                self.chunk_manager.move_chunk(chunk, self.grads_device[p], force_copy=True)
+                    grad_chunk.set_l2_norm()
+                self.chunk_manager.move_chunk(grad_chunk, self.grads_device[p], force_copy=True)
+                if not (self.master_weights) or (self.enable_gradient_accumulation):
+                    self.chunk_manager.move_chunk(chunk, self.grads_device[p], force_copy=True)
         return empty_grad
 
     def zero_grad(self, set_to_none: bool = False) -> None:
@@ -339,12 +400,7 @@ class GeminiDDP(ModelWrapper):
         for tensor in chunk.get_tensors():
             self.grads_device[tensor] = device
 
-    def state_dict(self,
-                   destination=None,
-                   prefix='',
-                   keep_vars=False,
-                   only_rank_0: bool = True,
-                   dtype: torch.dtype = torch.float16):
+    def state_dict(self, destination=None, prefix="", keep_vars=False, only_rank_0: bool = True):
         """Returns a dictionary containing a whole state of the module.
 
         Both parameters and persistent buffers (e.g. running averages) are included.
@@ -363,7 +419,7 @@ class GeminiDDP(ModelWrapper):
             destination = OrderedDict()
             destination._metadata = OrderedDict()
         destination._metadata[prefix[:-1]] = local_metadata = dict(version=self._version)
-        self._save_to_state_dict(destination, prefix, keep_vars, only_rank_0, dtype)
+        self._save_to_state_dict(destination, prefix, keep_vars, only_rank_0)
 
         for hook in self._state_dict_hooks.values():
             hook_result = hook(self, destination, prefix, local_metadata)
@@ -371,7 +427,7 @@ class GeminiDDP(ModelWrapper):
                 destination = hook_result
         return destination
 
-    def _get_chunk_to_save_data(self, chunk: Chunk, only_rank_0: bool, dtype: torch.dtype = torch.float16) -> Dict:
+    def _get_chunk_to_save_data(self, chunk: Chunk, only_rank_0: bool) -> Dict:
         """
         get gathered chunk content.
 
@@ -384,14 +440,25 @@ class GeminiDDP(ModelWrapper):
         """
         # save parameters
         chunk_to_save_data = dict()
-        temp_chunk = get_temp_total_chunk_on_cuda(chunk)
-        if torch.is_floating_point(temp_chunk):
-            temp_chunk = temp_chunk.to(dtype)
+        temp_chunk = get_temp_total_chunk_on_cuda(chunk, self.mixed_precision)
+
         for tensor, tensor_info in chunk.tensors_info.items():
             record_tensor = torch.empty([0])
             record_flag = (not only_rank_0) | (dist.get_rank(chunk.torch_pg) == 0)
             if record_flag:
-                record_tensor = temp_chunk[tensor_info.offset:tensor_info.end].view(tensor.shape).cpu()
+                record_tensor = temp_chunk[tensor_info.offset : tensor_info.end].view(tensor.shape).to(tensor.device)
+                if is_distributed_tensor(tensor):
+                    global_shape = get_global_shape(tensor)
+                    device_mesh = get_device_mesh(tensor)
+                    shard_spec = get_sharding_spec(tensor)
+                    record_tensor = init_as_dtensor(
+                        record_tensor, device_mesh=device_mesh, sharding_spec=shard_spec, global_shape=global_shape
+                    )
+                elif is_customized_distributed_tensor(tensor):
+                    init_tensor_as_customization_distributed(
+                        record_tensor, shard_fn=tensor.shard_fn, gather_fn=tensor.gather_fn
+                    )
+                record_tensor = gather_distributed_param(record_tensor, keep_vars=False).cpu()
 
             assert tensor not in chunk_to_save_data
             chunk_to_save_data[tensor] = record_tensor
@@ -399,8 +466,7 @@ class GeminiDDP(ModelWrapper):
         del temp_chunk
         return chunk_to_save_data
 
-    def _get_param_to_save_data(self, param_list: List[torch.nn.Parameter], only_rank_0: bool,
-                                dtype: torch.dtype) -> Dict:
+    def _get_param_to_save_data(self, param_list: List[torch.nn.Parameter], only_rank_0: bool) -> Dict:
         """
         get param content from chunks.
 
@@ -415,10 +481,10 @@ class GeminiDDP(ModelWrapper):
         param_to_save_data = dict()
         chunk_list = self.chunk_manager.get_chunks(param_list)
         for chunk in chunk_list:
-            param_to_save_data.update(self._get_chunk_to_save_data(chunk, only_rank_0, dtype))
+            param_to_save_data.update(self._get_chunk_to_save_data(chunk, only_rank_0))
         return param_to_save_data
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars, only_rank_0=True, dtype=torch.float16):
+    def _save_to_state_dict(self, destination, prefix, keep_vars, only_rank_0=True):
         r"""Saves module state to `destination` dictionary, containing a state
         of the module, but not its descendants. This is called on every
         submodule in :meth:`~torch.nn.Module.state_dict`.
@@ -435,14 +501,18 @@ class GeminiDDP(ModelWrapper):
 
         # get copies of fp32 parameters in CPU
         # as memory of fp16_params may be reused by grad, it's not reliable, we should use fp32_params and convert to fp16
-        param_to_save_data = self._get_param_to_save_data(self.fp32_params, only_rank_0, dtype)
+        params = self.fp32_params if self.reuse_fp16_chunk else self.fp16_params
+        param_to_save_data = self._get_param_to_save_data(params, only_rank_0)
         # get the mapping between copies and fp16 parameters
         p_mapping = dict()
-        for p, fp32_p in zip(self.fp16_params, self.fp32_params):
-            name = self.param2name[p]
-            assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
-            record_parameter = param_to_save_data[fp32_p]
-            p_mapping[p] = record_parameter
+        if self.reuse_fp16_chunk:
+            for p, fp32_p in zip(self.fp16_params, self.fp32_params):
+                name = self.param2name[p]
+                assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
+                record_parameter = param_to_save_data[fp32_p]
+                p_mapping[p] = record_parameter
+        else:
+            p_mapping = param_to_save_data
         for name, param in self.name2param.items():
             if param is not None:
                 if is_ddp_ignored(param):
@@ -459,11 +529,13 @@ class GeminiDDP(ModelWrapper):
                 destination[prefix + name] = buf if keep_vars else buf.detach()
         # save extra states
         extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
-        if getattr(self.__class__, "get_extra_state",
-                   torch.nn.Module.get_extra_state) is not torch.nn.Module.get_extra_state:
+        if (
+            getattr(self.__class__, "get_extra_state", torch.nn.Module.get_extra_state)
+            is not torch.nn.Module.get_extra_state
+        ):
             destination[extra_state_key] = self.get_extra_state()
 
-    def load_state_dict(self, state_dict: 'OrderedDict[str, torch.Tensor]', strict: bool = True):
+    def load_state_dict(self, state_dict: "OrderedDict[str, torch.Tensor]", strict: bool = True):
         r"""Copies parameters and buffers from :attr:`state_dict` into
         this module and its descendants. If :attr:`strict` is ``True``, then
         the keys of :attr:`state_dict` must exactly match the keys returned
@@ -491,32 +563,38 @@ class GeminiDDP(ModelWrapper):
         error_msgs: List[str] = []
 
         # copy state_dict so _load_from_state_dict can modify it
-        metadata = getattr(state_dict, '_metadata', None)
+        metadata = getattr(state_dict, "_metadata", None)
         state_dict = state_dict.copy()
         if metadata is not None:
             # mypy isn't aware that "_metadata" exists in state_dict
-            state_dict._metadata = metadata    # type: ignore[attr-defined]
+            state_dict._metadata = metadata  # type: ignore[attr-defined]
 
-        prefix = ''
+        prefix = ""
         local_metadata = {} if metadata is None else metadata.get(prefix[:-1], {})
         self._load_from_state_dict(state_dict, prefix, local_metadata, True, missing_keys, unexpected_keys, error_msgs)
 
         if strict:
             if len(unexpected_keys) > 0:
                 error_msgs.insert(
-                    0, 'Unexpected key(s) in state_dict: {}. '.format(', '.join(
-                        '"{}"'.format(k) for k in unexpected_keys)))
+                    0,
+                    "Unexpected key(s) in state_dict: {}. ".format(
+                        ", ".join('"{}"'.format(k) for k in unexpected_keys)
+                    ),
+                )
             if len(missing_keys) > 0:
                 error_msgs.insert(
-                    0, 'Missing key(s) in state_dict: {}. '.format(', '.join('"{}"'.format(k) for k in missing_keys)))
+                    0, "Missing key(s) in state_dict: {}. ".format(", ".join('"{}"'.format(k) for k in missing_keys))
+                )
 
         if len(error_msgs) > 0:
-            raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(
-                self.__class__.__name__, "\n\t".join(error_msgs)))
+            raise RuntimeError(
+                "Error(s) in loading state_dict for {}:\n\t{}".format(self.__class__.__name__, "\n\t".join(error_msgs))
+            )
         return _IncompatibleKeys(missing_keys, unexpected_keys)
 
-    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys,
-                              error_msgs):
+    def _load_from_state_dict(
+        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ):
         r"""Copies parameters and buffers from :attr:`state_dict` into only
         this module, but not its descendants. This is called on every submodule
         in :meth:`~torch.nn.Module.load_state_dict`. Metadata saved for this
@@ -555,32 +633,50 @@ class GeminiDDP(ModelWrapper):
         local_name_params = itertools.chain(self.named_parameters(), persistent_buffers.items())
         local_state = {k: v for k, v in local_name_params if v is not None}
 
-        def load(param_name, dest_tensor, copy_func):
+        def load(
+            param_name,
+            dest_tensor,
+            copy_func,
+            source_device_mesh=None,
+            source_sharding_spec=None,
+            shard_fn=None,
+            gather_fn=None,
+        ):
             state_key = prefix + param_name
             if state_key in state_dict:
                 input_param = state_dict[state_key]
+
+                if source_device_mesh is not None and source_sharding_spec is not None:
+                    input_param = distribute_tensor(input_param, source_device_mesh, source_sharding_spec)
+                elif shard_fn is not None and gather_fn is not None:
+                    input_param = distribute_tensor_with_customization(
+                        input_param, shard_fn=shard_fn, gather_fn=gather_fn
+                    )
+
                 # Backward compatibility: loading 1-dim tensor from 0.3.* to version 0.4+
                 if len(dest_tensor.shape) == 0 and len(input_param.shape) == 1:
                     input_param = input_param[0]
                 if input_param.shape != dest_tensor.shape:
                     # local shape should match the one in checkpoint
-                    error_msgs.append('size mismatch for {}: copying a param with shape {} from checkpoint, '
-                                      'the shape in current model is {}.'.format(state_key, input_param.shape,
-                                                                                 dest_tensor.shape))
+                    error_msgs.append(
+                        "size mismatch for {}: copying a param with shape {} from checkpoint, "
+                        "the shape in current model is {}.".format(state_key, input_param.shape, dest_tensor.shape)
+                    )
                     return
                 try:
                     with torch.no_grad():
                         copy_func(input_param)
                 except Exception as ex:
-                    error_msgs.append('While copying the parameter named "{}", '
-                                      'whose dimensions in the model are {} and '
-                                      'whose dimensions in the checkpoint are {}, '
-                                      'an exception occurred : {}.'.format(state_key, dest_tensor.size(),
-                                                                           input_param.size(), ex.args))
+                    error_msgs.append(
+                        'While copying the parameter named "{}", '
+                        "whose dimensions in the model are {} and "
+                        "whose dimensions in the checkpoint are {}, "
+                        "an exception occurred : {}.".format(state_key, dest_tensor.size(), input_param.size(), ex.args)
+                    )
             elif strict:
                 missing_keys.append(state_key)
 
-        def load_fp32_parameter(chunk_slice, data):
+        def load_parameter(chunk_slice, data):
             chunk_slice.copy_(data.flatten())
 
         for name, param in self.named_parameters():
@@ -594,36 +690,56 @@ class GeminiDDP(ModelWrapper):
                 name = self.param2name[p]
                 fp32_to_name[fp32_p] = name
 
-        chunk_list = self.chunk_manager.get_chunks(self.fp32_params)
+        params_to_load = self.fp32_params if self.reuse_fp16_chunk else self.fp16_params
+        chunk_list = self.chunk_manager.get_chunks(params_to_load)
         for chunk in chunk_list:
-            temp_chunk = get_temp_total_chunk_on_cuda(chunk)
+            temp_chunk = get_temp_total_chunk_on_cuda(chunk, self.mixed_precision)
 
             for tensor, tensor_info in chunk.tensors_info.items():
-                parameter_name = fp32_to_name[tensor]
-                parameter_slice = temp_chunk[tensor_info.offset:tensor_info.end]
-                load(parameter_name, tensor, partial(load_fp32_parameter, parameter_slice))
+                source_device_mesh, source_sharding_spec, shard_fn, gather_fn = None, None, None, None
+                if is_distributed_tensor(tensor):
+                    # shard the input param
+                    source_device_mesh = get_device_mesh(tensor)
+                    source_sharding_spec = get_sharding_spec(tensor)
+                elif is_customized_distributed_tensor(tensor):
+                    shard_fn = tensor.shard_fn
+                    gather_fn = tensor.gather_fn
+
+                parameter_name = fp32_to_name[tensor] if self.reuse_fp16_chunk else self.param2name[tensor]
+                parameter_slice = temp_chunk[tensor_info.offset : tensor_info.end]
+                load(
+                    parameter_name,
+                    tensor,
+                    partial(load_parameter, parameter_slice),
+                    source_device_mesh,
+                    source_sharding_spec,
+                    shard_fn,
+                    gather_fn,
+                )
 
             if chunk.is_gathered:
                 chunk.cuda_global_chunk.copy_(temp_chunk)
             elif chunk.cuda_shard is not None:
-                chunk.cuda_shard.copy_(temp_chunk[chunk.shard_begin:chunk.shard_end])
+                chunk.cuda_shard.copy_(temp_chunk[chunk.shard_begin : chunk.shard_end])
             else:
-                chunk.cpu_shard.copy_(temp_chunk[chunk.shard_begin:chunk.shard_end])
+                chunk.cpu_shard.copy_(temp_chunk[chunk.shard_begin : chunk.shard_end])
 
             del temp_chunk
-
-        for chunk_32 in chunk_list:
-            chunk_16 = chunk_32.paired_chunk
-            assert chunk_16 is not None
-            chunk_16.payload.copy_(chunk_32.payload)
+        if self.reuse_fp16_chunk:
+            for chunk_32 in chunk_list:
+                chunk_16 = chunk_32.paired_chunk
+                assert chunk_16 is not None
+                chunk_16.payload.copy_(chunk_32.payload)
 
         for name, buf in persistent_buffers.items():
             if buf is not None:
                 load(name, buf, buf.copy_)
 
         extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
-        if getattr(self.__class__, "set_extra_state",
-                   torch.nn.Module.set_extra_state) is not torch.nn.Module.set_extra_state:
+        if (
+            getattr(self.__class__, "set_extra_state", torch.nn.Module.set_extra_state)
+            is not torch.nn.Module.set_extra_state
+        ):
             if extra_state_key in state_dict:
                 self.set_extra_state(state_dict[extra_state_key])
             elif strict:
@@ -634,12 +750,12 @@ class GeminiDDP(ModelWrapper):
         if strict:
             for key in state_dict.keys():
                 if key.startswith(prefix) and key != extra_state_key:
-                    input_name = key[len(prefix):]
+                    input_name = key[len(prefix) :]
                     if input_name not in local_state:
                         unexpected_keys.append(key)
 
     def _init_chunks(self, param_order, strict_ddp_mode: bool, cpu_offload: bool, pin_memory: bool):
-        dp_world_size = dist.get_world_size(self.dp_process_group)
+        zero_world_size = dist.get_world_size(self.zero_group)
         for p in param_order.generate():
             self._preprocess_param(p)
             assert type(p) is ColoParameter
@@ -653,32 +769,41 @@ class GeminiDDP(ModelWrapper):
                 p.data = p.data.to(device=get_current_device(), dtype=self.mixed_precision)
                 continue
 
-            # create a fp32 parameter
-            fp32_p = p.data.float()
             # create a fp16 parameter
             p.data = p.data.to(self.mixed_precision)
-
-            # register the fp16 parameter and fp32 parameter in the chunk manager
-            self.chunk_manager.register_tensor(tensor=p,
-                                               group_type='fp16_param',
-                                               config_key=dp_world_size,
-                                               process_group=self.dp_process_group,
-                                               cpu_offload=cpu_offload,
-                                               pin_memory=pin_memory)
-            self.chunk_manager.register_tensor(tensor=fp32_p,
-                                               group_type='fp32_param',
-                                               config_key=dp_world_size,
-                                               process_group=self.dp_process_group,
-                                               cpu_offload=cpu_offload,
-                                               pin_memory=pin_memory)
-
+            # register the fp16 parameter
+            self.chunk_manager.register_tensor(
+                tensor=p,
+                group_type="fp16_param",
+                config_key=zero_world_size,
+                zero_group=self.zero_group,
+                extra_dp_group=self.extra_dp_group,
+                cpu_offload=cpu_offload,
+                pin_memory=pin_memory,
+            )
             self.fp16_params.append(p)
-            self.fp32_params.append(fp32_p)
+
+            if self.master_weights:
+                # create a fp32 parameter
+                fp32_p = p.clone()
+                fp32_p.data = fp32_p.data.float()
+                self.chunk_manager.register_tensor(
+                    tensor=fp32_p,
+                    group_type="fp32_param",
+                    config_key=zero_world_size,
+                    zero_group=self.zero_group,
+                    extra_dp_group=self.extra_dp_group,
+                    cpu_offload=cpu_offload,
+                    pin_memory=pin_memory,
+                )
+                self.fp32_params.append(fp32_p)
 
         self.chunk_manager.close_all_groups()
 
         self.gemini_manager.setup_grads_device(self.fp16_params, self.grads_device)
+
         # move master weights to corresponding device and setup paired chunks
+        # if no master weights, fp32_params should be empty and this loop will be skipped
         for p, fp32_p in zip(self.fp16_params, self.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
             chunk_32 = self.chunk_manager.get_chunk(fp32_p)
@@ -690,11 +815,11 @@ class GeminiDDP(ModelWrapper):
         for buffer in self.module.buffers():
             if isinstance(buffer, LazyTensor):
                 buffer.materialize()
-            buffer.data = buffer.cuda()
+            buffer.data = buffer.to(get_current_device())
             if torch.is_floating_point(buffer):
                 buffer.data = buffer.to(self.mixed_precision)
 
-    def _preprocess_param(self, p: Union[nn.Parameter, ColoParameter, 'LazyTensor']) -> None:
+    def _preprocess_param(self, p: Union[nn.Parameter, ColoParameter, "LazyTensor"]) -> None:
         """Convert parameter to ColoParameter in-place.
         Args:
             p (Union[nn.Parameter, ColoParameter, LazyTensor]): parameter to be converted
@@ -709,12 +834,13 @@ class GeminiDDP(ModelWrapper):
         p.__class__ = ColoParameter
         p.__init__(p, requires_grad=requires_grad)
 
-    def state_dict_shard(self,
-                         prefix: str = '',
-                         keep_vars: bool = False,
-                         max_shard_size: int = 1024,
-                         only_rank_0: bool = True,
-                         dtype: torch.dtype = torch.float16) -> Iterator[Tuple[OrderedDict, int]]:
+    def state_dict_shard(
+        self,
+        prefix: str = "",
+        keep_vars: bool = False,
+        max_shard_size: int = 1024,
+        only_rank_0: bool = True,
+    ) -> Iterator[Tuple[OrderedDict, int]]:
         """Returns dictionaries containing a whole state of the module one by one. The max size of dictionary shard is specified by ``max_shard_size``.
 
         Both parameters and persistent buffers (e.g. running averages) are included.
@@ -748,11 +874,11 @@ class GeminiDDP(ModelWrapper):
                     gathered_param = param if keep_vars else param.detach()
                 else:
                     # as memory of fp16 param may be reused, we should use fp32 param and then convert to fp16
-                    fp32_param = fp16_to_fp32[param]
-                    if fp32_param not in gathered_param_buffer:
-                        chunk = self.chunk_manager.get_chunk(fp32_param)
-                        gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0, dtype))
-                    gathered_param = gathered_param_buffer.pop(fp32_param)
+                    param_to_save = fp16_to_fp32[param] if self.reuse_fp16_chunk else param
+                    if param_to_save not in gathered_param_buffer:
+                        chunk = self.chunk_manager.get_chunk(param_to_save)
+                        gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0))
+                    gathered_param = gathered_param_buffer.pop(param_to_save)
 
                 block, block_size = sharder.append_param(prefix + name, gathered_param)
                 if block is not None:
@@ -770,8 +896,10 @@ class GeminiDDP(ModelWrapper):
                     yield block, block_size
         # save extra states
         extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
-        if getattr(self.__class__, "get_extra_state",
-                   torch.nn.Module.get_extra_state) is not torch.nn.Module.get_extra_state:
+        if (
+            getattr(self.__class__, "get_extra_state", torch.nn.Module.get_extra_state)
+            is not torch.nn.Module.get_extra_state
+        ):
             extra_state = self.get_extra_state()
             block, block_size = sharder.append_param(extra_state_key, extra_state)
             if block is not None:

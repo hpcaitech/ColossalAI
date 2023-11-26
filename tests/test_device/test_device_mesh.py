@@ -27,8 +27,8 @@ def check_1d_device_mesh():
 
     # checks
     assert device_mesh.shape == [4]
-    assert len(device_mesh.get_process_group_for_all_axes().keys()) == 1, 'Expected 1 axis for the process group dict'
-    assert device_mesh.get_process_group(axis=0) == process_group, 'Expected world process group'
+    assert len(device_mesh.get_process_group_for_all_axes().keys()) == 1, "Expected 1 axis for the process group dict"
+    assert device_mesh.get_process_group(axis=0) == process_group, "Expected world process group"
     assert device_mesh.is_initialized
     assert device_mesh.num_devices == 4
     assert device_mesh.is_initialized
@@ -43,10 +43,10 @@ def check_2d_device_mesh():
     first_col_ranks = [0, 2]
     second_col_ranks = [1, 3]
 
-    first_row_pg = dist.new_group(first_row_ranks, backend='nccl')
-    second_row_pg = dist.new_group(second_row_ranks, backend='nccl')
-    first_col_pg = dist.new_group(first_col_ranks, backend='nccl')
-    second_col_pg = dist.new_group(second_col_ranks, backend='nccl')
+    first_row_pg = dist.new_group(first_row_ranks, backend="nccl")
+    second_row_pg = dist.new_group(second_row_ranks, backend="nccl")
+    first_col_pg = dist.new_group(first_col_ranks, backend="nccl")
+    second_col_pg = dist.new_group(second_col_ranks, backend="nccl")
 
     # check for
     current_rank = dist.get_rank()
@@ -65,9 +65,9 @@ def check_2d_device_mesh():
 
     # checks
     assert device_mesh.shape == [2, 2]
-    assert len(device_mesh.get_process_group_for_all_axes().keys()) == 2, 'Expected 2 axes for the process group dict'
-    assert device_mesh.get_process_group(axis=0) == col_pg, 'Expected column process group'
-    assert device_mesh.get_process_group(axis=1) == row_pg, 'Expected row process group'
+    assert len(device_mesh.get_process_group_for_all_axes().keys()) == 2, "Expected 2 axes for the process group dict"
+    assert device_mesh.get_process_group(axis=0) == col_pg, "Expected column process group"
+    assert device_mesh.get_process_group(axis=1) == row_pg, "Expected row process group"
     assert device_mesh.num_devices == 4
     assert device_mesh.is_initialized
     assert device_mesh.logical_mesh_id is None
@@ -75,7 +75,7 @@ def check_2d_device_mesh():
 
 
 def check_init_from_process_group(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
 
 @pytest.mark.dist
@@ -84,6 +84,6 @@ def test_device_mesh_from_process_group():
     spawn(check_init_from_process_group, 4)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_device_mesh()
     test_device_mesh_from_process_group()

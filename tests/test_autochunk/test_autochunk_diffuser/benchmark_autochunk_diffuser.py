@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 import torch
 import torch.fx
@@ -64,8 +64,10 @@ def _benchmark_autochunk_unet_gm(
     para_mem = float(parameter_size(model)) / 1024**2
     act_mem = _benchmark_memory(gm, inputs)
     speed = _benchmark_speed(gm, inputs)
-    print("unet autochunk, time: %.4fs, act mem: %.2fMB, para mem: %.2fMB, all mem: %.2fMB" %
-          (speed, act_mem, para_mem, act_mem + para_mem))
+    print(
+        "unet autochunk, time: %.4fs, act mem: %.2fMB, para mem: %.2fMB, all mem: %.2fMB"
+        % (speed, act_mem, para_mem, act_mem + para_mem)
+    )
 
 
 def _benchmark_autochunk_unet_origin(
@@ -86,8 +88,10 @@ def _benchmark_autochunk_unet_origin(
     para_mem = float(parameter_size(model)) / 1024**2
     act_mem = _benchmark_memory(model, inputs)
     speed = _benchmark_speed(model, inputs)
-    print("unet origin, time: %.4fs, act mem: %.2fMB, para mem: %.2fMB, all mem: %.2fMB" %
-          (speed, act_mem, para_mem, act_mem + para_mem))
+    print(
+        "unet origin, time: %.4fs, act mem: %.2fMB, para mem: %.2fMB, all mem: %.2fMB"
+        % (speed, act_mem, para_mem, act_mem + para_mem)
+    )
     return act_mem
 
 
@@ -115,6 +119,7 @@ def _benchmark_speed(model, inputs, loop=5):
 
 def benchmark_autochunk_unet(batch=1, height=448, width=448):
     from test_autochunk_unet import UNet2DModel, get_data
+
     model = UNet2DModel()
     latent_shape = (batch, 3, height // 7, width // 7)
 
@@ -124,7 +129,7 @@ def benchmark_autochunk_unet(batch=1, height=448, width=448):
         try:
             _benchmark_autochunk_unet_gm(model, get_data(latent_shape), max_mem * ratio)
         except RuntimeError as e:
-            if e.args[0] == 'Search failed. Try a larger memory threshold.':
+            if e.args[0] == "Search failed. Try a larger memory threshold.":
                 break
         except Exception as e:
             raise e

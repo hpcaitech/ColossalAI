@@ -17,7 +17,6 @@ PIPELINE_SIZE = 2
 
 
 class MLP(torch.nn.Module):
-
     def __init__(self, dim: int):
         super().__init__()
         self.linear1 = torch.nn.Linear(dim, dim)
@@ -36,7 +35,7 @@ class MLP(torch.nn.Module):
 @clear_cache_before_run()
 def test_comm_size_compute():
     model = MLP(MODEL_DIM)
-    input_sample = torch.rand(BATCH_SIZE, MODEL_DIM, device='meta')
+    input_sample = torch.rand(BATCH_SIZE, MODEL_DIM, device="meta")
     gm = symbolic_trace(model)
     if is_compatible:
         input_sample = MetaTensor(input_sample, fake_device=next(gm.parameters()).device)
@@ -49,5 +48,5 @@ def test_comm_size_compute():
     assert comm_size == 128
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_comm_size_compute()

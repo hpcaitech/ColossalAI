@@ -3,8 +3,6 @@ import operator
 import torch
 import torch.nn as nn
 
-from ..tensor_shard.constants import *
-
 # list of inplace module
 INPLACE_MODULE = [nn.ReLU]
 

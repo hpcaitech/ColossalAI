@@ -1,12 +1,14 @@
+#include <cooperative_groups.h>
+
 #include "block_reduce.h"
 #include "kernels.h"
-#include <cooperative_groups.h>
 
 namespace cg = cooperative_groups;
 const float LN_EPSILON = 1e-8f;
 #define TILE_DIM 32
 
-template <typename T> __forceinline__ __device__ T add_eps(T x) {
+template <typename T>
+__forceinline__ __device__ T add_eps(T x) {
   return fabsf(x) > LN_EPSILON ? x : (x < 0 ? -LN_EPSILON : LN_EPSILON);
 }
 
@@ -418,10 +420,11 @@ means: [batch_size * seq_len], mean of ln forward,
 (gamma && betta) ^ (vars && means) should be true
 */
 template <typename T>
-__global__ void
-ker_ln_bw_dgamma_dbetta(T *gamma_grad, T *betta_grad, const T *out_grad,
-                        const T *inp_or_out, const T *gamma, const T *betta,
-                        const T *vars, const T *means, int rows, int width) {
+__global__ void ker_ln_bw_dgamma_dbetta(T *gamma_grad, T *betta_grad,
+                                        const T *out_grad, const T *inp_or_out,
+                                        const T *gamma, const T *betta,
+                                        const T *vars, const T *means, int rows,
+                                        int width) {
   __shared__ float betta_buffer[TILE_DIM][TILE_DIM];
   __shared__ float gamma_buffer[TILE_DIM][TILE_DIM];
 

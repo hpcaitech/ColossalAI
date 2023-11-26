@@ -5,7 +5,6 @@ from colossalai.testing import clear_cache_before_run
 
 
 class LinearModel(torch.nn.Module):
-
     def __init__(self, in_features, out_features):
         super().__init__()
         self.linear = torch.nn.Linear(in_features, out_features)
@@ -18,13 +17,11 @@ class LinearModel(torch.nn.Module):
 
 
 class ConvModel(torch.nn.Module):
-
     def __init__(self, in_channels, out_channels, kernel_size, bias=True):
         super().__init__()
-        self.conv = torch.nn.Conv2d(in_channels=in_channels,
-                                    out_channels=out_channels,
-                                    kernel_size=kernel_size,
-                                    bias=bias)
+        self.conv = torch.nn.Conv2d(
+            in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, bias=bias
+        )
 
     def forward(self, x):
         x = self.conv(x)
@@ -45,7 +42,7 @@ def test_linear_module():
     #     %add : [#users=1] = call_function[target=operator.add](args = (%linear, %linear_bias), kwargs = {})
     #     %mul : [#users=1] = call_function[target=operator.mul](args = (%add, 2), kwargs = {})
     #     return mul
-    graph = tracer.trace(root=model, meta_args={'x': torch.rand(3, 3).to('meta')})
+    graph = tracer.trace(root=model, meta_args={"x": torch.rand(3, 3).to("meta")})
     # def forward(self, x : torch.Tensor):
     #     linear_weight = self.linear.weight
     #     linear_bias = self.linear.bias
@@ -57,9 +54,9 @@ def test_linear_module():
     gm.recompile()
     node_list = list(graph.nodes)
     for node in node_list:
-        if node.op == 'output':
+        if node.op == "output":
             continue
-        assert hasattr(node, '_meta_data')
+        assert hasattr(node, "_meta_data")
     weight_node = node_list[1]
     bias_node = node_list[2]
     linear_node = node_list[3]
@@ -83,7 +80,7 @@ def test_conv_module():
     #     %add : [#users=1] = call_function[target=operator.add](args = (%conv2d, %view), kwargs = {})
     #     %mul : [#users=1] = call_function[target=operator.mul](args = (%add, 2), kwargs = {})
     #     return mul
-    graph = tracer.trace(root=model, meta_args={'x': torch.rand(4, 3, 64, 64).to('meta')})
+    graph = tracer.trace(root=model, meta_args={"x": torch.rand(4, 3, 64, 64).to("meta")})
     # def forward(self, x : torch.Tensor):
     #     conv_weight = self.conv.weight
     #     conv_bias = self.conv.bias
@@ -97,9 +94,9 @@ def test_conv_module():
     gm.recompile()
     node_list = list(graph.nodes)
     for node in node_list:
-        if node.op == 'output':
+        if node.op == "output":
             continue
-        assert hasattr(node, '_meta_data')
+        assert hasattr(node, "_meta_data")
     weight_node = node_list[1]
     bias_node = node_list[2]
     conv_node = node_list[3]
@@ -112,6 +109,6 @@ def test_conv_module():
     assert add_node._meta_data.shape == (4, 6, 63, 63)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_linear_module()
     test_conv_module()

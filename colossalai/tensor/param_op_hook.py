@@ -36,6 +36,7 @@ class ColoParamOpHookManager:
     Manage your param op hooks. It only has static methods.
     The only static method you should call is ``use_hooks(*hooks)``.
     """
+
     hooks: Tuple[ColoParamOpHook, ...] = tuple()
 
     @staticmethod
@@ -99,7 +100,6 @@ class ColoParamOpHookManager:
 
 
 class PreFwdPostBwd(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, params, *args):
         ctx.params = params
@@ -112,7 +112,6 @@ class PreFwdPostBwd(torch.autograd.Function):
 
 
 class PostFwdPreBwd(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, params, args):
         ctx.params = params

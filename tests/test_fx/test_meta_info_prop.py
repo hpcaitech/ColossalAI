@@ -23,18 +23,18 @@ def meta_check(meta_info_spec: TensorMetadata, orig_tensor: torch.Tensor):
 @clear_cache_before_run()
 def test_meta_info_prop():
     model = torch.nn.Linear(DIM_IN, DIM_OUT)
-    input_sample = torch.rand(BATCH_SIZE, DIM_IN, device='meta')
+    input_sample = torch.rand(BATCH_SIZE, DIM_IN, device="meta")
     if is_compatible_with_meta():
-        input_sample = MetaTensor(input_sample, fake_device='cpu')
+        input_sample = MetaTensor(input_sample, fake_device="cpu")
     orig_output = model(input_sample)
     gm = symbolic_trace(model)
     MetaInfoProp(gm).run(input_sample)
     for node in gm.graph.nodes:
-        if node.op == 'placeholder':
-            meta_check(node.meta['tensor_meta'], input_sample)
-        if node.op == 'output':
-            meta_check(node.meta['tensor_meta'], orig_output)
+        if node.op == "placeholder":
+            meta_check(node.meta["tensor_meta"], input_sample)
+        if node.op == "output":
+            meta_check(node.meta["tensor_meta"], orig_output)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_meta_info_prop()

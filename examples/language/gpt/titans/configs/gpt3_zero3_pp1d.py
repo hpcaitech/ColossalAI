@@ -11,8 +11,10 @@ HIDDEN_SIZE = 12288
 TENSOR_SHAPE = (BATCH_SIZE // NUM_MICRO_BATCHES, SEQ_LEN, HIDDEN_SIZE)
 
 # if you do no want zero, just comment out this dictionary
-zero = dict(model_config=dict(tensor_placement_policy='cuda', shard_strategy=TensorShardStrategy()),
-            optimizer_config=dict(initial_scale=2**16))
+zero = dict(
+    model_config=dict(tensor_placement_policy="cuda", shard_strategy=TensorShardStrategy()),
+    optimizer_config=dict(initial_scale=2**16),
+)
 
 optimizer = dict(
     type=HybridAdam,
@@ -27,5 +29,5 @@ model = dict(type=GPT3_pipeline_hybrid, checkpoint=True, num_chunks=1)
 # for the current model implementation, mode can only be 1D or None
 parallel = dict(
     pipeline=1,
-    tensor=dict(size=2, mode='1d'),    # for the current model implementation, mode can only be 1D or None
+    tensor=dict(size=2, mode="1d"),  # for the current model implementation, mode can only be 1D or None
 )

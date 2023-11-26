@@ -12,7 +12,6 @@ except:
 
 
 class LinearModel(torch.nn.Module):
-
     def __init__(self, in_features, out_features, bias):
         super().__init__()
         self.linear = torch.nn.Linear(in_features, out_features, bias=bias)
@@ -23,25 +22,14 @@ class LinearModel(torch.nn.Module):
 
 
 class ConvModel(torch.nn.Module):
-
     def __init__(self, in_channel, out_channels, kernel_size, bias) -> None:
         super().__init__()
-        self.conv = torch.nn.Conv2d(in_channel,
-                                    out_channels,
-                                    kernel_size,
-                                    bias=bias,
-                                    padding=1,
-                                    stride=2,
-                                    dilation=2,
-                                    groups=3)
-        self.conv_transpose = torch.nn.ConvTranspose2d(in_channel,
-                                                       out_channels,
-                                                       kernel_size,
-                                                       bias=bias,
-                                                       padding=1,
-                                                       stride=2,
-                                                       dilation=2,
-                                                       groups=3)
+        self.conv = torch.nn.Conv2d(
+            in_channel, out_channels, kernel_size, bias=bias, padding=1, stride=2, dilation=2, groups=3
+        )
+        self.conv_transpose = torch.nn.ConvTranspose2d(
+            in_channel, out_channels, kernel_size, bias=bias, padding=1, stride=2, dilation=2, groups=3
+        )
 
     def forward(self, x, select=0):
         if select == 0:
@@ -52,7 +40,6 @@ class ConvModel(torch.nn.Module):
 
 
 class SiuModel(torch.nn.Module):
-
     def __init__(self, bias) -> None:
         super().__init__()
         self.linear = LinearModel(3, 3, bias)
@@ -69,7 +56,6 @@ class SiuModel(torch.nn.Module):
 
 
 class AddmmModel(torch.nn.Module):
-
     def __init__(self, alpha, beta) -> None:
         super().__init__()
         self.alpha = alpha
@@ -80,7 +66,7 @@ class AddmmModel(torch.nn.Module):
         return x
 
 
-@pytest.mark.skipif(version.parse(torch.__version__) < version.parse('1.12.0'), reason='torch version < 12')
+@pytest.mark.skipif(version.parse(torch.__version__) < version.parse("1.12.0"), reason="torch version < 12")
 @clear_cache_before_run()
 @parameterize("bias", [True, False])
 @parameterize("bias_addition_split", [True, False])
@@ -89,19 +75,21 @@ class AddmmModel(torch.nn.Module):
 def test_siu_model(bias, bias_addition_split, shape, select):
     model = SiuModel(bias=bias)
     x = torch.rand(shape)
-    gm = symbolic_trace(model,
-                        meta_args={'x': x},
-                        concrete_args={'select': select},
-                        trace_act_ckpt=True,
-                        bias_addition_split=bias_addition_split)
-    assert torch.allclose(model(x, select), gm(x)), 'original model and traced model should be the same!'
+    gm = symbolic_trace(
+        model,
+        meta_args={"x": x},
+        concrete_args={"select": select},
+        trace_act_ckpt=True,
+        bias_addition_split=bias_addition_split,
+    )
+    assert torch.allclose(model(x, select), gm(x)), "original model and traced model should be the same!"
     if bias and bias_addition_split:
-        assert '+' in gm.code, 'bias addition should be split!'
+        assert "+" in gm.code, "bias addition should be split!"
     else:
-        assert '+' not in gm.code, 'bias addition should not be split!'
+        assert "+" not in gm.code, "bias addition should not be split!"
 
 
-@pytest.mark.skipif(version.parse(torch.__version__) < version.parse('1.12.0'), reason='torch version < 12')
+@pytest.mark.skipif(version.parse(torch.__version__) < version.parse("1.12.0"), reason="torch version < 12")
 @parameterize("alpha", [1, 2])
 @parameterize("beta", [1, 2])
 @parameterize("bias_addition_split", [True, False])
@@ -109,14 +97,14 @@ def test_siu_model(bias, bias_addition_split, shape, select):
 def test_addmm_model(alpha, beta, bias_addition_split, shape):
     model = AddmmModel(alpha=alpha, beta=beta)
     x = torch.rand(shape)
-    gm = symbolic_trace(model, meta_args={'x': x}, trace_act_ckpt=True, bias_addition_split=bias_addition_split)
-    assert torch.allclose(model(x), gm(x)), 'original model and traced model should be the same!'
+    gm = symbolic_trace(model, meta_args={"x": x}, trace_act_ckpt=True, bias_addition_split=bias_addition_split)
+    assert torch.allclose(model(x), gm(x)), "original model and traced model should be the same!"
     if (alpha == 1 and beta == 1) or not bias_addition_split:
-        assert '*' not in gm.code, 'bias addition should not be split!'
+        assert "*" not in gm.code, "bias addition should not be split!"
     elif bias_addition_split:
-        assert '+' in gm.code, 'bias addition should be split!'
+        assert "+" in gm.code, "bias addition should be split!"
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_siu_model()
     test_addmm_model()

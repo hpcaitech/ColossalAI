@@ -2,13 +2,12 @@
 # put some code used during development and manual testing of
 # indexed_dataset.
 
-from megatron.data import indexed_dataset
-from megatron.tokenizer import build_tokenizer
 import argparse
 import os
 import sys
 
-import torch
+from megatron.data import indexed_dataset
+from megatron.tokenizer import build_tokenizer
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(script_dir, "../../../"))
@@ -42,7 +41,7 @@ def test_indexed_dataset(args):
 
 def test_indexed_dataset_get(args):
     ds = indexed_dataset.make_dataset(args.data, args.dataset_impl)
-    tokenizer = build_tokenizer(args)
+    build_tokenizer(args)
     size = ds.sizes[0]
     print(f"size: {size}")
     full = ds.get(0)
@@ -60,6 +59,7 @@ def test_indexed_dataset_get(args):
     part = ds.get(0, offset=2, length=8)
     print(part)
     # print(tokenizer.detokenize(part.data.tolist()))
+
 
 # def test_albert_dataset(args):
 #     # tokenizer = FullBertTokenizer(args.vocab, do_lower_case=True)
@@ -81,34 +81,27 @@ def test_indexed_dataset_get(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data', type=str, help='prefix to data files')
-    parser.add_argument('--dataset-impl', type=str, default='infer',
-                        choices=['lazy', 'cached', 'mmap', 'infer'])
-    parser.add_argument('--count', type=int, default=10,
-                        help='Number of samples/documents to print')
+    parser.add_argument("--data", type=str, help="prefix to data files")
+    parser.add_argument("--dataset-impl", type=str, default="infer", choices=["lazy", "cached", "mmap", "infer"])
+    parser.add_argument("--count", type=int, default=10, help="Number of samples/documents to print")
 
-    group = parser.add_argument_group(title='tokenizer')
-    group.add_argument('--tokenizer-type', type=str, required=True,
-                       choices=['BertWordPieceLowerCase',
-                                'GPT2BPETokenizer'],
-                       help='What type of tokenizer to use.')
-    group.add_argument('--vocab-file', type=str, default=None,
-                       help='Path to the vocab file')
-    group.add_argument('--merge-file', type=str, default=None,
-                       help='Path to the BPE merge file (if necessary).')
+    group = parser.add_argument_group(title="tokenizer")
+    group.add_argument(
+        "--tokenizer-type",
+        type=str,
+        required=True,
+        choices=["BertWordPieceLowerCase", "GPT2BPETokenizer"],
+        help="What type of tokenizer to use.",
+    )
+    group.add_argument("--vocab-file", type=str, default=None, help="Path to the vocab file")
+    group.add_argument("--merge-file", type=str, default=None, help="Path to the BPE merge file (if necessary).")
 
-    parser.add_argument('--epochs', type=int, default=5,
-                        help='Number of epochs to plan for')
-    parser.add_argument('--max-num-samples', type=int, default=None,
-                        help='Maximum number of samples to plan for')
-    parser.add_argument('--masked-lm-prob', type=float, default=0.15,
-                        help='probability of masking tokens')
-    parser.add_argument('--seq-length', type=int, default=512,
-                        help='maximum sequence length')
-    parser.add_argument('--short-seq-prob', type=float, default=0.1,
-                        help='probability of creating a short sequence')
-    parser.add_argument('--seed', type=int, default=1234,
-                        help='random seed')
+    parser.add_argument("--epochs", type=int, default=5, help="Number of epochs to plan for")
+    parser.add_argument("--max-num-samples", type=int, default=None, help="Maximum number of samples to plan for")
+    parser.add_argument("--masked-lm-prob", type=float, default=0.15, help="probability of masking tokens")
+    parser.add_argument("--seq-length", type=int, default=512, help="maximum sequence length")
+    parser.add_argument("--short-seq-prob", type=float, default=0.1, help="probability of creating a short sequence")
+    parser.add_argument("--seed", type=int, default=1234, help="random seed")
     args = parser.parse_args()
     args.rank = 0
     args.make_vocab_size_divisible_by = 128
@@ -117,7 +110,7 @@ def main():
     if args.dataset_impl == "infer":
         args.dataset_impl = indexed_dataset.infer_dataset_impl(args.data)
 
-#    test_albert_dataset(args)
+    #    test_albert_dataset(args)
     test_indexed_dataset_get(args)
 
 

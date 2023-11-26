@@ -4,24 +4,15 @@ from typing import Any, List, Optional, Tuple
 import torch
 import torch.cuda
 from torch.nn import Module
-from torch.utils._pytree import (
-    SUPPORTED_NODES,
-    LeafSpec,
-    TreeSpec,
-    _is_leaf,
-    _register_pytree_node,
-    tree_flatten,
-    tree_map,
-    tree_unflatten,
-)
+from torch.utils._pytree import SUPPORTED_NODES, TreeSpec, _register_pytree_node, tree_flatten, tree_map, tree_unflatten
 
 
 # this register are for torch under version 1.13.1, maybe removed in the future
-def _odict_flatten(d: 'OrderedDict[Any, Any]') -> Tuple[List[Any], Any]:
+def _odict_flatten(d: "OrderedDict[Any, Any]") -> Tuple[List[Any], Any]:
     return list(d.values()), list(d.keys())
 
 
-def _odict_unflatten(values: List[Any], context: Any) -> 'OrderedDict[Any, Any]':
+def _odict_unflatten(values: List[Any], context: Any) -> "OrderedDict[Any, Any]":
     return OrderedDict((key, value) for key, value in zip(context, values))
 
 
@@ -45,7 +36,7 @@ def tree_flatten_hf(pytree: Any) -> Tuple[List[Any], TreeSpec]:
 
         # Recursively flatten the children
         result: List[Any] = []
-        children_specs: List['TreeSpec'] = []
+        children_specs: List["TreeSpec"] = []
         for child in child_pytrees:
             flat, child_spec = tree_flatten_hf(child)
             result += flat
@@ -87,7 +78,7 @@ def get_batch_size(batch: Any) -> int:
     for data in data_list:
         if isinstance(data, torch.Tensor):
             return data.size(0)
-    raise RuntimeError('No tensor found in the batch')
+    raise RuntimeError("No tensor found in the batch")
 
 
 def get_micro_batch(batch: Any, start: int, micro_batch_size: int) -> Any:
@@ -104,7 +95,7 @@ def get_micro_batch(batch: Any, start: int, micro_batch_size: int) -> Any:
 
     def _get_tensor_slice(x: Any):
         if isinstance(x, torch.Tensor):
-            return x[start:start + micro_batch_size]
+            return x[start : start + micro_batch_size]
         return x
 
     return tree_map(_get_tensor_slice, batch)
@@ -175,7 +166,7 @@ def merge_batch(data: List[Any], batch_size_dim=0) -> Any:
 
     for elem_batch in zip(*flattened_data):
         if isinstance(elem_batch[0], torch.Tensor):
-            if len(elem_batch[0].shape) == 0:    # set loss to None in pipeline outputs
+            if len(elem_batch[0].shape) == 0:  # set loss to None in pipeline outputs
                 merged_data.append(None)
             else:
                 merged_data.append(torch.cat(elem_batch, dim=batch_size_dim))

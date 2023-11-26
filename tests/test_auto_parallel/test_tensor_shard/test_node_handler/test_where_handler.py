@@ -12,7 +12,6 @@ from colossalai.testing import clear_cache_before_run
 
 
 class ConvModel(nn.Module):
-
     def __init__(self):
         super().__init__()
 
@@ -21,7 +20,7 @@ class ConvModel(nn.Module):
         return output
 
 
-@pytest.mark.skip('ShapeProp is not compatible with PyTorch 1.11.0')
+@pytest.mark.skip("ShapeProp is not compatible with PyTorch 1.11.0")
 @clear_cache_before_run()
 def test_where_handler():
     model = ConvModel()
@@ -33,9 +32,9 @@ def test_where_handler():
     #     %where : [#users=1] = call_function[target=torch.where](args = (%condition, %x, %y), kwargs = {})
     #     return where
     meta_args = {
-        'condition': torch.rand(4, 4, 64, 64).to('meta'),
-        'x': torch.rand(4, 1, 64, 64).to('meta'),
-        'y': torch.rand(1, 4, 64, 64).to('meta')
+        "condition": torch.rand(4, 4, 64, 64).to("meta"),
+        "x": torch.rand(4, 1, 64, 64).to("meta"),
+        "y": torch.rand(1, 4, 64, 64).to("meta"),
     }
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
@@ -59,28 +58,28 @@ def test_where_handler():
         assert op_data.logical_shape is not None
         assert op_data.data is not None
 
-    assert mapping['condition'].name == "condition"
-    assert mapping['condition'].data.is_meta
-    assert mapping['condition'].data.shape == torch.Size([4, 4, 64, 64])
-    assert mapping['condition'].type == OperationDataType.ARG
-    assert mapping['condition'].logical_shape == torch.Size([4, 4, 64, 64])
+    assert mapping["condition"].name == "condition"
+    assert mapping["condition"].data.is_meta
+    assert mapping["condition"].data.shape == torch.Size([4, 4, 64, 64])
+    assert mapping["condition"].type == OperationDataType.ARG
+    assert mapping["condition"].logical_shape == torch.Size([4, 4, 64, 64])
 
-    assert mapping['x'].name == "x"
-    assert mapping['x'].data.is_meta
-    assert mapping['x'].data.shape == torch.Size([4, 1, 64, 64])
-    assert mapping['x'].type == OperationDataType.ARG
-    assert mapping['x'].logical_shape == torch.Size([4, 4, 64, 64])
+    assert mapping["x"].name == "x"
+    assert mapping["x"].data.is_meta
+    assert mapping["x"].data.shape == torch.Size([4, 1, 64, 64])
+    assert mapping["x"].type == OperationDataType.ARG
+    assert mapping["x"].logical_shape == torch.Size([4, 4, 64, 64])
 
-    assert mapping['y'].name == "y"
-    assert mapping['y'].data.is_meta
-    assert mapping['y'].data.shape == torch.Size([1, 4, 64, 64])
-    assert mapping['y'].type == OperationDataType.ARG
-    assert mapping['y'].logical_shape == torch.Size([4, 4, 64, 64])
+    assert mapping["y"].name == "y"
+    assert mapping["y"].data.is_meta
+    assert mapping["y"].data.shape == torch.Size([1, 4, 64, 64])
+    assert mapping["y"].type == OperationDataType.ARG
+    assert mapping["y"].logical_shape == torch.Size([4, 4, 64, 64])
 
-    assert mapping['output'].name == "where"
-    assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.Size([4, 4, 64, 64])
-    assert mapping['output'].type == OperationDataType.OUTPUT
+    assert mapping["output"].name == "where"
+    assert mapping["output"].data.is_meta
+    assert mapping["output"].data.shape == torch.Size([4, 4, 64, 64])
+    assert mapping["output"].type == OperationDataType.OUTPUT
 
     handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
@@ -88,5 +87,5 @@ def test_where_handler():
     assert len(strategy_name_list) == 25
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_where_handler()

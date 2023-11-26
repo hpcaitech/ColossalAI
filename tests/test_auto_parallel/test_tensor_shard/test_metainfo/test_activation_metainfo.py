@@ -7,14 +7,17 @@ from colossalai.testing.utils import clear_cache_before_run, parameterize
 from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import print_results
 
 
-@pytest.mark.skipif(torch.__version__ < '1.12.0', reason="need pytorch 1.12.0 or higher for aten level operations")
+@pytest.mark.skipif(torch.__version__ < "1.12.0", reason="need pytorch 1.12.0 or higher for aten level operations")
 @clear_cache_before_run()
-@parameterize('func', [
-    torch.nn.functional.softmax,
-    torch.nn.functional.relu,
-    torch.tanh,
-    torch.nn.functional.dropout,
-])
+@parameterize(
+    "func",
+    [
+        torch.nn.functional.softmax,
+        torch.nn.functional.relu,
+        torch.tanh,
+        torch.nn.functional.dropout,
+    ],
+)
 def test_activation_meta_info(func):
     meta_func = meta_register.get(func)
     # construct meta tensors
@@ -23,13 +26,13 @@ def test_activation_meta_info(func):
     softmax_dim = 0
 
     # construct operation data
-    input_data = OperationData(name='input', type=OperationDataType.ARG, data=input_tensor)
-    output_data = OperationData(name='output', type=OperationDataType.OUTPUT, data=output_tensor)
-    softmax_dim_data = OperationData(name='softmax_dim', type=OperationDataType.ARG, data=softmax_dim)
+    input_data = OperationData(name="input", type=OperationDataType.ARG, data=input_tensor)
+    output_data = OperationData(name="output", type=OperationDataType.OUTPUT, data=output_tensor)
+    softmax_dim_data = OperationData(name="softmax_dim", type=OperationDataType.ARG, data=softmax_dim)
 
     # construct args and kwargs
     args = [input_data, softmax_dim_data, output_data]
-    kwargs = {'inplace': False}
+    kwargs = {"inplace": False}
 
     # estimated results
     compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out = meta_func(*args, **kwargs)
@@ -54,9 +57,17 @@ def test_activation_meta_info(func):
     bwd_allocated = torch.cuda.memory_allocated() - mem_stamp0
     bwd_peak = torch.cuda.max_memory_allocated() - mem_stamp0
 
-    print_results([input_real_tensor], [output_real_tensor], compute_cost, memory_cost, fwd_allocated, fwd_peak,
-                  bwd_allocated, bwd_peak)
+    print_results(
+        [input_real_tensor],
+        [output_real_tensor],
+        compute_cost,
+        memory_cost,
+        fwd_allocated,
+        fwd_peak,
+        bwd_allocated,
+        bwd_peak,
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_activation_meta_info()

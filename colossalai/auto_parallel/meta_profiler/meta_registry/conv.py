@@ -1,22 +1,14 @@
-from typing import Callable, Dict, List, Tuple, Union
+from typing import List, Tuple
 
 import torch
 
 from colossalai._analyzer._subclasses.flop_tensor import flop_mapping
 from colossalai._analyzer.fx.node_util import compute_size_in_bytes
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
-    MemoryCost,
-    OperationData,
-    OperationDataType,
-    ShardingStrategy,
-    StrategiesVector,
-    TrainCycleItem,
-)
-from colossalai.tensor.sharding_spec import ShardingSpec
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, OperationDataType, TrainCycleItem
 
 from ..registry import meta_register
 
-__all__ = ['convnd_meta_info']
+__all__ = ["convnd_meta_info"]
 
 
 @meta_register.register(torch.nn.Conv1d)
@@ -103,35 +95,47 @@ def convnd_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, L
 
     # calculate compute cost
     fwd_compute_cost = flop_mapping[torch.ops.aten.convolution.default](fwd_args, (output_tensor,))
-    bwd_compute_cost = flop_mapping[torch.ops.aten.convolution_backward.default](bwd_args, (input_tensor, weight_tensor, bias_tensor)) if has_bias else \
-                       flop_mapping[torch.ops.aten.convolution_backward.default](bwd_args, (input_tensor, weight_tensor))
+    bwd_compute_cost = (
+        flop_mapping[torch.ops.aten.convolution_backward.default](bwd_args, (input_tensor, weight_tensor, bias_tensor))
+        if has_bias
+        else flop_mapping[torch.ops.aten.convolution_backward.default](bwd_args, (input_tensor, weight_tensor))
+    )
     compute_cost = TrainCycleItem(fwd=fwd_compute_cost, bwd=bwd_compute_cost, total=fwd_compute_cost + bwd_compute_cost)
 
     # calculate memory cost
     # TODO: use profiler to check conv temp memory
     # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
-    fwd_memory_cost = MemoryCost(activation=compute_size_in_bytes([input_tensor, output_tensor]),
-                                 parameter=compute_size_in_bytes([weight_tensor, bias_tensor])
-                                 if has_bias else compute_size_in_bytes(weight_tensor),
-                                 temp=0,
-                                 buffer=0)
+    fwd_memory_cost = MemoryCost(
+        activation=compute_size_in_bytes([input_tensor, output_tensor]),
+        parameter=compute_size_in_bytes([weight_tensor, bias_tensor])
+        if has_bias
+        else compute_size_in_bytes(weight_tensor),
+        temp=0,
+        buffer=0,
+    )
 
-    bwd_memory_cost = MemoryCost(activation=compute_size_in_bytes([input_tensor, weight_tensor, bias_tensor])
-                                 if has_bias else compute_size_in_bytes([input_tensor, weight_tensor]),
-                                 parameter=compute_size_in_bytes([weight_tensor, bias_tensor])
-                                 if has_bias else compute_size_in_bytes(weight_tensor),
-                                 temp=0,
-                                 buffer=0)
+    bwd_memory_cost = MemoryCost(
+        activation=compute_size_in_bytes([input_tensor, weight_tensor, bias_tensor])
+        if has_bias
+        else compute_size_in_bytes([input_tensor, weight_tensor]),
+        parameter=compute_size_in_bytes([weight_tensor, bias_tensor])
+        if has_bias
+        else compute_size_in_bytes(weight_tensor),
+        temp=0,
+        buffer=0,
+    )
 
     # total cost is the sum of forward and backward cost
-    total_cost = MemoryCost(activation=fwd_memory_cost.activation + bwd_memory_cost.activation,
-                            parameter=fwd_memory_cost.parameter + bwd_memory_cost.parameter)
+    total_cost = MemoryCost(
+        activation=fwd_memory_cost.activation + bwd_memory_cost.activation,
+        parameter=fwd_memory_cost.parameter + bwd_memory_cost.parameter,
+    )
 
     memory_cost = TrainCycleItem(fwd=fwd_memory_cost, bwd=bwd_memory_cost, total=total_cost)
 
     # store fwd_in, fwd_buffer, fwd_out
-    fwd_in = [torch.zeros_like(input_tensor, device='meta')]
+    fwd_in = [torch.zeros_like(input_tensor, device="meta")]
     fwd_buffer = []
-    fwd_out = [torch.zeros_like(output_tensor, device='meta')]
+    fwd_out = [torch.zeros_like(output_tensor, device="meta")]
 
     return compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out

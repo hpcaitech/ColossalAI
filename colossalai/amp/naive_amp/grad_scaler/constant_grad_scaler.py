@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 from .base_grad_scaler import BaseGradScaler
 
-__all__ = ['ConstantGradScaler']
+__all__ = ["ConstantGradScaler"]
 
 
 class ConstantGradScaler(BaseGradScaler):
@@ -23,4 +23,3 @@ class ConstantGradScaler(BaseGradScaler):
         Args:
             overflow (bool): whether overflow occurs
         """
-        pass

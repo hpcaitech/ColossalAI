@@ -89,7 +89,7 @@ jobs:
       - name: Install ColossalAI
         run: |
           source activate pytorch
-          pip install -v .
+          CUDA_EXT=1 pip install -v .
 
       - name: Test the Doc
         run: |

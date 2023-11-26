@@ -1,10 +1,6 @@
-import pytest
 import torch
-import torch.nn as nn
 from torch.fx import symbolic_trace
 
-import colossalai
-import colossalai.nn as col_nn
 from colossalai.fx.passes.adding_split_node_pass import (
     balanced_split_pass,
     balanced_split_pass_v2,
@@ -19,7 +15,6 @@ PIPELINE_SIZE = 2
 
 
 class MLP(torch.nn.Module):
-
     def __init__(self, dim: int):
         super().__init__()
         self.linear1 = torch.nn.Linear(dim, dim)
@@ -53,5 +48,5 @@ def test_pipeline_passes():
     pipeline_pass_test_helper(model, data, uniform_split_pass)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_pipeline_passes()

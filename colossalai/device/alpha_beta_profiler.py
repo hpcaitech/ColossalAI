@@ -13,7 +13,7 @@ FRAMEWORK_LATENCY = 0
 
 
 class AlphaBetaProfiler:
-    '''
+    """
     Profile alpha and beta value for a given device list.
 
     Usage:
@@ -27,17 +27,19 @@ class AlphaBetaProfiler:
          (1, 4): (1.9010603427886962e-05, 7.077968863788975e-11), (1, 5): (1.9807778298854827e-05, 6.928845708992215e-11), (4, 5): (1.8681809306144713e-05, 4.7522367291330524e-12),
          (1, 0): (1.9641406834125518e-05, 4.74049549614719e-12), (4, 0): (1.9506998360157013e-05, 6.97421973297474e-11), (5, 0): (2.293858677148819e-05, 7.129930361393644e-11),
          (4, 1): (1.9010603427886962e-05, 7.077968863788975e-11), (5, 1): (1.9807778298854827e-05, 6.928845708992215e-11), (5, 4): (1.8681809306144713e-05, 4.7522367291330524e-12)}
-    '''
+    """
 
-    def __init__(self,
-                 physical_devices: List[int],
-                 alpha_beta_dict: Dict[Tuple[int, int], Tuple[float, float]] = None,
-                 ctype: str = 'a',
-                 warmup: int = 5,
-                 repeat: int = 25,
-                 latency_iters: int = 5,
-                 homogeneous_tolerance: float = 0.1):
-        '''
+    def __init__(
+        self,
+        physical_devices: List[int],
+        alpha_beta_dict: Dict[Tuple[int, int], Tuple[float, float]] = None,
+        ctype: str = "a",
+        warmup: int = 5,
+        repeat: int = 25,
+        latency_iters: int = 5,
+        homogeneous_tolerance: float = 0.1,
+    ):
+        """
         Args:
             physical_devices: A list of device id, each element inside it is the global rank of that device.
             alpha_beta_dict: A dict which maps a process group to alpha-beta value pairs.
@@ -45,7 +47,7 @@ class AlphaBetaProfiler:
             warmup: Number of warmup iterations.
             repeat: Number of iterations to measure.
             latency_iters: Number of iterations to measure latency.
-        '''
+        """
         self.physical_devices = physical_devices
         self.ctype = ctype
         self.world_size = len(physical_devices)
@@ -123,7 +125,7 @@ class AlphaBetaProfiler:
             return (None, None)
 
     def profile_latency(self, process_group, pg_handler):
-        '''
+        """
         This function is used to profile the latency of the given process group with a series of bytes.
 
         Args:
@@ -132,7 +134,7 @@ class AlphaBetaProfiler:
 
         Returns:
             latency: None if the latency is not measured, otherwise the median of the latency_list.
-        '''
+        """
         latency_list = []
         for i in range(self.latency_iters):
             nbytes = int(BYTE << i)
@@ -148,26 +150,26 @@ class AlphaBetaProfiler:
         return latency
 
     def profile_bandwidth(self, process_group, pg_handler, maxbytes=(1 * GB)):
-        '''
+        """
         This function is used to profile the bandwidth of the given process group.
 
         Args:
             process_group: A tuple of global rank of the process group.
             pg_handler: The handler of the process group.
-        '''
+        """
         (_, bandwidth) = self._profile(process_group, pg_handler, maxbytes)
         return bandwidth
 
     def profile_ab(self):
-        '''
+        """
         This method is used to profiling the alpha and beta value for a given device list.
 
         Returns:
             alpha_beta_dict: A dict which maps process group to its alpha and beta value.
-        '''
+        """
         alpha_beta_dict: Dict[Tuple[int], Tuple[float]] = {}
         rank = dist.get_rank()
-        global_pg_handler = dist.new_group(self.physical_devices)
+        dist.new_group(self.physical_devices)
 
         def get_max_nbytes(process_group: Tuple[int], pg_handler: dist.ProcessGroup):
             assert rank in process_group
@@ -208,7 +210,7 @@ class AlphaBetaProfiler:
         return alpha_beta_dict
 
     def search_best_logical_mesh(self):
-        '''
+        """
         This method is used to search the best logical mesh for the given device list.
 
         The best logical mesh is searched in following steps:
@@ -232,19 +234,19 @@ class AlphaBetaProfiler:
             >>> best_logical_mesh = profiler.search_best_logical_mesh()
             >>> print(best_logical_mesh)
             [[0, 1], [2, 3]]
-        '''
+        """
 
         def _power_of_two(integer):
             return integer & (integer - 1) == 0
 
         def _detect_homogeneous_device(alpha_beta_dict):
-            '''
+            """
             This function is used to detect whether the devices in the alpha_beta_dict are homogeneous.
 
             Note: we assume that the devices in the alpha_beta_dict are homogeneous if the beta value
                 of the devices are in range of [(1 - self.homogeneous_tolerance), (1 + self.homogeneous_tolerance)]
                 * base_beta.
-            '''
+            """
             homogeneous_device_dict: Dict[float, List[Tuple[int]]] = {}
             for process_group, (_, beta) in alpha_beta_dict.items():
                 if homogeneous_device_dict is None:
@@ -254,7 +256,8 @@ class AlphaBetaProfiler:
                 match_beta = None
                 for beta_value in homogeneous_device_dict.keys():
                     if beta <= beta_value * (1 + self.homogeneous_tolerance) and beta >= beta_value * (
-                            1 - self.homogeneous_tolerance):
+                        1 - self.homogeneous_tolerance
+                    ):
                         match_beta = beta_value
                         break
 
@@ -267,9 +270,9 @@ class AlphaBetaProfiler:
             return homogeneous_device_dict
 
         def _check_contain_all_devices(homogeneous_group: List[Tuple[int]]):
-            '''
+            """
             This function is used to check whether the homogeneous_group contains all physical devices.
-            '''
+            """
             flatten_mesh = []
             for process_group in homogeneous_group:
                 flatten_mesh.extend(process_group)
@@ -277,9 +280,9 @@ class AlphaBetaProfiler:
             return len(non_duplicated_flatten_mesh) == len(self.physical_devices)
 
         def _construct_largest_ring(homogeneous_group: List[Tuple[int]]):
-            '''
+            """
             This function is used to construct the largest ring in the homogeneous_group for each rank.
-            '''
+            """
             # Construct the ring
             ring = []
             ranks_in_ring = []
@@ -300,7 +303,9 @@ class AlphaBetaProfiler:
                         check_rank = check_rank_list.pop()
                         for process_group in homogeneous_group:
                             if check_rank in process_group:
-                                rank_to_append = process_group[0] if process_group[1] == check_rank else process_group[1]
+                                rank_to_append = (
+                                    process_group[0] if process_group[1] == check_rank else process_group[1]
+                                )
                                 if rank_to_append not in ring_for_rank:
                                     stable_status = False
                                     rank_to_check_list.append(rank_to_append)
@@ -314,7 +319,7 @@ class AlphaBetaProfiler:
         assert _power_of_two(self.world_size)
         power_of_two = int(math.log2(self.world_size))
         median = power_of_two // 2
-        balanced_logical_mesh_shape = (2**median, 2**(power_of_two - median))
+        balanced_logical_mesh_shape = (2**median, 2 ** (power_of_two - median))
         row_size, column_size = balanced_logical_mesh_shape[0], balanced_logical_mesh_shape[1]
         balanced_logical_mesh = []
         for row_index in range(row_size):
@@ -348,7 +353,7 @@ class AlphaBetaProfiler:
         return best_logical_mesh
 
     def extract_alpha_beta_for_device_mesh(self):
-        '''
+        """
         Extract the mesh_alpha list and mesh_beta list based on the
             best logical mesh, which will be used to initialize the device mesh.
 
@@ -360,7 +365,7 @@ class AlphaBetaProfiler:
             [2.5917552411556242e-05, 0.00010312341153621673]
             >>> print(mesh_beta)
             [5.875573704655635e-11, 4.7361584445959614e-12]
-        '''
+        """
         best_logical_mesh = self.search_best_logical_mesh()
 
         first_axis = [row[0] for row in best_logical_mesh]

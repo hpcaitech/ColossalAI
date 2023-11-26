@@ -1,5 +1,4 @@
 class BertDatasetProviderInterface:
-
     def get_shard(self, index, shuffle=True):
         raise NotImplementedError
 

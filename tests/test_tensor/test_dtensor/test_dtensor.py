@@ -8,7 +8,6 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 class TestModel(torch.nn.Module):
-
     def __init__(self, in_features, out_features):
         super().__init__()
         self.linear_1 = torch.nn.Linear(in_features, out_features)
@@ -22,9 +21,9 @@ class TestModel(torch.nn.Module):
 
 def check_dtensor(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    test_model = TestModel(8, 8).to('cuda')
-    original_tensor = torch.rand(4, 8).to('cuda')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    test_model = TestModel(8, 8).to("cuda")
+    original_tensor = torch.rand(4, 8).to("cuda")
     compare_output = test_model(original_tensor)
 
     device_mesh = DeviceMesh(torch.Tensor([0, 1, 2, 3]), (2, 2), init_process_group=True)
@@ -39,7 +38,7 @@ def check_dtensor(rank, world_size, port):
     elif rank in (2, 3):
         assert d_tensor.equal(original_tensor.narrow(0, 2, 2))
     else:
-        raise ValueError(f'rank {rank} is not in the device mesh')
+        raise ValueError(f"rank {rank} is not in the device mesh")
     assert to_global(d_tensor).equal(original_tensor)
     output = test_model(d_tensor)
 
@@ -48,7 +47,7 @@ def check_dtensor(rank, world_size, port):
     elif rank in (2, 3):
         assert output.equal(compare_output.narrow(0, 2, 2))
     else:
-        raise ValueError(f'rank {rank} is not in the device mesh')
+        raise ValueError(f"rank {rank} is not in the device mesh")
 
     new_sharding_spec = ShardingSpec(dim_size=original_tensor.dim(), dim_partition_dict={0: [0, 1]})
     d_tensor = redistribute(d_tensor, device_mesh, new_sharding_spec)
@@ -62,7 +61,7 @@ def check_dtensor(rank, world_size, port):
     elif rank == 3:
         assert d_tensor.equal(original_tensor.narrow(0, 3, 1))
     else:
-        raise ValueError(f'rank {rank} is not in the device mesh')
+        raise ValueError(f"rank {rank} is not in the device mesh")
 
     dtensor_from_local = distribute_tensor(original_tensor, device_mesh, new_sharding_spec)
 
@@ -75,7 +74,7 @@ def check_dtensor(rank, world_size, port):
     elif rank == 3:
         assert dtensor_from_local.equal(original_tensor.narrow(0, 3, 1))
     else:
-        raise ValueError(f'rank {rank} is not in the device mesh')
+        raise ValueError(f"rank {rank} is not in the device mesh")
 
 
 @rerun_if_address_is_in_use()
@@ -84,5 +83,5 @@ def test_dtensor():
     spawn(check_dtensor, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_dtensor()

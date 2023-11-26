@@ -7,7 +7,7 @@ from .node_handler import NodeHandler
 from .registry import operator_registry
 from .strategy import SoftmaxGenerator, StrategyGenerator
 
-__all__ = ['SoftmaxHandler']
+__all__ = ["SoftmaxHandler"]
 
 
 @operator_registry.register(torch.nn.Softmax)
@@ -34,14 +34,14 @@ class SoftmaxHandler(NodeHandler):
         input_data = self.node.args[0]._meta_data
         physical_input_operand = OperationData(name=str(self.node.args[0]), type=data_type, data=input_data)
 
-        softmax_dim = self.node.kwargs['dim']
+        softmax_dim = self.node.kwargs["dim"]
 
         num_dims = self.node.args[0]._meta_data.dim()
         # recover negative value to positive
         if softmax_dim < 0:
             softmax_dim += num_dims
 
-        physical_dim_operand = OperationData(name='softmax_dim', type=OperationDataType.ARG, data=softmax_dim)
+        physical_dim_operand = OperationData(name="softmax_dim", type=OperationDataType.ARG, data=softmax_dim)
 
         output_data = self.node._meta_data
         physical_output_operand = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=output_data)
@@ -49,7 +49,7 @@ class SoftmaxHandler(NodeHandler):
         mapping = {
             "input": physical_input_operand,
             "softmax_dim": physical_dim_operand,
-            "output": physical_output_operand
+            "output": physical_output_operand,
         }
 
         return mapping

@@ -76,8 +76,9 @@ def _tensor_numel(local_param: ColoParameter) -> int:
     return local_param.numel()
 
 
-def classify_params_by_dp_degree(param_order: OrderedParamGenerator,
-                                 process_group: ProcessGroup) -> Dict[int, List[ColoParameter]]:
+def classify_params_by_dp_degree(
+    param_order: OrderedParamGenerator, process_group: ProcessGroup
+) -> Dict[int, List[ColoParameter]]:
     """classify_params_by_dp_degree
 
     Classify the parameters by their dp degree
@@ -105,14 +106,15 @@ def classify_params_by_dp_degree(param_order: OrderedParamGenerator,
 
 
 def search_chunk_configuration(
-        model: nn.Module,
-        search_range_m: float,
-        search_interval: int,    # hidden size is the best value for the interval
-        min_chunk_size_m: float = 32,
-        filter_exlarge_params: bool = True,
-        strict_ddp_flag: bool = False,
-        process_group: Optional[ProcessGroup] = None,
-        memstas: Optional[MemStats] = None) -> Tuple[Dict, int, int]:
+    model: nn.Module,
+    search_range_m: float,
+    search_interval: int,  # hidden size is the best value for the interval
+    min_chunk_size_m: float = 32,
+    filter_exlarge_params: bool = True,
+    strict_ddp_flag: bool = False,
+    process_group: Optional[ProcessGroup] = None,
+    memstas: Optional[MemStats] = None,
+) -> Tuple[Dict, int, int]:
     """search_chunk_configuration
 
     Search the chunk configuration for a model.
@@ -168,7 +170,7 @@ def search_chunk_configuration(
         max_size = max(max_size, max(size_dict[key]))
     start_size = int(math.ceil(max_size / search_interval) * search_interval)
 
-    min_chunk_waste = float('+inf')
+    min_chunk_waste = float("+inf")
     best_chunk_size = start_size
 
     for chunk_size in range(start_size, start_size + search_range + 1, search_interval):

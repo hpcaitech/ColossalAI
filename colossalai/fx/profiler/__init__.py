@@ -12,7 +12,16 @@ if is_compatible_with_meta():
     )
     from .tensor import MetaTensor
 else:
-    from .experimental import meta_profiler_function, meta_profiler_module, profile_function, profile_method, profile_module, calculate_fwd_in, calculate_fwd_tmp, calculate_fwd_out
+    from .experimental import (
+        meta_profiler_function,
+        meta_profiler_module,
+        profile_function,
+        profile_method,
+        profile_module,
+        calculate_fwd_in,
+        calculate_fwd_tmp,
+        calculate_fwd_out,
+    )
 
 from .dataflow import GraphInfo
 from .memory_utils import activation_size, is_inplace, parameter_size

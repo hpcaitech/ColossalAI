@@ -23,6 +23,7 @@ def torch_nn_normalize(self, input):
 
 try:
     import apex
+
     meta_patched_module.register(apex.normalization.FusedLayerNorm)(torch_nn_normalize)
     meta_patched_module.register(apex.normalization.FusedRMSNorm)(torch_nn_normalize)
     meta_patched_module.register(apex.normalization.MixedFusedLayerNorm)(torch_nn_normalize)

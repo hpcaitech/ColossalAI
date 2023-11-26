@@ -9,7 +9,7 @@ import colossalai
 
 def to_click_output(val):
     # installation check output to understandable symbols for readability
-    VAL_TO_SYMBOL = {True: u'\u2713', False: 'x', None: 'N/A'}
+    VAL_TO_SYMBOL = {True: "\u2713", False: "x", None: "N/A"}
 
     if val in VAL_TO_SYMBOL:
         return VAL_TO_SYMBOL[val]
@@ -55,8 +55,8 @@ def check_installation():
     else:
         torch_compatibility = _is_compatible([torch_version, prebuilt_torch_version_required])
 
-    click.echo(f'#### Installation Report ####')
-    click.echo(f'\n------------ Environment ------------')
+    click.echo(f"#### Installation Report ####")
+    click.echo(f"\n------------ Environment ------------")
     click.echo(f"Colossal-AI version: {to_click_output(colossalai_version)}")
     click.echo(f"PyTorch version: {to_click_output(torch_version)}")
     click.echo(f"System CUDA version: {to_click_output(cuda_version)}")
@@ -69,7 +69,7 @@ def check_installation():
         f"3. If the CUDA version required by PyTorch is N/A, you probably did not install a CUDA-compatible PyTorch. This value is give by torch.version.cuda and you can go to https://pytorch.org/get-started/locally/ to download the correct version."
     )
 
-    click.echo(f'\n------------ CUDA Extensions AOT Compilation ------------')
+    click.echo(f"\n------------ CUDA Extensions AOT Compilation ------------")
     click.echo(f"Found AOT CUDA Extension: {to_click_output(found_aot_cuda_ext)}")
     click.echo(f"PyTorch version used for AOT compilation: {to_click_output(prebuilt_torch_version_required)}")
     click.echo(f"CUDA version used for AOT compilation: {to_click_output(prebuilt_cuda_version_required)}")
@@ -81,7 +81,7 @@ def check_installation():
     click.echo(f"2. If AOT compilation is not enabled, stay calm as the CUDA kernels can still be built during runtime")
 
     click.echo(f"\n------------ Compatibility ------------")
-    click.echo(f'PyTorch version match: {to_click_output(torch_compatibility)}')
+    click.echo(f"PyTorch version match: {to_click_output(torch_compatibility)}")
     click.echo(f"System and PyTorch CUDA version match: {to_click_output(sys_torch_cuda_compatibility)}")
     click.echo(f"System and Colossal-AI CUDA version match: {to_click_output(sys_colossalai_cuda_compatibility)}")
     click.echo(f"")
@@ -106,12 +106,12 @@ def _is_compatible(versions):
         return False
 
     # split version into [major, minor, patch]
-    versions = [version.split('.') for version in versions]
+    versions = [version.split(".") for version in versions]
 
     for version in versions:
         if len(version) == 2:
             # x means unknown
-            version.append('x')
+            version.append("x")
 
     for idx, version_values in enumerate(zip(*versions)):
         equal = len(set(version_values)) == 1
@@ -137,11 +137,11 @@ def _parse_colossalai_version():
     # 1. X.X.X+torchX.XXcuXX.X (when colossalai is installed with CUDA extensions)
     # 2. X.X.X (when colossalai is not installed with CUDA extensions)
     # where X represents an integer.
-    colossalai_version = colossalai.__version__.split('+')[0]
+    colossalai_version = colossalai.__version__.split("+")[0]
 
     try:
-        torch_version_for_aot_build = colossalai.__version__.split('torch')[1].split('cu')[0]
-        cuda_version_for_aot_build = colossalai.__version__.split('cu')[1]
+        torch_version_for_aot_build = colossalai.__version__.split("torch")[1].split("cu")[0]
+        cuda_version_for_aot_build = colossalai.__version__.split("cu")[1]
     except:
         torch_version_for_aot_build = None
         cuda_version_for_aot_build = None
@@ -156,7 +156,6 @@ def _check_aot_built_cuda_extension_installed():
     JIT (just-in-time) compilation will build CUDA extensions to `~/.cache/colossalai/torch_extensions` during runtime.
     """
     try:
-        import colossalai._C.fused_optim
         found_aot_cuda_ext = True
     except ImportError:
         found_aot_cuda_ext = False
@@ -175,14 +174,14 @@ def _check_torch_version():
     # torch version can be of two formats
     # - 1.13.1+cu113
     # - 1.13.1.devxxx
-    torch_version = torch.__version__.split('+')[0]
-    torch_version = '.'.join(torch_version.split('.')[:3])
+    torch_version = torch.__version__.split("+")[0]
+    torch_version = ".".join(torch_version.split(".")[:3])
 
     # get cuda version in pytorch build
     try:
         torch_cuda_major = torch.version.cuda.split(".")[0]
         torch_cuda_minor = torch.version.cuda.split(".")[1]
-        torch_cuda_version = f'{torch_cuda_major}.{torch_cuda_minor}'
+        torch_cuda_version = f"{torch_cuda_major}.{torch_cuda_minor}"
     except:
         torch_cuda_version = None
 
@@ -208,7 +207,7 @@ def _check_cuda_version():
             release = output[release_idx].split(".")
             bare_metal_major = release[0]
             bare_metal_minor = release[1][0]
-            cuda_version = f'{bare_metal_major}.{bare_metal_minor}'
+            cuda_version = f"{bare_metal_major}.{bare_metal_minor}"
         except:
             cuda_version = None
     return cuda_version

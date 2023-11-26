@@ -1,12 +1,12 @@
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional
 
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
-__all__ = ['ShardConfig']
+__all__ = ["ShardConfig"]
 
 
 @dataclass
@@ -24,7 +24,6 @@ class ShardConfig:
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism, which partitions non-tensor-parallel regions along the sequence dimension. Defaults to False.
         enable_sequence_overlap (bool): Whether to turn on sequence overlap, wheich overlap the computation and communication in sequence parallelism. It can only be used when enable_sequence_parallelism is True. Defaults to False.
         enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalizaion', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
-        inference_only (bool): Whether only doing forward passing. Defaults to False.
     """
     tensor_parallel_process_group: Optional[ProcessGroup] = None
     pipeline_stage_manager: Optional[PipelineStageManager] = None
@@ -32,10 +31,12 @@ class ShardConfig:
     enable_fused_normalization: bool = False
     enable_flash_attention: bool = False
     enable_jit_fused: bool = False
+    enable_all_optimization: bool = False
     enable_sequence_parallelism: bool = False
     enable_sequence_overlap: bool = False
-    enable_all_optimization: bool = False
-    inference_only: bool = False
+    extra_kwargs: Dict[str, Any] = field(default_factory=dict)
+    # pipeline_parallel_size: int
+    # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']
 
     @property
@@ -45,7 +46,8 @@ class ShardConfig:
     def __post_init__(self):
         if not self.enable_tensor_parallelism and self.enable_sequence_parallelism:
             raise ValueError(
-                "enable_sequence_parallelism can only be set to True when enable_tensor_parallelism is True")
+                "enable_sequence_parallelism can only be set to True when enable_tensor_parallelism is True"
+            )
         if not self.enable_sequence_parallelism and self.enable_sequence_overlap:
             raise ValueError("enable_sequence_overlap can only be set to True when enable_sequence_parallelism is True")
         if not self.enable_tensor_parallelism:
@@ -72,4 +74,4 @@ class ShardConfig:
         """
         Set default params for inference.
         """
-        assert self.pipeline_stage_manager is None, "pipeline parallelism is not supported in inference for now"
+        # assert self.pipeline_stage_manager is None, "pipeline parallelism is not supported in inference for now"

@@ -5,7 +5,6 @@ from .base_store import BaseStore
 
 
 class ParameterStore(BaseStore):
-
     def __init__(self, torch_pg: ProcessGroup):
         super().__init__(torch_pg)
 

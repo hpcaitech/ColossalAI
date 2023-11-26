@@ -19,7 +19,6 @@ from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import n
 
 
 class AddmmModel(nn.Module):
-
     def __init__(self):
         super().__init__()
 
@@ -29,7 +28,6 @@ class AddmmModel(nn.Module):
 
 
 class AddmmModel_with_param(nn.Module):
-
     def __init__(self, weight_shape, bias_shape):
         super().__init__()
         self.weight = torch.nn.Parameter(torch.rand(weight_shape))
@@ -42,7 +40,7 @@ class AddmmModel_with_param(nn.Module):
 
 def check_addmm_function_handler(rank, world_size, port, input_shape, model_cls):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     if model_cls == AddmmModel:
         model = AddmmModel().cuda()
     else:
@@ -58,10 +56,10 @@ def check_addmm_function_handler(rank, world_size, port, input_shape, model_cls)
         # construct input args
         input_args = [input, m1, m2]
         # construct meta arg names
-        meta_arg_names = ['input', 'm1', 'm2']
+        meta_arg_names = ["input", "m1", "m2"]
         meta_args_for_tracer = {}
         for meta_arg, input_arg in zip(meta_arg_names, input_args):
-            meta_args_for_tracer[meta_arg] = input_arg.to('meta')
+            meta_args_for_tracer[meta_arg] = input_arg.to("meta")
 
         # the index of addmm node in computation graph
         node_index = 4
@@ -72,22 +70,24 @@ def check_addmm_function_handler(rank, world_size, port, input_shape, model_cls)
         # construct input args
         input_args = [m1]
         # construct meta arg names
-        meta_arg_names = ['m1']
+        meta_arg_names = ["m1"]
         # the index of addmm node in computation graph
         meta_args_for_tracer = {}
         for meta_arg, input_arg in zip(meta_arg_names, input_args):
-            meta_args_for_tracer[meta_arg] = input_arg.to('meta')
+            meta_args_for_tracer[meta_arg] = input_arg.to("meta")
         node_index = 4
         # strategy number of linear node
         strategy_number = 14
 
-    numerical_test_for_node_strategy(model=model,
-                                     device_mesh=device_mesh,
-                                     node_index=node_index,
-                                     strategy_number=strategy_number,
-                                     input_args=input_args,
-                                     meta_arg_names=meta_arg_names,
-                                     node_type='bias_module')
+    numerical_test_for_node_strategy(
+        model=model,
+        device_mesh=device_mesh,
+        node_index=node_index,
+        strategy_number=strategy_number,
+        input_args=input_args,
+        meta_arg_names=meta_arg_names,
+        node_type="bias_module",
+    )
 
     tracer = ColoTracer(bias_addition_split=True)
     # graph():
@@ -117,60 +117,60 @@ def check_addmm_function_handler(rank, world_size, port, input_shape, model_cls)
     # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
-    assert mapping['input'].name == "m1"
-    assert mapping['input'].data.shape == torch.Size([4, 8])
-    assert mapping['input'].type == OperationDataType.ARG
-    assert mapping['input'].logical_shape == torch.Size([4, 8])
+    assert mapping["input"].name == "m1"
+    assert mapping["input"].data.shape == torch.Size([4, 8])
+    assert mapping["input"].type == OperationDataType.ARG
+    assert mapping["input"].logical_shape == torch.Size([4, 8])
 
-    assert mapping['other'].name == "transpose"
-    assert mapping['other'].data.shape == torch.Size([16, 8])
+    assert mapping["other"].name == "transpose"
+    assert mapping["other"].data.shape == torch.Size([16, 8])
     if model_cls == AddmmModel:
-        assert mapping['other'].type == OperationDataType.ARG
+        assert mapping["other"].type == OperationDataType.ARG
     else:
-        assert mapping['other'].type == OperationDataType.PARAM
-    assert mapping['other'].logical_shape == torch.Size([8, 16])
+        assert mapping["other"].type == OperationDataType.PARAM
+    assert mapping["other"].logical_shape == torch.Size([8, 16])
 
-    assert mapping['output'].name == "linear"
-    assert mapping['output'].data.shape == torch.Size([4, 16])
-    assert mapping['output'].type == OperationDataType.OUTPUT
+    assert mapping["output"].name == "linear"
+    assert mapping["output"].data.shape == torch.Size([4, 16])
+    assert mapping["output"].type == OperationDataType.OUTPUT
 
     # SS = SR x RS
-    assert 'S0S1 = S0R x RS1_0' in strategy_name_list
-    assert 'S1S0 = S1R x RS0_0' in strategy_name_list
+    assert "S0S1 = S0R x RS1_0" in strategy_name_list
+    assert "S1S0 = S1R x RS0_0" in strategy_name_list
 
     # SR = SS x SR
-    assert 'S0R = S0S1 x S1R_0' in strategy_name_list
-    assert 'S1R = S1S0 x S0R_0' in strategy_name_list
+    assert "S0R = S0S1 x S1R_0" in strategy_name_list
+    assert "S1R = S1S0 x S0R_0" in strategy_name_list
 
     # RS = RS x SS
-    assert 'RS0 = RS1 x S1S0' in strategy_name_list
-    assert 'RS1 = RS0 x S0S1' in strategy_name_list
+    assert "RS0 = RS1 x S1S0" in strategy_name_list
+    assert "RS1 = RS0 x S0S1" in strategy_name_list
 
     # RR = RS x SR
-    assert 'RR = RS0 x S0R' in strategy_name_list
-    assert 'RR = RS1 x S1R' in strategy_name_list
+    assert "RR = RS0 x S0R" in strategy_name_list
+    assert "RR = RS1 x S1R" in strategy_name_list
 
     # RS= RR x RS
-    assert 'RS0 = RR x RS0' in strategy_name_list
-    assert 'RS1 = RR x RS1' in strategy_name_list
+    assert "RS0 = RR x RS0" in strategy_name_list
+    assert "RS1 = RR x RS1" in strategy_name_list
 
     # S01R = S01R x RR
-    assert 'S01R = S01R x RR_0' in strategy_name_list
+    assert "S01R = S01R x RR_0" in strategy_name_list
 
     # RR = RS01 x S01R
-    assert 'RR = RS01 x S01R' in strategy_name_list
+    assert "RR = RS01 x S01R" in strategy_name_list
 
     # RS01 = RR x RS01
-    assert 'RS01 = RR x RS01' in strategy_name_list
+    assert "RS01 = RR x RS01" in strategy_name_list
 
     # RR = RR x RR
-    assert 'RR = RR x RR' in strategy_name_list
+    assert "RR = RR x RR" in strategy_name_list
 
     for strategy in strategies_vector:
         strategy: ShardingStrategy
-        input_sharding_spec = strategy.get_sharding_spec_by_name('m1')
-        weight_sharding_spec = strategy.get_sharding_spec_by_name('transpose')
-        output_sharding_spec = strategy.get_sharding_spec_by_name('linear')
+        input_sharding_spec = strategy.get_sharding_spec_by_name("m1")
+        weight_sharding_spec = strategy.get_sharding_spec_by_name("transpose")
+        output_sharding_spec = strategy.get_sharding_spec_by_name("linear")
 
         # make sure the sharding matches across different operation data
         assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]
@@ -178,14 +178,14 @@ def check_addmm_function_handler(rank, world_size, port, input_shape, model_cls)
         assert weight_sharding_spec.sharding_sequence[0] == output_sharding_spec.sharding_sequence[1]
 
 
-@run_on_environment_flag(name='AUTO_PARALLEL')
+@run_on_environment_flag(name="AUTO_PARALLEL")
 @pytest.mark.dist
-@parameterize('input_shape', [(16,), (4, 16)])
-@parameterize('model_cls', [AddmmModel, AddmmModel_with_param])
+@parameterize("input_shape", [(16,), (4, 16)])
+@parameterize("model_cls", [AddmmModel, AddmmModel_with_param])
 @rerun_if_address_is_in_use()
 def test_addmm_handler(input_shape, model_cls):
     spawn(check_addmm_function_handler, 4, input_shape=input_shape, model_cls=model_cls)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_addmm_handler()

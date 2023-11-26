@@ -15,9 +15,9 @@ from .chunk_memstats_collector import ChunkMemStatsCollector
 
 
 class ModuleInfos:
-
-    def __init__(self, module: torch.nn.Module, module_name: str, module_full_name: str,
-                 parent_module: torch.nn.Module):
+    def __init__(
+        self, module: torch.nn.Module, module_name: str, module_full_name: str, parent_module: torch.nn.Module
+    ):
         self.module = module
         self.module_name = module_name
         self.module_full_name = module_full_name
@@ -35,14 +35,13 @@ class StaticMemStatsCollector(ChunkMemStatsCollector):
         self.module_info_list = []
 
     def init_mem_stats(self, *inputs):
-
         self.register_opnodes_recursively(self.module)
         self.refactor_module()
 
         self.module = self.module.cpu()
         self.module.train()
 
-        data = [MetaTensor(torch.rand(inp.shape, device='meta'), fake_device='cpu') for inp in inputs]
+        data = [MetaTensor(torch.rand(inp.shape, device="meta"), fake_device="cpu") for inp in inputs]
         gm = symbolic_trace(self.module)
         interp = MetaInfoProp(gm)
         interp.propagate(*data)
@@ -87,12 +86,13 @@ class StaticMemStatsCollector(ChunkMemStatsCollector):
         for modInfo in self.module_info_list:
             modInfo.parent_module.__setattr__(modInfo.module_name, modInfo.module)
 
-    def register_opnodes_recursively(self,
-                                     module: torch.nn.Module,
-                                     name: str = "",
-                                     full_name: str = "",
-                                     parent_module: Optional[torch.nn.Module] = None):
-
+    def register_opnodes_recursively(
+        self,
+        module: torch.nn.Module,
+        name: str = "",
+        full_name: str = "",
+        parent_module: Optional[torch.nn.Module] = None,
+    ):
         assert isinstance(module, torch.nn.Module)
 
         for child_name, child in module.named_children():

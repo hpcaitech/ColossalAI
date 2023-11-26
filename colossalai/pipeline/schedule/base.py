@@ -8,17 +8,18 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 
 
 class PipelineSchedule:
-
     def __init__(self, stage_manager: PipelineStageManager) -> None:
         self.stage_manager = stage_manager
 
-    def forward_backward_step(self,
-                              model: Module,
-                              data_iter: Iterable,
-                              criterion: Callable[[Any, Any], Tensor],
-                              optimizer: Optional[OptimizerWrapper] = None,
-                              return_loss: bool = False,
-                              return_outputs: bool = False) -> dict:
+    def forward_backward_step(
+        self,
+        model: Module,
+        data_iter: Iterable,
+        criterion: Callable[[Any, Any], Tensor],
+        optimizer: Optional[OptimizerWrapper] = None,
+        return_loss: bool = False,
+        return_outputs: bool = False,
+    ) -> dict:
         """Forward and backward step for pipeline training.
 
         Args:

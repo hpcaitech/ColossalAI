@@ -1,7 +1,6 @@
 from typing import Optional
 
 from colossalai.utils import get_current_device
-from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.gemini.chunk import ChunkManager
 
 from .memory_stats import MemStats
@@ -9,7 +8,6 @@ from .memstats_collector import MemStatsCollector
 
 
 class ChunkMemStatsCollector(MemStatsCollector):
-
     def __init__(self, chunk_manager: ChunkManager, memstats: Optional[MemStats] = None) -> None:
         """
 
@@ -28,9 +26,11 @@ class ChunkMemStatsCollector(MemStatsCollector):
         record model data volume on cuda and cpu.
         """
         if self._start_flag and not self.use_outside_memstats:
-            cuda_mem = self._chunk_manager.total_mem['cuda']
+            cuda_mem = self._chunk_manager.total_mem["cuda"]
             self._memstats.record_max_cuda_model_data(cuda_mem)
 
     @property
     def cuda_margin_mem(self) -> float:
+        from colossalai.legacy.utils.memory import colo_device_memory_capacity
+
         return colo_device_memory_capacity(get_current_device()) - self._memstats.max_overall_cuda

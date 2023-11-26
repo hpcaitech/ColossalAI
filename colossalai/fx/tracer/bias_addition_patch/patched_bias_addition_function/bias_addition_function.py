@@ -29,7 +29,6 @@ class BiasAdditionFunc(ABC):
             to insert two more operator.mul nodes for the computation graph to compute the
             final result.
         """
-        pass
 
     @abstractmethod
     def generate(self):
@@ -50,7 +49,6 @@ class BiasAdditionFunc(ABC):
             %mul_1 : [#users=1] = call_function[target=operator.mul](args = (2, %linear), kwargs = {})
             %add : [#users=1] = call_function[target=operator.add](args = (%mul_1, %mul), kwargs = {})
         """
-        pass
 
     def create_mul_node(self, input_proxy, coefficent):
         """
@@ -59,7 +57,7 @@ class BiasAdditionFunc(ABC):
         Therefore, we need to use this method insert two more operator.mul nodes for
         the computation graph to compute the final result.
         """
-        node_kind = 'call_function'
+        node_kind = "call_function"
         node_target = operator.mul
         node_args = (
             input_proxy,
@@ -82,7 +80,7 @@ class LinearBasedBiasFunc(BiasAdditionFunc):
         compute the main computation, such as convolution, with bias option banned.
         """
         assert self.substitute_func == torch.nn.functional.linear
-        node_kind = 'call_function'
+        node_kind = "call_function"
         node_target = self.substitute_func
 
         node_args = (input_proxy, other_proxy)
@@ -96,7 +94,7 @@ class LinearBasedBiasFunc(BiasAdditionFunc):
         This method is used to create the bias_addition_proxy, the node created by this proxy will
         compute the sum of non_bias_func result and bias with some reshape operation if needed.
         """
-        bias_add_node_kind = 'call_function'
+        bias_add_node_kind = "call_function"
         bias_add_node_target = operator.add
         bias_add_args = (non_bias_func_proxy, bias_proxy)
         bias_add_proxy = self.tracer.create_proxy(bias_add_node_kind, bias_add_node_target, tuple(bias_add_args), {})

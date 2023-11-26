@@ -1,19 +1,23 @@
 from typing import Optional, Tuple
+
 import torch
+
 from ..registry import meta_profiler_module
 
 
 # TODO: This is hard to compute memory cost
 @meta_profiler_module.register(torch.nn.MultiheadAttention)
-def torch_nn_msa(self: torch.nn.MultiheadAttention,
-                 query: torch.Tensor,
-                 key: torch.Tensor,
-                 value: torch.Tensor,
-                 key_padding_mask: Optional[torch.Tensor] = None,
-                 need_weights: bool = True,
-                 attn_mask: Optional[torch.Tensor] = None,
-                 average_attn_weights: bool = True) -> Tuple[int, int]:
-    if getattr(self, 'batch_first', False):
+def torch_nn_msa(
+    self: torch.nn.MultiheadAttention,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    key_padding_mask: Optional[torch.Tensor] = None,
+    need_weights: bool = True,
+    attn_mask: Optional[torch.Tensor] = None,
+    average_attn_weights: bool = True,
+) -> Tuple[int, int]:
+    if getattr(self, "batch_first", False):
         batch_size = query.shape[0]
         len_idx = 1
     else:
@@ -44,15 +48,9 @@ def torch_nn_msa(self: torch.nn.MultiheadAttention,
     flops += qlen * qdim
 
     # Initial projections
-    flops += 2 * ((qlen * qdim * qdim)    # QW
-                  + (klen * kdim * kdim)    # KW
-                  + (vlen * vdim * vdim)    # VW
-                 )
+    flops += 2 * ((qlen * qdim * qdim) + (klen * kdim * kdim) + (vlen * vdim * vdim))  # QW  # KW  # VW
 
-    macs += ((qlen * qdim * qdim)    # QW
-             + (klen * kdim * kdim)    # KW
-             + (vlen * vdim * vdim)    # VW
-            )
+    macs += (qlen * qdim * qdim) + (klen * kdim * kdim) + (vlen * vdim * vdim)  # QW  # KW  # VW
 
     if self.in_proj_bias is not None:
         flops += (qlen + klen + vlen) * qdim
@@ -62,13 +60,9 @@ def torch_nn_msa(self: torch.nn.MultiheadAttention,
     v_head_dim = vdim // num_heads
 
     head_flops = (
-        2 * (qlen * klen * qk_head_dim)    # QK^T
-        + (qlen * klen)    # softmax
-        + 2 * (qlen * klen * v_head_dim)    # AV
+        2 * (qlen * klen * qk_head_dim) + (qlen * klen) + 2 * (qlen * klen * v_head_dim)  # QK^T  # softmax  # AV
     )
-    head_macs = ((qlen * klen * qk_head_dim)    # QK^T
-                 + 2 * (qlen * klen * v_head_dim)    # AV
-                )
+    head_macs = (qlen * klen * qk_head_dim) + 2 * (qlen * klen * v_head_dim)  # QK^T  # AV
 
     flops += num_heads * head_flops
     macs += num_heads * head_flops

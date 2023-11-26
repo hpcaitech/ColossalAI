@@ -2,16 +2,14 @@ from typing import Callable
 
 import torch
 
-TORCH_MAJOR = int(torch.__version__.split('.')[0])
-TORCH_MINOR = int(torch.__version__.split('.')[1])
+TORCH_MAJOR = int(torch.__version__.split(".")[0])
+TORCH_MINOR = int(torch.__version__.split(".")[1])
 
 if TORCH_MAJOR == 1 and TORCH_MINOR < 12:
     META_COMPATIBILITY = False
 elif TORCH_MAJOR == 1 and TORCH_MINOR == 12:
-    from . import _meta_regist_12
     META_COMPATIBILITY = True
 elif TORCH_MAJOR == 1 and TORCH_MINOR == 13:
-    from . import _meta_regist_13
     META_COMPATIBILITY = True
 elif TORCH_MAJOR == 2:
     META_COMPATIBILITY = True
@@ -36,7 +34,7 @@ def compatibility(is_backward_compatible: bool = False) -> Callable:
             else:
 
                 def wrapper(*args, **kwargs):
-                    raise RuntimeError(f'Function `{func.__name__}` is not compatible with PyTorch {torch.__version__}')
+                    raise RuntimeError(f"Function `{func.__name__}` is not compatible with PyTorch {torch.__version__}")
 
                 return wrapper
 

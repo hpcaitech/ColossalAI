@@ -6,7 +6,7 @@ from ..parallel_2p5d._operation import split_batch_2p5d
 from ..parallel_3d._operation import split_batch_3d
 from ..utils import get_tensor_parallel_mode
 
-_parallel_split_batch = {'2d': split_batch_2d, '2.5d': split_batch_2p5d, '3d': split_batch_3d}
+_parallel_split_batch = {"2d": split_batch_2d, "2.5d": split_batch_2p5d, "3d": split_batch_3d}
 
 
 def partition_batch(input_) -> Tensor:
@@ -21,7 +21,6 @@ def partition_batch(input_) -> Tensor:
 
 
 class ColossalaiModule(nn.Module):
-
     def __init__(self, module: nn.Module, **kwargs):
         super().__init__()
         self.module = module
@@ -29,7 +28,7 @@ class ColossalaiModule(nn.Module):
             setattr(self, k, v)
 
     def __getattr__(self, name: str):
-        if name == 'module':
+        if name == "module":
             return super().__getattr__(name)
         elif hasattr(self.module, name):
             return getattr(self.module, name)

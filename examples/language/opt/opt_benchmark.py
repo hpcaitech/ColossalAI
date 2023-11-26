@@ -35,6 +35,7 @@ def get_data(batch_size, seq_len, vocab_size):
 
 def colo_memory_cap(size_in_GB):
     from colossalai.utils import colo_device_memory_capacity, colo_set_process_memory_fraction, get_current_device
+
     cuda_capacity = colo_device_memory_capacity(get_current_device())
     if size_in_GB * (1024**3) < cuda_capacity:
         colo_set_process_memory_fraction(size_in_GB * (1024**3) / cuda_capacity)
@@ -42,7 +43,6 @@ def colo_memory_cap(size_in_GB):
 
 
 def main():
-
     args = parse_benchmark_args()
 
     # Launch ColossalAI
@@ -72,13 +72,13 @@ def main():
 
     # Set plugin
     booster_kwargs = {}
-    if args.plugin == 'torch_ddp_fp16':
-        booster_kwargs['mixed_precision'] = 'fp16'
-    if args.plugin.startswith('torch_ddp'):
+    if args.plugin == "torch_ddp_fp16":
+        booster_kwargs["mixed_precision"] = "fp16"
+    if args.plugin.startswith("torch_ddp"):
         plugin = TorchDDPPlugin()
-    elif args.plugin == 'gemini':
+    elif args.plugin == "gemini":
         plugin = GeminiPlugin(offload_optim_frac=1.0, pin_memory=True, initial_scale=2**5)
-    elif args.plugin == 'low_level_zero':
+    elif args.plugin == "low_level_zero":
         plugin = LowLevelZeroPlugin(initial_scale=2**5)
     logger.info(f"Set plugin as {args.plugin}", ranks=[0])
 
@@ -101,11 +101,10 @@ def main():
     start_time = time.time()
 
     for _ in range(args.max_train_steps):
-
         input_ids, attn_mask = get_data(args.batch_size, SEQ_LEN, VOCAB_SIZE)
         optimizer.zero_grad()
         outputs = model(input_ids=input_ids, attention_mask=attn_mask, labels=input_ids, use_cache=False)
-        loss = outputs['loss']
+        loss = outputs["loss"]
         booster.backward(loss, optimizer)
         optimizer.step()
 
@@ -123,7 +122,8 @@ def main():
         f"plugin: {args.plugin}, "
         f"throughput: {throughput}, "
         f"maximum memory usage per gpu: {max_mem}.",
-        ranks=[0])
+        ranks=[0],
+    )
 
 
 if __name__ == "__main__":

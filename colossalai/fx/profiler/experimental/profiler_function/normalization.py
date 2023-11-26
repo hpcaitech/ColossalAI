@@ -1,5 +1,7 @@
 from typing import List, Optional, Tuple
+
 import torch
+
 from ..registry import meta_profiler_function
 
 
@@ -21,11 +23,13 @@ def torch_nn_func_instancenorm(
 
 
 @meta_profiler_function.register(torch.nn.functional.group_norm)
-def torch_nn_func_groupnorm(input: torch.Tensor,
-                            num_groups: int,
-                            weight: Optional[torch.Tensor] = None,
-                            bias: Optional[torch.Tensor] = None,
-                            eps: float = 1e-5) -> Tuple[int, int]:
+def torch_nn_func_groupnorm(
+    input: torch.Tensor,
+    num_groups: int,
+    weight: Optional[torch.Tensor] = None,
+    bias: Optional[torch.Tensor] = None,
+    eps: float = 1e-5,
+) -> Tuple[int, int]:
     has_affine = weight is not None
     flops = input.numel() * (5 if has_affine else 4)
     macs = 0

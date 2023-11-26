@@ -36,27 +36,38 @@ class CachedEmbeddingBag(BaseEmbeddingBag):
         evict_strategy (EvictionStrategy, optional): evict strategy of the software cache. Defaults to EvictionStrategy.DATASET.
     """
 
-    def __init__(self,
-                 num_embeddings: int,
-                 embedding_dim: int,
-                 padding_idx: int = None,
-                 max_norm: float = None,
-                 norm_type: float = 2.,
-                 scale_grad_by_freq: bool = False,
-                 sparse: bool = False,
-                 _weight: Optional[torch.Tensor] = None,
-                 mode: str = 'mean',
-                 include_last_offset: bool = False,
-                 dtype: Optional[torch.dtype] = None,
-                 device: Optional[torch.device] = None,
-                 cache_ratio: float = 0.01,
-                 ids_freq_mapping: Optional[Union[List, torch.Tensor]] = None,
-                 warmup_ratio: float = 0.7,
-                 buffer_size: int = 0,
-                 pin_weight: bool = False,
-                 evict_strategy: EvictionStrategy = EvictionStrategy.LFU):
-        super(CachedEmbeddingBag, self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type,
-                                                 scale_grad_by_freq, sparse, mode, include_last_offset)
+    def __init__(
+        self,
+        num_embeddings: int,
+        embedding_dim: int,
+        padding_idx: int = None,
+        max_norm: float = None,
+        norm_type: float = 2.0,
+        scale_grad_by_freq: bool = False,
+        sparse: bool = False,
+        _weight: Optional[torch.Tensor] = None,
+        mode: str = "mean",
+        include_last_offset: bool = False,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        cache_ratio: float = 0.01,
+        ids_freq_mapping: Optional[Union[List, torch.Tensor]] = None,
+        warmup_ratio: float = 0.7,
+        buffer_size: int = 0,
+        pin_weight: bool = False,
+        evict_strategy: EvictionStrategy = EvictionStrategy.LFU,
+    ):
+        super(CachedEmbeddingBag, self).__init__(
+            num_embeddings,
+            embedding_dim,
+            padding_idx,
+            max_norm,
+            norm_type,
+            scale_grad_by_freq,
+            sparse,
+            mode,
+            include_last_offset,
+        )
 
         assert cache_ratio <= 1.0, f"cache ratio {cache_ratio} must less than 1.0"
         self.evict_strategy = evict_strategy
@@ -78,13 +89,15 @@ class CachedEmbeddingBag(BaseEmbeddingBag):
                 weight[self.padding_idx].fill_(0)
         return weight
 
-    def _preprocess(self,
-                    weight,
-                    cuda_row_num: int,
-                    ids_freq_mapping: Optional[List[int]] = None,
-                    warmup_ratio=0.7,
-                    buffer_size=50_000,
-                    pin_weight=False):
+    def _preprocess(
+        self,
+        weight,
+        cuda_row_num: int,
+        ids_freq_mapping: Optional[List[int]] = None,
+        warmup_ratio=0.7,
+        buffer_size=50_000,
+        pin_weight=False,
+    ):
         """
         Called after initialized.
         Reorder the weight rows according to the ids_freq_mapping.
@@ -95,11 +108,9 @@ class CachedEmbeddingBag(BaseEmbeddingBag):
             ids_freq_mapping (List[int]): a list, idx is id number, value is freq
             warmup_ratio (float): the amount of rows preloaded in cuda cache
         """
-        self.cache_weight_mgr = CachedParamMgr(weight,
-                                               cuda_row_num,
-                                               buffer_size,
-                                               pin_weight,
-                                               evict_strategy=self.evict_strategy)
+        self.cache_weight_mgr = CachedParamMgr(
+            weight, cuda_row_num, buffer_size, pin_weight, evict_strategy=self.evict_strategy
+        )
         self.cache_weight_mgr.reorder(ids_freq_mapping, warmup_ratio)
 
     def forward(self, input, offsets=None, per_sample_weights=None, shape_hook=None):
@@ -107,9 +118,19 @@ class CachedEmbeddingBag(BaseEmbeddingBag):
             with torch.no_grad():
                 input = self.cache_weight_mgr.prepare_ids(input)
 
-        embeddings = F.embedding_bag(input.cuda(), self.cache_weight_mgr.cuda_cached_weight, offsets, self.max_norm,
-                                     self.norm_type, self.scale_grad_by_freq, self.mode, self.sparse,
-                                     per_sample_weights, self.include_last_offset, self.padding_idx)
+        embeddings = F.embedding_bag(
+            input.cuda(),
+            self.cache_weight_mgr.cuda_cached_weight,
+            offsets,
+            self.max_norm,
+            self.norm_type,
+            self.scale_grad_by_freq,
+            self.mode,
+            self.sparse,
+            per_sample_weights,
+            self.include_last_offset,
+            self.padding_idx,
+        )
         if shape_hook is not None:
             embeddings = shape_hook(embeddings)
         return embeddings
@@ -118,8 +139,8 @@ class CachedEmbeddingBag(BaseEmbeddingBag):
     def weight(self):
         return self.cache_weight_mgr.weight
 
-    def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, Parameter]]:
-        yield 'weight', self.cache_weight_mgr.cuda_cached_weight
+    def named_parameters(self, prefix: str = "", recurse: bool = True) -> Iterator[Tuple[str, Parameter]]:
+        yield "weight", self.cache_weight_mgr.cuda_cached_weight
 
     def parameters(self, recurse: bool = True) -> Iterator[Parameter]:
         yield self.cache_weight_mgr.cuda_cached_weight
@@ -127,8 +148,7 @@ class CachedEmbeddingBag(BaseEmbeddingBag):
     def set_cache_op(self, cache_op: bool = True):
         self.cache_op = cache_op
 
-
-############################# Perf Log ###################################
+    ############################# Perf Log ###################################
 
     @property
     def num_hits_history(self):
@@ -145,14 +165,22 @@ class CachedEmbeddingBag(BaseEmbeddingBag):
     @property
     def swap_in_bandwidth(self):
         if self.cache_weight_mgr._cpu_to_cuda_numel > 0:
-            return self.cache_weight_mgr._cpu_to_cuda_numel * self.cache_weight_mgr.elem_size_in_byte / 1e6 / \
-                   self.cache_weight_mgr._cpu_to_cuda_elapse
+            return (
+                self.cache_weight_mgr._cpu_to_cuda_numel
+                * self.cache_weight_mgr.elem_size_in_byte
+                / 1e6
+                / self.cache_weight_mgr._cpu_to_cuda_elapse
+            )
         else:
             return 0
 
     @property
     def swap_out_bandwidth(self):
         if self.cache_weight_mgr._cuda_to_cpu_numel > 0:
-            return self.cache_weight_mgr._cuda_to_cpu_numel * self.cache_weight_mgr.elem_size_in_byte / 1e6 / \
-                   self.cache_weight_mgr._cuda_to_cpu_elapse
+            return (
+                self.cache_weight_mgr._cuda_to_cpu_numel
+                * self.cache_weight_mgr.elem_size_in_byte
+                / 1e6
+                / self.cache_weight_mgr._cuda_to_cpu_elapse
+            )
         return 0

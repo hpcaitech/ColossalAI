@@ -9,12 +9,11 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.testing import spawn
 from colossalai.testing.random import seed_all
-from colossalai.utils import conditional_context
+from colossalai.utils import conditional_context, get_current_device
 from colossalai.zero import LowLevelZeroOptimizer
 
 
 class MlpModel(nn.Module):
-
     def __init__(self):
         super(MlpModel, self).__init__()
         self.linear1 = nn.Linear(128, 256)
@@ -29,27 +28,23 @@ class MlpModel(nn.Module):
 def exam_zero_1_2_grad_acc():
     local_rank = torch.distributed.get_rank()
     seed_all(2009)
-
+    device = get_current_device()
     # create model
-    zero1_model = MlpModel().cuda()
+    zero1_model = MlpModel().to(device)
     zero2_model = copy.deepcopy(zero1_model)
     # create optimizer
     zero1_optimizer = torch.optim.Adam(zero1_model.parameters(), lr=1)
     zero2_optimizer = torch.optim.Adam(zero2_model.parameters(), lr=1)
-    zero1_optimizer = LowLevelZeroOptimizer(zero1_optimizer,
-                                            overlap_communication=True,
-                                            initial_scale=32,
-                                            clip_grad_norm=1.0,
-                                            verbose=True)
-    zero2_optimizer = LowLevelZeroOptimizer(zero2_optimizer,
-                                            overlap_communication=True,
-                                            partition_grad=True,
-                                            initial_scale=32,
-                                            clip_grad_norm=1.0)
+    zero1_optimizer = LowLevelZeroOptimizer(
+        zero1_optimizer, overlap_communication=True, initial_scale=32, clip_grad_norm=1.0, verbose=True
+    )
+    zero2_optimizer = LowLevelZeroOptimizer(
+        zero2_optimizer, overlap_communication=True, partition_grad=True, initial_scale=32, clip_grad_norm=1.0
+    )
     # create data
     seed_all(2021 + local_rank)
-    input_data1 = torch.randn(32, 128).cuda()
-    input_data2 = torch.randn(32, 128).cuda()
+    input_data1 = torch.randn(32, 128, device=device)
+    input_data2 = torch.randn(32, 128, device=device)
 
     def fwd_bwd_func(number, cur_data, check_flag):
         # zero-dp forward
@@ -76,14 +71,15 @@ def exam_zero_1_2_grad_acc():
 def exam_zero_1_grad_acc(sync):
     local_rank = torch.distributed.get_rank()
     seed_all(2008)
+    device = get_current_device()
 
     # create models
     zero_model = MlpModel()
     torch_model = copy.deepcopy(zero_model)
 
     seed_all(2008)
-    zero_model = zero_model.cuda()
-    torch_model = DDP(torch_model.cuda(), bucket_cap_mb=0)
+    zero_model = zero_model.to(device)
+    torch_model = DDP(torch_model.to(device), bucket_cap_mb=0)
 
     # create optimizer
     zero_optimizer = torch.optim.Adam(zero_model.parameters(), lr=1)
@@ -91,20 +87,18 @@ def exam_zero_1_grad_acc(sync):
     # we only test stage 1 here
     # in `check_sharded_param_consistency.py`, we will test whether
     # level 1 and 2 will produce exactly the same results
-    zero_optimizer = LowLevelZeroOptimizer(zero_optimizer,
-                                           overlap_communication=False,
-                                           reduce_bucket_size=262144,
-                                           clip_grad_norm=1.0)
+    zero_optimizer = LowLevelZeroOptimizer(
+        zero_optimizer, overlap_communication=False, reduce_bucket_size=262144, clip_grad_norm=1.0
+    )
 
     torch_optimizer = torch.optim.Adam(torch_model.parameters(), lr=1)
 
     # create data
     seed_all(2022 + local_rank)
-    input_data1 = torch.randn(32, 128).cuda()
-    input_data2 = torch.randn(32, 128).cuda()
+    input_data1 = torch.randn(32, 128, device=device)
+    input_data2 = torch.randn(32, 128, device=device)
 
     def fwd_bwd_func(no_sync, cur_data, check_flag):
-
         # zero1 fwd and bwd
         with conditional_context(zero_optimizer.no_sync(), no_sync):
             zero_output = zero_model(cur_data)
@@ -135,7 +129,7 @@ def exam_zero_1_grad_acc(sync):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
 
     exam_zero_1_grad_acc(sync=True)
     exam_zero_1_grad_acc(sync=False)
@@ -147,5 +141,5 @@ def test_grad_accumulation():
     spawn(run_dist, 2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_grad_accumulation()

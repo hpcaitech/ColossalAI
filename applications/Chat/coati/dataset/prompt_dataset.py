@@ -13,11 +13,13 @@ from .utils import jload
 class PromptDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
-    def __init__(self,
-                 data_path: str,
-                 tokenizer: transformers.PreTrainedTokenizer,
-                 max_datasets_size: int = None,
-                 max_length: int = 96):
+    def __init__(
+        self,
+        data_path: str,
+        tokenizer: transformers.PreTrainedTokenizer,
+        max_datasets_size: int = None,
+        max_length: int = 96,
+    ):
         super(PromptDataset, self).__init__()
         self.keyed_prompt = defaultdict(list)
         self.logger = get_dist_logger()
@@ -30,11 +32,9 @@ class PromptDataset(Dataset):
             list_data_dict = list_data_dict[:max_datasets_size]
 
         instructions = [data_dict["instruction"] for data_dict in list_data_dict]
-        tokens = tokenizer(instructions,
-                           return_tensors='pt',
-                           max_length=max_length,
-                           padding='max_length',
-                           truncation=True)
+        tokens = tokenizer(
+            instructions, return_tensors="pt", max_length=max_length, padding="max_length", truncation=True
+        )
         for k, tensor in tokens.items():
             self.keyed_prompt[k] = tensor.to(torch.cuda.current_device()).unbind()
 

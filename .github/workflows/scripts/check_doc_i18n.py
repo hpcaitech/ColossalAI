@@ -22,13 +22,13 @@ def compare_dirs(dir1, dir2):
 
         # If the corresponding item doesn't exist in the second directory, the directories are different
         if not os.path.exists(item_path2):
-            print(f'Found mismatch: {item_path1}, {item_path2}')
+            print(f"Found mismatch: {item_path1}, {item_path2}")
             return False
 
         # If the corresponding item is a directory, we compare the two directories recursively
         if os.path.isdir(item_path1) and os.path.isdir(item_path2):
             if not compare_dirs(item_path1, item_path2):
-                print(f'Found mismatch: {item_path1}, {item_path2}')
+                print(f"Found mismatch: {item_path1}, {item_path2}")
                 return False
 
         # both are files
@@ -37,16 +37,16 @@ def compare_dirs(dir1, dir2):
 
         # If the corresponding item is not a file or a directory, the directories are different
         else:
-            print(f'Found mismatch: {item_path1}, {item_path2}')
+            print(f"Found mismatch: {item_path1}, {item_path2}")
             return False
 
     # If all items are the same, the directories are the same
     return True
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--directory', help="The directory where the multi-language source files are kept.")
+    parser.add_argument("-d", "--directory", help="The directory where the multi-language source files are kept.")
     args = parser.parse_args()
 
     i18n_folders = os.listdir(args.directory)
@@ -56,7 +56,7 @@ if __name__ == '__main__':
         for i in range(1, len(i18n_folders)):
             dir1 = i18n_folders[0]
             dir2 = i18n_folders[i]
-            print(f'comparing {dir1} vs {dir2}')
+            print(f"comparing {dir1} vs {dir2}")
             match = compare_dirs(i18n_folders[0], i18n_folders[i])
 
             if not match:

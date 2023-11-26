@@ -19,22 +19,26 @@ class OptimState(Enum):
 class FP16MixedPrecisionMixin(MixedPrecisionMixin):
     dtype = torch.float16
 
-    def __init__(self,
-                 initial_scale: float = 2**16,
-                 min_scale: float = 1,
-                 growth_factor: float = 2,
-                 backoff_factor: float = 0.5,
-                 growth_interval: int = 1000,
-                 hysteresis: int = 2,
-                 max_scale: float = 2**32) -> None:
+    def __init__(
+        self,
+        initial_scale: float = 2**16,
+        min_scale: float = 1,
+        growth_factor: float = 2,
+        backoff_factor: float = 0.5,
+        growth_interval: int = 1000,
+        hysteresis: int = 2,
+        max_scale: float = 2**32,
+    ) -> None:
         super().__init__()
-        self.grad_scaler = DynamicGradScaler(initial_scale=initial_scale,
-                                             min_scale=min_scale,
-                                             growth_factor=growth_factor,
-                                             backoff_factor=backoff_factor,
-                                             growth_interval=growth_interval,
-                                             hysteresis=hysteresis,
-                                             max_scale=max_scale)
+        self.grad_scaler = DynamicGradScaler(
+            initial_scale=initial_scale,
+            min_scale=min_scale,
+            growth_factor=growth_factor,
+            backoff_factor=backoff_factor,
+            growth_interval=growth_interval,
+            hysteresis=hysteresis,
+            max_scale=max_scale,
+        )
         self.optim_state = OptimState.UNSCALED
         self.found_overflow = torch.zeros(1, dtype=torch.float, device=get_current_device())
 
@@ -49,7 +53,6 @@ class FP16MixedPrecisionMixin(MixedPrecisionMixin):
         Returns:
             bool: Whether there is overflow in the local process.
         """
-        pass
 
     def check_overflow(self) -> bool:
         # clear previous overflow record
@@ -79,6 +82,6 @@ class FP16MixedPrecisionMixin(MixedPrecisionMixin):
         pass
 
     def get_grad_div_scale(self) -> float:
-        assert self.optim_state == OptimState.SCALED, 'grads should be scaled before clipping'
+        assert self.optim_state == OptimState.SCALED, "grads should be scaled before clipping"
         self.optim_state = OptimState.UNSCALED
         return self.loss_scale

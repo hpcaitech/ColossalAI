@@ -15,15 +15,15 @@ from checks_3d.check_layer_3d import (
     check_vocab_parallel_loss,
 )
 
-from colossalai.core import global_context as gpc
-from colossalai.initialize import launch
+from colossalai.legacy.core import global_context as gpc
+from colossalai.legacy.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus, spawn
 
 CONFIG = dict(
     parallel=dict(
         pipeline=1,
-        tensor=dict(mode='3d', size=8),
+        tensor=dict(mode="3d", size=8),
     ),
     seed=42,
 )
@@ -44,7 +44,7 @@ def check_layer():
 
 def check_layer_and_operation(rank, world_size, port):
     disable_existing_loggers()
-    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.backends.cudnn.deterministic = True
@@ -60,5 +60,5 @@ def test_3d():
     spawn(check_layer_and_operation, 8)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_3d()

@@ -20,14 +20,16 @@ class DistCoordinator(metaclass=SingletonMeta):
         - master: the process with rank 0
         - node master: the process with local rank 0 on the current node
 
-    Example:
-        >>> from colossalai.cluster.dist_coordinator import DistCoordinator
-        >>> coordinator = DistCoordinator()
-        >>>
-        >>> if coordinator.is_master():
-        >>>     do_something()
-        >>>
-        >>> coordinator.print_on_master('hello world')
+
+    ```python
+    from colossalai.cluster.dist_coordinator import DistCoordinator
+    coordinator = DistCoordinator()
+
+    if coordinator.is_master():
+        do_something()
+
+    coordinator.print_on_master('hello world')
+    ```
 
     Attributes:
         rank (int): the rank of the current process
@@ -36,12 +38,13 @@ class DistCoordinator(metaclass=SingletonMeta):
     """
 
     def __init__(self):
-        assert dist.is_initialized(
-        ), 'Distributed is not initialized. Please call `torch.distributed.init_process_group` or `colossalai.launch` first.'
+        assert (
+            dist.is_initialized()
+        ), "Distributed is not initialized. Please call `torch.distributed.init_process_group` or `colossalai.launch` first."
         self._rank = dist.get_rank()
         self._world_size = dist.get_world_size()
         # this is often passed by launchers such as torchrun
-        self._local_rank = os.environ.get('LOCAL_RANK', -1)
+        self._local_rank = os.environ.get("LOCAL_RANK", -1)
 
     @property
     def rank(self) -> int:
@@ -59,7 +62,9 @@ class DistCoordinator(metaclass=SingletonMeta):
         """
         Assert that the local rank is set. This is often passed by launchers such as torchrun.
         """
-        assert self.local_rank >= 0, 'The environment variable LOCAL_RANK is not set, thus the coordinator is not aware of the local rank of the current process.'
+        assert (
+            self.local_rank >= 0
+        ), "The environment variable LOCAL_RANK is not set, thus the coordinator is not aware of the local rank of the current process."
 
     def is_master(self, process_group: ProcessGroup = None) -> bool:
         """
@@ -128,11 +133,13 @@ class DistCoordinator(metaclass=SingletonMeta):
         other processes in the same process group. This is often useful when downloading is required
         as we only want to download in one process to prevent file corruption.
 
-        Example:
-            >>> from colossalai.cluster import DistCoordinator
-            >>> dist_coordinator = DistCoordinator()
-            >>> with dist_coordinator.priority_execution():
-            >>>     dataset = CIFAR10(root='./data', download=True)
+
+        ```python
+        from colossalai.cluster import DistCoordinator
+        dist_coordinator = DistCoordinator()
+        with dist_coordinator.priority_execution():
+            dataset = CIFAR10(root='./data', download=True)
+        ```
 
         Args:
             executor_rank (int): the process rank to execute without blocking, all other processes will be blocked
@@ -171,19 +178,19 @@ class DistCoordinator(metaclass=SingletonMeta):
         """
         A function wrapper that only executes the wrapped function on the master process (rank 0).
 
-        Example:
-            >>> from colossalai.cluster import DistCoordinator
-            >>> dist_coordinator = DistCoordinator()
-            >>>
-            >>> @dist_coordinator.on_master_only()
-            >>> def print_on_master(msg):
-            >>>     print(msg)
+        ```python
+        from colossalai.cluster import DistCoordinator
+        dist_coordinator = DistCoordinator()
+
+        @dist_coordinator.on_master_only()
+        def print_on_master(msg):
+            print(msg)
+        ```
         """
         is_master = self.is_master(process_group)
 
         # define an inner function
         def decorator(func):
-
             @functools.wraps(func)
             def wrapper(*args, **kwargs):
                 if is_master:

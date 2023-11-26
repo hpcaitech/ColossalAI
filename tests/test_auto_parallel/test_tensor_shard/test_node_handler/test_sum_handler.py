@@ -16,7 +16,6 @@ from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import n
 
 
 class LinearSumModel(nn.Module):
-
     def __init__(self, sum_dims, keepdim):
         super().__init__()
         self.sum_dims = sum_dims
@@ -33,26 +32,28 @@ class LinearSumModel(nn.Module):
 
 def check_sum_handler(rank, world_size, port, sum_dims, keepdim):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = LinearSumModel(sum_dims=sum_dims, keepdim=keepdim).cuda()
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
 
-    input = torch.rand(8, 16, 64, 32).to('cuda')
-    other = torch.rand(64, 32).to('cuda')
+    input = torch.rand(8, 16, 64, 32).to("cuda")
+    other = torch.rand(64, 32).to("cuda")
     # index of linear node in computation graph
     node_index = 2
     # total number of linear strategies
     strategy_number = 24
 
-    numerical_test_for_node_strategy(model=model,
-                                     device_mesh=device_mesh,
-                                     node_index=node_index,
-                                     strategy_number=strategy_number,
-                                     input_args=[input, other],
-                                     meta_arg_names=['input', 'other'],
-                                     node_type='following')
+    numerical_test_for_node_strategy(
+        model=model,
+        device_mesh=device_mesh,
+        node_index=node_index,
+        strategy_number=strategy_number,
+        input_args=[input, other],
+        meta_arg_names=["input", "other"],
+        node_type="following",
+    )
 
     tracer = ColoTracer(bias_addition_split=True)
 
@@ -63,8 +64,8 @@ def check_sum_handler(rank, world_size, port, sum_dims, keepdim):
     #     %sum_1 : [#users=1] = call_function[target=torch.sum](args = (%linear,), kwargs = {})
     #     return sum_1
     meta_args = {
-        "input": torch.rand(8, 16, 64, 32).to('meta'),
-        "other": torch.rand(64, 32).to('meta'),
+        "input": torch.rand(8, 16, 64, 32).to("meta"),
+        "other": torch.rand(64, 32).to("meta"),
     }
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
@@ -78,11 +79,11 @@ def check_sum_handler(rank, world_size, port, sum_dims, keepdim):
     # build handler
 
     assert len(previous_strategies_vector) == 0
-    linear_handler = LinearFunctionHandler(node=previous_mod_node,
-                                           device_mesh=device_mesh,
-                                           strategies_vector=previous_strategies_vector)
+    linear_handler = LinearFunctionHandler(
+        node=previous_mod_node, device_mesh=device_mesh, strategies_vector=previous_strategies_vector
+    )
     linear_handler.register_strategy(compute_resharding_cost=False)
-    setattr(previous_mod_node, 'strategies_vector', previous_strategies_vector)
+    setattr(previous_mod_node, "strategies_vector", previous_strategies_vector)
 
     sum_handler = SumHandler(node=sum_node, device_mesh=device_mesh, strategies_vector=sum_strategies_vector)
 
@@ -100,131 +101,131 @@ def check_sum_handler(rank, world_size, port, sum_dims, keepdim):
         # make sure they have valid values
         assert op_data.data is not None
 
-    assert mapping['input'].name == "linear"
-    assert mapping['input'].data.is_meta
-    assert mapping['input'].data.shape == torch.Size([8, 16, 64, 64])
-    assert mapping['input'].type == OperationDataType.ARG
-    assert mapping['input'].logical_shape == torch.Size([8, 16, 64, 64])
+    assert mapping["input"].name == "linear"
+    assert mapping["input"].data.is_meta
+    assert mapping["input"].data.shape == torch.Size([8, 16, 64, 64])
+    assert mapping["input"].type == OperationDataType.ARG
+    assert mapping["input"].logical_shape == torch.Size([8, 16, 64, 64])
 
-    assert mapping['output'].name == "sum_1"
+    assert mapping["output"].name == "sum_1"
     sum_node_shape = torch.empty([8, 16, 64, 64]).sum(sum_dims, keepdim=keepdim).shape
-    assert mapping['output'].logical_shape == sum_node_shape
-    assert mapping['output'].type == OperationDataType.OUTPUT
+    assert mapping["output"].logical_shape == sum_node_shape
+    assert mapping["output"].type == OperationDataType.OUTPUT
 
     # check strategy name
     if sum_dims == (0, 2) and keepdim == False:
-        assert '[R, R, R, R] -> [R, R]_0' in strategy_name_list
-        assert '[R, S01, R, R] -> [S01, R]_1' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R]_2' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R]_3' in strategy_name_list
-        assert '[R, R, R, S01] -> [R, S01]_4' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, S1]_5' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, S0]_6' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R]_7' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R]_8' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, S0]_9' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, S1]_10' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, S1]_11' in strategy_name_list
-        assert '[R, S0, R, S1] -> [S0, S1]_12' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, S1]_13' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, S0]_14' in strategy_name_list
-        assert '[R, S1, R, S0] -> [S1, S0]_15' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, S0]_16' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R]_17' in strategy_name_list
-        assert '[R, S0, R, R] -> [S0, R]_18' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R]_19' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R]_20' in strategy_name_list
-        assert '[R, S1, R, R] -> [S1, R]_21' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R]_22' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R]_23' in strategy_name_list
+        assert "[R, R, R, R] -> [R, R]_0" in strategy_name_list
+        assert "[R, S01, R, R] -> [S01, R]_1" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R]_2" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R]_3" in strategy_name_list
+        assert "[R, R, R, S01] -> [R, S01]_4" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, S1]_5" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, S0]_6" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R]_7" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R]_8" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, S0]_9" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, S1]_10" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, S1]_11" in strategy_name_list
+        assert "[R, S0, R, S1] -> [S0, S1]_12" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, S1]_13" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, S0]_14" in strategy_name_list
+        assert "[R, S1, R, S0] -> [S1, S0]_15" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, S0]_16" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R]_17" in strategy_name_list
+        assert "[R, S0, R, R] -> [S0, R]_18" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R]_19" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R]_20" in strategy_name_list
+        assert "[R, S1, R, R] -> [S1, R]_21" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R]_22" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R]_23" in strategy_name_list
 
     if sum_dims == (0, 2) and keepdim == True:
-        assert '[R, R, R, R] -> [R, R, R, R]_0' in strategy_name_list
-        assert '[R, S01, R, R] -> [R, S01, R, R]_1' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_2' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_3' in strategy_name_list
-        assert '[R, R, R, S01] -> [R, R, R, S01]_4' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, R, R, S1]_5' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, R, R, S0]_6' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_7' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_8' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, R, R, S0]_9' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, R, R, S1]_10' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, R, R, S1]_11' in strategy_name_list
-        assert '[R, S0, R, S1] -> [R, S0, R, S1]_12' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, R, R, S1]_13' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, R, R, S0]_14' in strategy_name_list
-        assert '[R, S1, R, S0] -> [R, S1, R, S0]_15' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, R, R, S0]_16' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_17' in strategy_name_list
-        assert '[R, S0, R, R] -> [R, S0, R, R]_18' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_19' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_20' in strategy_name_list
-        assert '[R, S1, R, R] -> [R, S1, R, R]_21' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_22' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_23' in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_0" in strategy_name_list
+        assert "[R, S01, R, R] -> [R, S01, R, R]_1" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_2" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_3" in strategy_name_list
+        assert "[R, R, R, S01] -> [R, R, R, S01]_4" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, R, R, S1]_5" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, R, R, S0]_6" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_7" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_8" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, R, R, S0]_9" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, R, R, S1]_10" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, R, R, S1]_11" in strategy_name_list
+        assert "[R, S0, R, S1] -> [R, S0, R, S1]_12" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, R, R, S1]_13" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, R, R, S0]_14" in strategy_name_list
+        assert "[R, S1, R, S0] -> [R, S1, R, S0]_15" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, R, R, S0]_16" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_17" in strategy_name_list
+        assert "[R, S0, R, R] -> [R, S0, R, R]_18" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_19" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_20" in strategy_name_list
+        assert "[R, S1, R, R] -> [R, S1, R, R]_21" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_22" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_23" in strategy_name_list
 
     if sum_dims == 1 and keepdim == False:
-        assert '[S01, R, R, R] -> [S01, R, R]_0' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R]_1' in strategy_name_list
-        assert '[R, R, S01, R] -> [R, S01, R]_2' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R]_3' in strategy_name_list
-        assert '[R, R, R, S01] -> [R, R, S01]_4' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, R, S1]_5' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, R, S0]_6' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R]_7' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R]_8' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, R, S0]_9' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, R, S1]_10' in strategy_name_list
-        assert '[S0, R, R, S1] -> [S0, R, S1]_11' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, R, S1]_12' in strategy_name_list
-        assert '[R, R, S0, S1] -> [R, S0, S1]_13' in strategy_name_list
-        assert '[S1, R, R, S0] -> [S1, R, S0]_14' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, R, S0]_15' in strategy_name_list
-        assert '[R, R, S1, S0] -> [R, S1, S0]_16' in strategy_name_list
-        assert '[S0, R, R, R] -> [S0, R, R]_17' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R]_18' in strategy_name_list
-        assert '[R, R, S0, R] -> [R, S0, R]_19' in strategy_name_list
-        assert '[S1, R, R, R] -> [S1, R, R]_20' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R]_21' in strategy_name_list
-        assert '[R, R, S1, R] -> [R, S1, R]_22' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R]_23' in strategy_name_list
+        assert "[S01, R, R, R] -> [S01, R, R]_0" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R]_1" in strategy_name_list
+        assert "[R, R, S01, R] -> [R, S01, R]_2" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R]_3" in strategy_name_list
+        assert "[R, R, R, S01] -> [R, R, S01]_4" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, R, S1]_5" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, R, S0]_6" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R]_7" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R]_8" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, R, S0]_9" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, R, S1]_10" in strategy_name_list
+        assert "[S0, R, R, S1] -> [S0, R, S1]_11" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, R, S1]_12" in strategy_name_list
+        assert "[R, R, S0, S1] -> [R, S0, S1]_13" in strategy_name_list
+        assert "[S1, R, R, S0] -> [S1, R, S0]_14" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, R, S0]_15" in strategy_name_list
+        assert "[R, R, S1, S0] -> [R, S1, S0]_16" in strategy_name_list
+        assert "[S0, R, R, R] -> [S0, R, R]_17" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R]_18" in strategy_name_list
+        assert "[R, R, S0, R] -> [R, S0, R]_19" in strategy_name_list
+        assert "[S1, R, R, R] -> [S1, R, R]_20" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R]_21" in strategy_name_list
+        assert "[R, R, S1, R] -> [R, S1, R]_22" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R]_23" in strategy_name_list
 
     if sum_dims == 1 and keepdim == True:
-        assert '[S01, R, R, R] -> [S01, R, R, R]_0' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_1' in strategy_name_list
-        assert '[R, R, S01, R] -> [R, R, S01, R]_2' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_3' in strategy_name_list
-        assert '[R, R, R, S01] -> [R, R, R, S01]_4' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, R, R, S1]_5' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, R, R, S0]_6' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_7' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_8' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, R, R, S0]_9' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, R, R, S1]_10' in strategy_name_list
-        assert '[S0, R, R, S1] -> [S0, R, R, S1]_11' in strategy_name_list
-        assert '[R, R, R, S1] -> [R, R, R, S1]_12' in strategy_name_list
-        assert '[R, R, S0, S1] -> [R, R, S0, S1]_13' in strategy_name_list
-        assert '[S1, R, R, S0] -> [S1, R, R, S0]_14' in strategy_name_list
-        assert '[R, R, R, S0] -> [R, R, R, S0]_15' in strategy_name_list
-        assert '[R, R, S1, S0] -> [R, R, S1, S0]_16' in strategy_name_list
-        assert '[S0, R, R, R] -> [S0, R, R, R]_17' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_18' in strategy_name_list
-        assert '[R, R, S0, R] -> [R, R, S0, R]_19' in strategy_name_list
-        assert '[S1, R, R, R] -> [S1, R, R, R]_20' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_21' in strategy_name_list
-        assert '[R, R, S1, R] -> [R, R, S1, R]_22' in strategy_name_list
-        assert '[R, R, R, R] -> [R, R, R, R]_23' in strategy_name_list
+        assert "[S01, R, R, R] -> [S01, R, R, R]_0" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_1" in strategy_name_list
+        assert "[R, R, S01, R] -> [R, R, S01, R]_2" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_3" in strategy_name_list
+        assert "[R, R, R, S01] -> [R, R, R, S01]_4" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, R, R, S1]_5" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, R, R, S0]_6" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_7" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_8" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, R, R, S0]_9" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, R, R, S1]_10" in strategy_name_list
+        assert "[S0, R, R, S1] -> [S0, R, R, S1]_11" in strategy_name_list
+        assert "[R, R, R, S1] -> [R, R, R, S1]_12" in strategy_name_list
+        assert "[R, R, S0, S1] -> [R, R, S0, S1]_13" in strategy_name_list
+        assert "[S1, R, R, S0] -> [S1, R, R, S0]_14" in strategy_name_list
+        assert "[R, R, R, S0] -> [R, R, R, S0]_15" in strategy_name_list
+        assert "[R, R, S1, S0] -> [R, R, S1, S0]_16" in strategy_name_list
+        assert "[S0, R, R, R] -> [S0, R, R, R]_17" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_18" in strategy_name_list
+        assert "[R, R, S0, R] -> [R, R, S0, R]_19" in strategy_name_list
+        assert "[S1, R, R, R] -> [S1, R, R, R]_20" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_21" in strategy_name_list
+        assert "[R, R, S1, R] -> [R, R, S1, R]_22" in strategy_name_list
+        assert "[R, R, R, R] -> [R, R, R, R]_23" in strategy_name_list
 
 
-@run_on_environment_flag(name='AUTO_PARALLEL')
+@run_on_environment_flag(name="AUTO_PARALLEL")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-@parameterize('sum_dims', [(0, 2), 1])
-@parameterize('keepdim', [False, True])
+@parameterize("sum_dims", [(0, 2), 1])
+@parameterize("keepdim", [False, True])
 def test_sum_handler(sum_dims, keepdim):
     spawn(check_sum_handler, 4, sum_dims=sum_dims, keepdim=keepdim)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_sum_handler()

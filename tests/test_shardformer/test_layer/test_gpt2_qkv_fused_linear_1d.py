@@ -58,12 +58,9 @@ def check_linear_conv_1d_col(lazy_init: bool, seq_parallel: bool, overlap: bool)
     linear = Conv1D(192, 48).cuda()
     with ctx:
         linear_copy = Conv1D(192, 48).cuda()
-    linear_conv_col = GPT2FusedLinearConv1D_Col.from_native_module(linear_copy,
-                                                                   process_group=None,
-                                                                   gather_output=True,
-                                                                   seq_parallel=seq_parallel,
-                                                                   n_fused=3,
-                                                                   overlap=overlap)
+    linear_conv_col = GPT2FusedLinearConv1D_Col.from_native_module(
+        linear_copy, process_group=None, gather_output=True, seq_parallel=seq_parallel, n_fused=3, overlap=overlap
+    )
 
     assert linear.weight.shape == torch.Size([48, 192])
     assert linear.bias.shape == torch.Size([192])
@@ -97,10 +94,9 @@ def check_linear_conv_1d_row(lazy_init: bool, seq_parallel: bool):
     linear = Conv1D(192, 48).cuda()
     with ctx:
         linear_copy = Conv1D(192, 48).cuda()
-    linear_row = GPT2FusedLinearConv1D_Row.from_native_module(linear_copy,
-                                                              process_group=None,
-                                                              parallel_input=False,
-                                                              seq_parallel=seq_parallel)
+    linear_row = GPT2FusedLinearConv1D_Row.from_native_module(
+        linear_copy, process_group=None, parallel_input=False, seq_parallel=seq_parallel
+    )
 
     assert linear.weight.shape == torch.Size([48, 192])
     assert linear_row.weight.shape == torch.Size([24, 192])
@@ -128,16 +124,16 @@ def check_linear_conv_1d_row(lazy_init: bool, seq_parallel: bool):
     assert_close(target_grad, linear_row.weight.grad)
 
 
-@parameterize('lazy_init', [False, True])
-@parameterize('seq_parallel', [False, True])
-@parameterize('overlap', [True])
+@parameterize("lazy_init", [False, True])
+@parameterize("seq_parallel", [False, True])
+@parameterize("overlap", [True])
 def check_gpt2_qkv_fused_linear_1d(lazy_init: bool, seq_parallel: bool, overlap: bool):
     check_linear_conv_1d_col(lazy_init, seq_parallel, overlap)
     check_linear_conv_1d_row(lazy_init, seq_parallel)
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     # test for linear conv
     check_gpt2_qkv_fused_linear_1d()
@@ -148,5 +144,5 @@ def test_linearconv():
     spawn(run_dist, nprocs=2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_linearconv()

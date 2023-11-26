@@ -5,7 +5,7 @@ import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
-from colossalai.utils import get_current_device
+from colossalai.utils import free_storage, get_current_device
 
 from .chunk import Chunk, ChunkFullError, TensorState
 
@@ -20,27 +20,29 @@ class ChunkManager:
     """
 
     def __init__(self, chunk_configuration, init_device: Optional[torch.device] = None) -> None:
-
         self.device = init_device or get_current_device()
         self.dp_degree_chunk_size_dict: Dict[int, int] = dict()
         self.kwargs_config = chunk_configuration
         for k, v in self.kwargs_config.items():
-            self.dp_degree_chunk_size_dict[k] = v.pop('chunk_size')
-            v['init_device'] = self.device
+            self.dp_degree_chunk_size_dict[k] = v.pop("chunk_size")
+            v["init_device"] = self.device
 
         self.chunk_groups: Dict[str, Deque[Chunk]] = dict()
         self.tensor_chunk_map: Dict[torch.Tensor, Chunk] = dict()
         self.accessed_chunks: Set[Chunk] = set()
         self.accessed_mem: int = 0
-        self.total_mem: Dict[str, int] = {'cpu': 0, 'cuda': 0}
+        self.total_mem: Dict[str, int] = {"cpu": 0, "cuda": 0}
 
-    def register_tensor(self,
-                        tensor: torch.Tensor,
-                        group_type: str,
-                        config_key: int,
-                        process_group: ProcessGroup,
-                        cpu_offload: bool = False,
-                        pin_memory: bool = False) -> None:
+    def register_tensor(
+        self,
+        tensor: torch.Tensor,
+        group_type: str,
+        config_key: int,
+        zero_group: ProcessGroup,
+        extra_dp_group: ProcessGroup = None,
+        cpu_offload: bool = False,
+        pin_memory: bool = False,
+    ) -> None:
         """
         Register a tensor to the chunk manager.
         Then, the tensor should be accessed by `get_chunks`.
@@ -75,15 +77,16 @@ class ChunkManager:
 
             if tensor.numel() > chunk_size:
                 chunk_size = tensor.numel()
-                dp_size = dist.get_world_size(process_group)
+                dp_size = dist.get_world_size(zero_group)
                 chunk_size = chunk_size + (-chunk_size % dp_size)
 
             chunk = Chunk(
                 chunk_size=chunk_size,
-                process_group=process_group,
+                zero_group=zero_group,
                 dtype=tensor.dtype,
                 cpu_shard_init=cpu_offload,
                 pin_memory=pin_memory,
+                extra_dp_group=extra_dp_group,
                 **chunk_kwargs,
             )
 
@@ -94,25 +97,22 @@ class ChunkManager:
         self.tensor_chunk_map[tensor] = chunk_group[-1]
 
     def close_all_groups(self):
-        """Close all the chunks of all groups.
-        """
+        """Close all the chunks of all groups."""
         for group_name in self.chunk_groups:
             self.__close_one_chunk(self.chunk_groups[group_name][-1])
 
     def access_chunk(self, chunk: Chunk) -> None:
-        """Make the chunk can be used for calculation.
-        """
+        """Make the chunk can be used for calculation."""
         if chunk in self.accessed_chunks:
             return
         self.__sub_memory_usage(chunk.memory_usage)
-        if chunk.device_type == 'cpu':
+        if chunk.device_type == "cpu":
             chunk.shard_move(get_current_device())
         self.__add_accessed_chunk(chunk)
         self.__add_memory_usage(chunk.memory_usage)
 
     def release_chunk(self, chunk: Chunk) -> None:
-        """Scatter the chunk in CUDA.
-        """
+        """Scatter the chunk in CUDA."""
         if chunk not in self.accessed_chunks:
             return
         if chunk.can_release:
@@ -121,8 +121,7 @@ class ChunkManager:
             self.__add_memory_usage(chunk.memory_usage)
 
     def move_chunk(self, chunk: Chunk, device: torch.device, force_copy: bool = False) -> None:
-        """Move the shard of the chunk to the target device.
-        """
+        """Move the shard of the chunk to the target device."""
         if not chunk.can_move or chunk.device_type == device.type:
             return
         self.__sub_memory_usage(chunk.memory_usage)
@@ -130,14 +129,12 @@ class ChunkManager:
         self.__add_memory_usage(chunk.memory_usage)
 
     def trans_tensor_state(self, tensor: torch.Tensor, state: TensorState) -> None:
-        """Transit tensor state according to pre-defined state machine.
-        """
+        """Transit tensor state according to pre-defined state machine."""
         chunk = self.tensor_chunk_map[tensor]
         chunk.tensor_trans_state(tensor, state)
 
     def reduce_chunk(self, chunk: Chunk) -> bool:
-        """Reduce or all reduce the chunk.
-        """
+        """Reduce or all reduce the chunk."""
         if not chunk.can_reduce:
             return False
         self.__sub_memory_usage(chunk.memory_usage)
@@ -209,22 +206,24 @@ class ChunkManager:
             tensor (torch.Tensor): An extern static tensor. E.g. optimizer state.
         """
         assert tensor not in self.tensor_chunk_map
-        self.total_mem[tensor.device.type] += tensor.numel() * tensor.element_size()
+        device_type = tensor.device.type
+        if device_type == "npu":
+            device_type = "cuda"
+        self.total_mem[device_type] += tensor.numel() * tensor.element_size()
 
     def __repr__(self) -> str:
         msg = [
-            'Chunk Manager Information:\n',
-            'Total memory: ' + ', '.join([f'{k}={v}B' for k, v in self.total_mem.items()]) + '\n'
+            "Chunk Manager Information:\n",
+            "Total memory: " + ", ".join([f"{k}={v}B" for k, v in self.total_mem.items()]) + "\n",
         ]
         for group_name, group in self.chunk_groups.items():
-            msg.append(f'Group {group_name}:\n')
+            msg.append(f"Group {group_name}:\n")
             for i, chunk in enumerate(group):
-                msg.append(f'[{i}] {chunk}\n')
-        return ''.join(msg)
+                msg.append(f"[{i}] {chunk}\n")
+        return "".join(msg)
 
     def __get_chunk_group(self, group_name: str) -> Deque[Chunk]:
-        """Register a chunk group.
-        """
+        """Register a chunk group."""
         if group_name not in self.chunk_groups:
             self.chunk_groups[group_name] = deque()
         return self.chunk_groups[group_name]
@@ -251,3 +250,47 @@ class ChunkManager:
         chunk.release_chunk()
         self.accessed_chunks.remove(chunk)
         self.accessed_mem -= chunk.chunk_mem
+
+    def init_grad_chunk(self, chunk: Chunk) -> Chunk:
+        if chunk.grad_chunk is not None:
+            self.__sub_memory_usage(chunk.grad_chunk.memory_usage)
+        grad_chunk = chunk.init_grad_chunk()
+        self.__add_memory_usage(grad_chunk.memory_usage)
+        if grad_chunk not in self.accessed_chunks:
+            self.accessed_chunks.add(grad_chunk)
+            self.accessed_mem += grad_chunk.chunk_mem
+        return grad_chunk
+
+    def rearrange_accumulated_grad_chunk(self, chunk: Chunk) -> Chunk:
+        """Rearrange gradients accumulated in chunk.grad_chunk, and getP prepared for gradient reduction."""
+
+        assert chunk.grad_chunk is not None
+
+        # Make a backup for gradient accumulated before.
+        # Here backup gradients should be multiplied, since it will be divided after gradient reduction.
+        if chunk.grad_chunk.is_gathered:
+            accumulated_grad = chunk.grad_chunk.cuda_global_chunk.clone().detach().mul_(chunk.pg_size)
+            accumulated_grad_gathered = True
+        else:
+            if chunk.grad_chunk.cuda_shard is not None:
+                accumulated_grad = chunk.grad_chunk.cuda_shard.clone().detach().mul_(chunk.pg_size)
+            else:
+                accumulated_grad = (
+                    chunk.grad_chunk.cpu_shard.to(get_current_device()).clone().detach().mul_(chunk.pg_size)
+                )
+            accumulated_grad_gathered = False
+
+        # Reset grad_chunk, and chunk.grad_chunk will be accessed.
+        grad_chunk = self.init_grad_chunk(chunk)
+        grad_chunk.cuda_global_chunk.zero_()
+
+        # Add backup gradients to grad_chunk.
+        if accumulated_grad_gathered:
+            grad_chunk.cuda_global_chunk.add_(accumulated_grad)
+        else:
+            grad_chunk.cuda_global_chunk[grad_chunk.shard_begin : grad_chunk.shard_end].add_(accumulated_grad)
+
+        # Release accumulated_grad
+        free_storage(accumulated_grad)
+
+        return grad_chunk

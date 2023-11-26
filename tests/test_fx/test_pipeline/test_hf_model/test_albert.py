@@ -7,7 +7,7 @@ BATCH_SIZE = 2
 SEQ_LENGHT = 16
 
 
-@pytest.mark.skip('balance split v2 is not ready')
+@pytest.mark.skip("balance split v2 is not ready")
 def test_single_sentence_albert():
     MODEL_LIST = [
         transformers.AlbertModel,
@@ -17,12 +17,14 @@ def test_single_sentence_albert():
         transformers.AlbertForTokenClassification,
     ]
 
-    config = transformers.AlbertConfig(vocab_size=100,
-                                       embedding_size=128,
-                                       hidden_size=128,
-                                       num_hidden_layers=2,
-                                       num_attention_heads=4,
-                                       intermediate_size=256)
+    config = transformers.AlbertConfig(
+        vocab_size=100,
+        embedding_size=128,
+        hidden_size=128,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        intermediate_size=256,
+    )
 
     def data_gen():
         input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGHT), dtype=torch.int64)
@@ -36,5 +38,5 @@ def test_single_sentence_albert():
         split_model_and_compare_output(model, data_gen)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_single_sentence_albert()

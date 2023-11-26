@@ -7,7 +7,7 @@ BATCH_SIZE = 2
 SEQ_LENGHT = 16
 
 
-@pytest.mark.skip('balance split v2 is not ready')
+@pytest.mark.skip("balance split v2 is not ready")
 def test_single_sentence_bert():
     MODEL_LIST = [
         transformers.BertModel,
@@ -18,11 +18,9 @@ def test_single_sentence_bert():
         transformers.BertForTokenClassification,
     ]
 
-    config = transformers.BertConfig(vocab_size=100,
-                                     hidden_size=128,
-                                     num_hidden_layers=4,
-                                     num_attention_heads=4,
-                                     intermediate_size=256)
+    config = transformers.BertConfig(
+        vocab_size=100, hidden_size=128, num_hidden_layers=4, num_attention_heads=4, intermediate_size=256
+    )
 
     def data_gen():
         input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGHT), dtype=torch.int64)
@@ -36,5 +34,5 @@ def test_single_sentence_bert():
         split_model_and_compare_output(model, data_gen)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_single_sentence_bert()

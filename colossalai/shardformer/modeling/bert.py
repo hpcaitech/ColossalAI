@@ -1,6 +1,6 @@
 import math
 import warnings
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
@@ -34,10 +34,10 @@ from colossalai.shardformer.layer._operation import gather_forward_split_backwar
 
 
 class BertPipelineForwards:
-    '''
+    """
     This class serves as a micro library for forward function substitution of Bert models
     under pipeline setting.
-    '''
+    """
 
     @staticmethod
     def bert_model_forward(
@@ -56,36 +56,37 @@ class BertPipelineForwards:
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         stage_manager: Optional[PipelineStageManager] = None,
-        hidden_states: Optional[torch.FloatTensor] = None,    # this is from the previous stage
+        hidden_states: Optional[torch.FloatTensor] = None,  # this is from the previous stage
         stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
     ):
         # TODO(jianghai): add explaination of the output here.
         r"""
-            encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
-                Sequence of hidden-states at the output of the last layer of the encoder. Used in the cross-attention if
-                the model is configured as a decoder.
-            encoder_attention_mask (`torch.FloatTensor` of shape `(batch_size, sequence_length)`, *optional*):
-                Mask to avoid performing attention on the padding token indices of the encoder input. This mask is used in
-                the cross-attention if the model is configured as a decoder. Mask values selected in `[0, 1]`:
+        encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
+            Sequence of hidden-states at the output of the last layer of the encoder. Used in the cross-attention if
+            the model is configured as a decoder.
+        encoder_attention_mask (`torch.FloatTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Mask to avoid performing attention on the padding token indices of the encoder input. This mask is used in
+            the cross-attention if the model is configured as a decoder. Mask values selected in `[0, 1]`:
 
-                - 1 for tokens that are **not masked**,
-                - 0 for tokens that are **masked**.
-            past_key_values (`tuple(tuple(torch.FloatTensor))` of length `config.n_layers` with each tuple having 4 tensors of shape `(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`):
-                Contains precomputed key and value hidden states of the attention blocks. Can be used to speed up decoding.
+            - 1 for tokens that are **not masked**,
+            - 0 for tokens that are **masked**.
+        past_key_values (`tuple(tuple(torch.FloatTensor))` of length `config.n_layers` with each tuple having 4 tensors of shape `(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`):
+            Contains precomputed key and value hidden states of the attention blocks. Can be used to speed up decoding.
 
-                If `past_key_values` are used, the user can optionally input only the last `decoder_input_ids` (those that
-                don't have their past key value states given to this model) of shape `(batch_size, 1)` instead of all
-                `decoder_input_ids` of shape `(batch_size, sequence_length)`.
-            use_cache (`bool`, *optional*):
-                If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding (see
-                `past_key_values`).
-            """
+            If `past_key_values` are used, the user can optionally input only the last `decoder_input_ids` (those that
+            don't have their past key value states given to this model) of shape `(batch_size, 1)` instead of all
+            `decoder_input_ids` of shape `(batch_size, sequence_length)`.
+        use_cache (`bool`, *optional*):
+            If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding (see
+            `past_key_values`).
+        """
         logger = logging.get_logger(__name__)
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (output_hidden_states
-                                if output_hidden_states is not None else self.config.output_hidden_states)
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if self.config.is_decoder:
@@ -118,13 +119,13 @@ class BertPipelineForwards:
 
         # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
         if use_cache:
-            logger.warning_once('use_cache=True is not supported for pipeline models at the moment.')
+            logger.warning_once("use_cache=True is not supported for pipeline models at the moment.")
             use_cache = False
 
         # past_key_values_length
@@ -173,7 +174,8 @@ class BertPipelineForwards:
         if self.encoder.gradient_checkpointing and self.encoder.training:
             if use_cache:
                 logger.warning_once(
-                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...")
+                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+                )
                 use_cache = False
         next_decoder_cache = () if use_cache else None
 
@@ -184,12 +186,13 @@ class BertPipelineForwards:
         # split the input tensor along sequence dimension
         # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
         if shard_config is not None and shard_config.enable_sequence_parallelism:
-            hidden_states = split_forward_gather_backward(hidden_states,
-                                                          dim=1,
-                                                          process_group=shard_config.tensor_parallel_process_group)
+            hidden_states = split_forward_gather_backward(
+                hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
+            )
             if encoder_hidden_states is not None:
                 encoder_hidden_states = split_forward_gather_backward(
-                    encoder_hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group)
+                    encoder_hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
+                )
 
         for idx, encoder_layer in enumerate(self.encoder.layer[start_idx:end_idx], start=start_idx):
             if stage_manager.is_first_stage() and idx == 0:
@@ -204,7 +207,6 @@ class BertPipelineForwards:
             if self.encoder.gradient_checkpointing and self.encoder.training:
 
                 def create_custom_forward(module):
-
                     def custom_forward(*inputs):
                         return module(*inputs, past_key_value, output_attentions)
 
@@ -234,14 +236,13 @@ class BertPipelineForwards:
             if output_attentions:
                 all_self_attentions = all_self_attentions + (layer_outputs[1],)
                 if self.config.add_cross_attention:
-                    all_cross_attentions = all_cross_attentions + \
-                        (layer_outputs[2],)
+                    all_cross_attentions = all_cross_attentions + (layer_outputs[2],)
 
         # When sequence parallelism done, gather the output tensor in forward and split it in backward
         if shard_config is not None and shard_config.enable_sequence_parallelism:
-            hidden_states = gather_forward_split_backward(hidden_states,
-                                                          dim=1,
-                                                          process_group=shard_config.tensor_parallel_process_group)
+            hidden_states = gather_forward_split_backward(
+                hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
+            )
 
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
@@ -268,7 +269,7 @@ class BertPipelineForwards:
         else:
             # intermediate stage always return dict
             return {
-                'hidden_states': hidden_states,
+                "hidden_states": hidden_states,
             }
 
     @staticmethod
@@ -295,10 +296,10 @@ class BertPipelineForwards:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         # TODO(jianghai) left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
         outputs = BertPipelineForwards.bert_model_forward(
@@ -317,10 +318,6 @@ class BertPipelineForwards:
             stage_index=stage_index,
             shard_config=shard_config,
         )
-        past_key_values = None
-        all_hidden_states = None
-        all_self_attentions = None
-        all_cross_attentions = None
 
         if stage_manager.is_last_stage():
             sequence_output, pooled_output = outputs[:2]
@@ -345,11 +342,11 @@ class BertPipelineForwards:
                 attentions=outputs.attentions,
             )
         else:
-            hidden_states = outputs.get('hidden_states')
+            hidden_states = outputs.get("hidden_states")
 
             # intermediate stage always return dict
             return {
-                'hidden_states': hidden_states,
+                "hidden_states": hidden_states,
             }
 
     @staticmethod
@@ -375,39 +372,39 @@ class BertPipelineForwards:
         shard_config: ShardConfig = None,
     ):
         r"""
-            encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
-                Sequence of hidden-states at the output of the last layer of the encoder. Used in the cross-attention if
-                the model is configured as a decoder.
-            encoder_attention_mask (`torch.FloatTensor` of shape `(batch_size, sequence_length)`, *optional*):
-                Mask to avoid performing attention on the padding token indices of the encoder input. This mask is used in
-                the cross-attention if the model is configured as a decoder. Mask values selected in `[0, 1]`:
+        encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
+            Sequence of hidden-states at the output of the last layer of the encoder. Used in the cross-attention if
+            the model is configured as a decoder.
+        encoder_attention_mask (`torch.FloatTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Mask to avoid performing attention on the padding token indices of the encoder input. This mask is used in
+            the cross-attention if the model is configured as a decoder. Mask values selected in `[0, 1]`:
 
-                - 1 for tokens that are **not masked**,
-                - 0 for tokens that are **masked**.
-            labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-                Labels for computing the left-to-right language modeling loss (next word prediction). Indices should be in
-                `[-100, 0, ..., config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are
-                ignored (masked), the loss is only computed for the tokens with labels n `[0, ..., config.vocab_size]`
-            past_key_values (`tuple(tuple(torch.FloatTensor))` of length `config.n_layers` with each tuple having 4 tensors of shape `(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`):
-                Contains precomputed key and value hidden states of the attention blocks. Can be used to speed up decoding.
+            - 1 for tokens that are **not masked**,
+            - 0 for tokens that are **masked**.
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the left-to-right language modeling loss (next word prediction). Indices should be in
+            `[-100, 0, ..., config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are
+            ignored (masked), the loss is only computed for the tokens with labels n `[0, ..., config.vocab_size]`
+        past_key_values (`tuple(tuple(torch.FloatTensor))` of length `config.n_layers` with each tuple having 4 tensors of shape `(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`):
+            Contains precomputed key and value hidden states of the attention blocks. Can be used to speed up decoding.
 
-                If `past_key_values` are used, the user can optionally input only the last `decoder_input_ids` (those that
-                don't have their past key value states given to this model) of shape `(batch_size, 1)` instead of all
-                `decoder_input_ids` of shape `(batch_size, sequence_length)`.
-            use_cache (`bool`, *optional*):
-                If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding (see
-                `past_key_values`).
-            """
+            If `past_key_values` are used, the user can optionally input only the last `decoder_input_ids` (those that
+            don't have their past key value states given to this model) of shape `(batch_size, 1)` instead of all
+            `decoder_input_ids` of shape `(batch_size, sequence_length)`.
+        use_cache (`bool`, *optional*):
+            If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding (see
+            `past_key_values`).
+        """
         logger = logging.get_logger(__name__)
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if labels is not None:
             use_cache = False
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
         outputs = BertPipelineForwards.bert_model_forward(
@@ -428,11 +425,9 @@ class BertPipelineForwards:
             stage_manager=stage_manager,
             hidden_states=hidden_states if hidden_states is not None else None,
             stage_index=stage_index,
-            shard_config=shard_config)
+            shard_config=shard_config,
+        )
         past_key_values = None
-        all_hidden_states = None
-        all_self_attentions = None
-        all_cross_attentions = None
 
         if stage_manager.is_last_stage():
             sequence_output = outputs[0]
@@ -459,9 +454,9 @@ class BertPipelineForwards:
                 cross_attentions=outputs.cross_attentions,
             )
         else:
-            hidden_states = outputs.get('hidden_states')
+            hidden_states = outputs.get("hidden_states")
             # intermediate stage always return dict
-            return {'hidden_states': hidden_states}
+            return {"hidden_states": hidden_states}
 
     @staticmethod
     def bert_for_masked_lm_forward(
@@ -484,20 +479,20 @@ class BertPipelineForwards:
         shard_config: ShardConfig = None,
     ):
         r"""
-            labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-                Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
-                config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored (masked), the
-                loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
-            """
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
+            config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored (masked), the
+            loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
+        """
         logger = logging.get_logger(__name__)
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
         outputs = BertPipelineForwards.bert_model_forward(
@@ -525,7 +520,7 @@ class BertPipelineForwards:
 
             masked_lm_loss = None
             if labels is not None:
-                loss_fct = CrossEntropyLoss()    # -100 index = padding token
+                loss_fct = CrossEntropyLoss()  # -100 index = padding token
                 masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
 
             if not return_dict:
@@ -539,8 +534,8 @@ class BertPipelineForwards:
                 attentions=outputs.attentions,
             )
         else:
-            hidden_states = outputs.get('hidden_states')
-            return {'hidden_states': hidden_states}
+            hidden_states = outputs.get("hidden_states")
+            return {"hidden_states": hidden_states}
 
     @staticmethod
     def bert_for_next_sentence_prediction_forward(
@@ -563,33 +558,33 @@ class BertPipelineForwards:
     ):
         # -> Union[Tuple[torch.Tensor], NextSentencePredictorOutput]:
         r"""
-            labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
-                Labels for computing the next sequence prediction (classification) loss. Input should be a sequence pair
-                (see `input_ids` docstring). Indices should be in `[0, 1]`:
+        labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for computing the next sequence prediction (classification) loss. Input should be a sequence pair
+            (see `input_ids` docstring). Indices should be in `[0, 1]`:
 
-                - 0 indicates sequence B is a continuation of sequence A,
-                - 1 indicates sequence B is a random sequence.
+            - 0 indicates sequence B is a continuation of sequence A,
+            - 1 indicates sequence B is a random sequence.
 
-            Returns:
+        Returns:
 
-            Example:
+        Example:
 
-            ```python
-            >>> from transformers import AutoTokenizer, BertForNextSentencePrediction
-            >>> import torch
+        ```python
+        >>> from transformers import AutoTokenizer, BertForNextSentencePrediction
+        >>> import torch
 
-            >>> tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-            >>> model = BertForNextSentencePrediction.from_pretrained("bert-base-uncased")
+        >>> tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+        >>> model = BertForNextSentencePrediction.from_pretrained("bert-base-uncased")
 
-            >>> prompt = "In Italy, pizza served in formal settings, such as at a restaurant, is presented unsliced."
-            >>> next_sentence = "The sky is blue due to the shorter wavelength of blue light."
-            >>> encoding = tokenizer(prompt, next_sentence, return_tensors="pt")
+        >>> prompt = "In Italy, pizza served in formal settings, such as at a restaurant, is presented unsliced."
+        >>> next_sentence = "The sky is blue due to the shorter wavelength of blue light."
+        >>> encoding = tokenizer(prompt, next_sentence, return_tensors="pt")
 
-            >>> outputs = model(**encoding, labels=torch.LongTensor([1]))
-            >>> logits = outputs.logits
-            >>> assert logits[0, 0] < logits[0, 1]  # next sentence was random
-            ```
-            """
+        >>> outputs = model(**encoding, labels=torch.LongTensor([1]))
+        >>> logits = outputs.logits
+        >>> assert logits[0, 0] < logits[0, 1]  # next sentence was random
+        ```
+        """
         logger = logging.get_logger(__name__)
 
         if "next_sentence_label" in kwargs:
@@ -603,26 +598,28 @@ class BertPipelineForwards:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
-        outputs = BertPipelineForwards.bert_model_forward(self.bert,
-                                                          input_ids,
-                                                          attention_mask=attention_mask,
-                                                          token_type_ids=token_type_ids,
-                                                          position_ids=position_ids,
-                                                          head_mask=head_mask,
-                                                          inputs_embeds=inputs_embeds,
-                                                          output_attentions=output_attentions,
-                                                          output_hidden_states=output_hidden_states,
-                                                          return_dict=return_dict,
-                                                          hidden_states=hidden_states,
-                                                          stage_manager=stage_manager,
-                                                          stage_index=stage_index,
-                                                          shard_config=shard_config)
+        outputs = BertPipelineForwards.bert_model_forward(
+            self.bert,
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            hidden_states=hidden_states,
+            stage_manager=stage_manager,
+            stage_index=stage_index,
+            shard_config=shard_config,
+        )
 
         if stage_manager.is_last_stage():
             pooled_output = outputs[1]
@@ -644,9 +641,9 @@ class BertPipelineForwards:
                 attentions=outputs.attentions,
             )
         else:
-            hidden_states = outputs.get('hidden_states')
+            hidden_states = outputs.get("hidden_states")
             # intermediate stage always return dict
-            return {'hidden_states': hidden_states}
+            return {"hidden_states": hidden_states}
 
     @staticmethod
     def bert_for_sequence_classification_forward(
@@ -677,26 +674,28 @@ class BertPipelineForwards:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
-        outputs = BertPipelineForwards.bert_model_forward(self.bert,
-                                                          input_ids,
-                                                          attention_mask=attention_mask,
-                                                          token_type_ids=token_type_ids,
-                                                          position_ids=position_ids,
-                                                          head_mask=head_mask,
-                                                          inputs_embeds=inputs_embeds,
-                                                          output_attentions=output_attentions,
-                                                          output_hidden_states=output_hidden_states,
-                                                          return_dict=return_dict,
-                                                          hidden_states=hidden_states,
-                                                          stage_manager=stage_manager,
-                                                          stage_index=stage_index,
-                                                          shard_config=shard_config)
+        outputs = BertPipelineForwards.bert_model_forward(
+            self.bert,
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            hidden_states=hidden_states,
+            stage_manager=stage_manager,
+            stage_index=stage_index,
+            shard_config=shard_config,
+        )
 
         if stage_manager.is_last_stage():
             pooled_output = outputs[1]
@@ -737,8 +736,8 @@ class BertPipelineForwards:
                 attentions=outputs.attentions,
             )
         else:
-            hidden_states = outputs.get('hidden_states')
-            return {'hidden_states': hidden_states}
+            hidden_states = outputs.get("hidden_states")
+            return {"hidden_states": hidden_states}
 
     @staticmethod
     def bert_for_token_classification_forward(
@@ -767,26 +766,28 @@ class BertPipelineForwards:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
-        outputs = BertPipelineForwards.bert_model_forward(self.bert,
-                                                          input_ids,
-                                                          attention_mask=attention_mask,
-                                                          token_type_ids=token_type_ids,
-                                                          position_ids=position_ids,
-                                                          head_mask=head_mask,
-                                                          inputs_embeds=inputs_embeds,
-                                                          output_attentions=output_attentions,
-                                                          output_hidden_states=output_hidden_states,
-                                                          return_dict=return_dict,
-                                                          hidden_states=hidden_states,
-                                                          stage_manager=stage_manager,
-                                                          stage_index=stage_index,
-                                                          shard_config=shard_config)
+        outputs = BertPipelineForwards.bert_model_forward(
+            self.bert,
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            hidden_states=hidden_states,
+            stage_manager=stage_manager,
+            stage_index=stage_index,
+            shard_config=shard_config,
+        )
 
         if stage_manager.is_last_stage():
             sequence_output = outputs[0]
@@ -810,8 +811,8 @@ class BertPipelineForwards:
                 attentions=outputs.attentions,
             )
         else:
-            hidden_states = outputs.get('hidden_states')
-            return {'hidden_states': hidden_states}
+            hidden_states = outputs.get("hidden_states")
+            return {"hidden_states": hidden_states}
 
     @staticmethod
     def bert_for_multiple_choice_forward(
@@ -842,10 +843,10 @@ class BertPipelineForwards:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
         # in our pipeline design,input ids are copied for every stage and shouldn't be none
@@ -857,8 +858,11 @@ class BertPipelineForwards:
         attention_mask = attention_mask.view(-1, attention_mask.size(-1)) if attention_mask is not None else None
         token_type_ids = token_type_ids.view(-1, token_type_ids.size(-1)) if token_type_ids is not None else None
         position_ids = position_ids.view(-1, position_ids.size(-1)) if position_ids is not None else None
-        inputs_embeds = (inputs_embeds.view(-1, inputs_embeds.size(-2), inputs_embeds.size(-1))
-                         if inputs_embeds is not None else None)
+        inputs_embeds = (
+            inputs_embeds.view(-1, inputs_embeds.size(-2), inputs_embeds.size(-1))
+            if inputs_embeds is not None
+            else None
+        )
 
         outputs = BertPipelineForwards.bert_model_forward(
             self.bert,
@@ -898,8 +902,8 @@ class BertPipelineForwards:
                 attentions=outputs.attentions,
             )
         else:
-            hidden_states = outputs.get('hidden_states')
-            return {'hidden_states': hidden_states}
+            hidden_states = outputs.get("hidden_states")
+            return {"hidden_states": hidden_states}
 
     @staticmethod
     def bert_for_question_answering_forward(
@@ -936,26 +940,28 @@ class BertPipelineForwards:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if output_attentions:
-            logger.warning_once('output_attentions=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
         if output_hidden_states:
-            logger.warning_once('output_hidden_states=True is not supported for pipeline models at the moment.')
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
-        outputs = BertPipelineForwards.bert_model_forward(self.bert,
-                                                          input_ids,
-                                                          attention_mask=attention_mask,
-                                                          token_type_ids=token_type_ids,
-                                                          position_ids=position_ids,
-                                                          head_mask=head_mask,
-                                                          inputs_embeds=inputs_embeds,
-                                                          output_attentions=output_attentions,
-                                                          output_hidden_states=output_hidden_states,
-                                                          return_dict=return_dict,
-                                                          hidden_states=hidden_states,
-                                                          stage_manager=stage_manager,
-                                                          stage_index=stage_index,
-                                                          shard_config=shard_config)
+        outputs = BertPipelineForwards.bert_model_forward(
+            self.bert,
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            hidden_states=hidden_states,
+            stage_manager=stage_manager,
+            stage_index=stage_index,
+            shard_config=shard_config,
+        )
         if stage_manager.is_last_stage():
             sequence_output = outputs[0]
 
@@ -993,12 +999,11 @@ class BertPipelineForwards:
                 attentions=outputs.attentions,
             )
         else:
-            hidden_states = outputs.get('hidden_states')
-            return {'hidden_states': hidden_states}
+            hidden_states = outputs.get("hidden_states")
+            return {"hidden_states": hidden_states}
 
 
 def get_bert_flash_attention_forward():
-
     try:
         from xformers.ops import memory_efficient_attention as me_attention
     except:
@@ -1064,7 +1069,7 @@ def get_bert_flash_attention_forward():
             distance = position_ids_l - position_ids_r
 
             positional_embedding = self.distance_embedding(distance + self.max_position_embeddings - 1)
-            positional_embedding = positional_embedding.to(dtype=query_layer.dtype)    # fp16 compatibility
+            positional_embedding = positional_embedding.to(dtype=query_layer.dtype)  # fp16 compatibility
 
             if self.position_embedding_type == "relative_key":
                 relative_position_scores = torch.einsum("bhld,lrd->bhlr", query_layer, positional_embedding)
@@ -1084,19 +1089,17 @@ def get_bert_flash_attention_forward():
         if final_attention_mask is not None:
             batch_size, src_len = query_layer.size()[0], query_layer.size()[2]
             tgt_len = key_layer.size()[2]
-            final_attention_mask = final_attention_mask.expand(batch_size, self.num_attention_heads, src_len,
-                                                               tgt_len).contiguous()
+            final_attention_mask = final_attention_mask.expand(
+                batch_size, self.num_attention_heads, src_len, tgt_len
+            ).contiguous()
 
         query_layer = query_layer.permute(0, 2, 1, 3).contiguous()
         key_layer = key_layer.permute(0, 2, 1, 3).contiguous()
         value_layer = value_layer.permute(0, 2, 1, 3).contiguous()
 
-        context_layer = me_attention(query_layer,
-                                     key_layer,
-                                     value_layer,
-                                     attn_bias=final_attention_mask,
-                                     p=self.dropout.p,
-                                     scale=scale)
+        context_layer = me_attention(
+            query_layer, key_layer, value_layer, attn_bias=final_attention_mask, p=self.dropout.p, scale=scale
+        )
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(new_context_layer_shape)
 
@@ -1110,7 +1113,6 @@ def get_bert_flash_attention_forward():
 
 
 def get_jit_fused_bert_self_output_forward():
-
     from transformers.models.bert.modeling_bert import BertSelfOutput
 
     def forward(self: BertSelfOutput, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
@@ -1123,7 +1125,6 @@ def get_jit_fused_bert_self_output_forward():
 
 
 def get_jit_fused_bert_output_forward():
-
     from transformers.models.bert.modeling_bert import BertOutput
 
     def forward(self: BertOutput, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
@@ -1136,7 +1137,6 @@ def get_jit_fused_bert_output_forward():
 
 
 def bert_sequence_parallel_forward_fn(shard_config: ShardConfig):
-
     def forward(
         self,
         input_ids: Optional[torch.Tensor] = None,
@@ -1174,8 +1174,9 @@ def bert_sequence_parallel_forward_fn(shard_config: ShardConfig):
             `past_key_values`).
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (output_hidden_states
-                                if output_hidden_states is not None else self.config.output_hidden_states)
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if self.config.is_decoder:
@@ -1241,12 +1242,13 @@ def bert_sequence_parallel_forward_fn(shard_config: ShardConfig):
 
         # split the input tensor along sequence dimension
         # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
-        embedding_output = split_forward_gather_backward(embedding_output,
-                                                         dim=1,
-                                                         process_group=shard_config.tensor_parallel_process_group)
+        embedding_output = split_forward_gather_backward(
+            embedding_output, dim=1, process_group=shard_config.tensor_parallel_process_group
+        )
         if encoder_hidden_states is not None:
             encoder_hidden_states = split_forward_gather_backward(
-                encoder_hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group)
+                encoder_hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
+            )
 
         encoder_outputs = self.encoder(
             embedding_output,
@@ -1264,9 +1266,9 @@ def bert_sequence_parallel_forward_fn(shard_config: ShardConfig):
         sequence_output = encoder_outputs[0]
 
         # When sequence parallelism done, gather the output tensor in forward and split it in backward
-        sequence_output = gather_forward_split_backward(sequence_output,
-                                                        dim=1,
-                                                        process_group=shard_config.tensor_parallel_process_group)
+        sequence_output = gather_forward_split_backward(
+            sequence_output, dim=1, process_group=shard_config.tensor_parallel_process_group
+        )
 
         pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
 

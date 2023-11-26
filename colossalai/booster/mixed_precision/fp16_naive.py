@@ -15,12 +15,14 @@ class FP16NaiveMixedPrecision(MixedPrecision):
     verbose(bool): if set to `True`, will print debug info.
     """
 
-    def __init__(self,
-                 log_num_zeros_in_grad: bool,
-                 initial_scale: int,
-                 growth_factor: int,
-                 backoff_factor: float,
-                 hysteresis: int,
-                 max_scale: int,
-                 verbose: bool = None) -> None:
+    def __init__(
+        self,
+        log_num_zeros_in_grad: bool,
+        initial_scale: int,
+        growth_factor: int,
+        backoff_factor: float,
+        hysteresis: int,
+        max_scale: int,
+        verbose: bool = None,
+    ) -> None:
         pass

@@ -23,31 +23,40 @@ tm_models = [
 ]
 
 tmm_models = [
-    tmm.resnest.resnest50d, tmm.beit.beit_base_patch16_224, tmm.cait.cait_s24_224, tmm.efficientnet.efficientnetv2_m,
-    tmm.resmlp_12_224, tmm.vision_transformer.vit_base_patch16_224, tmm.deit_base_distilled_patch16_224,
-    tmm.convnext.convnext_base, tmm.vgg.vgg11, tmm.dpn.dpn68, tmm.densenet.densenet121, tmm.rexnet.rexnet_100,
-    tmm.swin_transformer.swin_base_patch4_window7_224
+    tmm.resnest.resnest50d,
+    tmm.beit.beit_base_patch16_224,
+    tmm.cait.cait_s24_224,
+    tmm.efficientnet.efficientnetv2_m,
+    tmm.resmlp_12_224,
+    tmm.vision_transformer.vit_base_patch16_224,
+    tmm.deit_base_distilled_patch16_224,
+    tmm.convnext.convnext_base,
+    tmm.vgg.vgg11,
+    tmm.dpn.dpn68,
+    tmm.densenet.densenet121,
+    tmm.rexnet.rexnet_100,
+    tmm.swin_transformer.swin_base_patch4_window7_224,
 ]
 
 
-@pytest.mark.skipif(not is_compatible_with_meta(), reason='torch version is lower than 1.12.0')
+@pytest.mark.skipif(not is_compatible_with_meta(), reason="torch version is lower than 1.12.0")
 @clear_cache_before_run()
 def test_torchvision_models():
     for m in tm_models:
         model = m()
-        data = torch.rand(100000, 3, 224, 224, device='meta')
-        model(MetaTensor(data, fake_device=torch.device('cpu'))).sum().backward()
+        data = torch.rand(100000, 3, 224, 224, device="meta")
+        model(MetaTensor(data, fake_device=torch.device("cpu"))).sum().backward()
 
 
-@pytest.mark.skipif(not is_compatible_with_meta(), reason='torch version is lower than 1.12.0')
+@pytest.mark.skipif(not is_compatible_with_meta(), reason="torch version is lower than 1.12.0")
 @clear_cache_before_run()
 def test_timm_models():
     for m in tmm_models:
         model = m()
-        data = torch.rand(100000, 3, 224, 224, device='meta')
-        model(MetaTensor(data, fake_device=torch.device('cpu'))).sum().backward()
+        data = torch.rand(100000, 3, 224, 224, device="meta")
+        model(MetaTensor(data, fake_device=torch.device("cpu"))).sum().backward()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_torchvision_models()
     test_timm_models()

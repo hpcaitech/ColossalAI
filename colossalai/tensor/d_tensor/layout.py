@@ -25,15 +25,16 @@ class Layout:
         self._sanity_check()
 
     def __hash__(self) -> int:
-        return hash(f'{self.sharding_spec}')
+        return hash(f"{self.sharding_spec}")
 
     def get_sharded_shape_per_device(self):
         sharded_shape = list(self.global_shape)
         for dim, shard_list in self.sharding_spec.dim_partition_dict.items():
             mesh_list = [self.device_mesh.shape[mesh_dim] for mesh_dim in shard_list]
             shard_partitions = reduce(operator.mul, mesh_list, 1)
-            assert sharded_shape[
-                dim] % shard_partitions == 0, f'Cannot shard dimension {dim} into {shard_partitions} partitions.'
+            assert (
+                sharded_shape[dim] % shard_partitions == 0
+            ), f"Cannot shard dimension {dim} into {shard_partitions} partitions."
             sharded_shape[dim] //= shard_partitions
         return torch.Size(sharded_shape)
 
@@ -49,7 +50,8 @@ class Layout:
                         dim_check_list.remove(element)
                     else:
                         raise DuplicatedShardingDimensionError(
-                            f"find an invalid sharding axis {element} in dim_partition_dict in tensor dimension {dim}.")
+                            f"find an invalid sharding axis {element} in dim_partition_dict in tensor dimension {dim}."
+                        )
 
         # make sure that the sharding for a dimension is divisible by the number of devices
         for dim, shard_list in sharding_spec.dim_partition_dict.items():
@@ -61,5 +63,5 @@ class Layout:
 
             if tensor_dim_size % num_devices != 0:
                 raise ShardingNotDivisibleError(
-                    f'The size of dimension at index {dim} is {tensor_dim_size}, it cannot be sharded over {num_devices} devices.'
+                    f"The size of dimension at index {dim} is {tensor_dim_size}, it cannot be sharded over {num_devices} devices."
                 )

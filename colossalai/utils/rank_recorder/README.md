@@ -1,7 +1,7 @@
 # Rank Recorder
 This is a useful tool to get the records of certain functions in each rank. The records of each rank will dump into a json file after the end of multiple process program. You can parse and visualize the json file easily.
 
-Before using the tool, you should ensure dist.is_initialized() return true before exit of program. 
+Before using the tool, you should ensure dist.is_initialized() return true before exit of program.
 
 ## Usage
 
@@ -58,10 +58,10 @@ def worker(rank):
 
     with recorder("calc_1(x100)", rank) as r:
         calc(100, 100)
-    
+
     with recorder("calc_2(x400)", rank) as r:
         calc(400, 400)
-    
+
     with recorder("calc_2(x200)", rank) as r:
         calc(200, 200)
 

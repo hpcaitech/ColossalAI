@@ -3,9 +3,22 @@ import operator
 import torch
 
 __all__ = [
-    'ELEMENTWISE_MODULE_OP', 'ELEMENTWISE_FUNC_OP', 'RESHAPE_FUNC_OP', 'CONV_MODULE_OP', 'CONV_FUNC_OP',
-    'LINEAR_MODULE_OP', 'LINEAR_FUNC_OP', 'BATCHNORM_MODULE_OP', 'POOL_MODULE_OP', 'NON_PARAM_FUNC_OP', 'BCAST_FUNC_OP',
-    'EMBEDDING_MODULE_OP', 'LAYERNORM_MODULE_OP', 'ELEMENTWISE_METHOD_OP', 'RESHAPE_METHOD_OP', 'INFINITY_COST'
+    "ELEMENTWISE_MODULE_OP",
+    "ELEMENTWISE_FUNC_OP",
+    "RESHAPE_FUNC_OP",
+    "CONV_MODULE_OP",
+    "CONV_FUNC_OP",
+    "LINEAR_MODULE_OP",
+    "LINEAR_FUNC_OP",
+    "BATCHNORM_MODULE_OP",
+    "POOL_MODULE_OP",
+    "NON_PARAM_FUNC_OP",
+    "BCAST_FUNC_OP",
+    "EMBEDDING_MODULE_OP",
+    "LAYERNORM_MODULE_OP",
+    "ELEMENTWISE_METHOD_OP",
+    "RESHAPE_METHOD_OP",
+    "INFINITY_COST",
 ]
 
 ELEMENTWISE_MODULE_OP = [torch.nn.Dropout, torch.nn.ReLU]
@@ -18,13 +31,13 @@ ELEMENTWISE_FUNC_OP = [
     torch.nn.functional.relu,
     torch.nn.functional.dropout,
     # softmax should not be here
-    torch.nn.functional.softmax
+    torch.nn.functional.softmax,
 ]
 ELEMENTWISE_METHOD_OP = [
     torch.Tensor.to,
     torch.Tensor.type,
     # TODO: contiguous maybe need some extra processes.
-    torch.Tensor.contiguous
+    torch.Tensor.contiguous,
 ]
 RESHAPE_FUNC_OP = [
     torch.flatten,
@@ -42,15 +55,36 @@ RESHAPE_METHOD_OP = [
     torch.Tensor.transpose,
 ]
 BCAST_FUNC_OP = [
-    torch.add, torch.sub, torch.mul, torch.div, torch.floor_divide, torch.true_divide, operator.add, operator.sub,
-    operator.mul, operator.floordiv, operator.truediv, torch.matmul, operator.pow, torch.pow
+    torch.add,
+    torch.sub,
+    torch.mul,
+    torch.div,
+    torch.floor_divide,
+    torch.true_divide,
+    operator.add,
+    operator.sub,
+    operator.mul,
+    operator.floordiv,
+    operator.truediv,
+    torch.matmul,
+    operator.pow,
+    torch.pow,
 ]
 CONV_MODULE_OP = [
-    torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d, torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d,
-    torch.nn.ConvTranspose3d
+    torch.nn.Conv1d,
+    torch.nn.Conv2d,
+    torch.nn.Conv3d,
+    torch.nn.ConvTranspose1d,
+    torch.nn.ConvTranspose2d,
+    torch.nn.ConvTranspose3d,
 ]
 CONV_FUNC_OP = [
-    torch.conv1d, torch.conv2d, torch.conv3d, torch.conv_transpose1d, torch.conv_transpose2d, torch.conv_transpose3d
+    torch.conv1d,
+    torch.conv2d,
+    torch.conv3d,
+    torch.conv_transpose1d,
+    torch.conv_transpose2d,
+    torch.conv_transpose3d,
 ]
 EMBEDDING_MODULE_OP = [torch.nn.modules.sparse.Embedding]
 LINEAR_MODULE_OP = [torch.nn.Linear]
@@ -85,7 +119,7 @@ NON_PARAM_FUNC_OP = [
     operator.floordiv,
     operator.truediv,
     # softmax should not be here
-    torch.nn.functional.softmax
+    torch.nn.functional.softmax,
 ]
 
 INFINITY_COST = 1e13

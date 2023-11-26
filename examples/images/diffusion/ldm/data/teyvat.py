@@ -1,15 +1,16 @@
-from typing import Dict
-import numpy as np
-from omegaconf import DictConfig, ListConfig
-import torch
-from torch.utils.data import Dataset
-from pathlib import Path
 import json
-from PIL import Image
-from torchvision import transforms
+from pathlib import Path
+from typing import Dict
+
+import torch
+from datasets import load_dataset
 from einops import rearrange
 from ldm.util import instantiate_from_config
-from datasets import load_dataset
+from omegaconf import DictConfig, ListConfig
+from PIL import Image
+from torch.utils.data import Dataset
+from torchvision import transforms
+
 
 def make_multi_folder_data(paths, caption_files=None, **kwargs):
     """Make a concat dataset from multiple folders
@@ -19,10 +20,9 @@ def make_multi_folder_data(paths, caption_files=None, **kwargs):
     """
     list_of_paths = []
     if isinstance(paths, (Dict, DictConfig)):
-        assert caption_files is None, \
-            "Caption files not yet supported for repeats"
+        assert caption_files is None, "Caption files not yet supported for repeats"
         for folder_path, repeats in paths.items():
-            list_of_paths.extend([folder_path]*repeats)
+            list_of_paths.extend([folder_path] * repeats)
         paths = list_of_paths
 
     if caption_files is not None:
@@ -31,8 +31,10 @@ def make_multi_folder_data(paths, caption_files=None, **kwargs):
         datasets = [FolderData(p, **kwargs) for p in paths]
     return torch.utils.data.ConcatDataset(datasets)
 
+
 class FolderData(Dataset):
-    def __init__(self,
+    def __init__(
+        self,
         root_dir,
         caption_file=None,
         image_transforms=[],
@@ -40,7 +42,7 @@ class FolderData(Dataset):
         default_caption="",
         postprocess=None,
         return_paths=False,
-        ) -> None:
+    ) -> None:
         """Create a dataset from a folder of images.
         If you pass in a root directory it will be searched for images
         ending in ext (ext can be a list)
@@ -75,11 +77,11 @@ class FolderData(Dataset):
             self.paths.extend(list(self.root_dir.rglob(f"*.{e}")))
         if isinstance(image_transforms, ListConfig):
             image_transforms = [instantiate_from_config(tt) for tt in image_transforms]
-        image_transforms.extend([transforms.ToTensor(),
-                                 transforms.Lambda(lambda x: rearrange(x * 2. - 1., 'c h w -> h w c'))])
+        image_transforms.extend(
+            [transforms.ToTensor(), transforms.Lambda(lambda x: rearrange(x * 2.0 - 1.0, "c h w -> h w c"))]
+        )
         image_transforms = transforms.Compose(image_transforms)
         self.tform = image_transforms
-
 
     def __len__(self):
         if self.captions is not None:
@@ -94,7 +96,7 @@ class FolderData(Dataset):
             caption = self.captions.get(chosen, None)
             if caption is None:
                 caption = self.default_caption
-            filename = self.root_dir/chosen
+            filename = self.root_dir / chosen
         else:
             filename = self.paths[index]
 
@@ -119,23 +121,26 @@ class FolderData(Dataset):
         im = im.convert("RGB")
         return self.tform(im)
 
+
 def hf_dataset(
-    path = "Fazzie/Teyvat",
+    path="Fazzie/Teyvat",
     image_transforms=[],
     image_column="image",
     text_column="text",
-    image_key='image',
-    caption_key='txt',
-    ):
-    """Make huggingface dataset with appropriate list of transforms applied
-    """
+    image_key="image",
+    caption_key="txt",
+):
+    """Make huggingface dataset with appropriate list of transforms applied"""
     ds = load_dataset(path, name="train")
     ds = ds["train"]
     image_transforms = [instantiate_from_config(tt) for tt in image_transforms]
-    image_transforms.extend([transforms.Resize((256, 256)),
-                            transforms.ToTensor(),
-                            transforms.Lambda(lambda x: rearrange(x * 2. - 1., 'c h w -> h w c'))]
-                        )
+    image_transforms.extend(
+        [
+            transforms.Resize((256, 256)),
+            transforms.ToTensor(),
+            transforms.Lambda(lambda x: rearrange(x * 2.0 - 1.0, "c h w -> h w c")),
+        ]
+    )
     tform = transforms.Compose(image_transforms)
 
     assert image_column in ds.column_names, f"Didn't find column {image_column} in {ds.column_names}"

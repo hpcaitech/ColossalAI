@@ -1,7 +1,7 @@
 from collections import OrderedDict
-from threading import Lock
 from contextlib import contextmanager
-from typing import List, Any, Hashable, Dict
+from threading import Lock
+from typing import Any, Dict, Hashable, List
 
 
 class MissCacheError(Exception):

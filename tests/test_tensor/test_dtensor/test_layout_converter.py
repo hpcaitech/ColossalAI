@@ -20,7 +20,7 @@ mesh_shape = (2, 2)
 
 def check_one_step_transform(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     # [[0, 1],
     #  [2, 3]]
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
@@ -34,10 +34,10 @@ def check_one_step_transform(rank, world_size, port):
 
     rst_dict = layout_converter.all_gather_transform_layouts(layout)
 
-    assert '[R, S1, R]' in [
+    assert "[R, S1, R]" in [
         str(all_gather_layout.sharding_spec.sharding_sequence) for all_gather_layout in rst_dict.keys()
     ]
-    assert '[S0, R, R]' in [
+    assert "[S0, R, R]" in [
         str(all_gather_layout.sharding_spec.sharding_sequence) for all_gather_layout in rst_dict.keys()
     ]
 
@@ -50,13 +50,13 @@ def check_one_step_transform(rank, world_size, port):
 
     rst_dict_all2all = layout_converter.all_to_all_transform_layout(layout_all2all)
 
-    assert '[S01, R, R]' in [
+    assert "[S01, R, R]" in [
         str(all2all_layout.sharding_spec.sharding_sequence) for all2all_layout in rst_dict_all2all.keys()
     ]
-    assert '[R, S1, S0]' in [
+    assert "[R, S1, S0]" in [
         str(all2all_layout.sharding_spec.sharding_sequence) for all2all_layout in rst_dict_all2all.keys()
     ]
-    assert '[S0, R, S1]' in [
+    assert "[S0, R, S1]" in [
         str(all2all_layout.sharding_spec.sharding_sequence) for all2all_layout in rst_dict_all2all.keys()
     ]
 
@@ -69,20 +69,20 @@ def check_one_step_transform(rank, world_size, port):
 
     rst_dict_shard = layout_converter.shard_transform_layout(shard_layout)
 
-    assert '[S01, R, R]' in [
+    assert "[S01, R, R]" in [
         str(shard_layout.sharding_spec.sharding_sequence) for shard_layout in rst_dict_shard.keys()
     ]
-    assert '[S0, S1, R]' in [
+    assert "[S0, S1, R]" in [
         str(shard_layout.sharding_spec.sharding_sequence) for shard_layout in rst_dict_shard.keys()
     ]
-    assert '[S0, R, S1]' in [
+    assert "[S0, R, S1]" in [
         str(shard_layout.sharding_spec.sharding_sequence) for shard_layout in rst_dict_shard.keys()
     ]
 
 
 def check_layout_converting(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     dim_partition_source = {1: [0, 1]}
     dim_partition_target = {0: [0, 1]}
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
@@ -102,8 +102,8 @@ def check_layout_converting(rank, world_size, port):
     transform_path, comm_action_sequence = layout_converter.layout_converting(source_layout, target_layout)
 
     # check transform path
-    transform_path_str = '->'.join([str(layout.sharding_spec.sharding_sequence) for layout in transform_path])
-    assert transform_path_str == '[R, S01, R]->[R, S0, R]->[S0, R, R]->[S01, R, R]'
+    transform_path_str = "->".join([str(layout.sharding_spec.sharding_sequence) for layout in transform_path])
+    assert transform_path_str == "[R, S01, R]->[R, S0, R]->[S0, R, R]->[S01, R, R]"
 
     # check comm action sequence
     # all-gather(S01) -> S0
@@ -123,18 +123,18 @@ def check_layout_converting(rank, world_size, port):
     assert comm_action_sequence[2].logical_process_axis == 1
 
     # checkout chached_spec_pairs_transform_path
-    assert layout_converter.cached_solution[('[R, S01, R]', '[S01, R, R]')][0] == transform_path
-    assert layout_converter.cached_solution[('[R, S01, R]', '[S01, R, R]')][1] == comm_action_sequence
+    assert layout_converter.cached_solution[("[R, S01, R]", "[S01, R, R]")][0] == transform_path
+    assert layout_converter.cached_solution[("[R, S01, R]", "[S01, R, R]")][1] == comm_action_sequence
 
     comm_cost = layout_converter.get_total_comm_cost(source_layout, target_layout)
 
-    assert comm_cost['forward'] == comm_cost['backward']
-    assert math.floor(comm_cost['total']) == math.floor(comm_cost['forward'] + comm_cost['backward'])
+    assert comm_cost["forward"] == comm_cost["backward"]
+    assert math.floor(comm_cost["total"]) == math.floor(comm_cost["forward"] + comm_cost["backward"])
 
 
 def check_layout_converting_apply(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     dim_partition_source = {1: [0, 1]}
     dim_partition_target = {0: [0, 1]}
@@ -173,5 +173,5 @@ def test_layout_converter():
     spawn(check_layout_converting_apply, world_size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_layout_converter()

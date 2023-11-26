@@ -17,21 +17,21 @@ def show_files(path, all_files):
 
 
 def join(input_list, sep=None):
-    return (sep or ' ').join(input_list)
+    return (sep or " ").join(input_list)
 
 
 def main():
-    contents = show_files('examples/', [])
+    contents = show_files("examples/", [])
     all_loc = []
     for file_loc in contents:
-        split_loc = file_loc.split('/')
+        split_loc = file_loc.split("/")
         # must have two sub-folder levels after examples folder, such as examples/images/vit is acceptable, examples/images/README.md is not, examples/requirements.txt is not.
         if len(split_loc) >= 4:
-            re_loc = '/'.join(split_loc[1:3])
+            re_loc = "/".join(split_loc[1:3])
             if re_loc not in all_loc:
                 all_loc.append(re_loc)
     print(all_loc)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

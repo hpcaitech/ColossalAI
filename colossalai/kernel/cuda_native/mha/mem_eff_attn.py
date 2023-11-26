@@ -9,9 +9,10 @@ try:
         LowerTriangularMask,
         LowerTriangularMaskWithTensorBias,
     )
+
     HAS_MEM_EFF_ATTN = True
 except ImportError:
-    warnings.warn('please install xformers from https://github.com/facebookresearch/xformers')
+    warnings.warn("please install xformers from https://github.com/facebookresearch/xformers")
     HAS_MEM_EFF_ATTN = False
 
 if HAS_MEM_EFF_ATTN:
@@ -29,30 +30,30 @@ if HAS_MEM_EFF_ATTN:
     for op in MemoryEfficientAttentionCutlassOp:
         allow_alibi = allow_alibi & (LowerTriangularMaskWithTensorBias in op.SUPPORTED_ATTN_BIAS_TYPES)
 
-    def mem_eff_attention(q: torch.Tensor,
-                          k: torch.Tensor,
-                          v: torch.Tensor,
-                          seq_len_info_q: SeqLenInfo,
-                          seq_len_info_kv: SeqLenInfo,
-                          bias: Optional[torch.Tensor] = None,
-                          dropout_p: float = 0.,
-                          scale: float = None,
-                          causal: bool = False,
-                          padded: bool = False):
-
+    def mem_eff_attention(
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        seq_len_info_q: SeqLenInfo,
+        seq_len_info_kv: SeqLenInfo,
+        bias: Optional[torch.Tensor] = None,
+        dropout_p: float = 0.0,
+        scale: float = None,
+        causal: bool = False,
+        padded: bool = False,
+    ):
         attn_bias = None
-        if padded:    # bert style
+        if padded:  # bert style
             if not causal:
                 attn_bias = BlockDiagonalMask.from_seqlens(seq_len_info_q.seqlens, seq_len_info_kv.seqlens)
             else:
                 attn_bias = BlockDiagonalCausalMask.from_seqlens(seq_len_info_q.seqlens, seq_len_info_kv.seqlens)
-        elif causal:    # gpt style
+        elif causal:  # gpt style
             attn_bias = LowerTriangularMask()
 
-        if bias is not None:    # alibi / relative position embedding
+        if bias is not None:  # alibi / relative position embedding
             assert allow_alibi, "flash attention with bias is not supported in this system."
-            assert causal, \
-                "attention with bias is only supported for causal attention so far."
+            assert causal, "attention with bias is only supported for causal attention so far."
             attn_bias = attn_bias.add_bias(bias)
 
         if padded:

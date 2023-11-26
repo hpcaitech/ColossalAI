@@ -9,7 +9,7 @@ from .reward_model import RewardModel
 
 def get_base_model(model: Union[Actor, Critic, RewardModel]) -> nn.Module:
     """Get the base model of our wrapper classes.
-    For Actor, Critic and RewardModel, return ``model.model``, 
+    For Actor, Critic and RewardModel, return ``model.model``,
     it's usually a ``transformers.PreTrainedModel``.
 
     Args:
@@ -18,9 +18,10 @@ def get_base_model(model: Union[Actor, Critic, RewardModel]) -> nn.Module:
     Returns:
         nn.Module: the base model
     """
-    assert isinstance(model, (Actor, Critic, RewardModel)), \
-        f'Expect Actor, Critic or RewardModel, got {type(model)}, use unwrap_model first.'
+    assert isinstance(
+        model, (Actor, Critic, RewardModel)
+    ), f"Expect Actor, Critic or RewardModel, got {type(model)}, use unwrap_model first."
     return model.model
 
 
-__all__ = ['Actor', 'Critic', 'RewardModel', 'get_base_model']
+__all__ = ["Actor", "Critic", "RewardModel", "get_base_model"]

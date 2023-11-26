@@ -16,11 +16,11 @@ from tests.kit.model_zoo import model_zoo
 
 def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
     try:
-        if init_method == 'lazy':
+        if init_method == "lazy":
             ctx = LazyInitContext()
         else:
             ctx = nullcontext()
-        plugin = HybridParallelPlugin(tp_size=2, pp_size=2, num_microbatches=4, precision='bf16')
+        plugin = HybridParallelPlugin(tp_size=2, pp_size=2, num_microbatches=4, precision="bf16")
         booster = Booster(plugin=plugin)
         with ctx:
             model = model_fn()
@@ -29,7 +29,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
         data = data_gen_fn()
 
         data = {
-            k: v.to('cuda').repeat(4, 1) if torch.is_tensor(v) or 'Tensor' in v.__class__.__name__ else v
+            k: v.to("cuda").repeat(4, 1) if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v
             for k, v in data.items()
         }
 
@@ -50,23 +50,24 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
         return repr(e)
 
 
-@parameterize('init_method', ['none', 'lazy'])
-def check_3d_plugin(init_method: str = 'none', early_stop: bool = True):
+@parameterize("init_method", ["none", "lazy"])
+def check_3d_plugin(init_method: str = "none", early_stop: bool = True):
     """check gemini plugin over model zoo
 
     Args:
         early_stop (bool, optional): Whether to stop when getting the first error. Defaults to True.
     """
     is_support_meta = is_compatible_with_meta()
-    if not is_support_meta and init_method == 'lazy':
+    if not is_support_meta and init_method == "lazy":
         return
 
     passed_models = []
-    failed_info = {}    # (model_name, error) pair
+    failed_info = {}  # (model_name, error) pair
 
     # TODO(ver217): add more models
-    for name, (model_fn, data_gen_fn, output_transform_fn, _,
-               _) in model_zoo.get_sub_registry('transformers_llama_for_casual_lm').items():
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in model_zoo.get_sub_registry(
+        "transformers_llama_for_casual_lm"
+    ).items():
         err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn)
         torch.cuda.empty_cache()
 
@@ -78,15 +79,15 @@ def check_3d_plugin(init_method: str = 'none', early_stop: bool = True):
                 break
 
     if dist.get_rank() == 0:
-        print(f'Init method: {init_method}')
-        print(f'Passed models({len(passed_models)}): {passed_models}\n\n')
-        print(f'Failed models({len(failed_info)}): {list(failed_info.keys())}\n\n')
-    assert len(failed_info) == 0, '\n'.join([f'{k}: {v}' for k, v in failed_info.items()])
+        print(f"Init method: {init_method}")
+        print(f"Passed models({len(passed_models)}): {passed_models}\n\n")
+        print(f"Failed models({len(failed_info)}): {list(failed_info.keys())}\n\n")
+    assert len(failed_info) == 0, "\n".join([f"{k}: {v}" for k, v in failed_info.items()])
 
 
 def run_dist(rank, world_size, port, early_stop: bool = True):
     # init dist env
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
     check_3d_plugin(early_stop=early_stop)
 
 
@@ -95,5 +96,5 @@ def test_gemini_plugin(early_stop: bool = True):
     spawn(run_dist, 4, early_stop=early_stop)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_gemini_plugin(early_stop=False)
