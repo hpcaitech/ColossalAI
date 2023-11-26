@@ -21,6 +21,13 @@ from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDe
 
 
 class BloomPolicy(Policy):
+    def __init__(self) -> None:
+        super().__init__()
+        import transformers
+        version_string = transformers.__version__
+        version_tuple = tuple(map(int, version_string.split('.')[:3]))
+        assert version_tuple <= (4, 33, 0), "The Bloom model should run on a transformers version not greater than 4.33.0."
+
     def config_sanity_check(self):
         pass
 

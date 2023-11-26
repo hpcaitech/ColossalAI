@@ -12,3 +12,7 @@ from .sam import *
 from .t5 import *
 from .vit import *
 from .whisper import *
+try:
+    from .mistral import *
+except ImportError:
+    print("This version of transformers doesn't support mistral.")
