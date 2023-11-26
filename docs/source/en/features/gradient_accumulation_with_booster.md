@@ -1,6 +1,6 @@
 # Gradient Accumulation
 
-Author: [Mingyan Jiang](https://github.com/jiangmingyan)
+Author: [Mingyan Jiang](https://github.com/jiangmingyan), [Baizhou Zhang](https://github.com/Fridge003)
 
 **Prerequisite**
 - [Training Booster](../basics/booster_api.md)
@@ -126,6 +126,7 @@ for idx, (img, label) in enumerate(train_dataloader):
 
 ```
 
+
 ### Step 6. Invoke Training Scripts
 To verify gradient accumulation, we can just check the change of parameter values. When gradient accumulation is set, parameters are only updated in the last step. You can run the script using this command:
 ```shell
@@ -141,5 +142,31 @@ iteration 1, first 10 elements of param: tensor([-0.0208,  0.0189,  0.0234,  0.0
 iteration 2, first 10 elements of param: tensor([-0.0208,  0.0189,  0.0234,  0.0047,  0.0116, -0.0283,  0.0071, -0.0359, -0.0267, -0.0006], device='cuda:0', grad_fn=<SliceBackward0>)
 iteration 3, first 10 elements of param: tensor([-0.0141,  0.0464,  0.0507,  0.0321,  0.0356, -0.0150,  0.0172, -0.0118, 0.0222,  0.0473], device='cuda:0', grad_fn=<SliceBackward0>)
 ```
+
+
+## Gradient Accumulation on GeminiPlugin
+
+Currently the plugins supporting `no_sync()` method include `TorchDDPPlugin` and `LowLevelZeroPlugin` set to stage 1. `GeminiPlugin` doesn't support `no_sync()` method, but it can enable synchronized gradient accumulation in a torch-like way.
+
+To enable gradient accumulation feature, the argument `enable_gradient_accumulation` should be set to `True` when initializing `GeminiPlugin`. Following is the pseudocode snippet of enabling gradient accumulation for `GeminiPlugin`:
+<!--- doc-test-ignore-start -->
+```python
+...
+plugin = GeminiPlugin(..., enable_gradient_accumulation=True)
+booster = Booster(plugin=plugin)
+...
+
+...
+for idx, (input, label) in enumerate(train_dataloader):
+    output = gemini_model(input.cuda())
+    train_loss = criterion(output, label.cuda())
+    train_loss = train_loss / GRADIENT_ACCUMULATION
+    booster.backward(train_loss, gemini_optimizer)
+
+    if idx % (GRADIENT_ACCUMULATION - 1) == 0:
+        gemini_optimizer.step() # zero_grad is automatically done
+...
+```
+<!--- doc-test-ignore-end -->
 
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=1 gradient_accumulation_with_booster.py  -->

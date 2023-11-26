@@ -3,38 +3,34 @@ import torch
 import torch.distributed as dist
 
 import colossalai
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import DummyDataloader, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from colossalai.zero import GeminiDDP
 from colossalai.zero.gemini.chunk import search_chunk_configuration
 from colossalai.zero.gemini.memory_tracer.runtime_mem_tracer import RuntimeMemTracer
-from tests.components_to_test import run_fwd_bwd
-from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.kit.model_zoo import model_zoo, run_fwd_bwd
 
 # run gemini use the runtime memory tracer
 
 
 @parameterize("placement_policy", ["auto"])
 @parameterize("keep_gather", [False])
-@parameterize("model_name", ["repeated_computed_layers", "bert", "albert", "gpt2"])
+@parameterize("model_name", ["transformers_bert_for_sequence_classification"])
 @parameterize("use_grad_checkpoint", [False, True])
 def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_checkpoint: bool = False):
     set_seed(42)
-    get_components_func = non_distributed_component_funcs.get_callable(model_name)
-    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
+    model_builder, data_gen_fn, output_transform_fn, *_ = next(iter(model_zoo.get_sub_registry(model_name).values()))
 
-    model = model_builder(use_grad_checkpoint).cuda()
+    model = model_builder().cuda()
+    if use_grad_checkpoint:
+        model.gradient_checkpointing_enable()
 
     print(f"model_name {model_name}")
-    runtime_mem_tracer = RuntimeMemTracer(model)
-    for i, (input_ids, label) in enumerate(train_dataloader):
-        if i > 0:
-            break
-        input_ids, label = input_ids.cuda(), label.cuda()
 
-        # mem tracing
-        if i == 0:
-            run_fwd_bwd(runtime_mem_tracer, input_ids, label, criterion, runtime_mem_tracer)
+    runtime_mem_tracer = RuntimeMemTracer(model)
+    data = data_gen_fn()
+    data = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
+    run_fwd_bwd(runtime_mem_tracer, data, output_transform_fn, optimizer=runtime_mem_tracer)
     memstats = runtime_mem_tracer.memstats()
     runtime_tracer_non_model_data = runtime_mem_tracer._memstats._non_model_data_cuda_list
     print("runtime tracer non model data points: ", len(runtime_tracer_non_model_data))
@@ -62,16 +58,17 @@ def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_
     )
 
     set_seed(dist.get_rank())
-    for i, (input_ids, label) in enumerate(train_dataloader):
+    train_dataloader = DummyDataloader(data_gen_fn)
+    for i, data in enumerate(train_dataloader):
         # you can only test a single fwd + bwd.
         # after bwd param is grad for Gemini, due to the chunk reuse optimization.
         # print(f'iteration {i}')
         if i > 4:
             break
-        input_ids, label = input_ids.cuda(), label.cuda()
+        data = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
 
         set_seed(42)
-        run_fwd_bwd(model, input_ids, label, criterion, model)
+        run_fwd_bwd(model, data, output_transform_fn, optimizer=model)
 
     gemini_non_model_data = model.gemini_manager._mem_stats_collector._memstats.non_model_data_list("cuda")
 

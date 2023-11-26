@@ -9,6 +9,7 @@ from typing import Any, Callable, List
 import torch
 import torch.multiprocessing as mp
 from packaging import version
+from colossalai.utils.device import empty_cache, reset_max_memory_allocated, reset_peak_memory_stats, synchronize, reset_max_memory_cached, device_count
 
 
 def parameterize(argument: str, values: List[Any]) -> Callable:
@@ -198,7 +199,7 @@ def skip_if_not_enough_gpus(min_gpus: int):
 
     def _wrap_func(f):
         def _execute_by_gpu_num(*args, **kwargs):
-            num_avail_gpu = torch.cuda.device_count()
+            num_avail_gpu = device_count()
             if num_avail_gpu >= min_gpus:
                 f(*args, **kwargs)
 
@@ -262,14 +263,35 @@ def clear_cache_before_run():
 
     def _wrap_func(f):
         def _clear_cache(*args, **kwargs):
-            torch.cuda.empty_cache()
-            torch.cuda.reset_peak_memory_stats()
-            torch.cuda.reset_max_memory_allocated()
-            torch.cuda.reset_max_memory_cached()
-            torch.cuda.synchronize()
+            empty_cache()
+            reset_peak_memory_stats()
+            reset_max_memory_allocated()
+            reset_max_memory_cached()
+            synchronize()
             gc.collect()
             f(*args, **kwargs)
 
         return _clear_cache
 
     return _wrap_func
+
+
+class DummyDataloader:
+    def __init__(self, data_gen_fn: Callable, length: int = 10):
+        self.data_gen_fn = data_gen_fn
+        self.length = length
+        self.step = 0
+
+    def __iter__(self):
+        self.step = 0
+        return self
+
+    def __next__(self):
+        if self.step < self.length:
+            self.step += 1
+            return self.data_gen_fn()
+        else:
+            raise StopIteration
+
+    def __len__(self):
+        return self.length

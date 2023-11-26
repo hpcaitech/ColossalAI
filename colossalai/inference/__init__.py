@@ -1,3 +1,4 @@
-from .pipeline import PPInferEngine
+from .engine import InferenceEngine
+from .engine.policies import BloomModelInferPolicy, ChatGLM2InferPolicy, LlamaModelInferPolicy
 
-__all__ = ['PPInferEngine']
+__all__ = ["InferenceEngine", "LlamaModelInferPolicy", "BloomModelInferPolicy", "ChatGLM2InferPolicy"]

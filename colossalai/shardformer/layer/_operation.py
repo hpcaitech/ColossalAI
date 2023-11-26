@@ -53,7 +53,7 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, input_, weight, bias, process_group, async_grad_allreduce):
-        ctx.save_for_backward(input_, weight)
+        ctx.save_for_backward(input_, weight, bias)
         ctx.use_bias = bias is not None
         ctx.process_group = process_group
         ctx.async_grad_allreduce = async_grad_allreduce
@@ -62,12 +62,17 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
 
         if bias is not None:
             output = output + bias
+
         return output
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, weight = ctx.saved_tensors
+        input, weight, bias = ctx.saved_tensors
         use_bias = ctx.use_bias
+
+        # In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias.
+        weight = weight.view(weight.shape)
+        bias = bias.view(bias.shape)
 
         total_input = input
         grad_input = grad_output.matmul(weight.T)
@@ -100,7 +105,7 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, input_, weight, bias, process_group, async_grad_allreduce):
-        ctx.save_for_backward(input_, weight)
+        ctx.save_for_backward(input_, weight, bias)
         ctx.use_bias = bias is not None
         ctx.process_group = process_group
         ctx.async_grad_allreduce = async_grad_allreduce
@@ -109,12 +114,17 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
             output = F.linear(input_, weight, bias)
         else:
             output = F.linear(input_, weight)
+
         return output
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, weight = ctx.saved_tensors
+        input, weight, bias = ctx.saved_tensors
         use_bias = ctx.use_bias
+
+        # In order to be hooked into Gemini's '__torch_function__', adding a view operation to bias.
+        if use_bias:
+            bias.view(bias.shape)
 
         total_input = input
         grad_input = grad_output.matmul(weight)
@@ -152,7 +162,7 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, input_, weight, bias, process_group, async_grad_reduce_scatter, dim, overlap=True):
-        ctx.save_for_backward(input_, weight)
+        ctx.save_for_backward(input_, weight, bias)
         ctx.use_bias = bias is not None
         ctx.process_group = process_group
         ctx.async_grad_reduce_scatter = async_grad_reduce_scatter
@@ -170,11 +180,15 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        input_, weight = ctx.saved_tensors
+        input_, weight, bias = ctx.saved_tensors
         use_bias = ctx.use_bias
         dim = ctx.dim
         process_group = ctx.process_group
         overlap = ctx.overlap
+
+        # In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias. Used in FusedLayerNorm
+        if use_bias:
+            bias = bias.view(bias.shape)
 
         if not overlap:
             input_parallel = _gather(input_, dim, process_group)
@@ -289,7 +303,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, input_, weight, bias, process_group, async_grad_reduce_scatter, dim, overlap):
-        ctx.save_for_backward(input_, weight)
+        ctx.save_for_backward(input_, weight, bias)
         ctx.use_bias = bias is not None
         ctx.process_group = process_group
         ctx.async_grad_reduce_scatter = async_grad_reduce_scatter
@@ -306,11 +320,16 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        input_, weight = ctx.saved_tensors
+        input_, weight, bias = ctx.saved_tensors
         use_bias = ctx.use_bias
         dim = ctx.dim
         process_group = ctx.process_group
         overlap = ctx.overlap
+
+        # In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias. Used in FusedLayerNorm
+        weight = weight.view(weight.shape)
+        if use_bias:
+            bias = bias.view(bias.shape)
 
         if not overlap:
             input_parallel = _gather(input_, dim, process_group)
@@ -454,6 +473,29 @@ class _GatherForwardSplitBackward(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         return _split(grad_output, ctx.dim, ctx.process_group), None, None
+    
+
+class HookParameter(torch.autograd.Function):
+    """In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias. Used in FusedLayerNorm"""
+    @staticmethod
+    def forward(ctx, input, weight, bias):
+        ctx.save_for_backward(weight, bias)
+        output = input
+        return output
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        weight, bias = ctx.saved_tensors
+        if weight is not None:
+            weight = weight.view(weight.shape)
+        if bias is not None:
+            bias = bias.view(bias.shape)
+        return grad_output, None, None
+    
+
+def hook_paramter_in_backward(input, weight=None, bias=None):
+    return HookParameter.apply(input, weight, bias)
+
 
 
 def _reduce(input_, process_group):

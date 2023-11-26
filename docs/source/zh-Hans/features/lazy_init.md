@@ -1,6 +1,6 @@
 # 懒惰初始化
 
-作者: [Hongxiu Liu](https://github.com/ver217)
+作者: [Hongxin Liu](https://github.com/ver217)
 
 **前置教程:**
 - [Train with booster](../basics/booster_api.md)
@@ -73,4 +73,4 @@ model, *_ = booster.boost(model)
 | Blip2Model                    | transformers |
 | Blip2ForConditionalGeneration | transformers |
 
-<!-- doc-test-command: torchrun --standalone --nproc_per_node=2 lazy_iniy.py  -->
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=2 lazy_init.py  -->

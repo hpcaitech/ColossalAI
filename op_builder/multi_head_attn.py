@@ -35,6 +35,7 @@ class MultiHeadAttnBuilder(Builder):
     def nvcc_flags(self):
         extra_cuda_flags = [
             "-std=c++14",
+            "-std=c++17",
             "-U__CUDA_NO_HALF_OPERATORS__",
             "-U__CUDA_NO_HALF_CONVERSIONS__",
             "-U__CUDA_NO_HALF2_OPERATORS__",

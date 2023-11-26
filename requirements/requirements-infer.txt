@@ -1,0 +1,4 @@
+transformers==4.34.0
+auto-gptq==0.5.0
+git+https://github.com/ModelTC/lightllm.git@ece7b43f8a6dfa74027adc77c2c176cff28c76c8
+git+https://github.com/Dao-AILab/flash-attention.git@017716451d446e464dde9aca3a3c1ed2209caaa9

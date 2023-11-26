@@ -106,7 +106,8 @@ def exam_zero_1_2():
 
 
 @parameterize("dtype", [torch.float16, torch.bfloat16])
-def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
+@parameterize("master_weights", [True, False])
+def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
     """
     In this test, two pairs of model and optimizers are created.
     1. zero: use sharded optimizer and fp16 parameters
@@ -131,7 +132,11 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype):
     # in `check_sharded_param_consistency.py`, we will test whether
     # level 1 and 2 will produce exactly the same results
     zero_optimizer = LowLevelZeroOptimizer(
-        zero_optimizer, overlap_communication=True, initial_scale=1, reduce_bucket_size=1024 * 1024
+        zero_optimizer,
+        overlap_communication=True,
+        initial_scale=1,
+        reduce_bucket_size=1024 * 1024,
+        master_weights=master_weights,
     )
 
     torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1)

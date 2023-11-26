@@ -10,7 +10,7 @@ from torch.nn.parameter import Parameter
 from colossalai.legacy.context import seed
 from colossalai.legacy.registry import LAYERS
 from colossalai.nn import init as init
-from colossalai.utils.cuda import get_current_device
+from colossalai.utils.device import get_current_device
 
 from ..utils import to_2tuple
 

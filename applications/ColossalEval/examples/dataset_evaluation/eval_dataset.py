@@ -11,7 +11,7 @@ def main(args):
 
     evaluation_results = {dataset["name"]: {} for dataset in config["dataset"]}
     evaluation_results_table = {dataset["name"]: {} for dataset in config["dataset"]}
-    evaluator = DatasetEvaluator()
+    evaluator = DatasetEvaluator(args.config, args.evaluation_results_save_path)
 
     for dataset_parameter in config["dataset"]:
         dataset_name = dataset_parameter["name"]
@@ -26,6 +26,8 @@ def main(args):
             results = evaluator.get_evaluation_results(data, dataset_name, model_name, metrics)
 
             for metric, score in results.items():
+                if metric not in results_metric_model:
+                    results_metric_model[metric] = {model["name"]: None for model in config["model"]}
                 results_metric_model[metric][model_name] = score["ALL"]
 
             evaluation_results[dataset_name][model_name] = results

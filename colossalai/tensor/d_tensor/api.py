@@ -128,6 +128,17 @@ def distribute_tensor(tensor: torch.Tensor, device_mesh: DeviceMesh, sharding_sp
 
     return sharded_tensor
 
+def init_as_dtensor(tensor: torch.Tensor, device_mesh: DeviceMesh, sharding_spec: ShardingSpec, global_shape: torch.Size) -> torch.Tensor:
+    assert not is_distributed_tensor(tensor), "The input tensor is already a distributed tensor."
+    dist_layout = Layout(device_mesh=device_mesh, sharding_spec=sharding_spec, global_shape=global_shape)
+
+    # shard tensor
+    tensor.dist_layout = dist_layout
+
+    # hack some tensor methods
+    _hijack_detach_and_clone(tensor)
+
+    return tensor
 
 def redistribute(dtensor: torch.Tensor, device_mesh: DeviceMesh, sharding_spec: ShardingSpec) -> None:
     """
@@ -418,6 +429,54 @@ def distribute_tensor_with_customization(tensor: torch.Tensor, shard_fn, gather_
     _hijack_detach_and_clone_for_customized_distributed_tensor(sharded_tensor)
 
     return sharded_tensor
+
+
+def init_tensor_as_customization_distributed(tensor: torch.Tensor, shard_fn, gather_fn: callable):
+    """
+    Distribute the given tensor with the given shard_fn and gather_fn.
+
+    Example:
+
+    ```python
+    # define shard and gather functions
+    def shard_fn(tensor):
+        rank = torch.distributed.get_rank()
+        world_size = torch.distributed.get_world_size()
+        return tensor.chunk(world_size, dim=0)[rank]
+
+    def gather_fn(tensor):
+        rank = torch.distributed.get_rank()
+        world_size = torch.distributed.get_world_size()
+        shard_list = [torch.zeros_like(tensor) for _ in range(world_size)]
+        torch.distributed.all_gather(shard_list, tensor)
+        return torch.cat(shard_list, dim=0)
+
+    # create a distributed tensor
+    tensor = torch.rand(4, 4)
+    dtensor = init_tensor_as_customization_distributed(tensor, shard_fn, gather_fn)
+    ```
+
+    Args:
+        tensor (torch.Tensor): The tensor to be distributed.
+        shard_fn (callable): The function to shard the tensor.
+        gather_fn (callable): The function to gather the tensor.
+
+    Returns:
+        torch.Tensor: The distributed tensor.
+    """
+    assert callable(shard_fn), "The shard_fn must be callable."
+    assert callable(gather_fn), "The gather_fn must be callable."
+    assert not is_distributed_tensor(tensor), "The input tensor is already a distributed tensor."
+
+
+    # set the shard_fn and gather_fn as attributes of the distributed tensor
+    tensor.shard_fn = shard_fn
+    tensor.gather_fn = gather_fn
+
+    # set the shard_fn and gather_fn as attributes of the distributed tensor
+    _hijack_detach_and_clone_for_customized_distributed_tensor(tensor)
+
+    return tensor
 
 
 def to_global_for_customized_distributed_tensor(dtensor: torch.Tensor) -> torch.Tensor:

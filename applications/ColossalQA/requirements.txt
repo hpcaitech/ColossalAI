@@ -1,0 +1,22 @@
+transformers>=4.20.1
+tqdm==4.66.1
+datasets==2.13.0
+torch<2.0.0, >=1.12.1
+langchain==0.0.330
+langchain-experimental==0.0.37
+tokenizers==0.13.3
+modelscope==1.9.0
+sentencepiece==0.1.99
+gpustat==1.1.1
+sqlalchemy==2.0.20
+pytest==7.4.2
+# coati install from ../Chat
+sentence-transformers==2.2.2
+chromadb==0.4.9
+openai==0.28.0 #used for chatgpt please install directly from openai repo
+tiktoken==0.5.1
+unstructured==0.10.14
+pypdf==3.16.0
+jq==1.6.0
+gradio==3.44.4
+Requests==2.31.0

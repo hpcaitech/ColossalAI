@@ -3,8 +3,6 @@ import torch
 from packaging import version
 
 try:
-    pass
-
     from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
 
     HAS_TRITON = True
@@ -12,7 +10,15 @@ except ImportError:
     HAS_TRITON = False
     print("please install triton from https://github.com/openai/triton")
 
-TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
+
+import importlib.util
+
+HAS_LIGHTLLM_KERNEL = True
+
+if importlib.util.find_spec("lightllm") is None:
+    HAS_LIGHTLLM_KERNEL = False
+
+TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) >= version.parse("11.6")
 
 
 def torch_att(xq, xk, xv, bs, seqlen, num_head, head_dim):
@@ -28,7 +34,8 @@ def torch_att(xq, xk, xv, bs, seqlen, num_head, head_dim):
 
 
 @pytest.mark.skipif(
-    not TRITON_CUDA_SUPPORT or not HAS_TRITON, reason="triton requires cuda version to be higher than 11.4"
+    not TRITON_CUDA_SUPPORT or not HAS_TRITON or not HAS_LIGHTLLM_KERNEL,
+    reason="triton requires cuda version to be higher than 11.4 or not install lightllm",
 )
 def test():
     Z, head_num, seq_len, head_dim = 22, 112 // 8, 2048, 128

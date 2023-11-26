@@ -1,0 +1,54 @@
+name: Run colossalqa unit tests
+
+on:
+  pull_request:
+    types: [synchronize, opened, reopened]
+    paths:
+      - 'applications/ColossalQA/colossalqa/**'
+      - 'applications/ColossalQA/requirements.txt'
+      - 'applications/ColossalQA/setup.py'
+      - 'applications/ColossalQA/tests/**'
+      - 'applications/ColossalQA/pytest.ini'
+
+jobs:
+  tests:
+    name: Run colossalqa unit tests
+    if: |
+      github.event.pull_request.draft == false &&
+      github.base_ref == 'main' &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      volumes:
+        - /data/scratch/test_data_colossalqa:/data/scratch/test_data_colossalqa
+        - /data/scratch/llama-tiny:/data/scratch/llama-tiny
+      options: --gpus all --rm
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout ColossalAI
+        uses: actions/checkout@v2
+
+      - name: Install colossalqa
+        run: |
+          cd applications/ColossalQA
+          pip install -e .
+
+      - name: Execute Unit Testing
+        run: |
+          cd applications/ColossalQA
+          pytest tests/
+        env:
+          NCCL_SHM_DISABLE: 1
+          MAX_JOBS: 8
+          ZH_MODEL_PATH: bigscience/bloom-560m
+          ZH_MODEL_NAME: bloom
+          EN_MODEL_PATH: bigscience/bloom-560m
+          EN_MODEL_NAME: bloom
+          TEST_DATA_PATH_EN: /data/scratch/test_data_colossalqa/companies.txt
+          TEST_DATA_PATH_ZH: /data/scratch/test_data_colossalqa/companies_zh.txt
+          TEST_DOCUMENT_LOADER_DATA_PATH: /data/scratch/test_data_colossalqa/tests/*
+          SQL_FILE_PATH: /data/scratch/test_data_colossalqa/sql_file_path

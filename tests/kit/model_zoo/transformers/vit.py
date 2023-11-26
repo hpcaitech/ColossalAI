@@ -34,9 +34,9 @@ def data_gen_for_masked_image_modeling():
 output_transform_fn = lambda x: x
 
 # function to get the loss
-loss_fn_for_vit_model = lambda x: x.pooler_output.mean()
-loss_fn_for_image_classification = lambda x: x.logits.mean()
-loss_fn_for_masked_image_modeling = lambda x: x.loss
+loss_fn_for_vit_model = lambda x: x["pooler_output"].mean()
+loss_fn_for_image_classification = lambda x: x["logits"].mean()
+loss_fn_for_masked_image_modeling = lambda x: x["loss"]
 
 # register the following models
 # transformers.ViTModel,

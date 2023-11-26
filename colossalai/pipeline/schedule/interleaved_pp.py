@@ -9,7 +9,7 @@ from torch.utils._pytree import tree_map
 from colossalai.interface import OptimizerWrapper
 from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.utils.cuda import get_current_device
+from colossalai.utils.device import get_current_device
 
 from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, model_forward, retain_grad, to_device
 from .base import PipelineSchedule

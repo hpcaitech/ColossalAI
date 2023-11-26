@@ -8,7 +8,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.chunk import search_chunk_configuration
-from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.kit.model_zoo import model_zoo
 
 PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.0},  # zero2
@@ -22,8 +22,9 @@ PLACEMENT_CONFIGS = [
 @parameterize("keep_gathered", [True, False])
 def exam_zero_optim_state_dict(placement_config, keep_gathered):
     set_seed(431)
-    get_components_func = non_distributed_component_funcs.get_callable("gpt2")
-    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
+    model_builder, data_gen_fn, output_transform_fn, *_ = next(
+        iter(model_zoo.get_sub_registry("transformers_gpt_lm").values())
+    )
 
     model = model_builder()
 
@@ -41,15 +42,15 @@ def exam_zero_optim_state_dict(placement_config, keep_gathered):
 
     set_seed(dist.get_rank() * 3 + 128)
     model.train()
-    for i, (input_ids, label) in enumerate(train_dataloader):
-        if i > 0:
-            break
-        optim.zero_grad()
-        logits = model(input_ids)
-        logits = logits.float()
-        loss = criterion(logits, input_ids)
-        optim.backward(loss)
-        optim.step()
+    data = data_gen_fn()
+    data = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
+
+    optim.zero_grad()
+    outputs = model(**data)
+    outputs = output_transform_fn(outputs)
+    loss = next(iter(outputs.values())).sum()
+    optim.backward(loss)
+    optim.step()
 
     optim_state_dict = optim.state_dict()
     optim.load_state_dict(optim_state_dict)

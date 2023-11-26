@@ -21,8 +21,6 @@ _ALLOWED_P_G_TYPES = [
     (torch.float, torch.float),  # pure fp32
     (torch.float, torch.half),  # fp16 amp
     (torch.float, torch.bfloat16),  # bfloat16 amp
-    # (torch.half, torch.half),  # FIXME(ver217): cpu adam kernel does not support pure fp16
-    # (torch.bfloat16, torch.bfloat16),  # FIXME(ver217): cpu adam kernel does not support pure bfloat16
 ]
 
 N_STEPS = 3

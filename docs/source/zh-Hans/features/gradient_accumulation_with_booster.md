@@ -1,6 +1,6 @@
 # 梯度累积
 
-作者: [Mingyan Jiang](https://github.com/jiangmingyan)
+作者: [Mingyan Jiang](https://github.com/jiangmingyan), [Baizhou Zhang](https://github.com/Fridge003)
 
 **前置教程**
 - [训练中使用Booster](../basics/booster_api.md)
@@ -93,6 +93,7 @@ model, optimizer, criterion, train_dataloader, _ = booster.boost(model=model,
                                                                     dataloader=train_dataloader)
 ```
 
+
 ### 步骤 5. 使用booster训练
 使用booster构建一个普通的训练循环，验证梯度累积。 `param_by_iter` 记录分布训练的信息。
 ```python
@@ -143,5 +144,30 @@ iteration 1, first 10 elements of param: tensor([-0.0208,  0.0189,  0.0234,  0.0
 iteration 2, first 10 elements of param: tensor([-0.0208,  0.0189,  0.0234,  0.0047,  0.0116, -0.0283,  0.0071, -0.0359, -0.0267, -0.0006], device='cuda:0', grad_fn=<SliceBackward0>)
 iteration 3, first 10 elements of param: tensor([-0.0141,  0.0464,  0.0507,  0.0321,  0.0356, -0.0150,  0.0172, -0.0118, 0.0222,  0.0473], device='cuda:0', grad_fn=<SliceBackward0>)
 ```
+
+## 在Gemini插件中使用梯度累积
+
+目前支持`no_sync()`方法的插件包括 `TorchDDPPlugin` 和 `LowLevelZeroPlugin`（需要设置参数`stage`为1）. `GeminiPlugin` 不支持 `no_sync()` 方法, 但是它可以通过和`pytorch`类似的方式来使用同步的梯度累积。
+
+为了开启梯度累积功能，在初始化`GeminiPlugin`的时候需要将参数`enable_gradient_accumulation`设置为`True`。以下是 `GeminiPlugin` 进行梯度累积的伪代码片段:
+<!--- doc-test-ignore-start -->
+```python
+...
+plugin = GeminiPlugin(..., enable_gradient_accumulation=True)
+booster = Booster(plugin=plugin)
+...
+
+...
+for idx, (input, label) in enumerate(train_dataloader):
+    output = gemini_model(input.cuda())
+    train_loss = criterion(output, label.cuda())
+    train_loss = train_loss / GRADIENT_ACCUMULATION
+    booster.backward(train_loss, gemini_optimizer)
+
+    if idx % (GRADIENT_ACCUMULATION - 1) == 0:
+        gemini_optimizer.step() # zero_grad is automatically done
+...
+```
+<!--- doc-test-ignore-end -->
 
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=1 gradient_accumulation_with_booster.py  -->

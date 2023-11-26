@@ -37,12 +37,12 @@ class GPTQBuilder(Builder):
         extra_cuda_flags = [
             "-v",
             "-std=c++14",
+            "-std=c++17",
             "-U__CUDA_NO_HALF_OPERATORS__",
             "-U__CUDA_NO_HALF_CONVERSIONS__",
             "-U__CUDA_NO_HALF2_OPERATORS__",
             "-DTHRUST_IGNORE_CUB_VERSION_CHECK",
             "-lcublas",
-            "-std=c++17",
         ]
 
         for arch in torch.cuda.get_arch_list():

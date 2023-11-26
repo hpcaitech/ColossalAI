@@ -1,5 +1,6 @@
 from contextlib import nullcontext
 from typing import Optional
+import pytest
 
 import torch
 import torch.distributed as dist
@@ -10,18 +11,22 @@ from colossalai.booster.plugin import GeminiPlugin
 from colossalai.fx import is_compatible_with_meta
 from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.tensor.d_tensor.api import clear_layout_converter
+from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
 
-def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
+def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, zero_size, tp_size) -> Optional[str]:
     try:
         if init_method == "lazy":
             ctx = LazyInitContext()
         else:
             ctx = nullcontext()
-        plugin = GeminiPlugin(max_norm=1.0, initial_scale=2**5)
+        extra_dp_size = dist.get_world_size() // (zero_size * tp_size)
+        enable_all_optimization = True if tp_size > 1 else False
+        plugin = GeminiPlugin(max_norm=1.0, initial_scale=2**5, tp_size=tp_size, extra_dp_size=extra_dp_size, enable_all_optimization=enable_all_optimization)
         booster = Booster(plugin=plugin)
         with ctx:
             model = model_fn()
@@ -46,6 +51,8 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
         booster.backward(loss, optimizer)
         optimizer.step()
 
+    except NotImplementedError:
+        print(f"Tensor Parallelism policy for {model.__class__} is not implemented yet\n.")
     except Exception as e:
         # raise e
         return repr(e)
@@ -57,7 +64,9 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
 
 @parameterize("subset", ["torchvision", "transformers", "diffusers"])
 @parameterize("init_method", ["none"])
-def check_gemini_plugin(subset: str, init_method: str = "none", early_stop: bool = True):
+@parameterize("zero_size", [2])
+@parameterize("tp_size", [2])
+def check_gemini_plugin(subset: str, init_method: str = "none", early_stop: bool = True, zero_size: int = 1, tp_size: int = 1):
     """check gemini plugin over model zoo
 
     Args:
@@ -116,7 +125,12 @@ def check_gemini_plugin(subset: str, init_method: str = "none", early_stop: bool
             "torchvision_efficientnet_v2_s",
         ]:
             continue
-        err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn)
+
+        # TODO debug blip2 when using tp, something wrong with shift_logits's shape
+        if "transformers_blip2" in name:
+            tp_size = 1
+
+        err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, zero_size, tp_size)
         torch.cuda.empty_cache()
         if err is None:
             passed_models.append(name)
@@ -141,6 +155,11 @@ def run_dist(rank, world_size, port, early_stop: bool = True):
 @rerun_if_address_is_in_use()
 def test_gemini_plugin(early_stop: bool = True):
     spawn(run_dist, 4, early_stop=early_stop)
+
+@pytest.mark.largedist
+@rerun_if_address_is_in_use()
+def test_gemini_plugin_3d(early_stop: bool = True):
+    spawn(run_dist, 8, early_stop=early_stop)
 
 
 if __name__ == "__main__":

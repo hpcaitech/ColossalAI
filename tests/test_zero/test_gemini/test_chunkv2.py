@@ -39,7 +39,7 @@ def exam_chunk_basic(init_device, keep_gathered, pin_memory):
     pg = _get_default_group()
     my_chunk = Chunk(
         chunk_size=1024,
-        process_group=pg,
+        zero_group=pg,
         dtype=torch.float32,
         init_device=init_device,
         cpu_shard_init=True,

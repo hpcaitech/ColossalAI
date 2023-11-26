@@ -119,11 +119,12 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         # Preparing file paths and index file.
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
         index_file = CheckpointIndexFile(checkpoint)
+        index_file.append_meta_data("param_groups", param_group_file)
 
         # Store the information of param groups to param_group_file.
-        index_file.append_meta_data("param_groups", param_group_file)
-        group_file_path = os.path.join(checkpoint, param_group_file)
-        save_param_groups(state_dict, group_file_path)
+        if self.coordinator.is_master():
+            group_file_path = os.path.join(checkpoint, param_group_file)
+            save_param_groups(state_dict, group_file_path)
 
         # Save shards of optimizer states.
         total_size = 0
@@ -305,7 +306,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         return True
 
     def supported_devices(self) -> List[str]:
-        return ["cuda"]
+        return ["cuda", "npu"]
 
     def configure(
         self,
@@ -335,4 +336,4 @@ class LowLevelZeroPlugin(DPPluginBase):
 
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         assert isinstance(optimizer, LowLevelZeroOptimizer)
-        return optimizer.optim.no_sync()
+        return optimizer.no_sync()

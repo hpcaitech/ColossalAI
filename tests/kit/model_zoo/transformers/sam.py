@@ -40,7 +40,7 @@ def data_gen():
 output_transform_fn = lambda x: x
 
 # define loss funciton
-loss_fn = lambda x: x.iou_scores.mean()
+loss_fn = lambda x: x["iou_scores"].mean()
 
 config = transformers.SamConfig()
 config.vision_config.num_hidden_layers = 2

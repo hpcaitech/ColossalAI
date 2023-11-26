@@ -719,7 +719,7 @@ def get_bloom_flash_attention_forward(enabel_jit_fused=False):
     ):
         fused_qkv = self.query_key_value(hidden_states)
         (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
-        batch_size, tgt_len, _ = query_layer.size()
+        batch_size, tgt_len, _, _ = query_layer.size()
 
         _, kv_length, _, _ = key_layer.size()
 
@@ -755,6 +755,7 @@ def get_bloom_flash_attention_forward(enabel_jit_fused=False):
         attention_numerical_mask = torch.masked_fill(
             attention_numerical_mask, attention_mask, torch.finfo(torch.float32).min
         )
+        attention_numerical_mask = attention_numerical_mask.to(query_layer.dtype)
 
         context_layer = me_attention(
             query_layer,

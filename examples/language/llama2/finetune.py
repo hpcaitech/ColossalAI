@@ -58,6 +58,7 @@ def tokenize_batch_for_finetune(batch, tokenizer: Optional[LlamaTokenizer] = Non
 
 def all_reduce_mean(tensor: torch.Tensor) -> torch.Tensor:
     dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+    tensor = tensor.data
     tensor.div_(dist.get_world_size())
     return tensor
 

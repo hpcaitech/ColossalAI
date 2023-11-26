@@ -27,8 +27,8 @@ class ModelSharder(object):
 
     def __init__(self, model: nn.Module, policy: Policy, shard_config: ShardConfig = None) -> None:
         self.model = model
-        self.policy = get_autopolicy(self.model, shard_config.inference_only) if policy is None else policy
         self.shard_config = shard_config
+        self.policy = get_autopolicy(self.model) if policy is None else policy
 
     def shard(self) -> List[Dict[int, Tensor]]:
         r"""
@@ -180,7 +180,6 @@ class ModelSharder(object):
             assert target_module is not None, "target_module should not be None"
 
             native_sub_module = getattr_(org_layer, suffix, ignore=True)
-
             # Skip replacement if submodule is not kept by current device when pipeline parallel is enabled.
             if (include is not None) and (native_sub_module is not None) and (native_sub_module not in include):
                 continue
@@ -196,7 +195,7 @@ class ModelSharder(object):
 
             try:
                 replace_layer = target_module.from_native_module(
-                    native_sub_module, self.shard_config.tensor_parallel_process_group, **kwargs
+                    native_sub_module, process_group=self.shard_config.tensor_parallel_process_group, **kwargs
                 )
             except Exception as e:
                 raise RuntimeError(

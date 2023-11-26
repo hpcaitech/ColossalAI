@@ -77,11 +77,11 @@ Following are the description `ShardConfig`'s arguments:
 
 - `enable_sequence_parallelism`:  Whether to turn on sequence parallelism, which partitions non-tensor-parallel regions along the sequence dimension. Defaults to False.
 
-- `enable_sequence_overlap`: Whether to turn on sequence overlap, wheich overlap the computation and communication in sequence parallelism. It can only be used when `enable_sequence_parallelism` is True. Defaults to False.
+- `enable_sequence_overlap`: Whether to turn on sequence overlap, which overlap the computation and communication in sequence parallelism. It can only be used when `enable_sequence_parallelism` is True. Defaults to False.
 
 -  `enable_all_optimization`: Whether to turn on all optimization tools including `fused normalizaion`, `flash attention`, `JIT fused operators`, `sequence parallelism` and `sequence overlap`. Defaults to False.
 
-- `inference_only`: Whether only doing forward passing. Defaults to False.
+- `extra_kwargs`: A dict to store extra kwargs for ShardFomer.
 
 ### Write your own policy
 
@@ -185,8 +185,8 @@ class ShardConfig:
 
     # Some possible future config fields
     tensor_parallel_mode: Choice['1d', '2d', '2.5d', '3d'] # support different tensor parallel mode
-    inference_only: bool # only inject inference-suitable sharding policy
     use_flash_attention: bool # whether to use flash attention to speed up attention
+    extra_kwargs: Dict[str, Any] # extra kwargs for the shardformer
 ```
 
 ### Policy
@@ -235,6 +235,14 @@ class SubModuleReplacementDescription:
 
 
 class Policy(ABC):
+    r"""
+    The base class for all the policies. For each different model, it should have a different policy class,
+    like BertPolicy for Bert Model or OPTPolicy for OPT model.
+
+    Shardformer has provided many built-in sharding policies for the mainstream models. You can use the
+    built-in policies by setting `policy = None`, which is already the default argument for `Shardformer.optimize`.
+    If you want to define your own policy, you can inherit from this class and overwrite the methods you want to modify.
+    """
 
     def __init__(self)
         self.model = None
@@ -244,6 +252,16 @@ class Policy(ABC):
         Set model as an attribute of the Policy object so that we can access the model's attributes.
         """
         self.model = model
+
+    def set_shard_config(self, shard_config: ShardConfig) -> None:
+        r"""
+        Set shard config as an attribute of the Policy object.
+        Args:
+            shard_config (:class:`ShardConfig`): The shard config to be perform
+        """
+        self.shard_config = shard_config
+
+        self.config_sanity_check()
 
     @abstractmethod
     def preprocess(self) -> nn.Module:

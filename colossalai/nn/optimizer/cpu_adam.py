@@ -1,15 +1,17 @@
 import math
+import platform
 from typing import Optional
 
 import torch
 
-from colossalai.kernel.op_builder import CPUAdamBuilder
+from colossalai.kernel.op_builder import ArmCPUAdamBuilder, CPUAdamBuilder
 
 from .nvme_optimizer import NVMeOptimizer
 
 
 class CPUAdam(NVMeOptimizer):
-    """Implements Adam algorithm.
+    """
+    Implements Adam algorithm.
 
     Supports parameters updating on both GPU and CPU, depending on the device of parameters.
     But the parameters and gradients should on the same device:
@@ -76,7 +78,7 @@ class CPUAdam(NVMeOptimizer):
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
         super(CPUAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)
         self.adamw_mode = adamw_mode
-        cpu_adam = CPUAdamBuilder().load()
+        cpu_adam = ArmCPUAdamBuilder().load() if platform.machine() == "aarch64" else CPUAdamBuilder().load()
         # if you find yourself stuck here, make sure that you install colossalai with CUDA_EXT=1 specification
         self.cpu_adam_op = cpu_adam.CPUAdamOptimizer(lr, betas[0], betas[1], eps, weight_decay, adamw_mode)
 
@@ -146,8 +148,7 @@ class CPUAdam(NVMeOptimizer):
                     assert state["exp_avg"].device.type == "cpu", "exp_avg should stay on cpu"
                     assert state["exp_avg_sq"].device.type == "cpu", "exp_avg should stay on cpu"
                     self._pre_update(p, "exp_avg", "exp_avg_sq")
-                    # FIXME(ver217): CPU adam kernel only supports fp32 states now
-                    if p.grad.dtype is torch.bfloat16 or p.dtype is not torch.float:
+                    if p.grad.dtype is torch.bfloat16:
                         # cpu adam kernel does not support bf16 now
                         bias_correction1 = 1 - beta1 ** state["step"]
                         bias_correction2 = 1 - beta2 ** state["step"]

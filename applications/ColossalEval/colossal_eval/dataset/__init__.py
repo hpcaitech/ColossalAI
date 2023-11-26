@@ -6,6 +6,7 @@ from .colossalai import ColossalDataset
 from .gaokaobench import GaoKaoBenchDataset
 from .longbench import LongBenchDataset
 from .mmlu import MMLUDataset
+from .mtbench import MTBenchDataset
 
 __all__ = [
     "AGIEvalDataset",
@@ -16,4 +17,5 @@ __all__ = [
     "LongBenchDataset",
     "MMLUDataset",
     "ColossalDataset",
+    "MTBenchDataset",
 ]
