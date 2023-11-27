@@ -186,6 +186,9 @@ metrics4subcategory = {
         "ppl_score": ["ALL"],
     },
     "mtbench": {"mtbench_single_judge": ["ALL"]},
+    "cvalues": {"first_token_accuracy": ["ALL"]},
+    "safetybench_zh": {"first_token_accuracy": ["ALL"]},
+    "safetybench_en": {"first_token_accuracy": ["ALL"]},
 }
 
 
