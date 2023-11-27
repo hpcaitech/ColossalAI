@@ -79,6 +79,7 @@ class PipelineStageManager:
         Returns:
             bool: Whether the current stage is the first stage.
         """
+        assert isinstance(ignore_chunk, bool)
         assert not self.is_interleave or (ignore_chunk or self.model_chunk_id is not None)
         if not self.is_interleave or ignore_chunk:
             return self.stage == 0
@@ -95,6 +96,7 @@ class PipelineStageManager:
         Returns:
             bool: Whether the current stage is the last stage.
         """
+        assert isinstance(ignore_chunk, bool)
         assert not self.is_interleave or (ignore_chunk or self.model_chunk_id is not None)
         if not self.is_interleave or ignore_chunk:
             return self.stage == self.num_stages - 1
