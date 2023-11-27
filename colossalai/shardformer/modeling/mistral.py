@@ -1,14 +1,6 @@
-import warnings
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import torch
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-from transformers.modeling_outputs import (
-    BaseModelOutputWithPast,
-    CausalLMOutputWithPast,
-    SequenceClassifierOutputWithPast,
-)
-from transformers.utils import logging
 
 
 def get_mistral_flash_attention_forward():
@@ -29,8 +21,12 @@ def get_mistral_flash_attention_forward():
         assert q_len % 4 == 0, "Flash Attention Error: The sequence length should be a multiple of 4."
 
         query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        key_states = (
+            self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        )
+        value_states = (
+            self.v_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        )
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:

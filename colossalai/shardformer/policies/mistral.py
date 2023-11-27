@@ -1,10 +1,7 @@
 import warnings
-from functools import partial
-from typing import Callable, Dict, List, Union
+from typing import Dict, Union
 
 import torch.nn as nn
-from torch import Tensor
-from torch.nn import Module
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
@@ -37,13 +34,16 @@ class MistralPolicy(Policy):
 
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
-            warnings.warn("Mistral dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
+            warnings.warn(
+                "Mistral dosen't support sequence parallelism now, will ignore the sequence parallelism flag."
+            )
 
         if self.shard_config.enable_tensor_parallelism:
             decoder_attribute_replacement = {
                 "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                 "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
-                "self_attn.num_key_value_heads": self.model.config.num_key_value_heads // self.shard_config.tensor_parallel_size
+                "self_attn.num_key_value_heads": self.model.config.num_key_value_heads
+                // self.shard_config.tensor_parallel_size,
             }
 
             policy[MistralDecoderLayer] = ModulePolicyDescription(
@@ -129,6 +129,7 @@ class MistralPolicy(Policy):
     def postprocess(self):
         return self.model
 
+
 class MistralModelPolicy(MistralPolicy):
     def __init__(self) -> None:
         super().__init__()
@@ -138,6 +139,7 @@ class MistralModelPolicy(MistralPolicy):
             warnings.warn("Mistral dosen't support pipeline parallelism now.")
 
         return super().module_policy()
+
 
 class MistralForCausalLMPolicy(MistralPolicy):
     def module_policy(self):
@@ -163,6 +165,7 @@ class MistralForCausalLMPolicy(MistralPolicy):
             policy.update(new_item)
 
         return policy
+
 
 class MistralForSequenceClassificationPolicy(MistralPolicy):
     def module_policy(self):

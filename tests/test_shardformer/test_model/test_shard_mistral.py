@@ -50,10 +50,24 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         else:
             atol, rtol = 5e-3, 5e-3
         row_layer_grads = get_grad_tensors_for_check(
-            mistral_model, shard_mistral_model, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0, verbose=False
+            mistral_model,
+            shard_mistral_model,
+            row_layer_for_check,
+            tp_group,
+            atol=atol,
+            rtol=rtol,
+            dim=0,
+            verbose=False,
         )
         col_layer_grads = get_grad_tensors_for_check(
-            mistral_model, shard_mistral_model, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False
+            mistral_model,
+            shard_mistral_model,
+            col_layer_for_check,
+            tp_group,
+            atol=atol,
+            rtol=rtol,
+            dim=1,
+            verbose=False,
         )
         grads_to_check.update(col_layer_grads)
         grads_to_check.update(row_layer_grads)
@@ -81,7 +95,14 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         else:
             atol, rtol = 5e-3, 5e-3
         check_weight(
-            mistral_model, shard_mistral_model, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False
+            mistral_model,
+            shard_mistral_model,
+            col_layer_for_check,
+            tp_group,
+            atol=atol,
+            rtol=rtol,
+            dim=1,
+            verbose=False,
         )
 
     # check grads
@@ -101,10 +122,10 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "fp32",
         },
         {
-            "tp_size": 2, 
-            "pp_size": 1, 
-            "enable_all_optimization": True, 
-            "use_lazy_init": False, 
+            "tp_size": 2,
+            "pp_size": 1,
+            "enable_all_optimization": True,
+            "use_lazy_init": False,
             "precision": "fp32",
         },
         {
@@ -133,7 +154,6 @@ def check_mistral(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_mistral_test()
-
 
 
 @pytest.mark.skip("This test should be run on a version of transformers not less than 4.35.2.")
