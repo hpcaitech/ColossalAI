@@ -5,20 +5,31 @@
 </div>
 
 ## Table of Contents
+- [Table of Contents](#table-of-contents)
 - [News](#news)
 - [Colossal-LLaMA-2-7B](#colossal-llama-2-7b)
-    - [Performance Evaluation](#performance-evaluation)
-    - [Examples](#examples)
-    - [Training Logs](#training-logs)
-    - [Import from Transformers](#import-from-transformers)
+  - [Performance Evaluation](#performance-evaluation)
+  - [Examples](#examples)
+  - [Training Logs](#training-logs)
+  - [Import from Transformers (Inference)](#import-from-transformers-inference)
 - [Usage](#usage)
-    - [Install](#install)
-    - [How to run](#how-to-run)
-- [Technical Insight](#technical-insights)
-    - [Data](#data)
-    - [Tokenizer](#tokenizer)
-    - [Training Strategy](#training-strategy)
-    - [Bridging Any Domain-specific Large Models](#bridging-any-domain-specific-large-models)
+  - [Install](#install)
+    - [0. Pre-requisite](#0-pre-requisite)
+    - [1. Install required packages](#1-install-required-packages)
+    - [2. Install `xentropy`, `layer_norm` and `rotary`](#2-install-xentropy-layer_norm-and-rotary)
+  - [How to run](#how-to-run)
+    - [1. Init Tokenizer Preparation](#1-init-tokenizer-preparation)
+    - [2. Init Model Preparation](#2-init-model-preparation)
+    - [3. Data Preparation](#3-data-preparation)
+    - [4. Command Line Arguments for Training](#4-command-line-arguments-for-training)
+    - [5. Running Command](#5-running-command)
+- [Technical Insights](#technical-insights)
+  - [Data](#data)
+  - [Tokenizer](#tokenizer)
+  - [Training Strategy](#training-strategy)
+    - [Multi-stage Training](#multi-stage-training)
+    - [Bucket-based Training](#bucket-based-training)
+  - [Bridging Any Domain-specific Large Models](#bridging-any-domain-specific-large-models)
 - [Citations](#citations)
 
 ## News
@@ -260,7 +271,7 @@ Here is details about CLI arguments:
 * Booster plugin: `--plugin`. `gemini`, `gemini_auto`, `zero2`，`zero2_cpu` and `3d` are supported.For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins/).
 * Intermediate checkpoint to load: `--load_checkpoint`. Path to the intermediate checkpoint. Saved checkpoint contains the states for `lr_scheduler`, `optimizer`,`running_states.json` and `modelling`. If `load_checkpoint` points to the `modelling` folder, only the model weights will be loaded without any other states to support multi-stage training.
 * Save interval: `--save_interval`. The interval (steps) of saving checkpoints. The default value is 1000.
-* Checkpoint directory: `--save_dir`. The directoty path to save checkpoint and intermediate states. Intermediate states include `lr_scheduler`, `optimizer`,`running_states.json` and `modelling`.
+* Checkpoint directory: `--save_dir`. The directory path to save checkpoint and intermediate states. Intermediate states include `lr_scheduler`, `optimizer`,`running_states.json` and `modelling`.
 * Tensorboard directory: `--tensorboard_dir`. The path to save tensorboard logs.
 * Configuration file: `--config_file`. The path to save the configuration file.
 * Number of epochs: `--num_epochs`. Number of training epochs. The default value is 1.
@@ -403,6 +414,5 @@ Applying the above process to perform knowledge transfer in any field allows for
     title={Flash{A}ttention-2: Faster Attention with Better Parallelism and Work Partitioning},
     author={Dao, Tri},
     year={2023}
-}
 }
 ```
