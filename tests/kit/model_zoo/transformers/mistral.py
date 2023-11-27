@@ -18,7 +18,7 @@ def data_gen():
     # tokenized_input = tokenizer([input], return_tensors="pt")
     # input_ids = tokenized_input['input_ids']
     # attention_mask = tokenized_input['attention_mask']
-    input_ids = torch.tensor([[1,  1984, 16020, 2076, 2487, 349, 21375,  4749]], dtype=torch.int64)
+    input_ids = torch.tensor([[1, 1984, 16020, 2076, 2487, 349, 21375, 4749]], dtype=torch.int64)
     attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
     return dict(input_ids=input_ids, attention_mask=attention_mask)
 
