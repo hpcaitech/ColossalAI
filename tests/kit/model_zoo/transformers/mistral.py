@@ -1,13 +1,13 @@
 import torch
 import transformers
+from transformers import MistralConfig
 
 from ..registry import ModelAttribute, model_zoo
-
-from transformers import MistralConfig
 
 # ===============================
 # Register single-sentence Mistral
 # ===============================
+
 
 def data_gen():
     # Generated from following code snippet
@@ -18,9 +18,10 @@ def data_gen():
     # tokenized_input = tokenizer([input], return_tensors="pt")
     # input_ids = tokenized_input['input_ids']
     # attention_mask = tokenized_input['attention_mask']
-    input_ids = torch.tensor([[1,  1984, 16020, 2076, 2487, 349, 21375,  4749]], dtype=torch.int64)
+    input_ids = torch.tensor([[1, 1984, 16020, 2076, 2487, 349, 21375, 4749]], dtype=torch.int64)
     attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
     return dict(input_ids=input_ids, attention_mask=attention_mask)
+
 
 def data_gen_for_lm():
     # LM data gen
@@ -29,11 +30,13 @@ def data_gen_for_lm():
     data["labels"] = data["input_ids"].clone()
     return data
 
+
 def data_gen_for_sequence_classification():
     # sequence classification data gen
     data = data_gen()
     data["labels"] = torch.tensor([1], dtype=torch.int64)
     return data
+
 
 # define output transform function
 output_transform_fn = lambda x: x
@@ -46,11 +49,7 @@ loss_fn = lambda x: x.loss
 loss_fn_for_seq_classification = lambda output: output.logits.mean()
 
 config = MistralConfig(
-    hidden_size=256,
-    intermediate_size=256,
-    num_attention_heads=64,
-    num_hidden_layers=2,
-    vocab_size=50258
+    hidden_size=256, intermediate_size=256, num_attention_heads=64, num_hidden_layers=2, vocab_size=50258
 )
 
 model_zoo.register(
