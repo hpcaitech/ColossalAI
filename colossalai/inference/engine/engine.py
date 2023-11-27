@@ -77,9 +77,20 @@ class InferenceEngine:
         if quant == "gptq":
             from ..quant.gptq import GPTQManager
 
-            self.gptq_manager = GPTQManager(model.quantize_config, max_input_len=max_input_len)
+            self.gptq_manager = GPTQManager(
+                model.quantize_config, max_input_len=max_input_len, max_batch_size=max_batch_size
+            )
             model = model.model
         elif quant == "smoothquant":
+            import triton
+
+            assert triton.__version__ == "2.0.0", "smoothquant should install triton==2.0.0.dev20221202"
+            try:
+                from colossalai.kernel.op_builder.smoothquant import SmoothquantBuilder
+
+                SmoothquantBuilder().load()
+            except Exception as e:
+                logger.error(e)
             model = model.model
 
         self.pp_size = pp_size

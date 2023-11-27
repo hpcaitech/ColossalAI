@@ -106,22 +106,46 @@ def print_details_info(outputs, model_config, args, whole_end2end):
 
 
 def benchmark_inference(args):
-    config = CONFIG_MAP[args.model]
-    config.pad_token_id = config.eos_token_id
-    model = transformers.LlamaForCausalLM(config)
+    quant = None
+    if args.quant == "cai-gptq":
+        from auto_gptq import AutoGPTQForCausalLM
+
+        # load quantized model to the first GPU
+        model = AutoGPTQForCausalLM.from_quantized(
+            args.quant_model, device=torch.cuda.current_device(), inject_fused_attention=False
+        )
+        quant = "gptq"
+    elif args.quant == "smoothquant":
+        from colossalai.inference.quant.smoothquant.models.llama import SmoothLlamaForCausalLM
+
+        model = SmoothLlamaForCausalLM.from_quantized(args.quant_model, args.smooth_model_name)
+        model = model.cuda()
+        quant = "smoothquant"
+    elif args.quant == "auto-gptq":
+        from auto_gptq import AutoGPTQForCausalLM
+
+        model = AutoGPTQForCausalLM.from_quantized(args.gptq_model, device=torch.cuda.current_device())
+        generate_kwargs = dict(max_new_tokens=args.output_len, do_sample=False, use_cache=True)
+    else:
+        config = CONFIG_MAP[args.model]
+        config.pad_token_id = config.eos_token_id
+        model = transformers.LlamaForCausalLM(config)
+
     if dist.get_rank() == 0:
         print("Model loaded")
-    engine = InferenceEngine(
-        model,
-        pp_size=args.pp_size,
-        tp_size=args.tp_size,
-        dtype=args.dtype,
-        micro_batch_size=args.mb_size,
-        verbose=args.verbose,
-        max_batch_size=args.batch_size,
-        max_input_len=args.seq_len,
-        max_output_len=args.output_len,
-    )
+    if args.quant != "auto-gptq":
+        engine = InferenceEngine(
+            model,
+            pp_size=args.pp_size,
+            tp_size=args.tp_size,
+            dtype=args.dtype,
+            micro_batch_size=args.mb_size,
+            verbose=args.verbose,
+            max_batch_size=args.batch_size,
+            max_input_len=args.seq_len,
+            max_output_len=args.output_len,
+            quant=quant,
+        )
     data = data_gen(args.batch_size, args.seq_len)
 
     N_WARMUP_STEPS = 2
@@ -144,14 +168,20 @@ def benchmark_inference(args):
 
     with ctx:
         for _ in range(N_WARMUP_STEPS):
-            engine.generate(data)
+            if args.quant == "auto-gptq":
+                model.generate(**data, **generate_kwargs)
+            else:
+                engine.generate(data)
             if args.profile:
                 ctx.step()
 
         if args.nsys:
             torch.cuda.cudart().cudaProfilerStart()
         whole_end2end = time.perf_counter()
-        outputs = engine.generate(data)
+        if args.quant == "auto-gptq":
+            outputs = model.generate(**data, **generate_kwargs)
+        else:
+            outputs = engine.generate(data)
         whole_end2end = time.perf_counter() - whole_end2end
         if args.nsys:
             torch.cuda.cudart().cudaProfilerStop()
@@ -180,6 +210,24 @@ if __name__ == "__main__":
         default="toy",
         help="the size of model",
         choices=["toy", "llama-7b", "llama-13b", "llama2-7b", "llama2-13b"],
+    )
+    parser.add_argument(
+        "--quant_model",
+        help="the path of gptq model",
+        type=str,
+    )
+    parser.add_argument(
+        "--smooth_model_name",
+        help="the smoothuant model name",
+        type=str,
+    )
+
+    parser.add_argument(
+        "--quant",
+        help="the type of benchmark type: 'cai-gptq', 'auto-gptq'",
+        type=str,
+        choices=["cai-gptq", "auto-gptq", "smoothquant"],
+        default=None,
     )
     parser.add_argument("-b", "--batch_size", type=int, default=8, help="batch size")
     parser.add_argument("-s", "--seq_len", type=int, default=8, help="input sequence length")
