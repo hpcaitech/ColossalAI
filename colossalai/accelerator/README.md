@@ -15,6 +15,6 @@ This module offers a layer of abstraction for ColossalAI. With this module, the 
 
 Our `accelerator` module is heavily inspired by [`deepspeed/accelerator`](https://www.deepspeed.ai/tutorials/accelerator-abstraction-interface/). We found that it is a very well-designed and well-structured module that can be easily integrated into our project. We would like to thank the DeepSpeed team for their great work.
 
-At the same time, we have implemented our own modifications:1
+We implemented this accelerator module from scratch. At the same time, we have implemented our own modifications:
 1. we updated the accelerator API names to be aligned with PyTorch's native API names.
 2. we did not include the `op builder` in the `accelerator`. Instead, we have reconstructed our `kernel` module to automatically match the accelerator and its corresponding kernel implementations, so as to make modules less tangled.
