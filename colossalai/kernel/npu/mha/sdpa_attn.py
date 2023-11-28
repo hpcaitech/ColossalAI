@@ -1,6 +1,7 @@
 import torch
-import torch_npu  # noqa
 from einops import rearrange
+
+import torch_npu  # noqa
 
 
 def npu_sdpa_attention(
