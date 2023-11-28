@@ -28,8 +28,8 @@ from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.layer.utils import SeqParallelUtils
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.tensor.d_tensor.api import is_distributed_tensor
-from colossalai.zero.low_level import LowLevelZeroOptimizer
 from colossalai.utils.device import get_current_device
+from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 from .pp_plugin_base import PipelinePluginBase
 
@@ -385,7 +385,9 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
 
                 total_norm_exponentiated += grad_norm_exponentiated
 
-            total_norm_exponentiated_cuda = torch.tensor([float(total_norm_exponentiated)], device=get_current_device(), dtype=torch.float32)
+            total_norm_exponentiated_cuda = torch.tensor(
+                [float(total_norm_exponentiated)], device=get_current_device(), dtype=torch.float32
+            )
             if self.tp_size > 1:
                 # compute norm in tp process group
                 dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.tp_pg)
@@ -586,7 +588,9 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
 
                 total_norm_exponentiated += grad_norm_exponentiated
 
-            total_norm_exponentiated_cuda = torch.tensor([float(total_norm_exponentiated)], device=get_current_device(), dtype=torch.float32)
+            total_norm_exponentiated_cuda = torch.tensor(
+                [float(total_norm_exponentiated)], device=get_current_device(), dtype=torch.float32
+            )
             if self.tp_size > 1:
                 # compute norm in tp process group
                 dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.tp_pg)
@@ -837,7 +841,9 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
 
                 total_norm_exponentiated += grad_norm_exponentiated
 
-            total_norm_exponentiated_cuda = torch.tensor([float(total_norm_exponentiated)], device=get_current_device(), dtype=torch.float32)
+            total_norm_exponentiated_cuda = torch.tensor(
+                [float(total_norm_exponentiated)], device=get_current_device(), dtype=torch.float32
+            )
             if dp_size > 1:
                 # compute norm in dp process group
                 dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.dp_pg)
