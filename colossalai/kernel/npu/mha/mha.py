@@ -3,7 +3,7 @@ from typing import Optional
 
 import torch
 
-from .spda_attn import npu_sdpa_attention
+from .sdpa_attn import npu_sdpa_attention
 
 
 class NPUColoAttention(torch.nn.Module):
