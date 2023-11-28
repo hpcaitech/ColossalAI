@@ -48,7 +48,7 @@ def to_onnx(network: Network, path: Path) -> None:
     onnx.save(onnx_model, path)
 
 
-def trt_dtype_to_onnx(dtype):
+def trt_dtype_to_onnx(dtype) -> None:
     if dtype == trt.float16:
         return TensorProto.DataType.FLOAT16
     elif dtype == trt.float32:
@@ -59,7 +59,7 @@ def trt_dtype_to_onnx(dtype):
         raise TypeError("%s is not supported" % dtype)
 
 
-def get_engine_name(model: str, dtype: str, tp_size: int, pp_size: int, rank: int):
+def get_engine_name(model: str, dtype: str, tp_size: int, pp_size: int, rank: int) -> str:
     if pp_size == 1:
         return "{}_{}_tp{}_rank{}.engine".format(model, dtype, tp_size, rank)
     return "{}_{}_tp{}_pp{}_rank{}.engine".format(model, dtype, tp_size, pp_size, rank)
@@ -75,19 +75,19 @@ def serialize_engine(engine: trt.IHostMemory, path: Path) -> None:
     logger.info(f"Engine serialized. Total time: {t}")
 
 
-def process_output(output_ids, input_lengths, max_output_len, tokenizer, output_csv, output_npy):
+def process_output(output_ids, input_lengths, max_output_len, tokenizer, output_csv, output_npy) -> str:
     num_beams = output_ids.size(1)
     outputs_text = []
     if output_csv is None and output_npy is None:
         for b in range(input_lengths.size(0)):
             inputs = output_ids[b][0][: input_lengths[b]].tolist()
-            input_text = tokenizer.decode(inputs)
+            input_text = tokenizer.decode(inputs, skip_special_tokens=True)
             for beam in range(num_beams):
                 output_begin = input_lengths[b]
                 output_end = input_lengths[b] + max_output_len
                 outputs = output_ids[b][beam][output_begin:output_end].tolist()
-                output_text = tokenizer.decode(outputs)
-                outputs_text.append(output_text)
+                output_text = tokenizer.decode(outputs, skip_special_tokens=True)
+                outputs_text.append(input_text + "\n" + output_text)
 
     output_ids = output_ids.reshape((-1, output_ids.size(2)))
 
@@ -104,7 +104,7 @@ def process_output(output_ids, input_lengths, max_output_len, tokenizer, output_
         output_file.parent.mkdir(exist_ok=True, parents=True)
         outputs = np.array(output_ids.cpu().contiguous(), dtype="int32")
         np.save(output_file, outputs)
-        
+
     return outputs_text
 
 

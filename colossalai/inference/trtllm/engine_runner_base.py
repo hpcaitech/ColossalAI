@@ -11,6 +11,7 @@ from tensorrt_llm.runtime import ModelConfig, SamplingConfig
 from transformers import AutoTokenizer, LlamaTokenizer
 from utils import get_engine_name, process_output, throttle_generator
 
+
 class EngineRunnerBase:
     def _read_config(self, config_path: Path) -> Tuple[ModelConfig, int, int, str]:
         with open(config_path, "r") as f:
@@ -72,6 +73,9 @@ class EngineRunnerBase:
     def _parse_input(
         self, input_text: str, input_file: str, tokenizer, end_id: int, remove_input_padding: bool
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        In this interface, We need to implement the codes to process input text according to the specific model.
+        """
         pass
 
     def _generate_decode_param(
@@ -108,8 +112,6 @@ class EngineRunnerBase:
         model_name: str = "",
         use_fast: bool = False,
         trust_remote_code: bool = False,
-        eos_token: int = 2,
-        pad_token: int = 2,
         encoder_max_input_length: int = None,
     ) -> tensorrt_llm.runtime.GenerationSession:
         logger.set_level(log_level)
@@ -124,11 +126,15 @@ class EngineRunnerBase:
         torch.cuda.set_device(runtime_rank % runtime_mapping.gpus_per_node)
 
         if model_name == "llama":
-            tokenizer = LlamaTokenizer.from_pretrained(tokenizer_dir, legacy=False)
+            tokenizer = LlamaTokenizer.from_pretrained(tokenizer_dir, legacy=False, padding_side="left")
+            tokenizer.pad_token = tokenizer.eos_token
         else:
             tokenizer = AutoTokenizer.from_pretrained(
                 tokenizer_dir, use_fast=use_fast, trust_remote_code=trust_remote_code
             )
+
+        eos_token = tokenizer.encode(tokenizer.pad_token, add_special_tokens=False)[0]
+        pad_token = tokenizer.encode(tokenizer.eos_token, add_special_tokens=False)[0]
 
         sampling_config = SamplingConfig(
             end_id=eos_token, pad_id=pad_token, num_beams=num_beams, temperature=temperature, top_k=top_k, top_p=top_p
@@ -148,8 +154,6 @@ class EngineRunnerBase:
             input_text, input_file, tokenizer, eos_token, model_config.remove_input_padding
         )
 
-        print("input_lengths: ", input_lengths)
-
         max_input_length = torch.max(input_lengths).item()
         decoder.setup(input_lengths.size(0), max_input_length, max_output_len, num_beams, encoder_max_input_length)
 
@@ -161,11 +165,18 @@ class EngineRunnerBase:
         output_gen_ids = decoder.decode(**decode_kwargs)
         torch.cuda.synchronize()
 
+        outputs = []
+
         if streaming:
             for output_ids in throttle_generator(output_gen_ids, streaming_interval):
                 if runtime_rank == 0:
-                    process_output(output_ids, input_lengths, max_output_len, tokenizer, output_csv, output_npy)
+                    outputs.append(
+                        process_output(output_ids, input_lengths, max_output_len, tokenizer, output_csv, output_npy)
+                    )
         else:
             output_ids = output_gen_ids
             if runtime_rank == 0:
-                process_output(output_ids, input_lengths, max_output_len, tokenizer, output_csv, output_npy)
+                outputs.append(
+                    process_output(output_ids, input_lengths, max_output_len, tokenizer, output_csv, output_npy)
+                )
+        return outputs

@@ -288,7 +288,7 @@ class LlamaEngineBuilder(EngineBuilderBase):
         if self._builder_args_config.paged_kv_cache:
             self._network.plugin_config.enable_paged_kv_cache(self._builder_args_config.tokens_per_block)
 
-    def _get_model(self, rank: int) -> None:
+    def _set_model(self, rank: int) -> None:
         dtype = str_dtype_to_trt(self._builder_args_config.dtype)
         mapping = Mapping(
             world_size=self._builder_args_config.world_size,

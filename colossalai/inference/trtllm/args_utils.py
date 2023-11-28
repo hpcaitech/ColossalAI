@@ -238,8 +238,6 @@ class RunnerArgsConfig:
     model_name: str = ""
     use_fast: bool = False
     trust_remote_code: bool = False
-    eos_token: int = 2
-    pad_token: int = 2
     encoder_max_input_length: int = None
 
     @staticmethod
@@ -282,8 +280,6 @@ class RunnerArgsConfig:
             help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
             action="store_true",
         )
-        parser.add_argument("--eos_token", type=int, default=2)
-        parser.add_argument("--pad_token", type=int, default=2)
         parser.add_argument(
             "--encoder_max_input_length",
             help="The maximum input length of TensorRT-LLM encoder.",

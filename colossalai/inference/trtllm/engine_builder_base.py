@@ -10,6 +10,7 @@ from tensorrt_llm.logger import logger
 from tensorrt_llm.network import Network, net_guard
 from utils import get_engine_name, serialize_engine, to_onnx
 
+
 class EngineBuilderBase:
     def __init__(self):
         self._builder_args_config: BuilderArgsConfig = None
@@ -19,23 +20,40 @@ class EngineBuilderBase:
         self._engine_name: str = None
 
     def set_config(self, config: BuilderArgsConfig):
+        """
+        Before generating the engine, you need to initialize builder_args_config first.
+        """
+
         self._builder_args_config = config
 
     def _process_config(self) -> None:
+        """
+        After initializing builder_args_config,
+        we need to implement the codes to process configs according to the characteristics of the specific model.
+        """
         pass
 
     def _generate_network(self, rank: int) -> None:
+        """
+        In this interface, We need to implement the codes to create network and set plugins for the specific model.
+        """
         pass
 
-    def _get_model(self, rank: int) -> None:
+    def _set_model(self, rank: int) -> None:
+        """
+        In this interface, We need to initialize trt module for the specific model.
+        """
         pass
 
     def _get_builder_config(self, cache=None) -> tensorrt_llm.builder.BuilderConfig:
+        """
+        In this interface, We need to implement the codes to create and return builder_config for the specific model.
+        """
         pass
 
     def _build_rank_engine(self, rank, builder_config: tensorrt_llm.builder.BuilderConfig) -> trt.IHostMemory:
         # Get trt_model
-        self._get_model(rank)
+        self._set_model(rank)
         with net_guard(self._network):
             # Prepare
             self._network.set_named_parameters(self._trt_model.named_parameters())
