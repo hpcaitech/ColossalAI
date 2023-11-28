@@ -54,6 +54,7 @@ def colo_device_memory_capacity(device: torch.device) -> int:
     Returns:
         int: size in byte
     """
+    # TODO: add NPU support
     assert isinstance(device, torch.device)
     if device.type == "cpu":
         # In the context of 1-CPU-N-GPU, the memory capacity of the current process is 1/N overall CPU memory.
