@@ -105,6 +105,11 @@ def check_gemini_plugin(subset: str, init_method: str = "none", early_stop: bool
             "transformers_sam",
             "transformers_vit",
             "transformers_gpt_double_heads",  # TODO check why does the model fail to run using Gemini
+            "transformers_falcon",  # TODO check why falcon fails to run Gemini
+            "transformers_falcon_for_causal_lm",
+            "transformers_falcon_for_sequence_classification",
+            "transformers_falcon_for_token_classification",
+            "transformers_falcon_for_question_answering",
         ]:
             continue
 

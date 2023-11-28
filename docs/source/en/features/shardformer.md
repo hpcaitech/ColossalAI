@@ -179,6 +179,18 @@ Model/Feature Compatibility Matrix:
     <td nowrap="nowrap" align="center">❌</td>
   </tr>
   <tr>
+    <td nowrap="nowrap">Falcon</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+  </tr>
+  <tr>
     <td colspan="39"></td>
   </tr>
 </table>
