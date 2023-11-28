@@ -1,10 +1,12 @@
 #!/usr/bin/env python
-import torch
 from typing import Union
+
+import torch
+
 from .base_accelerator import BaseAccelerator
 
+__all__ = ["CudaAccelerator"]
 
-__all__ = ['CudaAccelerator']
 
 class CudaAccelerator(BaseAccelerator):
     """
@@ -12,11 +14,11 @@ class CudaAccelerator(BaseAccelerator):
     """
 
     def __init__(self):
-        super().__init__(name="cuda", communication_backend="nccl",  is_synchronous=False)
-    
-    #=======================
+        super().__init__(name="cuda", communication_backend="nccl", is_synchronous=False)
+
+    # =======================
     # device APIs
-    #=======================
+    # =======================
     def current_device(self) -> int:
         """
         Return the current device index.
@@ -52,4 +54,3 @@ class CudaAccelerator(BaseAccelerator):
         Return the number of devices on the machine.
         """
         return torch.cuda.device_count()
-    

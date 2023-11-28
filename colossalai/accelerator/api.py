@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 from typing import Union
+
 from .base_accelerator import BaseAccelerator
 from .cuda_accelerator import CudaAccelerator
 from .npu_accelerator import NpuAccelerator
 
-__all__ = ['set_accelerator', 'get_accelerator']
+__all__ = ["set_accelerator", "get_accelerator"]
 
 
 _ACCELERATOR = None
@@ -15,6 +16,7 @@ _ACCELERATOR_MAPPING = {
 }
 
 _DEFAULT_ACCELERATOR_TYPE = CudaAccelerator
+
 
 def set_accelerator(accelerator: Union[str, BaseAccelerator]) -> None:
     """
@@ -46,6 +48,3 @@ def get_accelerator() -> BaseAccelerator:
     if _ACCELERATOR is None:
         _ACCELERATOR = _DEFAULT_ACCELERATOR_TYPE()
     return _ACCELERATOR
-    
-
-

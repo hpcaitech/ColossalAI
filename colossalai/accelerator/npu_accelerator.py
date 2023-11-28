@@ -1,16 +1,19 @@
 #!/usr/bin/env python
 
-import torch
 from typing import Union
+
+import torch
+
 from .base_accelerator import BaseAccelerator
 
 try:
-    import torch_npu
+    pass
 except ImportError:
     pass
 
 
-__all__ = ['NpuAccelerator']
+__all__ = ["NpuAccelerator"]
+
 
 class NpuAccelerator(BaseAccelerator):
     """
@@ -18,11 +21,11 @@ class NpuAccelerator(BaseAccelerator):
     """
 
     def __init__(self):
-        super().__init__(name="npu", communication_backend="hccl",  is_synchronous=False)
-    
-    #=======================
+        super().__init__(name="npu", communication_backend="hccl", is_synchronous=False)
+
+    # =======================
     # device APIs
-    #=======================
+    # =======================
     def current_device(self) -> int:
         """
         Return the current device index.
@@ -58,4 +61,3 @@ class NpuAccelerator(BaseAccelerator):
         Return the number of devices on the machine.
         """
         return torch.npu.device_count()
-    
