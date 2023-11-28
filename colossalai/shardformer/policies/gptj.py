@@ -163,7 +163,6 @@ class GPTJPolicy(Policy):
         layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
         if stage_manager.is_first_stage():
             held_layers.append(module.wte)
-            # held_layers.append(module.wpe)
             held_layers.append(module.drop)
         start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
         held_layers.extend(module.h[start_idx:end_idx])
