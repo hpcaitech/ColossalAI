@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Prepare sft dataset for finetuning
+Prepare sft dataset for fine-tuning
 """
 
 import argparse

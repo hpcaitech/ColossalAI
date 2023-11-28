@@ -77,7 +77,7 @@ def supervised_tokenize_sft(
     max_length: int = 4096,
 ) -> Dict[str, Union[int, str, List[int]]]:
     """
-    A tokenization function to tokenize an original pretraining data point as following:
+    A tokenization function to tokenize an original supervised data point as following:
         {"messages": [{"from": "human", "content": "xxx"}, {"from": "assistant", "content": "xxx"}]}
     """
     assert tokenizer.add_bos_token is False and tokenizer.add_eos_token is False, (
@@ -132,11 +132,6 @@ def supervised_tokenize_sft(
     target_turn = turns[target_turn_index - 1]
     prompt = template.get_prompt(2 * target_turn)
     tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0]
-
-    # Uncomment the following to check whether `bisect_right` is right.
-    # if 2 * target_turn < len(template.messages):
-    #     length_to_next_turn = len(tokenizer([template.get_prompt(2*target_turn+2)], add_special_tokens=False)["input_ids"][0])
-    #     assert length_to_next_turn > max_length - 1, logger.info(f"The length of the prompt until the next turn after tokenization is {length_to_next_turn}, which is smaller than {max_length - 1}")
 
     template.messages = template.messages[0 : 2 * target_turn]
 

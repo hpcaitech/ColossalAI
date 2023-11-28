@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Continual Pre-training of LLaMA-2 developed by Colossal-AI Team
+Supervised fine-tuning of Colossal-LLaMA-2-base developed by Colossal-AI Team
 """
 
 import argparse
@@ -21,6 +21,7 @@ from colossal_llama2.dataset.loader import (
 from colossal_llama2.utils.ckpt_io import load_checkpoint, save_checkpoint
 from colossal_llama2.utils.flash_attention_patch import replace_with_flash_attention
 from colossal_llama2.utils.froze import freeze_non_embeds_parameters
+from colossal_llama2.utils.neftune_patch import activate_neftune, deactivate_neftune
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizer
@@ -109,6 +110,12 @@ def main() -> None:
         action="store_true",
         default=False,
         help="Use flash-attention",
+    )
+    parser.add_argument(
+        "--use_neft",
+        action="store_true",
+        default=False,
+        help="Use NEFTune",
     )
     parser.add_argument(
         "--freeze_non_embeds_params",
@@ -302,6 +309,10 @@ def main() -> None:
             f"Checkpoint loaded max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
         )
 
+    if args.use_neft:
+        coordinator.print_on_master("Activate NEFTune.")
+        model, handle = activate_neftune(model)
+
     num_steps_per_epoch = len(dataloader) // args.accumulation_steps
     # If resume training, set the sampler start index to the correct value
     assert isinstance(dataloader.sampler, StatefulDistributedSampler)
@@ -344,6 +355,11 @@ def main() -> None:
                 step + 1
             ) == len(dataloader):
                 coordinator.print_on_master("\nStart saving model checkpoint with running states")
+
+                if args.use_neft:
+                    coordinator.print_on_master("Deactivate NEFTune before saving model.")
+                    deactivate_neftune(model, handle)
+
                 save_checkpoint(
                     save_dir=args.save_dir,
                     booster=booster,
@@ -359,6 +375,10 @@ def main() -> None:
                     f"Saved checkpoint at epoch {epoch} step {step + 1} at folder {args.save_dir}"
                 )
 
+                if args.use_neft:
+                    coordinator.print_on_master("Activate NEFTune.")
+                    model, handle = activate_neftune(model)
+
             # Delete CUDA cache.
             # del batch, batch_labels, batch_output, loss
             torch.cuda.empty_cache()
@@ -366,6 +386,10 @@ def main() -> None:
         # the continue epochs are not resumed, so we need to reset the sampler start index and start step
         dataloader.sampler.set_start_index(start_index=0)
         start_step = 0
+
+    if args.use_neft:
+        coordinator.print_on_master("Deactivate NEFTune.")
+        deactivate_neftune(model, handle)
 
     # Final save.
     coordinator.print_on_master("Start saving final model checkpoint")

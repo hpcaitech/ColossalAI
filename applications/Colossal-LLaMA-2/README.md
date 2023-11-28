@@ -21,8 +21,14 @@
     - [1. Init Tokenizer Preparation](#1-init-tokenizer-preparation)
     - [2. Init Model Preparation](#2-init-model-preparation)
     - [3. Data Preparation](#3-data-preparation)
+        - [3.1 Data for Pretraining](#31-data-for-pretraining)
+        - [3.2 Data for Supervised Fine-tuning](#32-data-for-supervised-fine-tuning)
     - [4. Command Line Arguments for Training](#4-command-line-arguments-for-training)
+        - [4.1 Arguments for Pretraining](#41-arguments-for-pretraining)
+        - [4.2 Arguments for Supervised Fine-tuning](#42-arguments-for-supervised-fine-tuning)
     - [5. Running Command](#5-running-command)
+        - [5.1 Command for Pretraining](#51-command-for-pretraining)
+        - [5.2 Command for Supervised Fine-tuning](#52-command-for-supervised-fine-tuning)
 - [Technical Insights](#technical-insights)
   - [Data](#data)
   - [Tokenizer](#tokenizer)
@@ -141,8 +147,8 @@ from modelscope import AutoModelForCausalLM, AutoTokenizer, snapshot_download
 model_dir = snapshot_download('colossalai/Colossal-LLaMA-2-7b-base', revision='v1.0.1')
 tokenizer = AutoTokenizer.from_pretrained(model_dir, device_map="auto", trust_remote_code=True)
 model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="auto", trust_remote_code=True).eval()
-generation_kwargs = {"max_new_tokens": 256, 
-                     "top_p": 0.95, 
+generation_kwargs = {"max_new_tokens": 256,
+                     "top_p": 0.95,
                      "temperature": 0.3
                     }
 input = '离离原上草，'
@@ -218,6 +224,8 @@ Here is details about CLI arguments:
 ❗️**Important**: Once you initialize the new model checkpoint, copy your new tokenizer files (`special_tokens_map.json`, `tokenizer.model` and `tokenizer_config.json`) to your new model folder.
 
 #### 3. Data Preparation
+
+##### 3.1 Data for Pretraining
 Raw data should be formatted as `jsonl` format. Each data point should have the following fields:
 * `source` (str, compulsory): This part is ignored when calculating loss. Default can be empty.
 * `target` (str, compulsory): Loss will be calculated.
@@ -250,7 +258,31 @@ Here is details about CLI arguments:
 * Max length: `max_length`. Max length of spliced samples. Default value is 4096.
 * Number of bins for each category: `num_spliced_dataset_bins`. Number of bins for each category, used for bucket-based training.
 
+##### 3.2 Data for Supervised Fine-tuning
+We prepare data for supervised fine-tuning in a similar way. The main difference lies in the data format. Each data point should have the following field:
+* `messages` (list, compulsory): This part consists of a conversation between a human and assistant. The length of `messages` can vary and only content from `assistant` is used for calculating loss.
+
+Examples:
+```JSON
+{"messages": [{"from": "human", "content": "What are the three primary colors?"}, {"from": "assistant", "content": "The three primary colors are red, blue, and yellow."}]}
+{"messages": [{"from": "human", "content": "解释个人电脑和服务器之间的区别。"}, {"from": "assistant", "content": "个人电脑和服务器是两种不同类型的计算机系统，它们的主要区别在于用途、硬件配置和性能。 个人电脑，顾名思义，是为个人使用而设计的计算机。它们通常用于日常的工作、娱乐和学习，可以运行各种各样的应用程序和游戏。个人电脑的硬件配置一般是按照标准配置来设计的，不过也可以根据个人需求进行定制。 而服务器是为了满足大量用户的需求而设计的计算机系统，它们通常用于为用户提供各种网络服务，如网站、电子邮件和文件传输等。服务器通常需要高性能的硬件配置，并且可以承受高负载和长时间的运行。由于服务器需要支持大量用户的访问，它们通常配备多核处理器、大容量内存和大容量硬盘驱动器，以提高系统的运行速度和稳定性。 总之，个人电脑和服务器之间的主要区别在于它们的用途、硬件配置和性能。个人电脑用于个人使用，而服务器用于支持大量用户的访问。服务器的硬件配置通常比个人电脑更高，以保证系统的性能和稳定性。"}]}
+```
+
+Command to convert jsonl dataset to arrow format is similar to the command in [3.1 Data for Pretraining](#31-data-for-pretraining). In `prepare_sft_dataset.py`, we don't concatenate different data samples.
+```
+python prepare_sft_dataset.py.py \
+    --data_input_dirs "<JOSNL_DIR_1>,<JOSNL_DIR_2>,<JOSNL_DIR_3>" \
+    --tokenizer_dir "<TOKENIZER_DIR>" \
+    --data_cache_dir "jsonl_to_arrow_cache" \
+    --data_jsonl_output_dir "spliced_tokenized_output_jsonl" \
+    --data_arrow_output_dir "spliced_tokenized_output_arrow" \
+    --max_length 4096 \
+    --num_spliced_dataset_bins 10
+```
+
 #### 4. Command Line Arguments for Training
+
+##### 4.1 Arguments for Pretraining
 You can use `colossalai run` to launch multi-nodes training:
 ```bash
 colossalai run --nproc_per_node YOUR_GPU_PER_NODE --hostfile YOUR_HOST_FILE \
@@ -288,7 +320,16 @@ Here is details about CLI arguments:
 * Tensor parallelism size: `--tp`. TP size for 3d Parallelism. The default value is 1.
 * Zero stage: `--zero`. Zero stage for 3d Parallelism. The default value is 1.
 
+##### 4.2 Arguments for Supervised Fine-tuning
+We add support for gradient accumulation and NEFTuning for supervised fine-tuning and thus there are two more arguments apart from the arguments listed in [4.1 Arguments for Pretraining](#41-arguments-for-pretraining).
+
+Here is details about CLI arguments:
+* Accumulation steps: `--accumulation_steps`. The default value is `8`.
+* NEFTuning: `--use_neft`. The default value is `False`. It can help improve the performance of chat models.
+
 #### 5. Running Command
+
+##### 5.1 Command for Pretraining
 An [example bash](train.example.sh) is also provided for the experiment. Here is the steps to run the experiment:
 * Create your own hostfile: `cp hostfile.example hostfile`.
 * Create your own bash: `cp train.example.sh train.sh`.
@@ -310,6 +351,10 @@ declare -a dataset=(
     "<DIR_2>/part-00000"
 )
 ```
+
+##### 5.2 Command for Supervised Fine-tuning
+An [example bash](train_sft.example.sh) is provided. The only difference with the command for pretraining is the two arguments (`--accumulation_steps` and `--use_neft`) in the script. You can refer to [4.2 Arguments for Supervised Fine-tuning](#42-arguments-for-supervised-fine-tuning) for more details.
+
 ## Technical Insights
 In order to enhance LLaMA-2's capabilities for understanding and generating Chinese content, The [Colossal-AI](https://github.com/hpcaitech/ColossalAI) team proposes the continuation of pre-training the LLaMA-2 model using both Chinese and English corpora. The overall pipeline can be described as follows:
 
@@ -413,6 +458,14 @@ Applying the above process to perform knowledge transfer in any field allows for
 @article{dao2023flashattention2,
     title={Flash{A}ttention-2: Faster Attention with Better Parallelism and Work Partitioning},
     author={Dao, Tri},
+    year={2023}
+}
+```
+```bibtex
+@article{jain2023neftune,
+    title={NEFTune: Noisy Embeddings Improve Instruction Finetuning},
+    author={Jain, Neel and Chiang, Ping-yeh and Wen, Yuxin and Kirchenbauer, John and Chu, Hong-Min and Somepalli, Gowthami and Bartoldson, Brian R and Kailkhura, Bhavya and Schwarzschild, Avi and Saha, Aniruddha and others},
+    journal={arXiv preprint arXiv:2310.05914},
     year={2023}
 }
 ```
