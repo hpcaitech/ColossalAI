@@ -25,7 +25,8 @@
 </div>
 
 ## Latest News
-* [2023/09] [One Half-Day of Training Using a Few Hundred Dollars Yields Similar Results to Mainstream Large Models, Open-Source and Commercial-Free Domain-Specific Llm Solution](https://www.hpc-ai.tech/blog/one-half-day-of-training-using-a-few-hundred-dollars-yields-similar-results-to-mainstream-large-models-open-source-and-commercial-free-domain-specific-llm-solution)
+* [2023/11] [Enhanced MoE Parallelism, Open-source MoE Model Training Can Be 9 Times More Efficient](https://www.hpc-ai.tech/blog/enhanced-moe-parallelism-open-source-moe-model-training-can-be-9-times-more-efficient)
+* [2023/09] [One Half-Day of Training Using a Few Hundred Dollars Yields Similar Results to Mainstream Large Models, Open-Source and Commercial-Free Domain-Specific LLM Solution](https://www.hpc-ai.tech/blog/one-half-day-of-training-using-a-few-hundred-dollars-yields-similar-results-to-mainstream-large-models-open-source-and-commercial-free-domain-specific-llm-solution)
 * [2023/09] [70 Billion Parameter LLaMA2 Model Training Accelerated by 195%](https://www.hpc-ai.tech/blog/70b-llama2-training)
 * [2023/07] [HPC-AI Tech Raises 22 Million USD in Series A Funding](https://www.hpc-ai.tech/blog/hpc-ai-tech-raises-22-million-usd-in-series-a-funding-to-fuel-team-expansion-and-business-growth)
 * [2023/07] [65B Model Pretraining Accelerated by 38%, Best Practices for Building LLaMA-Like Base Models Open-Source](https://www.hpc-ai.tech/blog/large-model-pretraining)
@@ -52,6 +53,7 @@
    <a href="#Parallel-Training-Demo">Parallel Training Demo</a>
    <ul>
      <li><a href="#LLaMA2">LLaMA 1/2</a></li>
+     <li><a href="#MoE">MoE</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
      <li><a href="#BERT">BERT</a></li>
@@ -266,6 +268,15 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 - 65-billion-parameter large model pretraining accelerated by 38%
 [[code]](https://github.com/hpcaitech/ColossalAI/tree/example/llama/examples/language/llama)
 [[blog]](https://www.hpc-ai.tech/blog/large-model-pretraining)
+
+### MoE
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/images/MOE_training.png" width=800/>
+</p>
+
+- Enhanced MoE parallelism, Open-source MoE model training can be 9 times more efficient
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/openmoe)
+[[blog]](https://www.hpc-ai.tech/blog/enhanced-moe-parallelism-open-source-moe-model-training-can-be-9-times-more-efficient)
 
 ### GPT-3
 <p align="center">
