@@ -140,7 +140,11 @@ def run_pp(
             assert torch.allclose(torch_loss, pp_ret["loss"])
 
         for layer in sharded_model:
-            assert layer.weight.grad is None and layer.bias.grad is None
+            if layer.weight.grad is None:
+                assert layer.weight.grad is None and layer.bias.grad is None
+            else:
+                assert torch.allclose(layer.weight.grad, torch.zeros_like(layer.weight.grad))
+                assert torch.allclose(layer.bias.grad, torch.zeros_like(layer.bias.grad))
 
 
 @pytest.mark.dist
