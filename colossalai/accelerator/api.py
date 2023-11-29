@@ -17,8 +17,6 @@ _ACCELERATOR = None
 # i.e. auto_set_accelerator will check cuda first
 _ACCELERATOR_MAPPING = OrderedDict(cuda=CudaAccelerator, npu=NpuAccelerator)
 
-_DEFAULT_ACCELERATOR_TYPE = CudaAccelerator
-
 
 def set_accelerator(accelerator: Union[str, BaseAccelerator]) -> None:
     """
@@ -48,11 +46,10 @@ def auto_set_accelerator() -> None:
     for _, accelerator_cls in _ACCELERATOR_MAPPING.items():
         try:
             accelerator = accelerator_cls()
-
             if accelerator.is_available():
                 _ACCELERATOR = accelerator
             break
-        except RuntimeError:
+        except:
             pass
 
     if _ACCELERATOR is None:
@@ -71,5 +68,5 @@ def get_accelerator() -> BaseAccelerator:
     global _ACCELERATOR
 
     if _ACCELERATOR is None:
-        _ACCELERATOR = _DEFAULT_ACCELERATOR_TYPE()
+        auto_set_accelerator()
     return _ACCELERATOR
