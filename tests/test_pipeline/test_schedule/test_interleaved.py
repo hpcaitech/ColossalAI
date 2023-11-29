@@ -134,21 +134,13 @@ def run_pp(
         torch_loss = criterion(torch_output)
 
         pp_ret = schedule.forward_backward_step(
-            sharded_model,
-            iter(input_list),
-            criterion,
-            pp_optimizer,
-            return_loss=True,
-            return_outputs=True
+            sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True, return_outputs=True
         )
         if stage_manager.is_last_stage(ignore_chunk=True):
             assert torch.allclose(torch_loss, pp_ret["loss"])
-        
+
         for layer in sharded_model:
-            assert torch.allclose(layer.weight.grad, torch.zeros_like(layer.weight.grad))
-            assert torch.allclose(layer.bias.grad, torch.zeros_like(layer.bias.grad))
-
-
+            assert layer.weight.grad is None and layer.bias.grad is None
 
 
 @pytest.mark.dist

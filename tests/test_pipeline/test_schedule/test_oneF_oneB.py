@@ -136,8 +136,7 @@ def examine_pp(num_microbatch: int, batch_size: int):
             assert torch.allclose(torch_loss, pp_ret["loss"])
 
         for layer in sharded_model:
-            assert torch.allclose(layer.weight.grad, torch.zeros_like(layer.weight.grad))
-            assert torch.allclose(layer.bias.grad, torch.zeros_like(layer.bias.grad))
+            assert layer.weight.grad is None and layer.bias.grad is None
 
 
 def run_dist(
