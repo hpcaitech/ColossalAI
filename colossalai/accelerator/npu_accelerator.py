@@ -7,7 +7,7 @@ import torch
 from .base_accelerator import BaseAccelerator
 
 try:
-    pass
+    import torch_npu  # noqa
 except ImportError:
     pass
 
