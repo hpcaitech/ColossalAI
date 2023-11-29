@@ -103,7 +103,7 @@ Here is details about CLI arguments:
 - Max length: `-l`, `--max_length`. The default value is 4096.
 - Mixed precision: `-x`, `--mixed_precision`. The default value is "fp16". "fp16" and "bf16" are supported.
 - Save interval: `-i`, `--save_interval`. The interval (steps) of saving checkpoints. The default value is 1000.
-- Checkpoint directory: `-o`, `--save_dir`. The directoty path to save checkpoints. The default value is `checkpoint`.
+- Checkpoint directory: `-o`, `--save_dir`. The directory path to save checkpoints. The default value is `checkpoint`.
 - Checkpoint to load: `-f`, `--load`. The checkpoint path to load. The default value is `None`.
 - Gradient clipping: `--gradient_clipping`. The default value is 1.0.
 - Tensorboard log directory: `-t`, `--tensorboard_dir`. The directory path to save tensorboard logs. The default value is `tb_logs`.
@@ -217,7 +217,7 @@ Here is details about CLI arguments:
 - Max length: `-l`, `--max_length`. The default value is 4096.
 - Mixed precision: `-x`, `--mixed_precision`. The default value is "fp16". "fp16" and "bf16" are supported.
 - Save interval: `-i`, `--save_interval`. The interval (steps) of saving checkpoints. The default value is 1000.
-- Checkpoint directory: `-o`, `--save_dir`. The directoty path to save checkpoints. The default value is `checkpoint`.
+- Checkpoint directory: `-o`, `--save_dir`. The directory path to save checkpoints. The default value is `checkpoint`.
 - Checkpoint to load: `-f`, `--load`. The checkpoint path to load. The default value is `None`.
 - Gradient clipping: `--gradient_clipping`. The default value is 1.0.
 - Tensorboard log directory: `-t`, `--tensorboard_dir`. The directory path to save tensorboard logs. The default value is `tb_logs`.

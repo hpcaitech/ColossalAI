@@ -6,8 +6,8 @@ from typing import Dict, List, Optional, Tuple, Type
 
 import torch
 
-from colossalai.legacy.utils.memory import colo_device_memory_capacity
 from colossalai.utils import get_current_device
+from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.gemini.chunk import Chunk
 
 from .chunk import Chunk, ChunkManager

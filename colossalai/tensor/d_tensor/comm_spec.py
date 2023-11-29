@@ -112,7 +112,7 @@ def _split(tensor: torch.Tensor, comm_spec: CommSpec):
     dim = comm_spec.shard_dim
     length = tensor.shape[comm_spec.shard_dim] // dist.get_world_size(process_group)
     start = length * dist.get_rank(process_group)
-    output = torch.narrow(tensor, dim, start, length).contiguous()
+    output = torch.narrow(tensor, dim, start, length).clone().contiguous()
     return output
 
 
