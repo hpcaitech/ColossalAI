@@ -14,13 +14,13 @@
 # limitations under the License.
 
 import logging
+
 import torch
 from einops import rearrange
 
 HAS_NPU_TRIANGLE_ATTENTION = False
 try:
-    from torch_npu import npu_scaled_masked_softmax
-    from torch_npu import npu_confusion_transpose
+    from torch_npu import npu_confusion_transpose, npu_scaled_masked_softmax
 
     HAS_NPU_TRIANGLE_ATTENTION = True
 except ImportError:
@@ -71,9 +71,9 @@ if HAS_NPU_TRIANGLE_ATTENTION:
         bsz, head_num, sequence_len, head_dim = k.shape
         sparse_groups = sequence_len // block_size
         # Determine whether blocks size can be divided by sequence_length
-        flag = sequence_len == block_size * sparse_groups
+        divisible_flag = sequence_len == block_size * sparse_groups
         k = k.transpose(2, 3).contiguous()
-        if flag:
+        if divisible_flag:
             q_tmp_layers = torch.chunk(q, sparse_groups, 2)
             k_tmp_layers = torch.chunk(k, sparse_groups, 3)
             v_tmp_layers = torch.chunk(v, sparse_groups, 2)
@@ -98,33 +98,18 @@ if HAS_NPU_TRIANGLE_ATTENTION:
                 k_tmp = torch.cat((k_tmp, k_tmp_layers[i]), -1).contiguous()
                 v_tmp = torch.cat((v_tmp, v_tmp_layers[i]), -2).contiguous()
 
-            mask_tmp = origin_attn_mask[
-                :, :, q_begin:q_end, kv_begin:kv_end
-            ].contiguous()
+            mask_tmp = origin_attn_mask[:, :, q_begin:q_end, kv_begin:kv_end].contiguous()
             context_layer_tmp = compute_attn(q_tmp, k_tmp, v_tmp, mask_tmp)
             context_list_tmp.append(context_layer_tmp)
 
-        if not flag:
+        if not divisible_flag:
             # circumstances that cannot be divisible
             context_layer_tmp = compute_attn(q_last, k, v, mask_last)
             context_list_tmp.append(context_layer_tmp)
         context_layer = torch.cat(context_list_tmp, 2)
         new_context_layer_shape = (bsz, sequence_len, head_num * head_dim)
-        context_layer = npu_confusion_transpose(
-            context_layer, [0, 2, 1, 3], [*new_context_layer_shape], True
-        )
+        context_layer = npu_confusion_transpose(context_layer, [0, 2, 1, 3], [*new_context_layer_shape], True)
         # =========================
         # Context layer. [b, sq, hp]
         # =========================
         return context_layer
-
-
-if __name__ == "__main__":
-    q, k, v = [
-        torch.randn((2, 12, 1024, 64), requires_grad=True).npu().half()
-        for _ in range(3)
-    ]
-    mask = torch.ones(2, 12, 1024, 1024).npu().bool()
-    out = npu_triangle_attention(q, k, v, origin_attn_mask=mask)
-    loss = out.sum()
-    loss.backward()

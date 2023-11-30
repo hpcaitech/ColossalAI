@@ -1,18 +1,18 @@
 import math
 from typing import Optional
-from .triangle_attn import HAS_NPU_TRIANGLE_ATTENTION
-from .spda_attn import npu_sdpa_attention
+
 import torch
+
+from .sdpa_attn import npu_sdpa_attention
+from .triangle_attn import HAS_NPU_TRIANGLE_ATTENTION
 
 
 class NPUColoAttention(torch.nn.Module):
-    def __init__(
-        self, embed_dim: int, num_heads: int, dropout: float = 0.0, scale: float = None
-    ):
+    def __init__(self, embed_dim: int, num_heads: int, dropout: float = 0.0, scale: float = None):
         super().__init__()
 
         try:
-            import torch_npu
+            pass
         except ImportError:
             raise Exception("torch_npu is not installed.")
 
@@ -54,9 +54,7 @@ class NPUColoAttention(torch.nn.Module):
             len(query.shape) == 4 and len(key.shape) == 4 and len(value.shape) == 4
         ), f"query, key, value should be 4D tensors, but got {query.shape}, {key.shape}, {value.shape}"
         assert (
-            query.device.type == "npu"
-            and key.device.type == "npu"
-            and value.device.type == "npu"
+            query.device.type == "npu" and key.device.type == "npu" and value.device.type == "npu"
         ), f"query, key, value should be on npu device, but got {query.device}, {key.device}, {value.device}"
         assert bias is None, "bias is not supported in npu colo attention"
 
@@ -64,6 +62,7 @@ class NPUColoAttention(torch.nn.Module):
 
         if HAS_NPU_TRIANGLE_ATTENTION:
             from .triangle_attn import npu_triangle_attention
+
             attn_fn = npu_triangle_attention
         else:
             attn_fn = npu_sdpa_attention
