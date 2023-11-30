@@ -12,7 +12,7 @@ class NPUColoAttention(torch.nn.Module):
         super().__init__()
 
         try:
-            pass
+            import torch_npu  # noqa
         except ImportError:
             raise Exception("torch_npu is not installed.")
 
