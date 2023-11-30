@@ -16,6 +16,11 @@ cd ColossalAI/applications/ColossalQA/
 pip install -e .
 ```
 
+Install the dependencies for ColossalQA webui demo:
+```sh
+pip install -r requirements.txt
+```
+
 ## Configure the RAG Chain
 
 Customize the RAG Chain settings, such as the embedding model (default: moka-ai/m3e), the language model, and the prompts, in the `config.py`.
