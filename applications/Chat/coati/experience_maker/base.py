@@ -3,7 +3,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 import torch
-from coati.models import Actor, Critic, RewardModel
+from coati.models import Critic, RewardModel
+from transformers import PreTrainedModel
 
 
 @dataclass
@@ -59,7 +60,9 @@ class Experience:
 
 
 class ExperienceMaker(ABC):
-    def __init__(self, actor: Actor, critic: Critic, reward_model: RewardModel, initial_model: Actor) -> None:
+    def __init__(
+        self, actor: PreTrainedModel, critic: Critic, reward_model: RewardModel, initial_model: PreTrainedModel
+    ) -> None:
         super().__init__()
         self.actor = actor
         self.critic = critic

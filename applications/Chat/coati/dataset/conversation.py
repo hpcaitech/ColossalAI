@@ -41,7 +41,7 @@ class Conversation:
             ret = self.system
             for role, message in self.messages[0:length]:
                 if message:
-                    ret += role + ": " + self.seps[0] + message + self.seps[1]
+                    ret += role + ": " + self.seps[0] + message + " " + self.seps[1]
                 else:
                     ret += role + ": " + self.seps[0]
             return ret

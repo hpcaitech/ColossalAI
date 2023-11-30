@@ -15,7 +15,7 @@ from coati.dataset import (
 from coati.models import LogExpLoss, LogSigLoss, RewardModel, convert_to_lora_module
 from coati.trainer import RewardModelTrainer
 from coati.utils import load_checkpoint, replace_with_flash_attention
-from transformers import AutoTokenizer
+from transformers import LlamaTokenizer
 
 import colossalai
 from colossalai.booster import Booster
@@ -33,6 +33,44 @@ def train(args):
     # ==============================
     colossalai.launch_from_torch({})
     coordinator = DistCoordinator()
+
+    # ======================================================
+    # Initialize Model, Objective, Optimizer and LR Scheduler
+    # ======================================================
+    init_ctx = LazyInitContext(default_device=get_current_device()) if "gemini" in args.plugin else nullcontext()
+
+    booster_policy = None
+    with init_ctx:
+        model = RewardModel(args.pretrain)
+
+        if args.tp > 1:
+            if model.model.config.architectures[0] == "BloomForCausalLM":
+                from colossalai.shardformer.policies.bloom import BloomPolicy
+
+                booster_policy = BloomPolicy()
+            elif model.model.config.architectures[0] == "LlamaForCausalLM":
+                from colossalai.shardformer.policies.llama import LlamaPolicy
+
+                booster_policy = LlamaPolicy()
+            elif model.model.config.architectures[0] == "GPT2LMHeadModel":
+                from colossalai.shardformer.policies.gpt2 import GPT2Policy
+
+                booster_policy = GPT2Policy()
+            elif model.model.config.architectures[0] == "ChatGLMModel":
+                from colossalai.shardformer.policies.chatglm2 import ChatGLMPolicy
+
+                booster_policy = ChatGLMPolicy()
+            elif model.model.config.architectures[0] == "OPTForCausalLM":
+                from colossalai.shardformer.policies.opt import OPTPolicy
+
+                booster_policy = OPTPolicy()
+            else:
+                raise ValueError("Unknown model architecture for policy")
+
+        # TODO: set dropout to 0 here
+        # for llama2, dropout is 0 by default, hence skip.
+        if args.lora_rank > 0:
+            model = convert_to_lora_module(model, args.lora_rank, lora_train_bias=args.lora_train_bias)
 
     # ==============================
     # Initialize Booster
@@ -71,31 +109,12 @@ def train(args):
             pp_size=1,
             zero_stage=0,
             precision=args.mixed_precision,
+            custom_policy=booster_policy,
         )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
 
     booster = Booster(plugin=plugin)
-
-    # ======================================================
-    # Initialize Model, Objective, Optimizer and LR Scheduler
-    # ======================================================
-    init_ctx = (
-        LazyInitContext(default_device=get_current_device()) if isinstance(plugin, (GeminiPlugin,)) else nullcontext()
-    )
-    with init_ctx:
-        model = RewardModel(args.pretrain)
-
-        # debug tiny model
-        # model = RewardModel(
-        #     transformers.LlamaConfig(hidden_size=512, intermediate_size=1536, num_attention_heads=8, num_hidden_layers=4
-        #     )
-        # )
-
-        # TODO: set dropout to 0 here
-        # for llama2, dropout is 0 by default, hence skip.
-        if args.lora_rank > 0:
-            model = convert_to_lora_module(model, args.lora_rank, lora_train_bias=args.lora_train_bias)
 
     if args.grad_checkpoint and args.lora_rank == 0:
         model.model.gradient_checkpointing_enable()  # TODO: support gradient checkpoint for the last linear layer
@@ -109,7 +128,7 @@ def train(args):
 
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
+    tokenizer = LlamaTokenizer.from_pretrained(tokenizer_dir)
     tokenizer.padding_side = "right"
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -237,8 +256,8 @@ def train(args):
         model.eval()
     # save model checkpoint after fitting on only rank0
     coordinator.print_on_master("Start saving final model checkpoint")
-    booster.save_model(model, os.path.join(args.save_path, "modeling"), shard=True)
-    coordinator.print_on_master(f"Saved final model checkpoint at epoch {args.max_epochs} at folder {args.save_path}")
+    booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
+    coordinator.print_on_master(f"Saved final model checkpoint at epoch {args.max_epochs} at folder {args.save_dir}")
 
     coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
 

@@ -108,7 +108,6 @@ def train(args):
     coordinator.print_on_master(f"Configuration file will be saved at: {args.config_file}")
     coordinator.print_on_master(f"Model checkpoint will be saved at: {args.save_path}")
 
-    print([name for name, p in model.named_parameters() if p.requires_grad])
     # configure optimizer
     optim = HybridAdam(
         model_params=model.parameters(),
@@ -117,14 +116,6 @@ def train(args):
         weight_decay=args.weight_decay,
         adamw_mode=True,
     )
-    # if is_rank_0():
-    #     print(optim.state_dict())
-    #     print("debug")
-    # optim_param = optim.state_dict()['param_groups'][0]['params']
-    # for id in optim_param:
-    #     for idx, (name, p) in enumerate(model.named_parameters()):
-    #         if idx == id:
-    #             print(name, p.size())
 
     # configure dataset
     coordinator.print_on_master(

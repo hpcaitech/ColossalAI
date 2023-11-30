@@ -1,6 +1,5 @@
 import argparse
 import json
-import math
 import os
 import resource
 from contextlib import nullcontext
@@ -89,16 +88,6 @@ def train(args):
         model = AutoModelForCausalLM.from_pretrained(args.pretrain)
         ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain)
 
-        # debug tiny model
-        # model = transformers.LlamaForCausalLM(
-        #     transformers.LlamaConfig(hidden_size=512, intermediate_size=1536, num_attention_heads=8, num_hidden_layers=4
-        #     )
-        # )
-        # ref_model = transformers.LlamaForCausalLM(
-        #     transformers.LlamaConfig(hidden_size=512, intermediate_size=1536, num_attention_heads=8, num_hidden_layers=4
-        #     )
-        # )
-
         # TODO: set dropout to 0 here
         # for llama2, dropout is 0 by default, hence skip.
         if args.lora_rank > 0:
@@ -119,13 +108,7 @@ def train(args):
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
     tokenizer.padding_side = "right"
     tokenizer.pad_token = tokenizer.eos_token
-    coordinator.print_on_master(
-        f"Tokenizer pad token: {tokenizer.pad_token}, Tokenizer padding side: {tokenizer.padding_side}"
-    )
 
-    # test_res = model.generate(tokenizer.encode("tell a story about a cat.\n", return_tensors='pt'),
-    #                           max_length=200, do_sample=True, top_k=50, top_p=0.95, temperature=0.9)
-    # coordinator.print_on_master(f"Test generate: {tokenizer.decode(test_res[0])}")
     # configure optimizer
     optim = HybridAdam(
         model_params=model.parameters(),
@@ -150,8 +133,6 @@ def train(args):
     )
 
     num_update_steps_per_epoch = len(train_dataloader) // args.accumulation_steps
-    math.ceil(args.max_epochs * num_update_steps_per_epoch)
-
     if args.warmup_steps is None:
         args.warmup_steps = int(args.max_epochs * 0.025 * (len(train_dataloader) // args.accumulation_steps))
         coordinator.print_on_master(f"Warmup steps is set to {args.warmup_steps}")

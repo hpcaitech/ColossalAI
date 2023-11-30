@@ -2,6 +2,7 @@ from typing import Any, Callable, Optional
 
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 from transformers import PreTrainedTokenizer
 
 try:
@@ -36,7 +37,39 @@ def _is_sequence_finished(unfinished_sequences: torch.Tensor) -> bool:
     return unfinished_sequences.max() == 0
 
 
-def _sample(
+@torch.inference_mode()
+def generate(
+    model: Any,
+    input_ids: torch.Tensor,
+    tokenizer: PreTrainedTokenizer,
+    max_length: int,
+    **generation_kwargs,
+) -> torch.Tensor:
+    """Generate token sequence. The returned sequence is input_ids + generated_tokens.
+
+    Args:
+        model (nn.Module): model
+        input_ids (torch.Tensor): input sequence
+        max_length (int): max length of the returned sequence
+    """
+    assert tokenizer.padding_side == "left", "Current generation only supports left padding."
+    if "max_new_tokens" in generation_kwargs:
+        max_new_tokens = generation_kwargs["max_new_tokens"]
+    else:
+        max_new_tokens = max_length - input_ids.size(1)
+    if max_new_tokens <= 0:
+        return input_ids
+    generation_kwargs["max_new_tokens"] = max_new_tokens
+    model_unwrap = model.unwrap()
+    model_unwrap.generation_config.pad_token_id = tokenizer.pad_token_id
+    input_ids = model_unwrap.generate(
+        input_ids=input_ids, attention_mask=input_ids.ne(tokenizer.pad_token_id), **generation_kwargs
+    )
+    input_ids = F.pad(input_ids, (0, max_length - input_ids.size(1)), value=tokenizer.pad_token_id)
+    return input_ids
+
+
+def _sample_streaming(
     model: Any,
     input_ids: torch.Tensor,
     max_length: int,
@@ -48,17 +81,26 @@ def _sample(
     temperature: Optional[float] = None,
     prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
     update_model_kwargs_fn: Optional[Callable[[dict, Any], dict]] = None,
+    stream_interval: int = 2,
     **model_kwargs,
-) -> torch.Tensor:
-    if input_ids.size(1) >= max_length:
+):
+    context_length = input_ids.size(1)
+    if "max_new_tokens" in model_kwargs:
+        max_new_tokens = model_kwargs["max_new_tokens"]
+    else:
+        max_new_tokens = max_length - context_length
+    if context_length + max_new_tokens > max_length or max_new_tokens == 0:
         return input_ids
 
     logits_processor = _prepare_logits_processor(top_k, top_p, temperature)
     unfinished_sequences = input_ids.new(input_ids.shape[0]).fill_(1)
 
-    for _ in range(input_ids.size(1), max_length):
+    for i in range(context_length, context_length + max_new_tokens):
+        # calculate attention mask
         model_inputs = (
-            prepare_inputs_fn(input_ids, **model_kwargs) if prepare_inputs_fn is not None else {"input_ids": input_ids}
+            prepare_inputs_fn(input_ids, **model_kwargs)
+            if prepare_inputs_fn is not None
+            else {"input_ids": input_ids, "attention_mask": input_ids.ne(pad_token_id)}
         )
         outputs = model(**model_inputs)
 
@@ -84,14 +126,18 @@ def _sample(
             unfinished_sequences = unfinished_sequences.mul((next_tokens != eos_token_id).long())
 
         # stop when each sentence is finished if early_stopping=True
-        if early_stopping and _is_sequence_finished(unfinished_sequences):
-            break
+        if (
+            (early_stopping and _is_sequence_finished(unfinished_sequences))
+            or (i - context_length) % stream_interval == 0
+            or i == context_length + max_new_tokens - 1
+        ):
+            yield input_ids
+            if early_stopping and _is_sequence_finished(unfinished_sequences):
+                break
 
-    return input_ids
 
-
-@torch.no_grad()
-def generate(
+@torch.inference_mode()
+def generate_streaming(
     model: Any,
     input_ids: torch.Tensor,
     tokenizer: PreTrainedTokenizer,
@@ -105,7 +151,7 @@ def generate(
     prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
     update_model_kwargs_fn: Optional[Callable[[dict, Any], dict]] = None,
     **model_kwargs,
-) -> torch.Tensor:
+):
     """Generate token sequence. The returned sequence is input_ids + generated_tokens.
 
     Args:
@@ -130,7 +176,7 @@ def generate(
         raise NotImplementedError
     elif is_sample_gen_mode:
         # run sample
-        return _sample(
+        for res in _sample_streaming(
             model,
             input_ids,
             max_length,
@@ -143,7 +189,8 @@ def generate(
             prepare_inputs_fn=prepare_inputs_fn,
             update_model_kwargs_fn=update_model_kwargs_fn,
             **model_kwargs,
-        )
+        ):
+            yield res
     elif is_beam_gen_mode:
         raise NotImplementedError
     else:

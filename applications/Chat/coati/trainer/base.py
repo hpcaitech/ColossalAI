@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from typing import List
+from typing import Callable, List
 
 import torch.nn as nn
 import tqdm
@@ -10,8 +10,8 @@ from torch.optim import Optimizer
 
 from colossalai.booster import Booster
 
-from .callbacks import Callback
-from .strategies import Strategy
+# from .callbacks import Callback
+# from .strategies import Strategy
 from .utils import is_rank_0
 
 
@@ -74,14 +74,16 @@ class OLTrainer(ABC):
 
     def __init__(
         self,
-        strategy: Strategy,
+        actor_booster: Booster,
+        critic_booster: Booster,
         data_buffer: NaiveExperienceBuffer,
         sample_buffer: bool,
         dataloader_pin_memory: bool,
-        callbacks: List[Callback] = [],
+        callbacks: List[Callable] = [],
     ) -> None:
         super().__init__()
-        self.strategy = strategy
+        self.actor_booster = actor_booster
+        self.critic_booster = critic_booster
         self.data_buffer = data_buffer
         self.sample_buffer = sample_buffer
         self.dataloader_pin_memory = dataloader_pin_memory
@@ -146,6 +148,20 @@ class OLTrainer(ABC):
         """
         raise NotImplementedError()
 
+    @abstractmethod
+    def _setup_update_phrase_dataload(self):
+        """
+        Implement this method to setup dataloader for update phase.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _save_checkpoint(self, episode: int = 0):
+        """
+        Implement this method to save checkpoint.
+        """
+        raise NotImplementedError()
+
     def _collect_phase(self, collect_step: int):
         self._on_make_experience_start()
         experience = self._make_experience(collect_step)
@@ -165,7 +181,6 @@ class OLTrainer(ABC):
         num_episodes: int,
         num_collect_steps: int,
         num_update_steps: int,
-        save_per_num_episodes: int,
         *args,
         **kwargs,
     ):
@@ -187,26 +202,10 @@ class OLTrainer(ABC):
                         # HACK(cwher): according to the design of boost API, dataloader should also be boosted,
                         #  but it is impractical to adapt this pattern in RL training. Thus, I left dataloader unboosted.
                         #  I only call strategy.setup_dataloader() to setup dataloader.
-                        self.dataloader = self.strategy.setup_dataloader(self.data_buffer, self.dataloader_pin_memory)
+                        self._setup_update_phrase_dataload()
                     for update_step in tqdm.trange(num_update_steps, desc="Update steps", disable=not is_rank_0()):
                         self._update_phase(update_step)
                     # NOTE: this is for on-policy algorithms
                     self.data_buffer.clear()
-                if is_rank_0() and (episode + 1) % save_per_num_episodes == 0:
-                    if args.lora_rank > 0 and args.merge_lora_weights:
-                        from coati.models.lora import LORA_MANAGER
-
-                        # NOTE: set model to eval to merge LoRA weights
-                        LORA_MANAGER.merge_weights = True
-                        self.actor.eval()
-                    # save model checkpoint after fitting
-                    self.strategy.save_model(self.actor, args.save_path, only_rank0=True)
-                    # save optimizer checkpoint on all ranks
-                    if args.need_optim_ckpt:
-                        self.strategy.save_optimizer(
-                            self.actor_optim,
-                            "actor_optim_checkpoint_prompts_%d.pt" % (torch.cuda.current_device()),
-                            only_rank0=False,
-                        )
-
-                    self.strategy.save_checkpoint(episode)
+                if self.save_interval > 0 and (episode + 1) % (self.save_interval) == 0:
+                    self._save_checkpoint(episode + 1)

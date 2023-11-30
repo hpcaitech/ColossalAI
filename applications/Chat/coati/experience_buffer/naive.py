@@ -1,12 +1,15 @@
 import random
-import warnings
 from typing import List
 
 import torch
 from coati.experience_maker.base import Experience
 
+from colossalai.logging import get_dist_logger
+
 from .base import ExperienceBuffer
 from .utils import BufferItem, make_experience_batch, split_experience_batch
+
+logger = get_dist_logger()
 
 
 class NaiveExperienceBuffer(ExperienceBuffer):
@@ -35,7 +38,7 @@ class NaiveExperienceBuffer(ExperienceBuffer):
         if self.limit > 0:
             samples_to_remove = len(self.items) - self.limit
             if samples_to_remove > 0:
-                warnings.warn(f"Experience buffer is full. Removing {samples_to_remove} samples.")
+                logger.warning(f"Experience buffer is full. Removing {samples_to_remove} samples.")
                 self.items = self.items[samples_to_remove:]
 
     def clear(self) -> None:

@@ -118,8 +118,7 @@ class SFTTrainer(SLTrainer):
             if (
                 self.save_dir is not None
                 and self.save_interval is not None
-                and (self.save_interval and (i + 1) % (self.save_interval * self.accumulation_steps) == 0)
-                or (i + 1) == len(self.train_dataloader)
+                and (self.num_train_step + 1) % self.save_interval == 0
             ):
                 save_checkpoint(
                     save_dir=self.save_dir,
@@ -128,12 +127,12 @@ class SFTTrainer(SLTrainer):
                     optimizer=self.optimizer,
                     lr_scheduler=self.scheduler,
                     epoch=epoch,
-                    step=i + 1,
+                    step=self.num_train_step + 1,
                     batch_size=batch_size,
                     coordinator=self.coordinator,
                 )
                 self.coordinator.print_on_master(
-                    f"Saved checkpoint at epoch {epoch} step {i + 1} at folder {self.save_dir}"
+                    f"Saved checkpoint at epoch {epoch} step {self.num_train_step} at folder {self.save_dir}"
                 )
         step_bar.close()
 
