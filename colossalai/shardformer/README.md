@@ -127,6 +127,7 @@ We will follow this roadmap to develop Shardformer:
 | whisper |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [ ] | [x] |  [ ] |  [ ] |
 | sam |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
 | blip2 |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
+| falcon |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [ ] | [x] |  [ ] |  [ ] |
 | roberta |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | albert |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | ernie |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
@@ -136,6 +137,7 @@ We will follow this roadmap to develop Shardformer:
 | swin |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | swin V2 |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | qwen |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
+| mistral |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
 
 
 ## 💡 API Design

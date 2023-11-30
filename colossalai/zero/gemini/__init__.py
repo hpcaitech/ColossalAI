@@ -1,5 +1,4 @@
 from .chunk import ChunkManager, TensorInfo, TensorState, search_chunk_configuration
-from .colo_init_context import ColoInitContext, post_process_colo_init_ctx
 from .gemini_ddp import GeminiDDP
 from .gemini_mgr import GeminiManager
 from .gemini_optimizer import GeminiAdamOptimizer, GeminiOptimizer
@@ -15,6 +14,4 @@ __all__ = [
     "get_static_torch_model",
     "GeminiAdamOptimizer",
     "GeminiOptimizer",
-    "ColoInitContext",
-    "post_process_colo_init_ctx",
 ]

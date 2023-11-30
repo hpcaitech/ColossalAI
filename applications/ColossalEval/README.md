@@ -6,33 +6,34 @@
 
 ## Table of Contents
 
+- [Table of Contents](#table-of-contents)
 - [Overview](#overview)
 - [Leaderboard](#leaderboard)
 - [Install](#install)
 - [Evaluation Process](#evaluation-process)
   - [Inference](#inference)
-  	- [Dataset Preparation](#dataset-preparation)
+    - [Dataset Preparation](#dataset-preparation)
     - [Configuration](#configuration)
     - [How to Use](#how-to-use)
   - [Evaluation](#evaluation)
     - [Dataset Evaluation](#dataset-evaluation)
-      - [Configuration](#dataset-evaluation)
-      - [How to Use](#dataset-evaluation)
+      - [Configuration](#configuration-1)
+      - [How to Use](#how-to-use-1)
     - [GPT Evaluation](#gpt-evaluation)
-      - [Configuration](#gpt-evaluation)
-      - [How to Use](#gpt-evaluation)
+      - [Configuration](#configuration-2)
+      - [How to Use](#how-to-use-2)
 - [More Details](#more-details)
-  - [Inference Details](#inference-details)
-  - [Evaluation Details](#evaluation-details)
+  - [Inference](#inference-1)
+  - [Evaluation](#evaluation-1)
     - [Metrics](#metrics)
-  - [examples](#examples)
+  - [Examples](#examples)
     - [Dataset Evaluation Example](#dataset-evaluation-example)
     - [GPT Evaluation Example](#gpt-evaluation-example)
-- [To Do](#to-do)
 - [FAQ](#faq)
   - [How to Add a New Metric?](#how-to-add-a-new-metric)
   - [How to Add a New Dataset?](#how-to-add-a-new-dataset)
   - [How to Add a New Model?](#how-to-add-a-new-model)
+- [To do](#to-do)
 - [Citations](#citations)
 
 ## Overview
@@ -47,7 +48,7 @@ We conducted comprehensive evaluation on 4 dataset and compare our Colossal-Llam
 - We use 5-shot for AGIEval and only calculate scores for 4-choice questions using a combination metric of exact match and the logits of first predicted token. If any of the exact match or logits of first predicted token is correct, the model will get the score.
 - We use 0-shot for GAOKAO-Bench and only calculate scores for 4-choice questions based on the logits of first predicted token.
 - The generation config for all dataset is greedy search.
-- We also provided CEval scores from its lastest leaderboard or the official repository of the model.
+- We also provided CEval scores from its latest leaderboard or the official repository of the model.
 
 More details about metrics can be found in [Metrics](#metrics).
 

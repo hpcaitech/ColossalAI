@@ -71,8 +71,12 @@ class ModelZooRegistry(dict):
         new_dict = dict()
 
         for k, v in self.items():
-            if keyword in k:
-                new_dict[k] = v
+            if keyword == "transformers_gpt":
+                if keyword in k and not "gptj" in k:  # ensure GPT2 does not retrieve GPTJ models
+                    new_dict[k] = v
+            else:
+                if keyword in k:
+                    new_dict[k] = v
 
         assert len(new_dict) > 0, f"No model found with keyword {keyword}"
         return new_dict
