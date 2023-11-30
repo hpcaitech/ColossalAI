@@ -4,6 +4,7 @@ All custom prompt templates are defined here.
 
 from langchain.prompts.prompt import PromptTemplate
 
+
 _CUSTOM_SUMMARIZER_TEMPLATE_ZH = """请递进式地总结所提供的当前对话，将当前对话的摘要内容添加到先前已有的摘要上，返回一个融合了当前对话的新的摘要。
 
 例1:
@@ -122,3 +123,12 @@ PROMPT_RETRIEVAL_QA_ZH = PromptTemplate(
 PROMPT_RETRIEVAL_CLASSIFICATION_USE_CASE_ZH = PromptTemplate(
     template=_ZH_RETRIEVAL_CLASSIFICATION_USE_CASE, input_variables=["question", "context"]
 )
+
+ALL_PROMPT = {
+    "PROMPT_RETRIEVAL_QA_EN": PROMPT_RETRIEVAL_QA_EN,
+    "PROMPT_DISAMBIGUATE_EN": PROMPT_DISAMBIGUATE_EN,
+    "SUMMARY_PROMPT_ZH": SUMMARY_PROMPT_ZH,
+    "PROMPT_DISAMBIGUATE_ZH": PROMPT_DISAMBIGUATE_ZH,
+    "PROMPT_RETRIEVAL_QA_ZH": PROMPT_RETRIEVAL_QA_ZH,
+    "PROMPT_RETRIEVAL_CLASSIFICATION_USE_CASE_ZH": PROMPT_RETRIEVAL_CLASSIFICATION_USE_CASE_ZH
+}
