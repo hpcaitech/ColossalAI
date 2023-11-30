@@ -44,6 +44,7 @@ class ColoAttention(torch.nn.Module):
         key: torch.Tensor,
         value: torch.Tensor,
         attn_mask: Optional[torch.Tensor] = None,
+        origin_attn_mask: Optional[torch.Tensor] = None,
         attn_mask_type: Optional[AttnMaskType] = None,
         bias: Optional[torch.Tensor] = None,
     ):

@@ -280,3 +280,21 @@ def create_randomizer_with_offset(
         Randomizer.increment_index()
 
     return Randomizer(seed=base_seed)
+
+
+def get_attention_kernel():
+    """
+    Get the attention kernel based on the device type.
+    """
+    from colossalai.kernel.cuda_native import AttnMaskType
+
+    if torch.cuda.is_available():
+        from colossalai.kernel.cuda_native import ColoAttention as AttentionKernel
+    else:
+        try:
+            torch.npu.is_available()
+            from colossalai.kernel.npu import NPUColoAttention as AttentionKernel
+        except:
+            raise Exception("No available device for attention kernel!")
+
+    return AttnMaskType, AttentionKernel
