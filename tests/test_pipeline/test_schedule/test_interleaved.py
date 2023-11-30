@@ -37,7 +37,7 @@ def pp_linear_fwd(
     stage_mgr: PipelineStageManager = None,
     model_chunk_id: int = None,
 ):
-    with stage_mgr.set_model_chunk_id(model_chunk_id):
+    with stage_mgr.switch_model_chunk_id(model_chunk_id):
         if stage_mgr.is_first_stage():
             return {"input_obj": forward(data)}
         elif stage_mgr.is_last_stage():

@@ -118,7 +118,7 @@ class InterleavedSchedule(PipelineSchedule):
         Returns:
             Any: The input tensor or input tensor list.
         """
-        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if not self.stage_manager.is_first_stage():
                 input_tensor = self.comm.recv_forward(prev_rank, metadata_recv=self.metadata_recv_forward)
                 if self.metadata_recv_forward is None:
@@ -137,7 +137,7 @@ class InterleavedSchedule(PipelineSchedule):
         Returns:
             Any: The input gradient tensor or gradient tensor list.
         """
-        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if not self.stage_manager.is_last_stage():
                 output_tensor_grad = self.comm.recv_backward(next_rank, metadata_recv=self.metadata_recv_backward)
                 if self.metadata_recv_backward is None:
@@ -154,7 +154,7 @@ class InterleavedSchedule(PipelineSchedule):
             output_object (Any): Object to be sent.
             next_rank (int, optional): The rank of the recipient of the tensor.
         """
-        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if not self.stage_manager.is_last_stage():
                 self.comm.send_forward(output_object, next_rank, send_metadata=self.send_metadata_forward)
                 self.send_metadata_forward = False
@@ -168,7 +168,7 @@ class InterleavedSchedule(PipelineSchedule):
             input_object (Any): Object to be sent.
             prev_rank (int, optional): The rank of the recipient of the tensor
         """
-        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if not self.stage_manager.is_first_stage():
                 self.comm.send_backward(input_object, prev_rank, send_metadata=self.send_metadata_backward)
                 self.send_metadata_backward = False
@@ -176,7 +176,7 @@ class InterleavedSchedule(PipelineSchedule):
     def send_forward_recv_backward(
         self, model_chunk_id: int, output_object: Any, next_rank: Optional[int] = None
     ) -> Any:
-        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if not self.stage_manager.is_last_stage():
                 output_tensor_grad = self.comm.send_forward_recv_backward(
                     output_object,
@@ -193,7 +193,7 @@ class InterleavedSchedule(PipelineSchedule):
     def send_backward_recv_forward(
         self, model_chunk_id: int, output_object: Any, prev_rank: Optional[int] = None
     ) -> Any:
-        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if not self.stage_manager.is_first_stage():
                 input_tensor = self.comm.send_backward_recv_forward(
                     output_object,
@@ -232,7 +232,7 @@ class InterleavedSchedule(PipelineSchedule):
         # for the first stage, input_obj is None
         # for the non-first stage, input_obj is the output of the previous stage and it's must be a dict
 
-        with self.stage_manager.set_model_chunk_id(model_chunk_id):
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if isinstance(model_chunk, ModuleList):
                 output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)
             else:

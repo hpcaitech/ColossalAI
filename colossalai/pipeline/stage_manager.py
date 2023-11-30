@@ -171,7 +171,7 @@ class PipelineStageManager:
         return self.pg_mesh.get_group_along_axis(self.pipeline_axis, stages)
 
     @contextlib.contextmanager
-    def set_model_chunk_id(self, model_chunk_id: int):
+    def switch_model_chunk_id(self, model_chunk_id: int):
         old_model_chunk_id = self.model_chunk_id
         self.model_chunk_id = model_chunk_id
         yield

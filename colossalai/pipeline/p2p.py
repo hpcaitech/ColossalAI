@@ -16,8 +16,11 @@ from packaging.version import Version
 from torch.distributed import ProcessGroup
 from torch.distributed import distributed_c10d as c10d
 
+from colossalai.logging import get_dist_logger
+
 from .stage_manager import PipelineStageManager
 
+logger = get_dist_logger()
 _unpickler = pickle.Unpickler
 
 
@@ -358,8 +361,7 @@ def _communicate(
         send_metadata (bool, optional): whether to send metadata
         metadata_recv (P2PMetadata, optional): metadata of the object to be received
     """
-    if send_dst is None and recv_src is None:
-        return
+    assert send_dst is not None or recv_src is not None, "send_dst and recv_src cannot be both None"
     assert send_dst is None or send_group is not None, "send_group must be specified when send_dst is not None"
     assert recv_src is None or recv_group is not None, "recv_group must be specified when recv_src is not None"
     send_metadata = send_metadata or (object is not None and not _check_if_fast_send_available(object))
@@ -370,14 +372,14 @@ def _communicate(
     # NOTE: send & recv should be atomic operations. However, if we need to send metadata or receive metadata,
     #   we are not able to do that (1. send & recv metadata 2. send & recv). So we need to split the send & recv into two parts in this case.
     if (send_dst is not None and recv_src is not None) and (send_metadata or metadata_recv is None):
-        warnings.warn("Fall back to individual send & recv")
+        logger.debug("Fall back to individual send & recv")
         _communicate(object, send_dst=send_dst, recv_src=None, send_group=send_group, send_metadata=send_metadata)
         return _communicate(None, send_dst=None, recv_src=recv_src, recv_group=recv_group, metadata_recv=metadata_recv)
 
     # NOTE: only the following 5 cases are valid:
     #   1. send() [needs extra metadata] and no recv()
     #   2. recv() [needs extra metadata] and no send()
-    #   3. neither send() or recv() need extra metadata
+    #   3. neither send() nor recv() need extra metadata
     assert not (send_dst is not None and send_metadata) or recv_src is None
     assert not (recv_src is not None and metadata_recv is None) or send_dst is None
     assert not (send_dst is not None and recv_src is not None) or (not send_metadata and metadata_recv is not None)

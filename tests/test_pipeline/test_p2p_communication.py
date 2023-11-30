@@ -32,11 +32,9 @@ def check_p2p_communication():
     if rank == 0:
         for obj in data:
             p2p.send_forward(obj)
-        with warnings.catch_warnings(record=True) as w:
-            for i in range(len(data)):
-                recv_obj = p2p.send_forward_recv_backward(data[i])
-                assert recv_obj == data[-(i + 1)]
-            assert "Fall back" in str(w[-1].message)
+        for i in range(len(data)):
+            recv_obj = p2p.send_forward_recv_backward(data[i])
+            assert recv_obj == data[-(i + 1)]
     elif rank == 1:
         for obj in data:
             recv_obj = p2p.recv_forward()
@@ -49,11 +47,9 @@ def check_p2p_communication():
     if rank == 1:
         for obj in data:
             p2p.send_backward(obj)
-        with warnings.catch_warnings(record=True) as w:
-            for i in range(len(data)):
-                recv_obj = p2p.send_backward_recv_forward(data[i])
-                assert recv_obj == data[-(i + 1)]
-            assert "Fall back" in str(w[-1].message)
+        for i in range(len(data)):
+            recv_obj = p2p.send_backward_recv_forward(data[i])
+            assert recv_obj == data[-(i + 1)]
     elif rank == 0:
         for obj in data:
             recv_obj = p2p.recv_backward()
