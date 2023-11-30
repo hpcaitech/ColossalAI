@@ -17,6 +17,7 @@ import uvicorn
 
 import config
 from RAG_ChatBot import RAG_ChatBot
+from utils import DocAction
 
 
 logger = get_logger()
@@ -30,10 +31,6 @@ def parseArgs():
 
 app = FastAPI()
 
-
-class DocAction(str, Enum):
-    ADD = "add"
-    CLEAR = "clear"
 
 class DocUpdateReq(BaseModel):
     doc_files: Union[List[str], str, None] = None

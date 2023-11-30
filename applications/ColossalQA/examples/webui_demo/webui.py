@@ -3,9 +3,9 @@ import json
 import os
 import requests
 
-from enum import Enum
 import gradio as gr
 
+from utils import DocAction
 
 def parseArgs():
     parser = argparse.ArgumentParser()
@@ -23,9 +23,6 @@ def add_text(history, text):
     history = history + [(text, None)]
     return history, gr.update(value=None, interactive=True)
 
-class DocAction(str, Enum):
-    ADD = "add"
-    CLEAR = "clear"
 
 def add_file(history, files):
     files_string = "\n".join([os.path.basename(file.name) for file in files])
@@ -87,17 +84,16 @@ with gr.Blocks(css=CSS) as demo:
             (os.path.join(os.path.dirname(__file__), "img/avatar_ai.png")),
         ),
     )
-
     with gr.Row():
+        btn = gr.UploadButton("📁", file_types=["file"], file_count="multiple", size="sm")
+        restart_btn = gr.Button(str("\u21BB"), elem_id="restart-btn", scale=1)
         txt = gr.Textbox(
-            scale=4,
+            scale=8,
             show_label=False,
-            placeholder="Enter text and press enter, or upload an image",
+            placeholder="Enter text and press enter, or use 📁 to upload files, click \u21BB to clear loaded files and restart chat",
             container=True,
             autofocus=True,
         )
-        btn = gr.UploadButton("📁", file_types=["file"], file_count="multiple")
-        restart_btn = gr.Button(str("\u21BB"), elem_id="restart-btn", scale=1)
 
     txt_msg = txt.submit(add_text, [chatbot, txt], [chatbot, txt], queue=False).then(bot, chatbot, chatbot)
     # Clear the original textbox

@@ -13,7 +13,6 @@ from colossalqa.prompt.prompt import (
     ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS,
 )
 from colossalqa.retriever import CustomRetriever
-from colossalqa.text_splitter import ChineseTextSplitter
 from langchain import LLMChain
 from langchain.embeddings import HuggingFaceEmbeddings
 
@@ -89,7 +88,7 @@ class RAG_ChatBot:
         self.info_retriever.set_rephrase_handler(disambiguity)
 
     def load_doc_from_console(self, json_parse_args: Dict = {}):
-        print("Select files for constructing Chinese retriever")
+        print("Select files for constructing the retriever")
         while True:
             file = input("Enter a file path or press Enter directly without input to exit:").strip()
             if file == "":
