@@ -142,6 +142,7 @@ class Adam_Optimizer {
     }
   }
 
+#if defined(__AVX512__) or defined(__AVX256__) or defined(__AVX2__)
   inline void simd_load(bool is_half, float *ptr, __half *h_ptr,
                         AVX_Data &data) {
     if (is_half) {
@@ -159,6 +160,7 @@ class Adam_Optimizer {
       SIMD_STORE(ptr, data.data);
     }
   }
+#endif
 
   void step(size_t step, float lr, float beta1, float beta2, float epsilon,
             float weight_decay, bool bias_correction, torch::Tensor &params,

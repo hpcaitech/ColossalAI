@@ -14,7 +14,7 @@ def data_gen():
     # Generated from following code snippet
     #
     # from transformers import GPT2Tokenizer
-    # input = 'Hello, my dog is cute'
+    # input = 'Hello, my dog is cute is cute' (last two words repeated to satisfy length requirement)
     # tokenized_input = tokenizer(input, return_tensors='pt')
     # input_ids = tokenized_input['input_ids']
     # attention_mask = tokenized_input['attention_mask']

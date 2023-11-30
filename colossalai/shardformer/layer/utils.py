@@ -6,6 +6,7 @@ import torch.distributed as dist
 from torch import nn
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.distributed import ProcessGroup, get_world_size
+from colossalai.utils.device import get_current_device, get_rng_state, set_rng_state, manual_seed
 
 
 class SeqParallelUtils:
@@ -104,14 +105,14 @@ class Randomizer:
     def __init__(self, seed: int):
         self.seed = seed
 
-        # Handle CUDA rng state
+        # Handle device rng state
         # 1. get the current rng state
         # 2. set the seed and store the rng state
         # 3. recover the original rng state
-        cuda_original_rng_state = torch.cuda.get_rng_state()
-        torch.cuda.manual_seed(seed)
-        self.cuda_rng_state = torch.cuda.get_rng_state()
-        torch.cuda.set_rng_state(cuda_original_rng_state)
+        device_original_rng_state = get_rng_state()
+        manual_seed(seed)
+        self.device_rng_state = get_rng_state()
+        set_rng_state(device_original_rng_state)
 
         # to the same for cpu rng state
         cpu_original_rng_state = torch.get_rng_state()
@@ -119,11 +120,11 @@ class Randomizer:
         self.cpu_rng_state = torch.get_rng_state()
         torch.set_rng_state(cpu_original_rng_state)
 
-    def _set_cuda_rng_state(self, rng_state):
-        torch.cuda.set_rng_state(rng_state)
+    def _set_device_rng_state(self, rng_state):
+        set_rng_state(rng_state)
 
-    def _get_cuda_rng_state(self):
-        current_state = torch.cuda.get_rng_state()
+    def _get_device_rng_state(self):
+        current_state = get_rng_state()
         return current_state
 
     def _set_cpu_rng_state(self, rng_state):
@@ -144,16 +145,16 @@ class Randomizer:
             >>>     input = super().forward(input)
         """
         try:
-            current_cuda_rng_state = self._get_cuda_rng_state()
-            self._set_cuda_rng_state(self.cuda_rng_state)
+            current_device_rng_state = self._get_device_rng_state()
+            self._set_device_rng_state(self.device_rng_state)
 
             if enable_cpu:
                 current_cpu_rng_state = self._get_cpu_rng_state()
                 self._set_cpu_rng_state(self.cpu_rng_state)
             yield
         finally:
-            self.cuda_rng_state = self._get_cuda_rng_state()
-            self._set_cuda_rng_state(current_cuda_rng_state)
+            self.device_rng_state = self._get_device_rng_state()
+            self._set_device_rng_state(current_device_rng_state)
 
             if enable_cpu:
                 self.cpu_rng_state = self._get_cpu_rng_state()
@@ -208,7 +209,7 @@ class Randomizer:
         index = Randomizer.index()
         if dist.is_initialized():
             # convert the index to tensor
-            index_tensor = torch.tensor(index, dtype=torch.int32).cuda()
+            index_tensor = torch.tensor(index, dtype=torch.int32, device=get_current_device())
 
             # all gather the index
             gathered_index = [torch.zeros_like(index_tensor) for _ in range(dist.get_world_size(process_group))]
@@ -230,7 +231,7 @@ class Randomizer:
 
         if dist.is_initialized():
             # convert the index to tensor
-            index_tensor = torch.tensor(index, dtype=torch.int32).cuda()
+            index_tensor = torch.tensor(index, dtype=torch.int32, device=get_current_device())
 
             # all gather the index
             gathered_index = [torch.zeros_like(index_tensor) for _ in range(dist.get_world_size(process_group))]

@@ -9,7 +9,7 @@ import colossalai.legacy.communication.p2p_v2 as comm
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.engine import Engine
-from colossalai.utils.cuda import get_current_device
+from colossalai.utils.device import get_current_device
 
 from ._pipeline_schedule import PipelineSchedule
 

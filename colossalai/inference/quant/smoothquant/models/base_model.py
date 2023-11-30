@@ -9,7 +9,6 @@ from functools import partial
 from os.path import isdir, isfile, join
 from typing import Dict, List, Optional, Union
 
-import accelerate
 import numpy as np
 import torch
 import torch.nn as nn
@@ -21,8 +20,16 @@ from transformers.modeling_utils import no_init_weights
 from transformers.utils.generic import ContextManagers
 from transformers.utils.hub import PushToHubMixin, cached_file
 
-from colossalai.inference.tensor_parallel.batch_infer_state import BatchInferState
-from colossalai.inference.tensor_parallel.kvcache_manager import MemoryManager
+from colossalai.inference.kv_cache.batch_infer_state import BatchInferState, MemoryManager
+
+try:
+    import accelerate
+
+    HAS_ACCELERATE = True
+except ImportError:
+    HAS_ACCELERATE = False
+    print("accelerate is not installed.")
+
 
 SUPPORTED_MODELS = ["llama"]
 

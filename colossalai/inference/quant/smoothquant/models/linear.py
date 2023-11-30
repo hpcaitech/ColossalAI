@@ -1,17 +1,25 @@
 # modified from torch-int: https://github.com/Guangxuan-Xiao/torch-int/blob/main/torch_int/nn/linear.py
 
 import torch
-from torch_int._CUDA import linear_a8_w8_b8_o8, linear_a8_w8_bfp32_ofp32
-from torch_int.functional.quantization import quantize_per_tensor_absmax
+
+try:
+    from torch_int._CUDA import linear_a8_w8_b8_o8, linear_a8_w8_bfp32_ofp32
+    from torch_int.functional.quantization import quantize_per_tensor_absmax
+
+    HAS_TORCH_INT = True
+except ImportError:
+    HAS_TORCH_INT = False
+    print("Not install torch_int. Please install torch_int from https://github.com/Guangxuan-Xiao/torch-int")
+
 
 try:
     from colossalai.kernel.op_builder.smoothquant import SmoothquantBuilder
 
     smoothquant_cuda = SmoothquantBuilder().load()
     HAS_SMOOTHQUANT_CUDA = True
-except ImportError:
+except:
     HAS_SMOOTHQUANT_CUDA = False
-    raise ImportError("CUDA smoothquant linear is not installed")
+    print("CUDA smoothquant linear is not installed")
 
 
 class W8A8BFP32O32LinearSiLU(torch.nn.Module):
@@ -138,21 +146,23 @@ class W8A8BFP32OFP32Linear(torch.nn.Module):
         )
         self.register_buffer(
             "bias",
-            torch.zeros(self.out_features, dtype=torch.float32, requires_grad=False),
+            torch.zeros((1, self.out_features), dtype=torch.float32, requires_grad=False),
         )
         self.register_buffer("a", torch.tensor(alpha))
 
     def _apply(self, fn):
         # prevent the bias from being converted to half
         super()._apply(fn)
-        self.bias = self.bias.to(torch.float32)
+        if self.bias is not None:
+            self.bias = self.bias.to(torch.float32)
         return self
 
     def to(self, *args, **kwargs):
         super().to(*args, **kwargs)
         self.weight = self.weight.to(*args, **kwargs)
-        self.bias = self.bias.to(*args, **kwargs)
-        self.bias = self.bias.to(torch.float32)
+        if self.bias is not None:
+            self.bias = self.bias.to(*args, **kwargs)
+            self.bias = self.bias.to(torch.float32)
         return self
 
     @torch.no_grad()

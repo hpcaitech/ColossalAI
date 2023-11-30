@@ -10,32 +10,30 @@ import torch.nn as nn
 from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import _get_default_group
 
-from colossalai.checkpoint_io.utils import StateDictSharder
+from colossalai.checkpoint_io.utils import StateDictSharder, gather_distributed_param
 from colossalai.interface import ModelWrapper
 from colossalai.lazy import LazyTensor
 from colossalai.logging import get_dist_logger
 from colossalai.tensor.colo_parameter import ColoParameter
+from colossalai.tensor.d_tensor import (
+    distribute_tensor,
+    distribute_tensor_with_customization,
+    get_device_mesh,
+    get_global_shape,
+    get_sharding_spec,
+    init_as_dtensor,
+    init_tensor_as_customization_distributed,
+    is_customized_distributed_tensor,
+    is_distributed_tensor,
+)
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.utils import _cast_float, free_storage, get_current_device, is_ddp_ignored
-from colossalai.checkpoint_io.utils import gather_distributed_param
 
 from .chunk import Chunk, ChunkManager, TensorState, init_chunk_manager
 from .gemini_hook import GeminiZeROHook
 from .gemini_mgr import GeminiManager
 from .memory_tracer import MemStats, OrderedParamGenerator
 from .utils import get_temp_total_chunk_on_cuda
-
-from colossalai.tensor.d_tensor import (
-    distribute_tensor,
-    distribute_tensor_with_customization,
-    init_tensor_as_customization_distributed,
-    get_device_mesh,
-    get_sharding_spec,
-    is_customized_distributed_tensor,
-    is_distributed_tensor,
-    get_global_shape,
-    init_as_dtensor
-)
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX, _IncompatibleKeys
@@ -86,9 +84,10 @@ class GeminiDDP(ModelWrapper):
         strict_ddp_mode: bool = False,
         scatter_after_inference: bool = True,
         mixed_precision: torch.dtype = torch.float16,
-        process_group: Optional[ProcessGroup] = None,
+        zero_group: Optional[ProcessGroup] = None,
         memstats: Optional[MemStats] = None,  # genimi memory stats
         master_weights: bool = True,
+        extra_dp_group: Optional[ProcessGroup] = None,
         verbose: bool = False,
     ) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
@@ -105,7 +104,7 @@ class GeminiDDP(ModelWrapper):
                 search_range_m=search_range_m,
                 min_chunk_size_m=min_chunk_size_m,
                 strict_ddp_flag=strict_ddp_mode,
-                process_group=process_group,
+                process_group=zero_group,
                 verbose=verbose,
             )
         self.gemini_manager = GeminiManager(
@@ -128,7 +127,8 @@ class GeminiDDP(ModelWrapper):
         self.name2param: Dict[str, nn.Parameter] = dict()
         self.scatter_after_inference = scatter_after_inference
         self.mixed_precision = mixed_precision
-        self.dp_process_group = process_group or _get_default_group()
+        self.zero_group = zero_group or _get_default_group()
+        self.extra_dp_group = extra_dp_group
 
         self.reuse_fp16_chunk = master_weights
         self.master_weights = master_weights
@@ -160,7 +160,7 @@ class GeminiDDP(ModelWrapper):
         self._init_chunks(
             param_order=param_order,
             strict_ddp_mode=strict_ddp_mode,
-            cpu_offload=self.gemini_manager.policy_name != "cuda",
+            cpu_offload=not (self.gemini_manager.policy_name == "static" and offload_param_frac == 0),
             pin_memory=pin_memory,
         )
         super().__init__(module)
@@ -377,8 +377,12 @@ class GeminiDDP(ModelWrapper):
                         self.chunk_manager.release_chunk(chunk)
                 if grad_chunk.is_gathered:
                     grad_chunk.cuda_global_chunk.div_(chunk.pg_size)
+                    if self.extra_dp_group is not None:
+                        grad_chunk.cuda_global_chunk.div_(chunk.extra_dp_size)
                 else:
                     grad_chunk.cuda_shard.div_(chunk.pg_size)
+                    if self.extra_dp_group is not None:
+                        grad_chunk.cuda_shard.div_(chunk.extra_dp_size)
                 # check overflow elements
                 self.overflow_counter += grad_chunk.has_inf_or_nan
                 # record l2 norm for gradient clipping. flag is bound to fp16 chunk
@@ -447,12 +451,13 @@ class GeminiDDP(ModelWrapper):
                     global_shape = get_global_shape(tensor)
                     device_mesh = get_device_mesh(tensor)
                     shard_spec = get_sharding_spec(tensor)
-                    record_tensor = init_as_dtensor(record_tensor, 
-                                                      device_mesh=device_mesh, 
-                                                      sharding_spec=shard_spec,
-                                                      global_shape = global_shape)
+                    record_tensor = init_as_dtensor(
+                        record_tensor, device_mesh=device_mesh, sharding_spec=shard_spec, global_shape=global_shape
+                    )
                 elif is_customized_distributed_tensor(tensor):
-                    init_tensor_as_customization_distributed(record_tensor, shard_fn=tensor.shard_fn, gather_fn=tensor.gather_fn)
+                    init_tensor_as_customization_distributed(
+                        record_tensor, shard_fn=tensor.shard_fn, gather_fn=tensor.gather_fn
+                    )
                 record_tensor = gather_distributed_param(record_tensor, keep_vars=False).cpu()
 
             assert tensor not in chunk_to_save_data
@@ -628,7 +633,15 @@ class GeminiDDP(ModelWrapper):
         local_name_params = itertools.chain(self.named_parameters(), persistent_buffers.items())
         local_state = {k: v for k, v in local_name_params if v is not None}
 
-        def load(param_name, dest_tensor, copy_func, source_device_mesh=None, source_sharding_spec=None, shard_fn=None, gather_fn=None):
+        def load(
+            param_name,
+            dest_tensor,
+            copy_func,
+            source_device_mesh=None,
+            source_sharding_spec=None,
+            shard_fn=None,
+            gather_fn=None,
+        ):
             state_key = prefix + param_name
             if state_key in state_dict:
                 input_param = state_dict[state_key]
@@ -636,7 +649,9 @@ class GeminiDDP(ModelWrapper):
                 if source_device_mesh is not None and source_sharding_spec is not None:
                     input_param = distribute_tensor(input_param, source_device_mesh, source_sharding_spec)
                 elif shard_fn is not None and gather_fn is not None:
-                    input_param = distribute_tensor_with_customization(input_param, shard_fn=shard_fn, gather_fn=gather_fn)
+                    input_param = distribute_tensor_with_customization(
+                        input_param, shard_fn=shard_fn, gather_fn=gather_fn
+                    )
 
                 # Backward compatibility: loading 1-dim tensor from 0.3.* to version 0.4+
                 if len(dest_tensor.shape) == 0 and len(input_param.shape) == 1:
@@ -681,7 +696,6 @@ class GeminiDDP(ModelWrapper):
             temp_chunk = get_temp_total_chunk_on_cuda(chunk, self.mixed_precision)
 
             for tensor, tensor_info in chunk.tensors_info.items():
-
                 source_device_mesh, source_sharding_spec, shard_fn, gather_fn = None, None, None, None
                 if is_distributed_tensor(tensor):
                     # shard the input param
@@ -693,7 +707,15 @@ class GeminiDDP(ModelWrapper):
 
                 parameter_name = fp32_to_name[tensor] if self.reuse_fp16_chunk else self.param2name[tensor]
                 parameter_slice = temp_chunk[tensor_info.offset : tensor_info.end]
-                load(parameter_name, tensor, partial(load_parameter, parameter_slice), source_device_mesh, source_sharding_spec, shard_fn, gather_fn)
+                load(
+                    parameter_name,
+                    tensor,
+                    partial(load_parameter, parameter_slice),
+                    source_device_mesh,
+                    source_sharding_spec,
+                    shard_fn,
+                    gather_fn,
+                )
 
             if chunk.is_gathered:
                 chunk.cuda_global_chunk.copy_(temp_chunk)
@@ -733,7 +755,7 @@ class GeminiDDP(ModelWrapper):
                         unexpected_keys.append(key)
 
     def _init_chunks(self, param_order, strict_ddp_mode: bool, cpu_offload: bool, pin_memory: bool):
-        dp_world_size = dist.get_world_size(self.dp_process_group)
+        zero_world_size = dist.get_world_size(self.zero_group)
         for p in param_order.generate():
             self._preprocess_param(p)
             assert type(p) is ColoParameter
@@ -753,8 +775,9 @@ class GeminiDDP(ModelWrapper):
             self.chunk_manager.register_tensor(
                 tensor=p,
                 group_type="fp16_param",
-                config_key=dp_world_size,
-                process_group=self.dp_process_group,
+                config_key=zero_world_size,
+                zero_group=self.zero_group,
+                extra_dp_group=self.extra_dp_group,
                 cpu_offload=cpu_offload,
                 pin_memory=pin_memory,
             )
@@ -767,8 +790,9 @@ class GeminiDDP(ModelWrapper):
                 self.chunk_manager.register_tensor(
                     tensor=fp32_p,
                     group_type="fp32_param",
-                    config_key=dp_world_size,
-                    process_group=self.dp_process_group,
+                    config_key=zero_world_size,
+                    zero_group=self.zero_group,
+                    extra_dp_group=self.extra_dp_group,
                     cpu_offload=cpu_offload,
                     pin_memory=pin_memory,
                 )
@@ -791,7 +815,7 @@ class GeminiDDP(ModelWrapper):
         for buffer in self.module.buffers():
             if isinstance(buffer, LazyTensor):
                 buffer.materialize()
-            buffer.data = buffer.cuda()
+            buffer.data = buffer.to(get_current_device())
             if torch.is_floating_point(buffer):
                 buffer.data = buffer.to(self.mixed_precision)
 

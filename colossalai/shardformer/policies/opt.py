@@ -22,6 +22,15 @@ __all__ = [
 
 
 class OPTPolicy(Policy):
+    def __init__(self) -> None:
+        super().__init__()
+        import transformers
+        from packaging.version import Version
+
+        assert Version(transformers.__version__) <= Version(
+            "4.33.0"
+        ), "The OPT model should run on a transformers version not greater than 4.33.0."
+
     def config_sanity_check(self):
         pass
 

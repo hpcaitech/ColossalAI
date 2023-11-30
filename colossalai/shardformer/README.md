@@ -81,6 +81,8 @@ Following are the description `ShardConfig`'s arguments:
 
 -  `enable_all_optimization`: Whether to turn on all optimization tools including `fused normalizaion`, `flash attention`, `JIT fused operators`, `sequence parallelism` and `sequence overlap`. Defaults to False.
 
+- `extra_kwargs`: A dict to store extra kwargs for ShardFomer.
+
 ### Write your own policy
 
 If you have a custom model, you can also use Shardformer to parallelize it by writing your own sharding policy. More information about the sharding policy can be found in [API Design](#-api-design).
@@ -125,6 +127,7 @@ We will follow this roadmap to develop Shardformer:
 | whisper |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [ ] | [x] |  [ ] |  [ ] |
 | sam |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
 | blip2 |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
+| falcon |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [ ] | [x] |  [ ] |  [ ] |
 | roberta |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | albert |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | ernie |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
@@ -134,6 +137,7 @@ We will follow this roadmap to develop Shardformer:
 | swin |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | swin V2 |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | qwen |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
+| mistral |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
 
 
 ## 💡 API Design
@@ -184,6 +188,7 @@ class ShardConfig:
     # Some possible future config fields
     tensor_parallel_mode: Choice['1d', '2d', '2.5d', '3d'] # support different tensor parallel mode
     use_flash_attention: bool # whether to use flash attention to speed up attention
+    extra_kwargs: Dict[str, Any] # extra kwargs for the shardformer
 ```
 
 ### Policy

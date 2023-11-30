@@ -13,7 +13,7 @@ from colossalai.moe.load_balance import LoadBalancer
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.routers import MoeRouter, get_router_cls
 from colossalai.moe.utils import create_ep_hierarchical_group, get_noise_generator
-from colossalai.tensor.moe_tensor.api import get_dp_group, get_ep_group, get_ep_size
+from colossalai.tensor.moe_tensor.api import get_dp_group, get_ep_group, get_ep_group_ranks, get_ep_size
 
 
 class SparseMLP(nn.Module):
@@ -105,8 +105,11 @@ class SparseMLP(nn.Module):
         if self.expert_parallel is not None:
             self.ep_group = get_ep_group(self.experts)
             self.ep_size = get_ep_size(self.experts)
-            self.ep_hierarchical_group = create_ep_hierarchical_group(
-                self.ep_group) if enable_hierarchical_comm else None
+            self.ep_hierarchical_group = None
+            if enable_hierarchical_comm:
+                self.ep_intra_src_rank, *self.ep_hierarchical_group = create_ep_hierarchical_group(
+                    get_ep_group_ranks(self.experts)
+                )
             self.dp_group = get_dp_group(self.experts)
         else:
             self.ep_group = None
@@ -225,10 +228,10 @@ class SparseMLP(nn.Module):
         """
         if not overlap or dist.get_world_size(self.ep_group) == 1:
             if self.ep_hierarchical_group is not None:
-                expert_input = HierarchicalAllToAll.apply(dispatch_data, self.ep_hierarchical_group)
+                expert_input = HierarchicalAllToAll.apply(dispatch_data, self.ep_hierarchical_group, self.ep_intra_src_rank)
                 expert_input = expert_input.reshape(self.ep_size, self.num_local_experts, -1, self.hidden_size)
                 expert_output = self.experts(expert_input)
-                expert_output = HierarchicalAllToAll.apply(expert_output, self.ep_hierarchical_group)
+                expert_output = HierarchicalAllToAll.apply(expert_output, self.ep_hierarchical_group, self.ep_intra_src_rank)
                 return expert_output
             else:
                 expert_input = AllToAll.apply(dispatch_data, self.ep_group, False)[0]

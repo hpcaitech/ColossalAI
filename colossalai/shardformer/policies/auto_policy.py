@@ -1,10 +1,8 @@
 import importlib
 from dataclasses import dataclass
-from typing import Optional
 
 import torch.nn as nn
 
-from ..shard.shard_config import ShardConfig
 from .base_policy import Policy
 
 __all__ = ["PolicyLocation", "get_autopolicy", "import_policy"]
@@ -87,6 +85,17 @@ _POLICY_LIST = {
     "transformers.models.gpt2.modeling_gpt2.GPT2ForSequenceClassification": PolicyLocation(
         file_name="gpt2", class_name="GPT2ForSequenceClassificationPolicy"
     ),
+    # GPTJ
+    "transformers.models.gptj.modeling_gptj.GPTJModel": PolicyLocation(file_name="gptj", class_name="GPTJModelPolicy"),
+    "transformers.models.gptj.modeling_gptj.GPTJForCausalLM": PolicyLocation(
+        file_name="gptj", class_name="GPTJForCausalLMPolicy"
+    ),
+    "transformers.models.gptj.modeling_gptj.GPTJForQuestionAnswering": PolicyLocation(
+        file_name="gptj", class_name="GPTJForQuestionAnsweringPolicy"
+    ),
+    "transformers.models.gptj.modeling_gptj.GPTJForSequenceClassification": PolicyLocation(
+        file_name="gptj", class_name="GPTJForSequenceClassificationPolicy"
+    ),
     # ViT
     "transformers.models.vit.modeling_vit.ViTModel": PolicyLocation(file_name="vit", class_name="ViTModelPolicy"),
     "transformers.models.vit.modeling_vit.ViTForImageClassification": PolicyLocation(
@@ -148,41 +157,39 @@ _POLICY_LIST = {
     "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
         file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
     ),
+    # Falcon
+    "transformers.models.falcon.modeling_falcon.FalconModel": PolicyLocation(
+        file_name="falcon", class_name="FalconModelPolicy"
+    ),
+    "transformers.models.falcon.modeling_falcon.FalconForCausalLM": PolicyLocation(
+        file_name="falcon", class_name="FalconForCausalLMPolicy"
+    ),
+    "transformers.models.falcon.modeling_falcon.FalconForSequenceClassification": PolicyLocation(
+        file_name="falcon", class_name="FalconForSequenceClassificationPolicy"
+    ),
+    "transformers.models.falcon.modeling_falcon.FalconForTokenClassification": PolicyLocation(
+        file_name="falcon", class_name="FalconForTokenClassificationPolicy"
+    ),
+    "transformers.models.falcon.modeling_falcon.FalconForQuestionAnswering": PolicyLocation(
+        file_name="falcon", class_name="FalconForQuestionAnsweringPolicy"
+    ),
+    "transformers.models.mistral.modeling_mistral.MistralModel": PolicyLocation(
+        file_name="mistral", class_name="MistralModelPolicy"
+    ),
+    "transformers.models.mistral.modeling_mistral.MistralForCausalLM": PolicyLocation(
+        file_name="mistral", class_name="MistralForCausalLMPolicy"
+    ),
+    "transformers.models.mistral.modeling_mistral.MistralForSequenceClassification": PolicyLocation(
+        file_name="mistral", class_name="MistralForSequenceClassificationPolicy"
+    ),
 }
 
-_INFER_POLICY_LIST = {
-    # LlaMa
-    "transformers.models.llama.modeling_llama.LlamaModel": PolicyLocation(
-        file_name="llama", class_name="LlamaModelInferPolicy"
-    ),
-    "transformers.models.llama.modeling_llama.LlamaForCausalLM": PolicyLocation(
-        file_name="llama", class_name="LlamaModelInferPolicy"
-    ),
-    # Bloom
-    "transformers.models.bloom.modeling_bloom.BloomModel": PolicyLocation(
-        file_name="bloom", class_name="BloomModelInferPolicy"
-    ),
-    "transformers.models.bloom.modeling_bloom.BloomForCausalLM": PolicyLocation(
-        file_name="bloom", class_name="BloomModelInferPolicy"
-    ),
-    # ChatGLM2
-    "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMModel": PolicyLocation(
-        file_name="chatglm2", class_name="ChatGLM2InferPolicy"
-    ),
-    "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
-        file_name="chatglm2", class_name="ChatGLM2ForConditionalGenerationInferPolicy"
-    ),
-}
 
-
-def import_policy(policy_location: PolicyLocation, inference_only: Optional[bool] = False) -> Policy:
+def import_policy(policy_location: PolicyLocation) -> Policy:
     """
     Dynamically import a Policy class based on the policy location.
     """
-    if inference_only:
-        module_name = f"colossalai.inference.tensor_parallel.policies.{policy_location.file_name}"
-    else:
-        module_name = f"colossalai.shardformer.policies.{policy_location.file_name}"
+    module_name = f"colossalai.shardformer.policies.{policy_location.file_name}"
     module = importlib.import_module(module_name)
     return getattr(module, policy_location.class_name)
 
@@ -198,7 +205,7 @@ def _fullname(obj):
     return module + "." + klass.__qualname__
 
 
-def get_autopolicy(model: nn.Module, shard_config: ShardConfig = None) -> Policy:
+def get_autopolicy(model: nn.Module) -> Policy:
     r"""
     Return the auto policy for the model
 
@@ -209,16 +216,12 @@ def get_autopolicy(model: nn.Module, shard_config: ShardConfig = None) -> Policy
         :class:`Policy`: The auto policy for the model
     """
     full_name = _fullname(model)
-    inference_only = shard_config.extra_kwargs.get("inference_only", False)
-    if inference_only:
-        policy_location = _INFER_POLICY_LIST.get(full_name, None)
-    else:
-        policy_location = _POLICY_LIST.get(full_name, None)
+    policy_location = _POLICY_LIST.get(full_name, None)
 
     if policy_location is None:
         raise NotImplementedError(
-            f"Auto policy for {model.__class__.__qualname__} is not implemented\n. Supported models are {list(_POLICY_LIST.keys())} and {list(_INFER_POLICY_LIST.keys())}"
+            f"Auto policy for {model.__class__.__qualname__} is not implemented\n. Supported models are {list(_POLICY_LIST.keys())}"
         )
     else:
-        policy = import_policy(policy_location, inference_only)
+        policy = import_policy(policy_location)
     return policy()
