@@ -4,11 +4,12 @@ import tensorrt as trt
 import tensorrt_llm
 import torch
 import torch.nn as nn
-from args_utils import BuilderArgsConfig
 from tensorrt_llm.builder import Builder
 from tensorrt_llm.logger import logger
 from tensorrt_llm.network import Network, net_guard
-from utils import get_engine_name, serialize_engine, to_onnx
+
+from colossalai.inference.trtllm.args_utils import BuilderArgsConfig
+from colossalai.inference.trtllm.utils import get_engine_name, serialize_engine, to_onnx
 
 
 class EngineBuilderBase:
@@ -31,25 +32,21 @@ class EngineBuilderBase:
         After initializing builder_args_config,
         we need to implement the codes to process configs according to the characteristics of the specific model.
         """
-        pass
 
     def _generate_network(self, rank: int) -> None:
         """
         In this interface, We need to implement the codes to create network and set plugins for the specific model.
         """
-        pass
 
     def _set_model(self, rank: int) -> None:
         """
         In this interface, We need to initialize trt module for the specific model.
         """
-        pass
 
     def _get_builder_config(self, cache=None) -> tensorrt_llm.builder.BuilderConfig:
         """
         In this interface, We need to implement the codes to create and return builder_config for the specific model.
         """
-        pass
 
     def _build_rank_engine(self, rank, builder_config: tensorrt_llm.builder.BuilderConfig) -> trt.IHostMemory:
         # Get trt_model

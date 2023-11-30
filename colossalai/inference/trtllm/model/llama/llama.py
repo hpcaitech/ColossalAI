@@ -9,9 +9,6 @@ import numpy as np
 import tensorrt_llm
 import tensorrt_llm.logger as logger
 import torch
-from args_utils import BuilderArgsConfig, RunnerArgsConfig
-from engine_builder_base import EngineBuilderBase
-from engine_runner_base import EngineRunnerBase
 from tensorrt_llm._utils import str_dtype_to_trt
 from tensorrt_llm.layers.attention import PositionEmbeddingType
 from tensorrt_llm.mapping import Mapping
@@ -19,6 +16,10 @@ from tensorrt_llm.models import fp8_quantize, smooth_quantize, weight_only_group
 from tensorrt_llm.plugin.plugin import ContextFMHAType
 from tensorrt_llm.quantization import QuantMode
 from transformers import LlamaConfig, LlamaForCausalLM
+
+from colossalai.inference.trtllm.args_utils import BuilderArgsConfig, RunnerArgsConfig
+from colossalai.inference.trtllm.engine_builder_base import EngineBuilderBase
+from colossalai.inference.trtllm.engine_runner_base import EngineRunnerBase
 
 from .weight import (
     get_scaling_factors,

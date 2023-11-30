@@ -9,7 +9,8 @@ from tensorrt_llm.mapping import Mapping
 from tensorrt_llm.quantization import QuantMode
 from tensorrt_llm.runtime import ModelConfig, SamplingConfig
 from transformers import AutoTokenizer, LlamaTokenizer
-from utils import get_engine_name, process_output, throttle_generator
+
+from colossalai.inference.trtllm.utils import get_engine_name, process_output, throttle_generator
 
 
 class EngineRunnerBase:
@@ -76,7 +77,6 @@ class EngineRunnerBase:
         """
         In this interface, We need to implement the codes to process input text according to the specific model.
         """
-        pass
 
     def _generate_decode_param(
         self,
@@ -95,7 +95,7 @@ class EngineRunnerBase:
     def generate(
         self,
         max_output_len: int,
-        log_level: str = "error",
+        log_level: str = "info",
         engine_dir: str = "llama_outputs",
         input_text: str = "Born in north-east France, Soyer trained as a",
         input_file: str = None,
@@ -144,6 +144,7 @@ class EngineRunnerBase:
         serialize_path = engine_dir / engine_name
         with open(serialize_path, "rb") as f:
             engine_buffer = f.read()
+
         decoder = tensorrt_llm.runtime.GenerationSession(
             model_config, engine_buffer, runtime_mapping, debug_mode=debug_mode
         )
