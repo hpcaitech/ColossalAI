@@ -4,17 +4,20 @@
 Splicing multiple pre-tokenized sequence data points
 """
 
-import bisect
 import random
 import warnings
 from copy import deepcopy
 from typing import Any, Callable, Dict, Iterable, List, Tuple, Union
 
-from colossal_llama2.utils.conversation import Conversation, default_conversation
+from coati.dataset.conversation import Conversation, default_conversation
 from datasets import dataset_dict
 from torch.utils.data import ConcatDataset, Dataset, IterableDataset
 from transformers.models.llama.tokenization_llama import LlamaTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
+
+from colossalai.logging import get_dist_logger
+
+logger = get_dist_logger()
 
 IGNORE_INDEX = -100
 
@@ -28,10 +31,10 @@ def supervised_tokenize_pretrain(
     A tokenization function to tokenize an original pretraining data point as following:
         {"source": "", "target": "Beijing, the capital of the People's Republic of China, ...", "category": "geography"}
     """
-    assert tokenizer.add_bos_token is False and tokenizer.add_eos_token is False, (
-        "Initially set `tokenizer.add_bos_token` and `tokenizer.add_eos_token` to False, "
-        "add <bos> and <eos> manually later"
-    )
+    # assert tokenizer.add_bos_token is False and tokenizer.add_eos_token is False, (
+    #     "Initially set `tokenizer.add_bos_token` and `tokenizer.add_eos_token` to False, "
+    #     "add <bos> and <eos> manually later"
+    # )
     if ignore_index is None:
         ignore_index = IGNORE_INDEX
 
@@ -40,10 +43,10 @@ def supervised_tokenize_pretrain(
     is_null_source = len(source_text) == 0
 
     source_text = tokenizer.bos_token + source_text
-    target_text += tokenizer.eos_token
+    target_text += " " + tokenizer.eos_token
     sequence_text = source_text + target_text
 
-    tokenized = tokenizer([source_text, sequence_text])["input_ids"]
+    tokenized = tokenizer([source_text, sequence_text], add_special_tokens=False)["input_ids"]
     sequence_input_ids = tokenized[1]
     sequence_labels = deepcopy(sequence_input_ids)
 
@@ -60,7 +63,7 @@ def supervised_tokenize_pretrain(
         input_ids=sequence_input_ids,
         labels=sequence_labels,
         seq_length=len(sequence_input_ids),
-        seq_category=data_point["category"],
+        seq_category=data_point["category"] if "category" in data_point else "None",
     )
 
 
@@ -75,10 +78,10 @@ def supervised_tokenize_sft(
     A tokenization function to tokenize an original pretraining data point as following:
         {"messages": [{"from": "human", "content": "xxx"}, {"from": "assistant", "content": "xxx"}]}
     """
-    assert tokenizer.add_bos_token is False and tokenizer.add_eos_token is False, (
-        "Initially set `tokenizer.add_bos_token` and `tokenizer.add_eos_token` to False, "
-        "add <bos> and <eos> manually later"
-    )
+    # assert tokenizer.add_bos_token is False and tokenizer.add_eos_token is False, (
+    #     "Initially set `tokenizer.add_bos_token` and `tokenizer.add_eos_token` to False, "
+    #     "add <bos> and <eos> manually later"
+    # )
 
     assert (
         tokenizer.bos_token == conversation_template.seps[0] and tokenizer.eos_token == conversation_template.seps[1]
@@ -107,14 +110,21 @@ def supervised_tokenize_sft(
 
     # `target_turn_index` is the number of turns which exceeds `max_length - 1` for the first time.
     turns = [i for i in range(1, len(messages) // 2 + 1)]
-    target_turn_index = bisect.bisect_right(
-        turns,
-        max_length - 1,
-        key=lambda x: len(tokenizer([template.get_prompt(2 * x)], add_special_tokens=False)["input_ids"][0]),
-    )
+
+    lo, hi = 0, len(turns)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if max_length - 1 < len(
+            tokenizer([template.get_prompt(2 * turns[mid] - 1)], add_special_tokens=False)["input_ids"][0]
+        ):
+            hi = mid
+        else:
+            lo = mid + 1
+    target_turn_index = lo
 
     # The tokenized length for first turn already exceeds `max_length - 1`.
     if target_turn_index - 1 < 0:
+        warnings.warn("The tokenized length for first turn already exceeds `max_length - 1`.")
         return dict(
             input_ids=None,
             labels=None,
@@ -128,10 +138,10 @@ def supervised_tokenize_sft(
     prompt = template.get_prompt(2 * target_turn)
     tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0]
 
-    # Uncomment this to check whether `bisect_right` is right.
+    # Uncomment the following to check whether `bisect_right` is right.
     # if 2 * target_turn < len(template.messages):
     #     length_to_next_turn = len(tokenizer([template.get_prompt(2*target_turn+2)], add_special_tokens=False)["input_ids"][0])
-    #     assert length_to_next_turn > max_length - 1, print(f"The length of the prompt until the next turn after tokenization is {length_to_next_turn}, which is smaller than {max_length - 1}")
+    #     assert length_to_next_turn > max_length - 1, logger.info(f"The length of the prompt until the next turn after tokenization is {length_to_next_turn}, which is smaller than {max_length - 1}")
 
     template.messages = template.messages[0 : 2 * target_turn]
 
@@ -151,7 +161,7 @@ def supervised_tokenize_sft(
             gpt_eos = not gpt_eos
 
     if len(starts) != target_turn or len(ends) != target_turn:
-        print(
+        logger.info(
             "Please check whether the tokenizer add additional `bos_token` and `eos_token`.\n\nOr the original message contains `bos_token` or `eos_token`."
         )
         return dict(
@@ -171,14 +181,101 @@ def supervised_tokenize_sft(
     labels_decode = deepcopy(labels)
     for i, z in enumerate(labels_decode):
         if z == ignore_index:
-            labels_decode[i] = tokenizer.unk_token_id
+            labels_decode[i] = tokenizer.eos_token_id
 
-    # `inputs_decode` and `labels decode` can be used to check whether the tokenization method is true.
+    # `inputs_decode` and `labels_decode` can be used to check whether the tokenization method is true.
     return dict(
         input_ids=tokenized,
         labels=labels,
         inputs_decode=tokenizer.decode(tokenized),
         labels_decode=tokenizer.decode(labels_decode),
+        seq_length=len(tokenized),
+        seq_category=data_point["category"] if "category" in data_point else "None",
+    )
+
+
+def tokenize_prompt_dataset(
+    data_point: Dict[str, str],
+    tokenizer: LlamaTokenizer,
+    conversation_template: Conversation = default_conversation,
+    ignore_index: int = None,
+    max_length: int = 4096,
+) -> Dict[str, Union[int, str, List[int]]]:
+    """
+    A tokenization function to tokenize an original pretraining data point as following:
+        {"messages": [{"from": "human", "content": "xxx"}, {"from": "assistant", "content": "xxx"}]}
+    """
+    # assert tokenizer.add_bos_token is False and tokenizer.add_eos_token is False, (
+    #     "Initially set `tokenizer.add_bos_token` and `tokenizer.add_eos_token` to False, "
+    #     "add <bos> and <eos> manually later"
+    # )
+
+    assert (
+        tokenizer.bos_token == conversation_template.seps[0] and tokenizer.eos_token == conversation_template.seps[1]
+    ), "`bos_token` and `eos_token` should be the same with `conversation_template.seps`."
+
+    if ignore_index is None:
+        ignore_index = IGNORE_INDEX
+
+    messages = data_point["messages"]
+    template = deepcopy(conversation_template)
+    template.messages = []
+
+    for mess in messages:
+        from_str = mess["from"]
+        if from_str.lower() == "human":
+            from_str = template.roles[0]
+        elif from_str.lower() == "assistant":
+            from_str = template.roles[1]
+        else:
+            raise ValueError(f"Unsupported role {from_str.lower()}")
+
+        template.append_message(from_str, mess["content"])
+
+    if len(template.messages) % 2 != 1:
+        # exclude the answer if provided. keep only the prompt
+        template.messages = template.messages[0:-1]
+
+    # `target_turn_index` is the number of turns which exceeds `max_length - 1` for the first time.
+    turns = [i for i in range(1, (len(messages) + 1) // 2 + 1)]
+
+    lo, hi = 0, len(turns)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if max_length - 1 < len(
+            tokenizer([template.get_prompt(2 * turns[mid] - 1)], add_special_tokens=False)["input_ids"][0]
+        ):
+            hi = mid
+        else:
+            lo = mid + 1
+    target_turn_index = lo
+
+    # The tokenized length for first turn already exceeds `max_length - 1`.
+    if target_turn_index - 1 < 0:
+        warnings.warn("The tokenized length for first turn already exceeds `max_length - 1`.")
+        return dict(
+            input_ids=None,
+            inputs_decode=None,
+            seq_length=None,
+            seq_category=None,
+        )
+
+    target_turn = turns[target_turn_index - 1]
+    prompt = template.get_prompt(2 * target_turn - 1) + "Assistant: <s>"
+    tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0]
+
+    # Uncomment the following to check whether `bisect_right` is right.
+    # if 2 * target_turn < len(template.messages):
+    #     length_to_next_turn = len(tokenizer([template.get_prompt(2*target_turn+2)], add_special_tokens=False)["input_ids"][0])
+    #     assert length_to_next_turn > max_length - 1, logger.info(f"The length of the prompt until the next turn after tokenization is {length_to_next_turn}, which is smaller than {max_length - 1}")
+
+    template.messages = template.messages[0 : 2 * target_turn - 1]
+    tokenized = [tokenizer.bos_token_id] + tokenized
+
+    # `inputs_decode` and `labels_decode` can be used to check whether the tokenization method is true.
+    return dict(
+        input_ids=tokenized,
+        inputs_decode=tokenizer.decode(tokenized),
         seq_length=len(tokenized),
         seq_category=data_point["category"] if "category" in data_point else "None",
     )
@@ -235,11 +332,6 @@ def tokenize_rlhf(
         {"context": [{"from": "human", "content": "xxx"}, {"from": "assistant", "content": "xxx"}],
         "chosen": {"from": "assistant", "content": "xxx"}, "rejected": {"from": "assistant", "content": "xxx"}}
     """
-    assert tokenizer.add_bos_token is False and tokenizer.add_eos_token is False, (
-        "Initially set `tokenizer.add_bos_token` and `tokenizer.add_eos_token` to False, "
-        "add <bos> and <eos> manually later"
-    )
-
     assert (
         tokenizer.bos_token == conversation_template.seps[0] and tokenizer.eos_token == conversation_template.seps[1]
     ), "`bos_token` and `eos_token` should be the same with `conversation_template.seps`."

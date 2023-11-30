@@ -1,9 +1,9 @@
 import torch
 import torch.nn.functional as F
-from coati.models import Actor, Critic, RewardModel
+from coati.models import Critic, RewardModel
 from coati.models.generation import generate
 from coati.models.utils import calc_action_log_probs, compute_reward
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from .base import Experience, ExperienceMaker
 
@@ -15,10 +15,10 @@ class NaiveExperienceMaker(ExperienceMaker):
 
     def __init__(
         self,
-        actor: Actor,
+        actor: PreTrainedModel,
         critic: Critic,
         reward_model: RewardModel,
-        initial_model: Actor,
+        initial_model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
         rm_model_tokenizer: PreTrainedTokenizer,
         kl_coef: float = 0.01,
@@ -45,15 +45,16 @@ class NaiveExperienceMaker(ExperienceMaker):
         return advantages
 
     @torch.no_grad()
-    def make_experience(self, input_ids: torch.Tensor, **generate_kwargs) -> Experience:
+    def make_experience(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **generate_kwargs) -> Experience:
         self.actor.eval()
         self.critic.eval()
         self.initial_model.eval()
         self.reward_model.eval()
-
-        # generate sequences
-
+        # if is_rank_0():
+        #     print(input_ids[0])
+        torch.manual_seed(47)  # for tp, gurantee the same input for reward model
         sequences = generate(self.actor, input_ids, self.tokenizer, **generate_kwargs)
+        sequence_length = sequences.size(1)
 
         self.actor.train()
         self.critic.train()
@@ -84,17 +85,42 @@ class NaiveExperienceMaker(ExperienceMaker):
 
         base_action_log_probs = calc_action_log_probs(base_model_output, sequences, num_actions)
         value = self.critic(sequences, attention_mask)
-        sequences_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True)
 
-        sequences_rm = self.rm_model_tokenizer(
-            sequences_text, return_tensors="pt", padding="max_length", truncation=True, max_length=300
-        )
+        # convert from left padding to right padding
+        input_ids_rm = torch.zeros_like(sequences, device=sequences.device)
+        attention_mask_rm = torch.zeros_like(sequences, device=sequences.device)
+        for i in range(sequences.size(0)):
+            sequence = sequences[i]
+            bos_index = (sequence == self.tokenizer.bos_token_id).nonzero().squeeze()[0]
+            # print((torch.arange(sequence_length, device=sequence.device)*(sequence!=self.tokenizer.pad_token_id)).max())
+            eos_index = int(
+                (torch.arange(sequence_length, device=sequence.device) * (sequence != self.tokenizer.pad_token_id))
+                .max()
+                .item()
+            )
+            sequence_to_pad = sequence[bos_index : eos_index + 1]
+            sequence_padded = F.pad(
+                sequence_to_pad, (0, sequence_length - sequence_to_pad.size(0)), value=self.tokenizer.pad_token_id
+            )
+            input_ids_rm[i] = sequence_padded
+            if sequence_length - sequence_to_pad.size(0) > 0:
+                attention_mask_rm[i, : sequence_to_pad.size(0) + 1] = 1
+            else:
+                attention_mask_rm[i, :] = 1
+        attention_mask_rm = attention_mask_rm.to(dtype=torch.bool)
+        torch.set_printoptions(threshold=10_000)
+        # if is_rank_0():
+        # print('input ids:\n',input_ids_rm[0])
+        # print('reward input ids:\n',self.tokenizer.batch_decode(input_ids_rm)[0])
+        # print('reward atten_mask:\n',attention_mask_rm[0])
+
         r = self.reward_model(
-            **{
-                "sequences": sequences_rm["input_ids"].to(dtype=torch.long, device=sequences.device),
-                "attention_mask": sequences_rm["attention_mask"].to(device=sequences.device),
-            }
+            input_ids_rm.to(dtype=torch.long, device=sequences.device),
+            attention_mask=attention_mask_rm.to(device=sequences.device),
         )
+        # print('reward:\n',r[0])
+        # exit()
+
         reward, kl = compute_reward(r, self.kl_coef, action_log_probs, base_action_log_probs, action_mask=action_mask)
         value = value[:, -num_actions:] * action_mask
         advantages = self.calculate_advantage(value, reward, num_actions)

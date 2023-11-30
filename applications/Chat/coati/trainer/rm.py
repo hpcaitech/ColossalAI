@@ -116,6 +116,13 @@ class RewardModelTrainer(SLTrainer):
                 batch["reject_input_ids"],
                 batch["reject_attention_mask"],
             )
+
+            # if is_rank_0():
+            #     print(batch["chosen_input_ids"][0])
+            #     print(batch["chosen_attention_mask"][0])
+            #     print(batch["reject_input_ids"][0])
+            #     print(batch["reject_attention_mask"][0])
+            # exit()
             batch_size = chosen_input_ids.size()[0]
 
             # concatenate for better parrallelism
@@ -133,14 +140,17 @@ class RewardModelTrainer(SLTrainer):
                 self.optimizer.zero_grad()
                 self.actor_scheduler.step()
 
+            accuracy = (chosen_reward > reject_reward).float()
+
             # sync
             loss_mean = all_reduce_mean(tensor=loss)
             chosen_rewards_mean = all_reduce_mean(tensor=chosen_reward)
             rejected_rewards_mean = all_reduce_mean(tensor=reject_reward)
+            accuracy_mean = all_reduce_mean(tensor=accuracy)
             self.accumulative_meter.add("chosen_rewards", chosen_rewards_mean.to(torch.float16).mean().item())
             self.accumulative_meter.add("rejected_rewards", rejected_rewards_mean.to(torch.float16).mean().item())
             self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
-
+            self.accumulative_meter.add("accuracy", accuracy_mean.mean().to(torch.float16).item())
             if self.writer and is_rank_0():
                 self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
                 self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
@@ -155,15 +165,14 @@ class RewardModelTrainer(SLTrainer):
                 self.writer.add_scalar(
                     "train/reward_reject", self.accumulative_meter.get("rejected_rewards"), self.num_train_step
                 )
+                self.writer.add_scalar("train/acc", self.accumulative_meter.get("accuracy"), self.num_train_step)
 
             if i % self.accumulation_steps == self.accumulation_steps - 1:
                 self.num_train_step += 1
                 step_bar.update()
                 self.accumulative_meter.reset()
 
-            if (self.save_interval > 0 and (i + 1) % (self.save_interval * self.accumulation_steps) == 0) or (
-                i + 1
-            ) == len(self.train_dataloader):
+            if self.save_interval > 0 and self.num_train_step % self.save_interval == 0:
                 self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
                 save_checkpoint(
                     save_dir=self.save_dir,

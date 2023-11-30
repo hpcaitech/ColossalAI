@@ -1,36 +1,28 @@
-from typing import Dict, List, Optional
+import os
+from typing import Optional
 
+import torch
+import wandb
 from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import Experience, NaiveExperienceMaker
-from coati.models import Actor, Critic, RewardModel
+from coati.models import Critic, RewardModel
 from coati.models.loss import GPTLMLoss, PolicyLoss, ValueLoss
 from coati.models.utils import calc_action_log_probs
+from coati.trainer.utils import all_reduce_mean
+from coati.utils import AccumulativeMeanMeter, save_checkpoint
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
-from transformers import PreTrainedTokenizerBase
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
+from colossalai.booster import Booster
+from colossalai.booster.plugin import GeminiPlugin
+from colossalai.cluster import DistCoordinator
 from colossalai.utils import get_current_device
 
 from .base import OLTrainer
-from .callbacks import Callback
-from .strategies import GeminiStrategy, Strategy
 from .utils import CycledDataLoader, is_rank_0, to_device
-
-
-def _set_default_generate_kwargs(strategy: Strategy, generate_kwargs: dict, actor: Actor) -> Dict:
-    unwrapped_model = strategy.unwrap_model(actor)
-    hf_model = unwrapped_model.model
-    new_kwargs = {**generate_kwargs}
-    # use huggingface models method directly
-    if "prepare_inputs_fn" not in generate_kwargs and hasattr(hf_model, "prepare_inputs_for_generation"):
-        new_kwargs["prepare_inputs_fn"] = hf_model.prepare_inputs_for_generation
-
-    if "update_model_kwargs_fn" not in generate_kwargs and hasattr(hf_model, "_update_model_kwargs_for_generation"):
-        new_kwargs["update_model_kwargs_fn"] = hf_model._update_model_kwargs_for_generation
-
-    return new_kwargs
 
 
 class PPOTrainer(OLTrainer):
@@ -38,7 +30,7 @@ class PPOTrainer(OLTrainer):
         Trainer for PPO algorithm.
 
     Args:
-        strategy (Strategy): the strategy to use for training
+        strategy (Booster): the strategy to use for training
         actor (Actor): the actor model in ppo algorithm
         critic (Critic): the critic model in ppo algorithm
         reward_model (RewardModel): the reward model in rlhf algorithm to make reward of sentences
@@ -62,16 +54,17 @@ class PPOTrainer(OLTrainer):
 
     def __init__(
         self,
-        strategy: Strategy,
-        actor: Actor,
+        actor_booster: Booster,
+        critic_booster: Booster,
+        actor: PreTrainedModel,
         critic: Critic,
         reward_model: RewardModel,
-        initial_model: Actor,
+        initial_model: PreTrainedModel,
         actor_optim: Optimizer,
         critic_optim: Optimizer,
         actor_lr_scheduler: _LRScheduler,
+        critic_lr_scheduler: _LRScheduler,
         tokenizer: PreTrainedTokenizerBase,
-        rm_model_tokenizer: PreTrainedTokenizerBase,
         kl_coef: float = 0.1,
         ptx_coef: float = 0.9,
         train_batch_size: int = 8,
@@ -83,25 +76,31 @@ class PPOTrainer(OLTrainer):
         sample_buffer: bool = False,
         dataloader_pin_memory: bool = True,
         offload_inference_models: bool = True,
-        callbacks: List[Callback] = [],
+        accumulation_steps: int = 1,
+        save_interval: int = 0,
+        save_dir: str = None,
+        use_tp: bool = False,
+        coordinator: DistCoordinator = None,
         **generate_kwargs,
     ) -> None:
-        if isinstance(strategy, GeminiStrategy):
+        if isinstance(actor_booster, GeminiPlugin):
             assert not offload_inference_models, "GeminiPlugin is not compatible with manual model.to('cpu')"
 
         data_buffer = NaiveExperienceBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
-        super().__init__(strategy, data_buffer, sample_buffer, dataloader_pin_memory, callbacks)
-
-        self.generate_kwargs = _set_default_generate_kwargs(strategy, generate_kwargs, actor)
+        super().__init__(actor_booster, critic_booster, data_buffer, sample_buffer, dataloader_pin_memory)
+        self.generate_kwargs = generate_kwargs
 
         self.actor = actor
         self.critic = critic
+        self.actor_booster = actor_booster
+        self.critic_booster = critic_booster
         self.actor_scheduler = actor_lr_scheduler
+        self.critic_scheduler = critic_lr_scheduler
         self.tokenizer = tokenizer
-        self.rm_model_tokenizer = rm_model_tokenizer
         self.experience_maker = NaiveExperienceMaker(
-            self.actor, self.critic, reward_model, initial_model, self.tokenizer, self.rm_model_tokenizer, kl_coef
+            self.actor, self.critic, reward_model, initial_model, self.tokenizer, self.tokenizer, kl_coef
         )
+        self.train_batch_size = train_batch_size
 
         self.actor_loss_fn = PolicyLoss(eps_clip)
         self.critic_loss_fn = ValueLoss(value_clip)
@@ -110,15 +109,22 @@ class PPOTrainer(OLTrainer):
         self.ptx_coef = ptx_coef
         self.actor_optim = actor_optim
         self.critic_optim = critic_optim
+        self.save_interval = save_interval
+        self.coordinator = coordinator
+        self.actor_save_dir = os.path.join(save_dir, "actor")
+        self.critic_save_dir = os.path.join(save_dir, "critic")
         self.num_train_step = 0
-
+        self.accumulation_steps = accumulation_steps
+        self.use_tp = use_tp
+        self.accumulative_meter = AccumulativeMeanMeter()
         self.offload_inference_models = offload_inference_models
         self.device = get_current_device()
+        self.coordinator.print_on_master(f"generation kwargs:\n{generate_kwargs}")
 
     def _before_fit(
         self,
         prompt_dataloader: DataLoader,
-        pretrain_dataloader: DataLoader,
+        pretrain_dataloader: Optional[DataLoader] = None,
         log_dir: Optional[str] = None,
         use_wandb: bool = False,
     ):
@@ -128,7 +134,7 @@ class PPOTrainer(OLTrainer):
             pretrain_dataloader (DataLoader): the dataloader to use for pretrain data
         """
         self.prompt_dataloader = CycledDataLoader(prompt_dataloader)
-        self.pretrain_dataloader = CycledDataLoader(pretrain_dataloader)
+        self.pretrain_dataloader = CycledDataLoader(pretrain_dataloader) if pretrain_dataloader is not None else None
 
         self.writer = None
         if use_wandb and is_rank_0():
@@ -146,14 +152,32 @@ class PPOTrainer(OLTrainer):
             log_dir = os.path.join(log_dir, time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime()))
             self.writer = SummaryWriter(log_dir=log_dir)
 
+    def _setup_update_phrase_dataload(self):
+        """
+        why not use distributed_dataloader?
+            if tp is used, input on each rank is the same and we use the same dataloader to feed same experience to all ranks
+            if tp is not used, input on each rank is different and we expect different experiences to be fed to each rank
+        """
+        self.dataloader = DataLoader(
+            self.data_buffer,
+            batch_size=self.train_batch_size,
+            shuffle=True,
+            drop_last=True,
+            pin_memory=self.dataloader_pin_memory,
+            collate_fn=self.data_buffer.collate_fn,
+        )
+
     def _make_experience(self, collect_step: int) -> Experience:
         prompts = self.prompt_dataloader.next()
         if self.offload_inference_models:
             # TODO(ver217): this may be controlled by strategy if they are prepared by strategy
             self.experience_maker.initial_model.to(self.device)
             self.experience_maker.reward_model.to(self.device)
-        assert isinstance(prompts, dict), f'Unsupported input type "{type(prompts)}"'
-        return self.experience_maker.make_experience(**prompts, **self.generate_kwargs)
+        return self.experience_maker.make_experience(
+            input_ids=prompts["input_ids"].to(get_current_device()),
+            attention_mask=prompts["attention_mask"].to(get_current_device()),
+            **self.generate_kwargs,
+        )
 
     def _training_step(self, experience: Experience):
         """
@@ -176,7 +200,8 @@ class PPOTrainer(OLTrainer):
             action_log_probs, experience.action_log_probs, experience.advantages, action_mask=experience.action_mask
         )
         actor_loss = (1 - self.ptx_coef) * actor_loss
-        self.strategy.backward(actor_loss, self.actor, self.actor_optim)
+        # if not to_skip: mask for debugging
+        self.actor_booster.backward(loss=actor_loss, optimizer=self.actor_optim)
 
         # ptx loss
         if self.ptx_coef != 0:
@@ -184,7 +209,7 @@ class PPOTrainer(OLTrainer):
             batch = to_device(batch, self.device)
             ptx_log_probs = self.actor(batch["input_ids"], batch["attention_mask"])["logits"]
             ptx_loss = self.ptx_coef * self.ptx_loss_fn(ptx_log_probs, batch["labels"])
-            self.strategy.backward(ptx_loss, self.actor, self.actor_optim)
+            self.actor_booster.backward(loss=ptx_loss, optimizer=self.actor_optim)
 
         # value loss
         values = self.critic(
@@ -194,46 +219,78 @@ class PPOTrainer(OLTrainer):
             values[:, -num_actions:], experience.values, experience.advantages, action_mask=experience.action_mask
         )
         critic_loss = critic_loss * self.vf_coef
-        self.strategy.backward(critic_loss, self.critic, self.critic_optim)
+        self.critic_booster.backward(loss=critic_loss, optimizer=self.critic_optim)
 
-        if not to_skip:
-            self.strategy.optimizer_step(self.actor_optim)
-        self.strategy.optimizer_step(self.critic_optim)
-        self.actor_optim.zero_grad()
-        self.critic_optim.zero_grad()
-        if self.actor_scheduler:
+        # sync
+        actor_loss_mean = all_reduce_mean(tensor=actor_loss)
+        critic_loss_mean = all_reduce_mean(tensor=critic_loss)
+        max_ratio_mean = all_reduce_mean(tensor=max_ratio)
+        reward_mean = all_reduce_mean(tensor=experience.reward.mean())
+        value_mean = all_reduce_mean(tensor=experience.values.mean())
+        advantages_mean = all_reduce_mean(tensor=experience.advantages.mean())
+        kl_mean = all_reduce_mean(tensor=experience.kl.mean())
+        if self.ptx_coef != 0:
+            ptx_loss_mean = all_reduce_mean(tensor=ptx_loss)
+
+        self.accumulative_meter.add("actor_loss", actor_loss_mean.to(torch.float16).mean().item())
+        self.accumulative_meter.add("critic_loss", critic_loss_mean.to(torch.float16).mean().item())
+        self.accumulative_meter.add("max_ratio", max_ratio_mean.to(torch.float16).item())
+        self.accumulative_meter.add("reward", reward_mean.to(torch.float16).mean().item())
+        self.accumulative_meter.add("value", value_mean.to(torch.float16).mean().item())
+        self.accumulative_meter.add("advantages", advantages_mean.to(torch.float16).item())
+        self.accumulative_meter.add("skip_ratio", 0.0 if to_skip else 1.0)
+        self.accumulative_meter.add("kl", kl_mean.to(torch.float16).item())
+        if self.ptx_coef != 0:
+            self.accumulative_meter.add("ptx_loss", ptx_loss_mean.to(torch.float16).mean().item())
+
+        if self.num_train_step % self.accumulation_steps == self.accumulation_steps - 1:
+            self.actor_optim.step()
+            self.critic_optim.step()
+            self.actor_optim.zero_grad()
+            self.critic_optim.zero_grad()
             self.actor_scheduler.step()
+            self.critic_scheduler.step()
 
-        # preparing logging model output and corresponding rewards.
-        response_text = self.experience_maker.tokenizer.batch_decode(experience.sequences, skip_special_tokens=True)
-        for i in range(len(response_text)):
-            response_text[i] = response_text[i] + f"\n\nReward: {experience.reward[i]}"
+            response_text = self.experience_maker.tokenizer.batch_decode(experience.sequences, skip_special_tokens=True)
+            for i in range(len(response_text)):
+                response_text[i] = response_text[i] + f"\n\nReward: {experience.reward[i]}"
+            for line_id in range(min(3, len(response_text))):
+                # log output to screen
+                self.coordinator.print_on_master("###################\n" + response_text[line_id])
+            # preparing logging model output and corresponding rewards.
+            if self.num_train_step % 50 == 1:
+                if self.writer and is_rank_0() and "wandb_run" in self.__dict__:
+                    # log output to wandb
+                    my_table = wandb.Table(
+                        columns=[f"sample response {i}" for i in range(len(response_text))], data=[response_text]
+                    )
+                    try:
+                        self.wandb_run.log({"sample_response": my_table})
+                    except OSError as e:
+                        print(e)
 
-        if self.writer:
-            # use wandb
-            import wandb
-
-            if self.num_train_step % 50 == 1 and "wandb_run" in self.__dict__:
-                my_table = wandb.Table(
-                    columns=[f"sample response {i}" for i in range(len(response_text))], data=[response_text]
+            if self.writer and is_rank_0():
+                self.writer.add_scalar("train/max_ratio", self.accumulative_meter.get("max_ratio"), self.num_train_step)
+                self.writer.add_scalar(
+                    "train/skip_ratio", self.accumulative_meter.get("skip_ratio"), self.num_train_step
                 )
-                try:
-                    self.wandb_run.log({"sample_response": my_table})
-                except OSError as e:
-                    print(e)
-
-            self.writer.add_scalar("train/max_ratio", max_ratio, self.num_train_step)
-            self.writer.add_scalar("train/skip", 1 if to_skip else 0, self.num_train_step)
-            self.writer.add_scalar("train/actor_loss", actor_loss.mean().item(), self.num_train_step)
-            self.writer.add_scalar("train/lr_actor", self.actor_optim.param_groups[0]["lr"], self.num_train_step)
-            self.writer.add_scalar("train/lr_critic", self.critic_optim.param_groups[0]["lr"], self.num_train_step)
-            self.writer.add_scalar("train/critic_loss", critic_loss.mean().item(), self.num_train_step)
-            if self.ptx_coef != 0:
-                self.writer.add_scalar("train/ptx_loss", ptx_loss.mean().item(), self.num_train_step)
-            self.writer.add_scalar("reward", experience.reward.mean().item(), self.num_train_step)
-            self.writer.add_scalar("approx_kl", experience.kl.mean().item(), self.num_train_step)
-            self.writer.add_scalar("value", experience.values.mean().item(), self.num_train_step)
-            self.writer.add_scalar("advantages", experience.advantages.mean().item(), self.num_train_step)
+                self.writer.add_scalar(
+                    "train/actor_loss", self.accumulative_meter.get("actor_loss"), self.num_train_step
+                )
+                self.writer.add_scalar("train/lr_actor", self.actor_optim.param_groups[0]["lr"], self.num_train_step)
+                self.writer.add_scalar("train/lr_critic", self.critic_optim.param_groups[0]["lr"], self.num_train_step)
+                self.writer.add_scalar(
+                    "train/critic_loss", self.accumulative_meter.get("critic_loss"), self.num_train_step
+                )
+                if self.ptx_coef != 0:
+                    self.writer.add_scalar(
+                        "train/ptx_loss", self.accumulative_meter.get("ptx_loss"), self.num_train_step
+                    )
+                self.writer.add_scalar("reward", self.accumulative_meter.get("reward"), self.num_train_step)
+                self.writer.add_scalar("approx_kl", self.accumulative_meter.get("kl"), self.num_train_step)
+                self.writer.add_scalar("value", self.accumulative_meter.get("value"), self.num_train_step)
+                self.writer.add_scalar("advantages", self.accumulative_meter.get("advantages"), self.num_train_step)
+            self.accumulative_meter.reset()
 
     def _learn(self, update_step: int):
         if self.offload_inference_models:
@@ -256,3 +313,36 @@ class PPOTrainer(OLTrainer):
                 experience.to_device(self.device)
                 self._training_step(experience)
                 self._on_learn_batch_end(experience)
+
+    def _save_checkpoint(self, episode: int = 0):
+        self.coordinator.print_on_master("\nStart saving actor checkpoint with running states")
+        save_checkpoint(
+            save_dir=self.actor_save_dir,
+            booster=self.actor_booster,
+            model=self.actor,
+            optimizer=self.actor_optim,
+            lr_scheduler=self.actor_scheduler,
+            epoch=0,
+            step=episode + 1,
+            batch_size=self.train_batch_size,
+            coordinator=self.coordinator,
+        )
+        self.coordinator.print_on_master(
+            f"Saved actor checkpoint at episode {(episode + 1)} at folder {self.actor_save_dir}"
+        )
+
+        self.coordinator.print_on_master("\nStart saving critic checkpoint with running states")
+        save_checkpoint(
+            save_dir=self.critic_save_dir,
+            booster=self.critic_booster,
+            model=self.critic,
+            optimizer=self.critic_optim,
+            lr_scheduler=self.critic_scheduler,
+            epoch=0,
+            step=episode + 1,
+            batch_size=self.train_batch_size,
+            coordinator=self.coordinator,
+        )
+        self.coordinator.print_on_master(
+            f"Saved critic checkpoint at episode {(episode + 1)} at folder {self.critic_save_dir}"
+        )

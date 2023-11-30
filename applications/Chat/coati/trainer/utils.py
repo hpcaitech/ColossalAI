@@ -59,3 +59,11 @@ def all_reduce_mean(tensor: torch.Tensor) -> torch.Tensor:
 def all_reduce_sum(tensor: torch.Tensor) -> torch.Tensor:
     dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM)
     return tensor
+
+
+def prepare_data_for_inference(
+    chosen_input_ids, reject_input_ids, chosen_attention_mask, reject_attention_mask, tokenizer
+):
+    # This function will truncate each vector in the batch after the first zero
+    assert tokenizer.bos_token_id != tokenizer.pad_token_id, "This bos token should not be the same as the pad token"
+    return None, None

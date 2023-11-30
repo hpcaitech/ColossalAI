@@ -26,9 +26,9 @@ export OMP_NUM_THREADS=8
 
 
 PROJECT_NAME="llama2-dpo"
-PARENT_SAVE_DIR="./output/ckpt"
-PARENT_TENSORBOARD_DIR="./output/tensorboard"
-PARENT_CONFIG_FILE="./output/train_config"
+PARENT_SAVE_DIR="/home/lcyab/data/models/coati_refactor_experiments/output/ckpt"
+PARENT_TENSORBOARD_DIR="/home/lcyab/data/models/coati_refactor_experiments/output/tensorboard"
+PARENT_CONFIG_FILE="/home/lcyab/data/models/coati_refactor_experiments/output/train_config"
 PRETRAINED_MODEL_PATH="/home/lcyab/data/models/experiments5/checkpoint/experiment5-2023-10-20-21-53-51/modeling/"  #"/mnt/vepfs/lcxyc/leaderboard_models/Colossal-LLaMA-2-7b-base/"
 PRETRAINED_TOKENIZER_PATH="/mnt/vepfs/lcxyc/leaderboard_models/Colossal-LLaMA-2-7b-base/"
 declare -a dataset=(
@@ -55,7 +55,7 @@ colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 30035 train_
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
     --dataset ${dataset[@]} \
     --plugin "3d" \
-    --save_interval 500 \
+    --save_interval 1000 \
     --save_dir $SAVE_DIR \
     --config_file $CONFIG_FILE \
     --max_epochs 5 \

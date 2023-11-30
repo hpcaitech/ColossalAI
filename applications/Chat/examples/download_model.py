@@ -5,11 +5,9 @@ import parser
 from typing import List
 
 import tqdm
-from coati.models.bloom import BLOOMRM, BLOOMActor, BLOOMCritic
-from coati.models.gpt import GPTRM, GPTActor, GPTCritic
-from coati.models.opt import OPTRM, OPTActor, OPTCritic
+from coati.models import Critic, RewardModel
 from huggingface_hub import hf_hub_download, snapshot_download
-from transformers import AutoConfig, AutoTokenizer, BloomConfig, BloomTokenizerFast, GPT2Config, GPT2Tokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 @dataclasses.dataclass
@@ -25,27 +23,14 @@ class HFRepoFiles:
         snapshot_download(self.repo_id)
 
 
-def test_init(model: str, dir_path: str):
-    if model == "gpt2":
-        config = GPT2Config.from_pretrained(dir_path)
-        actor = GPTActor(config=config)
-        critic = GPTCritic(config=config)
-        reward_model = GPTRM(config=config)
-        GPT2Tokenizer.from_pretrained(dir_path)
-    elif model == "bloom":
-        config = BloomConfig.from_pretrained(dir_path)
-        actor = BLOOMActor(config=config)
-        critic = BLOOMCritic(config=config)
-        reward_model = BLOOMRM(config=config)
-        BloomTokenizerFast.from_pretrained(dir_path)
-    elif model == "opt":
-        config = AutoConfig.from_pretrained(dir_path)
-        actor = OPTActor(config=config)
-        critic = OPTCritic(config=config)
-        reward_model = OPTRM(config=config)
-        AutoTokenizer.from_pretrained(dir_path)
-    else:
-        raise NotImplementedError(f"Model {model} not implemented")
+def test_init(dir_path: str):
+    actor = AutoModelForCausalLM.from_pretrained(dir_path)
+    del actor
+    critic = Critic(dir_path)
+    del critic
+    reward_model = RewardModel(dir_path)
+    del reward_model
+    AutoTokenizer.from_pretrained(dir_path)
 
 
 if __name__ == "__main__":
@@ -76,4 +61,4 @@ if __name__ == "__main__":
             repo_list[model_name].download(dir_path)
         else:
             repo_list[model_name].download_all()
-        test_init(model_name, dir_path)
+        test_init(dir_path)
