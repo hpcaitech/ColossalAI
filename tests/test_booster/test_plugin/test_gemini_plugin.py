@@ -116,6 +116,9 @@ def check_gemini_plugin(
             "transformers_falcon_for_sequence_classification",
             "transformers_falcon_for_token_classification",
             "transformers_falcon_for_question_answering",
+            "transformers_gptj_lm", # lead to OOM when running in ci
+            "transformers_gptj_for_question_answering",
+            "transformers_gptj_for_sequence_classification",
         ]:
             continue
 

@@ -21,7 +21,7 @@ from torch.utils.data.distributed import DistributedSampler
 from colossalai.amp.naive_amp.mixed_precision_optimizer import MixedPrecisionOptimizer
 from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.interface import ModelWrapper, OptimizerWrapper, AMPModelMixin
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
@@ -42,7 +42,7 @@ def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
     return x
 
 
-class HybridParallelModule(ModelWrapper):
+class HybridParallelModule(ModelWrapper, AMPModelMixin):
     def __init__(
         self,
         module: Module,
