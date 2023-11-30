@@ -13,8 +13,6 @@ if __name__ == "__main__":
     builder = LlamaEngineBuilder()
     builder.set_config(builder_config)
     tik = time.time()
-    byte_engine = None
-    engine_config = None
     if args.parallel_build and args.world_size > 1 and torch.cuda.device_count() >= args.world_size:
         logger.warning(
             f"Parallelly build TensorRT engines. Please make sure that all of the {args.world_size} GPUs are totally free."
