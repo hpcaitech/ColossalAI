@@ -1,3 +1,6 @@
+"""
+Training utilities for Coati.
+"""
 from typing import Any
 
 import torch

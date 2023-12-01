@@ -1,3 +1,4 @@
+from .conversation import setup_conversation_template
 from .loader import (
     DataCollatorForPreferenceDataset,
     DataCollatorForPromptDataset,
@@ -6,8 +7,12 @@ from .loader import (
     load_tokenized_dataset,
     setup_distributed_dataloader,
 )
-from .spliced_and_tokenized_dataset import tokenize_prompt_dataset
-from .utils import is_rank_0
+from .tokenization_utils import (
+    supervised_tokenize_pretrain,
+    supervised_tokenize_sft,
+    tokenize_prompt_dataset,
+    tokenize_rlhf,
+)
 
 __all__ = [
     "tokenize_prompt_dataset",
@@ -18,4 +23,9 @@ __all__ = [
     "StatefulDistributedSampler",
     "load_tokenized_dataset",
     "setup_distributed_dataloader",
+    "supervised_tokenize_pretrain",
+    "supervised_tokenize_pretrain",
+    "supervised_tokenize_sft",
+    "tokenize_rlhf",
+    "setup_conversation_template",
 ]

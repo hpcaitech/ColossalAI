@@ -1,3 +1,7 @@
+"""
+Dpo trainer
+"""
+
 import os
 from typing import Any, Optional
 
@@ -133,8 +137,8 @@ class DPOTrainer(SLTrainer):
             batch_size = chosen_input_ids.size()[0]
 
             actor_all_logits = self.model(
-                torch.cat([chosen_input_ids, reject_input_ids]),
-                torch.cat([chosen_attention_mask, reject_attention_mask]),
+                input_ids=torch.cat([chosen_input_ids, reject_input_ids]),
+                attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask]),
             )["logits"].to(torch.float32)
             actor_chosen_logits = actor_all_logits[:batch_size]
             actor_reject_logits = actor_all_logits[batch_size:]
@@ -146,8 +150,8 @@ class DPOTrainer(SLTrainer):
             self.ref_model.eval()
             with torch.no_grad():
                 ref_all_logits = self.ref_model(
-                    torch.cat([chosen_input_ids, reject_input_ids]),
-                    torch.cat([chosen_attention_mask, reject_attention_mask]),
+                    input_ids=torch.cat([chosen_input_ids, reject_input_ids]),
+                    attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask]),
                 )["logits"].to(torch.float32)
                 ref_chosen_logits = ref_all_logits[:batch_size]
                 ref_reject_logits = ref_all_logits[batch_size:]
@@ -159,10 +163,10 @@ class DPOTrainer(SLTrainer):
                 logprob_actor_reject,
                 logprob_ref_chosen if logprob_ref_chosen is not None else None,
                 logprob_ref_reject if logprob_ref_reject is not None else None,
-                chosen_loss_mask,
-                reject_loss_mask,
+                chosen_loss_mask[:, 1:],
+                reject_loss_mask[:, 1:],
             )
-            reward_accuracies = (chosen_rewards > rejected_rewards).float()
+            reward_accuracies = (chosen_rewards > rejected_rewards).float().mean()
 
             loss = losses.mean()
 
@@ -180,34 +184,31 @@ class DPOTrainer(SLTrainer):
             self.accumulative_meter.add("chosen_rewards", chosen_rewards_mean.to(torch.float16).mean().item())
             self.accumulative_meter.add("rejected_rewards", rejected_rewards_mean.to(torch.float16).mean().item())
             self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
-            self.accumulative_meter.add("accuracy", reward_accuracies_mean.to(torch.float16).mean().item())
-
-            # logging
-            if self.writer and is_rank_0():
-                self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
-                self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
-                self.writer.add_scalar(
-                    "train/chosen_rewards", self.accumulative_meter.get("chosen_rewards"), self.num_train_step
-                )
-                self.writer.add_scalar(
-                    "train/rejected_rewards",
-                    self.accumulative_meter.get("rejected_rewards"),
-                    self.num_train_step,
-                )
-                self.writer.add_scalar(
-                    "train/accuracy",
-                    self.accumulative_meter.get("accuracy"),
-                    self.num_train_step,
-                )
-            self.accumulative_meter.reset()
+            self.accumulative_meter.add("accuracy", reward_accuracies_mean.to(torch.float16).item())
 
             if i % self.accumulation_steps == self.accumulation_steps - 1:
                 self.num_train_step += 1
                 step_bar.update()
+                # logging
+                if self.writer and is_rank_0():
+                    self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
+                    self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
+                    self.writer.add_scalar(
+                        "train/chosen_rewards", self.accumulative_meter.get("chosen_rewards"), self.num_train_step
+                    )
+                    self.writer.add_scalar(
+                        "train/rejected_rewards",
+                        self.accumulative_meter.get("rejected_rewards"),
+                        self.num_train_step,
+                    )
+                    self.writer.add_scalar(
+                        "train/accuracy",
+                        self.accumulative_meter.get("accuracy"),
+                        self.num_train_step,
+                    )
+                self.accumulative_meter.reset()
 
-            if (self.save_interval > 0 and (i + 1) % (self.save_interval * self.accumulation_steps) == 0) or (
-                i + 1
-            ) == len(self.train_dataloader):
+            if (self.num_train_step + 1) % self.save_interval == 0 and is_rank_0():
                 self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
                 save_checkpoint(
                     save_dir=self.save_dir,
@@ -221,7 +222,7 @@ class DPOTrainer(SLTrainer):
                     coordinator=self.coordinator,
                 )
                 self.coordinator.print_on_master(
-                    f"Saved checkpoint at epoch {epoch} step {(i + 1)/self.accumulation_steps} at folder {self.save_dir}"
+                    f"Saved checkpoint at epoch {epoch} step {self.save_interval} at folder {self.save_dir}"
                 )
 
         step_bar.close()
@@ -298,8 +299,8 @@ class DPOTrainer(SLTrainer):
                     logprob_actor_reject,
                     logprob_ref_chosen if logprob_ref_chosen is not None else None,
                     logprob_ref_reject if logprob_ref_reject is not None else None,
-                    chosen_loss_mask,
-                    reject_loss_mask,
+                    chosen_loss_mask[:, 1:],
+                    reject_loss_mask[:, 1:],
                 )
                 reward_accuracies = (chosen_rewards > rejected_rewards).float()
                 loss = losses.mean()
@@ -307,11 +308,13 @@ class DPOTrainer(SLTrainer):
                 chosen_rewards_mean = all_reduce_mean(tensor=chosen_rewards)
                 rejected_rewards_mean = all_reduce_mean(tensor=rejected_rewards)
                 reward_accuracies_mean = all_reduce_mean(tensor=reward_accuracies)
-                self.accumulative_meter.add("chosen_rewards", chosen_rewards_mean)
-                self.accumulative_meter.add("rejected_rewards", rejected_rewards_mean)
-                self.accumulative_meter.add("dist", chosen_rewards_mean - rejected_rewards_mean)
-                self.accumulative_meter.add("loss", loss_mean)
-                self.accumulative_meter.add("accuracy", reward_accuracies_mean)
+                self.accumulative_meter.add("chosen_rewards", chosen_rewards_mean.to(torch.float16).mean().item())
+                self.accumulative_meter.add("rejected_rewards", rejected_rewards_mean.to(torch.float16).mean().item())
+                self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
+                self.accumulative_meter.add("accuracy", reward_accuracies_mean.to(torch.float16).item())
+                self.accumulative_meter.add(
+                    "dist", (chosen_rewards_mean - rejected_rewards_mean).to(torch.float16).mean().item()
+                )
                 step_bar.update()
 
         msg = "Evaluation Result:\n"

@@ -5,9 +5,7 @@ import parser
 from typing import List
 
 import tqdm
-from coati.models import Critic, RewardModel
 from huggingface_hub import hf_hub_download, snapshot_download
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 @dataclasses.dataclass
@@ -21,16 +19,6 @@ class HFRepoFiles:
 
     def download_all(self):
         snapshot_download(self.repo_id)
-
-
-def test_init(dir_path: str):
-    actor = AutoModelForCausalLM.from_pretrained(dir_path)
-    del actor
-    critic = Critic(dir_path)
-    del critic
-    reward_model = RewardModel(dir_path)
-    del reward_model
-    AutoTokenizer.from_pretrained(dir_path)
 
 
 if __name__ == "__main__":
@@ -61,4 +49,3 @@ if __name__ == "__main__":
             repo_list[model_name].download(dir_path)
         else:
             repo_list[model_name].download_all()
-        test_init(dir_path)

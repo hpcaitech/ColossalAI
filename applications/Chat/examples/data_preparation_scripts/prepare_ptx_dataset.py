@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Prepare sft dataset for finetuning
+Prepare pretrain dataset for ptx training in ppo. Different from the
+pretrain dataset used in pretrain, it doesn't concatenate data samples
 """
 
 import argparse
@@ -11,7 +12,7 @@ import os
 import random
 from multiprocessing import cpu_count
 
-from coati.dataset.spliced_and_tokenized_dataset import supervised_tokenize_pretrain
+from coati.dataset import setup_conversation_template, supervised_tokenize_pretrain
 from datasets import dataset_dict, load_dataset
 from transformers import AutoTokenizer
 
@@ -90,6 +91,7 @@ def main():
 
     # Prepare to the tokenizer.
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir)
+    _ = setup_conversation_template(tokenizer)
     tokenizer.pad_token = tokenizer.eos_token
 
     list_dataset = load_dataset(

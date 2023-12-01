@@ -1,3 +1,11 @@
+"""
+Base trainers for online and offline training
+    SLTrainer: supervised learning trainer
+        pretrain, sft, dpo, reward model training
+    OLTrainer: online learning trainer
+        rlhf-ppo
+"""
+
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from typing import Callable, List
@@ -10,8 +18,6 @@ from torch.optim import Optimizer
 
 from colossalai.booster import Booster
 
-# from .callbacks import Callback
-# from .strategies import Strategy
 from .utils import is_rank_0
 
 
@@ -207,5 +213,5 @@ class OLTrainer(ABC):
                         self._update_phase(update_step)
                     # NOTE: this is for on-policy algorithms
                     self.data_buffer.clear()
-                if self.save_interval > 0 and (episode + 1) % (self.save_interval) == 0:
+                if self.save_interval > 0 and (episode + 1) % (self.save_interval) == 0 and is_rank_0():
                     self._save_checkpoint(episode + 1)

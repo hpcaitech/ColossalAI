@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+Suporrt for flash-attention
+"""
 
 from types import MethodType
 from typing import Optional, Tuple

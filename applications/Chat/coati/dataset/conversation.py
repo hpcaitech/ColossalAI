@@ -16,6 +16,8 @@ import dataclasses
 from enum import Enum, auto
 from typing import List
 
+from transformers import PreTrainedTokenizer
+
 
 class SeparatorStyle(Enum):
     ADD_BOS_EOS_TOKEN = auto()
@@ -94,3 +96,23 @@ conv = Conversation(
 )
 
 default_conversation = conv
+
+
+def setup_conversation_template(tokenizer: PreTrainedTokenizer) -> Conversation:
+    """
+    Setup the conversation template to use the bos and the eos of the tokenizer if application
+    Or setup the bos and the eos of the tokenizer to be the same as the separator of the conversation template
+    """
+    conversation_template = conv.copy()
+    if tokenizer.eos_token is None:
+        raise ValueError(
+            "The tokenizer you specified does not have a eos token, please manually set a eos token that can be tokenized into a single token"
+        )
+    if tokenizer.bos_token is None:
+        tokenizer.bos_token = tokenizer.eos_token
+    if len(tokenizer.tokenize(tokenizer.eos_token)) != 1:
+        raise ValueError("Please check your tokenizer to make sure the eos token can be tokenized into a single token")
+    if len(tokenizer.tokenize(tokenizer.bos_token)) != 1:
+        raise ValueError("Please check your tokenizer to make sure the bos token can be tokenized into a single token")
+    conversation_template.seps = [tokenizer.bos_token, tokenizer.eos_token]
+    return conversation_template

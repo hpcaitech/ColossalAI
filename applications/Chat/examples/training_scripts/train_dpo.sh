@@ -49,7 +49,7 @@ FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
 
-colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 30035 train_dpo.py \
+colossalai run --nproc_per_node 4 --hostfile hostfile --master_port 30035 train_dpo.py \
     --pretrain $PRETRAINED_MODEL_PATH \
     --checkpoint_path $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
@@ -59,13 +59,12 @@ colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 30035 train_
     --save_dir $SAVE_DIR \
     --config_file $CONFIG_FILE \
     --max_epochs 5 \
-    --accumulation_steps 4 \
+    --accumulation_steps 8 \
     --batch_size 4 \
-    --tp 8 \
+    --tp 4 \
     --lr 5e-6 \
     --mixed_precision "bf16" \
     --grad_clip 1.0 \
     --weight_decay 0.01 \
     --warmup_steps 100 \
-    --grad_checkpoint \
     --use_wandb

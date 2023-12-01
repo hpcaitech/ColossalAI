@@ -1,3 +1,7 @@
+"""
+LORA utils
+"""
+
 import dataclasses
 import math
 import warnings
@@ -7,6 +11,10 @@ import loralib as lora
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from colossalai.logging import get_dist_logger
+
+logger = get_dist_logger()
 
 
 @dataclasses.dataclass
