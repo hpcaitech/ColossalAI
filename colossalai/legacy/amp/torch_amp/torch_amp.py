@@ -12,7 +12,7 @@ from colossalai.legacy.utils import clip_grad_norm_fp32
 
 from ._grad_scaler import GradScaler
 
-autocast = get_accelerator().autocast()
+autocast = get_accelerator().autocast
 
 
 class TorchAMPOptimizer(OptimizerWrapper):

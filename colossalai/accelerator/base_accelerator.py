@@ -295,7 +295,9 @@ class BaseAccelerator(ABC):
     # amp APIs
     # =======================
     @abstractmethod
-    def autocast(self) -> Callable:
+    def autocast(
+        self, enabled: bool = True, dtype: torch.dtype = torch.float16, cache_enabled: bool = True
+    ) -> Callable:
         """
         Return autocast function
         """

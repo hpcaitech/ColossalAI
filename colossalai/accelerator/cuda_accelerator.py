@@ -121,37 +121,37 @@ class CudaAccelerator(BaseAccelerator):
         """
         Sets the random number generator state of the specified GPU.
         """
-        return torch.cuda.set_rng_state(new_state, device)
+        torch.cuda.set_rng_state(new_state, device)
 
     def set_rng_state_all(self, new_states: List[torch.ByteTensor]) -> None:
         """
         Sets the random number generator state of all devices.
         """
-        return torch.cuda.set_rng_state_all(new_states)
+        torch.cuda.set_rng_state_all(new_states)
 
     def manual_seed(self, seed: int) -> None:
         """
         Sets the seed for generating random numbers for the current GPU.
         """
-        return torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
 
     def manual_seed_all(self, seed: int) -> None:
         """
         Set the random seed for the all processes.
         """
-        return torch.cuda.manual_seed_all(seed)
+        torch.cuda.manual_seed_all(seed)
 
     def seed(self) -> None:
         """
         Sets the seed for generating random numbers to a random number for the current GPU.
         """
-        return torch.cuda.seed()
+        torch.cuda.seed()
 
     def seed_all(self) -> None:
         """
         Sets the seed for generating random numbers to a random number on all GPUs.
         """
-        return torch.cuda.seed_all()
+        torch.cuda.seed_all()
 
     def initial_seed(self) -> int:
         """
@@ -167,7 +167,7 @@ class CudaAccelerator(BaseAccelerator):
         """
         Releases all unoccupied cached memory currently held by the caching allocator so that those can be used in other GPU application and visible in nvidia-smi.
         """
-        return torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
 
     def memory_stats(self, device=None) -> Dict[str, Any]:
         """
@@ -203,13 +203,13 @@ class CudaAccelerator(BaseAccelerator):
         """
         Resets the starting point in tracking maximum GPU memory occupied by tensors for a given device.
         """
-        return torch.cuda.reset_max_memory_allocated(device=device)
+        torch.cuda.reset_max_memory_allocated(device=device)
 
     def reset_max_memory_cached(self, device=None) -> None:
         """
         Resets the starting point in tracking maximum GPU memory managed by the caching allocator for a given device.
         """
-        return torch.cuda.reset_max_memory_cached(device=device)
+        torch.cuda.reset_max_memory_cached(device=device)
 
     def memory_reserved(self, device=None) -> int:
         """
@@ -227,13 +227,13 @@ class CudaAccelerator(BaseAccelerator):
         """
         Set memory fraction for a process.
         """
-        return torch.cuda.set_per_process_memory_fraction(fraction, device=device)
+        torch.cuda.set_per_process_memory_fraction(fraction, device=device)
 
     def reset_peak_memory_stats(self, device=None) -> None:
         """
         Resets the "peak" stats tracked by the CUDA memory allocator.
         """
-        return torch.cuda.reset_peak_memory_stats(device=device)
+        torch.cuda.reset_peak_memory_stats(device=device)
 
     # =======================
     # streams and events APIs
@@ -267,7 +267,7 @@ class CudaAccelerator(BaseAccelerator):
         """
         Sets the current stream.This is a wrapper API to set the stream.
         """
-        return torch.cuda.set_stream(stream_)
+        torch.cuda.set_stream(stream_)
 
     def stream(self, stream_):
         """
@@ -278,8 +278,10 @@ class CudaAccelerator(BaseAccelerator):
     # =======================
     # amp APIs
     # =======================
-    def autocast(self) -> Callable:
+    def autocast(
+        self, enabled: bool = True, dtype: torch.dtype = torch.float16, cache_enabled: bool = True
+    ) -> Callable:
         """
         Return autocast function
         """
-        return torch.cuda.amp.autocast
+        return torch.cuda.amp.autocast(enabled=enabled, dtype=dtype, cache_enabled=cache_enabled)
