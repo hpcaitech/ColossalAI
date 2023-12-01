@@ -133,7 +133,9 @@ def main():
         plugin = HybridParallelPlugin(
             tp_size=args.tp,
             pp_size=args.pp,
+            pp_style="interleaved",
             zero_stage=args.zero,
+            num_model_chunks=2,
             enable_fused_normalization=torch.cuda.is_available(),
             num_microbatches=args.mbs,
             precision="bf16",
