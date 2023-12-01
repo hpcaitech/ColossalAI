@@ -3,6 +3,7 @@ from collections import OrderedDict
 from typing import Union
 
 from .base_accelerator import BaseAccelerator
+from .cpu_accelerator import CpuAccelerator
 from .cuda_accelerator import CudaAccelerator
 from .npu_accelerator import NpuAccelerator
 
@@ -53,9 +54,7 @@ def auto_set_accelerator() -> None:
             pass
 
     if _ACCELERATOR is None:
-        raise RuntimeError(
-            f"No accelerator is available. Please check your environment. The list of accelerators we support is {list(_ACCELERATOR_MAPPING.keys())}"
-        )
+        _ACCELERATOR = CpuAccelerator()
 
 
 def get_accelerator() -> BaseAccelerator:

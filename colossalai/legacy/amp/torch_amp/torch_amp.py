@@ -12,7 +12,7 @@ from colossalai.legacy.utils import clip_grad_norm_fp32
 
 from ._grad_scaler import GradScaler
 
-accelerator = get_accelerator()
+autocast = get_accelerator().autocast()
 
 
 class TorchAMPOptimizer(OptimizerWrapper):
@@ -72,7 +72,7 @@ class TorchAMPModel(nn.Module):
         super().__init__()
         self.model = model
 
-    @accelerator.autocast()()
+    @autocast()
     def forward(self, *args, **kwargs):
         """
         Execute forward under the torch amp context
@@ -91,7 +91,7 @@ class TorchAMPLoss(nn.Module):
         super().__init__()
         self.loss = loss
 
-    @accelerator.autocast()()
+    @autocast()
     def forward(self, *args, **kwargs):
         """
         Execute forward under the torch amp context
