@@ -19,7 +19,15 @@ class PipelineStageManager:
         stage (int): The current stage.
     """
 
-    def __init__(self, pg_mesh: ProcessGroupMesh, pipeline_axis: int, is_virtual: bool = False) -> None:
+    def __init__(
+        self,
+        pg_mesh: ProcessGroupMesh,
+        pipeline_axis: int,
+        enable_interleave: bool = False,
+        num_model_chunks: int = 1,
+    ) -> None:
+        assert enable_interleave or num_model_chunks == 1, "num_model_chunks must be 1 when enable_interleave is False"
+
         self.pg_mesh = pg_mesh
         self.pipeline_axis = pipeline_axis
         self.prev_rank: Optional[Tuple[int, ...]] = None
@@ -43,29 +51,62 @@ class PipelineStageManager:
                 ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
                 self.p2p_groups[tuple(ranks_in_group)] = group
 
-        if is_virtual:
+        self.is_interleave = enable_interleave
+        if enable_interleave:
+            # use circle p2p communication
             # add the process group of the first rank and the last rank
-            # only used in interleaved pipeline for now
             group = self.pg_mesh.get_group_along_axis(self.pipeline_axis, [stages[0], stages[-1]])
             if self.stage in [stages[0], stages[-1]]:
                 ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
                 self.p2p_groups[tuple(ranks_in_group)] = group
 
-    def is_first_stage(self) -> bool:
+            # for interleaved pipeline parallel, each device is responsible for multiple chunk of layers
+            self.num_model_chunks: int = num_model_chunks
+
+            # for shardformer, hold stage indices of model
+            self.stage_indices: List[Tuple[int, int]]
+            # for shardformer, hold model chunk id
+            self.model_chunk_id: Optional[int] = None
+
+    def is_first_stage(self, model_chunk_id: Optional[int] = None) -> bool:
         """Is the current stage the first stage.
+
+        NOTE:
+            1. if using interleaved pipeline parallel, the first stage is the first chunk of the first device.
+            2. invoke is_first_stage() with model_chunk_id < 0 is equivalent to invoke is_first_device()
 
         Returns:
             bool: Whether the current stage is the first stage.
         """
-        return self.stage == 0
+        if self.is_interleave and model_chunk_id is None:
+            model_chunk_id = self.model_chunk_id
+        assert self.is_interleave ^ (
+            model_chunk_id is None
+        ), "model_chunk_id must be specified when using interleaved pipeline"
+        if not self.is_interleave or model_chunk_id < 0:
+            return self.stage == 0
+        else:
+            return self.stage == 0 and model_chunk_id == 0
 
-    def is_last_stage(self) -> bool:
+    def is_last_stage(self, model_chunk_id: Optional[int] = None) -> bool:
         """Is the current stage the last stage.
+
+        NOTE:
+            1. if using interleaved pipeline parallel, the last stage is the last chunk of the last device.
+            2. invoke is_last_stage() with model_chunk_id < 0 is equivalent to invoke is_last_device()
 
         Returns:
             bool: Whether the current stage is the last stage.
         """
-        return self.stage == self.num_stages - 1
+        if self.is_interleave and model_chunk_id is None:
+            model_chunk_id = self.model_chunk_id
+        assert self.is_interleave ^ (
+            model_chunk_id is None
+        ), "model_chunk_id must be specified when using interleaved pipeline"
+        if not self.is_interleave or model_chunk_id < 0:
+            return self.stage == self.num_stages - 1
+        else:
+            return self.stage == self.num_stages - 1 and model_chunk_id == self.num_model_chunks - 1
 
     @property
     def num_stages(self) -> int:

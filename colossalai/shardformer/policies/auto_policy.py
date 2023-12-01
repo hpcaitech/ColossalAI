@@ -85,6 +85,17 @@ _POLICY_LIST = {
     "transformers.models.gpt2.modeling_gpt2.GPT2ForSequenceClassification": PolicyLocation(
         file_name="gpt2", class_name="GPT2ForSequenceClassificationPolicy"
     ),
+    # GPTJ
+    "transformers.models.gptj.modeling_gptj.GPTJModel": PolicyLocation(file_name="gptj", class_name="GPTJModelPolicy"),
+    "transformers.models.gptj.modeling_gptj.GPTJForCausalLM": PolicyLocation(
+        file_name="gptj", class_name="GPTJForCausalLMPolicy"
+    ),
+    "transformers.models.gptj.modeling_gptj.GPTJForQuestionAnswering": PolicyLocation(
+        file_name="gptj", class_name="GPTJForQuestionAnsweringPolicy"
+    ),
+    "transformers.models.gptj.modeling_gptj.GPTJForSequenceClassification": PolicyLocation(
+        file_name="gptj", class_name="GPTJForSequenceClassificationPolicy"
+    ),
     # ViT
     "transformers.models.vit.modeling_vit.ViTModel": PolicyLocation(file_name="vit", class_name="ViTModelPolicy"),
     "transformers.models.vit.modeling_vit.ViTForImageClassification": PolicyLocation(
@@ -145,6 +156,31 @@ _POLICY_LIST = {
     ),
     "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
         file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
+    ),
+    # Falcon
+    "transformers.models.falcon.modeling_falcon.FalconModel": PolicyLocation(
+        file_name="falcon", class_name="FalconModelPolicy"
+    ),
+    "transformers.models.falcon.modeling_falcon.FalconForCausalLM": PolicyLocation(
+        file_name="falcon", class_name="FalconForCausalLMPolicy"
+    ),
+    "transformers.models.falcon.modeling_falcon.FalconForSequenceClassification": PolicyLocation(
+        file_name="falcon", class_name="FalconForSequenceClassificationPolicy"
+    ),
+    "transformers.models.falcon.modeling_falcon.FalconForTokenClassification": PolicyLocation(
+        file_name="falcon", class_name="FalconForTokenClassificationPolicy"
+    ),
+    "transformers.models.falcon.modeling_falcon.FalconForQuestionAnswering": PolicyLocation(
+        file_name="falcon", class_name="FalconForQuestionAnsweringPolicy"
+    ),
+    "transformers.models.mistral.modeling_mistral.MistralModel": PolicyLocation(
+        file_name="mistral", class_name="MistralModelPolicy"
+    ),
+    "transformers.models.mistral.modeling_mistral.MistralForCausalLM": PolicyLocation(
+        file_name="mistral", class_name="MistralForCausalLMPolicy"
+    ),
+    "transformers.models.mistral.modeling_mistral.MistralForSequenceClassification": PolicyLocation(
+        file_name="mistral", class_name="MistralForSequenceClassificationPolicy"
     ),
 }
 

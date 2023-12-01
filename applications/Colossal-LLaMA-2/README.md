@@ -5,20 +5,31 @@
 </div>
 
 ## Table of Contents
+- [Table of Contents](#table-of-contents)
 - [News](#news)
 - [Colossal-LLaMA-2-7B](#colossal-llama-2-7b)
-    - [Performance Evaluation](#performance-evaluation)
-    - [Examples](#examples)
-    - [Training Logs](#training-logs)
-    - [Import from Transformers](#import-from-transformers)
+  - [Performance Evaluation](#performance-evaluation)
+  - [Examples](#examples)
+  - [Training Logs](#training-logs)
+  - [Import from Transformers (Inference)](#import-from-transformers-inference)
 - [Usage](#usage)
-    - [Install](#install)
-    - [How to run](#how-to-run)
-- [Technical Insight](#technical-insights)
-    - [Data](#data)
-    - [Tokenizer](#tokenizer)
-    - [Training Strategy](#training-strategy)
-    - [Bridging Any Domain-specific Large Models](#bridging-any-domain-specific-large-models)
+  - [Install](#install)
+    - [0. Pre-requisite](#0-pre-requisite)
+    - [1. Install required packages](#1-install-required-packages)
+    - [2. Install `xentropy`, `layer_norm` and `rotary`](#2-install-xentropy-layer_norm-and-rotary)
+  - [How to run](#how-to-run)
+    - [1. Init Tokenizer Preparation](#1-init-tokenizer-preparation)
+    - [2. Init Model Preparation](#2-init-model-preparation)
+    - [3. Data Preparation](#3-data-preparation)
+    - [4. Command Line Arguments for Training](#4-command-line-arguments-for-training)
+    - [5. Running Command](#5-running-command)
+- [Technical Insights](#technical-insights)
+  - [Data](#data)
+  - [Tokenizer](#tokenizer)
+  - [Training Strategy](#training-strategy)
+    - [Multi-stage Training](#multi-stage-training)
+    - [Bucket-based Training](#bucket-based-training)
+  - [Bridging Any Domain-specific Large Models](#bridging-any-domain-specific-large-models)
 - [Citations](#citations)
 
 ## News
@@ -46,7 +57,7 @@ We conducted comprehensive evaluation on 4 dataset and compare our Colossal-Llam
 * We use 5-shot for AGIEval and only calculate scores for 4-choice questions using a combination metric of exact match and the logits of first predicted token. If any of the exact match or logits of first predicted token is correct, the model will get the score.
 * We use 0-shot for GAOKAO-Bench and only calculate scores for 4-choice questions based on the logits of first predicted token.
 The generation config for all dataset is greedy search.
-* We also provided CEval scores from its lastest leaderboard or the official repository of the model.
+* We also provided CEval scores from its latest leaderboard or the official repository of the model.
 
 |                                |  Backbone  | Tokens Consumed |  |         MMLU         |     CMMLU     | AGIEval | GAOKAO | CEval  |
 | :----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :-----: | :----: | :----: | :------------------------------: |
@@ -222,7 +233,7 @@ You are allowed to customize the category tags or use `unknown` to define the ca
 Command to convert jsonl dataset to arrow format:
 ```
 python prepare_pretrain_dataset.py \
-    --data_input_dirs "<JOSNL_DIR_1>,<JOSNL_DIR_2>,<JOSNL_DIR_3>" \
+    --data_input_dirs "<JSONL_DIR_1>,<JSONL_DIR_2>,<JSONL_DIR_3>" \
     --tokenizer_dir "<TOKENIZER_DIR>" \
     --data_cache_dir "jsonl_to_arrow_cache" \
     --data_jsonl_output_dir "spliced_tokenized_output_jsonl" \
@@ -231,7 +242,7 @@ python prepare_pretrain_dataset.py \
     --num_spliced_dataset_bins 10
 ```
 Here is details about CLI arguments:
-* Source data directory: `data_input_dirs`. Each `<JOSNL_DIR>` can have multiple file in `jsonl` format.
+* Source data directory: `data_input_dirs`. Each `<JSONL_DIR>` can have multiple file in `jsonl` format.
 * Tokenzier directory: `tokenizer_dir`. Path to the tokenizer in Hugging Face format.
 * Data cache directory: `data_cache_dir`. Directory to store Hugging Face data cache. Default case will create `cache` folder locally.
 * Output directory for jsonl format: `data_jsonl_output_dir`. Output directory to store converted dataset in jsonl format.
@@ -260,7 +271,7 @@ Here is details about CLI arguments:
 * Booster plugin: `--plugin`. `gemini`, `gemini_auto`, `zero2`，`zero2_cpu` and `3d` are supported.For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins/).
 * Intermediate checkpoint to load: `--load_checkpoint`. Path to the intermediate checkpoint. Saved checkpoint contains the states for `lr_scheduler`, `optimizer`,`running_states.json` and `modelling`. If `load_checkpoint` points to the `modelling` folder, only the model weights will be loaded without any other states to support multi-stage training.
 * Save interval: `--save_interval`. The interval (steps) of saving checkpoints. The default value is 1000.
-* Checkpoint directory: `--save_dir`. The directoty path to save checkpoint and intermediate states. Intermediate states include `lr_scheduler`, `optimizer`,`running_states.json` and `modelling`.
+* Checkpoint directory: `--save_dir`. The directory path to save checkpoint and intermediate states. Intermediate states include `lr_scheduler`, `optimizer`,`running_states.json` and `modelling`.
 * Tensorboard directory: `--tensorboard_dir`. The path to save tensorboard logs.
 * Configuration file: `--config_file`. The path to save the configuration file.
 * Number of epochs: `--num_epochs`. Number of training epochs. The default value is 1.
@@ -403,6 +414,5 @@ Applying the above process to perform knowledge transfer in any field allows for
     title={Flash{A}ttention-2: Faster Attention with Better Parallelism and Work Partitioning},
     author={Dao, Tri},
     year={2023}
-}
 }
 ```
