@@ -13,13 +13,12 @@ from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 import colossalai
-import colossalai.utils.device as device_utils
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, TorchFSDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 # ==============================
 # Constants
@@ -166,7 +165,7 @@ def main():
     # Initialize Model and Optimizer
     # ==============================
     init_ctx = (
-        LazyInitContext(default_device=get_current_device())
+        LazyInitContext(default_device=get_accelerator().get_current_device())
         if isinstance(plugin, (GeminiPlugin, HybridParallelPlugin))
         else nullcontext()
     )
@@ -197,7 +196,9 @@ def main():
     torch.set_default_dtype(torch.bfloat16)
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
     torch.set_default_dtype(torch.float)
-    coordinator.print_on_master(f"Booster init max CUDA memory: {device_utils.max_memory_allocated()/1024**2:.2f} MB")
+    coordinator.print_on_master(
+        f"Booster init max CUDA memory: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB"
+    )
     coordinator.print_on_master(
         f"Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB"
     )
@@ -223,7 +224,7 @@ def main():
             performance_evaluator.on_step_end(**batch)
 
     performance_evaluator.on_fit_end()
-    coordinator.print_on_master(f"Max CUDA memory usage: {device_utils.max_memory_allocated()/1024**2:.2f} MB")
+    coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
 
 
 if __name__ == "__main__":

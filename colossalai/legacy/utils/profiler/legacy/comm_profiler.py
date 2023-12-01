@@ -8,7 +8,7 @@ import torch.distributed as dist
 from torch.autograd.profiler import profile
 from torch.distributed import ReduceOp
 
-from colossalai.utils import get_current_device
+from colossalai.accelerator import get_accelerator
 
 from .prof_utils import BaseProfiler, _format_bandwidth, _format_memory, _format_time
 
@@ -177,7 +177,7 @@ class CommProfiler(BaseProfiler):
 
             assert current_comm_event is not None, "dist op has not been found"
 
-            buffer = torch.tensor([current_comm_event.self_cuda_time], device=get_current_device())
+            buffer = torch.tensor([current_comm_event.self_cuda_time], device=get_accelerator().get_current_device())
             torch_all_reduce(buffer, op=ReduceOp.MIN, group=group)
             current_comm_event.self_cuda_time = buffer.item()
 

@@ -4,9 +4,9 @@ from typing import Optional
 import torch.nn as nn
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin
 from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroModel
-from colossalai.utils import get_current_device
 from colossalai.zero.gemini.gemini_ddp import GeminiDDP
 
 from .ddp import DDPStrategy
@@ -160,7 +160,7 @@ class GeminiStrategy(DDPStrategy):
 
         # NOTE: dist should be initialized before calling get_current_device()
         plugin_initializer = lambda: GeminiPlugin(
-            chunk_init_device=get_current_device(),
+            chunk_init_device=get_accelerator().get_current_device(),
             placement_policy=placement_policy,
             shard_param_frac=shard_param_frac,
             offload_optim_frac=offload_optim_frac,

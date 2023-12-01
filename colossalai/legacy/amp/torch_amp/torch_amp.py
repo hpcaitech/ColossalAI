@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from colossalai.utils.device import autocast
-
 import torch.nn as nn
 from torch import Tensor
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
 
+from colossalai.accelerator import get_accelerator
 from colossalai.interface import OptimizerWrapper
 from colossalai.legacy.utils import clip_grad_norm_fp32
 
@@ -71,7 +70,7 @@ class TorchAMPModel(nn.Module):
         super().__init__()
         self.model = model
 
-    @autocast()
+    @get_accelerator().autocast()()
     def forward(self, *args, **kwargs):
         """
         Execute forward under the torch amp context
@@ -90,7 +89,7 @@ class TorchAMPLoss(nn.Module):
         super().__init__()
         self.loss = loss
 
-    @autocast()
+    @get_accelerator().autocast()()
     def forward(self, *args, **kwargs):
         """
         Execute forward under the torch amp context

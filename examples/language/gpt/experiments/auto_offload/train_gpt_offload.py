@@ -7,13 +7,13 @@ from model_zoo import GPTLMLoss, get_gpt2_components
 from torch.utils._pytree import tree_map
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.auto_parallel.offload.amp_optimizer import AMPOptimizer
 from colossalai.auto_parallel.offload.mem_optimize import memory_optimize
 from colossalai.auto_parallel.offload.solver import NOT_NVML
 from colossalai.fx.profiler import parameter_size
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import spawn
-from colossalai.utils import get_current_device
 
 
 def parse_args():
@@ -41,7 +41,7 @@ def train_gpt(args):
             64,
             8,
         ),
-        device=get_current_device(),
+        device=get_accelerator().get_current_device(),
     )
     criterion = GPTLMLoss()
 

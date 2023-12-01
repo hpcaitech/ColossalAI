@@ -41,11 +41,12 @@ from transformers import AutoConfig, GPT2ForSequenceClassification, get_linear_s
 from transformers import AutoTokenizer
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
+
 ```
 ## Define Plugin
 Create a `HybridParallelPlugin` object and specify the desired parallelism strategies to be used. In this example, both pipeline parallelism and ZeRO-1 are used simultaneously.
@@ -149,7 +150,7 @@ model, optimizer, _criterion, _, lr_scheduler = booster.boost(
 
 ## Training GPT-2 using hybrid parallelism
 
-In the previous tutorial, We've explained how to inject various parallelism features into the model and its training components using the Booster and `HybridParallelPlugin`. Now we can start model training. 
+In the previous tutorial, We've explained how to inject various parallelism features into the model and its training components using the Booster and `HybridParallelPlugin`. Now we can start model training.
 Define a training function. When pipeline parallelism is used, you need to call `booster.execute_pipeline` to schedule the stages of model training.
 ```python
 def train_epoch(

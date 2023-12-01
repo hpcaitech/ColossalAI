@@ -5,7 +5,7 @@ import torch.distributed as dist
 from torch.optim import Adam
 
 import colossalai
-import colossalai.utils.device as device_utils
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 
@@ -22,7 +22,7 @@ _STUCK_MODELS = ["transformers_albert_for_multiple_choice"]
 
 
 def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
-    device = device_utils.get_current_device()
+    device = get_accelerator().get_current_device()
     try:
         plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=2**5)
         booster = Booster(plugin=plugin)
@@ -69,7 +69,7 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
             continue
         err = run_fn(stage, model_fn, data_gen_fn, output_transform_fn)
 
-        device_utils.empty_cache()
+        get_accelerator().empty_cache()
 
         if err is None:
             passed_models.append(name)

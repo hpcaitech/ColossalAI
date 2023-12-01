@@ -18,11 +18,11 @@ from transformers import (
 )
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 # ==============================
 # Prepare Hyperparameters
@@ -59,7 +59,7 @@ def evaluate_model(
         use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
         is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
 
-        accum_loss = torch.zeros(1, device=get_current_device())
+        accum_loss = torch.zeros(1, device=get_accelerator().get_current_device())
         for batch in dataloader:
             batch = move_to_cuda(batch)
             labels = batch["labels"]
@@ -88,8 +88,10 @@ def evaluate_model(
                     object_list = [None, None]
                     dist.broadcast_object_list(object_list, src=current_pp_group_ranks[-1], group=pp_group)
 
-                    metric.add_batch(predictions=object_list[0].to(get_current_device()), references=labels)
-                    accum_loss.add_(object_list[1].to(get_current_device()))
+                    metric.add_batch(
+                        predictions=object_list[0].to(get_accelerator().get_current_device()), references=labels
+                    )
+                    accum_loss.add_(object_list[1].to(get_accelerator().get_current_device()))
 
             else:
                 batch = move_to_cuda(batch)

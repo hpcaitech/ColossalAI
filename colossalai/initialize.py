@@ -9,9 +9,10 @@ from typing import Dict, Union
 import torch
 import torch.distributed as dist
 
+from colossalai.accelerator import IS_NPU_AVAILABLE, get_accelerator
 from colossalai.context import Config
 from colossalai.logging import get_dist_logger
-from colossalai.utils import IS_NPU_AVAILABLE, set_device, set_seed
+from colossalai.utils import set_seed
 
 
 def launch(
@@ -57,7 +58,7 @@ def launch(
     # set cuda device
     if torch.cuda.is_available() or IS_NPU_AVAILABLE:
         # if local rank is not given, calculate automatically
-        set_device(local_rank)
+        get_accelerator().set_device(local_rank)
 
     set_seed(seed)
 
