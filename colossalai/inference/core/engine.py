@@ -1,4 +1,7 @@
+from logging import Logger
 from typing import Optional
+
+from .request_handler import RequestHandler
 
 
 class InferEngine:
