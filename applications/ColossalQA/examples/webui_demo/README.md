@@ -32,13 +32,13 @@ For API-based language models (like ChatGPT or Huawei Pangu), provide your API k
 All configs are defined in `ColossalQA/examples/webui_demo/config.py`.
 
 - embed:
-    - <mark>embed_name</mark>: the embedding model name
-    - <mark>embed_model_name_or_path</mark>: path to embedding model, could be a local path or a huggingface path
+    - **embed_name**: the embedding model name
+    - **embed_model_name_or_path**: path to embedding model, could be a local path or a huggingface path
     - embed_model_device: device to load the embedding model
 - model:
-    - <mark>mode</mark>: "local" for loading models, "api" for using model api
-    - <mark>model_name</mark>: "chatgpt_api", "pangu_api", or your local model name
-    - <mark>model_path</mark>: path to the model, could be a local path or a huggingface path. don't need if mode="api"
+    - **mode**: "local" for loading models, "api" for using model api
+    - **model_name**: "chatgpt_api", "pangu_api", or your local model name
+    - **model_path**: path to the model, could be a local path or a huggingface path. don't need if mode="api"
     - device: device to load the LLM
 - splitter:
     - name: text splitter class name, the class should be imported at the beginning of `config.py`
@@ -82,7 +82,7 @@ python server.py --http_host "host" --http_port "port"
 python webui.py --http_host "your-backend-api-host" --http_port "your-backend-api-port"
 ```
 
-2. If you want to use pangu api as the backend model, you need to change the model mode to "api", change the model name to "chatgpt_api" in `config.py`, and run the following commands.
+2. If you want to use chatgpt api as the backend model, you need to change the model mode to "api", change the model name to "chatgpt_api" in `config.py`, and run the following commands.
 ```sh
 export TMP="path/to/store/tmp/files"
 
