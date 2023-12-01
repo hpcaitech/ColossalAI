@@ -2,7 +2,7 @@ rm -rf /home/lcyab/data/data_rlhf/test_tiny_data/tokenized_ptx_data_llama/cache
 rm -rf /home/lcyab/data/data_rlhf/test_tiny_data/tokenized_ptx_data_llama/jsonl
 rm -rf /home/lcyab/data/data_rlhf/test_tiny_data/tokenized_ptx_data_llama/arrow
 
-python prepare_pretrain_dataset_for_ppo_with_ptx_loss.py --data_input_dirs /home/lcyab/data/pretrain_data/cleaned_wiki_en/preprocessed \
+python prepare_ptx_dataset.py --data_input_dirs /home/lcyab/data/pretrain_data/cleaned_wiki_en/preprocessed \
     --tokenizer_dir  "/home/lcyab/data/models/Sheared-LLaMA-1.3B" \
     --data_cache_dir /home/lcyab/data/data_rlhf/test_tiny_data/tokenized_ptx_data_llama/cache \
     --data_jsonl_output_dir /home/lcyab/data/data_rlhf/test_tiny_data/tokenized_ptx_data_llama/jsonl \

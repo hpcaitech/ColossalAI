@@ -6,7 +6,12 @@ import resource
 from contextlib import nullcontext
 
 import torch
-from coati.dataset import DataCollatorForSupervisedDataset, load_tokenized_dataset, setup_distributed_dataloader
+from coati.dataset import (
+    DataCollatorForSupervisedDataset,
+    load_tokenized_dataset,
+    setup_conversation_template,
+    setup_distributed_dataloader,
+)
 from coati.models import convert_to_lora_module, load_checkpoint
 from coati.trainer import SFTTrainer
 from coati.utils import replace_with_flash_attention
@@ -17,7 +22,6 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
-from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
@@ -68,7 +72,7 @@ def train(args):
         plugin = HybridParallelPlugin(
             tp_size=args.tp,
             pp_size=1,
-            zero_stage=args.zero,
+            zero_stage=0,
             max_norm=args.grad_clip,
             precision=args.mixed_precision,
         )
@@ -102,6 +106,7 @@ def train(args):
     # configure tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir or args.pretrain)
     tokenizer.pad_token = tokenizer.eos_token
+    _ = setup_conversation_template(tokenizer)
     tokenizer.add_bos_token = False
     tokenizer.add_eos_token = False
 
@@ -129,6 +134,7 @@ def train(args):
         shuffle=True,
         drop_last=True,
         collate_fn=data_collator,
+        use_tp=args.tp > 1,
     )
     coordinator.print_on_master(
         f"Max CUDA memory after data loader: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB"
@@ -211,7 +217,6 @@ def train(args):
         coordinator=coordinator,
     )
 
-    get_dist_logger()
     trainer.fit(
         train_dataloader=train_dataloader,
         eval_dataloader=None,

@@ -25,7 +25,7 @@ export NCCL_IB_RETRY_CNT=7
 export OMP_NUM_THREADS=8
 
 
-PROJECT_NAME="llama2-dpo"
+PROJECT_NAME="llama2-ppo"
 PARENT_SAVE_DIR="/home/lcyab/data/models/coati_refactor_experiments/output/ppo/ckpt"
 PARENT_TENSORBOARD_DIR="/home/lcyab/data/models/coati_refactor_experiments/output/ppo/tensorboard"
 PARENT_CONFIG_FILE="/home/lcyab/data/models/coati_refactor_experiments/output/ppo/train_config"
@@ -35,15 +35,15 @@ PRETRAINED_TOKENIZER_PATH="/home/lcyab/data/models/Sheared-LLaMA-1.3B"  # "/mnt/
 declare -a prompt_dataset=(
     # /home/lcyab/data/data_rlhf/test_tiny_data/tokenized_prompt_data_llama/arrow/part-00000
     /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00000
-    # /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00001
-    # /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00002
-    # /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00003
-    # /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00004
-    # /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00005
-    # /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00006
-    # /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00007
-    # /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00008
-    # /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00009
+    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00001
+    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00002
+    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00003
+    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00004
+    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00005
+    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00006
+    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00007
+    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00008
+    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00009
 )
 
 declare -a ptx_dataset=(

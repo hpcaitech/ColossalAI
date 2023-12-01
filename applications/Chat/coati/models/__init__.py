@@ -4,7 +4,7 @@ from .generation import generate, generate_streaming
 from .lora import convert_to_lora_module
 from .loss import DpoLoss, LogExpLoss, LogSigLoss, PolicyLoss, ValueLoss
 from .reward_model import RewardModel
-from .utils import load_checkpoint, save_checkpoint
+from .utils import disable_dropout, load_checkpoint, save_checkpoint
 
 __all__ = [
     "BaseModel",
@@ -20,4 +20,5 @@ __all__ = [
     "DpoLoss",
     "generate",
     "generate_streaming",
+    "disable_dropout",
 ]

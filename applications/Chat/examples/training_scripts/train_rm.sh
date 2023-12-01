@@ -50,10 +50,9 @@ FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
 
-colossalai run --nproc_per_node 4 --hostfile hostfile --master_port 30035 train_reward_model.py \
+colossalai run --nproc_per_node 4 --hostfile hostfile --master_port 30035 train_rm.py \
     --pretrain $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
-    --checkpoint_path /home/lcyab/data/models/coati_refactor_experiments/rm/output/ckptllama2-rm-2023-11-28-13-17-45/epoch-1_step-4748/modeling \
     --dataset ${dataset[@]} \
     --plugin "zero2" \
     --save_interval 3000 \
@@ -67,6 +66,5 @@ colossalai run --nproc_per_node 4 --hostfile hostfile --master_port 30035 train_
     --grad_clip 1.0 \
     --weight_decay 0.01 \
     --warmup_steps 100 \
-    --use_flash_attn \
     # --use_wandb \
     # --grad_checkpoint \

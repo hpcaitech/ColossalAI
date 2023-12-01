@@ -9,9 +9,10 @@ from coati.dataset import (
     DataCollatorForPreferenceDataset,
     StatefulDistributedSampler,
     load_tokenized_dataset,
+    setup_conversation_template,
     setup_distributed_dataloader,
 )
-from coati.models import convert_to_lora_module
+from coati.models import convert_to_lora_module, disable_dropout
 from coati.trainer import DPOTrainer
 from coati.utils import load_checkpoint, replace_with_flash_attention
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -21,7 +22,6 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
-from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
@@ -86,10 +86,10 @@ def train(args):
     )
     with init_ctx:
         model = AutoModelForCausalLM.from_pretrained(args.pretrain)
+        disable_dropout(model)
         ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain)
+        disable_dropout(ref_model)
 
-        # TODO: set dropout to 0 here
-        # for llama2, dropout is 0 by default, hence skip.
         if args.lora_rank > 0:
             model = convert_to_lora_module(model, args.lora_rank, lora_train_bias=args.lora_train_bias)
 
@@ -106,6 +106,7 @@ def train(args):
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
+    _ = setup_conversation_template(tokenizer)
     tokenizer.padding_side = "right"
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -152,10 +153,6 @@ def train(args):
         lr_scheduler=lr_scheduler,
         dataloader=train_dataloader,
     )
-
-    # test_res = model.generate(tokenizer.encode("tell a story about a cat.\n", return_tensors='pt').to(get_current_device()),
-    #                           max_length=200, do_sample=True, top_k=50, top_p=0.95, temperature=0.9)
-    # coordinator.print_on_master(f"Test generate: {tokenizer.decode(test_res[0])}")
 
     ref_model, _, _, _, _ = ref_booster.boost(model=ref_model, dataloader=train_dataloader)
     torch.set_default_dtype(torch.float)
@@ -214,7 +211,6 @@ def train(args):
         coordinator=coordinator,
     )
 
-    get_dist_logger()
     trainer.fit(
         train_preference_dataloader=train_dataloader,
         eval_preference_dataloader=None,
@@ -230,8 +226,8 @@ def train(args):
         model.eval()
     # save model checkpoint after fitting on only rank0
     coordinator.print_on_master("Start saving final model checkpoint")
-    booster.save_model(model, os.path.join(args.save_path, "modeling"), shard=True)
-    coordinator.print_on_master(f"Saved final model checkpoint at epoch {args.max_epochs} at folder {args.save_path}")
+    booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
+    coordinator.print_on_master(f"Saved final model checkpoint at epoch {args.max_epochs} at folder {args.save_dir}")
 
     coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
 

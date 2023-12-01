@@ -9,11 +9,9 @@ import json
 import math
 import os
 import random
-import time
 from multiprocessing import cpu_count
 
-from coati.dataset.conversation import default_conversation
-from coati.dataset.spliced_and_tokenized_dataset import tokenize_rlhf
+from coati.dataset import setup_conversation_template, supervised_tokenize_sft
 from datasets import dataset_dict, load_dataset
 from transformers import AutoTokenizer
 
@@ -91,8 +89,8 @@ def main():
         train_splits.append(f"train[{start}%:{end}%]")
 
     # Prepare to the tokenizer.
-
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir)
+    conversation_template = setup_conversation_template(tokenizer)
     tokenizer.pad_token = tokenizer.eos_token
 
     list_dataset = load_dataset(
@@ -112,49 +110,46 @@ def main():
             )
         logger.info(f"Start to process part-{index}/{len(list_dataset)} of all original datasets.")
         dataset = dataset.map(
-            function=tokenize_rlhf,
+            function=supervised_tokenize_sft,
             fn_kwargs={
                 "tokenizer": tokenizer,
-                "conversation_template": default_conversation,
+                "conversation_template": conversation_template,
                 "max_length": args.max_length,
             },
             keep_in_memory=False,
             num_proc=min(len(dataset), cpu_count()),
         )
 
-        dataset = dataset.filter(lambda data: data["chosen_input_ids"] is not None)
+        dataset = dataset.filter(lambda data: data["labels"] is not None)
+        dataset = dataset.sort(column_names=("seq_category", "seq_length"), reverse=False, keep_in_memory=False)
 
+        # We don't concatenate data samples here.
+        spliced_dataset = dataset
         # Save each jsonl spliced dataset.
         output_index = "0" * (5 - len(str(index))) + str(index)
         output_name = f"part-{output_index}"
         output_jsonl_path = os.path.join(args.data_jsonl_output_dir, output_name + ".jsonl")
-        st = time.time()
+        # st = time.time()
         with open(file=output_jsonl_path, mode="w", encoding="utf-8") as fp_writer:
-            count = 0
-            for data_point in dataset:
-                if count % 500 == 0:
-                    logger.info(f"processing {count} spliced data points for {fp_writer.name}")
-                count += 1
-                fp_writer.write(json.dumps(data_point, ensure_ascii=False) + "\n")
-
-        logger.info(
-            f"Current file {fp_writer.name}; "
-            f"Data size: {len(dataset)}; "
-            f"Time cost: {round((time.time() - st) / 60, 6)} minutes."
-        )
+            spliced_count = 0
+            for spliced_data_point in spliced_dataset:
+                if spliced_count % 500 == 0:
+                    logger.info(f"processing {spliced_count} spliced data points for {fp_writer.name}")
+                spliced_count += 1
+                fp_writer.write(json.dumps(spliced_data_point, ensure_ascii=False) + "\n")
 
         # Save each arrow spliced dataset
         output_arrow_path = os.path.join(args.data_arrow_output_dir, output_name)
         logger.info(f"Start to save {output_arrow_path}")
-        dataset = load_dataset(
+        spliced_dataset = load_dataset(
             path="json",
             data_files=[output_jsonl_path],
-            cache_dir=os.path.join(args.data_cache_dir, "tokenized"),
+            cache_dir=os.path.join(args.data_cache_dir, "spliced_and_tokenized"),
             keep_in_memory=False,
             num_proc=cpu_count(),
             split="train",
         )
-        dataset.save_to_disk(dataset_path=output_arrow_path, num_proc=min(len(dataset), cpu_count()))
+        spliced_dataset.save_to_disk(dataset_path=output_arrow_path, num_proc=min(len(spliced_dataset), cpu_count()))
 
 
 if __name__ == "__main__":

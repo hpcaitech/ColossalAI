@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+Dataloader for sft, dpo, ppo
+"""
 
 import math
 import os
@@ -97,9 +100,6 @@ class DataCollatorForSupervisedDataset(object):
             else torch.LongTensor(instance["labels"])
             for instance in instances
         ]
-        # torch.set_printoptions(threshold=10_000)
-        # if is_rank_0():
-        #     print(batch_input_ids[0])
         if self.tokenizer.padding_side == "right":
             input_ids = torch.nn.utils.rnn.pad_sequence(
                 sequences=batch_input_ids,
@@ -135,9 +135,6 @@ class DataCollatorForSupervisedDataset(object):
                 f"`{self.tokenizer.__class__.__name__}.padding_side` can only be `left` or `right`, "
                 f"but now `{self.tokenizer.padding_side}`"
             )
-        # if is_rank_0():
-        #     print(input_ids[0])
-        # exit()
 
         attention_mask = input_ids.ne(self.tokenizer.pad_token_id)  # `torch.BoolTensor`, (bsz, max_len)
 
@@ -157,21 +154,13 @@ class DataCollatorForPromptDataset(DataCollatorForSupervisedDataset):
             (`Dict[str, torch.Tensor]`): Contains the following `torch.Tensor`:
                 `input_ids`: `torch.Tensor` of shape (bsz, max_len);
                 `attention_mask`: `torch.BoolTensor` of shape (bsz, max_len);
-                `labels`: `torch.Tensor` of shape (bsz, max_len), which contains `IGNORE_INDEX`.
         """
         instances = [{"input_ids": ins["input_ids"], "labels": ins["input_ids"]} for ins in instances]
         ret = super().__call__(instances=instances)
-        # torch.set_printoptions(threshold=10_000)
-        # if is_rank_0():
-        #     print(ret['input_ids'][0])
         input_ids = F.pad(
             ret["input_ids"], (self.max_length - ret["input_ids"].size(1), 0), value=self.tokenizer.pad_token_id
         )
         attention_mask = F.pad(ret["attention_mask"], (self.max_length - ret["attention_mask"].size(1), 0), value=False)
-        # if is_rank_0():
-        #     print(input_ids[0])
-        #     print(attention_mask[0])
-        # exit()
         return {"input_ids": input_ids, "attention_mask": attention_mask}
 
 

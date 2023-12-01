@@ -1,3 +1,7 @@
+"""
+Reward model trianer
+"""
+
 import os
 from typing import Any, Callable, Optional
 
@@ -116,13 +120,6 @@ class RewardModelTrainer(SLTrainer):
                 batch["reject_input_ids"],
                 batch["reject_attention_mask"],
             )
-
-            # if is_rank_0():
-            #     print(batch["chosen_input_ids"][0])
-            #     print(batch["chosen_attention_mask"][0])
-            #     print(batch["reject_input_ids"][0])
-            #     print(batch["reject_attention_mask"][0])
-            # exit()
             batch_size = chosen_input_ids.size()[0]
 
             # concatenate for better parrallelism
@@ -172,7 +169,7 @@ class RewardModelTrainer(SLTrainer):
                 step_bar.update()
                 self.accumulative_meter.reset()
 
-            if self.save_interval > 0 and self.num_train_step % self.save_interval == 0:
+            if self.save_interval > 0 and (self.num_train_step + 1) % self.save_interval == 0 and is_rank_0():
                 self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
                 save_checkpoint(
                     save_dir=self.save_dir,

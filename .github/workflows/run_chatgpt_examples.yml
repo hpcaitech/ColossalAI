@@ -36,18 +36,18 @@ jobs:
 
       - name: Install Transformers
         run: |
-          pip install transformers==4.30.2
+          pip install transformers==4.33.2
 
       - name: Execute Examples
         run: |
           cd applications/Chat
           rm -rf ~/.cache/colossalai
-          ./tests/test_inference.sh
-          ./tests/test_benchmarks.sh
+          ./tests/test_data_preparation.sh
           ./tests/test_train.sh
         env:
           NCCL_SHM_DISABLE: 1
           MAX_JOBS: 8
-          SFT_DATASET: /data/scratch/github_actions/chat/data.json
-          PROMPT_DATASET: /data/scratch/github_actions/chat/prompts_en.jsonl
-          PRETRAIN_DATASET: /data/scratch/github_actions/chat/alpaca_data.json
+          SFT_DATASET: /data/scratch/github_actions/chat/refactor_coati_test_data/sft
+          PROMPT_DATASET: /data/scratch/github_actions/chat/refactor_coati_test_data/prompt
+          PRETRAIN_DATASET: /data/scratch/github_actions/chat/refactor_coati_test_data/ptx
+          PREFERENCE_DATASET: /data/scratch/github_actions/chat/refactor_coati_test_data/preference

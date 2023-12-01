@@ -1,3 +1,7 @@
+"""
+SFT trainer
+"""
+
 import os
 from typing import Optional
 
@@ -119,6 +123,7 @@ class SFTTrainer(SLTrainer):
                 self.save_dir is not None
                 and self.save_interval is not None
                 and (self.num_train_step + 1) % self.save_interval == 0
+                and is_rank_0()
             ):
                 save_checkpoint(
                     save_dir=self.save_dir,
@@ -151,10 +156,10 @@ class SFTTrainer(SLTrainer):
             for batch in self.eval_dataloader:
                 batch = to_device(batch, torch.cuda.current_device())
                 outputs = self.model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
-                self.accumulative_meter.add("loss", outputs.loss.item(), count_update=batch["input_ids"].size(0))
+                loss_mean = all_reduce_mean(tensor=outputs.loss)
+                self.accumulative_meter.add("loss", loss_mean.item(), count_update=batch["input_ids"].size(0))
                 step_bar.update()
             loss_mean = self.accumulative_meter.get("loss")
-            loss_mean = all_reduce_mean(tensor=loss_mean)
             msg = "Evaluation Result:\n"
             for tag in ["loss"]:
                 msg = msg + f"{tag}: {self.accumulative_meter.get(tag)}\n"

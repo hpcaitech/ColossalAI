@@ -9,13 +9,12 @@ from coati.dataset import (
     DataCollatorForSupervisedDataset,
     StatefulDistributedSampler,
     load_tokenized_dataset,
+    setup_conversation_template,
     setup_distributed_dataloader,
 )
-from coati.models import Critic, RewardModel, convert_to_lora_module
+from coati.models import Critic, RewardModel, convert_to_lora_module, disable_dropout
 from coati.trainer import PPOTrainer
 from coati.utils import load_checkpoint, replace_with_flash_attention
-
-# from colossalai.utils import get_current_deviceDDPStrategy, GeminiStrategy, LowLevelZeroStrategy
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai
@@ -43,9 +42,12 @@ def train(args):
     booster_policy = None
     with init_ctx:
         actor = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True)
+        # Disable dropout
+        disable_dropout(actor)
         ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True)
         reward_model = RewardModel(args.rm_pretrain)
         critic = Critic(args.rm_pretrain)
+        disable_dropout(critic)
 
         if args.tp > 1:
             if reward_model.model.config.architectures[0] != critic.model.config.architectures[0]:
@@ -73,8 +75,6 @@ def train(args):
             else:
                 raise ValueError("Unknown model architecture for policy")
 
-        # TODO: set dropout to 0 here
-        # for llama2, dropout is 0 by default, hence skip.
         if args.lora_rank > 0:
             actor = convert_to_lora_module(actor, args.lora_rank, lora_train_bias=args.lora_train_bias)
             critic = convert_to_lora_module(critic, args.lora_rank, lora_train_bias=args.lora_train_bias)
@@ -94,8 +94,14 @@ def train(args):
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
+    _ = setup_conversation_template(tokenizer)
     tokenizer.padding_side = "left"  # left padding for generation (online learning)
     tokenizer.pad_token = tokenizer.eos_token
+
+    # configure generation config
+    actor.generation_config.update(
+        pad_token_id=tokenizer.eos_token_id, bos_token_id=tokenizer.bos_token_id, eos_token_id=tokenizer.eos_token_id
+    )
 
     # configure optimizer
     coordinator.print_on_master(f"setting up optimizer for actor: lr={args.lr}, weight_decay={args.weight_decay}")
@@ -373,12 +379,12 @@ def train(args):
     coordinator.print_on_master("Start saving final actor model checkpoint")
     actor_booster.save_model(actor, os.path.join(trainer.actor_save_dir, "modeling"), shard=True)
     coordinator.print_on_master(
-        f"Saved final actor model checkpoint at epoch {args.max_epochs} at folder {args.save_path}"
+        f"Saved final actor model checkpoint at episodes {args.num_episodes} at folder {args.save_path}"
     )
     coordinator.print_on_master("Start saving final critic model checkpoint")
     critic_booster.save_model(critic, os.path.join(trainer.critic_save_dir, "modeling"), shard=True)
     coordinator.print_on_master(
-        f"Saved final critic model checkpoint at epoch {args.max_epochs} at folder {args.save_path}"
+        f"Saved final critic model checkpoint at episodes {args.num_episodes} at folder {args.save_path}"
     )
     coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
 
@@ -412,6 +418,7 @@ if __name__ == "__main__":
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--experience_batch_size", type=int, default=16)
     parser.add_argument("--ptx_batch_size", type=int, default=1)
+    parser.add_argument("--lora_train_bias", type=str, default="none")
     parser.add_argument("--mixed_precision", type=str, default="fp16", choices=["fp16", "bf16"], help="Mixed precision")
     parser.add_argument("--accumulation_steps", type=int, default=8)
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")

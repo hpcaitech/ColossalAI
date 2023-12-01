@@ -1,3 +1,6 @@
+"""
+loss functions
+"""
 from typing import Optional
 
 import torch
@@ -28,9 +31,10 @@ class PolicyLoss(nn.Module):
     Policy Loss for PPO
     """
 
-    def __init__(self, clip_eps: float = 0.2) -> None:
+    def __init__(self, clip_eps: float = 0.2, skip_threshold: float = 20.0) -> None:
         super().__init__()
         self.clip_eps = clip_eps
+        self.skip_threshold = skip_threshold
 
     def forward(
         self,
@@ -43,7 +47,7 @@ class PolicyLoss(nn.Module):
         ratio_ = ((log_probs - old_log_probs) * action_mask).exp()
 
         # note that if dropout is disabled (recommanded), ratio will always be 1.
-        if ratio_.max() > 30.0:
+        if ratio_.mean() > self.skip_threshold:
             skip = True
 
         ratio = ratio_.clamp(0.0, 10.0)
@@ -114,10 +118,11 @@ class DpoLoss(nn.Module):
             The losses tensor contains the DPO loss for each example in the batch.
             The chosen_rewards and rejected_rewards tensors contain the rewards for the chosen and rejected responses, respectively.
         """
-        # print(logprob_ref_chosen)
-        # print(logprob_ref_reject)
+        logprob_actor_chosen = logprob_actor_chosen * chosen_mask
+        logprob_actor_reject = logprob_actor_reject * reject_mask
+        logprob_ref_chosen = logprob_ref_chosen * chosen_mask
+        logprob_ref_reject = logprob_ref_reject * reject_mask
         if logprob_ref_chosen is not None and logprob_ref_reject is not None:
-            # print(logprob_ref_chosen.size(), logprob_ref_reject.size())
             if len(logprob_ref_chosen.shape) == 2:
                 ref_logratios = logprob_ref_chosen.sum(-1) - logprob_ref_reject.sum(-1)
             else:
@@ -126,8 +131,6 @@ class DpoLoss(nn.Module):
             ref_logratios = 0.0
 
         pi_logratios = logprob_actor_chosen.sum(-1) - logprob_actor_reject.sum(-1)
-        # print(pi_logratios)
-        # print(ref_logratios)
         logits = pi_logratios - ref_logratios
         losses = -torch.nn.functional.logsigmoid(self.beta * logits)
         if logprob_ref_chosen is not None:

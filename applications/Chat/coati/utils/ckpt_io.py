@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Helper functions for IO
+Helper functions for IO save load checkpoints
 """
 
 import json

@@ -1,3 +1,8 @@
+"""
+A class that can be used to calculate the mean of a variable
+"""
+
+
 class AccumulativeMeanVariable:
     def __init__(self):
         self._sum = 0

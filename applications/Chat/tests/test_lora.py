@@ -37,7 +37,6 @@ def test_overfit():
 
     # Build and convert model
     model = SimpleNN(input_size, hidden_size, num_classes)
-    print(model.fc1.weight)
     weight_to_compare = model.fc1.weight.detach().clone()
     model = convert_to_lora_module(model, lora_rank=30)
 
@@ -46,7 +45,7 @@ def test_overfit():
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     # Train the model
-    for epoch in range(num_epochs):
+    for _ in range(num_epochs):
         for i, (inputs, labels) in enumerate(loader):
             # Forward pass
             outputs = model(inputs)
@@ -62,10 +61,7 @@ def test_overfit():
     _, predicted = torch.max(outputs.data, 1)
     total = labels.size(0)
     correct = (predicted == Y).sum().item()
-    print(correct / total)
     assert (correct / total > 0.95, "The model has not overfitted to the synthesized dataset")
-
-    print(model.fc1.weight)
     assert (weight_to_compare - model.fc1.weight).sum() < 0.01
 
 

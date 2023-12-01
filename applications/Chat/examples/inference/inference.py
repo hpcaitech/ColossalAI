@@ -3,7 +3,7 @@ import os
 from copy import deepcopy
 
 import torch
-from coati.dataset.chatio import dummy_io, rich_io, simple_io
+from chatio import dummy_io, rich_io, simple_io
 from coati.dataset.conversation import default_conversation
 from coati.models import generate_streaming
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -135,8 +135,3 @@ if __name__ == "__main__":
     parser.add_argument("--io", type=str, default="rich", choices=["simple", "rich", "dummy"])
     args = parser.parse_args()
     main(args)
-
-"""
-python inference.py --model_path /home/lcyab/data/models/coati_refactor_experiments/sft/output/ckptllama2-sft-2023-11-28-21-10-49/epoch-0_step-5000/modeling \
---tokenizer_path /mnt/vepfs/lcxyc/leaderboard_models/Colossal-LLaMA-2-7b-base/
-"""

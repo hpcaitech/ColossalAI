@@ -131,11 +131,18 @@ You can run the `examples/train_sft.sh` to start a supervised instructs fine-tun
 
 ```json
 [
-    {
-        "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
-        "input": "",
-        "output": "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
-        "id": 0
+    {"messages":
+      [
+        {
+          "from": "human",
+          "content": "what are some pranks with a pen i can do?"
+        },
+        {
+          "from": "assistant",
+          "content": "Are you looking for practical joke ideas?"
+        },
+        ...
+      ]
     },
     ...
 ]
@@ -143,7 +150,41 @@ You can run the `examples/train_sft.sh` to start a supervised instructs fine-tun
 
 ### RLHF Training Stage2 - Training reward model
 
-Stage2 trains a reward model, which obtains corresponding scores by manually ranking different outputs for the same prompt and supervises the training of the reward model
+Stage2 trains a reward model, which obtains corresponding scores by manually ranking different outputs for the same prompt and supervises the training of the reward model.
+
+Below shows the preference dataset used in training the reward model.
+
+```json
+[
+    {"context": [
+        {
+          "from": "human",
+          "content": "what are some pranks with a pen i can do?"
+        },
+        {
+          "from": "assistant",
+          "content": "Are you looking for practical joke ideas?"
+        },
+        ...
+      ]
+      "chosen": [
+        {
+          "from": "assistant",
+          "content": "About 150 species of butterflies live in Oregon, with about 100 species are moths, and about 20 species are common here year-round, and another 10 species are seen here year-round.  I suggest you keep an eye out for skippers, gossamer wings, and red admirals."
+        },
+        ...
+      ],
+      "rejected": [
+        {
+          "from": "assistant",
+          "content": "Are you interested in just the common butterflies?  There are a few common ones which will be easy to find.  Like the Monarch, Western Tiger Swallowtail and several other swallowtail butterflies.  The Monarch is known for being a very common and beautiful butterfly.  Are you interested in butterflies because you have children?"
+        },
+        ...
+      ]
+    },
+    ...
+]
+```
 
 You can run the `examples/train_rm.sh` to start a reward model training.
 [[Stage2 tutorial video]](https://www.youtube.com/watch?v=gMx2CApKhuo)
@@ -161,15 +202,13 @@ You can run the `examples/train_prompts.sh` to start training PPO with human fee
 
 **Note**: the required datasets follow the following format,
 
-- `pretrain dataset`
+- `pretrain dataset (for ptx loss in ppo)`
 
   ```json
   [
       {
-          "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
-          "input": "",
-          "output": "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
-          "id": 0
+          "source": "", # system instruction
+          "Target": "Provide a list of the top 10 most popular mobile games in Asia\nThe top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
       },
       ...
   ]
@@ -178,18 +217,31 @@ You can run the `examples/train_prompts.sh` to start training PPO with human fee
 - `prompt dataset`
 
   ```json
+  # The format is the same with sft data. But the last sentence from assistant will be ignored. Only question (prompt) will be preserved. Therefore, even dataset without answer can be used as prompt dataset (e.g. red teaming data)
   [
-      {
-          "instruction": "Edit this paragraph to make it more concise: \"Yesterday, I went to the store and bought some things. Then, I came home and put them away. After that, I went for a walk and met some friends.\"",
-          "id": 0
-      },
-      {
-          "instruction": "Write a descriptive paragraph about a memorable vacation you went on",
-          "id": 1
-      },
-      ...
+    {"context":
+      [
+        {
+          "from": "human",
+          "content": "what are some pranks with a pen i can do?"
+        },
+        # Optional
+        {
+          "from": "assistant",
+          "content": "Are you looking for practical joke ideas?"
+        },
+        ...
+      ]
+    },
+    ...
   ]
   ```
+
+For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples).
+
+## Alternative Option For RLHF: DPO
+
+For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in the paper (available at [https://arxiv.org/abs/2305.18290](https://arxiv.org/abs/2305.18290)), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO.
 
 For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples).
 

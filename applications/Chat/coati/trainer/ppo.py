@@ -1,3 +1,7 @@
+"""
+PPO trainer
+"""
+
 import os
 from typing import Optional
 
@@ -98,7 +102,7 @@ class PPOTrainer(OLTrainer):
         self.critic_scheduler = critic_lr_scheduler
         self.tokenizer = tokenizer
         self.experience_maker = NaiveExperienceMaker(
-            self.actor, self.critic, reward_model, initial_model, self.tokenizer, self.tokenizer, kl_coef
+            self.actor, self.critic, reward_model, initial_model, self.tokenizer, kl_coef
         )
         self.train_batch_size = train_batch_size
 
@@ -191,7 +195,7 @@ class PPOTrainer(OLTrainer):
         num_actions = experience.action_log_probs.size(1)
         # policy loss
 
-        actor_logits = self.actor(experience.sequences, experience.attention_mask)[
+        actor_logits = self.actor(input_ids=experience.sequences, attention_mask=experience.attention_mask)[
             "logits"
         ]  # [batch size, prompt_length + response_length]
         action_log_probs = calc_action_log_probs(actor_logits, experience.sequences, num_actions)
@@ -200,20 +204,20 @@ class PPOTrainer(OLTrainer):
             action_log_probs, experience.action_log_probs, experience.advantages, action_mask=experience.action_mask
         )
         actor_loss = (1 - self.ptx_coef) * actor_loss
-        # if not to_skip: mask for debugging
-        self.actor_booster.backward(loss=actor_loss, optimizer=self.actor_optim)
+        if not to_skip:
+            self.actor_booster.backward(loss=actor_loss, optimizer=self.actor_optim)
 
         # ptx loss
         if self.ptx_coef != 0:
             batch = self.pretrain_dataloader.next()
             batch = to_device(batch, self.device)
-            ptx_log_probs = self.actor(batch["input_ids"], batch["attention_mask"])["logits"]
+            ptx_log_probs = self.actor(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])["logits"]
             ptx_loss = self.ptx_coef * self.ptx_loss_fn(ptx_log_probs, batch["labels"])
             self.actor_booster.backward(loss=ptx_loss, optimizer=self.actor_optim)
 
         # value loss
         values = self.critic(
-            experience.sequences, attention_mask=experience.attention_mask
+            input_ids=experience.sequences, attention_mask=experience.attention_mask
         )  # [batch size, prompt_length + response_length]
         critic_loss = self.critic_loss_fn(
             values[:, -num_actions:], experience.values, experience.advantages, action_mask=experience.action_mask
@@ -251,14 +255,13 @@ class PPOTrainer(OLTrainer):
             self.actor_scheduler.step()
             self.critic_scheduler.step()
 
-            response_text = self.experience_maker.tokenizer.batch_decode(experience.sequences, skip_special_tokens=True)
-            for i in range(len(response_text)):
-                response_text[i] = response_text[i] + f"\n\nReward: {experience.reward[i]}"
-            for line_id in range(min(3, len(response_text))):
-                # log output to screen
-                self.coordinator.print_on_master("###################\n" + response_text[line_id])
             # preparing logging model output and corresponding rewards.
-            if self.num_train_step % 50 == 1:
+            if self.num_train_step % 10 == 1:
+                response_text = self.experience_maker.tokenizer.batch_decode(
+                    experience.sequences, skip_special_tokens=True
+                )
+                for i in range(len(response_text)):
+                    response_text[i] = response_text[i] + f"\n\nReward: {experience.reward[i]}"
                 if self.writer and is_rank_0() and "wandb_run" in self.__dict__:
                     # log output to wandb
                     my_table = wandb.Table(

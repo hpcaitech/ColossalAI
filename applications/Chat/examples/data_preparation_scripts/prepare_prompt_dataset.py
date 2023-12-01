@@ -11,8 +11,7 @@ import os
 import random
 from multiprocessing import cpu_count
 
-from coati.dataset.conversation import default_conversation
-from coati.dataset.spliced_and_tokenized_dataset import supervised_tokenize_sft
+from coati.dataset import setup_conversation_template, tokenize_prompt_dataset
 from datasets import dataset_dict, load_dataset
 from transformers import AutoTokenizer
 
@@ -91,6 +90,7 @@ def main():
 
     # Prepare to the tokenizer.
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir)
+    conversation_template = setup_conversation_template(tokenizer)
     tokenizer.pad_token = tokenizer.eos_token
 
     list_dataset = load_dataset(
@@ -110,17 +110,17 @@ def main():
             )
         logger.info(f"Start to process part-{index}/{len(list_dataset)} of all original datasets.")
         dataset = dataset.map(
-            function=supervised_tokenize_sft,
+            function=tokenize_prompt_dataset,
             fn_kwargs={
                 "tokenizer": tokenizer,
-                "conversation_template": default_conversation,
+                "conversation_template": conversation_template,
                 "max_length": args.max_length,
             },
             keep_in_memory=False,
             num_proc=min(len(dataset), cpu_count()),
         )
 
-        dataset = dataset.filter(lambda data: data["labels"] is not None)
+        dataset = dataset.filter(lambda data: data["input_ids"] is not None)
         dataset = dataset.sort(column_names=("seq_category", "seq_length"), reverse=False, keep_in_memory=False)
 
         # We don't concatenate data samples here.
