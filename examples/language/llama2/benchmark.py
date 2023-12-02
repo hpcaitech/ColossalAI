@@ -93,9 +93,10 @@ def main():
             shard_param_frac=args.shard_param_frac,
             offload_optim_frac=args.offload_optim_frac,
             offload_param_frac=args.offload_param_frac,
+            tp_size=args.tp,
         )
     elif args.plugin == "gemini_auto":
-        plugin = GeminiPlugin(placement_policy="auto", precision="bf16", warmup_non_model_data_ratio=args.warmup_ratio)
+        plugin = GeminiPlugin(placement_policy="auto", precision="bf16", warmup_non_model_data_ratio=args.warmup_ratio, tp_size=args.tp)
     elif args.plugin == "fsdp":
         if use_empty_init:
             plugin = TorchFSDPPlugin(
