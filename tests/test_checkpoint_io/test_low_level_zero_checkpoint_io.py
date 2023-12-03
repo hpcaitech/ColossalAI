@@ -44,7 +44,6 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
         # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
-        print(booster.checkpoint_io.enable_lora)
         booster.save_model(model, model_ckpt_path, shard=shard)
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard)
 
@@ -91,6 +90,7 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
             k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
         }
 
+        model = booster.enable_lora(model, lora_config=lora_config)
         model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
         output = model(**data)
@@ -102,10 +102,11 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
         optimizer.step()
 
         with shared_tempdir() as tempdir:
-            model_ckpt_path = f"{tempdir}/model"
+            # model_ckpt_path = f"{tempdir}/model"
+            model_ckpt_path = f'/home/lcjmy/vepfs/ColossalAI/tests/test_checkpoint_io/model'
             optimizer_ckpt_path = f"{tempdir}/optimizer"
 
-            booster.save_model(model, model_ckpt_path, shard=False)
+            booster.save_lora_as_pretrained(model, model_ckpt_path)
             booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=False)
             new_model = new_booster.enable_lora(new_model, pretrained_dir=model_ckpt_path, lora_config=lora_config)
             new_model, new_optimizer, criterion, _, _ = new_booster.boost(new_model, new_optimizer, criterion)
@@ -128,7 +129,8 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
             check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict(), False)
 
     except Exception as e:
-        return repr(e)
+        # return repr(e)
+        raise e
 
 @clear_cache_before_run()
 @parameterize("stage", [2])

@@ -627,7 +627,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         v_list = v.split(v.numel() // self._world_size)
                         zero_state_dict["state"][param_idx][k] = v_list[self._local_rank].detach().clone()
 
-        print(self.optim)
         self.optim.load_state_dict(zero_state_dict)
 
     def state_dict_shard(self, max_shard_size: int = 1024) -> Iterator[Tuple[Dict, int]]:
