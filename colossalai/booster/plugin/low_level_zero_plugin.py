@@ -3,7 +3,9 @@ import os
 from functools import partial
 from pathlib import Path
 from types import MethodType
-from typing import Callable, Dict, Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Dict
+
+from peft import LoraConfig, TaskType, get_peft_model
 
 import torch
 import torch.nn as nn
@@ -66,6 +68,10 @@ class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
 
 
 class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
+    def __init__(self, enable_lora) -> None:
+        self.enable_lora = enable_lora
+        super().__init__()
+
     def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool = False):
         """Save optimizer to checkpoint but only on master process.
 
@@ -208,6 +214,83 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors, load_sub_module)
         model.update_master_params()
 
+    def save_lora_config(self, peft_model, checkpoint):
+        """
+        Save the lora adapters and adapter configuration file to checkpoint directory.
+        """
+        if os.path.isfile(checkpoint):
+            logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
+            return
+        if self.coordinator.is_master():
+            Path(checkpoint).mkdir(parents=True, exist_ok=True)
+            peft_model.create_or_update_model_card(checkpoint)
+
+        peft_config = peft_model.peft_config["default"]
+
+        # save the config and change the inference mode to `True`
+        if peft_config.base_model_name_or_path is None:
+            peft_config.base_model_name_or_path = peft_model.base_model.model.__dict__.get("name_or_path", None)
+
+        inference_mode = peft_config.inference_mode
+        peft_config.inference_mode = True
+
+        if peft_config.task_type is None:
+            # deal with auto mapping
+            base_model_class = peft_model._get_base_model_class(
+                is_prompt_tuning=peft_config.is_prompt_learning,
+            )
+            parent_library = base_model_class.__module__
+
+            auto_mapping_dict = {
+                "base_model_class": base_model_class.__name__,
+                "parent_library": parent_library,
+            }
+        else:
+            auto_mapping_dict = None
+
+        if self.coordinator.is_master():
+            peft_config.save_pretrained(checkpoint, auto_mapping_dict=auto_mapping_dict)  # save the config
+        peft_config.inference_mode = inference_mode
+
+    def save_unsharded_model(self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+        "save unsharded model"
+        checkpoint_file = checkpoint
+        if self.enable_lora:
+            from peft import PeftModel
+            from peft.utils import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
+            assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
+            peft_model = model.unwrap()
+            assert isinstance(
+                peft_model, PeftModel
+            ), "The model doesn't have lora adapters, please enable lora before saving."
+            self.save_lora_config(peft_model, checkpoint)
+            if use_safetensors:
+                checkpoint_file = os.path.join(checkpoint, SAFETENSORS_WEIGHTS_NAME)
+            else:
+                checkpoint_file = os.path.join(checkpoint, WEIGHTS_NAME)
+        return super().save_unsharded_model(model, checkpoint_file, gather_dtensor, use_safetensors)
+
+    def save_sharded_model(
+        self,
+        model: ModelWrapper,
+        checkpoint_path: str,
+        gather_dtensor: bool = True,
+        prefix: Optional[str] = None,
+        max_shard_size: int = 1024,
+        use_safetensors: bool = False,
+    ):
+        if self.enable_lora:
+            from peft import PeftModel
+            from peft.utils import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
+            assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
+            peft_model = model.unwrap()
+            assert isinstance(
+                peft_model, PeftModel
+            ), "The model doesn't have lora adapters, please enable lora before saving."
+            self.save_lora_config(peft_model, checkpoint_path)
+        return super().save_sharded_model(model, checkpoint_path, gather_dtensor, prefix, max_shard_size, use_safetensors)
+
+
 
 class LowLevelZeroPlugin(DPPluginBase):
     """
@@ -287,6 +370,7 @@ class LowLevelZeroPlugin(DPPluginBase):
             cpu_offload=cpu_offload,
             master_weights=master_weights,
         )
+        self.lora_enabled = False
         self.verbose = verbose
 
         # set class name with stage, for better error message
@@ -310,6 +394,28 @@ class LowLevelZeroPlugin(DPPluginBase):
     def supported_devices(self) -> List[str]:
         return ["cuda"]
 
+
+    def support_lora(self) -> bool:
+        return True
+
+    def enable_lora(
+        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+    ) -> nn.Module:
+        from peft import PeftModel, get_peft_model
+        assert not isinstance(model, LowLevelZeroModel), "Lora should be enabled before boosting the model."
+        self.lora_enabled = True
+
+        if pretrained_dir is None:
+            peft_model = get_peft_model(model, lora_config)
+        else:
+            peft_model = PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)
+        modules_to_save = peft_model.modules_to_save
+        if modules_to_save is not None:
+            for n, p in peft_model.named_parameters():
+                if any((f"{key}.original_module" in n) for key in modules_to_save):
+                    p.requires_grad_(False)
+        return peft_model
+    
     def configure(
         self,
         model: nn.Module,
@@ -318,6 +424,11 @@ class LowLevelZeroPlugin(DPPluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
+        if self.lora_enabled:
+            from peft import PeftModel
+            assert isinstance(model, PeftModel), "The model should have been wrapped as a PeftModel when self.lora_enabled is True"
+            self.zero_optim_kwargs["enable_lora"] = True
+
         if not isinstance(model, ModelWrapper):
             model = LowLevelZeroModel(model, self.precision)
 
@@ -334,13 +445,8 @@ class LowLevelZeroPlugin(DPPluginBase):
         return True
 
     def get_checkpoint_io(self) -> CheckpointIO:
-        return LowLevelZeroCheckpointIO()
+        return LowLevelZeroCheckpointIO(self.enable_lora)
 
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         assert isinstance(optimizer, LowLevelZeroOptimizer)
         return optimizer.no_sync()
-
-    def enable_lora(
-        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
-    ) -> nn.Module:
-        raise NotImplementedError

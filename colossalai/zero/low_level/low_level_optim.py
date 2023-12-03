@@ -76,6 +76,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
         forced_dtype: Optional[torch.dtype] = None,
         master_weights: bool = True,  # master weights
+        enable_lora: bool = False, 
     ):
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
         self._dtype = self.optim.param_groups[0]["params"][0].dtype
@@ -86,6 +87,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self._partition_grads = partition_grad
 
         self._cpu_offload = cpu_offload
+        self.enable_lora = enable_lora
 
         # grad accumulation
         self.require_grad_sync = True
