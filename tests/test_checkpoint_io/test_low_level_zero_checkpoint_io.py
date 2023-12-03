@@ -102,8 +102,7 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
         optimizer.step()
 
         with shared_tempdir() as tempdir:
-            # model_ckpt_path = f"{tempdir}/model"
-            model_ckpt_path = f'/home/lcjmy/vepfs/ColossalAI/tests/test_checkpoint_io/model'
+            model_ckpt_path = f"{tempdir}/model"
             optimizer_ckpt_path = f"{tempdir}/optimizer"
 
             booster.save_lora_as_pretrained(model, model_ckpt_path)
@@ -129,8 +128,7 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
             check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict(), False)
 
     except Exception as e:
-        # return repr(e)
-        raise e
+        return repr(e)
 
 @clear_cache_before_run()
 @parameterize("stage", [2])

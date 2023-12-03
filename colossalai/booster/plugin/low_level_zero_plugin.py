@@ -68,10 +68,6 @@ class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
 
 
 class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
-    def __init__(self, lora_enabled) -> None:
-        self.lora_enabled = lora_enabled
-        super().__init__()
-
     def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool = False):
         """Save optimizer to checkpoint but only on master process.
 
@@ -214,44 +210,6 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors, load_sub_module)
         model.update_master_params()
 
-    def save_lora_config(self, peft_model, checkpoint):
-        """
-        Save the lora adapters and adapter configuration file to checkpoint directory.
-        """
-        if os.path.isfile(checkpoint):
-            logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
-            return
-        if self.coordinator.is_master():
-            Path(checkpoint).mkdir(parents=True, exist_ok=True)
-            peft_model.create_or_update_model_card(checkpoint)
-
-        peft_config = peft_model.peft_config["default"]
-
-        # save the config and change the inference mode to `True`
-        if peft_config.base_model_name_or_path is None:
-            peft_config.base_model_name_or_path = peft_model.base_model.model.__dict__.get("name_or_path", None)
-
-        inference_mode = peft_config.inference_mode
-        peft_config.inference_mode = True
-
-        if peft_config.task_type is None:
-            # deal with auto mapping
-            base_model_class = peft_model._get_base_model_class(
-                is_prompt_tuning=peft_config.is_prompt_learning,
-            )
-            parent_library = base_model_class.__module__
-
-            auto_mapping_dict = {
-                "base_model_class": base_model_class.__name__,
-                "parent_library": parent_library,
-            }
-        else:
-            auto_mapping_dict = None
-
-        if self.coordinator.is_master():
-            peft_config.save_pretrained(checkpoint, auto_mapping_dict=auto_mapping_dict)  # save the config
-        peft_config.inference_mode = inference_mode
-
     def save_lora_as_pretrained(self, model, checkpoint, use_safetensors):
         if os.path.isfile(checkpoint):
             logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
@@ -262,7 +220,6 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         assert isinstance(
             peft_model, PeftModel
         ), "The model doesn't have lora adapters, please enable lora before saving."
-        self.save_lora_config(peft_model, checkpoint)
         return peft_model.save_pretrained(checkpoint, safe_serialization=use_safetensors)
 
 
@@ -414,7 +371,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         return True
 
     def get_checkpoint_io(self) -> CheckpointIO:
-        return LowLevelZeroCheckpointIO(self.lora_enabled)
+        return LowLevelZeroCheckpointIO()
 
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         assert isinstance(optimizer, LowLevelZeroOptimizer)
