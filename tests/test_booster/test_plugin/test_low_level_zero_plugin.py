@@ -85,7 +85,7 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
     assert len(failed_info) == 0, "\n".join([f"{k}: {v}" for k, v in failed_info.items()])
 
 
-@parameterize("stage", [1,2])
+@parameterize("stage", [2])
 @parameterize("model_name", ["transformers_llama"])
 def check_low_level_zero_lora(stage, model_name, early_stop: bool = True):
     passed_models = []

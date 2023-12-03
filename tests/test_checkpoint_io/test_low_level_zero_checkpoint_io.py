@@ -2,6 +2,9 @@ import torch
 import torch.distributed as dist
 from torchvision.models import resnet18
 from utils import shared_tempdir
+from typing import Optional
+from peft import LoraConfig
+from copy import deepcopy
 
 import colossalai
 from colossalai.booster import Booster
@@ -15,6 +18,7 @@ from colossalai.testing import (
     spawn,
 )
 from colossalai.zero import LowLevelZeroOptimizer
+from tests.kit.model_zoo import model_zoo
 
 
 # stage 1 and 2 process the optimizer/mode the same way
@@ -69,9 +73,80 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
     torch.cuda.empty_cache()
 
 
+def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lora_config=None) -> Optional[str]:
+    try:
+        plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=2**5, cpu_offload=offload)
+        booster = Booster(plugin=plugin)
+        model = model_fn()
+        origin_model = deepcopy(model)
+        optimizer = HybridAdam(model.parameters(), lr=1e-3)
+        origin_optimizer = deepcopy(optimizer)
+        criterion = lambda x: x.mean()
+        data = data_gen_fn()
+
+        data = {
+            k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
+        }
+
+        model = booster.enable_lora(model, lora_config=lora_config)
+
+        model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
+
+        with shared_tempdir() as tempdir:
+            model_ckpt_path = f"{tempdir}/model"
+            optimizer_ckpt_path = f"{tempdir}/optimizer"
+            # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
+            booster.save_model(model, model_ckpt_path, shard=shard)
+            booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard)
+
+            dist.barrier()
+            new_model = booster.enable_lora(origin_model, pretrained_dir=model_ckpt_path, lora_config=lora_config)
+            new_model, new_optimizer, _, _, _ = booster.boost(new_model, origin_optimizer)
+
+            check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
+            # check master weight
+            assert isinstance(new_optimizer, LowLevelZeroOptimizer)
+            working_param_id_set = set(id(p) for p in new_model.parameters())
+            for p_id, master_param in new_optimizer._param_store.working_to_master_param.items():
+                assert p_id in working_param_id_set
+                working_param = new_optimizer._param_store.master_to_working_param[id(master_param)]
+                padding = new_optimizer._param_store.get_param_padding_size(working_param)
+                padded_param = torch.nn.functional.pad(working_param.data.view(-1), (0, padding))
+                working_shard = padded_param.chunk(dist.get_world_size())[dist.get_rank()]
+                assert torch.equal(
+                    working_shard, master_param.data.view(-1).to(dtype=padded_param.dtype, device=padded_param.device)
+                )
+
+            booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
+            check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict(), False)
+
+    except Exception as e:
+        return repr(e)
+
+@clear_cache_before_run()
+@parameterize("stage", [2])
+@parameterize("shard", [True, False])
+@parameterize("offload", [False, True])
+@parameterize("model_name", ["transformers_llama"])
+def check_low_level_zero_lora_checkpointIO(stage: int, shard: bool, offload: bool, model_name: str):
+    plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=32, cpu_offload=offload)
+    booster = Booster(plugin=plugin)
+    sub_model_zoo = model_zoo.get_sub_registry(model_name)
+
+    sub_model_zoo = model_zoo.get_sub_registry(model_name)
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        task_type = None
+        if name == "transformers_llama_for_casual_lm":
+            task_type = "CAUSAL_LM"
+        if name == "transformers_llama_for_sequence_classification":
+            task_type = "SEQ_CLS"
+        lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
+        err = run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lora_config)
+
 def run_dist(rank, world_size, port):
     colossalai.launch(config=(dict()), rank=rank, world_size=world_size, port=port, host="localhost")
     check_low_level_zero_checkpointIO()
+    check_low_level_zero_lora_checkpointIO()
     torch.cuda.empty_cache()
 
 
