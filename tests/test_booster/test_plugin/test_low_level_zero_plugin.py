@@ -49,6 +49,7 @@ def run_fn(stage, model_fn, data_gen_fn, output_transform_fn, lora_config=None) 
         return repr(e)
 
 
+
 @parameterize("stage", [2])
 def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
     """check low level zero plugin over model zoo
@@ -109,6 +110,11 @@ def check_low_level_zero_lora(stage, model_name, early_stop: bool = True):
             failed_info[name] = err
             if early_stop:
                 break
+
+    if dist.get_rank() == 0:
+        print(f"Passed models({len(passed_models)}): {passed_models}\n\n")
+        print(f"Failed models({len(failed_info)}): {list(failed_info.keys())}\n\n")
+    assert len(failed_info) == 0, "\n".join([f"{k}: {v}" for k, v in failed_info.items()])
 
 def run_dist(rank, world_size, port, early_stop: bool = True):
     # init dist env

@@ -44,6 +44,7 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
         # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
+        print(booster.checkpoint_io.enable_lora)
         booster.save_model(model, model_ckpt_path, shard=shard)
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard)
 
@@ -76,11 +77,13 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
 def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lora_config=None) -> Optional[str]:
     try:
         plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=2**5, cpu_offload=offload)
+        new_plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=2**5, cpu_offload=offload)
         booster = Booster(plugin=plugin)
+        new_booster = Booster(plugin=new_plugin)
         model = model_fn()
-        origin_model = deepcopy(model)
+        new_model = deepcopy(model)
         optimizer = HybridAdam(model.parameters(), lr=1e-3)
-        origin_optimizer = deepcopy(optimizer)
+        new_optimizer = HybridAdam(model.parameters(), lr=1e-3)
         criterion = lambda x: x.mean()
         data = data_gen_fn()
 
@@ -88,22 +91,26 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
             k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
         }
 
-        model = booster.enable_lora(model, lora_config=lora_config)
-
         model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
+
+        output = model(**data)
+        output = output_transform_fn(output)
+        output_key = list(output.keys())[0]
+        loss = criterion(output[output_key])
+
+        booster.backward(loss, optimizer)
+        optimizer.step()
 
         with shared_tempdir() as tempdir:
             model_ckpt_path = f"{tempdir}/model"
             optimizer_ckpt_path = f"{tempdir}/optimizer"
-            # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
-            booster.save_model(model, model_ckpt_path, shard=shard)
-            booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard)
 
-            dist.barrier()
-            new_model = booster.enable_lora(origin_model, pretrained_dir=model_ckpt_path, lora_config=lora_config)
-            new_model, new_optimizer, _, _, _ = booster.boost(new_model, origin_optimizer)
-
+            booster.save_model(model, model_ckpt_path, shard=False)
+            booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=False)
+            new_model = new_booster.enable_lora(new_model, pretrained_dir=model_ckpt_path, lora_config=lora_config)
+            new_model, new_optimizer, criterion, _, _ = new_booster.boost(new_model, new_optimizer, criterion)
             check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
+
             # check master weight
             assert isinstance(new_optimizer, LowLevelZeroOptimizer)
             working_param_id_set = set(id(p) for p in new_model.parameters())
@@ -117,7 +124,7 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
                     working_shard, master_param.data.view(-1).to(dtype=padded_param.dtype, device=padded_param.device)
                 )
 
-            booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
+            new_booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
             check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict(), False)
 
     except Exception as e:
@@ -128,13 +135,14 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
 @parameterize("shard", [True, False])
 @parameterize("offload", [False, True])
 @parameterize("model_name", ["transformers_llama"])
-def check_low_level_zero_lora_checkpointIO(stage: int, shard: bool, offload: bool, model_name: str):
-    plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=32, cpu_offload=offload)
-    booster = Booster(plugin=plugin)
-    sub_model_zoo = model_zoo.get_sub_registry(model_name)
+def check_low_level_zero_lora_checkpointIO(stage: int, shard: bool, offload: bool, model_name: str, early_stop: bool = True):
+    passed_models = []
+    failed_info = {}  # (model_name, error) pair
 
     sub_model_zoo = model_zoo.get_sub_registry(model_name)
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        if name != "transformers_llama":
+            continue
         task_type = None
         if name == "transformers_llama_for_casual_lm":
             task_type = "CAUSAL_LM"
@@ -142,6 +150,20 @@ def check_low_level_zero_lora_checkpointIO(stage: int, shard: bool, offload: boo
             task_type = "SEQ_CLS"
         lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
         err = run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lora_config)
+
+        torch.cuda.empty_cache()
+
+        if err is None:
+            passed_models.append(name)
+        else:
+            failed_info[name] = err
+            if early_stop:
+                break
+
+    if dist.get_rank() == 0:
+        print(f"Passed models({len(passed_models)}): {passed_models}\n\n")
+        print(f"Failed models({len(failed_info)}): {list(failed_info.keys())}\n\n")
+    assert len(failed_info) == 0, "\n".join([f"{k}: {v}" for k, v in failed_info.items()])
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config=(dict()), rank=rank, world_size=world_size, port=port, host="localhost")

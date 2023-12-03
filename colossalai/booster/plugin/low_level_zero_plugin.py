@@ -214,48 +214,13 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors, load_sub_module)
         model.update_master_params()
 
-    def save_lora_config(self, peft_model, checkpoint):
-        """
-        Save the lora adapters and adapter configuration file to checkpoint directory.
-        """
-        if os.path.isfile(checkpoint):
-            logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
-            return
-        if self.coordinator.is_master():
-            Path(checkpoint).mkdir(parents=True, exist_ok=True)
-            peft_model.create_or_update_model_card(checkpoint)
-
-        peft_config = peft_model.peft_config["default"]
-
-        # save the config and change the inference mode to `True`
-        if peft_config.base_model_name_or_path is None:
-            peft_config.base_model_name_or_path = peft_model.base_model.model.__dict__.get("name_or_path", None)
-
-        inference_mode = peft_config.inference_mode
-        peft_config.inference_mode = True
-
-        if peft_config.task_type is None:
-            # deal with auto mapping
-            base_model_class = peft_model._get_base_model_class(
-                is_prompt_tuning=peft_config.is_prompt_learning,
-            )
-            parent_library = base_model_class.__module__
-
-            auto_mapping_dict = {
-                "base_model_class": base_model_class.__name__,
-                "parent_library": parent_library,
-            }
-        else:
-            auto_mapping_dict = None
-
-        if self.coordinator.is_master():
-            peft_config.save_pretrained(checkpoint, auto_mapping_dict=auto_mapping_dict)  # save the config
-        peft_config.inference_mode = inference_mode
-
     def save_unsharded_model(self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
         "save unsharded model"
         checkpoint_file = checkpoint
         if self.enable_lora:
+            if os.path.isfile(checkpoint):
+                logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
+                return
             from peft import PeftModel
             from peft.utils import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
             assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
@@ -263,11 +228,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
             assert isinstance(
                 peft_model, PeftModel
             ), "The model doesn't have lora adapters, please enable lora before saving."
-            self.save_lora_config(peft_model, checkpoint)
-            if use_safetensors:
-                checkpoint_file = os.path.join(checkpoint, SAFETENSORS_WEIGHTS_NAME)
-            else:
-                checkpoint_file = os.path.join(checkpoint, WEIGHTS_NAME)
+            return peft_model.save_pretrained(checkpoint)
         return super().save_unsharded_model(model, checkpoint_file, gather_dtensor, use_safetensors)
 
     def save_sharded_model(
@@ -280,14 +241,18 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         use_safetensors: bool = False,
     ):
         if self.enable_lora:
+            if os.path.isfile(checkpoint_path):
+                logging.error(f"Provided path ({checkpoint_path}) should be a directory, not a file")
+                return
             from peft import PeftModel
             from peft.utils import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
             assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
             peft_model = model.unwrap()
+            # print(peft_model)
             assert isinstance(
                 peft_model, PeftModel
             ), "The model doesn't have lora adapters, please enable lora before saving."
-            self.save_lora_config(peft_model, checkpoint_path)
+            return peft_model.save_pretrained(checkpoint_path)
         return super().save_sharded_model(model, checkpoint_path, gather_dtensor, prefix, max_shard_size, use_safetensors)
 
 
@@ -409,11 +374,6 @@ class LowLevelZeroPlugin(DPPluginBase):
             peft_model = get_peft_model(model, lora_config)
         else:
             peft_model = PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)
-        modules_to_save = peft_model.modules_to_save
-        if modules_to_save is not None:
-            for n, p in peft_model.named_parameters():
-                if any((f"{key}.original_module" in n) for key in modules_to_save):
-                    p.requires_grad_(False)
         return peft_model
     
     def configure(
@@ -427,7 +387,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         if self.lora_enabled:
             from peft import PeftModel
             assert isinstance(model, PeftModel), "The model should have been wrapped as a PeftModel when self.lora_enabled is True"
-            self.zero_optim_kwargs["enable_lora"] = True
+            optimizer.param_groups[0]['params'] = list(model.parameters())
 
         if not isinstance(model, ModelWrapper):
             model = LowLevelZeroModel(model, self.precision)

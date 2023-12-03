@@ -82,6 +82,7 @@ class GradientStore(BaseStore):
         """
 
         grad_list = []
+        print(f"self._grads_of_params {self._grads_of_params}")
         for param_grads in self._grads_of_params[group_id].values():
             grad_list.append(param_grads[self._working_index])
 
