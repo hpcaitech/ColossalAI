@@ -1,4 +1,4 @@
-transformers>=4.20.1
+transformers
 tqdm
 datasets
 loralib
@@ -11,4 +11,12 @@ sse_starlette
 wandb
 sentencepiece
 gpustat
+packaging==23.1
+autoflake==2.2.1
+black==23.9.1
 tensorboard
+six==1.16.0
+datasets
+ninja==1.11.1
+flash-attn==2.0.5
+sentencepiece==0.1.99
