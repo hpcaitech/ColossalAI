@@ -8,7 +8,6 @@ from typing import Optional, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from attn import SUPPORT_XFORMERS, replace_xformers
 from data_utils import load_json, prepare_dataloader, save_json
 from datasets import load_dataset
 from torch.optim import Optimizer
@@ -236,7 +235,8 @@ def main():
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
     if args.flash_attention:
-        assert SUPPORT_XFORMERS, "Use flash attention while xfomers is not installed"
+        from attn import SUPPORT_XFORMERS, replace_xformers
+        assert SUPPORT_XFORMERS, "Use flash attention while xformers is not installed"
         replace_xformers(model)
 
     model_numel = get_model_numel(model)
