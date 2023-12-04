@@ -479,10 +479,10 @@ class GeminiPlugin(DPPluginBase):
         _kwargs = kwargs.copy()
         zero_world_size = self.pg_mesh.size(ZERO_AXIS)
         extra_dp_world_size = self.pg_mesh.size(DP_AXIS)
-        zero_ranks = self.pg_mesh.coordinate(ZERO_AXIS)
-        extra_dp_ranks = self.pg_mesh.coordinate(DP_AXIS)
+        zero_rank = self.pg_mesh.coordinate(ZERO_AXIS)
+        extra_dp_rank = self.pg_mesh.coordinate(DP_AXIS)
         sampler = DistributedSampler(
-            dataset, num_replicas=zero_world_size * extra_dp_world_size, rank=zero_ranks + extra_dp_ranks, shuffle=shuffle
+            dataset, num_replicas=zero_world_size * extra_dp_world_size, rank=zero_rank * extra_dp_world_size + extra_dp_rank, shuffle=shuffle
         )
 
         # Deterministic dataloader
