@@ -49,7 +49,7 @@ def auto_set_accelerator() -> None:
             accelerator = accelerator_cls()
             if accelerator.is_available():
                 _ACCELERATOR = accelerator
-            break
+                break
         except:
             pass
 
