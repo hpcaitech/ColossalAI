@@ -14,20 +14,20 @@ class RequsetStatus(enum.Enum):
     LENGTH_CAPPED = enum.auto()
 
     @staticmethod
-    def is_finished(status: "SentenceStatus") -> bool:
+    def is_finished(status: "RequsetStatus") -> bool:
         return status in [
-            OVERLENGTH,
-            COMPLETED,
-            LENGTH_CAPPED,
+            RequsetStatus.OVERLENGTH,
+            RequsetStatus.COMPLETED,
+            RequsetStatus.LENGTH_CAPPED,
         ]
 
     @staticmethod
-    def is_running(status: "SentenceStatus") -> bool:
-        return status == RUNNING
+    def is_running(status: "RequsetStatus") -> bool:
+        return status == RequsetStatus.RUNNING
 
     @staticmethod
-    def is_waiting(status: "SentenceStatus") -> bool:
-        return status == WAITING
+    def is_waiting(status: "RequsetStatus") -> bool:
+        return status == RequsetStatus.WAITING
 
 
 class Sequence:
@@ -47,19 +47,17 @@ class Sequence:
         request_id: int,
         prompt: str,
         token_id: int,
-        blokc_size: int,
-        sample_params: SampleParams,
+        block_size: int,
+        sample_params: SampleParams,  # SampleParams needs to be imported later.
         block_table_index: int,
     ):
         self.request_id = request_id
-        self.input_token_id = token_id
         self.prompt = prompt
-        self.blokc_size = blokc_size
-        self.output_token_id = []
-        self.output = ""
-        self.status = SentenceStatus.WAITING
+        self.input_token_id = token_id
+        self.blokc_size = block_size
         self.sample_params = sample_params
-        self.batch_infer_state = batch_infer_state
+        self.output_token_id = []
+        self.status = RequsetStatus.WAITING
         self.block_table_index = block_table_index
 
     def get_sentence_len(self) -> None:
@@ -72,7 +70,7 @@ class Sequence:
         return len(self.output_token_id)
 
     def check_finish(self) -> bool:
-        return SentenceStatus.check_finish(self.status)
+        return RequsetStatus.check_finish(self.status)
 
     def __repr__(self) -> str:
         return (
@@ -85,7 +83,7 @@ class Sequence:
 
 
 @dataclass
-class BatchInferState:
+class BatchHandler:
     """
     Information to be passed and used for a batch of sequences.
     """
@@ -94,7 +92,7 @@ class BatchInferState:
     block_table: Dict[int, int]
 
     @classmethod
-    def init_batch(cls, seqs: List[Sequence]) -> BatchInferState:
+    def init_batch(cls, seqs: List[Sequence]) -> "BatchHandler":
         sequences_set = set()
         block_table = {}
         for seq in seqs:
@@ -128,14 +126,14 @@ class BatchInferState:
 
     def add_seqs(self, seqs: List[Sequence]) -> None:
         for seq in seqs:
-            if seq in sequences_set:
+            if seq in self.sequences_set:
                 print("The sequence is already in sequences_set.")
                 assert (
-                    seq.request_id in block_table
+                    seq.request_id in self.block_table
                 ), "The sequence has been added to sequences_set, but it has not been added to block_table."
                 continue
             assert (
-                seq.request_id not in block_table
+                seq.request_id not in self.block_table
             ), "The sequence has not been added to sequences_set, but it is already in block_table."
-            sequences_set.add(seq)
-            block_table[seq.request_id] = seq.block_table_index
+            self.sequences_set.add(seq)
+            self.block_table[seq.request_id] = seq.block_table_index
