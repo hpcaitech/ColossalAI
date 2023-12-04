@@ -256,7 +256,7 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         return output, grad_weight, grad_bias, None, None, None, None
 
 
-class _LinearWithReduceScatterForwardGatherBackward(torch.autograd.Function):
+class _ReduceScatterForwardGatherBackward(torch.autograd.Function):
     """Gather input from sequence parallel in forward and reduce-scatter gradient in backward
 
     Args:
@@ -584,8 +584,8 @@ def linear_gather_forward_reducescatter_backward(
     )
 
 
-def linear_reducescatter_forward_gather_backward(input_, process_group, dim):
-    return _LinearWithReduceScatterForwardGatherBackward.apply(input_, process_group, dim)
+def reducescatter_forward_gather_backward(input_, process_group, dim):
+    return _ReduceScatterForwardGatherBackward.apply(input_, process_group, dim)
 
 
 def matmul_gather_forward_reducescatter_backward(
