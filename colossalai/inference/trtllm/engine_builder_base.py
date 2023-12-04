@@ -1,4 +1,5 @@
 import os
+from typing import Tuple
 
 import tensorrt as trt
 import tensorrt_llm
@@ -9,7 +10,7 @@ from tensorrt_llm.logger import logger
 from tensorrt_llm.network import Network, net_guard
 
 from colossalai.inference.trtllm.args_utils import BuilderArgsConfig
-from colossalai.inference.trtllm.utils import get_engine_name, serialize_engine, to_onnx
+from colossalai.inference.trtllm.utils import get_engine_name, save_config, serialize_engine, to_onnx
 
 
 class EngineBuilderBase:
@@ -48,7 +49,9 @@ class EngineBuilderBase:
         In this interface, We need to implement the codes to create and return builder_config for the specific model.
         """
 
-    def _build_rank_engine(self, rank, builder_config: tensorrt_llm.builder.BuilderConfig) -> trt.IHostMemory:
+    def _build_rank_engine(
+        self, rank, builder_config: tensorrt_llm.builder.BuilderConfig
+    ) -> Tuple[trt.IHostMemory, dict]:
         # Get trt_model
         self._set_model(rank)
         with net_guard(self._network):
@@ -82,12 +85,11 @@ class EngineBuilderBase:
 
         # Network -> Engine
         engine = self._builder.build_engine(self._network, builder_config)
-        if rank == 0:
-            config_path = os.path.join(self._builder_args_config.output_dir, "config.json")
-            self._builder.save_config(builder_config, config_path)
-        return engine
+        config_path = os.path.join(self._builder_args_config.output_dir, "config.json")
+        engine_config = save_config(builder_config, config_path, self._builder_args_config.save_engine, rank)
+        return engine, engine_config
 
-    def build(self, rank: int, model_name: str) -> None:
+    def build(self, rank: int, model_name: str) -> Tuple[bytearray, dict]:
         # Preparatory work
         self._process_config()
 
@@ -116,7 +118,7 @@ class EngineBuilderBase:
             # generate Network
             self._generate_network(rank)
 
-            engine = self._build_rank_engine(cur_rank, builder_config)
+            engine, engine_config = self._build_rank_engine(cur_rank, builder_config)
             assert engine is not None, f"Failed to build engine for rank {cur_rank}"
 
             if cur_rank == 0:
@@ -124,10 +126,16 @@ class EngineBuilderBase:
                 if not self._builder_args_config.parallel_build:
                     cache = builder_config.trt_builder_config.get_timing_cache()
 
-            serialize_engine(engine, os.path.join(self._builder_args_config.output_dir, self._engine_name))
+            byte_engine = serialize_engine(
+                engine,
+                os.path.join(self._builder_args_config.output_dir, self._engine_name),
+                self._builder_args_config.save_engine,
+            )
 
-        if rank == 0:
+        if rank == 0 and self._builder_args_config.save_engine:
             ok = self._builder.save_timing_cache(
                 builder_config, os.path.join(self._builder_args_config.output_dir, "model.cache")
             )
             assert ok, "Failed to save timing cache."
+
+        return byte_engine, engine_config

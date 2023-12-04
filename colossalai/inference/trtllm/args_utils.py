@@ -4,14 +4,34 @@ from dataclasses import dataclass
 
 
 @dataclass
-class BuilderArgsConfig:
+class ConfigBase:
+    max_output_len: int = 512
+    log_level: str = "info"
+
+    @staticmethod
+    def add_self_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        parser.add_argument("--max_output_len", type=int, default=512)
+        parser.add_argument("--log_level", type=str, default="info")
+        return parser
+
+    @classmethod
+    def init_from_args(cls, args: argparse.Namespace) -> "BuilderArgsConfig":
+        attrs = [attr.name for attr in dataclasses.fields(cls)]
+        config_dict = {}
+        for attr in attrs:
+            if attr in args:
+                config_dict[attr] = getattr(args, attr)
+        return cls(**config_dict)
+
+
+@dataclass
+class BuilderArgsConfig(ConfigBase):
     world_size: int = 1
     tp_size: int = 1
     pp_size: int = 1
     model_dir: str = None
     dtype: str = "float16"
     timing_cache: str = "model.cache"
-    log_level: str = "info"
     vocab_size: int = 32000
     n_layer: int = 32
     n_positions: int = 2048
@@ -21,7 +41,6 @@ class BuilderArgsConfig:
     hidden_act: str = "silu"
     max_batch_size: int = 8
     max_input_len: int = 2048
-    max_output_len: int = 512
     max_beam_width: int = 1
     use_gpt_attention_plugin: str = False
     use_gemm_plugin: str = False
@@ -48,9 +67,16 @@ class BuilderArgsConfig:
     max_num_tokens: int = None
     strongly_typed: bool = False
     use_custom_all_reduce: bool = False
+    save_engine: bool = False
 
     @staticmethod
-    def add_cli_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    def add_args_argument(config_class: ConfigBase, parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        parser = ConfigBase.add_self_args(parser)
+        parser = config_class.add_self_args(parser)
+        return parser
+
+    @staticmethod
+    def add_self_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         parser.add_argument("--world_size", type=int, default=1)
         parser.add_argument("--tp_size", type=int, default=1)
         parser.add_argument("--pp_size", type=int, default=1)
@@ -62,7 +88,6 @@ class BuilderArgsConfig:
             default="model.cache",
             help="The path of to read timing cache from, will be ignored if the file does not exist",
         )
-        parser.add_argument("--log_level", type=str, default="info")
         parser.add_argument("--vocab_size", type=int, default=32000)
         parser.add_argument("--n_layer", type=int, default=32)
         parser.add_argument("--n_positions", type=int, default=2048)
@@ -73,7 +98,6 @@ class BuilderArgsConfig:
         parser.add_argument("--hidden_act", type=str, default="silu")
         parser.add_argument("--max_batch_size", type=int, default=8)
         parser.add_argument("--max_input_len", type=int, default=2048)
-        parser.add_argument("--max_output_len", type=int, default=512)
         parser.add_argument("--max_beam_width", type=int, default=1)
         parser.add_argument(
             "--use_gpt_attention_plugin",
@@ -207,26 +231,19 @@ class BuilderArgsConfig:
             action="store_true",
             help="Activates latency-optimized algorithm for all-reduce instead of NCCL.",
         )
+        parser.add_argument(
+            "--save_engine", default=False, action="store_true", help="Whether to sava the trtllm engine."
+        )
 
         return parser
 
-    @classmethod
-    def from_cli_args(cls, args: argparse.Namespace) -> "BuilderArgsConfig":
-        # Get the list of attributes of this dataclass.
-        attrs = [attr.name for attr in dataclasses.fields(cls)]
-        # Set the attributes from the parsed arguments.
-        engine_args = cls(**{attr: getattr(args, attr) for attr in attrs})
-        return engine_args
-
 
 @dataclass
-class RunnerArgsConfig:
-    max_output_len: int
-    log_level: str = "error"
-    engine_dir: str = "llama_outputs"
+class RunnerArgsConfig(ConfigBase):
+    engine_dir: str = None
     tokenizer_dir: str = "."
     input_text: str = "Born in north-east France, Soyer trained as a"
-    input_tokens: str = None
+    input_file: str = None
     output_csv: str = None
     num_beams: int = 1
     temperature: float = 1.0
@@ -239,18 +256,23 @@ class RunnerArgsConfig:
     use_fast: bool = False
     trust_remote_code: bool = False
     encoder_max_input_length: int = None
+    byte_engine: bytearray = None
+    runner_config: dict = None
+    rank: int = 0
 
     @staticmethod
-    def add_cli_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--max_output_len", type=int, required=True)
-        parser.add_argument("--log_level", type=str, default="error")
-        parser.add_argument("--engine_dir", type=str, default="llama_outputs")
+    def add_args_argument(config_class: ConfigBase, parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        parser = ConfigBase.add_self_args(parser)
+        parser = config_class.add_self_args(parser)
+        return parser
+
+    @staticmethod
+    def add_self_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        parser.add_argument("--engine_dir", type=str, default=None)
         parser.add_argument("--tokenizer_dir", type=str, default=".", help="Directory containing the tokenizer.model.")
         parser.add_argument("--input_text", type=str, default="Born in north-east France, Soyer trained as a")
         parser.add_argument(
-            "--input_tokens",
-            dest="input_file",
+            "--input_file",
             type=str,
             help="CSV or Numpy file containing tokenized input. Alternative to text input.",
             default=None,
@@ -271,27 +293,10 @@ class RunnerArgsConfig:
             "--streaming_interval", type=int, help="How often to return tokens when streaming.", default=5
         )
         parser.add_argument("--model_name", type=str, default="")
-        parser.add_argument(
-            "--use_fast", default=False, help="Whether or not to use a fast tokenizer.", action="store_true"
-        )
-        parser.add_argument(
-            "--trust_remote_code",
-            default=False,
-            help="Whether or not to allow for custom models defined on the Hub in their own modeling files.",
-            action="store_true",
-        )
-        parser.add_argument(
-            "--encoder_max_input_length",
-            help="The maximum input length of TensorRT-LLM encoder.",
-            type=int,
-            default=None,
-        )
+        parser.add_argument("--use_fast", default=False, action="store_true")
+        parser.add_argument("--trust_remote_code", default=False, action="store_true")
+        parser.add_argument("--encoder_max_input_length", type=int, default=None)
+        parser.add_argument("--byte_engine", type=bytearray, default=None)
+        parser.add_argument("--runner_config", type=dict, default=None)
+        parser.add_argument("--rank", type=int, default=0)
         return parser
-
-    @classmethod
-    def from_cli_args(cls, args: argparse.Namespace) -> "RunnerArgsConfig":
-        # Get the list of attributes of this dataclass.
-        attrs = [attr.name for attr in dataclasses.fields(cls)]
-        # Set the attributes from the parsed arguments.
-        engine_args = cls(**{attr: getattr(args, attr) for attr in attrs})
-        return engine_args

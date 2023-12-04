@@ -1,8 +1,12 @@
+import copy
+import json
 import time
 from pathlib import Path
+from typing import Generator
 
 import onnx
 import tensorrt as trt
+import tensorrt_llm
 from onnx import TensorProto, helper
 from tensorrt_llm.logger import logger
 from tensorrt_llm.network import Network
@@ -65,14 +69,18 @@ def get_engine_name(model: str, dtype: str, tp_size: int, pp_size: int, rank: in
     return "{}_{}_tp{}_pp{}_rank{}.engine".format(model, dtype, tp_size, pp_size, rank)
 
 
-def serialize_engine(engine: trt.IHostMemory, path: Path) -> None:
-    logger.info(f"Serializing engine to {path}...")
+def serialize_engine(engine: trt.IHostMemory, path: Path, save_engine: bool) -> bytearray:
+    logger.info(f"Serializing engine ...")
     tik = time.time()
-    with open(path, "wb") as f:
-        f.write(bytearray(engine))
+    byte_engine = bytearray(engine)
+    if save_engine:
+        logger.info(f"Serializing engine to {path}...")
+        with open(path, "wb") as f:
+            f.write(byte_engine)
     tok = time.time()
     t = time.strftime("%H:%M:%S", time.gmtime(tok - tik))
     logger.info(f"Engine serialized. Total time: {t}")
+    return byte_engine
 
 
 def process_output(output_ids, input_lengths, max_output_len, tokenizer, output_csv, output_npy) -> str:
@@ -108,10 +116,33 @@ def process_output(output_ids, input_lengths, max_output_len, tokenizer, output_
     return outputs_text
 
 
-def throttle_generator(generator, stream_interval):
+def throttle_generator(generator, stream_interval) -> Generator[any, None, None]:
     for i, out in enumerate(generator):
         if not i % stream_interval:
             yield out
 
     if i % stream_interval:
         yield out
+
+
+def copy_to_dict(obj):
+    return copy.deepcopy(obj.__dict__)
+
+
+def to_json_string(obj):
+    if not isinstance(obj, dict):
+        obj = copy_to_dict(obj)
+    return json.dumps(obj, indent=2, sort_keys=True) + "\n"
+
+
+def save_config(builder_config: tensorrt_llm.builder.BuilderConfig, config_path: str, save_engine: bool, rank) -> dict:
+    config = {"builder_config": {}}
+    for k in builder_config.__dict__.keys():
+        if k != "_trt_builder_config" and k != "plugin_config":
+            config["builder_config"][k] = builder_config.__getattribute__(k)
+    config["plugin_config"] = copy_to_dict(builder_config.plugin_config)
+    if save_engine and rank == 0:
+        with open(config_path, "w", encoding="utf-8") as writer:
+            writer.write(to_json_string(config))
+        logger.info(f"Config saved to {config_path}.")
+    return config

@@ -14,9 +14,13 @@ from colossalai.inference.trtllm.utils import get_engine_name, process_output, t
 
 
 class EngineRunnerBase:
-    def _read_config(self, config_path: Path) -> Tuple[ModelConfig, int, int, str]:
-        with open(config_path, "r") as f:
-            config = json.load(f)
+    def _read_config(self, config_path: Path, use_exist: str, config: dict) -> Tuple[ModelConfig, int, int, str]:
+        if use_exist:
+            assert config, "When using existing trt engine, the config must be set."
+        else:
+            assert config_path, "When not using existing trt engine, the config_path must be set."
+            with open(config_path, "r") as f:
+                config = json.load(f)
         use_gpt_attention_plugin = config["plugin_config"]["gpt_attention_plugin"]
         tp_size = config["builder_config"]["tensor_parallel"]
         pp_size = config["builder_config"]["pipeline_parallel"]
@@ -96,7 +100,7 @@ class EngineRunnerBase:
         self,
         max_output_len: int,
         log_level: str = "info",
-        engine_dir: str = "llama_outputs",
+        engine_dir: str = None,
         input_text: str = "Born in north-east France, Soyer trained as a",
         input_file: str = None,
         output_csv: str = None,
@@ -113,17 +117,26 @@ class EngineRunnerBase:
         use_fast: bool = False,
         trust_remote_code: bool = False,
         encoder_max_input_length: int = None,
+        byte_engine: bytearray = None,
+        runner_config: dict = None,
+        rank: int = 0,
     ) -> tensorrt_llm.runtime.GenerationSession:
         logger.set_level(log_level)
+        if byte_engine and runner_config:
+            use_exist = True
+        else:
+            use_exist = False
+            assert engine_dir, "When not using existing trt engine, config_dir must be set."
 
-        engine_dir = Path(engine_dir)
-        config_path = engine_dir / "config.json"
-        model_config, tp_size, pp_size, dtype = self._read_config(config_path)
+        config_path = None
+        if not use_exist:
+            engine_dir = Path(engine_dir)
+            config_path = engine_dir / "config.json"
+        model_config, tp_size, pp_size, dtype = self._read_config(config_path, use_exist, runner_config)
         world_size = tp_size * pp_size
+        runtime_mapping = Mapping(world_size, rank, tp_size=tp_size, pp_size=pp_size)
 
-        runtime_rank = tensorrt_llm.mpi_rank()
-        runtime_mapping = Mapping(world_size, runtime_rank, tp_size=tp_size, pp_size=pp_size)
-        torch.cuda.set_device(runtime_rank % runtime_mapping.gpus_per_node)
+        torch.cuda.set_device(rank % runtime_mapping.gpus_per_node)
 
         if model_name == "llama":
             tokenizer = LlamaTokenizer.from_pretrained(tokenizer_dir, legacy=False, padding_side="left")
@@ -140,15 +153,19 @@ class EngineRunnerBase:
             end_id=eos_token, pad_id=pad_token, num_beams=num_beams, temperature=temperature, top_k=top_k, top_p=top_p
         )
 
-        engine_name = get_engine_name(model_name, dtype, tp_size, pp_size, runtime_rank)
-        serialize_path = engine_dir / engine_name
-        with open(serialize_path, "rb") as f:
-            engine_buffer = f.read()
+        if not use_exist:
+            engine_name = get_engine_name(model_name, dtype, tp_size, pp_size, rank)
+            serialize_path = engine_dir / engine_name
+            with open(serialize_path, "rb") as f:
+                engine_buffer = f.read()
+        else:
+            engine_buffer = byte_engine
 
         decoder = tensorrt_llm.runtime.GenerationSession(
             model_config, engine_buffer, runtime_mapping, debug_mode=debug_mode
         )
-        if runtime_rank == 0:
+
+        if rank == 0:
             print(f"Running the {dtype} engine ...")
 
         input_ids, input_lengths = self._parse_input(
@@ -170,13 +187,13 @@ class EngineRunnerBase:
 
         if streaming:
             for output_ids in throttle_generator(output_gen_ids, streaming_interval):
-                if runtime_rank == 0:
+                if rank == 0:
                     outputs.append(
                         process_output(output_ids, input_lengths, max_output_len, tokenizer, output_csv, output_npy)
                     )
         else:
             output_ids = output_gen_ids
-            if runtime_rank == 0:
+            if rank == 0:
                 outputs.append(
                     process_output(output_ids, input_lengths, max_output_len, tokenizer, output_csv, output_npy)
                 )
