@@ -89,7 +89,7 @@ class TorchAMPModule(ModelWrapper):
         super().__init__(module)
 
     def forward(self, *args, **kwargs):
-        with get_accelerator().autocast()():
+        with get_accelerator().autocast():
             return self.module(*args, **kwargs)
 
 
