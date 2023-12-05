@@ -183,7 +183,7 @@ def set_cuda_arch_list(cuda_dir):
                     arch_list.append("8.0")
                 else:
                     arch_list.extend(["8.0", "8.6"])
-                if int(bare_metal_major) == 11 and int(bare_metal_minor) >= 5:
+                if int(bare_metal_major) >= 11 and int(bare_metal_minor) >= 5 or int(bare_metal_major) >= 12:
                     arch_list.append("9.0")
 
 
