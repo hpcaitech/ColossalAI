@@ -52,3 +52,6 @@ class CacheBlock:
         assert self.ref_count > 0, f"Block#{self.block_id} has no reference to free."
         self.ref_count = 0
         self.allocated_size = 0
+
+    def __repr__(self):
+        return f"CacheBlock#{self.block_id}(ref#{self.ref_count}, allocated#{self.allocated_size})"
