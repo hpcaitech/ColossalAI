@@ -7,7 +7,6 @@ from torch.nn import Module, ModuleList
 from torch.utils._pytree import tree_map
 
 from colossalai.interface import OptimizerWrapper
-from colossalai.logging import get_dist_logger
 from colossalai.pipeline.p2p import PipelineP2PCommunication, create_fast_send_metadata
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.utils.device import get_current_device
@@ -28,8 +27,6 @@ class InterleavedSchedule(PipelineSchedule):
         assert (
             num_microbatch is not None or microbatch_size is not None
         ), "Either num_microbatch or microbatch_size should be provided"
-        self.logger = get_dist_logger()
-        self.logger.warning("If pipeline hangs, please enlarge NCCL_BUFFSIZE.")
 
         self.comm = PipelineP2PCommunication(stage_manager)
         self.num_microbatch = num_microbatch

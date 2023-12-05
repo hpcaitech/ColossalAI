@@ -4,7 +4,6 @@
 import io
 import pickle
 import re
-import warnings
 from collections import namedtuple
 from dataclasses import dataclass
 from enum import Enum
@@ -16,11 +15,8 @@ from packaging.version import Version
 from torch.distributed import ProcessGroup
 from torch.distributed import distributed_c10d as c10d
 
-from colossalai.logging import get_dist_logger
-
 from .stage_manager import PipelineStageManager
 
-logger = get_dist_logger()
 _unpickler = pickle.Unpickler
 
 
@@ -372,7 +368,6 @@ def _communicate(
     # NOTE: send & recv should be atomic operations. However, if we need to send metadata or receive metadata,
     #   we are not able to do that (1. send & recv metadata 2. send & recv). So we need to split the send & recv into two parts in this case.
     if (send_dst is not None and recv_src is not None) and (send_metadata or metadata_recv is None):
-        logger.debug("Fall back to individual send & recv")
         _communicate(object, send_dst=send_dst, recv_src=None, send_group=send_group, send_metadata=send_metadata)
         return _communicate(None, send_dst=None, recv_src=recv_src, recv_group=recv_group, metadata_recv=metadata_recv)
 

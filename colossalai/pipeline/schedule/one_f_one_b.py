@@ -7,7 +7,6 @@ from torch.nn import Module
 from torch.utils._pytree import tree_map
 
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.logging import get_dist_logger
 from colossalai.pipeline.p2p import PipelineP2PCommunication, create_fast_send_metadata
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.utils.device import get_current_device
@@ -43,8 +42,6 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         assert (
             num_microbatches is not None or microbatch_size is not None
         ), "Either num_microbatches or microbatch_size should be provided"
-        self.logger = get_dist_logger()
-        self.logger.warning("If pipeline hangs, please enlarge NCCL_BUFFSIZE.")
 
         self.comm = PipelineP2PCommunication(stage_manager)
         self.num_microbatches = num_microbatches
