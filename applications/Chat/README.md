@@ -94,10 +94,29 @@ More details can be found in the latest news.
 ### Install the environment
 
 ```bash
-conda create -n coati
-conda activate coati
+conda create -n colossal-chat python=3.10.9 (>=3.8.7)
+conda activate colossal-chat
+
+# install flash-attention
+git clone -b v2.0.5 https://github.com/Dao-AILab/flash-attention.git
+cd $FLASH_ATTENTION_ROOT/
+pip install .
+cd $FLASH_ATTENTION_ROOT/csrc/xentropy
+pip install .
+cd $FLASH_ATTENTION_ROOT/csrc/layer_norm
+pip install .
+cd $FLASH_ATTENTION_ROOT/csrc/rotary
+pip install .
+
+# clone Colossalai
 git clone https://github.com/hpcaitech/ColossalAI.git
-cd ColossalAI/applications/Chat
+
+# install ColossalAI
+cd $COLOSSAL_AI_ROOT
+CUDA_EXT=1 pip install .
+
+# install ColossalChat
+cd $COLOSSAL_AI_ROOT/applications/Chat
 pip install .
 ```
 
