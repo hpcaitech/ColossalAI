@@ -7,7 +7,7 @@ from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 
 from .colo_tensor import _convert_output
 
-WHITE_LIST_FUNCS = {torch.Tensor.__getitem__}
+WHITE_LIST_FUNCS = {torch.Tensor.__getitem__, torch.Tensor.is_floating_point}
 
 
 def is_no_hook_op(func) -> bool:
