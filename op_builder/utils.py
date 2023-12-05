@@ -168,6 +168,7 @@ def set_cuda_arch_list(cuda_dir):
             "2. Volta (compute capability 7.0)\n"
             "3. Turing (compute capability 7.5),\n"
             "4. Ampere (compute capability 8.0, 8.6)if the CUDA version is >= 11.0\n"
+            "5. Hopper (compute capability 9.0) if the CUDA version is >= 11.5\n"
             "\nIf you wish to cross-compile for a single specific architecture,\n"
             'export TORCH_CUDA_ARCH_LIST="compute capability" before running setup.py.\n'
         )
@@ -177,12 +178,14 @@ def set_cuda_arch_list(cuda_dir):
 
             arch_list = ["6.0", "6.1", "6.2", "7.0", "7.5"]
 
-            if int(bare_metal_major) == 11:
+            if int(bare_metal_major) >= 11:
                 if int(bare_metal_minor) == 0:
                     arch_list.append("8.0")
                 else:
-                    arch_list.append("8.0")
-                    arch_list.append("8.6")
+                    arch_list.extend(["8.0", "8.6"])
+                if int(bare_metal_major) == 11 and int(bare_metal_minor) >= 5:
+                    arch_list.append("9.0")
+
 
             arch_list_str = ";".join(arch_list)
             os.environ["TORCH_CUDA_ARCH_LIST"] = arch_list_str
