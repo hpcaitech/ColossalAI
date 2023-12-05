@@ -987,9 +987,9 @@ class HybridParallelPlugin(PipelinePluginBase):
             if os.getenv("NCCL_BUFFSIZE") is None:
                 logger = get_dist_logger()
                 logger.warning(
-                    "Setting NCCL_BUFFSIZE to 256MB to avoid p2p hangs. " "Please increase it if hangs still happen."
+                    "Setting NCCL_BUFFSIZE to 128MB to avoid p2p hangs. " "Please increase it if hangs still happen."
                 )
-                os.environ["NCCL_BUFFSIZE"] = "268435456"
+                os.environ["NCCL_BUFFSIZE"] = "134217728"
 
             assert pp_style in ["1f1b", "interleaved"], "Unsupported pipeline parallelism style"
             assert pp_style == "interleaved" or num_model_chunks == 1, "num_model_chunks must be 1 when using 1f1b"
