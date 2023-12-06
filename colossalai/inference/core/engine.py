@@ -3,13 +3,13 @@ from typing import Optional
 
 from transformers import AutoConfig
 
-from ..config import ColossalInferConfig
+from .config import InferenceConfig
 from .request_handler import RequestHandler
 
 
-class InferEngine:
+class InferenceEngine:
     """
-    InferEngine is the core component for Inference.
+    InferenceEngine is the core component for Inference.
 
     It is responsible for launch the inference process, including:
         - Initialize model and distributed training environment(if needed)
@@ -19,17 +19,17 @@ class InferEngine:
 
     Args:
         tokenizer: Path of the tokenizer to use.
-        colossal_config: We provide a unified config api for that wrapped all the configs. You can use it to replace the below configs.
-        use_logger (bool): Determine whether or not to log the generation process.
+        inference_config: We provide a unified config api for that wrapped all the configs. You can use it to replace the below configs.
+        verbose (bool): Determine whether or not to log the generation process.
     """
 
     def __init__(
         self,
-        tokenizer: str = "",
-        colossal_config: Optional["ColossalInferConfig"] = None,
-        use_logger: bool = False,
+        tokenizer: str = None,
+        inference_config: Optional["InferenceConfig"] = None,
+        verbose: bool = False,
     ) -> None:
-        assert colossal_config, "Please provide colossal_config."
+        assert inference_config, "Please provide inference_config."
 
         self._init_model()
         self.request_handler = RequestHandler()
@@ -37,7 +37,7 @@ class InferEngine:
         self.hf_model_config = AutoConfig.from_pretrained(
             self.model, trust_remote_code=self.trust_remote_code, revision=self.revision
         )
-        if use_logger:
+        if verbose:
             self.logger = Logger()
 
     def _init_model(self):
