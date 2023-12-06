@@ -27,45 +27,45 @@ Customize the RAG Chain settings, such as the embedding model (default: moka-ai/
 
 For API-based language models (like ChatGPT or Huawei Pangu), provide your API key for authentication. For locally-run models, indicate the path to the model's checkpoint file.
 
-## Prepare configuration file
+### Prepare configuration file
 
-All configs are defined in `ColossalQA/examples/webui_demo/config.py`.
+All configs are defined in `ColossalQA/examples/webui_demo/config.py`. You can primarily modify the **bolded** sections in the config to switch the embedding model and the large model loaded by the backend. Other parameters can be left as default or adjusted based on your specific requirements.
 
-- embed:
-    - <mark>embed_name</mark>: the embedding model name
-    - <mark>embed_model_name_or_path</mark>: path to embedding model, could be a local path or a huggingface path
-    - embed_model_device: device to load the embedding model
-- model:
-    - <mark>mode</mark>: "local" for loading models, "api" for using model api
-    - <mark>model_name</mark>: "chatgpt_api", "pangu_api", or your local model name
-    - <mark>model_path</mark>: path to the model, could be a local path or a huggingface path. don't need if mode="api"
-    - device: device to load the LLM
-- splitter:
-    - name: text splitter class name, the class should be imported at the beginning of `config.py`
-- retrieval:
-    - retri_top_k: number of retrieval text which will be provided to the model
-    - retri_kb_file_path: path to store database files
-    - verbose: Boolean type, to control the level of detail in program output
-- chain:
-    - mem_summary_prompt: summary prompt template
-    - mem_human_prefix: human prefix for prompt
-    - mem_ai_prefix: AI assistant prefix for prompt
-    - mem_max_tokens: max tokens for history information
-    - mem_llm_kwargs: model's generation kwargs for summarizing history
-        - max_new_tokens: int
-        - temperature: int
-        - do_sample: bool
-    - disambig_prompt: disambiguate prompt template
-    - disambig_llm_kwargs: model's generation kwargs for disambiguating user's input
-        - max_new_tokens: int
-        - temperature": int
-        - do_sample: bool
-    - gen_llm_kwargs: model's generation kwargs
-        - max_new_tokens: int
-        - temperature: int
-        - do_sample: bool
-    - gen_qa_prompt: generation prompt template
-    - verbose: Boolean type, to control the level of detail in program output
+- `embed`:
+    - **`embed_name`**: the embedding model name
+    - **`embed_model_name_or_path`**: path to embedding model, could be a local path or a huggingface path
+    - `embed_model_device`: device to load the embedding model
+- `model`:
+    - **`mode`**: "local" for loading models, "api" for using model api
+    - **`model_name`**: "chatgpt_api", "pangu_api", or your local model name
+    - **`model_path`**: path to the model, could be a local path or a huggingface path. don't need if mode="api"
+    - `device`: device to load the LLM
+- `splitter`:
+    - `name`: text splitter class name, the class should be imported at the beginning of `config.py`
+- `retrieval`:
+    - `retri_top_k`: number of retrieval text which will be provided to the model
+    - `retri_kb_file_path`: path to store database files
+    - `verbose: Boolean type`, to control the level of detail in program output
+- `chain`:
+    - `mem_summary_prompt`: summary prompt template
+    - `mem_human_prefix`: human prefix for prompt
+    - `mem_ai_prefix`: AI assistant prefix for prompt
+    - `mem_max_tokens`: max tokens for history information
+    - `mem_llm_kwargs`: model's generation kwargs for summarizing history
+        - `max_new_tokens`: int
+        - `temperature`: int
+        - `do_sample`: bool
+    - `disambig_prompt`: disambiguate prompt template
+    - `disambig_llm_kwargs`: model's generation kwargs for disambiguating user's input
+        - `max_new_tokens`: int
+        - `temperature`: int
+        - `do_sample`: bool
+    - `gen_llm_kwargs`: model's generation kwargs
+        - `max_new_tokens`: int
+        - `temperature`: int
+        - `do_sample`: bool
+    - `gen_qa_prompt`: generation prompt template
+    - `verbose`: Boolean type, to control the level of detail in program output
 
 
 ## Run WebUI Demo
@@ -82,7 +82,7 @@ python server.py --http_host "host" --http_port "port"
 python webui.py --http_host "your-backend-api-host" --http_port "your-backend-api-port"
 ```
 
-2. If you want to use pangu api as the backend model, you need to change the model mode to "api", change the model name to "chatgpt_api" in `config.py`, and run the following commands.
+2. If you want to use chatgpt api as the backend model, you need to change the model mode to "api", change the model name to "chatgpt_api" in `config.py`, and run the following commands.
 ```sh
 export TMP="path/to/store/tmp/files"
 
