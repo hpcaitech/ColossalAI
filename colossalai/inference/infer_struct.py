@@ -40,6 +40,9 @@ class Sequence:
         block_size: The block size of the sequence.
         sample_params: The sample_params of the sequence.
         block_table_index: The index of this sequence in block_table.
+        
+        
+        TODO To be modified as needed.
     """
 
     def __init__(

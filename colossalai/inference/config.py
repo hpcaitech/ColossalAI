@@ -23,6 +23,9 @@ class ColossalInferConfig:
     max_seq_len: Maximum length of input sentence.
     quant_mode: Quantization mode.
     revision: The specific version(a branch, name, a commit id, or a tag name) of model to use.
+    
+    
+    TODO To be modified as needed.
     """
 
     def __init__(
