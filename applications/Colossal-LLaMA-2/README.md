@@ -11,7 +11,9 @@
   - [Performance Evaluation](#performance-evaluation)
   - [Examples](#examples)
   - [Training Logs](#training-logs)
-  - [Import from Transformers (Inference)](#import-from-transformers-inference)
+  - [Inference](#inference)
+    - [Import from HuggingFace](#import-from-huggingface)
+    - [Import from Modelscope](#import-from-modelscope)
 - [Usage](#usage)
   - [Install](#install)
     - [0. Pre-requisite](#0-pre-requisite)
@@ -123,7 +125,8 @@ We also recorded the training logs for the experiment
 <img src="https://github.com/hpcaitech/public_assets/blob/main/applications/colossal-llama-2/trainingLossByTokens.jpeg?raw=true" width=600/>
 </p>
 
-### Import from Transformers (Inference)
+### Inference
+#### Import from HuggingFace
 To load Colossal-LLaMA-2-7B-base model using Transformers, use the following code:
 ```Python
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -141,6 +144,7 @@ pred = model.generate(**inputs,
 print(tokenizer.decode(pred.cpu()[0], skip_special_tokens=True)[len(input):])
 ```
 
+#### Import from Modelscope
 You can also load our model using modelscope, use the following code:
 ```Python
 from modelscope import AutoModelForCausalLM, AutoTokenizer, snapshot_download
@@ -159,6 +163,30 @@ print(tokenizer.decode(output.cpu()[0], skip_special_tokens=True)[len(input):])
 ```
 You can download model weights from [🤗HuggingFace](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base) or [👾Modelscope](https://modelscope.cn/models/colossalai/Colossal-LLaMA-2-7b-base/summary).
 
+#### Quick Start
+You can run [`inference_example.py`](inference_example.py) to quickly start the inference of our base model by loading model weights from HF.
+
+Command to run the script:
+```bash
+python inference_example.py \
+    --model_path "<HF_REPO_NAME_OR_LOCAL_PATH_TO_MODEL>" \
+    --device "cuda:0" \
+    --max_new_tokens 512 \
+    --do_sample True \
+    --temperature 0.3 \
+    --top_k 50 \
+    --top_p 0.95 \
+    --input_txt "YOUR_PROMPT_OR_QUESTION" 
+```
+Here is details about CLI arguments:
+* Model path: `--model_path`. HF repo name or local path of the model.
+* Device: `--device`. Set the device.
+* Max new tokens: `--max_new_tokens`. Set maximum numbers of tokens to generate, ignoring the number of tokens in the prompt.
+* Do sample: `--do_sample`. Set whether or not to use sampling.
+* Temperature: `--temperature`. Set temperature value.
+* Top_k: `--top_k`. Set top_k value for top-k-filtering.
+* Top_p: `--top_p`. Set top_p value for generation.
+* Input_txt: `--input_txt`. The prompt string input to the model.
 ## Usage
 ### Install
 

@@ -63,8 +63,7 @@ def deactivate_neftune(model, neftune_hook_handle):
     """
     Deactivates the neftune method. Make sure to call `_activate_neftune` first.
     """
-    unwrapped_model = unwrap(model)
-    embeddings = unwrapped_model.get_input_embeddings()
+    embeddings = unwrap(model).get_input_embeddings()
 
     neftune_hook_handle.remove()
-    del embeddings.neftune_noise_alpha, unwrapped_model
+    del embeddings.neftune_noise_alpha
