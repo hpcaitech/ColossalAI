@@ -14,10 +14,31 @@ GIGABYTE = 1024**3
 class KVCacheManager:
     """KVCacheManager manages both the logical cache blocks and physical KV cache (tensors).
 
-    NOTE: The KVCacheManager is designed to be interacted with by using indices of logical blocks.
+    NOTE: The KVCacheManager is designed to be interacted with indices of logical blocks.
         That is, it won't allocate and return a physical cache to the engine or scheduler;
         instead, it will mark the logical block as allocated and update the block id representing
         the physical cache to the caller. The physical cache is actually used and updated in kernels.
+
+    Example
+        A block table of a single sequence before block allocation might be:
+        | -1 | -1 | -1 | -1 | -1 | -1 |
+        where the maximum blocks per sequence is 6
+        The block table after block allocation might be:
+        |  0 |  1 |  2 | -1 | -1 | -1 |
+        Then the logical blocks with id 0, 1, and 2, are allocated for this sequence,
+        and the physical caches, each with size of `block_size * num_heads * head_size * elem_siz` for a single layer,
+        corresponding to these blocks will be used to read/write KV Caches in kernels.
+
+        For a batch of sequences, the block tables after allocation might be:
+        |  0 |  1 |  2 | -1 | -1 | -1 |
+        |  3 |  4 |  5 |  6 |  7 | -1 |
+        |  8 |  9 | 10 | 11 | -1 | -1 |
+        | 12 | 13 | 14 | 15 | -1 | -1 |
+        where 16 logical cache blocks are allocated and the same number of physical cache blocks will be used in kernels.
+
+        Currently, allocations and updates are done at granularity of a single sequence.
+        That is, the block table should be a 1D tensor of shape [max_blocks_per_sequence].
+        And it's possible to have a batch of sequences with different lengths of block tables.
 
     Args:
         config(InferenceConfig): The All-in-one inference configuration.
@@ -74,13 +95,32 @@ class KVCacheManager:
 
     def get_max_blocks_per_sequence(self) -> int:
         """Get the maximum number of blocks that can be allocated for a single sequence."""
+        # TODO Consider removing this function as we plan to implement "half-dynamic" batching in schduler/request handler,
+        #      which will make the max_blocks_per_sequence dynamic based on the prompt lengths of sequences
+        #      in the current batch.
         return self.max_blocks_per_sequence
+
+    def get_block_kv_ptrs(self, block_id: int, layer_id: int) -> Tuple[List[int], List[int]]:
+        """Get the key and value pointers of physical caches (of specific layer) corresponding to a logical cache block."""
+        block: CacheBlock = self._cache_blocks[block_id]
+        return block.k_ptrs[layer_id], block.v_ptrs[layer_id]
+
+    def get_block_table_kv_ptrs(self, block_table: torch.Tensor, layer_id: int) -> Tuple[int, int]:
+        """Get the key and value pointers of physical caches (of specific layer) corresponding to logical cache blocks indicated by the block table."""
+        k_ptrs = []
+        v_ptrs = []
+        for block_id in block_table:
+            if block_id >= 0:
+                block: CacheBlock = self._cache_blocks[block_id]
+                k_ptrs.append(block.k_ptrs[layer_id])
+                v_ptrs.append(block.v_ptrs[layer_id])
+        return k_ptrs, v_ptrs
 
     def allocate_from_block_table(
         self, block_table: torch.Tensor, already_allocated_len: int, space_asked: int = 1
     ) -> None:
         """Allocate the logical cache blocks for a single sequence.
-        It updates the provided block table with the allocated block(s).
+        It updates the provided block table with the allocated block indexes.
 
         Args:
             block_table: A 1D tensor of shape [max_blocks_per_sequence], storing mapping of token_position_id -> block_id.

@@ -22,6 +22,8 @@ class CacheBlock:
         self.ref_count = 0
         # the number of slots that have been allocated (i.e. the number of tokens occupying the block)
         self.allocated_size = 0
+        # the token ids whose KV Cache would be written to corresponding physical caches
+        # TODO add logics to update token_ids
         self.token_ids = [None] * self.block_size
 
     @property

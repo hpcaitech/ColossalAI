@@ -82,6 +82,8 @@ def test_cache_manager(test_config):
     num_blocks = cache_manager.get_total_num_blocks()
 
     block_size = test_config["block_size"]
+    num_heads = test_config["num_attention_heads"]
+    head_size = test_config["head_size"]
     max_input_length = test_config["max_input_length"]
     max_output_length = test_config["max_output_length"]
 
@@ -90,7 +92,7 @@ def test_cache_manager(test_config):
     assert len(cache_manager._allocated_blocks) == 0
     key_caches = cache_manager._kv_caches[0]  # key caches for all the blocks in all the layers
     assert len(key_caches) == test_config["num_layers"]
-    expected_kv_shape = (num_blocks, block_size, test_config["num_attention_heads"], test_config["head_size"])
+    expected_kv_shape = (num_blocks, block_size, num_heads, head_size)
     assert key_caches[0].shape == expected_kv_shape
     k_cache_block0, v_cache_block0 = cache_manager.get_physical_cache(0, 0)
     expected_kv_block_shape = expected_kv_shape[1:]
@@ -124,6 +126,12 @@ def test_cache_manager(test_config):
 
     assert torch.all(block_table >= 0)
     assert cache_manager.available_blocks < num_blocks
+
+    k_ptr_block0_layer0, _ = cache_manager.get_block_kv_ptrs(0, 0)
+    k_ptr_block1_layer0, _ = cache_manager.get_block_kv_ptrs(1, 0)
+    elem_size = torch.tensor([], dtype=test_config["dtype"]).element_size()
+    expected_stride = block_size * num_heads * head_size * elem_size
+    assert k_ptr_block1_layer0 - k_ptr_block0_layer0 == expected_stride
 
     cache_manager.free_cache_blocks(block_table)
     assert torch.all(block_table < 0)
