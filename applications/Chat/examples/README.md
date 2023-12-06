@@ -5,6 +5,7 @@
 - [Examples](#examples)
   - [Table of Contents](#table-of-contents)
   - [Install Requirements](#install-requirements)
+  - [Get Start with ColossalRun](#get-start-with-colossalrun)
   - [Training Configuration](#training-configuration)
   - [RLHF Stage 1: Supervised Instruction Tuning](#rlhf-training-stage1---supervised-instructs-tuning)
     - [Step 1: Data Collection](#step-1-data-collection)
@@ -288,14 +289,14 @@ colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile trai
 - config_file: path to store the training config file.
 - save_dir: path to store the model checkpoints.
 - max_length: input will be padded/truncate to max_length before feeding to the model.
-- max_epochs: number of epoch to train
-- batch_size: training batch size
+- max_epochs: number of epoch to train.
+- batch_size: training batch size.
 - mixed_precision: precision to use in training. Support 'fp16' and 'bf16'. Note that some device may not support the 'bf16' option, please refer to [Nvidia](https://developer.nvidia.com/) to check compatability.
-- save_interval: save the model weights as well as optimizer/schedualer states every save_interval steps/episodes
+- save_interval: save the model weights as well as optimizer/schedualer states every save_interval steps/episodes.
 - merge_lora_weights: whether to merge lora weights before saving the model
-- lr: the learning rate used in training
-- accumulation_steps: accumulate gradient every accumulation_steps
-- log_dir: path to store the log
+- lr: the learning rate used in training.
+- accumulation_steps: accumulate gradient every accumulation_steps.
+- log_dir: path to store the log.
 - use_wandb: if this flag is up, you can view logs on wandb.
 
 </details>
