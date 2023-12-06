@@ -468,10 +468,9 @@ class GeminiPlugin(DPPluginBase):
             # 2. patch sync bn or write a new on. This is relatively easy, but we need to test it.
             # model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
 
-            # wrap the model with Gemini
-            if self.enable_tensor_parallelism:
-                shardformer = ShardFormer(self.shard_config)
-                model, _ = shardformer.optimize(model)
+            # wrap the model with Shardformer
+            shardformer = ShardFormer(self.shard_config)
+            model, _ = shardformer.optimize(model)
 
             model = GeminiDDP(
                 model,
