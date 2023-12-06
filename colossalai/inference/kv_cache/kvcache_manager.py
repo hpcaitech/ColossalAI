@@ -16,8 +16,8 @@ class KVCacheManager:
 
     NOTE: The KVCacheManager is designed to be interacted with by using indices of logical blocks.
         That is, it won't allocate and return a physical cache to the engine or scheduler;
-        instead, it will mark the logical block as allocated, and return, or update, the block id representing
-        the physical cache to the caller. In kernels are where the physical cache is actually used and updated.
+        instead, it will mark the logical block as allocated and update the block id representing
+        the physical cache to the caller. The physical cache is actually used and updated in kernels.
 
     Args:
         config(InferenceConfig): The All-in-one inference configuration.
@@ -33,6 +33,7 @@ class KVCacheManager:
         self.num_heads = config.num_attention_heads
         self.head_size = config.head_size
         # Generation settings
+        self.beam_width = config.beam_width
         self.max_batch_size = config.max_batch_size
         self.max_input_length = config.max_input_length
         self.max_output_length = config.max_output_length
@@ -43,7 +44,7 @@ class KVCacheManager:
         self.max_blocks_per_sequence = (
             self.max_input_length + self.max_output_length + self.block_size - 1
         ) // self.block_size
-        self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size
+        self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size * self.beam_width
         self.available_blocks = self.num_blocks
         self._free_blocks = self._init_logical_caches()
         self._cache_blocks = tuple(self._free_blocks)

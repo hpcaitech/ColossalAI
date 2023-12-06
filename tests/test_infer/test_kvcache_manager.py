@@ -17,6 +17,7 @@ class SampleConfig:
     max_batch_size: int
     max_input_length: int
     max_output_length: int
+    beam_width: int
     dtype: torch.dtype
 
 
@@ -50,16 +51,6 @@ def test_logical_blocks(test_config):
     "test_config",
     [
         {
-            "num_attention_heads": 4,
-            "head_size": 32,
-            "num_layers": 3,
-            "block_size": 4,
-            "max_batch_size": 4,
-            "max_input_length": 64,
-            "max_output_length": 32,
-            "dtype": torch.float16,
-        },
-        {
             "num_attention_heads": 16,
             "head_size": 32,
             "num_layers": 2,
@@ -68,6 +59,18 @@ def test_logical_blocks(test_config):
             "max_input_length": 32,
             "max_output_length": 32,
             "dtype": torch.float32,
+            "beam_width": 1,
+        },
+        {
+            "num_attention_heads": 4,
+            "head_size": 32,
+            "num_layers": 3,
+            "block_size": 4,
+            "max_batch_size": 4,
+            "max_input_length": 64,
+            "max_output_length": 32,
+            "dtype": torch.float16,
+            "beam_width": 3,
         },
     ],
 )
