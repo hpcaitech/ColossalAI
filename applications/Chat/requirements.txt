@@ -3,7 +3,7 @@ tqdm
 datasets
 loralib
 colossalai==0.3.4
-torch<2.0.0, >=1.12.1
+torch>=1.12.1
 langchain
 tokenizers
 fastapi

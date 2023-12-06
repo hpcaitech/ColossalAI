@@ -12,25 +12,25 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "Now CUDA_VISIBLE_DEVICES is set to:"
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
-# set_n_least_used_CUDA_VISIBLE_DEVICES 3
-export CUDA_VISIBLE_DEVICES=1,2,3
+
+set_n_least_used_CUDA_VISIBLE_DEVICES 4
 PROJECT_NAME="llama2-sft"
-PARENT_SAVE_DIR="/home/lcyab/data/models/coati_refactor_experiments/sft_lora/output/ckpt"
-PARENT_TENSORBOARD_DIR="/home/lcyab/data/models/coati_refactor_experiments/sft_lora/output/tensorboard"
-PARENT_CONFIG_FILE="/home/lcyab/data/models/coati_refactor_experiments/sft_lora/output/train_config"
-PRETRAINED_MODEL_PATH="/home/lcyab/data/models/Sheared-LLaMA-1.3B" #"/mnt/vepfs/lcxyc/leaderboard_models/Colossal-LLaMA-2-7b-base/"
-PRETRAINED_TOKENIZER_PATH="/home/lcyab/data/models/Sheared-LLaMA-1.3B" #"/mnt/vepfs/lcxyc/leaderboard_models/Colossal-LLaMA-2-7b-base/"
+PARENT_SAVE_DIR="save_dir/ckpt"
+PARENT_TENSORBOARD_DIR="save_dir/tensorboard"
+PARENT_CONFIG_FILE="save_dir/train_config"
+PRETRAINED_MODEL_PATH="pretrained/model/path"
+PRETRAINED_TOKENIZER_PATH="pretrained/model/path"
 declare -a dataset=(
-    /home/lcyab/data/data_rlhf/tokenized_sft_data_llama/arrow/part-00000
-    /home/lcyab/data/data_rlhf/tokenized_sft_data_llama/arrow/part-00001
-    /home/lcyab/data/data_rlhf/tokenized_sft_data_llama/arrow/part-00002
-    /home/lcyab/data/data_rlhf/tokenized_sft_data_llama/arrow/part-00003
-    /home/lcyab/data/data_rlhf/tokenized_sft_data_llama/arrow/part-00004
-    /home/lcyab/data/data_rlhf/tokenized_sft_data_llama/arrow/part-00005
-    /home/lcyab/data/data_rlhf/tokenized_sft_data_llama/arrow/part-00006
-    /home/lcyab/data/data_rlhf/tokenized_sft_data_llama/arrow/part-00007
-    /home/lcyab/data/data_rlhf/tokenized_sft_data_llama/arrow/part-00008
-    /home/lcyab/data/data_rlhf/tokenized_sft_data_llama/arrow/part-00009
+    path/to/sft/data/arrow/part-00000
+    path/to/sft/data/arrow/part-00001
+    path/to/sft/data/arrow/part-00002
+    path/to/sft/data/arrow/part-00003
+    path/to/sft/data/arrow/part-00004
+    path/to/sft/data/arrow/part-00005
+    path/to/sft/data/arrow/part-00006
+    path/to/sft/data/arrow/part-00007
+    path/to/sft/data/arrow/part-00008
+    path/to/sft/data/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)

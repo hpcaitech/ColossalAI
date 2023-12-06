@@ -198,7 +198,6 @@ class RewardModelTrainer(SLTrainer):
         with torch.no_grad():
             for i, batch in enumerate(self.eval_dataloader):
                 batch = to_device(batch, self.device)
-                # print(batch)
                 (
                     chosen_input_ids,
                     chosen_attention_mask,

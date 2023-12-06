@@ -262,7 +262,7 @@ class StatefulDistributedSampler(DistributedSampler):
             )
         else:
             # adapted from https://github.com/pytorch/pytorch/blob/4979f9c0d72490970e2019bb1d2284f83d93f76b/torch/utils/data/distributed.py#L62
-            # TODO: support tp_group>1
+            # TODO: support tp_group>1. will fix it later
             num_replicas = 1
             if rank is None:
                 rank = dist.get_rank()

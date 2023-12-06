@@ -62,6 +62,7 @@ def generate(
     generation_kwargs["max_new_tokens"] = max_new_tokens
     model_unwrap = model.unwrap()
     model_unwrap.generation_config.pad_token_id = tokenizer.pad_token_id
+    # use the default generate function
     input_ids = model_unwrap.generate(
         input_ids=input_ids, attention_mask=input_ids.ne(tokenizer.pad_token_id), **generation_kwargs
     )

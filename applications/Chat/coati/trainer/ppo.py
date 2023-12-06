@@ -270,7 +270,7 @@ class PPOTrainer(OLTrainer):
                     try:
                         self.wandb_run.log({"sample_response": my_table})
                     except OSError as e:
-                        print(e)
+                        self.coordinator.print_on_master(e)
 
             if self.writer and is_rank_0():
                 self.writer.add_scalar("train/max_ratio", self.accumulative_meter.get("max_ratio"), self.num_train_step)
