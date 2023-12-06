@@ -31,15 +31,15 @@ class RequsetStatus(enum.Enum):
 
 
 class Sequence:
-    """Store the information of a input Sequence.
+    """Store information of input sequence.
 
     Args:
-        request_id: The ID of the sequence.
-        prompt: The prompt of the sequence.
-        token_id: The ID of the sequence.
-        block_size: The block size of the sequence.
-        sample_params: The sample_params of the sequence.
-        block_table_index: The index of this sequence in block_table.
+        request_id: The ID of input sequence.
+        prompt: The prompt of input sequence.
+        token_id: The ID of input sequence.
+        block_size: The block size of input sequence.
+        sample_params: The sample_params of input sequence.
+        block_table_index: The index of input sequence in block_table.
         
         
         TODO To be modified as needed.
@@ -64,15 +64,27 @@ class Sequence:
         self.block_table_index = block_table_index
 
     def get_sentence_len(self) -> None:
+        """
+        Get length of current sentence.
+        """
         return len(self.input_token_id) + len(self.output_token_id)
 
     def get_input_len(self) -> None:
+        """
+        Get length of input sentence.
+        """
         return len(self.input_token_id)
 
     def get_output_len(self) -> None:
+        """
+        Get output length of current sentence.
+        """
         return len(self.output_token_id)
 
     def check_finish(self) -> bool:
+        """
+        Check whether inference is over.
+        """
         return RequsetStatus.check_finish(self.status)
 
     def __repr__(self) -> str:
@@ -96,6 +108,12 @@ class BatchHandler:
 
     @classmethod
     def init_batch(cls, seqs: List[Sequence]) -> "BatchHandler":
+        """
+        Initializes inference batches by input sentence list.
+        
+        Args:
+            seqs (List[Sequence]): List of input sequence.
+        """
         sequences_set = set()
         block_table = {}
         for seq in seqs:
@@ -115,6 +133,9 @@ class BatchHandler:
         return cls(sequences_set=sequences_set, block_table=block_table)
 
     def clear_batch(self) -> None:
+        """
+        Clear sequence set and block table.
+        """
         for seq in self.sequences_set:
             if not seq.check_finish():
                 seq.status = RequsetStatus.ABORTED
@@ -122,12 +143,21 @@ class BatchHandler:
         self.block_table.clear()
 
     def fliter_batch(self) -> None:
+        """
+        Remove completed sentences from a batch.
+        """
         for seq in self.sequences_set:
             if seq.check_finish():
                 self.sequences_set.reomve(seq)
                 del self.block_table[seq.request_id]
 
     def add_seqs(self, seqs: List[Sequence]) -> None:
+        """
+        Add new sequence to batch
+
+        Args:
+            seqs (List[Sequence]): The list of new sequences.
+        """
         for seq in seqs:
             if seq in self.sequences_set:
                 print("The sequence is already in sequences_set.")
