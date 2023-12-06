@@ -14,6 +14,7 @@
   - [Inference](#inference)
     - [Import from HuggingFace](#import-from-huggingface)
     - [Import from Modelscope](#import-from-modelscope)
+    - [Quick Start](#quick-start)
 - [Usage](#usage)
   - [Install](#install)
     - [0. Pre-requisite](#0-pre-requisite)
