@@ -124,7 +124,7 @@ pip install .
 
 ### RLHF Training Stage1 - Supervised Instructs Tuning
 
-Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. Here's a detailed guide on how to SFT your LLM with ColossalChat:
+Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. Here's a detailed guide on how to SFT your LLM with ColossalChat. More detais can be found in [./example/README.md](./examples/README.md)
 
 #### Step 1: Data Collection
 The first step in Stage 1 is to collect a dataset of human demonstrations of the following format.
@@ -160,7 +160,7 @@ Human: <s> what are some pranks with a pen i can do?</s> Assistant: <s> Are you 
 The tokenization step tokenize the formatted conversation, calculate input_ids, labels, attention_masks and buffer those into dataset files. We provide scripts for data formatting and tokenization for SFT. Simply run the [prepare_sft_dataset.sh](./examples/data_preparation_scripts/prepare_sft_dataset.sh).
 
 #### Step 3: Training
-Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning.
+Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning. More detais can be found in [./example/README.md](./examples/README.md).
 
 ### RLHF Training Stage2 - Training Reward Model
 
@@ -200,7 +200,7 @@ Below shows the preference dataset format used in training the reward model.
 Similar to the second step in the previous stage, we format the reward data into the same structured format as used in step 2 of the SFT stage. You can run [prepare_preference_dataset.sh](./examples/data_preparation_scripts/prepare_preference_dataset.sh) to prepare the preference data for reward model training.
 
 #### Step 3: Training
-You can run [train_rm.sh](./examples/training_scripts/train_rm.sh) to start the reward model training.
+You can run [train_rm.sh](./examples/training_scripts/train_rm.sh) to start the reward model training. More detais can be found in [./example/README.md](./examples/README.md).
 
 ### RLHF Training Stage3 - Proximal Policy Optimization
 
@@ -244,7 +244,7 @@ To prepare the prompt dataset for PPO training, simply run [prepare_prompt_datas
 To prepare the pretrained dataset for PPO training, simply run [prepare_ptx_dataset.sh](./examples/data_preparation_scripts/prepare_ptx_dataset.sh)
 
 #### Step 3: Training
-You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to start PPO training. Here are some unique arguments for PPO, please refer to the training configuration section for other training configuration.
+You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to start PPO training. Here are some unique arguments for PPO, please refer to the training configuration section for other training configuration. More detais can be found in [./example/README.md](./examples/README.md).
 
 ```bash
 --pretrain $PRETRAINED_MODEL_PATH \
@@ -293,7 +293,7 @@ Please refer the [sft section](#dpo-training-stage1---supervised-instructs-tunin
 For DPO training, you only need the preference dataset. Please follow the instruction in the [preference dataset preparation section](#rlhf-training-stage2---training-reward-model) to prepare the preference data for DPO training.
 
 #### Step 2: Training
-You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to start DPO training.
+You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to start DPO training. More detais can be found in [./example/README.md](./examples/README.md).
 
 ### Inference Quantization and Serving - After Training
 
