@@ -41,6 +41,9 @@ from transformers import AutoConfig, GPT2ForSequenceClassification, get_linear_s
 from transformers import AutoTokenizer
 
 import colossalai
+from colossalai.accelerator import set_accelerator
+set_accelerator("cuda")
+
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
