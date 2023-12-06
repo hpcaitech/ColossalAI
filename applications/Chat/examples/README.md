@@ -5,30 +5,29 @@
 - [Examples](#examples)
   - [Table of Contents](#table-of-contents)
   - [Install Requirements](#install-requirements)
-  - [Supervised Datasets Collection](#supervised-datasets-collection)
-    - [Conversation Dataset Generation](#conversation-dataset-generation)
-  - [Task I: Supervised Instruction Tuning](#task-i-supervised-instructs-tuning)
-  - [Task II: Reinforcement Learning from Human Feedback](#task-ii-reinforcement-learning-from-human-feedback)
-    - [Stage1 - Supervised instructs tuning](#stage1---supervised-instructs-tuning)
-      - [Arg List](#arg-list)
-    - [Stage2 - Training reward model](#stage2---training-reward-model)
-      - [Features and tricks in RM training](#features-and-tricks-in-rm-training)
-      - [Experiment result](#experiment-result)
-      - [Arg List](#arg-list-1)
-    - [Stage3 - Training model using prompts with RL](#stage3---training-model-using-prompts-with-rl)
-      - [Arg List](#arg-list-2)
-  - [Inference example - After Stage3](#inference-example---after-stage3)
+  - [Training Configuration](#training-configuration)
+  - [RLHF Stage 1: Supervised Instruction Tuning](#rlhf-training-stage1---supervised-instructs-tuning)
+    - [Step 1: Data Collection](#step-1-data-collection)
+    - [Step 2: Preprocessing](#step-2-preprocessing)
+    - [Step 3: Training](#step-3-training)
+  - [RLHF Stage 2: Training Reward Model](#rlhf-training-stage2---training-reward-model)
+    - [Step 1: Data Collection](#step-1-data-collection-1)
+    - [Step 2: Preprocessing](#step-2-preprocessing-1)
+    - [Step 3: Training](#step-3-training-1)
+    - [Features and Tricks in RM Training](#features-and-tricks-in-rm-training)
+  - [RLHF Stage 3: Proximal Policy Optimization](#rlhf-training-stage3---proximal-policy-optimization)
+    - [Step 1: Data Collection](#step-1-data-collection-2)
+    - [Step 2: Preprocessing](#step-2-preprocessing-2)
+    - [Step 3: Training](#step-3-training-3)
+  - [PPO Training Results](#sample-training-results-using-default-script)
+    - [Reward](#reward)
+    - [KL Divergence](#approximate-kl-divergence)
+  - [Note on PPO Training](#note-on-ppo-training)
+  - [Alternative Option For RLHF: Direct Preference Optimization](#alternative-option-for-rlhf-direct-preference-optimization)
+    - [DPO Stage 1: Supervised Instruction Tuning](#dpo-training-stage1---supervised-instructs-tuning)
+    - [DPO Stage 2: DPO Training](#dpo-training-stage2---dpo-training)
+  - [Inference example](#inference-example)
   - [Attention](#attention)
-    - [data](#data)
-  - [Support Model](#support-model)
-    - [GPT](#gpt)
-    - [BLOOM](#bloom)
-    - [OPT](#opt)
-    - [LLaMA](#llama)
-  - [Add your own models](#add-your-own-models)
-    - [Actor model](#actor-model)
-    - [Reward model](#reward-model)
-    - [Critic model](#critic-model)
 
 ---
 
@@ -37,6 +36,7 @@
 ```shell
 pip install -r requirements.txt
 ```
+
 
 ## Get Start with ColossalRun
 
@@ -60,205 +60,335 @@ Make sure master node can access all nodes (including itself) by ssh without pas
 - nproc-per-node: specifies the number of processes to be launched per node
 - rdzv-endpoint: address of the host node
 
+### Training Configuration
 
-## Supervised datasets collection
+This section gives a simple introduction on different training strategies that you can use and how to use them with our boosters and plugins to reduce training time and VRAM consumption. For more detail regarding training strategies, please refer to [here](https://colossalai.org/docs/concepts/paradigms_of_parallelism). For details regarding boosters and plugins, please refer to [here](https://colossalai.org/docs/basics/booster_plugins).
 
-We collected 104K bilingual datasets of Chinese and English, and you can find the datasets in this repo
-[InstructionWild](https://github.com/XueFuzhao/InstructionWild) and in this [file](https://github.com/XueFuzhao/InstructionWild/blob/main/data/README.md).
 
-Here is how we collected the data
+<details><summary><b>Gemini</b></summary>
 
-<p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/data-collect.png" width=500/>
-</p>
+This plugin implements Zero-3 with chunk-based and heterogeneous memory management. It can train large models without much loss in speed. It also does not support local gradient accumulation. More details can be found in [Gemini Doc](https://colossalai.org/docs/features/zero_with_chunk).
 
-### Conversation dataset generation
-
-In order to further improve the model's ability to handle multi-turn conversations, we need to include samples with multi-turn conversations in the dataset. However, the samples in InstructWild and Alpaca datasets currently consist of only single-turn conversations, and their dataset organization is not suitable for storing multi-turn conversations. Additionally, after converting the aforementioned datasets, we also need to include multi-turn conversation datasets like ShareGPT, and we should transform them into the training format supported by ColossalChat.
-
-A sample of conversation dataset should have the following fields:
-
-- `type` (str, optional): The type of the data sample.
-- `language` (str, optional): The language of the data sample.
-- `dataset` (str, optional): The dataset the data sample originates from.
-- `conversations` (str, compulsory): Conversation content of the data sample.
-- `id` (int, optional): The ID of the data sample.
-
-A simple example:
-
-```json
-{
-  "type": "instruction",
-  "language": "English",
-  "dataset": "Alpaca",
-  "conversations": [
-    {
-      "from": "human",
-      "value": "Give three tips for staying healthy."
-    },
-    {
-      "from": "gpt",
-      "value": "1.Eat a balanced diet and make sure to include plenty of fruits and vegetables. \n2. Exercise regularly to keep your body active and strong. \n3. Get enough sleep and maintain a consistent sleep schedule."
-    }
-  ],
-  "id": 1
-}
+Below shows how to use the gemini in SFT training.
 ```
-
-> **NOTE:** Only key `conversations` is compulsary for training and other keys serve as metadata. The length of `conversations` varies.
-
-You can run the `examples/generate_conversation_dataset.py` to generate a conversation dataset supported by ColossalChat.
-
-You can use the following cmd to generate conversation dataset.
-
-```bash
-python generate_conversation_dataset.py \
-    --dataset "All"
-    --save_path "/path/to/dataset"
-```
-
-## Task I: Supervised Instructs Tuning
-
-In the task of supervised instructs fine-tuning, we will uses the datasets mentioned earlier to fine-tune the model.
-[[Stage1 tutorial video]](https://www.youtube.com/watch?v=-qFBZFmOJfg)
-
-You can run the `examples/train_sft.sh` to start a supervised instructs fine-tuning.
-
-You can also use the following cmd to start a supervised instructs fine-tuning with your own settings.
-
-```bash
-colossalai run --nproc_per_node 1 --hostfile ./hostfile train_sft.py \
-    --pretrain "/path/to/LLaMa-7B/" \
-    --model 'llama' \
-    --strategy colossalai_zero2 \
-    --save_path  /path/to/Coati-7B \
-    --dataset /path/to/data.json \
+colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile train_sft.py \
+    --pretrain $PRETRAINED_MODEL_PATH \
+    --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
+    --dataset ${dataset[@]} \
+    --save_interval 5000 \
+    --save_path $SAVE_DIR \
+    --config_file $CONFIG_FILE \
+    --plugin gemini \
     --batch_size 4 \
-    --accumulation_steps 8 \
-    --lr 2e-5 \
-    --max_datasets_size 512 \
     --max_epochs 1 \
+    --accumulation_steps 1 \  # the gradient accumulation has to be disabled
+    --lr 2e-5 \
+    --max_len 2048 \
+    --use_wandb
+```
+
+</details>
+
+<details><summary><b>Gemini-Auto</b></summary>
+
+This option use gemini and will automatically offload tensors with low priority to cpu. It also does not support local gradient accumulation. More details can be found in [Gemini Doc](https://colossalai.org/docs/features/zero_with_chunk).
+
+Below shows how to use the gemin-auto in SFT training.
+```
+colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile train_sft.py \
+    --pretrain $PRETRAINED_MODEL_PATH \
+    --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
+    --dataset ${dataset[@]} \
+    --save_interval 5000 \
+    --save_path $SAVE_DIR \
+    --config_file $CONFIG_FILE \
+    --plugin gemini_auto \
+    --batch_size 4 \
+    --max_epochs 1 \
+    --accumulation_steps 1 \  # the gradient accumulation has to be disabled
+    --lr 2e-5 \
+    --max_len 2048 \
+    --use_wandb
+```
+
+</details>
+
+</details>
+
+<details><summary><b>Zero2</b></summary>
+
+This option will distribute the optimizer parameters and the gradient to multiple GPUs and won't offload weights to cpu. It uses reduce and gather to synchronize gradients and weights. It does not support local gradient accumulation. Though you can accumulate gradient if you insist, it cannot reduce communication cost. That is to say, it's not a good idea to use Zero-2 with pipeline parallelism.
+
+Below shows how to use the zero2 in SFT training.
+```
+colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile train_sft.py \
+    --pretrain $PRETRAINED_MODEL_PATH \
+    --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
+    --dataset ${dataset[@]} \
+    --save_interval 5000 \
+    --save_path $SAVE_DIR \
+    --config_file $CONFIG_FILE \
+    --plugin zero2 \
+    --batch_size 4 \
+    --max_epochs 1 \
+    --accumulation_steps 4 \
+    --lr 2e-5 \
+    --max_len 2048 \
+    --use_wandb
+```
+
+</details>
+
+
+<details><summary><b>Zero2CPU</b></summary>
+
+This option will distribute the optimizer parameters and the gradient to multiple GPUs as well as offload parameters to cpu. It does not support local gradient accumulation. Though you can accumulate gradient if you insist, it cannot reduce communication cost.
+
+Below shows how to use the zero2-cpu in SFT training.
+```
+colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile train_sft.py \
+    --pretrain $PRETRAINED_MODEL_PATH \
+    --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
+    --dataset ${dataset[@]} \
+    --save_interval 5000 \
+    --save_path $SAVE_DIR \
+    --config_file $CONFIG_FILE \
+    --plugin zero2_cpu \
+    --batch_size 4 \
+    --max_epochs 1 \
+    --accumulation_steps 4 \
+    --lr 2e-5 \
+    --max_len 2048 \
+    --use_wandb
+```
+
+</details>
+
+<details><summary><b>Tensor Parallelism</b></summary>
+
+This option support Tensor Parallelism (TP). Note that if you want to use TP, zero and pipeline parellelism will be disabled. TP split large model weights/optimizer parameters/gradients into multiple small ones and distributes them to multiple GPUs, hence it is recommanded to use TP when your model is large (e.g. 20B and above) or your training algorithm consumes a lot of memory (e.g. PPO).
+
+Below shows how to use the TP in PPO training.
+```
+colossalai run --nproc_per_node 4 --hostfile hostfile --master_port 30039 train_ppo.py \
+    --pretrain $PRETRAINED_MODEL_PATH \
+    --rm_pretrain $PRETRAINED_MODEL_PATH \
+    --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
+    --rm_checkpoint_path $REWARD_MODEL_PATH \
+    --prompt_dataset ${prompt_dataset[@]} \
+    --pretrain_dataset ${ptx_dataset[@]} \
+    --ptx_batch_size 1 \
+    --ptx_coef 0.0 \
+    --plugin "zero2" \
+    --save_interval 200 \
+    --save_path $SAVE_DIR \
+    --num_episodes 2000 \
+    --num_collect_steps 4 \
+    --num_update_steps 1 \
+    --experience_batch_size 8 \
+    --train_batch_size 4 \
+    --accumulation_steps 8 \
+    --tp 4 \ # TP size, nproc_per_node must be divisible by it
+    --lr 9e-6 \
+    --mixed_precision "bf16" \
+    --grad_clip 1.0 \
+    --weight_decay 0.01 \
+    --warmup_steps 100 \
     --grad_checkpoint \
     --use_wandb
 ```
 
-**Note**: the supervised dataset follows the following format,
+</details>
+
+
+<details><summary><b>Gradient Checkpointing</b></summary>
+
+This option saves VRAM consumption by selectively recomputing some of the intermediate value on-the-fly during the backward pass, rather than storing them in memory.
+
+To enable gradient checkpointing, add --grad_checkpoint to your training script.
+```
+colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile train_sft.py \
+    --pretrain $PRETRAINED_MODEL_PATH \
+    --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
+    --dataset ${dataset[@]} \
+    --save_interval 5000 \
+    --save_path $SAVE_DIR \
+    --config_file $CONFIG_FILE \
+    --plugin zero2_cpu \
+    --batch_size 4 \
+    --max_epochs 1 \
+    --accumulation_steps 4 \
+    --lr 2e-5 \
+    --max_len 2048 \
+    --grad_checkpoint \ # This enables gradient checkpointing
+    --use_wandb
+```
+
+</details>
+
+<details><summary><b>Flash Attention</b></summary>
+
+Details about flash attention can be found in the paper: [FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness](https://arxiv.org/abs/2205.14135).
+
+To enable flash attention, add --use_flash_attn to your training script.
+```
+colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile train_sft.py \
+    --pretrain $PRETRAINED_MODEL_PATH \
+    --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
+    --dataset ${dataset[@]} \
+    --save_interval 5000 \
+    --save_path $SAVE_DIR \
+    --config_file $CONFIG_FILE \
+    --plugin zero2_cpu \
+    --batch_size 4 \
+    --max_epochs 1 \
+    --accumulation_steps 4 \
+    --lr 2e-5 \
+    --max_len 2048 \
+    --use_flash_attn \ # This enables flash attention
+    --use_wandb
+```
+
+</details>
+
+<details><summary><b>Low Rank Adaption</b></summary>
+
+Details about Low Rank Adaption (LoRA) can be found in the paper: [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685). It dramatically reduce the VRAM consumption at the cost of sacrifice model capability. It is suitable for training LLM with constrained resources.
+
+To enable LoRA, set --lora_rank to a positive value (usually between 20 and 64).
+```
+colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile train_sft.py \
+    --pretrain $PRETRAINED_MODEL_PATH \
+    --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
+    --dataset ${dataset[@]} \
+    --save_interval 5000 \
+    --save_path $SAVE_DIR \
+    --config_file $CONFIG_FILE \
+    --plugin zero2_cpu \
+    --batch_size 4 \
+    --max_epochs 1 \
+    --accumulation_steps 4 \
+    --lr 2e-5 \
+    --max_len 2048 \
+    --lora_rank 32 \ # This enables LoRA
+    --use_wandb
+```
+
+</details>
+
+<details><summary><b>Other Training Arguments</b></summary>
+
+- grad_clip: gradient larger than this value will be clipped.
+- weight_decay: weight decay hyper-parameter.
+- warmup_steps: number of warmup steps used in setting up the learning rate schedualer.
+- pretrain: pretrain model path, weights will be loaded from this pretrained model unless checkpoint_path is provided.
+- tokenizer_dir: specify where to load the tokenizer, if not provided, tokenizer will be loaded from pretrain model path.
+- dataset: a list of strings, each is a path to a folder contains buffered dataset files in arrow format.
+- checkpoint_path: if provided, will load weights from the checkpoint_path.
+- config_file: path to store the training config file.
+- save_dir: path to store the model checkpoints.
+- max_length: input will be padded/truncate to max_length before feeding to the model.
+- max_epochs: number of epoch to train
+- batch_size: training batch size
+- mixed_precision: precision to use in training. Support 'fp16' and 'bf16'. Note that some device may not support the 'bf16' option, please refer to [Nvidia](https://developer.nvidia.com/) to check compatability.
+- save_interval: save the model weights as well as optimizer/schedualer states every save_interval steps/episodes
+- merge_lora_weights: whether to merge lora weights before saving the model
+- lr: the learning rate used in training
+- accumulation_steps: accumulate gradient every accumulation_steps
+- log_dir: path to store the log
+- use_wandb: if this flag is up, you can view logs on wandb.
+
+</details>
+
+### RLHF Training Stage1 - Supervised Instructs Tuning
+
+Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. Here's a detailed guide on how to SFT your LLM with ColossalChat:
+
+#### Step 1: Data Collection
+The first step in Stage 1 is to collect a dataset of human demonstrations of the following format.
 
 ```json
 [
-    {
-        "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
-        "input": "",
-        "output": "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
-        "id": 0
+    {"messages":
+      [
+        {
+          "from": "human",
+          "content": "what are some pranks with a pen i can do?"
+        },
+        {
+          "from": "assistant",
+          "content": "Are you looking for practical joke ideas?"
+        },
+        ...
+      ]
     },
     ...
 ]
 ```
 
-### Arg List
-- `--strategy`: the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
-- `--model`: model type, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
-- `--pretrain`: pretrain model, type=str, default=None
-- `--max_datasets_size`: the max size of dataset, type=int, default=None
-- `--save_path`: path to save the model, type=str, default='output'
-- `--need_optim_ckpt`: whether to save optim ckpt, type=bool, default=False
-- `--max_epochs`: max epochs for training, type=int, default=3
-- `--batch_size`: batch size while training, type=int, default=4
-- `--lora_rank`: low-rank adaptation matrices rank, type=int, default=0
-- `--grad_checkpoint`: enable gradient checkpointing, type=bool, default=False
-- `use_wandb`: whether to use [wandb](https://wandb.ai/site)
+#### Step 2: Preprocessing
+Once you have collected your SFT dataset, you will need to preprocess it. This involves four steps: data cleaning, data deduplication, formating and tokenization. In this code, we will focus on formating and tokenization. The formating step adopts our elaborately designed conversation template to convert the raw conversation to the following strutured input.
 
-## Task II: Reinforcement Learning from Human Feedback
-### Stage1 - Supervised Instructs Tuning
+```
+<s> A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.
 
-The first stage of RLHF is supervised instructs fine-tuning (SFT). This stage is basically the same as the first task, which uses the same datasets but with different prompt format.
+Human: <s> what are some pranks with a pen i can do?</s> Assistant: <s> Are you looking for practical joke ideas?</s>
+...
+```
+The tokenization step tokenize the formatted conversation, calculate input_ids, labels, attention_masks and buffer those into dataset files. We provide scripts for data formatting and tokenization for SFT. Simply run the [prepare_sft_dataset.sh](./examples/data_preparation_scripts/prepare_sft_dataset.sh). Read the training configuration section for supported training strategies.
 
-You can run the `examples/train_rlhf_sft.sh` to start a supervised instructs fine-tuning.
+#### Step 3: Training
+Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
 
-You can also use the following cmd to start a supervised instructs fine-tuning with your own settings.
+### RLHF Training Stage2 - Training Reward Model
 
-```bash
-colossalai run --nproc_per_node 1 --hostfile ./hostfile train_rlhf_sft.py \
-    --pretrain "gpt2" \
-    --model 'gpt2' \
-    --strategy colossalai_zero2 \
-    --save_path 'path to a directory where you want to stre the weights of the model' \
-    --dataset 'path to your dataset, which should be a json file' \
-    --batch_size 4 \
-    --accumulation_steps 8 \
-    --lr 2e-5 \
-    --max_datasets_size 60000 \
-    --max_epochs 1 \
-    --use_wandb
+Stage2 trains a reward model, which obtains corresponding scores by manually ranking different outputs for the same prompt and supervises the training of the reward model.
+
+#### Step 1: Data Collection
+Below shows the preference dataset format used in training the reward model.
+
+```json
+[
+    {"context": [
+        {
+          "from": "human",
+          "content": "Introduce butterflies species in Oregon."
+        }
+      ]
+      "chosen": [
+        {
+          "from": "assistant",
+          "content": "About 150 species of butterflies live in Oregon, with about 100 species are moths..."
+        },
+        ...
+      ],
+      "rejected": [
+        {
+          "from": "assistant",
+          "content": "Are you interested in just the common butterflies?  There are a few common ones which will be easy to find..."
+        },
+        ...
+      ]
+    },
+    ...
+]
 ```
 
-**Note**: the supervised dataset follows the same format as in Task I.
+#### Step 2: Preprocessing
+Similar to the second step in the previous stage, we format the reward data into the same structured format as used in step 2 of the SFT stage. You can run [prepare_preference_dataset.sh](./examples/data_preparation_scripts/prepare_preference_dataset.sh) to prepare the preference data for reward model training.
 
-### Arg List
+#### Step 3: Training
+You can run [train_rm.sh](./examples/training_scripts/train_rm.sh) to start the reward model training. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
 
-The same as in Task I.
+#### Features and Tricks in RM Training
 
-
-### Stage2 - Training reward model
-
-We train a reward model in stage 2, which obtains corresponding scores by manually ranking different outputs for the same prompt and supervises the training of the reward model.
-[[Stage2 tutorial video]](https://www.youtube.com/watch?v=gMx2CApKhuo)
-
-You can run the `examples/train_rm.sh` to start a reward model training.
-
-You can also use the following cmd to start training a reward model.
-
-```bash
-colossalai run --nproc_per_node 1 --hostfile ./hostfile train_reward_model.py \
-    --pretrain "/path/to/LLaMa-7B/" \
-    --model 'llama' \
-    --strategy colossalai_zero2 \
-    --loss_fn 'log_exp'\
-    --save_path 'rmstatic.pt' \
-```
-
-### Features and tricks in RM training
-
-- We support [Anthropic/hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf)and[rm-static](https://huggingface.co/datasets/Dahoas/rm-static) datasets.
+- We recommand using the [Anthropic/hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf)and[rm-static](https://huggingface.co/datasets/Dahoas/rm-static) datasets for training the reward model.
 - We support 2 kinds of loss function named `log_sig`(used by OpenAI) and `log_exp`(used by Anthropic).
-- We change the loss to `valid_acc` and `pair_dist` to monitor progress during training.
-- We add special token to the end of the sequence to get better result.
+- We log the training accuracy `train/acc`, `reward_chosen` and `reward_rejected` to monitor progress during training.
 - We use cosine-reducing lr-scheduler for RM training.
 - We set value_head as 1 liner layer and initialize the weight of value_head using N(0，1/(d_model + 1)) distribution.
-- We train a Bloom-560m reward model for 1 epoch and find the test acc of the model achieve the performance mentions in [Anthropics paper](https://arxiv.org/abs/2204.05862).
 
-### Experiment result
-
-Model performance in [Anthropics paper](https://arxiv.org/abs/2204.05862):
-
-<div align=middle> <img width="512" alt="image" src="https://user-images.githubusercontent.com/70618399/225263321-8d64c3a8-6877-4cc8-9b61-0e1c52d3d94f.png">
-
-<div align=left>Our training & test result of bloom-560m for 1 epoch:
-
-<div align=middle> <img width="512" alt="image" src="https://user-images.githubusercontent.com/70618399/225262950-a7f0a686-25de-44ec-98f2-11b83ea86674.png">
-
-<div align=left>We also train the reward model based on LLaMA-7B, which reaches the ACC of 72.06% after 1 epoch, performing almost the same as Anthropic's best RM.
-
-### Arg List
-
-- `--strategy`: the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
-- `--model`: model type, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
-- `--pretrain`: pretrain model, type=str, default=None
-- `--model_path`: the path of rm model(if continue to train), type=str, default=None
-- `--save_path`: path to save the model, type=str, default='output'
-- `--need_optim_ckpt`: whether to save optim ckpt, type=bool, default=False
-- `--max_epochs`: max epochs for training, type=int, default=3
-- `--dataset`: dataset name, type=str, choices=['Anthropic/hh-rlhf', 'Dahoas/rm-static']
-- `--subset`: subset of the dataset, type=str, default=None
-- `--batch_size`: batch size while training, type=int, default=4
-- `--lora_rank`: low-rank adaptation matrices rank, type=int, default=0
-- `--loss_func`: which kind of loss function, choices=['log_sig', 'log_exp']
-- `--max_len`: max sentence length for generation, type=int, default=512
-- `--use_wandb`: whether to use wandb
-
-
-### Note on Reward Model Training
+#### Note on Reward Model Training
 
 Before you move on the next stage, please check the following list to ensure that your reward model is stable and robust. You can check the reward chart and the accuracy chart on wandb.
 - The mean reward for chosen data is much higher than those for rejected data
@@ -270,73 +400,84 @@ Your training reward curves should look similar to the following charts.
 <img width="1000" alt="image" src="https://raw.githubusercontent.com/YeAnbang/imagehostingrepo/main/mean_reward_chart.png">
 </p>
 
-## Stage3 - Training model using prompts with RL
+### RLHF Training Stage3 - Proximal Policy Optimization
 
-Stage3 uses reinforcement learning algorithm, which is the most complex part of the training process, as shown below:
+In stage3 we will use reinforcement learning algorithm--- Proximal Policy Optimization (PPO), which is the most complex part of the training process:
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/stage-3.jpeg" width=800/>
 </p>
 
-You can run the `examples/train_prompts.sh` to start PPO training.
+#### Step 1: Data Collection
+PPO uses two kind of training data--- the prompt data and the pretrain data (optional). The first dataset is mandatory, data samples within the prompt dataset ends with a line from "human" and thus the "assistant" needs to generate a response to answer to the "human". Note that you can still use conversation that ends with a line from the "assistant", in that case, the last line will be dropped. Here is an example of the prompt dataset format.
 
-You can also use the cmd following to start PPO training.
-[[Stage3 tutorial video]](https://www.youtube.com/watch?v=Z8wwSHxPL9g)
-
-
-PPO Training Script
-```bash
-colossalai run --nproc_per_node 1 --hostfile ./hostfile train_prompts.py \
-    --pretrain_dataset 'path to sft dataset used in stage 1'  \
-    --prompt_dataset 'dataset that contains prompt (queries) for PPO training' \
-    --strategy colossalai_zero2 \
-    --num_episodes 8000 --num_collect_steps 1 --num_update_steps 1 \
-    --experience_batch_size 32 \
-    --train_batch_size 32 \
-    --save_path 'path to save the trained model' \
-    --ptx_coef 0.0 \
-    --rm_model 'gpt2' \
-    --rm_pretrain 'gpt2' \
-    --rm_path 'path to reward model trained in stage 2' \
-    --reward_model_tokenizer 'gpt2' \
-    --pretrain '/home/lcyab/data/Anthropic_rlhf/actor/pretrain_v3' \
-    --use_wandb
-
+```json
+[
+    {"messages":
+      [
+        {
+          "from": "human",
+          "content": "what are some pranks with a pen i can do?"
+        }
+        ...
+      ]
+    },
+]
 ```
-Prompt dataset: the instruction dataset mentioned in the above figure which includes the instructions, e.g. you can use the [script](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples/generate_prompt_dataset.py) which samples `instinwild_en.json` or `instinwild_ch.json` in [InstructionWild](https://github.com/XueFuzhao/InstructionWild/tree/main/data#instructwild-data) to generate the prompt dataset.
-Pretrain dataset: the pretrain dataset including the instruction and corresponding response, e.g. you can use the [InstructWild Data](https://github.com/XueFuzhao/InstructionWild/tree/main/data) in stage 1 supervised instructs tuning.
 
-**Note**: the required datasets follow the following format,
+The second dataset--- pretrained dataset is optional, provide it if you want to use the ptx loss introduced in the [InstructGPT paper](https://arxiv.org/abs/2203.02155). It follows the following format.
 
-- `pretrain dataset`
-
-  ```json
+```json
   [
       {
-          "instruction": "Provide a list of the top 10 most popular mobile games in Asia",
-          "input": "",
-          "output": "The top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
-          "id": 0
+          "source": "", # system instruction
+          "Target": "Provide a list of the top 10 most popular mobile games in Asia\nThe top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
       },
       ...
   ]
   ```
+#### Step 2: Preprocessing
+To prepare the prompt dataset for PPO training, simply run [prepare_prompt_dataset.sh](./examples/data_preparation_scripts/prepare_prompt_dataset.sh)
 
-- `prompt dataset`
+To prepare the pretrained dataset for PPO training, simply run [prepare_ptx_dataset.sh](./examples/data_preparation_scripts/prepare_ptx_dataset.sh)
 
-  ```json
-  [
-      {
-          "instruction": "Edit this paragraph to make it more concise: \"Yesterday, I went to the store and bought some things. Then, I came home and put them away. After that, I went for a walk and met some friends.\"",
-          "id": 0
-      },
-      {
-          "instruction": "Write a descriptive paragraph about a memorable vacation you went on",
-          "id": 1
-      },
-      ...
-  ]
-  ```
+#### Step 3: Training
+You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to start PPO training. Here are some unique arguments for PPO, please refer to the training configuration section for other training configuration. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
+
+```bash
+--pretrain $PRETRAINED_MODEL_PATH \
+--rm_pretrain $PRETRAINED_MODEL_PATH \ # reward model architectual
+--tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
+--rm_checkpoint_path $REWARD_MODEL_PATH \ # reward model checkpoint path
+--prompt_dataset ${prompt_dataset[@]} \ # List of string
+--pretrain_dataset ${ptx_dataset[@]} \ # List of string
+--ptx_batch_size 1 \ # batch size for calculate ptx loss
+--ptx_coef 0.0 \ # none-zero if ptx loss is enable
+--num_episodes 2000 \ # number of episodes to train
+--num_collect_steps 1 \
+--num_update_steps 1 \
+--experience_batch_size 8 \
+--train_batch_size 4 \
+--accumulation_steps 2
+```
+
+Each episode has two phases, the collect phase and the update phase. During the collect phase, we will collect experiences (answers generated by actor), store those in ExperienceBuffer. Then data in ExperienceBuffer is used during the update phase to update parameter of actor and critic.
+
+- Without tensor parallelism,
+```
+experience buffer size
+= num_process * num_collect_steps * experience_batch_size
+= train_batch_size * accumulation_steps * num_process
+```
+
+- With tensor parallelism,
+```
+num_tp_group = num_process / tp
+experience buffer size
+= num_tp_group * num_collect_steps * experience_batch_size
+= train_batch_size * accumulation_steps * num_tp_group
+```
+
 ### Sample Training Results Using Default Script
 #### Reward
 <p align="center">
@@ -361,30 +502,23 @@ Answer: The causes to this problem are two-fold. Check your reward model, make s
 #### Q4: Generation is garbage
 Answer: Yes, this happens and is well documented by other implementations. After training for too many episodes, the actor gradually deviate from its original state, which may leads to decrease in language modeling capabilities. A way to fix this is to add suppervised loss during PPO. Set ptx_coef to a none-zero value (between 0 and 1), which balances PPO loss and sft loss.
 
-### Arg List
 
-- `--strategy`: the strategy using for training, choices=['ddp', 'colossalai_gemini', 'colossalai_zero2'], default='colossalai_zero2'
-- `--model`: model type of actor, choices=['gpt2', 'bloom', 'opt', 'llama'], default='bloom'
-- `--pretrain`: pretrain model, type=str, default=None
-- `--rm_model`: reward model type, type=str, choices=['gpt2', 'bloom', 'opt', 'llama'], default=None
-- `--rm_pretrain`: pretrain model for reward model, type=str, default=None
-- `--rm_path`: the path of rm model, type=str, default=None
-- `--save_path`: path to save the model, type=str, default='output'
-- `--prompt_dataset`: path of the prompt dataset, type=str, default=None
-- `--pretrain_dataset`: path of the ptx dataset, type=str, default=None
-- `--need_optim_ckpt`: whether to save optim ckpt, type=bool, default=False
-- `--num_episodes`: num of episodes for training, type=int, default=10
-- `--num_update_steps`: number of steps to update policy per episode, type=int
-- `--num_collect_steps`: number of steps to collect experience per episode, type=int
-- `--train_batch_size`: batch size while training, type=int, default=8
-- `--ptx_batch_size`: batch size to compute ptx loss, type=int, default=1
-- `--experience_batch_size`: batch size to make experience, type=int, default=8
-- `--lora_rank`: low-rank adaptation matrices rank, type=int, default=0
-- `--kl_coef`: kl_coef using for computing reward, type=float, default=0.1
-- `--ptx_coef`: ptx_coef using for computing policy loss, type=float, default=0.9
-- `--use_wandb`
+## Alternative Option For RLHF: Direct Preference Optimization
 
-## Inference example - After Stage3
+For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in the paper (available at [https://arxiv.org/abs/2305.18290](https://arxiv.org/abs/2305.18290)), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO.
+
+### DPO Training Stage1 - Supervised Instructs Tuning
+
+Please refer the [sft section](#dpo-training-stage1---supervised-instructs-tuning) in the PPO part.
+
+### DPO Training Stage2 - DPO Training
+#### Step 1: Data Collection & Preparation
+For DPO training, you only need the preference dataset. Please follow the instruction in the [preference dataset preparation section](#rlhf-training-stage2---training-reward-model) to prepare the preference data for DPO training.
+
+#### Step 2: Training
+You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to start DPO training. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
+
+## Inference example
 
 We support different inference options, including int8 and int4 quantization.
 For details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
@@ -392,122 +526,3 @@ For details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/mai
 ## Attention
 
 The examples are demos for the whole training process.You need to change the hyper-parameters to reach great performance.
-
-#### data
-
-- [x] [rm-static](https://huggingface.co/datasets/Dahoas/rm-static)
-- [x] [hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf)
-- [ ] [openai/summarize_from_feedback](https://huggingface.co/datasets/openai/summarize_from_feedback)
-- [ ] [openai/webgpt_comparisons](https://huggingface.co/datasets/openai/webgpt_comparisons)
-- [ ] [Dahoas/instruct-synthetic-prompt-responses](https://huggingface.co/datasets/Dahoas/instruct-synthetic-prompt-responses)
-
-## Support Model
-
-### GPT
-
-- [x] GPT2-S (s)
-- [x] GPT2-M (m)
-- [x] GPT2-L (l)
-- [x] GPT2-XL (xl)
-- [x] GPT2-4B (4b)
-- [ ] GPT2-6B (6b)
-
-### BLOOM
-
-- [x] [BLOOM-560m](https://huggingface.co/bigscience/bloom-560m)
-- [x] [BLOOM-1b1](https://huggingface.co/bigscience/bloom-1b1)
-- [x] [BLOOM-3b](https://huggingface.co/bigscience/bloom-3b)
-- [x] [BLOOM-7b](https://huggingface.co/bigscience/bloom-7b1)
-- [ ] [BLOOM-175b](https://huggingface.co/bigscience/bloom)
-
-### OPT
-
-- [x] [OPT-125M](https://huggingface.co/facebook/opt-125m)
-- [x] [OPT-350M](https://huggingface.co/facebook/opt-350m)
-- [x] [OPT-1.3B](https://huggingface.co/facebook/opt-1.3b)
-- [x] [OPT-2.7B](https://huggingface.co/facebook/opt-2.7b)
-- [x] [OPT-6.7B](https://huggingface.co/facebook/opt-6.7b)
-- [ ] [OPT-13B](https://huggingface.co/facebook/opt-13b)
-- [ ] [OPT-30B](https://huggingface.co/facebook/opt-30b)
-
-### [LLaMA](https://github.com/facebookresearch/llama/blob/main/MODEL_CARD.md)
-
-- [x] LLaMA-7B
-- [x] LLaMA-13B
-- [ ] LLaMA-33B
-- [ ] LLaMA-65B
-
-## Add your own models
-
-If you want to support your own model in Coati, please refer the pull request for RoBERTa support as an example --[[chatgpt] add pre-trained model RoBERTa for RLHF stage 2 & 3](https://github.com/hpcaitech/ColossalAI/pull/3223), and submit a PR to us.
-
-You should complete the implementation of four model classes, including Reward model, Critic model, LM model, Actor model
-
-here are some example code for a NewModel named `Coati`.
-if it is supported in huggingface [transformers](https://github.com/huggingface/transformers), you can load it by `from_pretrained`, o
-r you can build your own model by yourself.
-
-### Actor model
-
-```python
-from ..base import Actor
-from transformers.models.coati import CoatiModel
-
-class CoatiActor(Actor):
-    def __init__(self,
-                 pretrained: Optional[str] = None,
-                 checkpoint: bool = False,
-                 lora_rank: int = 0,
-                 lora_train_bias: str = 'none') -> None:
-        if pretrained is not None:
-            model = CoatiModel.from_pretrained(pretrained)
-        else:
-            model = build_model() # load your own model if it is not support in transformers
-
-        super().__init__(model, lora_rank, lora_train_bias)
-```
-
-### Reward model
-
-```python
-from ..base import RewardModel
-from transformers.models.coati import CoatiModel
-
-class CoatiRM(RewardModel):
-
-    def __init__(self,
-                 pretrained: Optional[str] = None,
-                 checkpoint: bool = False,
-                 lora_rank: int = 0,
-                 lora_train_bias: str = 'none') -> None:
-        if pretrained is not None:
-            model = CoatiModel.from_pretrained(pretrained)
-        else:
-            model = build_model() # load your own model if it is not support in transformers
-
-        value_head = nn.Linear(model.config.n_embd, 1)
-        value_head.weight.data.normal_(mean=0.0, std=1 / (model.config.n_embd + 1))
-        super().__init__(model, value_head, lora_rank, lora_train_bias)
-```
-
-### Critic model
-
-```python
-from ..base import Critic
-from transformers.models.coati import CoatiModel
-
-class CoatiCritic(Critic):
-    def __init__(self,
-                 pretrained: Optional[str] = None,
-                 checkpoint: bool = False,
-                 lora_rank: int = 0,
-                 lora_train_bias: str = 'none') -> None:
-        if pretrained is not None:
-            model = CoatiModel.from_pretrained(pretrained)
-        else:
-            model = build_model() # load your own model if it is not support in transformers
-
-        value_head = nn.Linear(model.config.n_embd, 1)
-        value_head.weight.data.normal_(mean=0.0, std=1 / (model.config.n_embd + 1))
-        super().__init__(model, value_head, lora_rank, lora_train_bias)
-```

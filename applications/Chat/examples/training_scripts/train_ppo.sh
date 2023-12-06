@@ -1,5 +1,4 @@
 #!/bin/bash
-
 set_n_least_used_CUDA_VISIBLE_DEVICES() {
     local n=${1:-"9999"}
     echo "GPU Memory Usage:"
@@ -26,28 +25,36 @@ export OMP_NUM_THREADS=8
 
 
 PROJECT_NAME="llama2-ppo"
-PARENT_SAVE_DIR="/home/lcyab/data/models/coati_refactor_experiments/output/ppo/ckpt"
-PARENT_TENSORBOARD_DIR="/home/lcyab/data/models/coati_refactor_experiments/output/ppo/tensorboard"
-PARENT_CONFIG_FILE="/home/lcyab/data/models/coati_refactor_experiments/output/ppo/train_config"
-PRETRAINED_MODEL_PATH="/home/lcyab/data/models/coati_refactor_experiments/sft/output/ckptllama2-sft-2023-11-28-21-10-49/epoch-0_step-5000/modeling"  #"/home/lcyab/data/models/experiments5/checkpoint/experiment5-2023-10-20-21-53-51/modeling/"  #"/mnt/vepfs/lcxyc/leaderboard_models/Colossal-LLaMA-2-7b-base/"
-REWARD_MODEL_PATH="/home/lcyab/data/models/coati_refactor_experiments/rm/output/ckptllama2-rm-2023-11-28-13-17-45/epoch-1_step-4748/modeling"  #"/mnt/vepfs/lcxyc/leaderboard_models/Colossal-LLaMA-2-7b-base/"
-PRETRAINED_TOKENIZER_PATH="/home/lcyab/data/models/Sheared-LLaMA-1.3B"  # "/mnt/vepfs/lcxyc/leaderboard_models/Colossal-LLaMA-2-7b-base/"  # "/home/lcyab/data/models/bloom-560m" #
+PARENT_SAVE_DIR="save_dir/ckpt"
+PARENT_TENSORBOARD_DIR="save_dir/tensorboard"
+PARENT_CONFIG_FILE="save_dir/train_config"
+PRETRAINED_MODEL_PATH="sft_model_save_dir/modeling"
+REWARD_MODEL_PATH="reward_model_save_dir/modeling"
+PRETRAINED_TOKENIZER_PATH="pretrained/model/path"  # "/mnt/vepfs/lcxyc/leaderboard_models/Colossal-LLaMA-2-7b-base/"  # "/home/lcyab/data/models/bloom-560m" #
 declare -a prompt_dataset=(
-    # /home/lcyab/data/data_rlhf/test_tiny_data/tokenized_prompt_data_llama/arrow/part-00000
-    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00000
-    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00001
-    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00002
-    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00003
-    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00004
-    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00005
-    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00006
-    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00007
-    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00008
-    /home/lcyab/data/data_rlhf/tokenized_prompt_dataset_llama/arrow/part-00009
+    path/to/prompt/data/arrow/part-00000
+    path/to/prompt/data/arrow/part-00001
+    path/to/prompt/data/arrow/part-00002
+    path/to/prompt/data/arrow/part-00003
+    path/to/prompt/data/arrow/part-00004
+    path/to/prompt/data/arrow/part-00005
+    path/to/prompt/data/arrow/part-00006
+    path/to/prompt/data/arrow/part-00007
+    path/to/prompt/data/arrow/part-00008
+    path/to/prompt/data/arrow/part-00009
 )
 
 declare -a ptx_dataset=(
-    /home/lcyab/data/data_rlhf/test_tiny_data/tokenized_ptx_data_llama/arrow/part-00000
+    path/to/ptx/data/arrow/part-00000
+    path/to/ptx/data/arrow/part-00001
+    path/to/ptx/data/arrow/part-00002
+    path/to/ptx/data/arrow/part-00003
+    path/to/ptx/data/arrow/part-00004
+    path/to/ptx/data/arrow/part-00005
+    path/to/ptx/data/arrow/part-00006
+    path/to/ptx/data/arrow/part-00007
+    path/to/ptx/data/arrow/part-00008
+    path/to/ptx/data/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)

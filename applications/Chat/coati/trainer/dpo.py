@@ -117,7 +117,6 @@ class DPOTrainer(SLTrainer):
         )
         for i, batch in enumerate(self.train_dataloader):
             batch = to_device(batch, self.device)
-            # print(batch)
             (
                 chosen_input_ids,
                 chosen_attention_mask,

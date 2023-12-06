@@ -32,7 +32,7 @@ setup(
     license="Apache Software License 2.0",
     url="https://github.com/hpcaitech/Coati",
     install_requires=fetch_requirements("requirements.txt"),
-    python_requires=">=3.6",
+    python_requires=">=3.7",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: Apache Software License",

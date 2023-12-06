@@ -1,5 +1,4 @@
 #!/bin/bash
-
 set_n_least_used_CUDA_VISIBLE_DEVICES() {
     local n=${1:-"9999"}
     echo "GPU Memory Usage:"
@@ -15,6 +14,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
 set_n_least_used_CUDA_VISIBLE_DEVICES 4
+
 # NCCL IB environment variables
 export NCCL_IB_HCA=mlx5_1:1,mlx5_2:1,mlx5_3:1,mlx5_4:1
 export NCCL_IB_DISABLE=0
@@ -24,25 +24,23 @@ export NCCL_IB_TIMEOUT=23
 export NCCL_IB_RETRY_CNT=7
 export OMP_NUM_THREADS=8
 
-
 PROJECT_NAME="llama2-rm"
-PARENT_SAVE_DIR="/home/lcyab/data/models/coati_refactor_experiments/rm/output/ckpt"
-PARENT_TENSORBOARD_DIR="/home/lcyab/data/models/coati_refactor_experiments/rm/output/tensorboard"
-PARENT_CONFIG_FILE="/home/lcyab/data/models/coati_refactor_experiments/rm/output/train_config"
-PRETRAINED_MODEL_PATH="/home/lcyab/data/models/Sheared-LLaMA-1.3B"  #"/home/lcyab/data/models/experiments5/checkpoint/experiment5-2023-10-20-21-53-51/modeling/"  #"/mnt/vepfs/lcxyc/leaderboard_models/Colossal-LLaMA-2-7b-base/"
-PRETRAINED_TOKENIZER_PATH="/home/lcyab/data/models/Sheared-LLaMA-1.3B"  #"/mnt/vepfs/lcxyc/leaderboard_models/Colossal-LLaMA-2-7b-base/"  #"/home/lcyab/data/models/bloom-560m" #"/mnt/vepfs/lcxyc/leaderboard_models/Colossal-LLaMA-2-7b-base/"
+PARENT_SAVE_DIR="save_dir/ckpt"
+PARENT_TENSORBOARD_DIR="save_dir/tensorboard"
+PARENT_CONFIG_FILE="save_dir/train_config"
+PRETRAINED_MODEL_PATH="pretrained/model/path"
+PRETRAINED_TOKENIZER_PATH="pretrained/model/path"
 declare -a dataset=(
-    # /home/lcyab/data/data_rlhf/test_tiny_data/tokenized_preference_data_llama/arrow/part-00000
-    /home/lcyab/data/data_rlhf/tokenized_preference_data_llama/arrow/part-00000
-    /home/lcyab/data/data_rlhf/tokenized_preference_data_llama/arrow/part-00001
-    /home/lcyab/data/data_rlhf/tokenized_preference_data_llama/arrow/part-00002
-    /home/lcyab/data/data_rlhf/tokenized_preference_data_llama/arrow/part-00003
-    /home/lcyab/data/data_rlhf/tokenized_preference_data_llama/arrow/part-00004
-    /home/lcyab/data/data_rlhf/tokenized_preference_data_llama/arrow/part-00005
-    /home/lcyab/data/data_rlhf/tokenized_preference_data_llama/arrow/part-00006
-    /home/lcyab/data/data_rlhf/tokenized_preference_data_llama/arrow/part-00007
-    /home/lcyab/data/data_rlhf/tokenized_preference_data_llama/arrow/part-00008
-    /home/lcyab/data/data_rlhf/tokenized_preference_data_llama/arrow/part-00009
+    path/to/preference/data/arrow/part-00000
+    path/to/preference/data/arrow/part-00001
+    path/to/preference/data/arrow/part-00002
+    path/to/preference/data/arrow/part-00003
+    path/to/preference/data/arrow/part-00004
+    path/to/preference/data/arrow/part-00005
+    path/to/preference/data/arrow/part-00006
+    path/to/preference/data/arrow/part-00007
+    path/to/preference/data/arrow/part-00008
+    path/to/preference/data/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
@@ -66,5 +64,5 @@ colossalai run --nproc_per_node 4 --hostfile hostfile --master_port 30035 train_
     --grad_clip 1.0 \
     --weight_decay 0.01 \
     --warmup_steps 100 \
-    # --use_wandb \
-    # --grad_checkpoint \
+    --grad_checkpoint \
+    --use_wandb

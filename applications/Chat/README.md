@@ -36,7 +36,7 @@
 
 ---
 
-## What is ColossalChat and Coati ?
+## What Is ColossalChat And Coati ?
 
 [ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) is the project to implement LLM with RLHF, powered by the [Colossal-AI](https://github.com/hpcaitech/ColossalAI) project.
 
@@ -91,7 +91,7 @@ More details can be found in the latest news.
 
 ## Install
 
-### Install the environment
+### Install the Environment
 
 ```bash
 conda create -n colossal-chat python=3.10.9 (>=3.8.7)
@@ -120,33 +120,14 @@ cd $COLOSSAL_AI_ROOT/applications/Chat
 pip install .
 ```
 
-### Install the Transformers
+## How To Use?
 
-```bash
-pip install transformers==4.30.2
-```
+### RLHF Training Stage1 - Supervised Instructs Tuning
 
-## How to use?
+Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. Here's a detailed guide on how to SFT your LLM with ColossalChat:
 
-### Supervised datasets collection
-
-We collected 104K bilingual datasets of Chinese and English, and you can find the datasets in this repo
-[InstructionWild](https://github.com/XueFuzhao/InstructionWild) and in this [file](https://github.com/XueFuzhao/InstructionWild/blob/main/data/README.md).
-
-Here is how we collected the data
-
-<p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/data-collect.png" width=500/>
-</p>
-
-### RLHF Training Stage1 - Supervised instructs tuning
-
-Stage1 is supervised instructs fine-tuning, which uses the datasets mentioned earlier to fine-tune the model.
-
-You can run the `examples/train_sft.sh` to start a supervised instructs fine-tuning.
-[[Stage1 tutorial video]](https://www.youtube.com/watch?v=-qFBZFmOJfg)
-
-**Note**: the supervised dataset follows the following format,
+#### Step 1: Data Collection
+The first step in Stage 1 is to collect a dataset of human demonstrations of the following format.
 
 ```json
 [
@@ -167,36 +148,46 @@ You can run the `examples/train_sft.sh` to start a supervised instructs fine-tun
 ]
 ```
 
-### RLHF Training Stage2 - Training reward model
+#### Step 2: Preprocessing
+Once you have collected your SFT dataset, you will need to preprocess it. This involves four steps: data cleaning, data deduplication, formating and tokenization. In this code, we will focus on formating and tokenization. The formating step adopts our elaborately designed conversation template to convert the raw conversation the following format.
+
+```
+<s> A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.
+
+Human: <s> what are some pranks with a pen i can do?</s> Assistant: <s> Are you looking for practical joke ideas?</s>
+...
+```
+The tokenization step tokenize the formatted conversation, calculate input_ids, labels, attention_masks and buffer those into dataset files. We provide scripts for data formatting and tokenization for SFT. Simply run the [prepare_sft_dataset.sh](./examples/data_preparation_scripts/prepare_sft_dataset.sh).
+
+#### Step 3: Training
+Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning.
+
+### RLHF Training Stage2 - Training Reward Model
 
 Stage2 trains a reward model, which obtains corresponding scores by manually ranking different outputs for the same prompt and supervises the training of the reward model.
 
-Below shows the preference dataset used in training the reward model.
+#### Step 1: Data Collection
+Below shows the preference dataset format used in training the reward model.
 
 ```json
 [
     {"context": [
         {
           "from": "human",
-          "content": "what are some pranks with a pen i can do?"
-        },
-        {
-          "from": "assistant",
-          "content": "Are you looking for practical joke ideas?"
-        },
-        ...
+          "content": "Introduce butterflies species in Oregon."
+        }
       ]
       "chosen": [
         {
           "from": "assistant",
-          "content": "About 150 species of butterflies live in Oregon, with about 100 species are moths, and about 20 species are common here year-round, and another 10 species are seen here year-round.  I suggest you keep an eye out for skippers, gossamer wings, and red admirals."
+          "content": "About 150 species of butterflies live in Oregon, with about 100 species are moths..."
         },
         ...
       ],
       "rejected": [
         {
           "from": "assistant",
-          "content": "Are you interested in just the common butterflies?  There are a few common ones which will be easy to find.  Like the Monarch, Western Tiger Swallowtail and several other swallowtail butterflies.  The Monarch is known for being a very common and beautiful butterfly.  Are you interested in butterflies because you have children?"
+          "content": "Are you interested in just the common butterflies?  There are a few common ones which will be easy to find..."
         },
         ...
       ]
@@ -205,25 +196,40 @@ Below shows the preference dataset used in training the reward model.
 ]
 ```
 
-You can run the `examples/train_rm.sh` to start a reward model training.
-[[Stage2 tutorial video]](https://www.youtube.com/watch?v=gMx2CApKhuo)
+#### Step 2: Preprocessing
+Similar to the second step in the previous stage, we format the reward data into the same structured format as used in step 2 of the SFT stage. You can run [prepare_preference_dataset.sh](./examples/data_preparation_scripts/prepare_preference_dataset.sh) to prepare the preference data for reward model training.
 
-### RLHF Training Stage3 - Training model with reinforcement learning by human feedback
+#### Step 3: Training
+You can run [train_rm.sh](./examples/training_scripts/train_rm.sh) to start the reward model training.
 
-Stage3 uses reinforcement learning algorithm, which is the most complex part of the training process:
+### RLHF Training Stage3 - Proximal Policy Optimization
+
+In stage3 we will use reinforcement learning algorithm--- Proximal Policy Optimization (PPO), which is the most complex part of the training process:
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/stage-3.jpeg" width=800/>
 </p>
 
-You can run the `examples/train_prompts.sh` to start training PPO with human feedback.
-[[Stage3 tutorial video]](https://www.youtube.com/watch?v=Z8wwSHxPL9g)
+#### Step 1: Data Collection
+PPO uses two kind of training data--- the prompt data and the pretrain data (optional). The first dataset is mandatory, data samples within the prompt dataset ends with a line from "human" and thus the "assistant" needs to generate a response to answer to the "human". Note that you can still use conversation that ends with a line from the "assistant", in that case, the last line will be dropped. Here is an example of the prompt dataset format.
 
-**Note**: the required datasets follow the following format,
+```json
+[
+    {"messages":
+      [
+        {
+          "from": "human",
+          "content": "what are some pranks with a pen i can do?"
+        }
+        ...
+      ]
+    },
+]
+```
 
-- `pretrain dataset (for ptx loss in ppo)`
+The second dataset--- pretrained dataset is optional, provide it if you want to use the ptx loss introduced in the [InstructGPT paper](https://arxiv.org/abs/2203.02155). It follows the following format.
 
-  ```json
+```json
   [
       {
           "source": "", # system instruction
@@ -232,37 +238,62 @@ You can run the `examples/train_prompts.sh` to start training PPO with human fee
       ...
   ]
   ```
+#### Step 2: Data Preprocessing
+To prepare the prompt dataset for PPO training, simply run [prepare_prompt_dataset.sh](./examples/data_preparation_scripts/prepare_prompt_dataset.sh)
 
-- `prompt dataset`
+To prepare the pretrained dataset for PPO training, simply run [prepare_ptx_dataset.sh](./examples/data_preparation_scripts/prepare_ptx_dataset.sh)
 
-  ```json
-  # The format is the same with sft data. But the last sentence from assistant will be ignored. Only question (prompt) will be preserved. Therefore, even dataset without answer can be used as prompt dataset (e.g. red teaming data)
-  [
-    {"context":
-      [
-        {
-          "from": "human",
-          "content": "what are some pranks with a pen i can do?"
-        },
-        # Optional
-        {
-          "from": "assistant",
-          "content": "Are you looking for practical joke ideas?"
-        },
-        ...
-      ]
-    },
-    ...
-  ]
-  ```
+#### Step 3: Training
+You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to start PPO training. Here are some unique arguments for PPO, please refer to the training configuration section for other training configuration.
 
-For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples).
+```bash
+--pretrain $PRETRAINED_MODEL_PATH \
+--rm_pretrain $PRETRAINED_MODEL_PATH \ # reward model architectual
+--tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
+--rm_checkpoint_path $REWARD_MODEL_PATH \ # reward model checkpoint path
+--prompt_dataset ${prompt_dataset[@]} \ # List of string
+--pretrain_dataset ${ptx_dataset[@]} \ # List of string
+--ptx_batch_size 1 \ # batch size for calculate ptx loss
+--ptx_coef 0.0 \ # none-zero if ptx loss is enable
+--num_episodes 2000 \ # number of episodes to train
+--num_collect_steps 1 \
+--num_update_steps 1 \
+--experience_batch_size 8 \
+--train_batch_size 4 \
+--accumulation_steps 2
+```
 
-## Alternative Option For RLHF: DPO
+Each episode has two phases, the collect phase and the update phase. During the collect phase, we will collect experiences (answers generated by actor), store those in ExperienceBuffer. Then data in ExperienceBuffer is used during the update phase to update parameter of actor and critic.
+
+- Without tensor parallelism,
+```
+experience buffer size
+= num_process * num_collect_steps * experience_batch_size
+= train_batch_size * accumulation_steps * num_process
+```
+
+- With tensor parallelism,
+```
+num_tp_group = num_process / tp
+experience buffer size
+= num_tp_group * num_collect_steps * experience_batch_size
+= train_batch_size * accumulation_steps * num_tp_group
+```
+
+## Alternative Option For RLHF: Direct Preference Optimization
 
 For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in the paper (available at [https://arxiv.org/abs/2305.18290](https://arxiv.org/abs/2305.18290)), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO.
 
-For more details, see [`examples/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/examples).
+### DPO Training Stage1 - Supervised Instructs Tuning
+
+Please refer the [sft section](#dpo-training-stage1---supervised-instructs-tuning) in the PPO part.
+
+### DPO Training Stage2 - DPO Training
+#### Step 1: Data Collection & Preparation
+For DPO training, you only need the preference dataset. Please follow the instruction in the [preference dataset preparation section](#rlhf-training-stage2---training-reward-model) to prepare the preference data for DPO training.
+
+#### Step 2: Training
+You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to start DPO training.
 
 ### Inference Quantization and Serving - After Training
 
