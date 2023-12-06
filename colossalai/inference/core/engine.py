@@ -3,6 +3,7 @@ from typing import Optional
 
 from .request_handler import RequestHandler
 from ..config import ColossalInferConfig
+from transformers import AutoConfig, PretrainedConfig
 
 
 class InferEngine:
@@ -33,6 +34,7 @@ class InferEngine:
         self._init_model()
         self.request_handler = RequestHandler()
         self.tokenizer = tokenizer
+        self.hf_model_config = self._get_hf_model_config()
         if use_logger:
             self.logger = Logger()
 
@@ -43,6 +45,17 @@ class InferEngine:
             1. 用户自定义(from local path)
             2. 从checkpoint加载(hugging face)
         """
+        
+    def _get_hf_model_config(self) -> PretrainedConfig:
+        """
+        Get huggingface config.
+
+        Returns:
+            PretrainedConfig: The huggingface configuration object of imput model. 
+        """
+        return AutoConfig.from_pretrained(
+            self.model, trust_remote_code=self.trust_remote_code, revision=self.revision
+        )
 
     def _verify_config(self):
         """

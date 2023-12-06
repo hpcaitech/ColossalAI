@@ -2,7 +2,6 @@ from typing import Optional, Union
 
 import torch
 import torch.nn as nn
-from transformers import AutoConfig, PretrainedConfig
 
 
 class ColossalInferConfig:
