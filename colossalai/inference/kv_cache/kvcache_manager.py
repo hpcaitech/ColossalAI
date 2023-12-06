@@ -37,20 +37,13 @@ class KVCacheManager:
         self.max_batch_size = config.max_batch_size
         self.max_input_length = config.max_input_length
         self.max_output_length = config.max_output_length
-
-        # Logical cache blocks allocation
+        # Cache block settings
         self.block_size = config.block_size
         # NOTE: `num_blocks` is not prompted, but evaluated from the maximum input/output length, and the maximum batch size
         self.max_blocks_per_sequence = (
             self.max_input_length + self.max_output_length + self.block_size - 1
         ) // self.block_size
         self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size * self.beam_width
-        self.available_blocks = self.num_blocks
-        self._free_blocks = self._init_logical_caches()
-        self._cache_blocks = tuple(self._free_blocks)
-        self._allocated_blocks = []
-        # block availablity state 0->allocated, 1->free
-        self._block_states = torch.ones((self.num_blocks,), dtype=torch.bool, device="cpu")
 
         # Physical cache allocation
         alloc_shape = (self.num_blocks, self.block_size, self.num_heads, self.head_size)
@@ -67,6 +60,14 @@ class KVCacheManager:
             * self.head_size
         )
 
+        # Logical cache blocks allocation
+        self.available_blocks = self.num_blocks
+        self._free_blocks = self._init_logical_caches()
+        self._cache_blocks = tuple(self._free_blocks)
+        self._allocated_blocks = []
+        # block availablity state 0->allocated, 1->free
+        self._block_states = torch.ones((self.num_blocks,), dtype=torch.bool)
+
     def get_total_num_blocks(self) -> int:
         """Get the total number of logical cache blocks."""
         return self.num_blocks
@@ -74,36 +75,6 @@ class KVCacheManager:
     def get_max_blocks_per_sequence(self) -> int:
         """Get the maximum number of blocks that can be allocated for a single sequence."""
         return self.max_blocks_per_sequence
-
-    def allocate_from_last_block_idx(self, last_block_id: int, space_asked: int = 1) -> List[int]:
-        """Allocate the logical cache blocks for a single sequence.
-        It returns the allocated block ids as a list.
-
-        Args:
-            last_block_id: The last-allocated block id in the block table of the sequence.
-            space_asked: i.e. The number of tokens required to assign space for.
-        Returns:
-            A list of allocated block ids. If the prompted last-allocated block has enough space,
-            it will be the only one in the list.
-        """
-        blocks = []
-        last_block: CacheBlock = self._cache_blocks[last_block_id]
-        if last_block.has_space():
-            if last_block.has_ref():
-                # TODO: Should turn to use a new block
-                raise NotImplementedError("Copy-On-Write is not supported yet.")
-            space_asked = self._allocate_on_block(last_block, space_asked)
-            blocks.append(last_block_id)
-        while space_asked > 0:
-            new_block: CacheBlock = self._free_blocks.pop(0)
-            new_block.add_ref()
-            space_asked = self._allocate_on_block(new_block, space_asked)
-            self._allocated_blocks.append(new_block)
-            self.available_blocks -= 1
-            blocks.append(new_block.block_id)
-            self._block_states[new_block.block_id] = 0
-
-        return blocks
 
     def allocate_from_block_table(
         self, block_table: torch.Tensor, already_allocated_len: int, space_asked: int = 1
@@ -167,40 +138,64 @@ class KVCacheManager:
                 self._free_blocks.append(block)
                 self.available_blocks += 1
                 self._block_states[global_block_id] = 1
-                # NOTE reset the block id in the block table (if we maintain a 2D tensors as block tables in Engine)
+                # reset the block id in the block table (if we maintain a 2D tensors as block tables in Engine)
                 block_table[i] = -1
 
+    def clear_cache_blocks(self) -> None:
+        """Clear all the reference and allocation on logical cache blocks."""
+        for block in self._cache_blocks:
+            block.clear()
+        self._free_blocks = tuple(self._cache_blocks)
+        self._allocated_blocks = []
+        self.available_blocks = self.num_blocks
+        self._block_states[:] = 1
+
     def get_physical_cache(self, layer_id: int, block_idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Get the corresponding tensor for the provided block id for a specific layer."""
+        """Get the tensor corresponding to the cache block with the prompted id for a specific layer."""
         return self._kv_caches[0][layer_id][block_idx], self._kv_caches[1][layer_id][block_idx]
 
     def _allocate_on_block(self, block: CacheBlock, space_asked: int) -> int:
-        """Allocate a specific size of space on a cache block.
+        """Allocate a specific size of space on a provided cache block.
 
         Returns:
             The remaining space required to be allocated (in other blocks).
         """
-        available_space = block.available_space()
-        assert available_space > 0, "No available blocks to allocate."
-        space_to_allocate = min(available_space, space_asked)
+        assert block.available_space > 0, "No available blocks to allocate."
+        space_to_allocate = min(block.available_space, space_asked)
         block.allocate(space_to_allocate)
         return space_asked - space_to_allocate
 
     def _init_logical_caches(self):
-        """Initialize the logical cache blocks."""
+        """Initialize the logical cache blocks.
+
+        NOTE This function should be called only after the physical caches have been allocated.
+        The data pointers of physical caches will be binded to each logical cache block.
+        """
+        assert self._kv_caches is not None and len(self._kv_caches[0]) > 0
         blocks = []
+        physical_block_size = self.elem_size_in_bytes * self.block_size * self.num_heads * self.head_size
+        k_ptrs = [
+            self._kv_caches[0][layer_idx].data_ptr() - physical_block_size for layer_idx in range(self.num_layers)
+        ]
+        v_ptrs = [
+            self._kv_caches[1][layer_idx].data_ptr() - physical_block_size for layer_idx in range(self.num_layers)
+        ]
         for i in range(self.num_blocks):
-            cache_block = CacheBlock(i, self.block_size, self.elem_size_in_bytes)
+            k_ptrs = [first_block_ptr + physical_block_size for first_block_ptr in k_ptrs]
+            v_ptrs = [first_block_ptr + physical_block_size for first_block_ptr in v_ptrs]
+            cache_block = CacheBlock(i, self.block_size, self.elem_size_in_bytes, k_ptrs, v_ptrs)
             blocks.append(cache_block)
         return blocks
 
     def _init_device_caches(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Initialize the physical cache on the device.
+
         For each layer of the model, we allocate two tensors for key and value respectively,
         with shape of [num_blocks, block_size, num_head, head_size]
-        TODO: Explore the performance when using difference shapes with kernel-related optimizations
         """
         alloc_shape = (self.num_blocks, self.block_size, self.num_heads, self.head_size)
+        # TODO: Explore the performance when using difference shapes with kernel-related optimizations
+        #       e.g. [num_blocks, block_size, num_head // x, head_size, x]
         k_cache: List[torch.Tensor] = []
         v_cache: List[torch.Tensor] = []
         for _ in range(self.num_layers):

@@ -34,7 +34,7 @@ def test_logical_blocks(test_config):
     block = CacheBlock(block_id=0, block_size=test_config["block_size"], elem_size=test_config["elem_size"])
 
     assert block.is_empty()
-    assert block.has_space()
+    assert block.available_space == test_config["block_size"]
     assert not block.has_ref()
     block.add_ref()
     assert block.ref_count == 1
@@ -44,7 +44,7 @@ def test_logical_blocks(test_config):
     block.allocate(1)
     assert block.allocated_size == 1
     block.allocate(test_config["block_size"] - 1)
-    assert not block.has_space()
+    assert block.available_space < 1
 
 
 @parameterize(
