@@ -3,6 +3,7 @@
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 import torch
+import torch.distributed as dist
 
 from .base_accelerator import BaseAccelerator
 
@@ -45,6 +46,8 @@ class NpuAccelerator(BaseAccelerator):
         """
         Bind the current process to a device.
         """
+        if device is None:
+            device = dist.get_rank() % self.device_count()
         torch.npu.set_device(device)
 
     def get_device_name(self, device: Union[torch.device, int]) -> str:
