@@ -2,6 +2,7 @@ from logging import Logger
 from typing import Optional
 
 from .request_handler import RequestHandler
+from ..config import ColossalInferConfig
 
 
 class InferEngine:
@@ -15,36 +16,23 @@ class InferEngine:
         - Log the generation process
 
     Args:
+        tokenizer: Path of the tokenizer to use.
         colossal_config: We provide a unified config api for that wrapped all the configs. You can use it to replace the below configs.
-        model_config : The configuration for the model.
-        parallel_config: The configuration for parallelize model.
-        cache_config : Configuration for initialize and manage kv cache.
-        tokenizer (Tokenizer): The tokenizer to be used for inference.
         use_logger (bool): Determine whether or not to log the generation process.
     """
 
     def __init__(
         self,
-        model_config,
-        cache_config,
-        parallel_config,
-        tokenizer,
-        use_logger: bool = False,
+        tokenizer: str = "",
         colossal_config: Optional["ColossalInferConfig"] = None,
+        use_logger: bool = False,
     ) -> None:
-        assert colossal_config or (
-            model_config and cache_config and parallel_config
-        ), "Please provide colossal_config or model_config, cache_config, parallel_config"
-        if colossal_config:
-            model_config, cache_config, parallel_config = colossal_config
-
-        self.model_config = model_config
-        self.cache_config = cache_config
-        self.parallel_config = parallel_config
-        self._verify_config()
+        
+        assert colossal_config, "Please provide colossal_config."
 
         self._init_model()
-        self.request_handler = RequestHandler(cache_config)
+        self.request_handler = RequestHandler()
+        self.tokenizer = tokenizer
         if use_logger:
             self.logger = Logger()
 
