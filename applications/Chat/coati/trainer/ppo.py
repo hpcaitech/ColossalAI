@@ -3,7 +3,7 @@ PPO trainer
 """
 
 import os
-from typing import Optional
+from typing import List, Optional
 
 import torch
 import wandb
@@ -12,6 +12,7 @@ from coati.experience_maker import Experience, NaiveExperienceMaker
 from coati.models import Critic, RewardModel
 from coati.models.loss import GPTLMLoss, PolicyLoss, ValueLoss
 from coati.models.utils import calc_action_log_probs
+from coati.trainer.callbacks import Callback
 from coati.trainer.utils import all_reduce_mean
 from coati.utils import AccumulativeMeanMeter, save_checkpoint
 from torch.optim import Optimizer
@@ -85,13 +86,16 @@ class PPOTrainer(OLTrainer):
         save_dir: str = None,
         use_tp: bool = False,
         coordinator: DistCoordinator = None,
+        callbacks: List[Callback] = [],
         **generate_kwargs,
     ) -> None:
         if isinstance(actor_booster, GeminiPlugin):
             assert not offload_inference_models, "GeminiPlugin is not compatible with manual model.to('cpu')"
 
         data_buffer = NaiveExperienceBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
-        super().__init__(actor_booster, critic_booster, data_buffer, sample_buffer, dataloader_pin_memory)
+        super().__init__(
+            actor_booster, critic_booster, data_buffer, sample_buffer, dataloader_pin_memory, callbacks=callbacks
+        )
         self.generate_kwargs = generate_kwargs
 
         self.actor = actor
