@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-'''
-Usage
-
-SFT_DATASET=/mnt/tos/lcxyc/experiments/experiments5/tokenized_sft_data/jsonl \
-PROMPT_DATASET=/home/lcyab/data/data_rlhf/preprocessed_prompt \
-PRETRAIN_DATASET=/home/lcyab/data/pretrain_data/cleaned_wiki_en/preprocessed \
-PREFERENCE_DATASET=/home/lcyab/data/data_rlhf/preprcessed \
-./test_data_preparation.sh
-'''
 set_n_least_used_CUDA_VISIBLE_DEVICES() {
     local n=${1:-"9999"}
     echo "GPU Memory Usage:"

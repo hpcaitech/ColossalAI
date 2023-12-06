@@ -29,6 +29,12 @@ from colossalai.utils import get_current_device
 
 
 def train(args):
+    # check lora compatibility
+    if "gemini" in args.plugin:
+        if args.lora_rank > 0:
+            raise ValueError("LoRA is not supported in GeminiPlugin. Please use other plugin")
+        if args.accumulation_steps > 1:
+            raise ValueError("Gradient accumulation is not supported in GeminiPlugin. Please use other plugin")
     # ==============================
     # Initialize Distributed Training
     # ==============================
@@ -278,7 +284,6 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", type=float, default=0.1, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=None, help="Warmup steps")
     parser.add_argument("--tp", type=int, default=1)
-    parser.add_argument("--zero", type=int, default=0)
     parser.add_argument("--pretrain", type=str, default=None)
     parser.add_argument("--tokenizer_dir", type=str, default=None)
     parser.add_argument("--dataset", nargs="+", default=[])

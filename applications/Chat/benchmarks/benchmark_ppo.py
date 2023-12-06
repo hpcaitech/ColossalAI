@@ -1,9 +1,14 @@
+"""
+For becnhmarking ppo. Mudified from examples/training_scripts/train_ppo.py
+"""
+
 import argparse
 import os
 import resource
 from contextlib import nullcontext
 
 import torch
+import torch.distributed as dist
 from coati.dataset import (
     DataCollatorForPromptDataset,
     DataCollatorForSupervisedDataset,
@@ -14,8 +19,11 @@ from coati.dataset import (
 )
 from coati.models import Critic, RewardModel, convert_to_lora_module, disable_dropout
 from coati.trainer import PPOTrainer
+from coati.trainer.callbacks import PerformanceEvaluator
+from coati.trainer.utils import is_rank_0
 from coati.utils import load_checkpoint, replace_with_flash_attention
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers.models.opt.configuration_opt import OPTConfig
 
 import colossalai
 from colossalai.booster import Booster
@@ -27,13 +35,33 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
 
-def train(args):
-    # check lora compatibility
-    if "gemini" in args.plugin:
-        if args.lora_rank > 0:
-            raise ValueError("LoRA is not supported in GeminiPlugin. Please use other plugin")
-        if args.accumulation_steps > 1:
-            raise ValueError("Gradient accumulation is not supported in GeminiPlugin. Please use other plugin")
+def get_model_numel(model: torch.nn.Module, plugin: str, tp: int) -> int:
+    numel = sum(p.numel() for p in model.parameters())
+    if plugin == "3d" and tp > 1:
+        numel *= dist.get_world_size()
+    return numel
+
+
+def get_gpt_config(model_name: str) -> OPTConfig:
+    model_map = {
+        "125m": OPTConfig.from_pretrained("facebook/opt-125m"),
+        "350m": OPTConfig(hidden_size=1024, ffn_dim=4096, num_hidden_layers=24, num_attention_heads=16),
+        "700m": OPTConfig(hidden_size=1280, ffn_dim=5120, num_hidden_layers=36, num_attention_heads=20),
+        "1.3b": OPTConfig.from_pretrained("facebook/opt-1.3b"),
+        "2.7b": OPTConfig.from_pretrained("facebook/opt-2.7b"),
+        "3.5b": OPTConfig(hidden_size=3072, ffn_dim=12288, num_hidden_layers=32, num_attention_heads=32),
+        "5.5b": OPTConfig(hidden_size=3840, ffn_dim=15360, num_hidden_layers=32, num_attention_heads=32),
+        "6.7b": OPTConfig.from_pretrained("facebook/opt-6.7b"),
+        "10b": OPTConfig(hidden_size=5120, ffn_dim=20480, num_hidden_layers=32, num_attention_heads=32),
+        "13b": OPTConfig.from_pretrained("facebook/opt-13b"),
+    }
+    try:
+        return model_map[model_name]
+    except KeyError:
+        raise ValueError(f'Unknown model "{model_name}"')
+
+
+def benchmark_train(args):
     # ==============================
     # Initialize Distributed Training
     # ==============================
@@ -47,13 +75,29 @@ def train(args):
 
     booster_policy = None
     with init_ctx:
-        actor = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True)
+        actor = AutoModelForCausalLM.from_config(get_gpt_config(args.pretrain), trust_remote_code=True)
         # Disable dropout
         disable_dropout(actor)
-        ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True)
-        reward_model = RewardModel(args.rm_pretrain)
-        critic = Critic(args.rm_pretrain)
+        ref_model = AutoModelForCausalLM.from_config(get_gpt_config(args.pretrain), trust_remote_code=True)
+        reward_model = RewardModel(config=get_gpt_config("350m"))
+        critic = Critic(config=get_gpt_config("350m"))
         disable_dropout(critic)
+
+        actor_numel = get_model_numel(actor, args.plugin, args.tp)
+        critic_numel = get_model_numel(critic, args.plugin, args.tp)
+        initial_model_numel = get_model_numel(ref_model, args.plugin, args.tp)
+        reward_model_numel = get_model_numel(reward_model, args.plugin, args.tp)
+
+        performance_evaluator = PerformanceEvaluator(
+            actor_numel,
+            critic_numel,
+            initial_model_numel,
+            reward_model_numel,
+            enable_grad_checkpoint=False,
+            ignore_episodes=1,
+            train_config={"model": "facebook/opt-" + args.pretrain, "lora_rank": args.lora_rank, "plugin": args.plugin},
+            save_path="./benchmark_performance_summarization.txt",
+        )
 
         if args.tp > 1:
             if reward_model.model.config.architectures[0] != critic.model.config.architectures[0]:
@@ -361,6 +405,7 @@ def train(args):
         top_k=50,
         use_tp=args.tp > 1,
         offload_inference_models="gemini" not in args.plugin,
+        callbacks=[performance_evaluator],
         coordinator=coordinator,
     )
 
@@ -392,7 +437,13 @@ def train(args):
     coordinator.print_on_master(
         f"Saved final critic model checkpoint at episodes {args.num_episodes} at folder {args.save_path}"
     )
-    coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
+    memory_consumption = torch.cuda.max_memory_allocated() / 1024**2
+    if is_rank_0():
+        with open("./benchmark_memory_consumption.txt", "a+") as f:
+            f.write(
+                f"Model=Opt-{args.pretrain}; lora_rank={args.lora_rank}; plugin={args.plugin}\nMax CUDA memory usage: {memory_consumption:.2f} MB\n"
+            )
+    coordinator.print_on_master(f"Max CUDA memory usage: {memory_consumption:.2f} MB")
 
 
 if __name__ == "__main__":
@@ -412,7 +463,6 @@ if __name__ == "__main__":
     parser.add_argument("--tokenizer_dir", type=str, default=None)
     parser.add_argument("--tp", type=int, default=1)
     parser.add_argument("--pretrain", type=str, default=None)
-    parser.add_argument("--rm_pretrain", type=str, default=None)
     parser.add_argument("--checkpoint_path", type=str, default=None)
     parser.add_argument("--critic_checkpoint_path", type=str, default=None)
     parser.add_argument("--rm_checkpoint_path", type=str, help="Reward model checkpoint path")
@@ -433,11 +483,11 @@ if __name__ == "__main__":
     parser.add_argument("--critic_lr", type=float, default=9e-6)
     parser.add_argument("--kl_coef", type=float, default=0.1)
     parser.add_argument("--ptx_coef", type=float, default=0.0)
-    parser.add_argument("--max_length", type=int, default=2048)
+    parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--max_seq_len", type=int, default=256)
     parser.add_argument("--log_dir", default="logs", type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     parser.add_argument("--use_flash_attn", default=False, action="store_true")
     args = parser.parse_args()
-    train(args)
+    benchmark_train(args)

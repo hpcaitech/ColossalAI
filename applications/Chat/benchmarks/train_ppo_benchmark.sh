@@ -24,7 +24,7 @@ export NCCL_IB_RETRY_CNT=7
 export OMP_NUM_THREADS=8
 
 
-PROJECT_NAME="llama2-ppo"
+PROJECT_NAME="opt_ppo_benchmark"
 PARENT_SAVE_DIR="save_dir/ckpt"
 PARENT_TENSORBOARD_DIR="save_dir/tensorboard"
 PARENT_CONFIG_FILE="save_dir/train_config"
@@ -62,15 +62,14 @@ FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
 
-colossalai run --nproc_per_node 4 --hostfile hostfile --master_port 30039 train_ppo.py \
+colossalai run --nproc_per_node 4 --master_port 30039 train_ppo.py \
     --pretrain $PRETRAINED_MODEL_PATH \
-    --rm_pretrain $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
     --rm_checkpoint_path $REWARD_MODEL_PATH \
     --prompt_dataset ${prompt_dataset[@]} \
     --pretrain_dataset ${ptx_dataset[@]} \
     --ptx_batch_size 1 \
-    --ptx_coef 0.0 \
+    --ptx_coef 0.5 \
     --plugin "zero2" \
     --save_interval 200 \
     --save_path $SAVE_DIR \
@@ -86,4 +85,3 @@ colossalai run --nproc_per_node 4 --hostfile hostfile --master_port 30039 train_
     --weight_decay 0.01 \
     --warmup_steps 100 \
     --grad_checkpoint \
-    --use_wandb
