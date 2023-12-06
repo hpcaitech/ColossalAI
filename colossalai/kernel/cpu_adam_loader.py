@@ -14,9 +14,9 @@ class CPUAdamLoader(BaseKernelLoader):
 
     def fetch_kernel(self):
         if self._is_x86():
-            kernel = self._extension_map["x86"].fetch()
+            kernel = self._extension_map["x86"]().fetch()
         elif self._is_arm():
-            kernel = self._extension_map["arm"].fetch()
+            kernel = self._extension_map["arm"]().fetch()
         else:
             raise Exception("not supported")
         return kernel

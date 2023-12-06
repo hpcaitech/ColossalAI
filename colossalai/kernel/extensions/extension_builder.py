@@ -51,6 +51,8 @@ class ExtensionBuilder(ABC):
         # is a symlink, we can only tell whether it is inside or outside colossalai
         if str(op_builder_module_path).endswith("colossalai/kernel/op_builder"):
             root_path = op_builder_module_path.parent.parent
+        elif str(op_builder_module_path).endswith("colossalai/kernel/extensions"):
+            root_path = op_builder_module_path.parent.parent
         else:
             root_path = op_builder_module_path.parent.joinpath("colossalai")
 
