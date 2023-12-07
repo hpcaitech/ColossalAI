@@ -5,8 +5,7 @@ import torch
 from einops import rearrange
 
 from .base_kernel_loader import BaseKernelLoader
-from .extensions.flash_attention.cuda_flash_attn_2_extension import CudaFlashAttnExtension
-from .extensions.flash_attention.cuda_memory_efficient_attn_extension import CudaMemoryEfficentAttnExtension
+from .extensions.flash_attention import CudaFlashAttnExtension, CudaMemoryEfficentAttnExtension
 from .extensions.utils import AttnMaskType, Repad, SeqLenInfo, Unpad
 
 
