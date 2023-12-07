@@ -285,4 +285,4 @@ class CpuAccelerator(BaseAccelerator):
         """
         Return autocast function
         """
-        raise nullcontext()
+        return nullcontext()
