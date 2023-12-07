@@ -37,7 +37,7 @@
 - [Citations](#citations)
 
 ## Overview
-[ColossalEval](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval) is a project which provides a uniform pipeline to help evaluate language models on different public dataset or your own dataset using both classic metrics and the help from GPTs. More details can be found in the following sections.
+[ColossalEval](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval) is a project which provides a uniform pipeline to help evaluate language models on different public dataset or your own dataset using both classic metrics and the help from GPTs. Currently we support AGIEval, CEval, CMMLU, CValues, GAOKAO-Bench, GSM8K, LongBench, MMLU, MtBench and SafetyBench. More details can be found in the following sections.
 
 ## Leaderboard
 
@@ -101,7 +101,7 @@ The evaluation process involves 2 steps which are `inference` and `evaluation`. 
 
 ### Inference
 
-The inference process consists of two parts.
+The inference process consists of two parts. We now support tensor parallel inference for large models using [ShardFormer](colossalai/shardformer) in the [example](applications/ColossalEval/examples/dataset_evaluation/inference.py) script.
 1. Preprocess and convert the original dataset.
 2. Config your tokenizer and model arguments to perform zero-shot or few-shot prompting.
 
@@ -193,7 +193,7 @@ In this step, you will configure your tokenizer and model arguments to infer on 
 
 A config file consists of two parts.
 1. Model config. In model config, you need to specify model name, model path, model class, tokenizer arguments and model arguments. For model class, currently we support `HuggingFaceModel`, `HuggingFaceCausalLM`, `ChatGLMModel` and `ChatGLMModel2`. `HuggingFaceModel` is for models that can be loaded with `AutoModel` and `HuggingFaceCausalLM` is for models that can be loaded with `AutoModelForCausalLM`. `ChatGLMModel` and `ChatGLMModel2` are for ChatGLM and ChatGLM2 models respectively. You can check all model classes in `colossal_eval/models/__init__.py`. If your model should set `trust_remote_code` as true, specify it in the `tokenizer_kwargs` and `model_kwargs` fields.
-2. Dataset config. In dataset config, you need to specify dataset name, path and dataset class. Currently, we support zero-shot on dataset MMLU, CMMLU, AGIEval, GAOKAO-Bench and LongBench and few-shot on dataset MMLU, CMMLU and AGIEval. If you want to enable few shot, set `few_shot` as true. You can check all model classes in `colossal_eval/dataset/__init__.py`.
+2. Dataset config. In dataset config, you need to specify dataset name, path and dataset class. Currently, we support zero-shot on dataset MMLU, CMMLU, AGIEval, GAOKAO-Bench, GSM8K and LongBench and few-shot on dataset MMLU, CMMLU AGIEval and GSM8K. If you want to enable few shot, set `few_shot` as true. You can check all model classes in `colossal_eval/dataset/__init__.py`.
 
 Once you have all config ready, the program will run inference on all the given datasets on all the given models.
 
@@ -236,17 +236,20 @@ An example config using model class `HuggingFaceCausalLM` and dataset class `CMM
 
 Currently, we support Hugging Face models. The `tokenizer_kwargs` is the arguments used in `AutoTokenizer.from_pretrained()`. The `model_kwargs` is the arguments used in `AutoModel.from_pretrained` or `AutoModelForCausalLM.from_pretrained()`. `few_shot` will be set true if you want to enable few-shot prompting for the dataset. `debug` will be set true if you want to verify whether your prompt is right or wrong.
 
+> For GSM8K dataset, you can set additional flags `load_train` or `load_reference` for dataset configuration as true and during the inference process, the program will calculate loss summation over all tokens for each data sample. During the evaluation process, you can use metric `loss_over_all_tokens` to calculate the overall loss and use it for data leakage evaluation.
+
 #### How to Use
 An example script can be the following. The `configs/dataset_evaluation/inference.py` is the same in all examples provided.
 
 ```shell
-torchrun --nproc_per_node=1 inference.py \
+torchrun --nproc_per_node=4 inference.py \
     --config "path to config file" \
     --load_dataset \
+    --tp_size 2 \
     --inference_save_path "path to save inference results"
 ```
 
-You should specify the path to config file in `config`. You can run the script without specifying `load_dataset` if you already save the converted dataset or otherwise set it to first load the original dataset and save the converted dataset. You should specify the path to save inference results in `inference_save_path`.
+You should specify the path to config file in `config`. You can run the script without specifying `load_dataset` if you already save the converted dataset or otherwise set it to first load the original dataset and save the converted dataset. You should specify the path to save inference results in `inference_save_path`. If you want to use tensor parallel inference, specify the tensor parallel size in `--tp_size` and the process will automatically calculate  data parallel size.
 
 ### Evaluation
 
@@ -371,11 +374,13 @@ To make it more easier to set the config, you only need to specify all metrics y
 - `classification_score`: Calculate classification score between prediction and reference. It determines whether the ouput(a class) is equal to the reference. It is used in Longbench.
 - `code_sim_score`: Calculate similarity score between prediction and reference. It is used in Longbench.
 - `count_score`: Calculate count score between prediction and reference. It determines whether the ouput(number of given passages) is equal to the reference. It is used in Longbench.
+- `gsm_accuracy`: Calculate scores between prediction and reference.. It is used in GSM8K.
 - `perplexity`: Calculate perplexity. The formula is $ perplexity = \frac{1}{n} \sum_i e^{loss_i} $ where $n$ is the number of samples and $ loss_i $ is the average loss for sample $ i $. It can be used in all dataset.
 - `ppl_score`: Calculate perplexity score. The formula is $ ppl\_score = \frac{1}{n} \sum_i e^{-loss_i} $ where $n$ is the number of samples and $ loss_i $ is the average loss for sample $ i $. It can be used in all dataset.
 - `ppl_score_over_choices`: Calculate perplexity score over choices. The formula is $ ppl\_score\_over\_choices= \frac{1}{n} \sum_i e^{-loss\_over\_choices_i} $ where $n$ is the number of samples and $ loss\_over\_choices_i $ is the loss on the first predicted token for sample $ i $. It can be used in all dataset that contains single-choice questions.
 - `per_byte_perplexity`: Calculate per byte perplexity. The formula is $ \frac{1}{n} \sum_i e^{\frac{loss_i}{byte_i}} $ where $n$ is the number of samples, $ loss_i $ is the total loss for sample $ i $ and $ byte_i $ is the number of bytes sample $ i $ occupies. It can be used in all dataset.
 - `per_byte_ppl_score`: Calculate per byte perplexity score. The formula is $ \frac{1}{n} \sum_i e^{-\frac{loss_i}{byte_i}} $ where $n$ is the number of samples, $ loss_i $ is the total loss for sample $ i $ and $ byte_i $ is the number of bytes sample $ i $ occupies. It can be used in all dataset.
+- `loss_over_all_tokens`: Calculate loss over all tokens. The formula is $ loss\_over\_all\_tokens = \frac{1}{n} \sum_i loss_i $ where $n$ is the total number of tokens of the dataset and $ loss_i $ is the loss summation for sample $ i $ over all tokens and $ \sum_i loss_i $ is the loss summation for all samples. It can be used in all dataset.
 
 We use `combined_single_choice_accuracy` and `first_token_logit` in the leaderboard.
 
@@ -520,6 +525,15 @@ year={2023}
       primaryClass={cs.CL}
 }
 
+@misc{xu2023cvalues,
+      title={CValues: Measuring the Values of Chinese Large Language Models from Safety to Responsibility},
+      author={Guohai Xu and Jiayi Liu and Ming Yan and Haotian Xu and Jinghui Si and Zhuoran Zhou and Peng Yi and Xing Gao and Jitao Sang and Rong Zhang and Ji Zhang and Chao Peng and Fei Huang and Jingren Zhou},
+      year={2023},
+      eprint={2307.09705},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
+
 @inproceedings{Zhang2023EvaluatingTP,
   title={Evaluating the Performance of Large Language Models on GAOKAO Benchmark},
   author={Xiaotian Zhang and Chunyang Li and Yi Zong and Zhengyu Ying and Liang He and Xipeng Qiu},
@@ -542,6 +556,20 @@ year={2023}
   year={2021}
 }
 
+@article{zhang2023safetybench,
+      title={SafetyBench: Evaluating the Safety of Large Language Models with Multiple Choice Questions},
+      author={Zhexin Zhang and Leqi Lei and Lindong Wu and Rui Sun and Yongkang Huang and Chong Long and Xiao Liu and Xuanyu Lei and Jie Tang and Minlie Huang},
+      journal={arXiv preprint arXiv:2309.07045},
+      year={2023}
+}
+
+@article{cobbe2021training,
+  title={Training verifiers to solve math word problems},
+  author={Cobbe, Karl and Kosaraju, Vineet and Bavarian, Mohammad and Chen, Mark and Jun, Heewoo and Kaiser, Lukasz and Plappert, Matthias and Tworek, Jerry and Hilton, Jacob and Nakano, Reiichiro and others},
+  journal={arXiv preprint arXiv:2110.14168},
+  year={2021}
+}
+
 @article{hendrycks2021ethics,
   title={Aligning AI With Shared Human Values},
   author={Dan Hendrycks and Collin Burns and Steven Basart and Andrew Critch and Jerry Li and Dawn Song and Jacob Steinhardt},
@@ -558,4 +586,12 @@ year={2023}
       primaryClass={cs.CL}
 }
 
+@misc{wei2023skywork,
+      title={Skywork: A More Open Bilingual Foundation Model},
+      author={Tianwen Wei and Liang Zhao and Lichang Zhang and Bo Zhu and Lijie Wang and Haihua Yang and Biye Li and Cheng Cheng and Weiwei Lü and Rui Hu and Chenxia Li and Liu Yang and Xilin Luo and Xuejie Wu and Lunan Liu and Wenjun Cheng and Peng Cheng and Jianhao Zhang and Xiaoyu Zhang and Lei Lin and Xiaokun Wang and Yutuan Ma and Chuanhai Dong and Yanqi Sun and Yifu Chen and Yongyi Peng and Xiaojuan Liang and Shuicheng Yan and Han Fang and Yahui Zhou},
+      year={2023},
+      eprint={2310.19341},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
 ```

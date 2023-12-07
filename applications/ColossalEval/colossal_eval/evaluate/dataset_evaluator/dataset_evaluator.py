@@ -6,8 +6,17 @@ import numpy as np
 import tqdm
 from colossal_eval.utils import jdump
 
+import colossal_eval.evaluate.dataset_evaluator.gpt_judge as gpt_helper  # noqa
+
 LabelBasedMetrics = ["first_token_accuracy", "matthews_correlation"]
-LossBasedMetrics = ["perplexity", "ppl_score", "ppl_score_over_choices", "per_byte_perplexity", "per_byte_ppl_score"]
+LossBasedMetrics = [
+    "perplexity",
+    "ppl_score",
+    "ppl_score_over_choices",
+    "per_byte_perplexity",
+    "per_byte_ppl_score",
+    "loss_over_all_tokens",
+]
 CombinedMetrics = ["combined_single_choice_accuracy"]
 GPTMetrics = ["mtbench_single_judge"]
 OtherMetrics = [
@@ -23,6 +32,7 @@ OtherMetrics = [
     "multi_choice_accuracy",
     "math_equivalence",
     "single_choice_accuracy",
+    "gsm_accuracy",
 ]
 
 
@@ -141,7 +151,10 @@ class DatasetEvaluator(object):
         """Calculate other metrics."""
         weight = len(self.data[category]["data"]) / self.metric_total_length[metric]
 
-        references = [sample["target"] for sample in self.data[category]["data"]]
+        references = [
+            sample["target"] if isinstance(sample["target"], list) else [sample["target"]]
+            for sample in self.data[category]["data"]
+        ]
         predictions = [sample["output"] for sample in self.data[category]["data"]]
 
         metric_method = eval("metric_helper." + metric)
@@ -218,6 +231,18 @@ class DatasetEvaluator(object):
 
             self.evaluation_results["per_byte_ppl_score"][category] = perplexity_score
             self.evaluation_results["per_byte_ppl_score"]["ALL"] += perplexity_score * weight
+        elif metric == "loss_over_all_tokens":
+            weight = len(self.data[category]["data"]) / self.metric_total_length[metric]
+            losses = [min(sample["loss_sum"]) for sample in self.data[category]["data"]]
+            token_nums = [sample["token_num"][np.argmin(sample["loss_sum"])] for sample in self.data[category]["data"]]
+            perplexity = np.sum(np.array(losses)) / np.sum(np.array(token_nums))
+
+            self.evaluation_results["loss_over_all_tokens"][category] = perplexity
+            self.evaluation_results["loss_over_all_tokens"]["ALL"] += perplexity * weight
+
+            # The number of tokens can be used for normalizing.
+            # See https://github.com/SkyworkAI/Skywork/issues/43#issuecomment-1811733834
+            print(f"{self.model_name} {category} token num: {np.sum(np.array(token_nums))}")
 
     def _evaluate(self):
         """Calculate and return evaluation results"""
@@ -289,7 +314,10 @@ class DatasetEvaluator(object):
         self.suggested_categories = {metric: [] for metric in self.metrics}
 
         for metric in self.metrics:
-            self.suggested_categories[metric] = metric_helper.metrics4subcategory[self.dataset_name][metric]
+            # Train and reference split use same metric as test split.
+            self.suggested_categories[metric] = metric_helper.metrics4subcategory[self.dataset_name.split("_")[0]][
+                metric
+            ]
             if "ALL" in self.suggested_categories[metric]:
                 self.suggested_categories[metric] = self.categories
                 self.metric_total_length[metric] = self.total_length
