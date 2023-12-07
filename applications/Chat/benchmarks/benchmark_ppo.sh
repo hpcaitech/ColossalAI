@@ -25,9 +25,13 @@ EXAMPLES_DIR=$BASE_DIR/examples
 TEMP_DIR=$BASE_DIR/temp
 MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
-MODELS=('125m' '350m' '700m' '1.3b' '2.7b' '3.5b' '5.5b' '6.7b' '10b' '13b')
-PLUGINS=('zero2', 'zero2_cpu', '3d')
-LORA_RANK=('0', '20')
+# To benchmark different models, change the following line
+# MODELS=('125m' '350m' '700m' '1.3b' '2.7b' '3.5b' '5.5b' '6.7b' '10b' '13b')
+MODELS=('1.3b')
+# To benchmark different strategies, change the following line
+# PLUGINS=('zero2', 'zero2_cpu', '3d')
+PLUGINS=('zero2')
+LORA_RANK=('0')
 
 export OMP_NUM_THREADS=8
 
@@ -49,7 +53,8 @@ echo "[Test]: testing ppo ..."
 SKIPPED_TESTS=(
 )
 
-GRAD_CKPTS=('--grad_checkpoint')
+GRAD_CKPTS=('' '--grad_checkpoint')
+GRAD_CKPTS=('')
 for lora_rank in ${LORA_RANK[@]}; do
     for model in ${MODELS[@]}; do
         plugins=($(shuf -e "${PLUGINS[@]}"))
@@ -78,30 +83,30 @@ for lora_rank in ${LORA_RANK[@]}; do
                 for split in $(seq -f "%05g" 0 0); do
                     ptx_dataset+=("$TEMP_DIR/rlhf_data/tokenized_opt_ptx/arrow/part-$split")
                 done
-                colossalai run --nproc_per_node 8 --master_port 28547 $BASE_DIR/benchmarks/benchmark.py \
+                colossalai run --nproc_per_node 8 --master_port 28547 $BASE_DIR/benchmarks/benchmark_ppo.py \
                     --pretrain $pretrain \
                     --tokenizer_dir $tokenizer_dir \
                     --prompt_dataset ${prompt_dataset[@]} \
                     --pretrain_dataset ${ptx_dataset[@]} \
                     --ptx_batch_size 1 \
-                    --ptx_coef 0.2 \
+                    --ptx_coef 0 \
                     --save_path $MODEL_SAVE_PATH \
                     --lora_rank $lora_rank \
                     --plugin $plugin \
                     --num_episodes 5 \
                     --num_collect_steps 1 \
-                    --num_update_steps 4 \
-                    --max_seq_len 1024 \
-                    --max_length 2048 \
-                    --experience_batch_size 4 \
-                    --train_batch_size 1 \
-                    --accumulation_steps 32 \
+                    --num_update_steps 1 \
+                    --max_seq_len 128 \
+                    --max_length 512 \
+                    --experience_batch_size 32 \
+                    --train_batch_size 32 \
+                    --accumulation_steps 1 \
                     --lr 9e-6 \
                     --mixed_precision "bf16" \
                     --grad_clip 1.0 \
+                    --use_flash_attn \
                     --tp $tp \
                     --lr 2e-5 \
-                    --use_flash_attn \
                     $grad_ckpt
                 passed=$?
                 if [ $passed -eq 0 ]; then
