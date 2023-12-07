@@ -1,8 +1,7 @@
-#!/bin/bash
-
-import os
-import torch
 import argparse
+import os
+
+import torch
 from colossalai.logging import get_dist_logger
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
