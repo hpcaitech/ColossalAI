@@ -5,15 +5,9 @@ import torch
 from einops import rearrange
 
 from .base_kernel_loader import BaseKernelLoader
-from .cuda_native.mha.flash_attn_2 import HAS_FLASH_ATTN
-from .cuda_native.mha.mem_eff_attn import HAS_MEM_EFF_ATTN
-from .extensions.cpu_adam import ArmCPUAdamExtension, X86CPUAdamExtension
+from .extensions.flash_attention.cuda_flash_attn_2_extension import CudaFlashAttnExtension
+from .extensions.flash_attention.cuda_memory_efficient_attn_extension import CudaMemoryEfficentAttnExtension
 from .extensions.utils import AttnMaskType, Repad, SeqLenInfo, Unpad
-
-if HAS_FLASH_ATTN:
-    from .cuda_native.mha.flash_attn_2 import flash_attention
-if HAS_MEM_EFF_ATTN:
-    from .cuda_native.mha.mem_eff_attn import mem_eff_attention
 
 
 class FlashAttentionLoader(BaseKernelLoader):
@@ -24,18 +18,23 @@ class FlashAttentionLoader(BaseKernelLoader):
     def __init__(self):
         super().__init__(
             extension_map=dict(
-                arm=ArmCPUAdamExtension,
-                x86=X86CPUAdamExtension,
+                cuda_flash_attn=CudaFlashAttnExtension,
+                cuda_memory_efficent_attn=CudaMemoryEfficentAttnExtension,
             ),
             supported_device=["cuda", "npu"],
         )
 
     def fetch_kernel(self, backend: str = None):
-        if self._is_x86_available():
-            kernel = self._extension_map["x86"].fetch()
-        elif self._is_arm_available():
-            kernel = self._extension_map["arm"].fetch()
-        else:
+        if backend is not None:
+            return self._extension_map[backend].fetch()
+
+        kernel = None
+        for _, kernel_extension in self._extension_map.items():
+            ext = kernel_extension()
+            if ext.is_available():
+                kernel = ext.fetch()
+                break
+        if kernel is None:
             raise Exception("not supported")
         return kernel
 
@@ -52,14 +51,7 @@ class ColoAttention(torch.nn.Module):
             self.scale = 1 / math.sqrt(embed_dim // num_heads)
         self.dropout = dropout
 
-        if not HAS_MEM_EFF_ATTN and not HAS_FLASH_ATTN:
-            raise Exception("flash attention can not support!")
-
-        self.attn = None
-        if HAS_FLASH_ATTN and query.dtype in [torch.float16, torch.bfloat16] and bias == None:
-            self.attn = flash_attention
-        else:
-            self.attn = mem_eff_attention
+        self.attn = FlashAttentionLoader().fetch_kernel()
 
     @staticmethod
     def unpad(tensor: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
@@ -79,6 +71,12 @@ class ColoAttention(torch.nn.Module):
         attn_mask_type: Optional[AttnMaskType] = None,
         bias: Optional[torch.Tensor] = None,
     ):
+        # if flash attention is not applicable, switch to memory effcient attention
+        if self.attn.__name__ == "flash_attention" and (
+            query.dtype not in [torch.float16, torch.bfloat16] or bias != None
+        ):
+            self.attn = FlashAttentionLoader().fetch_kernel(backend="cuda_mem_eff_attn")
+
         padded = attn_mask_type is not None and attn_mask_type.value % 2 == 1
         causal = attn_mask_type is not None and attn_mask_type.value > 1
 
