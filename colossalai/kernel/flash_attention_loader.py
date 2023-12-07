@@ -32,7 +32,7 @@ class FlashAttentionLoader(BaseKernelLoader):
 
     def fetch_kernel(self, backend: str = None):
         if backend is not None:
-            return self._extension_map[backend].fetch()
+            return self._extension_map[backend]().fetch()
 
         kernel = None
         if self._is_cuda_available():
