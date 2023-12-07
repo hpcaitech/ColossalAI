@@ -36,7 +36,7 @@ class Sequence:
     Args:
         request_id: The ID of input sequence.
         prompt: The prompt of input sequence.
-        token_id: The ID of input sequence.
+        token_id: The tokens ID of input sequence.
         block_size: The block size of input sequence.
         sample_params: The sample_params of input sequence.
         block_table_index: The index of input sequence in block_table.
@@ -46,9 +46,9 @@ class Sequence:
         self,
         request_id: int,
         prompt: str,
-        token_id: int,
+        token_id: List[int],
         block_size: int,
-        sample_params: SampleParams,  # SampleParams needs to be imported later.
+        sample_params,  # SampleParams needs to be imported later.
         block_table_index: int,
     ):
         self.request_id = request_id
@@ -82,7 +82,7 @@ class Sequence:
         """
         Check whether inference is over.
         """
-        return RequsetStatus.check_finish(self.status)
+        return RequsetStatus.is_finished(self.status)
 
     def __repr__(self) -> str:
         return (
@@ -107,7 +107,7 @@ class BatchHandler:
     def init_batch(cls, seqs: List[Sequence]) -> "BatchHandler":
         """
         Initializes inference batches by input sentence list.
-        
+
         Args:
             seqs (List[Sequence]): List of input sequence.
         """

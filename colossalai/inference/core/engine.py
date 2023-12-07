@@ -4,7 +4,6 @@ from typing import Optional
 from transformers import AutoConfig
 
 from .config import InferenceConfig
-from .request_handler import RequestHandler
 
 
 class InferenceEngine:
@@ -32,7 +31,8 @@ class InferenceEngine:
         assert inference_config, "Please provide inference_config."
 
         self._init_model()
-        self.request_handler = RequestHandler()
+        # cache_config may need to be modified later.
+        # self.request_handler = RequestHandler(cache_config)
         self.tokenizer = tokenizer
         self.hf_model_config = AutoConfig.from_pretrained(
             self.model, trust_remote_code=self.trust_remote_code, revision=self.revision
