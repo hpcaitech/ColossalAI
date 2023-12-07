@@ -10,7 +10,7 @@ class CPUAdamLoader(BaseKernelLoader):
         # init
         cpu_adam = CPUAdamLoader().load()
         cpu_adam_op = cpu_adam.CPUAdamOptimizer(
-            alpha, beta1, beta2, epsilon, weight_decay, adamw_mode
+            alpha, beta1, beta2, epsilon, weight_decay, adamw_mode,
         )
         ...
         # optim step
