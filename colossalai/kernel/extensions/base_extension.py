@@ -4,7 +4,6 @@ from typing import Callable
 
 class BaseExtension(ABC):
     @abstractmethod
-    @property
     def build_completed(self) -> bool:
         pass
 
