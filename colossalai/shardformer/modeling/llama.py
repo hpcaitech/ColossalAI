@@ -1,5 +1,5 @@
 import warnings
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple
 
 import torch
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
@@ -12,13 +12,14 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForS
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.layer.utils import get_attention_kernel
 
 try:
     from transformers.models.llama.modeling_llama import _prepare_4d_causal_attention_mask
+
     LATEST_VERSION = True
 except ImportError:
     LATEST_VERSION = False
+
 
 class LlamaPipelineForwards:
     """
@@ -405,7 +406,7 @@ class LlamaPipelineForwards:
 def get_llama_flash_attention_forward():
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
-    AttnMaskType, ColoAttention = get_attention_kernel()
+    from colossalai.kernel import AttnMaskType, ColoAttention
 
     llama_version = 2
     try:
@@ -469,7 +470,12 @@ def get_llama_flash_attention_forward():
 
         attention = ColoAttention(embed_dim=self.hidden_size, num_heads=self.num_heads)
         attn_output = attention(
-            query_states, key_states, value_states, attn_mask=flash_attention_mask, attn_mask_type=attn_mask_type, origin_attn_mask=attention_mask,
+            query_states,
+            key_states,
+            value_states,
+            attn_mask=flash_attention_mask,
+            attn_mask_type=attn_mask_type,
+            origin_attn_mask=attention_mask,
         )
 
         attn_output = self.o_proj(attn_output)
