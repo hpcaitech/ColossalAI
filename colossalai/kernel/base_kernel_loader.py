@@ -30,16 +30,16 @@ class BaseKernelLoader(ABC):
         self.run_checks()
         return self.fetch_kernel()
 
-    def _is_x86(self) -> bool:
+    def _is_x86_available(self) -> bool:
         return platform.processor() == "x86_64"
 
-    def _is_arm(self) -> bool:
+    def _is_arm_available(self) -> bool:
         return platform.processor() == "aarch64"
 
-    def _is_cuda(self) -> bool:
+    def _is_cuda_available(self) -> bool:
         return torch.cuda.is_available()
 
-    def _is_npu(self) -> bool:
+    def _is_npu_available(self) -> bool:
         try:
             import torch_npu  # noqa
 
