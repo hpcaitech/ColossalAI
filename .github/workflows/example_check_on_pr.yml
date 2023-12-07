@@ -79,7 +79,7 @@ jobs:
     container:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
       options: --gpus all --rm -v /data/scratch/examples-data:/data/
-    timeout-minutes: 10
+    timeout-minutes: 15
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-run-example-${{ matrix.directory }}
       cancel-in-progress: true
