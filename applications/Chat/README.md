@@ -403,91 +403,60 @@ You can find more examples in this [repo](https://github.com/XueFuzhao/Instructi
 
 We have integrated the Transformers save and load pipeline, allowing users to freely call Hugging Face's language models and save them in the HF format.
 
+- Option 1: Save the model weights, model config and generation config (Note: tokenizer will not be saved) which can be loaded using HF's from_pretrained method.
 ```python
-from coati.models.llama import LlamaLM
-from coati.trainer import SFTTrainer
+# if use lora, you can choose to merge lora weights before saving
+if args.lora_rank > 0 and args.merge_lora_weights:
+        from coati.models.lora import LORA_MANAGER
 
-model = LlamaLM(pretrained=args.pretrain)
-tokenizer = AutoTokenizer.from_pretrained(args.pretrain)
+        # NOTE: set model to eval to merge LoRA weights
+        LORA_MANAGER.merge_weights = True
+        model.eval()
+# save model checkpoint after fitting on only rank0
+booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
 
-(model, optim) = strategy.prepare((model, optim))
-trainer = SFTTrainer(model=model,
-                     strategy=strategy,
-                     optim=optim,
-                     train_dataloader=train_dataloader,
-                     eval_dataloader=eval_dataloader,
-                     batch_size=args.batch_size,
-                     max_epochs=args.max_epochs,
-                     accumulation_steps=args.accumulation_steps
-                     )
-
-trainer.fit()
-# this saves in pytorch format
-strategy.save_model(model, args.save_path, only_rank0=True)
-
-# this saves in HF format
-strategy.save_pretrained(model, args.save_path, only_rank0=True, tokenizer=tokenizer)
 ```
 
+- Option 2: Save the model weights, model config, generation config, as well as the optimizer, learning rate schedualer, running states (Note: tokenizer will not be saved) which are needed for resuming training.
+```python
+from coati.utils import save_checkpoint
+# save model checkpoint after fitting on only rank0
+save_checkpoint(
+        save_dir=actor_save_dir,
+        booster=actor_booster,
+        model=model,
+        optimizer=optim,
+        lr_scheduler=lr_scheduler,
+        epoch=0,
+        step=step,
+        batch_size=train_batch_size,
+        coordinator=coordinator,
+    )
+```
+To load the saved checkpoint
+```python
+from coati.utils import load_checkpoint
+start_epoch, start_step, sampler_start_idx = load_checkpoint(
+        load_dir=checkpoint_path,
+        booster=booster,
+        model=model,
+        optimizer=optim,
+        lr_scheduler=lr_scheduler,
+    )
+```
 </details>
 
 <details><summary><b>How to train with limited resources</b></summary>
 
-Here are some examples that can allow you to train a 7B model on a single or multiple consumer-grade GPUs.
+Here are some suggestions that can allow you to train a 7B model on a single or multiple consumer-grade GPUs.
 
-If you only have a single 24G GPU, you can use the following script. `batch_size`, `lora_rank` and `grad_checkpoint` are the most important parameters to successfully train the model.
+`batch_size`, `lora_rank` and `grad_checkpoint` are the most important parameters to successfully train the model. To maintain a descent batch size for gradient calculation, consider increase the accumulation_step and reduce the batch_size on each rank.
 
-```bash
-// [INFO]: MAX GPU MEMORY ALLOCATED:  19148.9345703125 MB
-torchrun --standalone --nproc_per_node=1 train_sft.py \
-    --pretrain "/path/to/LLaMa-7B/" \
-    --model 'llama' \
-    --strategy ddp \
-    --save_path  /path/to/Coati-7B \
-    --dataset /path/to/data.json \
-    --batch_size 1 \
-    --accumulation_steps 8 \
-    --lr 2e-5 \
-    --max_datasets_size 512 \
-    --max_epochs 1 \
-    --lora_rank 16 \
-    --grad_checkpoint
-```
+If you only have a single 24G GPU. Generally, using lora and "zero2-cpu" will be sufficient.
 
-`colossalai_gemini` strategy can enable a single 24G GPU to train the whole model without using LoRA if you have sufficient CPU memory. You can use the following script.
+`gemini` and `gemini-auto` can enable a single 24G GPU to train the whole model without using LoRA if you have sufficient CPU memory. But that strategy doesn't support gradient accumulation.
 
-```bash
-torchrun --standalone --nproc_per_node=1 train_sft.py \
-    --pretrain "/path/to/LLaMa-7B/" \
-    --model 'llama' \
-    --strategy colossalai_gemini \
-    --save_path  /path/to/Coati-7B \
-    --dataset /path/to/data.json \
-    --batch_size 1 \
-    --accumulation_steps 8 \
-    --lr 2e-5 \
-    --max_datasets_size 512 \
-    --max_epochs 1 \
-    --grad_checkpoint
-```
-
-If you have 4x32 GB GPUs, you can even train the whole 7B model using our `colossalai_zero2_cpu` strategy! The script is given as follows.
-
-```bash
-torchrun --standalone --nproc_per_node=4 train_sft.py \
-    --pretrain "/path/to/LLaMa-7B/" \
-    --model 'llama' \
-    --strategy colossalai_zero2_cpu \
-    --save_path  /path/to/Coati-7B \
-    --dataset /path/to/data.json \
-    --batch_size 1 \
-    --accumulation_steps 8 \
-    --lr 2e-5 \
-    --max_datasets_size 512 \
-    --max_epochs 1 \
-    --grad_checkpoint
-```
-
+If you have multiple GPUs each has very limited VRAM, say 8GB. You can try the `3d` for the plugin option, which supports tensor parellelism, set `--tp` to the number of GPUs that you have.
 </details>
 
 ## The Plan
@@ -498,6 +467,8 @@ torchrun --standalone --nproc_per_node=4 train_sft.py \
 - [x] support inference
 - [x] support llama from [facebook](https://github.com/facebookresearch/llama)
 - [x] implement PPO-ptx fine-tuning
+- [x] support flash-attention
+- [x] implement DPO fine-tuning
 - [ ] integrate with Ray
 - [ ] support more RL paradigms, like Implicit Language Q-Learning (ILQL),
 - [ ] support chain-of-thought by [langchain](https://github.com/hwchase17/langchain)

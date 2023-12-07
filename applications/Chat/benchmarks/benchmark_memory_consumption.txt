@@ -1,0 +1,2 @@
+Model=Opt-1.3b; lora_rank=0; plugin=zero2
+Max CUDA memory usage: 56538.62 MB

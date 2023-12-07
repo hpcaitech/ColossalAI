@@ -94,7 +94,7 @@ def benchmark_train(args):
             initial_model_numel,
             reward_model_numel,
             enable_grad_checkpoint=False,
-            ignore_episodes=1,
+            ignore_episodes=2,
             train_config={"model": "facebook/opt-" + args.pretrain, "lora_rank": args.lora_rank, "plugin": args.plugin},
             save_path="./benchmark_performance_summarization.txt",
         )
