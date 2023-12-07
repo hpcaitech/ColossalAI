@@ -1,14 +1,23 @@
 from typing import List, Tuple
 
 import torch
+from transformers.configuration_utils import PretrainedConfig
 
-from colossalai.inference.config import InferenceConfig
+from colossalai.inference.core.config import InferenceConfig
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
 
 from .block_cache import CacheBlock
 
 GIGABYTE = 1024**3
+
+
+def get_model_config_attr(config: PretrainedConfig, attr_name: str):
+    if hasattr(config, attr_name):
+        return getattr(config, attr_name)
+    elif hasattr(config, "attribute_map") and hasattr(config, config.attribute_map[attr_name]):
+        return getattr(config, config.attribute_map[attr_name])
+    raise AttributeError(f"{attr_name} is not found in config")
 
 
 class KVCacheManager:
@@ -39,12 +48,9 @@ class KVCacheManager:
         Currently, allocations and updates are done at granularity of a single sequence.
         That is, the block table should be a 1D tensor of shape [max_blocks_per_sequence].
         And it's possible to have a batch of sequences with different lengths of block tables.
-
-    Args:
-        config(InferenceConfig): The All-in-one inference configuration.
     """
 
-    def __init__(self, config: InferenceConfig, verbose: bool = False) -> None:
+    def __init__(self, config: InferenceConfig, model_config: PretrainedConfig, verbose: bool = False) -> None:
         self.logger = get_dist_logger(__name__)
         self.device = get_current_device()
 
@@ -53,17 +59,16 @@ class KVCacheManager:
         # Model settings
         self.dtype = config.dtype
         self.elem_size_in_bytes = torch.tensor([], dtype=self.dtype).element_size()
-        self.num_layers = config.num_layers
+        self.num_layers = get_model_config_attr(model_config, "num_hidden_layers")
         # For now we focus on MHA only, TODO add handling for MQA and GQA
-        self.head_num = config.num_attention_heads
+        self.head_num = get_model_config_attr(model_config, "num_attention_heads")
+        self.head_size = get_model_config_attr(model_config, "hidden_size") // self.head_num
         assert self.head_num % self.tp_size == 0, f"Cannot shard {self.head_num} heads with tp size {self.tp_size}"
         self.head_num //= self.tp_size
-        self.head_size = config.head_size
-        # Generation settings
         self.beam_width = config.beam_width
         self.max_batch_size = config.max_batch_size
-        self.max_input_length = config.max_input_length
-        self.max_output_length = config.max_output_length
+        self.max_input_length = config.max_input_len
+        self.max_output_length = config.max_output_len
         # Cache block settings
         self.block_size = config.block_size
         # NOTE: `num_blocks` is not prompted, but evaluated from the maximum input/output length, and the maximum batch size
