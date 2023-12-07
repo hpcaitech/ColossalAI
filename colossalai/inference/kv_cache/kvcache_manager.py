@@ -44,7 +44,7 @@ class KVCacheManager:
         config(InferenceConfig): The All-in-one inference configuration.
     """
 
-    def __init__(self, config: InferenceConfig) -> None:
+    def __init__(self, config: InferenceConfig, verbose: bool = False) -> None:
         self.logger = get_dist_logger(__name__)
         self.device = get_current_device()
 
@@ -73,9 +73,9 @@ class KVCacheManager:
         self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size * self.beam_width
 
         # Physical cache allocation
-        alloc_shape = (self.num_blocks, self.block_size, self.head_num, self.head_size)
-        self.logger.info(f"Allocating KV cache with shape: {alloc_shape} consisting of {self.num_blocks} blocks.")
-        # self._kv_caches = self._init_device_caches(alloc_shape)
+        if verbose:
+            alloc_shape = (self.num_blocks, self.head_num, self.head_size, self.block_size)
+            self.logger.info(f"Allocating KV cache with shape: {alloc_shape} consisting of {self.num_blocks} blocks.")
         self._kv_caches = self._init_device_caches()
         self.total_physical_cache_size_in_bytes = (
             self.elem_size_in_bytes
@@ -177,7 +177,7 @@ class KVCacheManager:
         for i in range(block_table.numel()):
             global_block_id = block_table[i].item()
             block: CacheBlock = self._cache_blocks[global_block_id]
-            block.remove_ref()  # not going to clear the block thoroughly
+            block.remove_ref()
             if not block.has_ref():
                 block.allocated_size = 0
                 self._free_blocks.append(block)
@@ -236,11 +236,11 @@ class KVCacheManager:
         """Initialize the physical cache on the device.
 
         For each layer of the model, we allocate two tensors for key and value respectively,
-        with shape of [num_blocks, block_size, num_head, head_size]
+        with shape of [num_blocks, num_kv_heads, head_size, block_size]
         """
-        alloc_shape = (self.num_blocks, self.block_size, self.head_num, self.head_size)
+        alloc_shape = (self.num_blocks, self.head_num, self.head_size, self.block_size)
         # TODO: Explore the performance when using difference shapes with kernel-related optimizations
-        #       e.g. [num_blocks, block_size, num_head // x, head_size, x]
+        #       e.g. [num_blocks, num_kv_heads // x, head_size, block_size, x]
         k_cache: List[torch.Tensor] = []
         v_cache: List[torch.Tensor] = []
         for _ in range(self.num_layers):

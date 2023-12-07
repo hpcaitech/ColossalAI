@@ -19,6 +19,7 @@ class SampleConfig:
     max_output_length: int
     beam_width: int
     dtype: torch.dtype
+    tp_size: int
 
 
 @parameterize(
@@ -60,6 +61,7 @@ def test_logical_blocks(test_config):
             "max_output_length": 32,
             "dtype": torch.float32,
             "beam_width": 1,
+            "tp_size": 1,
         },
         {
             "num_attention_heads": 4,
@@ -71,6 +73,7 @@ def test_logical_blocks(test_config):
             "max_output_length": 32,
             "dtype": torch.float16,
             "beam_width": 3,
+            "tp_size": 1,
         },
     ],
 )
@@ -92,7 +95,7 @@ def test_cache_manager(test_config):
     assert len(cache_manager._allocated_blocks) == 0
     key_caches = cache_manager._kv_caches[0]  # key caches for all the blocks in all the layers
     assert len(key_caches) == test_config["num_layers"]
-    expected_kv_shape = (num_blocks, block_size, num_heads, head_size)
+    expected_kv_shape = (num_blocks, num_heads, head_size, block_size)
     assert key_caches[0].shape == expected_kv_shape
     k_cache_block0, v_cache_block0 = cache_manager.get_physical_cache(0, 0)
     expected_kv_block_shape = expected_kv_shape[1:]
