@@ -4,22 +4,29 @@
 Splicing multiple pre-tokenized sequence data points
 """
 
+import bisect
 import random
 import warnings
 from copy import deepcopy
-from datasets import dataset_dict
-from typing import Any, Callable, Dict, Iterable, List, Union, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Tuple, Union
 
+from datasets import dataset_dict
 from torch.utils.data import ConcatDataset, Dataset, IterableDataset
 from transformers.models.llama.tokenization_llama import LlamaTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
+
+from colossalai.logging import get_dist_logger
+
+from .conversation import Conversation, default_conversation
+
+logger = get_dist_logger()
 
 IGNORE_INDEX = -100
 
 DSType = Union[Dataset, ConcatDataset, dataset_dict.Dataset]
 
 
-def supervised_tokenize(
+def supervised_tokenize_pretrain(
     data_point: Dict[str, str], tokenizer: LlamaTokenizer, ignore_index: int = None, max_length: int = 4096
 ) -> Dict[str, Union[int, str, List[int]]]:
     """
@@ -59,6 +66,121 @@ def supervised_tokenize(
         labels=sequence_labels,
         seq_length=len(sequence_input_ids),
         seq_category=data_point["category"],
+    )
+
+
+def supervised_tokenize_sft(
+    data_point: Dict[str, str],
+    tokenizer: LlamaTokenizer,
+    conversation_template: Conversation = default_conversation,
+    ignore_index: int = None,
+    max_length: int = 4096,
+) -> Dict[str, Union[int, str, List[int]]]:
+    """
+    A tokenization function to tokenize an original supervised data point as following:
+        {"messages": [{"from": "human", "content": "xxx"}, {"from": "assistant", "content": "xxx"}]}
+    """
+    assert tokenizer.add_bos_token is False and tokenizer.add_eos_token is False, (
+        "Initially set `tokenizer.add_bos_token` and `tokenizer.add_eos_token` to False, "
+        "add <bos> and <eos> manually later"
+    )
+
+    assert (
+        tokenizer.bos_token == conversation_template.seps[0] and tokenizer.eos_token == conversation_template.seps[1]
+    ), "`bos_token` and `eos_token` should be the same with `conversation_template.seps`."
+
+    if ignore_index is None:
+        ignore_index = IGNORE_INDEX
+
+    messages = data_point["messages"]
+    template = deepcopy(conversation_template)
+    template.messages = []
+
+    for mess in messages:
+        from_str = mess["from"]
+        if from_str.lower() == "human":
+            from_str = template.roles[0]
+        elif from_str.lower() == "assistant":
+            from_str = template.roles[1]
+        else:
+            raise ValueError(f"Unsupported role {from_str.lower()}")
+
+        template.append_message(from_str, mess["content"])
+
+    if len(template.messages) % 2 != 0:
+        template.messages = template.messages[0:-1]
+
+    # `target_turn_index` is the number of turns which exceeds `max_length - 1` for the first time.
+    turns = [i for i in range(1, len(messages) // 2 + 1)]
+    target_turn_index = bisect.bisect_right(
+        turns,
+        max_length - 1,
+        key=lambda x: len(tokenizer([template.get_prompt(2 * x)], add_special_tokens=False)["input_ids"][0]),
+    )
+
+    # The tokenized length for first turn already exceeds `max_length - 1`.
+    if target_turn_index - 1 < 0:
+        return dict(
+            input_ids=None,
+            labels=None,
+            inputs_decode=None,
+            labels_decode=None,
+            seq_length=None,
+            seq_category=None,
+        )
+
+    target_turn = turns[target_turn_index - 1]
+    prompt = template.get_prompt(2 * target_turn)
+    tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0]
+
+    template.messages = template.messages[0 : 2 * target_turn]
+
+    starts = []
+    ends = []
+    gpt_bos = False if template.messages[0][0] == template.roles[0] else True
+    gpt_eos = False if template.messages[0][0] == template.roles[0] else True
+
+    for i, token_id in enumerate(tokenized):
+        if token_id == tokenizer.bos_token_id:
+            if gpt_bos:
+                starts.append(i)
+            gpt_bos = not gpt_bos
+        elif token_id == tokenizer.eos_token_id:
+            if gpt_eos:
+                ends.append(i)
+            gpt_eos = not gpt_eos
+
+    if len(starts) != target_turn or len(ends) != target_turn:
+        logger.info(
+            "Please check whether the tokenizer add additional `bos_token` and `eos_token`.\n\nOr the original message contains `bos_token` or `eos_token`."
+        )
+        return dict(
+            input_ids=None,
+            labels=None,
+            inputs_decode=None,
+            labels_decode=None,
+            seq_length=None,
+            seq_category=None,
+        )
+
+    tokenized = [tokenizer.bos_token_id] + tokenized
+    labels = [ignore_index] * len(tokenized)
+    for start, end in zip(starts, ends):
+        labels[start + 1 : end + 2] = tokenized[start + 1 : end + 2]
+
+    labels_decode = deepcopy(labels)
+    for i, z in enumerate(labels_decode):
+        if z == ignore_index:
+            labels_decode[i] = tokenizer.unk_token_id
+
+    # `inputs_decode` and `labels_decode` can be used to check whether the tokenization method is true.
+    return dict(
+        input_ids=tokenized,
+        labels=labels,
+        inputs_decode=tokenizer.decode(tokenized),
+        labels_decode=tokenizer.decode(labels_decode),
+        seq_length=len(tokenized),
+        seq_category=data_point["category"] if "category" in data_point else "None",
     )
 
 
@@ -169,12 +291,7 @@ class ClosedToConstantLengthSplicedDataset(IterableDataset):
                     spliced_labels.extend(seq_labels)
             # For residual spliced data point at the end of the data set
             if self.infinite is False and more_data_points is False and len(spliced_input_ids) > 0:
-                examples.append(
-                    {
-                        self.input_ids_field: spliced_input_ids,
-                        self.labels_field: spliced_labels
-                    }
-                )
+                examples.append({self.input_ids_field: spliced_input_ids, self.labels_field: spliced_labels})
             if self.shuffle:
                 random.shuffle(examples)
             for spliced_data_point in examples:

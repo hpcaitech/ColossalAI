@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Prepare dataset for continual pre-training
+Prepare sft dataset for fine-tuning
 """
 
 import argparse
 import json
 import math
 import os
-import time
 from multiprocessing import cpu_count
 
-from colossal_llama2.dataset.spliced_and_tokenized_dataset import (
-    ClosedToConstantLengthSplicedDataset,
-    supervised_tokenize_pretrain,
-)
+from colossal_llama2.dataset.conversation import default_conversation
+from colossal_llama2.dataset.spliced_and_tokenized_dataset import supervised_tokenize_sft
 from datasets import dataset_dict, load_dataset
 from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
@@ -104,22 +101,26 @@ def main():
         assert isinstance(dataset, dataset_dict.Dataset)
         logger.info(f"Start to process part-{index}/{len(list_dataset)} of all original datasets.")
         dataset = dataset.map(
-            function=supervised_tokenize_pretrain,
-            fn_kwargs={"tokenizer": tokenizer, "max_length": args.max_length},
+            function=supervised_tokenize_sft,
+            fn_kwargs={
+                "tokenizer": tokenizer,
+                "conversation_template": default_conversation,
+                "max_length": args.max_length,
+            },
             keep_in_memory=False,
             num_proc=min(len(dataset), cpu_count()),
         )
-        dataset = dataset.remove_columns(column_names=["source", "target", "category"])
+
+        dataset = dataset.filter(lambda data: data["labels"] is not None)
         dataset = dataset.sort(column_names=("seq_category", "seq_length"), reverse=False, keep_in_memory=False)
-        dataset = dataset.remove_columns(column_names=["seq_category", "seq_length"])
-        spliced_dataset = ClosedToConstantLengthSplicedDataset(
-            dataset=dataset, tokenizer=tokenizer, max_length=args.max_length, error_strict=False
-        )
+
+        # We don't concatenate data samples here.
+        spliced_dataset = dataset
         # Save each jsonl spliced dataset.
         output_index = "0" * (5 - len(str(index))) + str(index)
         output_name = f"part-{output_index}"
         output_jsonl_path = os.path.join(args.data_jsonl_output_dir, output_name + ".jsonl")
-        st = time.time()
+        # st = time.time()
         with open(file=output_jsonl_path, mode="w", encoding="utf-8") as fp_writer:
             spliced_count = 0
             for spliced_data_point in spliced_dataset:
@@ -127,13 +128,6 @@ def main():
                     logger.info(f"processing {spliced_count} spliced data points for {fp_writer.name}")
                 spliced_count += 1
                 fp_writer.write(json.dumps(spliced_data_point, ensure_ascii=False) + "\n")
-        logger.info(
-            f"Current file {fp_writer.name}; "
-            f"Data size: {len(spliced_dataset)}; "
-            f"Spliced data size: {spliced_dataset.current_size}; "
-            f"Splicing compression rate: {round(spliced_dataset.current_size / len(spliced_dataset), 6)}; "
-            f"Time cost: {round((time.time() - st) / 60, 6)} minutes."
-        )
 
         # Save each arrow spliced dataset
         output_arrow_path = os.path.join(args.data_arrow_output_dir, output_name)
