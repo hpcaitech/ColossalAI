@@ -17,6 +17,7 @@ from .extensions.utils import AttnMaskType, Repad, SeqLenInfo, Unpad
 class FlashAttentionLoader(BaseKernelLoader):
     """
     FlashAttention Loader
+
     """
 
     def __init__(self):
@@ -145,5 +146,6 @@ class ColoAttention(torch.nn.Module):
                 out = self.repad(out, seq_len_info_q.indices, batch_size, tgt_len)
             out = rearrange(out, "(b s) h d -> b s h d", b=batch_size)
 
-        out = rearrange(out, "b s h d -> b s (h d)")
+        if len(out.shape) == 4:
+            out = rearrange(out, "b s h d -> b s (h d)")
         return out
