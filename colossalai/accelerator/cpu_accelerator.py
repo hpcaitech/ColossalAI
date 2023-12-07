@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from contextlib import nullcontext
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 import torch
@@ -284,4 +285,4 @@ class CpuAccelerator(BaseAccelerator):
         """
         Return autocast function
         """
-        raise RuntimeError("this method is not supported for cpu accelerator")
+        raise nullcontext()
