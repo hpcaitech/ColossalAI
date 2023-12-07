@@ -16,7 +16,7 @@ _ACCELERATOR = None
 # we use ordered dictionary here to associate the
 # order with device check priority
 # i.e. auto_set_accelerator will check cuda first
-_ACCELERATOR_MAPPING = OrderedDict(cuda=CudaAccelerator, npu=NpuAccelerator)
+_ACCELERATOR_MAPPING = OrderedDict(cuda=CudaAccelerator, npu=NpuAccelerator, cpu=CpuAccelerator)
 
 
 def set_accelerator(accelerator: Union[str, BaseAccelerator]) -> None:
@@ -44,17 +44,17 @@ def auto_set_accelerator() -> None:
     """
     global _ACCELERATOR
 
-    for _, accelerator_cls in _ACCELERATOR_MAPPING.items():
+    for accelerator_name, accelerator_cls in _ACCELERATOR_MAPPING.items():
         try:
             accelerator = accelerator_cls()
-            if accelerator.is_available():
+            if accelerator_name == "cpu" or accelerator.is_available():
                 _ACCELERATOR = accelerator
                 break
         except:
             pass
 
     if _ACCELERATOR is None:
-        _ACCELERATOR = CpuAccelerator()
+        raise RuntimeError("No accelerator is available.")
 
 
 def get_accelerator() -> BaseAccelerator:
