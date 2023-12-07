@@ -5,7 +5,12 @@ import torch
 from einops import rearrange
 
 from .base_kernel_loader import BaseKernelLoader
-from .extensions.flash_attention import CudaFlashAttnExtension, CudaMemoryEfficentAttnExtension
+from .extensions.flash_attention import (
+    CudaFlashAttnExtension,
+    CudaMemoryEfficentAttnExtension,
+    NpuSpdaAttnExtension,
+    NpuTriangleAttnExtension,
+)
 from .extensions.utils import AttnMaskType, Repad, SeqLenInfo, Unpad
 
 
@@ -19,6 +24,8 @@ class FlashAttentionLoader(BaseKernelLoader):
             extension_map=dict(
                 cuda_flash_attn=CudaFlashAttnExtension,
                 cuda_memory_efficent_attn=CudaMemoryEfficentAttnExtension,
+                npu_spda_attn=NpuSpdaAttnExtension,
+                npu_triangle_attn=NpuTriangleAttnExtension,
             ),
             supported_device=["cuda", "npu"],
         )
@@ -28,13 +35,18 @@ class FlashAttentionLoader(BaseKernelLoader):
             return self._extension_map[backend].fetch()
 
         kernel = None
-        for _, kernel_extension in self._extension_map.items():
-            ext = kernel_extension()
-            if ext.is_available():
-                kernel = ext.fetch()
-                break
+        if self._is_cuda_available():
+            if CudaFlashAttnExtension().is_available():
+                kernel = CudaFlashAttnExtension().fetch()
+            elif CudaMemoryEfficentAttnExtension.is_available():
+                kernel = CudaMemoryEfficentAttnExtension().fetch()
+        elif self._is_npu_available():
+            if NpuTriangleAttnExtension().is_available():
+                kernel = NpuTriangleAttnExtension().fetch()
+            else:
+                kernel = NpuSpdaAttnExtension().fetch()
         if kernel is None:
-            raise Exception("not supported")
+            raise Exception("No extension for flash attention is supported")
         return kernel
 
 
@@ -118,8 +130,9 @@ class ColoAttention(torch.nn.Module):
             query,
             key,
             value,
-            seq_len_info_q,
-            seq_len_info_kv,
+            seq_len_info_q=seq_len_info_q,
+            seq_len_info_kv=seq_len_info_kv,
+            origin_attn_mask=origin_attn_mask,
             dropout_p=self.dropout,
             scale=self.scale,
             causal=causal,

@@ -18,8 +18,7 @@ try:
 
     HAS_MEM_EFF_ATTN = True
 except ImportError:
-    warnings.warn("please install xformers from https://github.com/facebookresearch/xformers")
-    HAS_MEM_EFF_ATTN = False
+    pass
 
 if HAS_MEM_EFF_ATTN:
     """
@@ -37,6 +36,7 @@ if HAS_MEM_EFF_ATTN:
         v: torch.Tensor,
         seq_len_info_q: SeqLenInfo,
         seq_len_info_kv: SeqLenInfo,
+        origin_attn_mask: Optional[torch.Tensor] = None,
         bias: Optional[torch.Tensor] = None,
         dropout_p: float = 0.0,
         scale: float = None,
@@ -84,6 +84,8 @@ class CudaMemoryEfficentAttnExtension(BaseExtension):
         pass
 
     def is_available(self):
+        if HAS_MEM_EFF_ATTN == False:
+            warnings.warn("ImportError: please install xformers from https://github.com/facebookresearch/xformers")
         return HAS_MEM_EFF_ATTN
 
     def load(self):
