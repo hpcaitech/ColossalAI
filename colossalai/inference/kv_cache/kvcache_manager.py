@@ -26,7 +26,7 @@ class KVCacheManager:
         The block table after block allocation might be:
         |  0 |  1 |  2 | -1 | -1 | -1 |
         Then the logical blocks with id 0, 1, and 2, are allocated for this sequence,
-        and the physical caches, each with size of `block_size * num_heads * head_size * elem_siz` for a single layer,
+        and the physical caches, each with size of `block_size * head_num * head_size * elem_size` for a single layer,
         corresponding to these blocks will be used to read/write KV Caches in kernels.
 
         For a batch of sequences, the block tables after allocation might be:
@@ -47,11 +47,17 @@ class KVCacheManager:
     def __init__(self, config: InferenceConfig) -> None:
         self.logger = get_dist_logger(__name__)
         self.device = get_current_device()
+
+        # Parallel settings
+        self.tp_size = config.tp_size
         # Model settings
         self.dtype = config.dtype
         self.elem_size_in_bytes = torch.tensor([], dtype=self.dtype).element_size()
         self.num_layers = config.num_layers
-        self.num_heads = config.num_attention_heads
+        # For now we focus on MHA only, TODO add handling for MQA and GQA
+        self.head_num = config.num_attention_heads
+        assert self.head_num % self.tp_size == 0, f"Cannot shard {self.head_num} heads with tp size {self.tp_size}"
+        self.head_num //= self.tp_size
         self.head_size = config.head_size
         # Generation settings
         self.beam_width = config.beam_width
@@ -67,7 +73,7 @@ class KVCacheManager:
         self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size * self.beam_width
 
         # Physical cache allocation
-        alloc_shape = (self.num_blocks, self.block_size, self.num_heads, self.head_size)
+        alloc_shape = (self.num_blocks, self.block_size, self.head_num, self.head_size)
         self.logger.info(f"Allocating KV cache with shape: {alloc_shape} consisting of {self.num_blocks} blocks.")
         # self._kv_caches = self._init_device_caches(alloc_shape)
         self._kv_caches = self._init_device_caches()
@@ -77,10 +83,9 @@ class KVCacheManager:
             * 2
             * self.num_blocks
             * self.block_size
-            * self.num_heads
+            * self.head_num
             * self.head_size
         )
-
         # Logical cache blocks allocation
         self.available_blocks = self.num_blocks
         self._free_blocks = self._init_logical_caches()
@@ -213,7 +218,7 @@ class KVCacheManager:
         """
         assert self._kv_caches is not None and len(self._kv_caches[0]) > 0
         blocks = []
-        physical_block_size = self.elem_size_in_bytes * self.block_size * self.num_heads * self.head_size
+        physical_block_size = self.elem_size_in_bytes * self.block_size * self.head_num * self.head_size
         k_ptrs = [
             self._kv_caches[0][layer_idx].data_ptr() - physical_block_size for layer_idx in range(self.num_layers)
         ]
@@ -233,7 +238,7 @@ class KVCacheManager:
         For each layer of the model, we allocate two tensors for key and value respectively,
         with shape of [num_blocks, block_size, num_head, head_size]
         """
-        alloc_shape = (self.num_blocks, self.block_size, self.num_heads, self.head_size)
+        alloc_shape = (self.num_blocks, self.block_size, self.head_num, self.head_size)
         # TODO: Explore the performance when using difference shapes with kernel-related optimizations
         #       e.g. [num_blocks, block_size, num_head // x, head_size, x]
         k_cache: List[torch.Tensor] = []
