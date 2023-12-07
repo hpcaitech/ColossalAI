@@ -1,12 +1,14 @@
 from logging import Logger
 from typing import Optional
 
-from .request_handler import RequestHandler
+from transformers import AutoConfig
+
+from .config import InferenceConfig
 
 
-class InferEngine:
+class InferenceEngine:
     """
-    InferEngine is the core component for Inference.
+    InferenceEngine is the core component for Inference.
 
     It is responsible for launch the inference process, including:
         - Initialize model and distributed training environment(if needed)
@@ -15,37 +17,27 @@ class InferEngine:
         - Log the generation process
 
     Args:
-        colossal_config: We provide a unified config api for that wrapped all the configs. You can use it to replace the below configs.
-        model_config : The configuration for the model.
-        parallel_config: The configuration for parallelize model.
-        cache_config : Configuration for initialize and manage kv cache.
-        tokenizer (Tokenizer): The tokenizer to be used for inference.
-        use_logger (bool): Determine whether or not to log the generation process.
+        tokenizer: Path of the tokenizer to use.
+        inference_config: We provide a unified config api for that wrapped all the configs. You can use it to replace the below configs.
+        verbose (bool): Determine whether or not to log the generation process.
     """
 
     def __init__(
         self,
-        model_config,
-        cache_config,
-        parallel_config,
-        tokenizer,
-        use_logger: bool = False,
-        colossal_config: Optional["ColossalInferConfig"] = None,
+        tokenizer: str = None,
+        inference_config: Optional["InferenceConfig"] = None,
+        verbose: bool = False,
     ) -> None:
-        assert colossal_config or (
-            model_config and cache_config and parallel_config
-        ), "Please provide colossal_config or model_config, cache_config, parallel_config"
-        if colossal_config:
-            model_config, cache_config, parallel_config = colossal_config
-
-        self.model_config = model_config
-        self.cache_config = cache_config
-        self.parallel_config = parallel_config
-        self._verify_config()
+        assert inference_config, "Please provide inference_config."
 
         self._init_model()
-        self.request_handler = RequestHandler(cache_config)
-        if use_logger:
+        # cache_config may need to be modified later.
+        # self.request_handler = RequestHandler(cache_config)
+        self.tokenizer = tokenizer
+        self.hf_model_config = AutoConfig.from_pretrained(
+            self.model, trust_remote_code=self.trust_remote_code, revision=self.revision
+        )
+        if verbose:
             self.logger = Logger()
 
     def _init_model(self):
