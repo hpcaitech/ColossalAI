@@ -75,7 +75,7 @@ class ColoAttention(torch.nn.Module):
         if self.attn.__name__ == "flash_attention" and (
             query.dtype not in [torch.float16, torch.bfloat16] or bias != None
         ):
-            self.attn = FlashAttentionLoader().fetch_kernel(backend="cuda_mem_eff_attn")
+            self.attn = FlashAttentionLoader().fetch_kernel(backend="cuda_memory_efficent_attn")
 
         padded = attn_mask_type is not None and attn_mask_type.value % 2 == 1
         causal = attn_mask_type is not None and attn_mask_type.value > 1
