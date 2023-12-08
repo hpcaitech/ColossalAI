@@ -22,6 +22,57 @@ on:
   delete:
 
 jobs:
+  prepare_cache:
+    name: Prepare testmon cache
+    if: |
+      github.event_name == 'create' &&
+      github.event.ref_type == 'branch' &&
+      github.event.repository.full_name == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:1.13.0-11.7.0
+      options: --rm
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Copy testmon cache
+        run: | # branch name may contain slash, we need to replace it with space
+          export REF_BRANCH=$(echo ${{ github.event.ref }} | sed "s/\// /")
+          if [ -d /github/home/testmon_cache/${MAIN_BRANCH} ]; then
+             cp -p -r /github/home/testmon_cache/${MAIN_BRANCH} "/github/home/testmon_cache/${REF_BRANCH}"
+          fi
+        env:
+          MAIN_BRANCH: ${{ github.event.master_branch }}
+
+  prepare_cache_for_pr:
+    name: Prepare testmon cache for PR
+    if: |
+      github.event_name == 'pull_request' &&
+      (github.event.action == 'opened' || github.event.action == 'reopened' || (github.event.action == 'edited' && github.event.changes.base != null)) &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:1.13.0-11.7.0
+      options: --rm
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-repare-cache
+      cancel-in-progress: true
+    steps:
+      - name: Copy testmon cache
+        run: | # branch name may contain slash, we need to replace it with space
+          export BASE=$(echo ${{ github.event.pull_request.base.ref }} | sed "s/\// /")
+          if [ -d "/github/home/testmon_cache/${BASE}" ] && [ ! -z "$(ls -A "/github/home/testmon_cache/${BASE}")" ]; then
+            mkdir -p /github/home/testmon_cache/_pull/${PR_NUMBER} && cp -p -r "/github/home/testmon_cache/${BASE}"/.testmondata* /github/home/testmon_cache/_pull/${PR_NUMBER}
+          fi
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+
   detect:
     name: Detect file change
     if: |
