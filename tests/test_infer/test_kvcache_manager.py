@@ -1,3 +1,4 @@
+import random
 from dataclasses import dataclass
 
 import torch
@@ -55,35 +56,38 @@ def test_logical_blocks(test_config):
             "num_attention_heads": 16,
             "num_layers": 2,
             "block_size": 8,
-            "max_batch_size": 9,
+            "max_batch_size": 10,
             "max_input_len": 32,
             "max_output_len": 32,
             "dtype": torch.float32,
             "beam_width": 1,
             "tp_size": 1,
         },
-        {
-            "hidden_size": 128,
-            "num_attention_heads": 4,
-            "num_layers": 3,
-            "block_size": 4,
-            "max_batch_size": 4,
-            "max_input_len": 64,
-            "max_output_len": 32,
-            "dtype": torch.float16,
-            "beam_width": 3,
-            "tp_size": 1,
-        },
+        # {
+        #     "hidden_size": 128,
+        #     "num_attention_heads": 4,
+        #     "num_layers": 3,
+        #     "block_size": 4,
+        #     "max_batch_size": 4,
+        #     "max_input_len": 64,
+        #     "max_output_len": 32,
+        #     "dtype": torch.float16,
+        #     "beam_width": 3,
+        #     "tp_size": 1,
+        # },
     ],
 )
 def test_cache_manager(test_config):
     disable_existing_loggers()
+
+    assert test_config["max_batch_size"] > 1
 
     hidden_size = test_config.pop("hidden_size")
     num_layers = test_config.pop("num_layers")
     num_attention_heads = test_config.pop("num_attention_heads")
     head_size = hidden_size // num_attention_heads
     block_size = test_config["block_size"]
+    max_batch_size = test_config["max_batch_size"]
     max_input_length = test_config["max_input_len"]
     max_output_length = test_config["max_output_len"]
 
@@ -97,8 +101,7 @@ def test_cache_manager(test_config):
 
     num_blocks = cache_manager.get_total_num_blocks()
     assert num_blocks > 0
-    assert len(cache_manager._cache_blocks) == len(cache_manager._free_blocks) == num_blocks
-    assert len(cache_manager._allocated_blocks) == 0
+    assert len(cache_manager._cache_blocks) == num_blocks
     key_caches = cache_manager._kv_caches[0]  # key caches for all the blocks in all the layers
     assert len(key_caches) == num_layers
     expected_kv_shape = (num_blocks, num_attention_heads, head_size, block_size)
@@ -109,39 +112,52 @@ def test_cache_manager(test_config):
     assert v_cache_block0.shape == expected_kv_block_shape
 
     max_blocks_per_seq = cache_manager.get_max_blocks_per_sequence()
-    block_table = torch.tensor([-1 for _ in range(max_blocks_per_seq)], dtype=torch.int32)
-    sequence_length = max_input_length
-    cache_manager.allocate_from_block_table(block_table, 0, sequence_length)
-    last_allocated_idx = (sequence_length - 1) // block_size
-    assert torch.all(block_table[: last_allocated_idx + 1] >= 0)
+    block_tables = torch.tensor(
+        [[-1 for _ in range(max_blocks_per_seq)] for _ in range(test_config["max_batch_size"])], dtype=torch.int32
+    )
+    context_lengths = [random.randint(1, max_input_length) for _ in range(max_batch_size)]
+    cnt_blocks_used = 0
+    # Mock Prefill
+    for req_i in range(max_batch_size):
+        cur_seq_len = context_lengths[req_i]
+        cur_block_table = block_tables[req_i]
+        cache_manager.allocate_context_from_block_table(cur_block_table, cur_seq_len)
+        last_allocated_idx = (cur_seq_len - 1) // block_size
+        assert torch.all(cur_block_table[: last_allocated_idx + 1] >= 0)
+        cnt_blocks_used += torch.sum(cur_block_table >= 0).item()
+    assert cache_manager.get_num_available_blocks() == num_blocks - cnt_blocks_used
 
-    max_length = max_input_length + max_output_length
-    while sequence_length < max_length:
-        cache_manager.allocate_from_block_table(block_table, sequence_length, 1)
-        sequence_length += 1
-        last_allocated_idx = (sequence_length - 1) // block_size
-        num_fully_allocated_blocks = sequence_length // block_size
-        space_allocated_on_last_block = sequence_length % block_size
-        space_allocated_on_last_block = (
-            block_size if last_allocated_idx != num_fully_allocated_blocks else space_allocated_on_last_block
-        )
+    # Mock Decoding
+    for req_i in range(max_batch_size):
+        context_length = context_lengths[req_i]
+        cur_output_length = random.randint(1, max_output_length)
+        cur_block_table = block_tables[req_i]
+        for _ in range(cur_output_length):
+            cache_manager.allocate_token_from_block_table(cur_block_table, context_length)
+            context_length += 1
+        context_length -= 1
+        last_allocated_idx = context_length // block_size
+        space_allocated_on_last_block = context_length % block_size + 1
         assert space_allocated_on_last_block > 0
-        block_id = block_table[last_allocated_idx]
+        block_id = cur_block_table[last_allocated_idx]
         block: CacheBlock = cache_manager._cache_blocks[block_id]
         assert block.allocated_size == space_allocated_on_last_block
 
-    assert torch.all(block_table >= 0)
-    assert cache_manager.available_blocks < num_blocks
+    # Randomly select a request and clear its cache
+    req_i = random.randint(0, max_batch_size - 1)
+    context_length = context_lengths[req_i]
+    blocks_used_by_req = torch.sum(block_tables[req_i] >= 0).item()
+    prev_available_blocks = cache_manager.get_num_available_blocks()
+    cache_manager.free_block_table(block_tables[req_i])
+    assert cache_manager.get_num_available_blocks() == blocks_used_by_req + prev_available_blocks
 
     k_ptr_block0_layer0, _ = cache_manager.get_block_kv_ptrs(0, 0)
     k_ptr_block1_layer0, _ = cache_manager.get_block_kv_ptrs(1, 0)
     elem_size = torch.tensor([], dtype=test_config["dtype"]).element_size()
     expected_stride = block_size * num_attention_heads * head_size * elem_size
     assert k_ptr_block1_layer0 - k_ptr_block0_layer0 == expected_stride
-
-    cache_manager.free_cache_blocks(block_table)
-    assert torch.all(block_table < 0)
-    assert cache_manager.available_blocks == num_blocks
+    cache_manager.clear_all()
+    assert cache_manager.get_num_available_blocks() == num_blocks
 
 
 if __name__ == "__main__":

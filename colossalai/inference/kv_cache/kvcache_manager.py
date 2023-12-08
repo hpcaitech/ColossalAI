@@ -92,16 +92,20 @@ class KVCacheManager:
             * self.head_size
         )
         # Logical cache blocks allocation
-        self.available_blocks = self.num_blocks
-        self._free_blocks = self._init_logical_caches()
-        self._cache_blocks = tuple(self._free_blocks)
-        self._allocated_blocks = []
+        self._available_blocks = self.num_blocks
+        self._cache_blocks = tuple(self._init_logical_caches())
         # block availablity state 0->allocated, 1->free
         self._block_states = torch.ones((self.num_blocks,), dtype=torch.bool)
+        self._block_states_cum = torch.zeros(size=(self.num_blocks + 1,), dtype=torch.int64)
+        self._block_finder = torch.zeros((self.num_blocks,), dtype=torch.int64)
 
     def get_total_num_blocks(self) -> int:
         """Get the total number of logical cache blocks."""
         return self.num_blocks
+
+    def get_num_available_blocks(self) -> int:
+        """Get the number of available logical cache blocks."""
+        return self._available_blocks
 
     def get_max_blocks_per_sequence(self) -> int:
         """Get the maximum number of blocks that can be allocated for a single sequence."""
@@ -126,31 +130,73 @@ class KVCacheManager:
                 v_ptrs.append(block.v_ptrs[layer_id])
         return k_ptrs, v_ptrs
 
-    def allocate_from_block_table(
-        self, block_table: torch.Tensor, already_allocated_len: int, space_asked: int = 1
-    ) -> None:
-        """Allocate the logical cache blocks for a single sequence.
-        It updates the provided block table with the allocated block indexes.
+    def allocate_context_from_block_table(self, block_table: torch.Tensor, context_len: int) -> None:
+        """Allocate the logical cache blocks for a single sequence during prefill stage,
+        and updates the provided block table with the allocated block ids.
 
         Args:
             block_table: A 1D tensor of shape [max_blocks_per_sequence], storing mapping of token_position_id -> block_id.
-            already_allocated_len: The number of already-allocated tokens in the sequence.
-                For a new sequence in prefill stage, it should be 0; in generation stage, it should be the sequence length.
-            space_asked: i.e. The number of tokens to be assigned space for.
+            context_len: The length of the processing sequnece.
         """
         assert block_table.dim() == 1
-        # the last-allocated block can be fully occupied, and can be occupied only one slot as well
-        last_allocated_block_idx = already_allocated_len // self.block_size
-        # the right-most block that to be allocated, fully or partially
-        last_newly_allocated_block_idx = (already_allocated_len + space_asked - 1) // self.block_size
-        last_newly_allocated_block_idx = min(last_newly_allocated_block_idx, block_table.numel())
+        if not torch.all(block_table < 0):
+            self.logger.error("Some slots on provided block table have been allocated.")
+        blocks_required = (context_len + self.block_size - 1) // self.block_size
+        if blocks_required > self._available_blocks:
+            self.logger.warning(
+                f"No enough blocks to allocate. Available blocks {self._available_blocks}; context length {context_len}."
+            )
+            return
 
-        for block_local_idx in range(last_allocated_block_idx, last_newly_allocated_block_idx + 1):
-            space_asked = self.allocate_single_block(block_table, block_local_idx, space_asked)
+        # Try contiguous allocation
+        torch.cumsum(self._block_states, dim=-1, out=self._block_states_cum[1:])
+        torch.subtract(
+            self._block_states_cum[blocks_required:],
+            self._block_states_cum[:-blocks_required],
+            out=self._block_finder[blocks_required - 1 :],
+        )
+        end_indexes = torch.nonzero(self._block_finder == blocks_required, as_tuple=False).view(-1)
+        if end_indexes.numel() > 0:
+            # contiguous cache exists
+            end_idx = end_indexes[0].item() + 1  # open interval
+            start_idx = end_idx - blocks_required  # closed interval
+            block_indexes = torch.arange(start_idx, end_idx, device=block_table.device)
+        else:
+            # non-contiguous cache
+            available_block_indexes = torch.nonzero(self._block_states == 0).view(-1)
+            block_indexes = available_block_indexes[:blocks_required]
+        # Update block table
+        block_table[:blocks_required] = block_indexes
+        # Update cache blocks
+        self._block_states[block_indexes] = 0
+        self._available_blocks -= blocks_required
+        for block_id in block_indexes.tolist():
+            block: CacheBlock = self._cache_blocks[block_id]
+            block.add_ref()
+            if block_id == block_indexes[-1].item():
+                self._allocate_on_block(
+                    block, block.block_size if context_len % block.block_size == 0 else context_len % block.block_size
+                )
+            else:
+                self._allocate_on_block(block, block.block_size)
+
+    def allocate_token_from_block_table(self, block_table: torch.Tensor, context_len: int) -> None:
+        """Allocate the logical cache block for a single sequence during decoding stage,
+        and updates the provided block table if a new cache block is needed.
+
+        Args:
+            block_table: A 1D tensor of shape [max_blocks_per_sequence], storing mapping of token_position_id -> block_id.
+            context_len: The length of the processing sequnece (already-allocated length).
+        """
+        assert block_table.dim() == 1
+        # The last allocated block may be either partially or fully occupied.
+        # `alloc_local_block_idx` is the index of block to be allocated on provided block table.
+        alloc_local_block_idx = context_len // self.block_size
+        self.allocate_single_block(block_table, alloc_local_block_idx, 1)
 
     def allocate_single_block(self, block_table: torch.Tensor, block_local_idx: int, space_asked: int) -> int:
-        """Allocate space asked on a single block in the block table, specified by the provided position id.
-        It updates the provided block table with the allocated block.
+        """Allocate space asked on a single block in the block table, specified by the provided position id,
+        and updates the provided block table with the allocated block.
 
         Args:
             block_table: A 1D tensor of shape [max_blocks_per_sequence], storing mapping of token_position_id -> block_id.
@@ -163,41 +209,38 @@ class KVCacheManager:
         block_global_id = block_table[block_local_idx].item()
         if block_global_id < 0:
             # Allocate a new block if the current position is not assigned a block yet
-            assert self.available_blocks > 0, "No available blocks to allocate."
-            block: CacheBlock = self._free_blocks.pop(0)
+            assert self._available_blocks > 0, "No available blocks to allocate."
+            free_block_id = torch.nonzero(self._block_states == 1).view(-1)[0]
+            block: CacheBlock = self._cache_blocks[free_block_id]
             block.add_ref()
-            self._allocated_blocks.append(block)
             block_global_id = block.block_id
-            self.available_blocks -= 1
+            self._available_blocks -= 1
             self._block_states[block_global_id] = 0
             block_table[block_local_idx] = block_global_id
-
         block: CacheBlock = self._cache_blocks[block_global_id]
         return self._allocate_on_block(block, space_asked)
 
-    def free_cache_blocks(self, block_table: torch.Tensor) -> None:
+    def free_block_table(self, block_table: torch.Tensor) -> None:
         """Free the logical cache blocks for **a single sequence**."""
         assert block_table.dim() == 1
-        assert torch.all(block_table >= 0)
         for i in range(block_table.numel()):
             global_block_id = block_table[i].item()
+            if global_block_id < 0:
+                return
             block: CacheBlock = self._cache_blocks[global_block_id]
             block.remove_ref()
             if not block.has_ref():
                 block.allocated_size = 0
-                self._free_blocks.append(block)
-                self.available_blocks += 1
+                self._available_blocks += 1
                 self._block_states[global_block_id] = 1
                 # reset the block id in the block table (if we maintain a 2D tensors as block tables in Engine)
                 block_table[i] = -1
 
-    def clear_cache_blocks(self) -> None:
-        """Clear all the reference and allocation on logical cache blocks."""
+    def clear_all(self) -> None:
+        """Clear all the references and allocations on logical cache blocks."""
         for block in self._cache_blocks:
             block.clear()
-        self._free_blocks = tuple(self._cache_blocks)
-        self._allocated_blocks = []
-        self.available_blocks = self.num_blocks
+        self._available_blocks = self.num_blocks
         self._block_states[:] = 1
 
     def get_physical_cache(self, layer_id: int, block_idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -210,7 +253,7 @@ class KVCacheManager:
         Returns:
             The remaining space required to be allocated (in other blocks).
         """
-        assert block.available_space > 0, "No available blocks to allocate."
+        assert block.available_space > 0, "No available space on block to allocate."
         space_to_allocate = min(block.available_space, space_asked)
         block.allocate(space_to_allocate)
         return space_asked - space_to_allocate

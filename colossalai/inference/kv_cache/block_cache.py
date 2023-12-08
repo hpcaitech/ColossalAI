@@ -49,7 +49,6 @@ class CacheBlock:
         return self.allocated_size < 1
 
     def clear(self) -> None:
-        assert self.ref_count > 0, f"Block#{self.block_id} has no reference to free."
         self.ref_count = 0
         self.allocated_size = 0
 
