@@ -4,8 +4,7 @@ import pytest
 import torch
 from einops import rearrange
 
-from colossalai.kernel.cuda_native.mha.flash_attn_2 import HAS_FLASH_ATTN
-from colossalai.kernel.cuda_native.mha.mem_eff_attn import HAS_MEM_EFF_ATTN
+from colossalai.kernel.extensions.flash_attention import HAS_FLASH_ATTN, HAS_MEM_EFF_ATTN
 from colossalai.testing import clear_cache_before_run, parameterize
 
 if HAS_MEM_EFF_ATTN or HAS_FLASH_ATTN:
