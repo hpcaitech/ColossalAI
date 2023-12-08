@@ -80,9 +80,10 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
         booster = Booster(plugin=plugin)
         new_booster = Booster(plugin=new_plugin)
         model = model_fn()
-        new_model = deepcopy(model)
-        model = booster.enable_lora(model, lora_config=lora_config)
         optimizer = HybridAdam(model.parameters(), lr=1e-3)
+        new_model = deepcopy(model)
+        new_optimizer = HybridAdam(new_model.parameters(), lr=1e-3)
+        model = booster.enable_lora(model, lora_config=lora_config)
         criterion = lambda x: x.mean()
         data = data_gen_fn()
 
@@ -107,7 +108,6 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
             booster.save_lora_as_pretrained(model, model_ckpt_path)
             booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=False)
             new_model = new_booster.enable_lora(new_model, pretrained_dir=model_ckpt_path, lora_config=lora_config)
-            new_optimizer = HybridAdam(new_model.parameters(), lr=1e-3)
             new_model, new_optimizer, criterion, _, _ = new_booster.boost(new_model, new_optimizer, criterion)
             check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
 
@@ -168,7 +168,7 @@ def check_low_level_zero_lora_checkpointIO(stage: int, shard: bool, offload: boo
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config=(dict()), rank=rank, world_size=world_size, port=port, host="localhost")
-    # check_low_level_zero_checkpointIO()
+    check_low_level_zero_checkpointIO()
     check_low_level_zero_lora_checkpointIO()
     torch.cuda.empty_cache()
 
