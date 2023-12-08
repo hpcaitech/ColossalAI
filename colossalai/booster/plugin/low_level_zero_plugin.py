@@ -353,7 +353,12 @@ class LowLevelZeroPlugin(DPPluginBase):
         if self.lora_enabled:
             from peft import PeftModel
             assert isinstance(model, PeftModel), "The model should have been wrapped as a PeftModel when self.lora_enabled is True"
-            optimizer.param_groups[0]['params'] = list(model.parameters())
+            
+            optim_params_nums = 0
+            for param_group in optimizer.param_groups:
+                optim_params_nums += len(param_group['params'])
+            model_params_nums = len(list(model.named_parameters()))
+            assert optim_params_nums == model_params_nums, "Optimizer should be initialized after enabling lora."
 
         if not isinstance(model, ModelWrapper):
             model = LowLevelZeroModel(model, self.precision)

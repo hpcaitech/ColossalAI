@@ -82,6 +82,8 @@ class GradientStore(BaseStore):
         """
 
         grad_list = []
+        if group_id not in self._grads_of_params.keys():
+            return grad_list
         for param_grads in self._grads_of_params[group_id].values():
             grad_list.append(param_grads[self._working_index])
 

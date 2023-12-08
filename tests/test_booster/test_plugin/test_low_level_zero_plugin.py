@@ -24,6 +24,10 @@ def run_fn(stage, model_fn, data_gen_fn, output_transform_fn, lora_config=None) 
         plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=2**5)
         booster = Booster(plugin=plugin)
         model = model_fn()
+
+        if lora_config is not None:
+            model = booster.enable_lora(model, lora_config=lora_config)
+
         optimizer = HybridAdam(model.parameters(), lr=1e-3)
         criterion = lambda x: x.mean()
         data = data_gen_fn()
@@ -31,9 +35,6 @@ def run_fn(stage, model_fn, data_gen_fn, output_transform_fn, lora_config=None) 
         data = {
             k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
         }
-
-        if lora_config is not None:
-            model = booster.enable_lora(model, lora_config=lora_config)
 
         model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
