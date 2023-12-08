@@ -1,25 +1,12 @@
 import random
-from dataclasses import dataclass
 
 import torch
 from transformers.models.llama import LlamaConfig
 
+from colossalai.inference.core.config import InferenceConfig
 from colossalai.inference.kv_cache import CacheBlock, KVCacheManager
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import parameterize
-
-
-@dataclass
-class SampleInferenceConfig:
-    # This struct is only used for testing KVCache Manager.
-    # The inference config must have the following attributes to initialize a KVCacheManager.
-    block_size: int
-    max_batch_size: int
-    max_input_len: int
-    max_output_len: int
-    beam_width: int
-    dtype: torch.dtype
-    tp_size: int
 
 
 @parameterize(
@@ -91,13 +78,13 @@ def test_cache_manager(test_config):
     max_input_length = test_config["max_input_len"]
     max_output_length = test_config["max_output_len"]
 
-    sample_config = SampleInferenceConfig(**test_config)
+    inference_config = InferenceConfig(model="", **test_config)
     model_config = LlamaConfig(
         hidden_size=hidden_size,
         num_hidden_layers=num_layers,
         num_attention_heads=num_attention_heads,
     )
-    cache_manager = KVCacheManager(sample_config, model_config)
+    cache_manager = KVCacheManager(inference_config, model_config)
 
     num_blocks = cache_manager.get_total_num_blocks()
     assert num_blocks > 0

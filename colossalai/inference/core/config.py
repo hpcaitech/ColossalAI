@@ -35,7 +35,6 @@ class InferenceConfig:
     max_output_len: int = 256
     max_input_len: int = 256
     block_size: int = 16
-    gpu_utilization_rate: float = 0.7
     dtype: Union[str, torch.dtype] = torch.float32
     tp_size: int = 1
     pp_size: int = 1
@@ -49,7 +48,5 @@ class InferenceConfig:
         self._verify_args()
 
     def _verify_args(self):
-        if self.gpu_utilization_rate > 1.0:
-            raise ValueError(f"GPU utilization should be less than 1.0, but is set to {self.gpu_memory_utilization}.")
         if self.tokenizer_mode not in ["auto", "slow"]:
             raise ValueError("Tokenizer mode must be " "either 'auto' or 'slow'," f"but got {self.tokenizer_mode}")
