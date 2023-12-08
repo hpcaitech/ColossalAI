@@ -45,7 +45,7 @@ def npu_sdpa_attention(
     return output
 
 
-class NpuSpdaAttnExtension(BaseExtension):
+class NpuSdpaAttnExtension(BaseExtension):
     def __init__(self) -> None:
         super().__init__()
         self._is_build_completed = True

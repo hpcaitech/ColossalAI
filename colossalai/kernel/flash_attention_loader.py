@@ -8,7 +8,7 @@ from .base_kernel_loader import BaseKernelLoader
 from .extensions.flash_attention import (
     CudaFlashAttnExtension,
     CudaMemoryEfficentAttnExtension,
-    NpuSpdaAttnExtension,
+    NpuSdpaAttnExtension,
     NpuTriangleAttnExtension,
 )
 from .extensions.utils import AttnMaskType, Repad, SeqLenInfo, Unpad
@@ -18,6 +18,20 @@ class FlashAttentionLoader(BaseKernelLoader):
     """
     FlashAttention Loader
 
+    options: cuda flashh attention, cuda memory effcient attention, npu sdpa attention, npu triangle attention
+
+    Args:
+        q: (batch, q_seqlen, nheads, headdim)
+        k: (batch, kv_seqlen, nheads, headdim)
+        v: (batch, kv_seqlen, nheads, headdim)
+        batch_size: int.
+        seq_len: int.
+        dropout_p: float. Dropout probability.
+        sm_scale: float. The scaling of QK^T before applying softmax.
+            Default to 1 / sqrt(headdim).
+        causal: bool. Whether to apply causal attention mask (e.g., for auto-regressive modeling).
+    Return:
+        attn_out: (batch, q_seqlen, nheads, headdim).
     """
 
     def __init__(self):
@@ -25,7 +39,7 @@ class FlashAttentionLoader(BaseKernelLoader):
             extension_map=dict(
                 cuda_flash_attn=CudaFlashAttnExtension,
                 cuda_memory_efficent_attn=CudaMemoryEfficentAttnExtension,
-                npu_spda_attn=NpuSpdaAttnExtension,
+                npu_sdpa_attn=NpuSdpaAttnExtension,
                 npu_triangle_attn=NpuTriangleAttnExtension,
             ),
             supported_device=["cuda", "npu"],
@@ -45,7 +59,7 @@ class FlashAttentionLoader(BaseKernelLoader):
             if NpuTriangleAttnExtension().is_available():
                 kernel = NpuTriangleAttnExtension().fetch()
             else:
-                kernel = NpuSpdaAttnExtension().fetch()
+                kernel = NpuSdpaAttnExtension().fetch()
         if kernel is None:
             raise Exception("No extension for flash attention is supported")
         return kernel
@@ -83,6 +97,18 @@ class ColoAttention(torch.nn.Module):
         attn_mask_type: Optional[AttnMaskType] = None,
         bias: Optional[torch.Tensor] = None,
     ):
+        """
+        ColoAttention
+
+        Args:
+            q: (batch, q_seqlen, nheads, headdim)
+            k: (batch, kv_seqlen, nheads, headdim)
+            v: (batch, kv_seqlen, nheads, headdim)
+            origin_attn_mask: (nheads, q_seqlen, kv_seqlen)
+            bias: will not be used
+        Return:
+            attn_out: (batch, q_seqlen, nheads, headdim).
+        """
         # if flash attention is not applicable, switch to memory effcient attention
         if self.attn.__name__ == "flash_attention" and (
             query.dtype not in [torch.float16, torch.bfloat16] or bias != None
