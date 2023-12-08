@@ -104,7 +104,7 @@ class KVCacheManager:
         return self.num_blocks
 
     def get_num_available_blocks(self) -> int:
-        """Get the number of available logical cache blocks."""
+        """Get the number of available cache blocks."""
         return self._available_blocks
 
     def get_max_blocks_per_sequence(self) -> int:
@@ -237,7 +237,7 @@ class KVCacheManager:
                 block_table[i] = -1
 
     def clear_all(self) -> None:
-        """Clear all the references and allocations on logical cache blocks."""
+        """Clear all the references and allocations on all the cache blocks."""
         for block in self._cache_blocks:
             block.clear()
         self._available_blocks = self.num_blocks
