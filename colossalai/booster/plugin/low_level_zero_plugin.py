@@ -1,14 +1,14 @@
 import logging
+import warnings
 import os
 from functools import partial
 from pathlib import Path
 from types import MethodType
 from typing import Callable, Dict, Iterator, List, Optional, Tuple, Dict
 
-from peft import LoraConfig, TaskType, get_peft_model
-
 import torch
 import torch.nn as nn
+from torch.nn import Parameter
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils._pytree import tree_map
@@ -335,12 +335,43 @@ class LowLevelZeroPlugin(DPPluginBase):
         from peft import PeftModel, get_peft_model
         assert not isinstance(model, LowLevelZeroModel), "Lora should be enabled before boosting the model."
         self.lora_enabled = True
+        warnings.warn("You have enabled LoRa training. Please check the hyperparameters such as lr")
 
         if pretrained_dir is None:
             peft_model = get_peft_model(model, lora_config)
         else:
             peft_model = PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)
         return peft_model
+    
+    def get_param_group_id(self, optimizer: Optimizer, origin_param: Parameter):
+        origin_param_id = id(origin_param)
+        for group_id, param_group in enumerate(optimizer.param_groups):
+            for p in param_group['params']:
+                if id(p) == origin_param_id:
+                    return group_id
+        return -1
+    
+    def add_lora_para_to_optimizer(self, model, optimizer):
+        """ add lora parameters to optimizer """
+        name2param= {}
+        for name, param in model.named_parameters():
+            name2param[name] = param
+
+        optimizer_param_nums = 0
+        for param_group in optimizer.param_groups:
+            optimizer_param_nums += len(param_group['params'])
+
+        # Check if the optimizer is created after the model is transformed into a LoRa model.
+        if len(name2param) != optimizer_param_nums:
+            for name, param in name2param.items():
+                if 'lora_A' in name or 'lora_B' in name:
+                    origin_key = name.replace("lora_A.", "")
+                    origin_key = origin_key.replace("lora_B.", "")
+                    origin_key = origin_key.replace(f"{model.active_adapter}.", "")
+                    origin_param = name2param[origin_key]
+                    group_id = self.get_param_group_id(optimizer, origin_param)
+                    assert group_id != -1, "Parameter error, origin parameter does't exists."
+                    optimizer.param_groups[group_id]['params'].append(param)
     
     def configure(
         self,
@@ -353,12 +384,8 @@ class LowLevelZeroPlugin(DPPluginBase):
         if self.lora_enabled:
             from peft import PeftModel
             assert isinstance(model, PeftModel), "The model should have been wrapped as a PeftModel when self.lora_enabled is True"
-            
-            optim_params_nums = 0
-            for param_group in optimizer.param_groups:
-                optim_params_nums += len(param_group['params'])
-            model_params_nums = len(list(model.named_parameters()))
-            assert optim_params_nums == model_params_nums, "Optimizer should be initialized after enabling lora."
+            self.add_lora_para_to_optimizer(model, optimizer)
+
 
         if not isinstance(model, ModelWrapper):
             model = LowLevelZeroModel(model, self.precision)
