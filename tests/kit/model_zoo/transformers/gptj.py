@@ -61,7 +61,7 @@ loss_fn = lambda x: x.loss
 
 config = transformers.GPTJConfig(
     n_layer=2,
-    n_head=16,
+    n_head=4,
     vocab_size=50258,
     attn_pdrop=0,
     embd_pdrop=0,

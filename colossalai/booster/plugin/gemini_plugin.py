@@ -1,9 +1,11 @@
 import gc
 import logging
 import os
+import random
 from pathlib import Path
 from typing import Callable, Iterator, List, Optional, Tuple
 
+import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -11,6 +13,7 @@ from torch.distributed.distributed_c10d import _get_default_group
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO
 from colossalai.checkpoint_io.utils import (
@@ -448,6 +451,57 @@ class GeminiPlugin(DPPluginBase):
 
     def supported_devices(self) -> List[str]:
         return ["cuda", "npu"]
+    
+    def prepare_dataloader(
+        self, dataset, batch_size, shuffle=False, seed=1024, drop_last=False, pin_memory=False, num_workers=0, **kwargs
+    ):
+        r"""
+        Prepare a dataloader for distributed training. The dataloader will be wrapped by
+        `torch.utils.data.DataLoader` and `torch.utils.data.DistributedSampler`.
+
+
+        Args:
+            dataset (`torch.utils.data.Dataset`): The dataset to be loaded.
+            shuffle (bool, optional): Whether to shuffle the dataset. Defaults to False.
+            seed (int, optional): Random worker seed for sampling, defaults to 1024.
+            add_sampler: Whether to add ``DistributedDataParallelSampler`` to the dataset. Defaults to True.
+            drop_last (bool, optional): Set to True to drop the last incomplete batch, if the dataset size
+                is not divisible by the batch size. If False and the size of dataset is not divisible by
+                the batch size, then the last batch will be smaller, defaults to False.
+            pin_memory (bool, optional): Whether to pin memory address in CPU memory. Defaults to False.
+            num_workers (int, optional): Number of worker threads for this dataloader. Defaults to 0.
+            kwargs (dict): optional parameters for ``torch.utils.data.DataLoader``, more details could be found in
+                    `DataLoader <https://pytorch.org/docs/stable/_modules/torch/utils/data/dataloader.html#DataLoader>`_.
+
+        Returns:
+            :class:`torch.utils.data.DataLoader`: A DataLoader used for training or testing.
+        """
+        _kwargs = kwargs.copy()
+        zero_world_size = self.pg_mesh.size(ZERO_AXIS)
+        extra_dp_world_size = self.pg_mesh.size(DP_AXIS)
+        zero_rank = self.pg_mesh.coordinate(ZERO_AXIS)
+        extra_dp_rank = self.pg_mesh.coordinate(DP_AXIS)
+        sampler = DistributedSampler(
+            dataset, num_replicas=zero_world_size * extra_dp_world_size, rank=zero_rank * extra_dp_world_size + extra_dp_rank, shuffle=shuffle
+        )
+
+        # Deterministic dataloader
+        def seed_worker(worker_id):
+            worker_seed = seed
+            np.random.seed(worker_seed)
+            torch.manual_seed(worker_seed)
+            random.seed(worker_seed)
+
+        return DataLoader(
+            dataset,
+            batch_size=batch_size,
+            sampler=sampler,
+            worker_init_fn=seed_worker,
+            drop_last=drop_last,
+            pin_memory=pin_memory,
+            num_workers=num_workers,
+            **_kwargs,
+        )
 
     def configure(
         self,
