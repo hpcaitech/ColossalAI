@@ -30,7 +30,7 @@ jobs:
       github.event.repository.full_name == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, gpu]
     container:
-      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      image: hpcaitech/pytorch-cuda:1.13.0-11.7.0
       options: --rm
     timeout-minutes: 5
     defaults:
@@ -54,7 +54,7 @@ jobs:
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, gpu]
     container:
-      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      image: hpcaitech/pytorch-cuda:1.13.0-11.7.0
       options: --rm
     timeout-minutes: 5
     defaults:

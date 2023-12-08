@@ -18,7 +18,7 @@ jobs:
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, gpu]
     container:
-      image: hpcaitech/pytorch-cuda:2.0.0-11.7.0
+      image: hpcaitech/pytorch-cuda:1.13.0-11.7.0
       options: --gpus all --rm -v /data/scratch/colossal-llama2/colossal_chat_test_data:/data/scratch/colossal-llama2/colossal_chat_test_data --shm-size=10.24gb
     timeout-minutes: 30
     defaults:
