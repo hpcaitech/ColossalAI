@@ -518,6 +518,33 @@ class _GatherForwardSplitBackward(torch.autograd.Function):
         return _split(grad_output, ctx.dim, ctx.process_group), None, None
 
 
+class _AllToAll(torch.autograd.Function):
+    """All-to-all communication.
+
+    Args:
+        input_: input matrix
+        process_group: communication group
+        scatter_dim: scatter dimension
+        gather_dim: gather dimension
+    """
+
+    @staticmethod
+    def forward(ctx, input_, process_group, scatter_dim, gather_dim):
+        ctx.process_group = process_group
+        ctx.scatter_dim = scatter_dim
+        ctx.gather_dim = gather_dim
+        world_size = dist.get_world_size(process_group)
+        return _all_to_all(input_, world_size, process_group, scatter_dim, gather_dim)
+
+    @staticmethod
+    def backward(ctx, *grad_output):
+        process_group = ctx.process_group
+        scatter_dim = ctx.gather_dim
+        gather_dim = ctx.scatter_dim
+        return_grad = _AllToAll.apply(*grad_output, process_group, scatter_dim, gather_dim)
+        return (return_grad, None, None, None)
+
+
 class HookParameter(torch.autograd.Function):
     """In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias. Used in FusedLayerNorm"""
 
@@ -611,6 +638,13 @@ def _reduce_scatter(input_, dim=1, process_group=None):
     return output
 
 
+def _all_to_all(input_, world_size, group, scatter_dim, gather_dim):
+    input_list = [t.contiguous() for t in torch.tensor_split(input_, world_size, scatter_dim)]
+    output_list = [torch.empty_like(input_list[0]) for _ in range(world_size)]
+    dist.all_to_all(output_list, input_list, group=group)
+    return torch.cat(output_list, dim=gather_dim).contiguous()
+
+
 def matmul_with_async_comm(input_, weight, bias, process_group, async_grad_allreduce):
     return MatmulWithAsyncCommunication.apply(input_, weight, bias, process_group, async_grad_allreduce)
 
@@ -653,3 +687,7 @@ def reduce_forward(input_, process_group):
 
 def reduce_backward(input_, process_group):
     return _ReduceBackward.apply(input_, process_group)
+
+
+def all_to_all_comm(input_, process_group=None, scatter_dim=2, gather_dim=1):
+    return _AllToAll.apply(input_, process_group, scatter_dim, gather_dim)

@@ -2,6 +2,7 @@ import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
+import torch.distributed as dist
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
@@ -12,6 +13,7 @@ from ..modeling.llama import (
     LlamaPipelineForwards,
     get_llama_flash_attention_forward,
     get_lm_forward_with_dist_cross_entropy,
+    test_llama_seq_parallel_attention,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -47,6 +49,32 @@ class LlamaPolicy(Policy):
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn("Llama doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
+
+        # todo: seq
+        if self.shard_config.test_seq_parallelism:
+            sequence_parallelism_size = dist.get_world_size()
+            decoder_attribute_replacement = {
+                "num_heads": self.model.config.num_attention_heads // sequence_parallelism_size,
+                "head_dim": self.model.config.hidden_size // self.model.config.num_attention_heads,
+            }
+            if getattr(self.model.config, "num_key_value_heads", False):
+                decoder_attribute_replacement["num_key_value_heads"] = (
+                    self.model.config.num_key_value_heads // sequence_parallelism_size
+                )
+                decoder_attribute_replacement["num_key_value_groups"] = (
+                    self.model.config.hidden_size // self.model.config.num_attention_heads
+                )
+            policy[LlamaAttention] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+            )
+
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": test_llama_seq_parallel_attention(),
+                },
+                policy=policy,
+                target_key=LlamaAttention,
+            )
 
         if self.shard_config.enable_tensor_parallelism:
             decoder_attribute_replacement = {
