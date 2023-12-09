@@ -35,6 +35,7 @@ class ShardConfig:
     enable_sequence_parallelism: bool = False
     enable_sequence_overlap: bool = False
     parallel_output: bool = True
+    test_seq_parallelism: bool = False
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
     # TODO padding vocab
     # make_vocab_size_divisible_by: int = 128

@@ -1,4 +1,5 @@
 from .attn import AttnMaskType, ColoAttention
+from ._operation import all_to_all_comm
 from .dropout import DropoutForParallelInput, DropoutForReplicatedInput
 from .embedding import Embedding1D, VocabParallelEmbedding1D
 from .linear import Linear1D_Col, Linear1D_Row
@@ -26,4 +27,5 @@ __all__ = [
     "ParallelModule",
     "AttnMaskType",
     "ColoAttention",
+    "all_to_all_comm",
 ]

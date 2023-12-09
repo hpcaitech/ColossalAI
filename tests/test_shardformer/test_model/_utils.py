@@ -161,6 +161,16 @@ def run_forward_backward_with_hybrid_plugin(
         return loss
 
     data = data_gen_fn()
+    shard_test_data = {}
+    for k, v in data.items():
+        shard_test_data[k] = (
+            data[k].clone()
+            if booster.plugin.shard_config.test_seq_parallelism is False
+            else torch.chunk(data[k].clone(), dist.get_world_size(), dim=1)[dist.get_rank()]
+        )
+    unshard_test_data = {}
+    for k, v in data.items():
+        unshard_test_data[k] = data[k].clone()
 
     if booster.plugin.shard_config.enable_sequence_parallelism and booster.plugin.tp_size != 0:
         seq_len = data["input_ids"].shape[-1]
@@ -190,15 +200,15 @@ def run_forward_backward_with_hybrid_plugin(
         )
         sharded_loss = sharded_output["loss"]
     else:
-        data = {k: v.cuda() for k, v in data.items()}
-        sharded_output = sharded_model(**data)
+        shard_test_data = {k: v.cuda() for k, v in shard_test_data.items()}
+        sharded_output = sharded_model(**shard_test_data)
 
         sharded_loss = criterion(sharded_output)
         sharded_optimizer.backward(sharded_loss)
 
     org_model.train()
-    data = {k: v.cuda() for k, v in data.items()}
-    org_output = org_model(**data)
+    unshard_test_data = {k: v.cuda() for k, v in unshard_test_data.items()}
+    org_output = org_model(**unshard_test_data)
 
     org_loss = criterion(org_output)
     org_loss.backward()
