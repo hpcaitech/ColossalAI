@@ -63,22 +63,6 @@ class CpuAccelerator(BaseAccelerator):
         """
         raise RuntimeError("this method is not supported for cpu accelerator")
 
-    def set_to_device(self, models: Any) -> Any:
-        """
-        Send model to gpu.
-
-        :param models: nn.module or a list of module
-        """
-        if isinstance(models, list) and len(models) > 1:
-            ret = []
-            for model in models:
-                ret.append(model.to(self.get_current_device()))
-            return ret
-        elif isinstance(models, list):
-            return models[0].to(self.get_current_device())
-        else:
-            return models.to(self.get_current_device())
-
     def get_device_capability(self, device=None) -> Tuple[int, int]:
         """
         Gets the cuda capability of a device.
@@ -216,7 +200,10 @@ class CpuAccelerator(BaseAccelerator):
         """
         Returns the current GPU memory managed by the caching allocator in bytes for a given device.
         """
-        raise RuntimeError("this method is not supported for cpu accelerator")
+        import psutil
+
+        memory_info = psutil.virtual_memory()
+        raise memory_info.used
 
     def max_memory_reserved(self, device=None) -> int:
         """
@@ -228,7 +215,13 @@ class CpuAccelerator(BaseAccelerator):
         """
         Set memory fraction for a process.
         """
-        raise RuntimeError("this method is not supported for cpu accelerator")
+        import resource
+
+        import psutil
+
+        max_memory = int(psutil.virtual_memory().total * fraction)
+        _, hard = resource.getrlimit(resource.RLIMIT_AS)
+        resource.setrlimit(resource.RLIMIT_AS, (max_memory, hard))
 
     def reset_peak_memory_stats(self, device=None) -> None:
         """

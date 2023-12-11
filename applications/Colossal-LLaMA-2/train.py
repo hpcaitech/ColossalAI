@@ -26,7 +26,6 @@ from tqdm import tqdm
 from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizer
 
 import colossalai
-from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.cluster import DistCoordinator
@@ -209,11 +208,18 @@ def main() -> None:
     # ======================================================
     # Initialize Model, Objective, Optimizer and LR Scheduler
     # ======================================================
-    init_ctx = (
-        LazyInitContext(default_device=get_accelerator().get_current_device())
-        if isinstance(plugin, (GeminiPlugin,))
-        else nullcontext()
-    )
+
+    # colossalai has changed api for get_current_device in 0.3.4 version or newer
+    try:
+        from colossalai.accelerator import get_accelerator
+
+        current_device = get_accelerator().get_current_device()
+    except:
+        from colossalai.utils import get_current_device
+
+        current_device = get_current_device()
+
+    init_ctx = LazyInitContext(default_device=current_device) if isinstance(plugin, (GeminiPlugin,)) else nullcontext()
     with init_ctx:
         model = LlamaForCausalLM(LlamaConfig.from_pretrained(args.pretrained))
         # Freeze part of parameters.
@@ -316,11 +322,7 @@ def main() -> None:
             initial=start_step,
         ) as pbar:
             for step, batch in pbar:
-                batch = {
-                    k: v.to(get_accelerator().get_current_device())
-                    for k, v in batch.items()
-                    if isinstance(v, torch.Tensor)
-                }
+                batch = {k: v.to(current_device) for k, v in batch.items() if isinstance(v, torch.Tensor)}
 
                 batch_output = model(**batch)
 

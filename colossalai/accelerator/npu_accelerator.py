@@ -47,6 +47,8 @@ class NpuAccelerator(BaseAccelerator):
         Bind the current process to a device.
         """
         if device is None:
+            if not dist.is_initialized():
+                raise RuntimeError("Cannot get current device when distributed is not initialized")
             device = dist.get_rank() % self.device_count()
         torch.npu.set_device(device)
 
@@ -73,22 +75,6 @@ class NpuAccelerator(BaseAccelerator):
         Return the number of devices on the machine.
         """
         return torch.npu.device_count()
-
-    def set_to_device(self, models: Any) -> Any:
-        """
-        Send model to gpu.
-
-        :param models: nn.module or a list of module
-        """
-        if isinstance(models, list) and len(models) > 1:
-            ret = []
-            for model in models:
-                ret.append(model.to(self.get_current_device()))
-            return ret
-        elif isinstance(models, list):
-            return models[0].to(self.get_current_device())
-        else:
-            return models.to(self.get_current_device())
 
     def get_device_capability(self, device=None) -> Tuple[int, int]:
         """

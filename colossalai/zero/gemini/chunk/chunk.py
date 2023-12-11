@@ -6,7 +6,7 @@ import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
-from colossalai.accelerator import IS_NPU_AVAILABLE, get_accelerator
+from colossalai.accelerator import get_accelerator
 
 
 class TensorState(Enum):
@@ -191,10 +191,7 @@ class Chunk:
         if self.chunk_temp is not None:
             return self.chunk_temp.device.type
         else:
-            if self.is_gathered or self.cuda_shard is not None:
-                return "npu" if IS_NPU_AVAILABLE else "cuda"
-            else:
-                return "cpu"
+            return get_accelerator().name
 
     @property
     def payload(self) -> torch.Tensor:
