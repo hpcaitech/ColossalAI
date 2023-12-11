@@ -32,13 +32,13 @@ jobs:
 
       - name: Install ChatGPT
         run: |
-          cd applications/Chat
+          cd applications/ChColossalChatat
           pip install -v .
           pip install -r requirements-test.txt
 
       - name: Execute Unit Testing
         run: |
-          cd applications/Chat
+          cd applications/ColossalChat
           rm -rf ~/.cache/colossalai
           # pytest tests/
           # Disabled temporally because some unit tests are not implemented
