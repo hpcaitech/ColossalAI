@@ -12,7 +12,7 @@ class RequestHandler:
        inference_config: Configuration for initialize and manage kv cache.
     """
 
-    def __init__(self, inference_config) -> None:
+    def __init__(self, inference_config, block_table) -> None:
         self.inference_config = inference_config
         self._init_cache()
         self.waiting_list: List["Reqseq"] = []
