@@ -4,7 +4,7 @@ from typing import Optional
 import torch
 
 from ..base_extension import BaseExtension
-from ..utils import SeqLenInfo
+from .utils import SeqLenInfo
 
 
 def is_ampere_or_better_gpu():

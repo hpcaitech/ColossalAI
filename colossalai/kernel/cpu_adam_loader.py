@@ -20,14 +20,14 @@ class CPUAdamLoader(BaseKernelLoader):
         )
 
     Args:
-        CPUAdamOptimizer:
+        func CPUAdamOptimizer:
             alpha (float): learning rate. Default to 1e-3.
             beta1 (float): coefficients used for computing running averages of gradient. Default to 0.9.
             beta2 (float): coefficients used for computing running averages of its square. Default to 0.99.
             epsilon (float): term added to the denominator to improve numerical stability. Default to 1e-8.
             weight_decay (float): weight decay (L2 penalty). Default to 0.
             adamw_mode (bool): whether to use the adamw. Default to True.
-        step:
+        func step:
             step (int): current step.
             lr (float): learning rate.
             beta1 (float): coefficients used for computing running averages of gradient.

@@ -6,12 +6,15 @@ from einops import rearrange
 
 from .base_kernel_loader import BaseKernelLoader
 from .extensions.flash_attention import (
+    AttnMaskType,
     CudaFlashAttnExtension,
     CudaMemoryEfficentAttnExtension,
     NpuSdpaAttnExtension,
     NpuTriangleAttnExtension,
+    Repad,
+    SeqLenInfo,
+    Unpad,
 )
-from .extensions.utils import AttnMaskType, Repad, SeqLenInfo, Unpad
 
 
 class FlashAttentionLoader(BaseKernelLoader):
@@ -47,13 +50,15 @@ class FlashAttentionLoader(BaseKernelLoader):
 
     def fetch_kernel(self, backend: str = None):
         if backend is not None:
+            if not self._extension_map[backend]().is_available():
+                raise Exception(f"{backend} is not available for flash attention.")
             return self._extension_map[backend]().fetch()
 
         kernel = None
         if self._is_cuda_available():
             if CudaFlashAttnExtension().is_available():
                 kernel = CudaFlashAttnExtension().fetch()
-            elif CudaMemoryEfficentAttnExtension.is_available():
+            elif CudaMemoryEfficentAttnExtension().is_available():
                 kernel = CudaMemoryEfficentAttnExtension().fetch()
         elif self._is_npu_available():
             if NpuTriangleAttnExtension().is_available():
