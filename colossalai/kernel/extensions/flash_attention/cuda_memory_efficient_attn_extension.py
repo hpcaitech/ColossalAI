@@ -1,9 +1,9 @@
-import warnings
 from typing import Optional
 
 import torch
 
 from ..base_extension import BaseExtension
+from ..utils import print_rank_0
 from .utils import SeqLenInfo
 
 HAS_MEM_EFF_ATTN = False
@@ -85,7 +85,7 @@ class CudaMemoryEfficentAttnExtension(BaseExtension):
 
     def is_available(self):
         if HAS_MEM_EFF_ATTN == False:
-            warnings.warn("ImportError: please install xformers from https://github.com/facebookresearch/xformers")
+            print_rank_0("ImportError: please install xformers from https://github.com/facebookresearch/xformers")
         return HAS_MEM_EFF_ATTN
 
     def load(self):

@@ -15,6 +15,7 @@ from .extensions.flash_attention import (
     SeqLenInfo,
     Unpad,
 )
+from .extensions.utils import print_rank_0
 
 
 class FlashAttentionLoader(BaseKernelLoader):
@@ -118,6 +119,7 @@ class ColoAttention(torch.nn.Module):
         if self.attn.__name__ == "flash_attention" and (
             query.dtype not in [torch.float16, torch.bfloat16] or bias != None
         ):
+            print_rank_0("flash attention is not applicable, switch to memory effcient attention")
             self.attn = FlashAttentionLoader().fetch_kernel(backend="cuda_memory_efficent_attn")
 
         padded = attn_mask_type is not None and attn_mask_type.value % 2 == 1

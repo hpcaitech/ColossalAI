@@ -13,12 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
 
 import torch
 from einops import rearrange
 
 from ..base_extension import BaseExtension
+from ..utils import print_rank_0
 
 HAS_NPU_TRIANGLE_ATTENTION = False
 try:
@@ -133,7 +133,7 @@ class NpuTriangleAttnExtension(BaseExtension):
 
     def is_available(self):
         if HAS_NPU_TRIANGLE_ATTENTION == False:
-            warnings.warn(
+            print_rank_0(
                 "ImportError: please install latest torch_npu with 'npu_confusion_transpose' and 'npu_scaled_masked_softmax' api."
             )
         return HAS_NPU_TRIANGLE_ATTENTION
