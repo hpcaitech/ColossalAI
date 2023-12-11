@@ -2,6 +2,10 @@ import enum
 from dataclasses import dataclass
 from typing import Dict, List, Set
 
+"""
+The abstraction of request and sequence are defined here.
+"""
+
 
 class RequsetStatus(enum.Enum):
     """The status of Sentences"""
@@ -95,7 +99,7 @@ class Sequence:
 
 
 @dataclass
-class BatchHandler:
+class BatchInfo:
     """
     Information to be passed and used for a batch of sequences.
     """
@@ -104,7 +108,7 @@ class BatchHandler:
     block_table: Dict[int, int]
 
     @classmethod
-    def init_batch(cls, seqs: List[Sequence]) -> "BatchHandler":
+    def init_batch(cls, seqs: List[Sequence]) -> "BatchInfo":
         """
         Initializes inference batches by input sentence list.
 

@@ -1,5 +1,5 @@
-from colossalai.inference.core.config import InferenceConfig
-from colossalai.inference.core.inference_struct import BatchHandler, Sequence
+from colossalai.inference.config import InferenceConfig
+from colossalai.inference.inference_struct import BatchHandler, Sequence
 
 
 def test_config_and_struct():
