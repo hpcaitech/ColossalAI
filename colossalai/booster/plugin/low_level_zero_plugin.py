@@ -351,7 +351,7 @@ class LowLevelZeroPlugin(DPPluginBase):
                     return group_id
         return -1
     
-    def add_lora_para_to_optimizer(self, model, optimizer):
+    def add_lora_params_to_optimizer(self, model, optimizer):
         """ add lora parameters to optimizer """
         name2param= {}
         for name, param in model.named_parameters():
@@ -384,7 +384,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         if self.lora_enabled:
             from peft import PeftModel
             assert isinstance(model, PeftModel), "The model should have been wrapped as a PeftModel when self.lora_enabled is True"
-            self.add_lora_para_to_optimizer(model, optimizer)
+            self.add_lora_params_to_optimizer(model, optimizer)
 
 
         if not isinstance(model, ModelWrapper):
