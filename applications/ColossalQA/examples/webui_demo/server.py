@@ -84,7 +84,7 @@ if __name__ == "__main__":
                 "user": "User",
                 "max_tokens": all_config["chain"]["disambig_llm_kwargs"]["max_new_tokens"],
                 "temperature": all_config["chain"]["disambig_llm_kwargs"]["temperature"],
-                "n": 1
+                "n": 1   # the number of responses generated
             }
             llm = Pangu(gen_config=gen_config)
             llm.set_auth_config()  # verify user's auth info here
