@@ -105,7 +105,7 @@ class BatchInfo:
     """
 
     sequences_set: Set[Sequence]
-    block_table: Dict[int, int]
+    block_table: Dict[int, int] = None
 
     @classmethod
     def init_batch(cls, seqs: List[Sequence]) -> "BatchInfo":
@@ -119,13 +119,13 @@ class BatchInfo:
         block_table = {}
         for seq in seqs:
             if seq in sequences_set:
-                print("The sequence is already in sequences_set.")
                 assert (
-                    seq.request_id in block_table
+                    seq.request_id in block_table.keys()
                 ), "The sequence has been added to sequences_set, but it has not been added to block_table."
                 continue
+
             assert (
-                seq.request_id not in block_table
+                seq.request_id not in block_table.keys()
             ), "The sequence has not been added to sequences_set, but it is already in block_table."
 
             sequences_set.add(seq)
@@ -147,9 +147,9 @@ class BatchInfo:
         """
         Remove completed sentences from a batch.
         """
-        for seq in self.sequences_set:
+        for seq in self.sequences_set.copy():
             if seq.check_finish():
-                self.sequences_set.reomve(seq)
+                self.sequences_set.remove(seq)
                 del self.block_table[seq.request_id]
 
     def add_seqs(self, seqs: List[Sequence]) -> None:
