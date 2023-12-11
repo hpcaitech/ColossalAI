@@ -43,8 +43,7 @@ BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
 BASE_TEMP_DIR=$BASE_DIR/temp
 EXAMPLES_DIR=$BASE_DIR/examples
 DATA_SAVE_PATH=$BASE_TEMP_DIR/rlhf_data
-# MODELS=('gpt2' 'bloom' 'opt' 'llama')
-MODELS=('opt')
+MODELS=('gpt2' 'bloom' 'opt' 'llama')
 
 if [ ! -d "$BASE_TEMP_DIR" ]; then
   mkdir "$BASE_TEMP_DIR"
@@ -135,7 +134,7 @@ for model in ${MODELS[@]}; do
             --data_jsonl_output_dir $jsonl_dir \
             --data_arrow_output_dir $arrow_dir \
             --max_length 400 \
-            --num_samples_per_datafile 500 \
+            --num_samples_per_datafile 100 \
             --num_spliced_dataset_bins 1
         passed=$?
         if [ $passed -eq 0 ]; then
@@ -178,7 +177,7 @@ for model in ${MODELS[@]}; do
             --data_jsonl_output_dir $jsonl_dir \
             --data_arrow_output_dir $arrow_dir \
             --max_length 400 \
-            --num_samples_per_datafile 500 \
+            --num_samples_per_datafile 100 \
             --num_spliced_dataset_bins 1
         passed=$?
         if [ $passed -eq 0 ]; then
@@ -221,7 +220,7 @@ for model in ${MODELS[@]}; do
             --data_jsonl_output_dir $jsonl_dir \
             --data_arrow_output_dir $arrow_dir \
             --max_length 400 \
-            --num_samples_per_datafile 500 \
+            --num_samples_per_datafile 100 \
             --num_spliced_dataset_bins 1
         passed=$?
         if [ $passed -eq 0 ]; then
@@ -264,7 +263,7 @@ for model in ${MODELS[@]}; do
             --data_jsonl_output_dir $jsonl_dir \
             --data_arrow_output_dir $arrow_dir \
             --max_length 400 \
-            --num_samples_per_datafile 500 \
+            --num_samples_per_datafile 100 \
             --num_spliced_dataset_bins 1
         passed=$?
         if [ $passed -eq 0 ]; then
