@@ -12,7 +12,7 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
-from colossalai.accelerator import IS_NPU_AVAILABLE, get_accelerator
+from colossalai.accelerator import get_accelerator
 from colossalai.amp.naive_amp.mixed_precision_mixin import (
     BF16MixedPrecisionMixin,
     FP16MixedPrecisionMixin,
@@ -214,7 +214,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         return len(self._working_param_groups)
 
     def _sanity_checks(self):
-        assert torch.cuda.is_available() or IS_NPU_AVAILABLE, "device is required"
+        assert get_accelerator().name in ["cuda", "npu"], "device is required"
         for param_group in self.optim.param_groups:
             group_params = param_group["params"]
             for param in group_params:
