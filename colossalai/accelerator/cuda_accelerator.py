@@ -67,22 +67,6 @@ class CudaAccelerator(BaseAccelerator):
         """
         return torch.cuda.device_count()
 
-    def set_to_device(self, models: Any) -> Any:
-        """
-        Send model to gpu.
-
-        :param models: nn.module or a list of module
-        """
-        if isinstance(models, list) and len(models) > 1:
-            ret = []
-            for model in models:
-                ret.append(model.to(self.get_current_device()))
-            return ret
-        elif isinstance(models, list):
-            return models[0].to(self.get_current_device())
-        else:
-            return models.to(self.get_current_device())
-
     def get_device_capability(self, device=None) -> Tuple[int, int]:
         """
         Gets the cuda capability of a device.
