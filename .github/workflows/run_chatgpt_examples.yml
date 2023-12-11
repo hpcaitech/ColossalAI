@@ -30,7 +30,7 @@ jobs:
 
       - name: Install ChatGPT
         run: |
-          cd applications/Chat
+          cd applications/ColossalChat
           pip install -v .
           pip install -r examples/requirements.txt
 
@@ -40,7 +40,7 @@ jobs:
 
       - name: Execute Examples
         run: |
-          cd applications/Chat
+          cd applications/ColossalChat
           rm -rf ~/.cache/colossalai
           ./tests/test_data_preparation.sh
           ./tests/test_train.sh
