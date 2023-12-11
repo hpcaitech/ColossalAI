@@ -277,8 +277,7 @@ class LlamaPipelineForwards:
                 # Enable model parallelism
                 shift_labels = shift_labels.to(shift_logits.device)
                 if shard_config.enable_tensor_parallelism:
-                    tp_world_size = dist.get_world_size(shard_config.tensor_parallel_process_group)
-                    new_vocab_size = self.config.vocab_size // tp_world_size
+                    new_vocab_size = logits.shape[-1]
                     shift_logits = shift_logits.view(-1, new_vocab_size)
                     loss = cross_entropy_1d(shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group)
                 else:
@@ -573,8 +572,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             # Enable model parallelism
             shift_labels = shift_labels.to(shift_logits.device)
             if shard_config.enable_tensor_parallelism:
-                tp_world_size = dist.get_world_size(shard_config.tensor_parallel_process_group)
-                new_vocab_size = self.config.vocab_size // tp_world_size
+                new_vocab_size = logits.shape[-1]
                 shift_logits = shift_logits.view(-1, new_vocab_size)
                 loss = cross_entropy_1d(shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group)
             else:
