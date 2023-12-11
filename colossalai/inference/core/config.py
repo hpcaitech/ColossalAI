@@ -25,6 +25,7 @@ class InferenceConfig:
         max_seq_len: Maximum length of input sentence.
         quant_mode: Quantization mode.
         revision: The specific version(a branch, name, a commit id, or a tag name) of model to use.
+        beam_width: The maximum beam width used to initialize KV Cache. During generation, the beam width provided as sampling parameter should be less than or equivalent to this value.
     """
 
     model: Union[str, nn.Module]
