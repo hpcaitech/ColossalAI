@@ -26,7 +26,6 @@ EXAMPLES_DIR=$BASE_DIR/examples
 TEMP_DIR=$BASE_DIR/temp
 MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
-# MODELS=('gpt2' 'bloom' 'opt' 'llama')
 MODELS=('gpt2' 'bloom' 'opt' 'llama')
 # PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d')
 PLUGINS=('zero2' 'zero2_cpu' '3d')

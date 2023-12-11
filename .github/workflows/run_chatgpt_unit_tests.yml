@@ -32,7 +32,7 @@ jobs:
 
       - name: Install ChatGPT
         run: |
-          cd applications/ChColossalChatat
+          cd applications/ColossalChat
           pip install -v .
           pip install -r requirements-test.txt
 
