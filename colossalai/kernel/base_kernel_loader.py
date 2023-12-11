@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
-from collections import OrderedDict
-from typing import List
+from typing import Dict, List
 
 from .extensions.base_extension import BaseExtension
 
@@ -12,7 +11,7 @@ class BaseKernelLoader(ABC):
         kernel = kernel_loader.load()
     """
 
-    def __init__(self, extension_map: OrderedDict[str, BaseExtension], supported_device: List[str]):
+    def __init__(self, extension_map: Dict[str, BaseExtension], supported_device: List[str]):
         self._extension_map = extension_map
         self._supported_device = supported_device
 
