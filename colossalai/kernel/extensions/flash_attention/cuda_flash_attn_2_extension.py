@@ -1,9 +1,9 @@
-import warnings
 from typing import Optional
 
 import torch
 
 from ..base_extension import BaseExtension
+from ..utils import print_rank_0
 from .utils import SeqLenInfo
 
 
@@ -83,18 +83,17 @@ if HAS_FLASH_ATTN:
 class CudaFlashAttnExtension(BaseExtension):
     def __init__(self) -> None:
         super().__init__()
-        self._is_build_completed = True
 
     @property
-    def build_completed(self):
-        return self._is_build_completed
+    def requires_build(self):
+        return False
 
     def build(self):
         pass
 
     def is_available(self):
         if HAS_FLASH_ATTN == False:
-            warnings.warn(ERROR_MSG)
+            print_rank_0(ERROR_MSG)
         return HAS_FLASH_ATTN
 
     def load(self):

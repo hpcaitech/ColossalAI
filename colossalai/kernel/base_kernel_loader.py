@@ -1,8 +1,6 @@
-import platform
 from abc import ABC, abstractmethod
-from typing import Dict, List
-
-import torch
+from collections import OrderedDict
+from typing import List
 
 from .extensions.base_extension import BaseExtension
 
@@ -14,7 +12,7 @@ class BaseKernelLoader(ABC):
         kernel = kernel_loader.load()
     """
 
-    def __init__(self, extension_map: Dict[str, BaseExtension], supported_device: List[str]):
+    def __init__(self, extension_map: OrderedDict[str, BaseExtension], supported_device: List[str]):
         self._extension_map = extension_map
         self._supported_device = supported_device
 
@@ -29,20 +27,3 @@ class BaseKernelLoader(ABC):
     def load(self):
         self.run_checks()
         return self.fetch_kernel()
-
-    def _is_x86_available(self) -> bool:
-        return platform.processor() == "x86_64"
-
-    def _is_arm_available(self) -> bool:
-        return platform.processor() == "aarch64"
-
-    def _is_cuda_available(self) -> bool:
-        return torch.cuda.is_available()
-
-    def _is_npu_available(self) -> bool:
-        try:
-            import torch_npu  # noqa
-
-            return torch.npu.is_available()
-        except:
-            return False

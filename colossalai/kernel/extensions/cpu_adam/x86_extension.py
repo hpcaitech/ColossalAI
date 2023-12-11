@@ -7,15 +7,15 @@ class X86CPUAdamExtension(BaseExtension):
     def __init__(self) -> None:
         super().__init__()
         self.kernel_builder = X86CPUAdamBuilder()
-        self._is_build_completed = False
+        self._requires_build = False
 
     @property
-    def build_completed(self):
-        return self._is_build_completed
+    def requires_build(self) -> bool:
+        return self._requires_build
 
     def build(self):
         self.kernel_builder.build()
-        self._is_build_completed = True
+        self._requires_build = True
 
     def load(self):
         return self.kernel_builder.load()

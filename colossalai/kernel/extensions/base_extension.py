@@ -4,7 +4,7 @@ from typing import Callable
 
 class BaseExtension(ABC):
     @abstractmethod
-    def build_completed(self) -> bool:
+    def requires_build(self) -> bool:
         pass
 
     @abstractmethod
@@ -16,18 +16,6 @@ class BaseExtension(ABC):
         pass
 
     def fetch(self) -> Callable:
-        if not self.build_completed:
+        if self.requires_build:
             self.build()
         return self.load()
-
-
-class CUDAExtension(BaseExtension):
-    pass
-
-
-class TritonExtension(BaseExtension):
-    pass
-
-
-class NPUExtension(BaseExtension):
-    pass

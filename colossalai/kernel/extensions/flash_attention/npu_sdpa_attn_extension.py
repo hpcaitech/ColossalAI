@@ -48,11 +48,10 @@ def npu_sdpa_attention(
 class NpuSdpaAttnExtension(BaseExtension):
     def __init__(self) -> None:
         super().__init__()
-        self._is_build_completed = True
 
     @property
-    def build_completed(self):
-        return self._is_build_completed
+    def requires_build(self) -> bool:
+        return False
 
     def build(self):
         pass

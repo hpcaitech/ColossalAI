@@ -1,8 +1,11 @@
 import math
+from collections import OrderedDict
 from typing import Optional
 
 import torch
 from einops import rearrange
+
+from colossalai.accelerator import get_accelerator
 
 from .base_kernel_loader import BaseKernelLoader
 from .extensions.flash_attention import (
@@ -40,7 +43,8 @@ class FlashAttentionLoader(BaseKernelLoader):
 
     def __init__(self):
         super().__init__(
-            extension_map=dict(
+            # extension name must start with the accelerator name. E.g. npu_xxx, cuda_xxx
+            extension_map=OrderedDict(
                 cuda_flash_attn=CudaFlashAttnExtension,
                 cuda_memory_efficent_attn=CudaMemoryEfficentAttnExtension,
                 npu_sdpa_attn=NpuSdpaAttnExtension,
@@ -56,16 +60,13 @@ class FlashAttentionLoader(BaseKernelLoader):
             return self._extension_map[backend]().fetch()
 
         kernel = None
-        if self._is_cuda_available():
-            if CudaFlashAttnExtension().is_available():
-                kernel = CudaFlashAttnExtension().fetch()
-            elif CudaMemoryEfficentAttnExtension().is_available():
-                kernel = CudaMemoryEfficentAttnExtension().fetch()
-        elif self._is_npu_available():
-            if NpuTriangleAttnExtension().is_available():
-                kernel = NpuTriangleAttnExtension().fetch()
-            else:
-                kernel = NpuSdpaAttnExtension().fetch()
+        accelerator_name = get_accelerator().name
+        assert accelerator_name in self._supported_device, f"{accelerator_name} is not supported for flash attention."
+        for extension_name, extension in self._extension_map.items():
+            if extension_name.startswith(accelerator_name):
+                if extension().is_available():
+                    kernel = extension().fetch()
+                    break
         if kernel is None:
             raise Exception("No extension for flash attention is supported")
         return kernel
