@@ -39,7 +39,7 @@ class CudaAccelerator(BaseAccelerator):
         """
         if device is None:
             if not dist.is_initialized():
-                raise RuntimeError("Cannot get current device when distributed is not initialized")
+                raise RuntimeError("Cannot get current device when distributed is not initialized.")
             device = dist.get_rank() % self.device_count()
         torch.cuda.set_device(device)
 
