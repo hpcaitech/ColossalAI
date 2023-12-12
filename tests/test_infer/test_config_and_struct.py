@@ -1,5 +1,5 @@
 from colossalai.inference.config import InferenceConfig
-from colossalai.inference.inferenceData import BatchInfo, RequsetStatus, Sequence
+from colossalai.inference.struct import BatchInfo, RequsetStatus, Sequence
 
 
 def test_config_and_inferenceData():
