@@ -1,6 +1,7 @@
 from typing import List
 
 from colossalai.inference.inference_struct import BatchHandler
+from colossalai.inference.kv_cache import KVCacheManager
 
 
 class RunningList:
@@ -38,17 +39,16 @@ class RequestHandler:
        inference_config: Configuration for initialize and manage kv cache.
     """
 
-    def __init__(self, inference_config, block_table) -> None:
+    def __init__(self, inference_config) -> None:
         self.inference_config = inference_config
         self._init_cache()
 
         self.waiting_list: RunningList = RunningList(inference_config.ratio)
-
         self.running_list: List[List] = [[], [], []]
-
         self.batch_info = BatchHandler()
 
-        self.block_table = block_table
+    def _init_cache(self, inference_config):
+        self.cache_manager = KVCacheManager(inference_config)
 
     def _has_waiting(self) -> bool:
         return all(not lst for lst in self.waiting_list)
@@ -57,12 +57,6 @@ class RequestHandler:
         """
         The main logic of request handler.
         """
-        if self.running_list:
-            # remove finished sequences in running_list and free cache blocks.
-            for seq in self.running_list:
-                if seq.finished:
-                    self.cache_manager.free_cache_blocks(seq.block_table)
-                    self.running_list.remove(seq)
 
         if self._has_waiting():
             # Try to allocate cache blocks for the sequence using a priority of prompt length.

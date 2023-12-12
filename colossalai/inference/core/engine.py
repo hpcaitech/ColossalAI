@@ -3,7 +3,7 @@ from typing import Optional
 
 from transformers import AutoConfig
 
-from .config import InferenceConfig
+from colossalai.inference.config import InferenceConfig
 
 
 class InferenceEngine:
