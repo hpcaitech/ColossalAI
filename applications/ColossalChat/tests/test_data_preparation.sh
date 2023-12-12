@@ -83,13 +83,13 @@ get_data_input_dirs() {
 get_tokenizer_dirs() {
     local model=$1
     if [[ $model == "gpt2" ]]; then
-        echo "gpt2"
+        echo "/data/scratch/models/gpt2"
     elif [[ $model == "bloom" ]]; then
-        echo "bigscience/bloom-560m"
+        echo "/data/scratch/models/bloom-560m"
     elif [[ $model == "opt" ]]; then
-        echo "facebook/opt-350m"
+        echo "/data/scratch/models/opt-350m"
     elif [[ $model == "llama" ]]; then
-        echo "hf-internal-testing/llama-tokenizer"
+        echo "/data/scratch/models/llama-tokenizer"
     else
         echo "Unknown model $model"
         exit 1
