@@ -3,6 +3,29 @@ from typing import List
 from colossalai.inference.kvcache import KVCacheManager
 
 
+class RunningList:
+    def __init__(self, ratio):
+        self.ratio = ratio
+        self.decoding = []
+        self.prefill = []
+
+    def add(self, seq):
+        # add seq to prefilling list first.
+        self.prefill.append(seq)
+
+    def find_seq(self, seq_id):
+        for seq in self.decoding:
+            if seq_id == seq.seq_id:
+                return seq
+        for seq in self.prefill:
+            if seq_id == seq.seq_id:
+                return seq
+        return None
+
+    def ready_for_prefill(self):
+        return len(self.prefill) / len(self.decoding) >= self.ratio
+
+
 class RequestHandler:
     """
     RequestHandler is the core for handling existing requests and updating current batch.
@@ -15,9 +38,12 @@ class RequestHandler:
     def __init__(self, inference_config, block_table) -> None:
         self.inference_config = inference_config
         self._init_cache()
-        self.waiting_list: List["Reqseq"] = []
+
+        self.waiting_list: List = []
+
         self.running_list: List[List] = [[], [], []]
-        self.batch_handler = BatchHandler(self.inference_config)
+
+        self.batch_info = BatchHandler(self.inference_config)
 
     def _init_cache(self):
         """
@@ -86,3 +112,8 @@ class RequestHandler:
 
     def check_unfinished_seqs(self) -> bool:
         return self._has_waiting() or self.running_list
+
+    def update(self):
+        """
+        Update the s
+        """
