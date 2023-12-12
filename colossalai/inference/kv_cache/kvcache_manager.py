@@ -3,7 +3,7 @@ from typing import List, Tuple
 import torch
 from transformers.configuration_utils import PretrainedConfig
 
-from colossalai.inference.core.config import InferenceConfig
+from colossalai.inference.config import InferenceConfig
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
 

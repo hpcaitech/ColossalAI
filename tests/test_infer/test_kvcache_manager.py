@@ -3,7 +3,7 @@ import random
 import torch
 from transformers.models.llama import LlamaConfig
 
-from colossalai.inference.core.config import InferenceConfig
+from colossalai.inference.config import InferenceConfig
 from colossalai.inference.kv_cache import CacheBlock, KVCacheManager
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing import parameterize
