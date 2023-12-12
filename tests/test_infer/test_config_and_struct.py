@@ -3,7 +3,8 @@ from colossalai.inference.struct import BatchInfo, RequsetStatus, Sequence
 
 
 def test_config_and_inferenceData():
-    InferenceConfig("/llama")
+    config = InferenceConfig("/llama")
+    assert config.max_batch_size
     sequence = Sequence(
         request_id=1,
         prompt="abc",

@@ -70,6 +70,7 @@ class InferenceConfig:
             self.max_batch_size = 32
 
     def __post_init__(self):
+        self._init_batch_size()
         self._verify_args()
 
     def _verify_args(self):
