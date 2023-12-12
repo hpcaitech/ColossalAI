@@ -9,6 +9,7 @@ class SeparatorStyle(Enum):
     ADD_BOS_EOS_TOKEN = auto()
     ALPACA = auto()
     PLAIN = auto()
+    YAYI = auto()
 
 
 @dataclasses.dataclass
@@ -48,6 +49,14 @@ class Conversation:
                 else:
                     ret += ""
             return ret
+        elif self.sep_style == SeparatorStyle.YAYI:
+            ret = self.system
+            for role, message in self.messages:
+                if message:
+                    ret += role + ":\n" + message + self.sep
+                else:
+                    ret += role + ":\n"
+            return ret
         else:
             raise ValueError(f"Invalid style: {self.sep_style}")
 
@@ -70,6 +79,8 @@ class Conversation:
             elif self.sep_style == SeparatorStyle.ALPACA:
                 prompt_with_target.append(prompt + target_answer)
             elif self.sep_style == SeparatorStyle.PLAIN:
+                prompt_with_target.append(prompt + target_answer)
+            elif self.sep_style == SeparatorStyle.YAYI:
                 prompt_with_target.append(prompt + target_answer)
             else:
                 raise ValueError(f"Invalid style: {self.sep_style}")
@@ -126,13 +137,11 @@ def get_few_shot_prefix(
         Few shot prompt prefix.
     """
 
-    if language == "English":
-        few_shot_prefix = f"The following are answers for questions in an exam.\n\n"
-    elif language == "Chinese":
-        few_shot_prefix = f"以下是考试中各个问题的答案。\n\n"
+    # First few shot data is something like "The following are questions about xxx".
+    few_shot_prefix = few_shot_data[0] + "\n\n"
 
     output = None
-    for i in range(len(few_shot_data)):
+    for i in range(1, len(few_shot_data)):
         few_shot_prefix = few_shot_prefix + few_shot_data[i] + "\n\n"
 
         if len(tokenizer([few_shot_prefix]).input_ids[0]) <= max_tokens:
@@ -189,9 +198,10 @@ def get_batch_prompt(
                 conv.append_message(conv.roles[1], None)
             else:
                 if not isinstance(b["instruction"], list):
-                    query_text = (
-                        b["instruction"] + "\n\n" + b["input"] if b.get("input", "") != "" else b["instruction"]
-                    )
+                    if b["instruction"] != "":
+                        query_text = b["instruction"] + "\n\n" + b["input"] if b["input"] != "" else b["instruction"]
+                    else:
+                        query_text = b["input"]
                     conv.append_message(conv.roles[0], query_text)
                     conv.append_message(conv.roles[1], None)
                 else:
@@ -244,4 +254,13 @@ conv_plain = Conversation(
     sep="",
 )
 
-prompt_templates = {"coati": conv_coati, "alpaca": conv_alpaca, "plain": conv_plain}
+conv_yayi = Conversation(
+    system="<|System|>:\nYou are a helpful, respectful and honest assistant named YaYi developed by Beijing Wenge Technology Co.,Ltd. Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.\n\nIf a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.\n\n",
+    roles=("<|Human|>", "<|YaYi|>"),
+    messages=[],
+    offset=0,
+    sep_style=SeparatorStyle.YAYI,
+    sep="\n\n",
+)
+
+prompt_templates = {"coati": conv_coati, "alpaca": conv_alpaca, "plain": conv_plain, "yayi": conv_yayi}

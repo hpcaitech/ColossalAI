@@ -5,6 +5,7 @@ from .cmmlu import CMMLUDataset
 from .colossalai import ColossalDataset
 from .cvalues import CValuesDataset
 from .gaokaobench import GaoKaoBenchDataset
+from .gsm import GSMDataset
 from .longbench import LongBenchDataset
 from .mmlu import MMLUDataset
 from .mtbench import MTBenchDataset
@@ -24,4 +25,5 @@ __all__ = [
     "SafetyBenchENDataset",
     "SafetyBenchZHDataset",
     "CValuesDataset",
+    "GSMDataset",
 ]
