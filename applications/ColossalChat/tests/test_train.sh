@@ -41,11 +41,11 @@ get_pretrain() {
     if [[ $model == "gpt2" ]]; then
         echo "/data/scratch/models/gpt2/"
     elif [[ $model == "bloom" ]]; then
-        echo "/data/scratch/models/bloom-560m/"
+        echo "$PRETRAINED_MODEL_PATH/bloom-560m/"
     elif [[ $model == "opt" ]]; then
-        echo "/data/scratch/models/opt-350m/"
+        echo "$PRETRAINED_MODEL_PATH/opt-350m/"
     elif [[ $model == "llama" ]]; then
-        echo "/data/scratch/llama-tiny/"
+        echo "$PRETRAINED_MODEL_PATH/llama-tiny/"
     else
         echo "Unknown model $model"
         exit 1
@@ -55,13 +55,13 @@ get_pretrain() {
 get_tokenizer_dirs() {
     local model=$1
     if [[ $model == "gpt2" ]]; then
-        echo "/data/scratch/models/gpt2/"
+        echo "$PRETRAINED_MODEL_PATH/gpt2/"
     elif [[ $model == "bloom" ]]; then
-        echo "/data/scratch/models/bloom-560m/"
+        echo "$PRETRAINED_MODEL_PATH/bloom-560m/"
     elif [[ $model == "opt" ]]; then
-        echo "/data/scratch/models/opt-350m/"
+        echo "$PRETRAINED_MODEL_PATH/opt-350m/"
     elif [[ $model == "llama" ]]; then
-        echo "/data/scratch/models/llama-tokenizer/"
+        echo "$PRETRAINED_MODEL_PATH/llama-tokenizer/"
     else
         echo "Unknown model $model"
         exit 1

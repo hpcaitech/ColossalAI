@@ -19,7 +19,7 @@ jobs:
     runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:1.13.0-11.7.0
-      options: --gpus all --rm -v /data/scratch/colossal-llama2/colossal_chat_test_data:/data/scratch/colossal-llama2/colossal_chat_test_data --shm-size=10.24gb
+      options: --gpus all --rm -v /data/scratch/colossal-llama2:/data/scratch/colossal-llama2 --shm-size=10.24gb
     timeout-minutes: 30
     defaults:
       run:
@@ -47,6 +47,7 @@ jobs:
         env:
           NCCL_SHM_DISABLE: 1
           MAX_JOBS: 8
+          PRETRAINED_MODEL_PATH: /data/scratch/colossal-llama2/models
           SFT_DATASET: /data/scratch/colossal-llama2/colossal_chat_test_data/sft
           PROMPT_DATASET: /data/scratch/colossal-llama2/colossal_chat_test_data/prompt
           PRETRAIN_DATASET: /data/scratch/colossal-llama2/colossal_chat_test_data/ptx
