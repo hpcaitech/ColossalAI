@@ -39,13 +39,13 @@ pip install -r $EXAMPLES_DIR/requirements.txt
 get_pretrain() {
     local model=$1
     if [[ $model == "gpt2" ]]; then
-        echo "/data/scratch/models/gpt2"
+        echo "/data/scratch/models/gpt2/"
     elif [[ $model == "bloom" ]]; then
-        echo "/data/scratch/models/bloom-560m"
+        echo "/data/scratch/models/bloom-560m/"
     elif [[ $model == "opt" ]]; then
-        echo "/data/scratch/models/opt-350m"
+        echo "/data/scratch/models/opt-350m/"
     elif [[ $model == "llama" ]]; then
-        echo "/data/scratch/llama-tiny"
+        echo "/data/scratch/llama-tiny/"
     else
         echo "Unknown model $model"
         exit 1
@@ -55,13 +55,13 @@ get_pretrain() {
 get_tokenizer_dirs() {
     local model=$1
     if [[ $model == "gpt2" ]]; then
-        echo "/data/scratch/models/gpt2"
+        echo "/data/scratch/models/gpt2/"
     elif [[ $model == "bloom" ]]; then
-        echo "/data/scratch/models/bloom-560m"
+        echo "/data/scratch/models/bloom-560m/"
     elif [[ $model == "opt" ]]; then
-        echo "/data/scratch/models/opt-350m"
+        echo "/data/scratch/models/opt-350m/"
     elif [[ $model == "llama" ]]; then
-        echo "/data/scratch/models/llama-tokenizer"
+        echo "/data/scratch/models/llama-tokenizer/"
     else
         echo "Unknown model $model"
         exit 1
