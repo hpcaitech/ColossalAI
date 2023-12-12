@@ -60,7 +60,14 @@ class Sequence:
         self.status = RequsetStatus.WAITING
         self.block_table_index = block_table_index
 
-    def get_sentence_len(self) -> None:
+    @property
+    def prompt_len(self) -> int:
+        """
+        Get length of prompts
+        """
+        return len(self.input_token_id)
+
+    def get_sentence_len(self) -> int:
         """
         Get length of current sentence.
         """

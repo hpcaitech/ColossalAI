@@ -1,6 +1,6 @@
 from typing import List
 
-from colossalai.inference.inference_struct import BatchHandler
+from colossalai.inference.inference_struct import BatchHandler, RequsetStatus, Sequence
 from colossalai.inference.kv_cache import KVCacheManager
 
 
@@ -10,7 +10,7 @@ class RunningList:
         self.decoding = []
         self.prefill = []
 
-    def add(self, seq):
+    def append(self, seq):
         # add seq to prefilling list first.
         self.prefill.append(seq)
 
@@ -22,6 +22,10 @@ class RunningList:
             if seq_id == seq.seq_id:
                 return seq
         return None
+
+    def remove(self, seq):
+        self.decoding.remove(seq)
+        self.prefill.remove(seq)
 
     def ready_for_prefill(self):
         return len(self.prefill) / len(self.decoding) >= self.ratio
@@ -43,8 +47,9 @@ class RequestHandler:
         self.inference_config = inference_config
         self._init_cache()
 
-        self.waiting_list: RunningList = RunningList(inference_config.ratio)
-        self.running_list: List[List] = [[], [], []]
+        self.running_list: RunningList = RunningList(inference_config.ratio)
+        self.waiting_list: List[List] = [[], [], []]
+        self.done_list: List[Sequence] = []
         self.batch_info = BatchHandler()
 
     def _init_cache(self, inference_config):
@@ -65,19 +70,18 @@ class RequestHandler:
                     seq = lst[0]
                     if seq.prompt_len > self.inference_config.max_input_len:
                         # If the prompt length is longer than max_input_len, abort the sequence.
-
                         self.abort_sequence(seq.seq_id)
                         break
                     # Try to allocate cache blocks for the sequence.
-                    if self.cache_manager.can_allocate(seq):
+                    if self.cache_manager.num_available_blocks > self.cache_manager.max_blocks_per_sequence:
                         # If succeed, add the sequence to running list.
                         self.running_list.append(seq)
-                        self.cache_manager.allocate(seq)
+                        self.cache_manager.allocate_context_from_block_table(seq.block_table_index)
                         lst.pop(0)
 
-        self.batch_handler.update_batch(self.running_list)
+        self.batch_info.update_batch(self.running_list)
 
-    def add_sequence(self, req: "Reqseq"):
+    def add_sequence(self, req: Sequence):
         """
         Add the request to waiting list.
         """
@@ -89,24 +93,31 @@ class RequestHandler:
         Abort the request.
         """
         seq = self._find_sequence(seq_id)
-        self.cache_manager.free_cache_blocks(seq.block_table)
+        self.cache_manager.free_block_table(seq.block_table)
+        if seq.status == RequsetStatus.WAITING:
+            seq.status = RequsetStatus.ABORTED
+            self.waiting_list.remove(seq_id)  # maybe wrong
+        else:
+            self.running_list.remove(seq_id)
 
-    def _find_sequence(self, seq_id: str) -> "Reqseq":
+    def _find_sequence(self, seq_id: str) -> Sequence:
         """
         Find the request by seq_id.
         """
-        for seq in self.waiting_list:
-            if seq.seq_id == seq_id:
-                return seq
-        for seq in self.running_list:
-            if seq.seq_id == seq_id:
-                return seq
+        for priority, lst in enumerate(self.waiting_list):
+            for seq in lst:
+                if seq.seq_id == seq_id:
+                    return seq, priority
+
+        if self.running_list.find_seq(seq_id):
+            return seq
+
         return None
 
     def check_unfinished_seqs(self) -> bool:
-        return self._has_waiting() or self.running_list
+        return self._has_waiting() or not self.running_list.is_empty()
 
     def update(self):
         """
-        Update the
+        Update Currenting
         """

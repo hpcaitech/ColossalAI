@@ -99,15 +99,18 @@ class KVCacheManager:
         self._block_states_cum = torch.zeros(size=(self.num_blocks + 1,), dtype=torch.int64)
         self._block_finder = torch.zeros((self.num_blocks,), dtype=torch.int64)
 
-    def get_total_num_blocks(self) -> int:
+    @property
+    def total_num_blocks(self) -> int:
         """Get the total number of logical cache blocks."""
         return self.num_blocks
 
-    def get_num_available_blocks(self) -> int:
+    @property
+    def num_available_blocks(self) -> int:
         """Get the number of available cache blocks."""
         return self._available_blocks
 
-    def get_max_blocks_per_sequence(self) -> int:
+    @property
+    def max_blocks_per_sequence(self) -> int:
         """Get the maximum number of blocks that can be allocated for a single sequence."""
         # TODO Consider removing this function as we plan to implement "half-dynamic" batching in schduler/request handler,
         #      which will make the max_blocks_per_sequence dynamic based on the prompt lengths of sequences
