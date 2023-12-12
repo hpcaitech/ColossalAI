@@ -1,13 +1,16 @@
 from itertools import count
 from logging import Logger
-from typing import List, Optional, Union
+from typing import List, Optional
 
+import torch.nn as nn
 from transformers import AutoConfig, GenerationConfig
 
+from ..kv_cache.kvcache_manager import KVCacheManager
 from .config import InferenceConfig
 from .get_tokenizer import get_tokenizer
-from .inference_struct import BatchHandler, Sequence
+from .inference_struct import Sequence
 from .init_model import init_model
+from .request_handler import RequestHandler
 
 
 class InferenceEngine:
@@ -23,13 +26,11 @@ class InferenceEngine:
 
     def __init__(
         self,
-        inference_config: Optional[InferenceConfig] = None,
+        inference_config: Optional["InferenceConfig"] = None,
         verbose: bool = False,
     ) -> None:
         assert inference_config, "Please provide inference_config."
 
-        # TODO cache_config may need to be modified later.
-        # self.request_handler = RequestHandler(cache_config)
         self.tokenizer = get_tokenizer(
             inference_config.tokenizer,
             use_fast_tokenizer=inference_config.use_fast_tokenizer,
@@ -37,27 +38,35 @@ class InferenceEngine:
         )
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.inference_config = inference_config
-        self.hf_model_config = AutoConfig.from_pretrained(
-            inference_config.model,
-            trust_remote_code=inference_config.trust_remote_code,
-            revision=inference_config.revision,
-        )
+
         if verbose:
             self.logger = Logger()
 
-        self._init_model()
-
-        # Will be deleted later.
-        self.batch = BatchHandler.init_batch([])
+        self._init_model_and_hf_config()
+        self.cache_manager = KVCacheManager(self.inference_config, self.hf_model_config, verbose)
+        self.requset_handler = RequestHandler(self.inference_config)
 
         self.counter = count()
         self._verify_config()
 
-    def _init_model(self):
+    def _init_model_and_hf_config(self):
         """
-        Initialize model and distributed training environment(if needed).
+        Initialize model.
         """
-        self.model = init_model(self.inference_config, self.hf_model_config)
+        if isinstance(self.inference_config.model, str):
+            self.model = init_model(self.inference_config, self.hf_model_config)
+            self.hf_model_config = AutoConfig.from_pretrained(
+                self.inference_config.model,
+                trust_remote_code=self.inference_config.trust_remote_code,
+                revision=self.inference_config.revision,
+            )
+        elif isinstance(self.inference_config.model, nn.Module):
+            self.model = self.inference_config.model
+            self.hf_model_config = self.model.config
+        else:
+            raise ValueError(
+                f"The type of inference_config.model should be str or nn.Module, but get {type(self.inference_config.model)}"
+            )
 
     def _verify_config(self):
         """
@@ -66,96 +75,94 @@ class InferenceEngine:
 
     def generate(
         self,
-        prompts: Union[str, List[str]] = None,
-        prompts_token_ids: List[List[int]] = None,
         generation_config: GenerationConfig = None,
     ) -> List[str]:
-        """Handling input prompts and executing the inference step.
-
-        This function will handle input prompts, add them to the batch,
-        and then proceed with the inference steps until the batch is empty.
+        """executing the inference step.
 
         Args:
-            prompts (Union[str, List[str]], optional): Input prompts. Defaults to None.
-            prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
             generation_config (GenerationConfig, optional): Huggingface GenerationConfig used for inference. Defaults to None.
 
         Returns:
             List[str]: Inference result returned by one generation.
         """
 
-        prompts_num = None
-        if prompts == None:
-            assert prompts_token_ids is not None, "When prompts is None, prompts_token_ids must be set."
-            prompts_num = len(prompts_token_ids)
-        else:
-            prompts_num = len(prompts)
-
-        for i in range(prompts_num):
-            if prompts == None:
-                self.add_request(next(self.counter), None, prompts_token_ids[i])
-            else:
-                if prompts_token_ids == None:
-                    self.add_request(next(self.counter), prompts[i], None)
-                else:
-                    self.add_request(next(self.counter), prompts[i], prompts_token_ids[i])
+        self.generation_config = generation_config
 
         output_list = []
 
-        while not self.batch.is_empty():
+        while self.requset_handler.check_unfinished_seqs():
             output_list += self.step()
 
         return output_list
 
     def add_request(
         self,
-        request_id: int = None,
-        prompt: str = None,
-        input_token_ids: List[int] = None,
-    ):
+        requests_id: List[int] = None,
+        prompts: List[str] = None,
+        prompts_token_ids: List[int] = None,
+    ) -> None:
         """Add a single request.
 
         Args:
-            request_id (int, optional): The request ID. Defaults to None.
-            prompt (str, optional): The input prompt. Defaults to None.
-            input_token_ids (List[int], optional): Token IDs of input prompt. Defaults to None.
+            requests_id (List[int], optional): The request ID. Defaults to None.
+            prompts (Union[List[str], optional): Input prompts. Defaults to None.
+            prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
         """
 
-        if input_token_ids == None:
-            assert prompt, "When the input_token_ids is none, the prompt must be provided."
-            input_token_ids = self.tokenizer.encode(prompt)
-
         block_size = self.inference_config.block_size
-        sample_params = None
-        block_table_index = 0
 
-        sequence = Sequence(request_id, prompt, input_token_ids, block_size, sample_params, block_table_index)
+        if prompts_token_ids is None:
+            assert prompts, "When the prompts_token_ids is none, the input prompt list must be provided."
+            prompts_token_ids = []
+            for prompt in prompts:
+                prompts_token_ids.append(self.tokenizer.encode(prompt))
 
-        # self.batch = self.scheduler.add_seq_group(sequence)
-        # Batch here will be returned by the scheduler later.
+        prompts_num = len(prompts_token_ids)
 
-        self.batch.add_seqs([sequence])
+        # print("self.tokenizer.eos_token: ", self.tokenizer.eos_token)
+        # print("self.tokenizer.eos_token_id: ", self.tokenizer.eos_token_id)
+
+        for i in range(prompts_num):
+            if requests_id:
+                request_id = requests_id[i]
+            else:
+                request_id = next(self.counter)
+            if prompts == None:
+                prompt = None
+            else:
+                prompt = prompts[i]
+            sequence = Sequence(
+                request_id,
+                prompt,
+                prompts_token_ids[i],
+                block_size,
+                None,
+                None,
+                self.tokenizer.eos_token_id,
+                self.inference_config.max_output_len,
+            )
+            self.requset_handler.add_sequence(sequence)
 
     def step(self) -> List[str]:
         """
         In each step, do the follows:
-            1. check whether there are any unfinished reasoning tasks.
+            1. Run RequestHandler.schedule() and get the batch needed to be inferred.
             2. Run model to generate the next token
+            3. Update waiting list and running list in RequestHandler and get finished sequences.
+            4. Decode and return finished sequences.
 
         Returns:
             List[str]: Inference result returned by one step.
         """
 
         output_list = []
-        # Scheduler will return batch and finished sequences later.
-        # self.batch, finished_sequences = self.scheduler()
+        self.requset_handler.schedule()
 
-        # The code below is only used for test and will be deleted if scheduler function code is updated.
-        finished_sequences = []
-        for seq in self.batch.sequences_set:
-            finished_sequences.append(seq)
+        # Uncomment if the development of RequestHandler is completed.
+        # logits = self.model(batch)
+        # self.requset_handler.search_tokens(logits, self.generation_config)
 
-        self.batch.clear_batch()
+        finished_sequences = self.requset_handler.update()
 
         # Process the output of completed sentences.
         for seq in finished_sequences:

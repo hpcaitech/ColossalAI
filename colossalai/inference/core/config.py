@@ -48,9 +48,9 @@ class InferenceConfig:
 
     def __post_init__(self):
         if self.tokenizer == None:
-            self.tokenizer = self.model
-        self._verify_args()
-
-    def _verify_args(self):
-        if self.gpu_utilization_rate > 1.0:
-            raise ValueError(f"GPU utilization should be less than 1.0, but is set to {self.gpu_memory_utilization}.")
+            if isinstance(self.model, str):
+                self.tokenizer = self.model
+            else:
+                raise ValueError(
+                    f"If the tokenizer is not provided, the model must be string type., but get {type(self.model)}"
+                )
