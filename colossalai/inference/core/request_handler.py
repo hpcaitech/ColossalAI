@@ -1,6 +1,6 @@
 from typing import List
 
-from colossalai.inference.kvcache import KVCacheManager
+from colossalai.inference.inference_struct import BatchHandler
 
 
 class RunningList:
@@ -25,6 +25,9 @@ class RunningList:
     def ready_for_prefill(self):
         return len(self.prefill) / len(self.decoding) >= self.ratio
 
+    def is_empty(self):
+        return not self.decoding and not self.prefill
+
 
 class RequestHandler:
     """
@@ -39,17 +42,13 @@ class RequestHandler:
         self.inference_config = inference_config
         self._init_cache()
 
-        self.waiting_list: List = []
+        self.waiting_list: RunningList = RunningList(inference_config.ratio)
 
         self.running_list: List[List] = [[], [], []]
 
-        self.batch_info = BatchHandler(self.inference_config)
+        self.batch_info = BatchHandler()
 
-    def _init_cache(self):
-        """
-        Initialize the cache manager with cache config.
-        """
-        self.cache_manager = KVCacheManager(self.inference_config)
+        self.block_table = block_table
 
     def _has_waiting(self) -> bool:
         return all(not lst for lst in self.waiting_list)
@@ -115,5 +114,5 @@ class RequestHandler:
 
     def update(self):
         """
-        Update the s
+        Update the
         """
