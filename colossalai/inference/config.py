@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import Optional, Union
 
@@ -5,6 +6,8 @@ import torch
 import torch.nn as nn
 
 GibiByte = 1024**3
+
+logger = logging.Logger(__name__)
 
 
 @dataclass
@@ -68,6 +71,7 @@ class InferenceConfig:
             self.max_batch_size = 16
         elif 60 < total_mem <= 80:
             self.max_batch_size = 32
+        logger.info(f"Our max_batch_size is set to {self.max_batch_size}")
 
     def __post_init__(self):
         self._init_batch_size()
