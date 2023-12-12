@@ -10,10 +10,12 @@ except ImportError:
 if HAS_TRITON:
     from .fused_layernorm import layer_norm
     from .gptq_triton import gptq_fused_linear_triton
+    from .rotary_embedding import rotary_embedding_fwd
     from .softmax import softmax
 
     __all__ = [
         "softmax",
         "layer_norm",
         "gptq_fused_linear_triton",
+        "rotary_embedding_fwd",
     ]
