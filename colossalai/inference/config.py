@@ -71,7 +71,9 @@ class InferenceConfig:
             self.max_batch_size = 16
         elif 60 < total_mem <= 80:
             self.max_batch_size = 32
-        logger.info(f"Our max_batch_size is set to {self.max_batch_size}")
+        logger.info(
+            f"The maximum batch size is automatically set to {self.max_batch_size} as no value is provided by the user."
+        )
 
     def __post_init__(self):
         self._init_batch_size()
