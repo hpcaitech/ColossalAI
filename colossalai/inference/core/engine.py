@@ -1,11 +1,18 @@
 from itertools import count
+<<<<<<< HEAD
+=======
+from logging import Logger
+>>>>>>> 6d6de076c4c953052f617a090c808d49e0587b19
 from typing import List, Optional
 
 import torch.nn as nn
 from transformers import AutoConfig, GenerationConfig
 
+<<<<<<< HEAD
 from colossalai.logging import get_dist_logger
 
+=======
+>>>>>>> 6d6de076c4c953052f617a090c808d49e0587b19
 from ..kv_cache.kvcache_manager import KVCacheManager
 from .config import InferenceConfig
 from .get_tokenizer import get_tokenizer
@@ -40,6 +47,7 @@ class InferenceEngine:
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.inference_config = inference_config
 
+<<<<<<< HEAD
         self.verbose = verbose
         if verbose:
             self.logger = get_dist_logger(__name__)
@@ -51,10 +59,36 @@ class InferenceEngine:
         self.counter = count()
         self._verify_config()
 
+=======
+        if verbose:
+            self.logger = Logger()
+
+        self._init_model_and_hf_config()
+        self.cache_manager = KVCacheManager(self.inference_config, self.hf_model_config, verbose)
+        self.requset_handler = RequestHandler(self.inference_config)
+
+        self.counter = count()
+        self._verify_config()
+
+>>>>>>> 6d6de076c4c953052f617a090c808d49e0587b19
     def _init_model_and_hf_config(self):
         """
         Initialize model.
         """
+        if isinstance(self.inference_config.model, str):
+            self.model = init_model(self.inference_config, self.hf_model_config)
+            self.hf_model_config = AutoConfig.from_pretrained(
+                self.inference_config.model,
+                trust_remote_code=self.inference_config.trust_remote_code,
+                revision=self.inference_config.revision,
+            )
+        elif isinstance(self.inference_config.model, nn.Module):
+            self.model = self.inference_config.model
+            self.hf_model_config = self.model.config
+        else:
+            raise ValueError(
+                f"The type of inference_config.model should be str or nn.Module, but get {type(self.inference_config.model)}"
+            )
 
         if self.verbose:
             self.logger.info("Start to initialize model")
@@ -84,6 +118,7 @@ class InferenceEngine:
         generation_config: GenerationConfig = None,
     ) -> List[str]:
         """executing the inference step.
+<<<<<<< HEAD
 
         Args:
             generation_config (GenerationConfig, optional): Huggingface GenerationConfig used for inference. Defaults to None.
@@ -124,6 +159,51 @@ class InferenceEngine:
                 prompts_token_ids.append(self.tokenizer.encode(prompt))
 
         prompts_num = len(prompts_token_ids)
+=======
+
+        Args:
+            generation_config (GenerationConfig, optional): Huggingface GenerationConfig used for inference. Defaults to None.
+
+        Returns:
+            List[str]: Inference result returned by one generation.
+        """
+
+        self.generation_config = generation_config
+
+        output_list = []
+
+        while self.requset_handler.check_unfinished_seqs():
+            output_list += self.step()
+
+        return output_list
+
+    def add_request(
+        self,
+        requests_id: List[int] = None,
+        prompts: List[str] = None,
+        prompts_token_ids: List[int] = None,
+    ) -> None:
+        """Add a single request.
+
+        Args:
+            requests_id (List[int], optional): The request ID. Defaults to None.
+            prompts (Union[List[str], optional): Input prompts. Defaults to None.
+            prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
+        """
+
+        block_size = self.inference_config.block_size
+
+        if prompts_token_ids is None:
+            assert prompts, "When the prompts_token_ids is none, the input prompt list must be provided."
+            prompts_token_ids = []
+            for prompt in prompts:
+                prompts_token_ids.append(self.tokenizer.encode(prompt))
+
+        prompts_num = len(prompts_token_ids)
+
+        # print("self.tokenizer.eos_token: ", self.tokenizer.eos_token)
+        # print("self.tokenizer.eos_token_id: ", self.tokenizer.eos_token_id)
+>>>>>>> 6d6de076c4c953052f617a090c808d49e0587b19
 
         for i in range(prompts_num):
             if requests_id:
@@ -149,18 +229,28 @@ class InferenceEngine:
     def step(self) -> List[str]:
         """
         In each step, do the follows:
+<<<<<<< HEAD
             1. Run RequestHandler.schedule() and get the batch used for inference.
+=======
+            1. Run RequestHandler.schedule() and get the batch needed to be inferred.
+>>>>>>> 6d6de076c4c953052f617a090c808d49e0587b19
             2. Run model to generate the next token
             3. Update waiting list and running list in RequestHandler and get finished sequences.
             4. Decode and return finished sequences.
 
         Returns:
+<<<<<<< HEAD
             List[str]: Decoded finished sequences generated by one step.
         """
 
         if self.verbose:
             self.logger.info("Running generation step")
 
+=======
+            List[str]: Inference result returned by one step.
+        """
+
+>>>>>>> 6d6de076c4c953052f617a090c808d49e0587b19
         output_list = []
         self.requset_handler.schedule()
 
@@ -170,7 +260,11 @@ class InferenceEngine:
 
         finished_sequences = self.requset_handler.update()
 
+<<<<<<< HEAD
         # Decode completed sentences.
+=======
+        # Process the output of completed sentences.
+>>>>>>> 6d6de076c4c953052f617a090c808d49e0587b19
         for seq in finished_sequences:
             if seq.prompt:
                 output_str = self.tokenizer.decode(seq.output_token_id, skip_special_tokens=True)
