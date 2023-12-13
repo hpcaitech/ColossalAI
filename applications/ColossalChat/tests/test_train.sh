@@ -101,8 +101,10 @@ for lora_rank in ${LORA_RANK[@]}; do
             tokenizer_dir=$(get_tokenizer_dirs $model)
             grad_ckpt=$(random_choice "${GRAD_CKPTS[@]}")
             tp='1'
+            bs='2'
             if [[ $plugin == "3d" ]]; then
                 tp='4'
+                bs='8'
             fi
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$plugin-$lora_rank, attempt $i"
@@ -118,7 +120,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --config_file $MODELS_DIR/config.jsonl \
                     --lora_rank $lora_rank \
                     --plugin $plugin \
-                    --batch_size 2 \
+                    --batch_size $bs \
                     --max_epochs 1 \
                     --accumulation_steps 2 \
                     --tp $tp \
@@ -163,10 +165,11 @@ for lora_rank in ${LORA_RANK[@]}; do
             tokenizer_dir=$(get_tokenizer_dirs $model)
             grad_ckpt=$(random_choice "${GRAD_CKPTS[@]}")
             tp='1'
+            bs='2'
             if [[ $plugin == "3d" ]]; then
                 tp='4'
-            fi
-            for i in $(seq $NUM_RETRY); do
+                bs='8'
+            fiin $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$plugin-$lora_rank, attempt $i"
                 declare -a dataset=()
                 for split in $(seq -f "%05g" 0 0); do
@@ -180,7 +183,8 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --config_file $MODELS_DIR/config.jsonl \
                     --lora_rank $lora_rank \
                     --plugin $plugin \
-                    --batch_size 2 \
+
+            for i  --batch_size $bs \
                     --max_epochs 1 \
                     --accumulation_steps 2 \
                     --tp $tp \
@@ -230,8 +234,12 @@ for lora_rank in ${LORA_RANK[@]}; do
             tokenizer_dir=$(get_tokenizer_dirs $model)
             grad_ckpt=$(random_choice "${GRAD_CKPTS[@]}")
             tp='1'
+            bs='4'
+            ebs='8'
             if [[ $plugin == "3d" ]]; then
                 tp='4'
+                bs='16'
+                ebs='32'
             fi
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$plugin-$lora_rank, attempt $i"
@@ -257,8 +265,8 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --num_episodes 5 \
                     --num_collect_steps 1 \
                     --num_update_steps 1 \
-                    --experience_batch_size 8 \
-                    --train_batch_size 4 \
+                    --experience_batch_size $ebs \
+                    --train_batch_size $bs \
                     --accumulation_steps 2 \
                     --lr 9e-6 \
                     --mixed_precision "bf16" \
@@ -307,8 +315,10 @@ for lora_rank in ${LORA_RANK[@]}; do
             tokenizer_dir=$(get_tokenizer_dirs $model)
             grad_ckpt=$(random_choice "${GRAD_CKPTS[@]}")
             tp='1'
+            bs='2'
             if [[ $plugin == "3d" ]]; then
                 tp='4'
+                bs='8'
             fi
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$plugin-$lora_rank, attempt $i"
@@ -324,7 +334,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --config_file $MODELS_DIR/config.jsonl \
                     --lora_rank $lora_rank \
                     --plugin $plugin \
-                    --batch_size 2 \
+                    --batch_size $bs \
                     --max_epochs 1 \
                     --accumulation_steps 2 \
                     --tp $tp \

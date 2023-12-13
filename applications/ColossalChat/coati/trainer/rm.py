@@ -104,7 +104,9 @@ class RewardModelTrainer(SLTrainer):
     def _train(self, epoch):
         self.model.train()
         step_bar = tqdm.trange(
-            len(self.train_dataloader), desc=f"Epoch {epoch + 1}/{self.max_epochs}", disable=not is_rank_0()
+            len(self.train_dataloader) // self.accumulation_steps,
+            desc=f"Epoch {epoch + 1}/{self.max_epochs}",
+            disable=not is_rank_0(),
         )
         for i, batch in enumerate(self.train_dataloader):
             batch = to_device(batch, self.device)
