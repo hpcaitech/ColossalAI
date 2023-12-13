@@ -39,7 +39,7 @@ pip install -r $EXAMPLES_DIR/requirements.txt
 get_pretrain() {
     local model=$1
     if [[ $model == "gpt2" ]]; then
-        echo "/data/scratch/models/gpt2/"
+        echo "$PRETRAINED_MODEL_PATH/gpt2/"
     elif [[ $model == "bloom" ]]; then
         echo "$PRETRAINED_MODEL_PATH/bloom-560m/"
     elif [[ $model == "opt" ]]; then
