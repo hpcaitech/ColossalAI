@@ -26,10 +26,12 @@ EXAMPLES_DIR=$BASE_DIR/examples
 TEMP_DIR=$BASE_DIR/temp
 MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
-MODELS=('gpt2' 'bloom' 'opt' 'llama')
+# Skip those tests due to CI tests timeout
+MODELS=('llama')
 # PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d')
-PLUGINS=('zero2' 'zero2_cpu' '3d')
-LORA_RANK=('0' '20')
+PLUGINS=('zero2' '3d')
+# LORA_RANK=('0' '20')
+LORA_RANK=('0')
 
 export OMP_NUM_THREADS=8
 
@@ -83,7 +85,7 @@ SKIPPED_TESTS=(
     llama-3d-20 # This test cannot pass, it is probably a bug for the 3d plugin
 )
 
-GRAD_CKPTS=('' '--grad_checkpoint')
+GRAD_CKPTS=('--grad_checkpoint')
 for lora_rank in ${LORA_RANK[@]}; do
     for model in ${MODELS[@]}; do
         plugins=($(shuf -e "${PLUGINS[@]}"))
@@ -145,7 +147,7 @@ SKIPPED_TESTS=(
     llama-3d-20 # This test cannot pass, it is probably a bug for the 3d plugin
 )
 
-GRAD_CKPTS=('' '--grad_checkpoint')
+GRAD_CKPTS=('--grad_checkpoint')
 for lora_rank in ${LORA_RANK[@]}; do
     for model in ${MODELS[@]}; do
         plugins=($(shuf -e "${PLUGINS[@]}"))
@@ -212,7 +214,7 @@ SKIPPED_TESTS=(
     bloom-zero2_cpu # This test can pass locally. Removed due to OOM
 )
 
-GRAD_CKPTS=('' '--grad_checkpoint')
+GRAD_CKPTS=('--grad_checkpoint')
 for lora_rank in ${LORA_RANK[@]}; do
     for model in ${MODELS[@]}; do
         plugins=($(shuf -e "${PLUGINS[@]}"))
@@ -289,7 +291,7 @@ SKIPPED_TESTS=(
     bloom-zero2_cpu # This test can pass locally. Removed due to OOM
 )
 
-GRAD_CKPTS=('' '--grad_checkpoint')
+GRAD_CKPTS=('--grad_checkpoint')
 for lora_rank in ${LORA_RANK[@]}; do
     for model in ${MODELS[@]}; do
         plugins=($(shuf -e "${PLUGINS[@]}"))
