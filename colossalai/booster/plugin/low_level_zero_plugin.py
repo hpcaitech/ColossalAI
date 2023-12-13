@@ -351,26 +351,35 @@ class LowLevelZeroPlugin(DPPluginBase):
                     return group_id
         return -1
     
+    def get_param_group_id(self, optimizer: Optimizer, origin_param: Parameter, lora_param: Parameter):
+        origin_param_id = id(origin_param)
+        lora_param_id = id(lora_param)
+        target_group_id = -1
+        for group_id, param_group in enumerate(optimizer.param_groups):
+            for p in param_group['params']:
+                if id(p) == lora_param_id:
+                    # check if the lora parameter exists.
+                    return -2
+                if id(p) == origin_param_id:
+                    target_group_id = group_id
+        return target_group_id
+    
     def add_lora_params_to_optimizer(self, model, optimizer):
         """ add lora parameters to optimizer """
         name2param= {}
         for name, param in model.named_parameters():
             name2param[name] = param
 
-        optimizer_param_nums = 0
-        for param_group in optimizer.param_groups:
-            optimizer_param_nums += len(param_group['params'])
-
-        # Check if the optimizer is created after the model is transformed into a LoRa model.
-        if len(name2param) != optimizer_param_nums:
-            for name, param in name2param.items():
-                if 'lora_A' in name or 'lora_B' in name:
-                    origin_key = name.replace("lora_A.", "")
-                    origin_key = origin_key.replace("lora_B.", "")
-                    origin_key = origin_key.replace(f"{model.active_adapter}.", "")
-                    origin_param = name2param[origin_key]
-                    group_id = self.get_param_group_id(optimizer, origin_param)
-                    assert group_id != -1, "Parameter error, origin parameter does't exists."
+        for name, param in name2param.items():
+            if 'lora_A' in name or 'lora_B' in name:
+                origin_key = name.replace("lora_A.", "")
+                origin_key = origin_key.replace("lora_B.", "")
+                origin_key = origin_key.replace(f"{model.active_adapter}.", "")
+                origin_param = name2param[origin_key]
+                group_id = self.get_param_group_id(optimizer, origin_param, param)
+                if group_id == -1:
+                    warnings.warn("Origin parameter {origin_key} related to {name} doesn't exist in optimizer param_groups.")
+                elif group_id >= 0:
                     optimizer.param_groups[group_id]['params'].append(param)
     
     def configure(
@@ -384,7 +393,8 @@ class LowLevelZeroPlugin(DPPluginBase):
         if self.lora_enabled:
             from peft import PeftModel
             assert isinstance(model, PeftModel), "The model should have been wrapped as a PeftModel when self.lora_enabled is True"
-            self.add_lora_params_to_optimizer(model, optimizer)
+            if optimizer is not None:
+                self.add_lora_params_to_optimizer(model, optimizer)
 
 
         if not isinstance(model, ModelWrapper):
