@@ -9,6 +9,10 @@ from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger(__name__)
 
+"""
+The abstraction of request and sequence are defined here.
+"""
+
 
 class RequsetStatus(enum.Enum):
     """
@@ -122,7 +126,7 @@ class Sequence:
 
 
 @dataclass
-class BatchHandler:
+class BatchInfo:
     """
     Information to be passed and used for a batch of sequences.
     """
