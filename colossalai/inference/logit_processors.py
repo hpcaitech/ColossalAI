@@ -42,3 +42,25 @@ def top_p_logit_processor(logits, top_p: float):
     indices_to_remove = sorted_indices_to_remove.scatter(dim=1, index=sorted_indices, src=sorted_indices_to_remove)
     logits[indices_to_remove] = -float("inf")
     return logits
+
+def logit_processor(processor:str, logits , attrs):
+    """
+    do logit process for given logits.
+
+    Args:
+        processor(str): the type of logit processor 
+        logits(torch.Tensor): input logits
+        attrs(dict): attrs of the logit processor 
+
+    Returns:
+        logits after process
+    """
+    if processor not in _LOGIT_PROCESSOR_MAP:
+        return logits
+    else:
+        func = _LOGIT_PROCESSOR_MAP[processor]
+        try:
+            logits = func(logits, attrs)
+        except Exception as e:
+            return logits
+        return logits

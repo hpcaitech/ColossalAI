@@ -54,7 +54,7 @@ class Sequence:
         self.request_id = request_id
         self.prompt = prompt
         self.input_token_id = token_id
-        self.blokc_size = block_size
+        self.block_size = block_size
         self.sample_params = sample_params
         self.output_token_id = []
         self.status = RequsetStatus.WAITING
@@ -66,20 +66,23 @@ class Sequence:
         Get length of prompts
         """
         return len(self.input_token_id)
-
-    def get_sentence_len(self) -> int:
+    
+    @property
+    def sentence_len(self) -> int:
         """
         Get length of current sentence.
         """
         return len(self.input_token_id) + len(self.output_token_id)
-
-    def get_input_len(self) -> None:
+    
+    @property
+    def input_len(self) -> None:
         """
         Get length of input sentence.
         """
         return len(self.input_token_id)
-
-    def get_output_len(self) -> None:
+    
+    @property
+    def output_len(self) -> None:
         """
         Get output length of current sentence.
         """
@@ -90,6 +93,12 @@ class Sequence:
         Check whether inference is over.
         """
         return RequsetStatus.is_finished(self.status)
+    
+    def mark_finished(self)-> None:
+        """
+        Set status for finished req
+        """
+        self.status = RequsetStatus.COMPLETED
 
     def __repr__(self) -> str:
         return (
