@@ -1,6 +1,6 @@
 from transformers import BloomForCausalLM, LlamaForCausalLM, PretrainedConfig
 
-from .config import InferenceConfig
+from colossalai.inference.config import InferenceConfig
 
 _SUPPORTED_MODELS = {
     "BloomForCausalLM": BloomForCausalLM,

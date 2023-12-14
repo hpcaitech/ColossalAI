@@ -1,10 +1,10 @@
 from colossalai.inference.config import InferenceConfig
-from colossalai.inference.struct import BatchInfo, RequsetStatus, Sequence
+from colossalai.inference.struct import BatchInfo, Sequence
 
 
 def test_config_and_inferenceData():
     config = InferenceConfig("/llama")
-    assert config.max_batch_size
+    assert config.max_batch_size == 8
     sequence = Sequence(
         request_id=1,
         prompt="abc",
@@ -43,7 +43,7 @@ def test_config_and_inferenceData():
     assert sequence.get_output_len() == 0
     assert sequence.check_finish() == False
 
-    batch = BatchHandler.init_batch([sequence])
+    batch = BatchInfo.init_batch([sequence])
     batch.add_seqs([sequence2, sequence3])
     batch.add_seqs([sequence])
 

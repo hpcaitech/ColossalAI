@@ -1,6 +1,6 @@
 from typing import List
 
-from .inference_struct import BatchHandler, Sequence
+from colossalai.inference.struct import BatchInfo, Sequence
 
 
 class RequestHandler:
@@ -17,7 +17,7 @@ class RequestHandler:
         self._init_cache()
         self.waiting_list: List["Sequence"] = []
         self.running_list: List["Sequence"] = []
-        self.batch = BatchHandler.init_batch([])
+        self.batch = BatchInfo.init_batch()
 
     def _init_cache(self):
         """
@@ -34,11 +34,11 @@ class RequestHandler:
         self.batch.add_seqs(self.running_list)
         return self.batch
 
-    def add_sequence(self, reqseq: "Sequence"):
+    def add_sequence(self, req_seq: "Sequence"):
         """
         Add the request to waiting list.
         """
-        self.waiting_list.append(reqseq)
+        self.waiting_list.append(req_seq)
 
     def abort_sequence(self, seq_id: str):
         """
@@ -53,7 +53,7 @@ class RequestHandler:
         """
 
     def check_unfinished_seqs(self) -> bool:
-        return self.waiting_list or self.running_list
+        return len(self.waiting_list) != 0 or len(self.running_list) != 0
 
     def update(self):
         """

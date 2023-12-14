@@ -1,6 +1,6 @@
 import transformers
 
-from colossalai.inference.core.config import InferenceConfig
+from colossalai.inference.config import InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
 
 

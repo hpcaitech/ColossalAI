@@ -4,6 +4,7 @@ from typing import Optional, Union
 
 import torch
 import torch.nn as nn
+from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
 GibiByte = 1024**3
 
@@ -36,10 +37,10 @@ class InferenceConfig:
     """
 
     model: Union[str, nn.Module]
-    tokenizer: str = None
+    tokenizer: Union[str, PreTrainedTokenizer, PreTrainedTokenizerFast] = None
     use_fast_tokenizer: bool = False
     trust_remote_code: bool = False
-    max_batch_size: int = None
+    max_batch_size: int = 8
     max_output_len: int = 256
     max_input_len: int = 256
     block_size: int = 16
@@ -76,6 +77,7 @@ class InferenceConfig:
         )
 
     def __post_init__(self):
+        self._init_batch_size()
         if self.tokenizer == None:
             if isinstance(self.model, str):
                 self.tokenizer = self.model

@@ -14,7 +14,7 @@ The abstraction of request and sequence are defined here.
 """
 
 
-class RequsetStatus(enum.Enum):
+class RequestStatus(enum.Enum):
     """
     The status of Sentences
     """
@@ -31,23 +31,23 @@ class RequsetStatus(enum.Enum):
     LENGTH_CAPPED = enum.auto()
 
     @staticmethod
-    def is_finished(status: "RequsetStatus") -> bool:
+    def is_finished(status: "RequestStatus") -> bool:
         return status in [
-            RequsetStatus.OVERLENGTH,
-            RequsetStatus.COMPLETED,
-            RequsetStatus.LENGTH_CAPPED,
+            RequestStatus.OVERLENGTH,
+            RequestStatus.COMPLETED,
+            RequestStatus.LENGTH_CAPPED,
         ]
 
     @staticmethod
-    def is_running(status: "RequsetStatus") -> bool:
+    def is_running(status: "RequestStatus") -> bool:
         return status in [
-            RequsetStatus.PREFILL,
-            RequsetStatus.TOKEN,
+            RequestStatus.PREFILL,
+            RequestStatus.TOKEN,
         ]
 
     @staticmethod
-    def is_waiting(status: "RequsetStatus") -> bool:
-        return status == RequsetStatus.WAITING
+    def is_waiting(status: "RequestStatus") -> bool:
+        return status == RequestStatus.WAITING
 
 
 @dataclass
@@ -76,7 +76,7 @@ class Sequence:
 
     def __post_init__(self):
         self.output_token_id = []
-        self.status = RequsetStatus.WAITING
+        self.status = RequestStatus.WAITING
 
     def get_sentence_len(self) -> None:
         """
@@ -103,12 +103,12 @@ class Sequence:
         Returns:
             bool: Whether the inference is finished.
         """
-        if RequsetStatus.is_finished(self.status):
+        if RequestStatus.is_finished(self.status):
             return True
 
         if self.output_token_id:
             if self.output_token_id[-1] == self.eos_token_id or len(self.output_token_id) == self.max_output_len:
-                self.status = RequsetStatus.COMPLETED
+                self.status = RequestStatus.COMPLETED
                 return True
 
         return False
@@ -134,23 +134,25 @@ class BatchInfo:
     sequences_set: OrderedSet["Sequence"]
 
     @classmethod
-    def init_batch(cls, seqs: List["Sequence"]) -> "BatchHandler":
+    def init_batch(cls, seqs: List["Sequence"] = None) -> "BatchInfo":
         """
         Initializes inference batches by input sentence list.
 
         Args:
             seqs (List["Sequence"]): List of input sequence.
         """
-        if not isinstance(seqs, list):
-            seqs = [seqs]
 
         sequences_set = OrderedSet()
-        for seq in seqs:
-            if seq in sequences_set:
-                logger.warning(f"The sequence(request_id {seq.request_id}) is already in sequences_set.")
-                continue
 
-            sequences_set.add(seq)
+        if seqs is not None:
+            if not isinstance(seqs, list):
+                seqs = [seqs]
+            for seq in seqs:
+                if seq in sequences_set:
+                    logger.warning(f"The sequence(request_id {seq.request_id}) is already in sequences_set.")
+                    continue
+
+                sequences_set.add(seq)
 
         return cls(sequences_set=sequences_set)
 
@@ -168,7 +170,7 @@ class BatchInfo:
         """
         for seq in self.sequences_set:
             if not seq.check_finish():
-                seq.status = RequsetStatus.ABORTED
+                seq.status = RequestStatus.ABORTED
         self.sequences_set.clear()
 
     def fliter_batch(self) -> List["Sequence"]:
@@ -191,7 +193,7 @@ class BatchInfo:
         Remove sequence from the batch.
         """
         if not seq.check_finish():
-            seq.status = RequsetStatus.ABORTED
+            seq.status = RequestStatus.ABORTED
         self.sequences_set.discard(seq)
         return seq
 
@@ -225,7 +227,7 @@ class BatchInfo:
             tokens (List[int]): A batch of tokens
         """
 
-        assert self.get_batch_size() == len(tokens), "The number of tokens does not batch_size."
+        assert self.get_batch_size() == len(tokens), "The number of tokens does not match batch_size."
 
         for seq, token in zip(self.sequences_set, tokens):
             if not isinstance(token, list):

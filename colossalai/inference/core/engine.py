@@ -1,15 +1,14 @@
 from itertools import count
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import torch.nn as nn
-from transformers import AutoConfig, GenerationConfig
+from transformers import AutoConfig, AutoTokenizer, GenerationConfig, PreTrainedTokenizer, PreTrainedTokenizerFast
 
+from colossalai.inference.config import InferenceConfig
+from colossalai.inference.struct import Sequence
 from colossalai.logging import get_dist_logger
 
 from ..kv_cache.kvcache_manager import KVCacheManager
-from .config import InferenceConfig
-from .get_tokenizer import get_tokenizer
-from .inference_struct import Sequence
 from .init_model import init_model
 from .request_handler import RequestHandler
 
@@ -32,12 +31,19 @@ class InferenceEngine:
     ) -> None:
         assert inference_config, "Please provide inference_config."
 
-        self.tokenizer = get_tokenizer(
-            inference_config.tokenizer,
-            use_fast_tokenizer=inference_config.use_fast_tokenizer,
-            trust_remote_code=inference_config.trust_remote_code,
-        )
-        self.tokenizer.pad_token = self.tokenizer.eos_token
+        if isinstance(inference_config.tokenizer, str):
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                inference_config.tokenizer,
+                trust_remote_code=inference_config.trust_remote_code,
+                use_fast=inference_config.use_fast_tokenizer,
+            )
+        elif isinstance(inference_config.tokenizer, Union[PreTrainedTokenizer, PreTrainedTokenizerFast]):
+            self.tokenizer = inference_config.tokenizer
+        else:
+            raise TypeError(
+                f"The tokenizer type must be one of str, PreTrainedTokenizer, PreTrainedTokenizerFast, but get {inference_config.tokenizer}."
+            )
+
         self.inference_config = inference_config
 
         self.verbose = verbose
@@ -46,10 +52,9 @@ class InferenceEngine:
 
         self._init_model_and_hf_config()
         self.cache_manager = KVCacheManager(self.inference_config, self.hf_model_config, verbose)
-        self.requset_handler = RequestHandler(self.inference_config)
+        self.request_handler = RequestHandler(self.inference_config)
 
         self.counter = count()
-        self._verify_config()
 
     def _init_model_and_hf_config(self):
         """
@@ -88,11 +93,6 @@ class InferenceEngine:
                 f"The type of inference_config.model should be str or nn.Module, but get {type(self.inference_config.model)}"
             )
 
-    def _verify_config(self):
-        """
-        Verify the configuration to avoid potential bugs.
-        """
-
     def generate(
         self,
         generation_config: GenerationConfig = None,
@@ -110,7 +110,7 @@ class InferenceEngine:
 
         output_list = []
 
-        while self.requset_handler.check_unfinished_seqs():
+        while self.request_handler.check_unfinished_seqs():
             output_list += self.step()
 
         return output_list
@@ -158,7 +158,7 @@ class InferenceEngine:
                 self.tokenizer.eos_token_id,
                 self.inference_config.max_output_len,
             )
-            self.requset_handler.add_sequence(sequence)
+            self.request_handler.add_sequence(sequence)
 
     def step(self) -> List[str]:
         """
@@ -176,13 +176,13 @@ class InferenceEngine:
             self.logger.info("Running generation step")
 
         output_list = []
-        self.requset_handler.schedule()
+        self.request_handler.schedule()
 
         # Uncomment if the development of RequestHandler is completed.
         # logits = self.model(batch)
-        # self.requset_handler.search_tokens(logits, self.generation_config)
+        # self.request_handler.search_tokens(logits, self.generation_config)
 
-        finished_sequences = self.requset_handler.update()
+        finished_sequences = self.request_handler.update()
 
         # Decode completed sentences.
         for seq in finished_sequences:
