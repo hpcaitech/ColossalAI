@@ -942,13 +942,15 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
                     return custom_forward
 
                 aux_loss, z_loss = self._calculate_router_loss()
-                loss = aux_loss + z_loss
+                ce_loss = 0
                 for batch_idx in range(hidden_states.shape[0]):
-                    loss = loss + torch.utils.checkpoint.checkpoint(
+                    ce_loss = ce_loss + torch.utils.checkpoint.checkpoint(
                         create_custom_forward(self.lm_head),
                         hidden_states[batch_idx : batch_idx + 1, :],
                         labels[batch_idx : batch_idx + 1, :],
                     )
+                ce_loss = ce_loss / hidden_states.shape[0]
+                loss = aux_loss + z_loss + ce_loss
                 logits = None
             else:
                 logits = self.lm_head(hidden_states)
@@ -958,8 +960,8 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
                 shift_labels = labels[..., 1:].contiguous()
                 # Flatten the tokens
                 aux_loss, z_loss = self._calculate_router_loss()
-                loss = aux_loss + z_loss
-                loss = loss + self._calculate_loss(shift_logits, shift_labels)
+                ce_loss = self._calculate_loss(shift_logits, shift_labels) / hidden_states.shape[0]
+                loss = aux_loss + z_loss + ce_loss
 
         if not return_dict:
             output = (logits,) + outputs[1:]
@@ -1045,10 +1047,10 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
         soft_targets = targets[..., None] == torch.arange(vocab_size, device=targets.device).reshape(
             (1,) * len(targets.shape) + (-1,)
         )
+        soft_targets = soft_targets.to(torch.float32)
         soft_targets = torch.where(
             soft_targets, torch.full_like(soft_targets, confidence), torch.full_like(soft_targets, low_confidence)
         )
-        soft_targets = soft_targets.to(torch.float32)
 
         # cross entropy
         total_loss = ZLossCrossEntropy.apply(logits, soft_targets, self.config.z_loss_factor)
