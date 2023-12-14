@@ -32,9 +32,12 @@ def test_rotary_emb(TOTAL_TOKENS, H, D, dtype, eps=1e-5, device="cuda"):
     q_ref = torch_rotary_emb(q, cos, sin)
     k_ref = torch_rotary_emb(k, cos, sin)
 
-    rotary_embedding_fwd(q, k, cos, sin)
+    k_cache = torch.zeros(k_shape, dtype=dtype, device="cuda")
+    tokens_offset = torch.arange(0, TOTAL_TOKENS, dtype=torch.int32, device="cuda")
+
+    rotary_embedding_fwd(q, k, cos, sin, k_cache, tokens_offset)
     q_tri = q
-    k_tri = k
+    k_tri = k_cache
 
     assert torch.allclose(q_tri, q_ref, atol=1e-2, rtol=1e-3)
     assert torch.allclose(k_tri, k_ref, atol=1e-2, rtol=1e-3)

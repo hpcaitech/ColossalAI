@@ -9,6 +9,8 @@ def rotary_embedding_kernel(
     k,
     cos,
     sin,
+    k_cache,
+    k_tokens_offsets,
     q_token_stride,
     q_head_stride,
     k_token_stride,
@@ -30,8 +32,9 @@ def rotary_embedding_kernel(
     HEAD_NUM = Q_HEAD_NUM
     head_stride = q_head_stride
     token_stride = q_token_stride
-
+    is_k = False
     if block_token_index * BLOCK_TOKENS >= q_total_tokens:
+        is_k = True
         block_token_index = block_token_index - tl.cdiv(q_total_tokens, BLOCK_TOKENS)
         rotary_data = k
         HEAD_NUM = K_HEAD_NUM
@@ -74,28 +77,58 @@ def rotary_embedding_kernel(
     out0 = loaded_data0 * loaded_cos[:, None, :] - loaded_data1 * loaded_sin[:, None, :]
     out1 = loaded_data0 * loaded_sin[:, None, :] + loaded_data1 * loaded_cos[:, None, :]
 
-    tl.store(
-        rotary_data + off_data0,
-        out0,
-        mask=((head_range[None, :, None] < HEAD_NUM) & (tokens_range[:, None, None] < q_total_tokens)),
-    )
-    tl.store(
-        rotary_data + off_data1,
-        out1,
-        mask=((head_range[None, :, None] < HEAD_NUM) & (tokens_range[:, None, None] < q_total_tokens)),
-    )
+    if is_k:
+        tokens_cache_ids = tl.load(k_tokens_offsets + tokens_range, mask=tokens_range < q_total_tokens, other=0)
+        k0_offset = (
+            tokens_cache_ids[:, None, None] * token_stride
+            + head_range[None, :, None] * head_stride
+            + dim_range0[None, None, :] * head_dim_stride
+        )
+        k1_offset = (
+            tokens_cache_ids[:, None, None] * token_stride
+            + head_range[None, :, None] * head_stride
+            + dim_range1[None, None, :] * head_dim_stride
+        )
+        tl.store(
+            k_cache + k0_offset,
+            out0,
+            mask=((head_range[None, :, None] < HEAD_NUM) & (tokens_range[:, None, None] < q_total_tokens)),
+        )
+        tl.store(
+            k_cache + k1_offset,
+            out1,
+            mask=((head_range[None, :, None] < HEAD_NUM) & (tokens_range[:, None, None] < q_total_tokens)),
+        )
 
-    return
+    else:
+        tl.store(
+            rotary_data + off_data0,
+            out0,
+            mask=((head_range[None, :, None] < HEAD_NUM) & (tokens_range[:, None, None] < q_total_tokens)),
+        )
+        tl.store(
+            rotary_data + off_data1,
+            out1,
+            mask=((head_range[None, :, None] < HEAD_NUM) & (tokens_range[:, None, None] < q_total_tokens)),
+        )
 
 
 @torch.no_grad()
-def rotary_embedding_fwd(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor):
+def rotary_embedding_fwd(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    cos: torch.Tensor,
+    sin: torch.Tensor,
+    k_cache: torch.Tensor,
+    tokens_offset: torch.Tensor,
+):
     """
     Args:
-        q: query tensor
-        k: key tensor
-        cos: cosine for rotary embedding
-        sin: sine for rotary embedding
+        q: query tensor, [total_tokens, head_num, head_dim]
+        k: key tensor, [total_tokens, head_num, head_dim]
+        cos: cosine for rotary embedding, [total_tokens, head_dim]
+        sin: sine for rotary embedding, [total_tokens, head_dim]
+        k_cache: physical cache for key, [:, head_num, head_dim]
     """
     q_total_tokens = q.shape[0]
     q_head_num = q.shape[1]
@@ -121,11 +154,14 @@ def rotary_embedding_fwd(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, si
     cos_token_stride = cos.stride(0)
     cos_stride = cos.stride(1)
 
+    k_cache = k_cache.view(-1, k_head_num, head_dim)
     rotary_embedding_kernel[grid](
         q,
         k,
         cos,
         sin,
+        k_cache,
+        tokens_offset,
         q_token_stride,
         q_head_stride,
         k_token_stride,
