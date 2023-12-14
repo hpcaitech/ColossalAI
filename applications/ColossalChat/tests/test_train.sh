@@ -169,7 +169,8 @@ for lora_rank in ${LORA_RANK[@]}; do
             if [[ $plugin == "3d" ]]; then
                 tp='4'
                 bs='8'
-            fiin $(seq $NUM_RETRY); do
+            fi
+            for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$plugin-$lora_rank, attempt $i"
                 declare -a dataset=()
                 for split in $(seq -f "%05g" 0 0); do
