@@ -1,12 +1,14 @@
 import random
 
+import pytest
 import torch
 from transformers.models.llama import LlamaConfig
 
+import colossalai
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.kv_cache import CacheBlock, KVCacheManager
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import parameterize
+from colossalai.testing import parameterize, spawn
 
 
 @parameterize(
@@ -64,7 +66,7 @@ def test_logical_blocks(test_config):
         },
     ],
 )
-def test_cache_manager(test_config):
+def check_cache_manager(test_config):
     disable_existing_loggers()
 
     assert test_config["max_batch_size"] > 1
@@ -78,7 +80,7 @@ def test_cache_manager(test_config):
     max_input_length = test_config["max_input_len"]
     max_output_length = test_config["max_output_len"]
 
-    inference_config = InferenceConfig(model="", **test_config)
+    inference_config = InferenceConfig(**test_config)
     model_config = LlamaConfig(
         hidden_size=hidden_size,
         num_hidden_layers=num_layers,
@@ -145,6 +147,16 @@ def test_cache_manager(test_config):
     assert k_ptr_block1_layer0 - k_ptr_block0_layer0 == expected_stride
     cache_manager.clear_all()
     assert cache_manager.get_num_available_blocks() == num_blocks
+
+
+def run_dist(rank, world_size, port):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, port=port, host="localhost")
+    check_cache_manager()
+
+
+@pytest.mark.dist
+def test_cache_manager():
+    spawn(run_dist, 1)
 
 
 if __name__ == "__main__":
