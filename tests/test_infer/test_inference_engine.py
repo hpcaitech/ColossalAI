@@ -1,4 +1,5 @@
 import transformers
+from transformers import AutoTokenizer
 
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
@@ -10,7 +11,8 @@ def test_inference_engine():
             vocab_size=20000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=4
         )
     )
-    inference_config = InferenceConfig(model, "hf-internal-testing/llama-tokenizer")
+    tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+    inference_config = InferenceConfig(model, tokenizer)
     inference_engine = InferenceEngine(inference_config, verbose=True)
 
     inputs = [

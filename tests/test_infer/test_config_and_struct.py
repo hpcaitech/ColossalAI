@@ -1,9 +1,18 @@
+import transformers
+from transformers import AutoTokenizer
+
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.struct import BatchInfo, Sequence
 
 
 def test_config_and_inferenceData():
-    config = InferenceConfig("/llama")
+    model = transformers.LlamaForCausalLM(
+        transformers.LlamaConfig(
+            vocab_size=20000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=4
+        )
+    )
+    tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+    config = InferenceConfig(model, tokenizer)
     assert config.max_batch_size == 8
     sequence = Sequence(
         request_id=1,

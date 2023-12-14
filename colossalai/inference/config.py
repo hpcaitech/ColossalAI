@@ -36,8 +36,8 @@ class InferenceConfig:
             when the actual value exceeds this ratio.
     """
 
-    model: Union[str, nn.Module]
-    tokenizer: Union[str, PreTrainedTokenizer, PreTrainedTokenizerFast] = None
+    model: nn.Module
+    tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast]
     use_fast_tokenizer: bool = False
     trust_remote_code: bool = False
     max_batch_size: int = 8
@@ -78,10 +78,11 @@ class InferenceConfig:
 
     def __post_init__(self):
         self._init_batch_size()
-        if self.tokenizer == None:
-            if isinstance(self.model, str):
-                self.tokenizer = self.model
-            else:
-                raise ValueError(
-                    f"If the tokenizer is not provided, the model must be string type., but get {type(self.model)}"
-                )
+        if not isinstance(self.model, nn.Module):
+            raise TypeError(f"the model type must be nn.Module, but get {type(self.model)}")
+        if not isinstance(self.tokenizer, PreTrainedTokenizerFast) and not isinstance(
+            self.tokenizer, PreTrainedTokenizer
+        ):
+            raise TypeError(
+                f"the tokenizer type must be PreTrainedTokenizer or PreTrainedTokenizerFast, but get {type(self.tokenizer)}"
+            )

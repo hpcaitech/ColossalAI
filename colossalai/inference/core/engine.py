@@ -1,15 +1,13 @@
 from itertools import count
-from typing import List, Optional, Union
+from typing import List, Optional
 
-import torch.nn as nn
-from transformers import AutoConfig, AutoTokenizer, GenerationConfig, PreTrainedTokenizer, PreTrainedTokenizerFast
+from transformers import GenerationConfig
 
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.struct import Sequence
 from colossalai.logging import get_dist_logger
 
 from ..kv_cache.kvcache_manager import KVCacheManager
-from .init_model import init_model
 from .request_handler import RequestHandler
 
 
@@ -31,67 +29,16 @@ class InferenceEngine:
     ) -> None:
         assert inference_config, "Please provide inference_config."
 
-        if isinstance(inference_config.tokenizer, str):
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                inference_config.tokenizer,
-                trust_remote_code=inference_config.trust_remote_code,
-                use_fast=inference_config.use_fast_tokenizer,
-            )
-        elif isinstance(inference_config.tokenizer, Union[PreTrainedTokenizer, PreTrainedTokenizerFast]):
-            self.tokenizer = inference_config.tokenizer
-        else:
-            raise TypeError(
-                f"The tokenizer type must be one of str, PreTrainedTokenizer, PreTrainedTokenizerFast, but get {inference_config.tokenizer}."
-            )
-
+        self.tokenizer = inference_config.tokenizer
         self.inference_config = inference_config
-
+        self.model = self.inference_config.model
+        self.model_config = self.model.config
         self.verbose = verbose
         if verbose:
             self.logger = get_dist_logger(__name__)
-
-        self._init_model_and_model_config()
         self.cache_manager = KVCacheManager(self.inference_config, self.model_config, verbose)
         self.request_handler = RequestHandler(self.inference_config)
-
         self.counter = count()
-
-    def _init_model_and_model_config(self):
-        """
-        Initialize model.
-        """
-        if isinstance(self.inference_config.model, str):
-            self.model = init_model(self.inference_config, self.model_config)
-            self.model_config = AutoConfig.from_pretrained(
-                self.inference_config.model,
-                trust_remote_code=self.inference_config.trust_remote_code,
-                revision=self.inference_config.revision,
-            )
-        elif isinstance(self.inference_config.model, nn.Module):
-            self.model = self.inference_config.model
-            self.model_config = self.model.config
-        else:
-            raise ValueError(
-                f"The type of inference_config.model should be str or nn.Module, but get {type(self.inference_config.model)}"
-            )
-
-        if self.verbose:
-            self.logger.info("Start to initialize model")
-
-        if isinstance(self.inference_config.model, str):
-            self.model = init_model(self.inference_config, self.model_config)
-            self.model_config = AutoConfig.from_pretrained(
-                self.inference_config.model,
-                trust_remote_code=self.inference_config.trust_remote_code,
-                revision=self.inference_config.revision,
-            )
-        elif isinstance(self.inference_config.model, nn.Module):
-            self.model = self.inference_config.model
-            self.model_config = self.model.config
-        else:
-            raise ValueError(
-                f"The type of inference_config.model should be str or nn.Module, but get {type(self.inference_config.model)}"
-            )
 
     def generate(
         self,
