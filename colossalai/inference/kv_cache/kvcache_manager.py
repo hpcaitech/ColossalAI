@@ -135,7 +135,7 @@ class KVCacheManager:
         and updates the provided block table with the allocated block ids.
 
         Args:
-            block_table: A 1D tensor of shape [max_blocks_per_sequence], storing mapping of token_position_id -> block_id.
+            block_table: A 1D tensor of shape [max_blocks_per_sequence] holded by a sequence, storing mapping of token_position_id -> block_id.
             context_len: The length of the processing sequnece.
         """
         assert block_table.dim() == 1
@@ -185,7 +185,7 @@ class KVCacheManager:
         and updates the provided block table if a new cache block is needed.
 
         Args:
-            block_table: A 1D tensor of shape [max_blocks_per_sequence], storing mapping of token_position_id -> block_id.
+            block_table: A 1D tensor of shape [max_blocks_per_sequence] holded by a sequence, storing mapping of token_position_id -> block_id.
             context_len: The length of the processing sequnece (already-allocated length).
         """
         assert block_table.dim() == 1
@@ -199,7 +199,7 @@ class KVCacheManager:
         and updates the provided block table with the allocated block.
 
         Args:
-            block_table: A 1D tensor of shape [max_blocks_per_sequence], storing mapping of token_position_id -> block_id.
+            block_table: A 1D tensor of shape [max_blocks_per_sequence] holded by a sequence, storing mapping of token_position_id -> block_id.
             block_local_idx: The index of the block in the block table.
             space_asked: i.e. The number of tokens to be assigned space for.
         Returns:
