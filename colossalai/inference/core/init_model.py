@@ -9,10 +9,10 @@ _SUPPORTED_MODELS = {
 }
 
 
-def init_model(inference_config: InferenceConfig, hf_config: PretrainedConfig):
+def init_model(inference_config: InferenceConfig, model_config: PretrainedConfig):
     # Get the supported model
     supported_model = None
-    archs = getattr(hf_config, "architectures", [])
+    archs = getattr(model_config, "architectures", [])
     for arch in archs:
         if arch in _SUPPORTED_MODELS:
             supported_model = _SUPPORTED_MODELS[arch]

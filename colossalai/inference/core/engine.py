@@ -50,26 +50,26 @@ class InferenceEngine:
         if verbose:
             self.logger = get_dist_logger(__name__)
 
-        self._init_model_and_hf_config()
-        self.cache_manager = KVCacheManager(self.inference_config, self.hf_model_config, verbose)
+        self._init_model_and_model_config()
+        self.cache_manager = KVCacheManager(self.inference_config, self.model_config, verbose)
         self.request_handler = RequestHandler(self.inference_config)
 
         self.counter = count()
 
-    def _init_model_and_hf_config(self):
+    def _init_model_and_model_config(self):
         """
         Initialize model.
         """
         if isinstance(self.inference_config.model, str):
-            self.model = init_model(self.inference_config, self.hf_model_config)
-            self.hf_model_config = AutoConfig.from_pretrained(
+            self.model = init_model(self.inference_config, self.model_config)
+            self.model_config = AutoConfig.from_pretrained(
                 self.inference_config.model,
                 trust_remote_code=self.inference_config.trust_remote_code,
                 revision=self.inference_config.revision,
             )
         elif isinstance(self.inference_config.model, nn.Module):
             self.model = self.inference_config.model
-            self.hf_model_config = self.model.config
+            self.model_config = self.model.config
         else:
             raise ValueError(
                 f"The type of inference_config.model should be str or nn.Module, but get {type(self.inference_config.model)}"
@@ -79,15 +79,15 @@ class InferenceEngine:
             self.logger.info("Start to initialize model")
 
         if isinstance(self.inference_config.model, str):
-            self.model = init_model(self.inference_config, self.hf_model_config)
-            self.hf_model_config = AutoConfig.from_pretrained(
+            self.model = init_model(self.inference_config, self.model_config)
+            self.model_config = AutoConfig.from_pretrained(
                 self.inference_config.model,
                 trust_remote_code=self.inference_config.trust_remote_code,
                 revision=self.inference_config.revision,
             )
         elif isinstance(self.inference_config.model, nn.Module):
             self.model = self.inference_config.model
-            self.hf_model_config = self.model.config
+            self.model_config = self.model.config
         else:
             raise ValueError(
                 f"The type of inference_config.model should be str or nn.Module, but get {type(self.inference_config.model)}"
