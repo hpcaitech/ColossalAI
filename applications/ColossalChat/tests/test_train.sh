@@ -184,8 +184,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --config_file $MODELS_DIR/config.jsonl \
                     --lora_rank $lora_rank \
                     --plugin $plugin \
-
-            for i  --batch_size $bs \
+                    --batch_size $bs \
                     --max_epochs 1 \
                     --accumulation_steps 2 \
                     --tp $tp \
