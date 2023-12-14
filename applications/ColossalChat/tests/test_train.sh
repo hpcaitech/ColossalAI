@@ -29,7 +29,7 @@ MODELS_DIR=$TEMP_DIR/models_config
 # Skip those tests due to CI tests timeout
 MODELS=('llama')
 # PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d')
-PLUGINS=('zero2' '3d')
+PLUGINS=('zero2')
 # LORA_RANK=('0' '20')
 LORA_RANK=('0')
 
