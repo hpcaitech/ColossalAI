@@ -1,50 +1,136 @@
 from itertools import count
-from typing import List, Optional
+from typing import List, Optional, Union
 
-from transformers import GenerationConfig
+import torch
+import torch.nn as nn
+from transformers import GenerationConfig, PreTrainedTokenizer, PreTrainedTokenizerFast
 
+from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.config import InferenceConfig
+from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.struct import Sequence
 from colossalai.logging import get_dist_logger
+from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.shardformer.policies.base_policy import Policy
 
-from ..kv_cache.kvcache_manager import KVCacheManager
 from .request_handler import RequestHandler
+
+PP_AXIS, TP_AXIS = 0, 1
+
+_supported_models = [
+    "LlamaForCausalLM",
+]
 
 
 class InferenceEngine:
 
     """
-        InferenceEngine which manages the inference process.
-    .
+    InferenceEngine which manages the inference process..
 
-        Args:
-            inference_config (Optional[InferenceConfig], optional): Store the configuration information related to inference.
-            verbose (bool): Determine whether or not to log the generation process.
+    Args:
+        model (nn.Module): Path or nn.Module of this model.
+        tokenizer (Union[PreTrainedTokenizer, PreTrainedTokenizerFast]): Path of the tokenizer to use.
+        inference_config (Optional[InferenceConfig], optional): Store the configuration information related to inference.
+        verbose (bool): Determine whether or not to log the generation process.
     """
 
     def __init__(
         self,
+        model: nn.Module,
+        tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
         inference_config: Optional["InferenceConfig"] = None,
         verbose: bool = False,
     ) -> None:
         assert inference_config, "Please provide inference_config."
-
-        self.tokenizer = inference_config.tokenizer
+        self.tokenizer = tokenizer
         self.inference_config = inference_config
-        self.model = self.inference_config.model
-        self.model_config = self.model.config
+        self.model_config = model.config
+
+        if inference_config.dtype == "fp32" or inference_config.dtype == torch.float32:
+            self.dtype = torch.float32
+        elif inference_config.dtype == "fp16" or inference_config.dtype == torch.float16:
+            self.dtype = torch.float16
+            model.half()
+        else:
+            self.dtype = torch.bfloat16
+            model.to(torch.bfloat16)
+
+        if inference_config.model_policy is None:
+            model_policy = model_policy_map[self.model_config.model_type]()
+
+        pg_mesh = ProcessGroupMesh(inference_config.pp_size, inference_config.tp_size)
+
+        self.model = self._shardformer(
+            model,
+            model_policy,
+            None,
+            pg_mesh.get_group_along_axis(TP_AXIS) if inference_config.pp_size * inference_config.tp_size > 1 else None,
+        )
+
         self.verbose = verbose
         if verbose:
             self.logger = get_dist_logger(__name__)
-        self.cache_manager = KVCacheManager(self.inference_config, self.model_config, verbose)
-        self.request_handler = RequestHandler(self.inference_config)
+
+        self.request_handler = RequestHandler(self.inference_config, self.model_config)
         self.counter = count()
+
+    def _verify_config(self) -> None:
+        """
+        Verify the input config
+        """
+        if not isinstance(self.model, nn.Module):
+            raise TypeError(f"the model type must be nn.Module, but get {type(self.model)}")
+        if not isinstance(self.tokenizer, PreTrainedTokenizerFast) and not isinstance(
+            self.tokenizer, PreTrainedTokenizer
+        ):
+            raise TypeError(
+                f"the tokenizer type must be PreTrainedTokenizer or PreTrainedTokenizerFast, but get {type(self.tokenizer)}"
+            )
+        assert (
+            self.model.__class__.__name__ in _supported_models
+        ), f"Model {self.model.__class__.__name__} is not supported."
+
+    def _shardformer(
+        self,
+        model: nn.Module,
+        model_policy: Policy,
+        stage_manager: PipelineStageManager = None,
+        tp_group: ProcessGroupMesh = None,
+    ) -> nn.Module:
+        """
+        Initialize ShardConfig and replace the model with shardformer.
+
+        Args:
+            model (nn.Module): Path or nn.Module of this model.
+            model_policy (Policy): The policy to shardformer model which is determined by the model type.
+            stage_manager (PipelineStageManager, optional): Used to manage pipeline stages. Defaults to None.
+            tp_group (ProcessGroupMesh, optional): Used to manage the process TP group mesh. Defaults to None.
+
+        Returns:
+            nn.Module: _description_
+        """
+        shardconfig = ShardConfig(
+            tensor_parallel_process_group=tp_group,
+            pipeline_stage_manager=stage_manager,
+            enable_tensor_parallelism=(self.inference_config.tp_size > 1),
+            enable_fused_normalization=False,
+            enable_all_optimization=False,
+            enable_flash_attention=False,
+            enable_jit_fused=False,
+            enable_sequence_parallelism=False,
+            extra_kwargs={"quant": self.inference_config.quant_mode},
+        )
+        shardformer = ShardFormer(shard_config=shardconfig)
+        shard_model, _ = shardformer.optimize(model, model_policy)
+        return shard_model.cuda()
 
     def generate(
         self,
         generation_config: GenerationConfig = None,
     ) -> List[str]:
-        """executing the inference step.
+        """
+        Executing the inference step.
 
         Args:
             generation_config (GenerationConfig, optional): Huggingface GenerationConfig used for inference. Defaults to None.
@@ -68,7 +154,8 @@ class InferenceEngine:
         prompts: List[str] = None,
         prompts_token_ids: List[int] = None,
     ) -> None:
-        """Add requests.
+        """
+        Add requests.
 
         Args:
             requests_id (List[int], optional): The request ID. Defaults to None.

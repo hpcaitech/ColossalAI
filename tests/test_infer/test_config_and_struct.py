@@ -1,18 +1,13 @@
-import transformers
-from transformers import AutoTokenizer
+import pytest
 
+import colossalai
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.struct import BatchInfo, Sequence
+from colossalai.testing import spawn
 
 
-def test_config_and_inferenceData():
-    model = transformers.LlamaForCausalLM(
-        transformers.LlamaConfig(
-            vocab_size=20000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=4
-        )
-    )
-    tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
-    config = InferenceConfig(model, tokenizer)
+def check_config_and_inference():
+    config = InferenceConfig()
     assert config.max_batch_size == 8
     sequence = Sequence(
         request_id=1,
@@ -72,5 +67,15 @@ def test_config_and_inferenceData():
     assert batch.is_empty() == True
 
 
+def run_dist(rank, world_size, port):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, port=port, host="localhost")
+    check_config_and_inference()
+
+
+@pytest.mark.dist
+def test_config_and_inference():
+    spawn(run_dist, 1)
+
+
 if __name__ == "__main__":
-    test_config_and_inferenceData()
+    test_config_and_inference()

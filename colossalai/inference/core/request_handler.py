@@ -9,11 +9,13 @@ class RequestHandler:
     During generation process, we call schedule function each iteration to update current batch.
 
     Args:
-        cache_config: Configuration for initialize and manage kv cache.
+        inference_config: Store the configuration information related to inference.
+        model_config: The huggingface model config.
     """
 
-    def __init__(self, cache_config) -> None:
-        self.cache_config = cache_config
+    def __init__(self, inference_config, model_config) -> None:
+        self.inference_config = inference_config
+        self.model_config = model_config
         self._init_cache()
         self.waiting_list: List["Sequence"] = []
         self.running_list: List["Sequence"] = []
