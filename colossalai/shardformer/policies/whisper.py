@@ -336,7 +336,10 @@ class WhisperPolicy(Policy):
         if stage < decoder_starting_stage:
             return self.get_stage_index(layers_per_stage[:decoder_starting_stage], stage)
         else:
-            return self.get_stage_index(layers_per_stage[decoder_starting_stage:], stage - decoder_starting_stage)
+            return self.get_stage_index(
+                layers_per_stage[decoder_starting_stage:],
+                stage - decoder_starting_stage,
+            )
 
     def get_held_layers(self) -> List[nn.Module]:
         assert self.pipeline_stage_manager is not None, "pipeline_stage_manager is None"
@@ -364,12 +367,10 @@ class WhisperPolicy(Policy):
             num_decoder_layers = 0
 
         held_layers = []
-        layers_per_stage, decoder_starting_stage = WhisperPolicy.distribute_whisper_layers(
+        layers_per_stage, decoder_starting_stage = self.distribute_whisper_layers(
             num_encoder_layers, num_decoder_layers, stage_manager.num_stages
         )
-        start_idx, end_idx = WhisperPolicy.get_whisper_stage_index(
-            layers_per_stage, stage_manager.stage, decoder_starting_stage
-        )
+        start_idx, end_idx = self.get_whisper_stage_index(layers_per_stage, stage_manager.stage, decoder_starting_stage)
 
         if stage_manager.stage < decoder_starting_stage:
             # current stage is in whisper's encoder
@@ -419,12 +420,10 @@ class WhisperPolicy(Policy):
         else:
             num_decoder_layers = 0
 
-        layers_per_stage, decoder_starting_stage = WhisperPolicy.distribute_whisper_layers(
+        layers_per_stage, decoder_starting_stage = self.distribute_whisper_layers(
             num_encoder_layers, num_decoder_layers, stage_manager.num_stages
         )
-        stage_index = WhisperPolicy.get_whisper_stage_index(
-            layers_per_stage, stage_manager.stage, decoder_starting_stage
-        )
+        stage_index = self.get_whisper_stage_index(layers_per_stage, stage_manager.stage, decoder_starting_stage)
 
         method_replacement = {
             "forward": partial(
@@ -506,7 +505,7 @@ class WhisperForConditionalGenerationPolicy(WhisperPolicy):
 
         stage_manager = self.pipeline_stage_manager
         if stage_manager is not None and stage_manager.num_stages > 1:
-            _, decoder_starting_stage = WhisperPolicy.distribute_whisper_layers(
+            _, decoder_starting_stage = self.distribute_whisper_layers(
                 num_encoder_layers, num_decoder_layers, stage_manager.num_stages
             )
             shared_params = []
