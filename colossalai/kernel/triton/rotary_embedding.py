@@ -149,7 +149,7 @@ def rotary_embedding_fwd(
     k_token_stride = k.stride(0)
     k_head_stride = k.stride(1)
 
-    k_head_num = q.shape[2]
+    k_head_num = q.shape[1]
 
     cos_token_stride = cos.stride(0)
     cos_stride = cos.stride(1)
