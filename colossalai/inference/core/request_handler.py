@@ -1,7 +1,9 @@
 from typing import List
 
 import torch
+from transformers.configuration_utils import PretrainedConfig
 
+from colossalai.inference.config import InferenceConfig
 from colossalai.inference.kv_cache import KVCacheManager
 from colossalai.inference.logit_processors import logit_processor
 from colossalai.inference.sampler import *
@@ -14,12 +16,12 @@ class RunningList:
     Prefilling samples will be hold until the actual ratio of prefill samples versus decoding samples exceeds ratio.
 
     Args:
-        ratio: float
+        prefill_ratio: float
         decoding/prefill: list that contains prefill or decoding samples
     """
 
-    def __init__(self, ratio):
-        self.ratio = ratio
+    def __init__(self, prefill_ratio):
+        self.prefill_ratio = prefill_ratio
         self.decoding = []
         self.prefill = []
 
@@ -60,21 +62,21 @@ class RequestHandler:
        inference_config: Configuration for initialize and manage kv cache.
     """
 
-    def __init__(self, inference_config) -> None:
+    def __init__(self, inference_config: InferenceConfig, model_config: PretrainedConfig) -> None:
         self.inference_config = inference_config
-        self._init_cache()
+        self._init_cache(model_config)
 
-        self.running_list: RunningList = RunningList(inference_config.ratio)
+        self.running_list: RunningList = RunningList(inference_config.prefill_ratio)
         self.waiting_list: List[List] = [[], [], []]
         self.done_list: List[Sequence] = []
         self.running_batch = BatchInfo(is_prompts=False)
         self.prefill_batch = BatchInfo(is_prompts=True)
 
-    def _init_cache(self, inference_config):
-        self.cache_manager = KVCacheManager(inference_config)
+    def _init_cache(self, model_config):
+        self.cache_manager = KVCacheManager(self.inference_config, model_config)
 
     def _has_waiting(self) -> bool:
-        return all(not lst for lst in self.waiting_list)
+        return any(lst for lst in self.waiting_list)
 
     def schedule(self):
         """
@@ -93,7 +95,7 @@ class RequestHandler:
                     if self.cache_manager.num_available_blocks > self.cache_manager.max_blocks_per_sequence:
                         # If succeed, add the sequence to running list.
                         self.running_list.append(seq)
-                        self.cache_manager.allocate_context_from_block_table(seq.block_table_index)
+                        self.cache_manager.allocate_context_from_block_table(seq.block_table_index, seq.prompt_len)
                         lst.pop(0)
 
         if self.running_list.ready_for_prefill():
@@ -112,19 +114,24 @@ class RequestHandler:
         assert (
             req.prompt_len < self.inference_config.max_input_len
         ), f"Sequence {req.request_id} exceeds input length limit"
-        self.waiting_list[req.prompt_len * 3 / self.inference_config.max_input_len].append(req)
+        self.waiting_list[req.prompt_len * 3 // self.inference_config.max_input_len].append(req)
 
     def abort_sequence(self, request_id: str):
         """
         Abort the request.
         """
-        seq = self._find_sequence(request_id)
-        self.cache_manager.free_block_table(seq.block_table)
+        seq, priority = self._find_sequence(request_id)
         if seq.status == RequsetStatus.WAITING:
             seq.status = RequsetStatus.ABORTED
-            self.waiting_list.remove(request_id)  # maybe wrong
+            self.waiting_list[priority].remove(seq)  # maybe wrong
+        elif seq.status == RequsetStatus.RUNNING:
+            self.cache_manager.free_block_table(seq.block_table_index)
+            self.running_list.remove(seq)
         else:
-            self.running_list.remove(request_id)
+            try:
+                self.done_list.remove(seq)
+            except:
+                return
 
     def _find_sequence(self, request_id: str) -> Sequence:
         """
@@ -136,7 +143,7 @@ class RequestHandler:
                     return seq, priority
 
         if self.running_list.find_seq(request_id):
-            return seq
+            return seq, None
 
         return None
 

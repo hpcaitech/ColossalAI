@@ -110,7 +110,7 @@ class KVCacheManager:
         return self._available_blocks
 
     @property
-    def max_blocks_per_sequence(self) -> int:
+    def get_max_blocks_per_sequence(self) -> int:
         """Get the maximum number of blocks that can be allocated for a single sequence."""
         # TODO Consider removing this function as we plan to implement "half-dynamic" batching in schduler/request handler,
         #      which will make the max_blocks_per_sequence dynamic based on the prompt lengths of sequences

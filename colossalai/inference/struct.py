@@ -1,5 +1,5 @@
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Set
 
 """
@@ -117,7 +117,7 @@ class Sequence:
             f"prompt={self.prompt}, "
             f"status={self.status.name}, "
             f"sample_params={self.sample_params}, "
-            f"logical block number={len(self._logical_blocks)}"
+            f"logical block number={len(self.block_table_index)}"
         )
 
 
@@ -127,8 +127,9 @@ class BatchInfo:
     Information to be passed and used for a batch of sequences.
     """
 
-    sequences_set: Set[Sequence]
-    block_table: Dict[int, int]
+    sequences_set: Set[Sequence] = field(default_factory=list)
+    block_table: Dict[int, int] = field(default_factory=dict)
+
     is_prompts: bool = True
 
     @classmethod
