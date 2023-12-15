@@ -67,7 +67,11 @@ class MLPExperts(nn.Module):
             self.ep_size = 1
 
         if gated:
-            self.wi_gate = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size * 2))
+            self.wi_gate = nn.Parameter(
+                torch.empty(
+                    num_experts, hidden_size, intermediate_size * 2 if activation == "swiglu" else intermediate_size
+                )
+            )
             self.wi_up = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
         else:
             self.wi = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))

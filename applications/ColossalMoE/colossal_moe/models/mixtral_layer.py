@@ -4,6 +4,7 @@ from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
 
 from colossalai.lazy import LazyInitContext
 from colossalai.moe import SparseMLP
+from colossalai.tensor.moe_tensor.api import get_ep_rank, is_moe_tensor
 
 
 class MixtralSparseMLP:
@@ -33,57 +34,81 @@ class MixtralSparseMLP:
         Raises:
             AssertionError: If the provided module is not an instance of nn.LayerNorm.
         """
+        with torch.no_grad():
+            LazyInitContext.materialize(module)
 
-        LazyInitContext.materialize(module)
-        # get the attributes of the module
-        moe_kwargs = dict(
-            num_experts=module.num_experts,
-            hidden_size=module.hidden_dim,
-            intermediate_size=module.ffn_dim,
-            router_top_k=module.top_k,
-            # router_capacity_factor_train = module.
-            # router_capacity_factor_eval = module.
-            # router_min_capacity = module.
-            # router_noisy_policy = module.
-            # router_drop_tks = module.
-            mlp_activation="silu",
-            mlp_gated=True,
-            # enable_load_balance = module.
-            # load_balance_tolerance = module.
-            # load_balance_beam_width = module.
-            # load_balance_group_swap_factor = module.
-            # enable_kernel = module.
-            # enable_comm_overlap = module.
-            # enable_hierarchical_comm = module.
-            return_gate_logits=True,
-        )
-        dtype = module.gate.weight.dtype
-        device = module.gate.weight.device
+            # get the attributes of the module
+            moe_kwargs = dict(
+                num_experts=module.num_experts,
+                hidden_size=module.hidden_dim,
+                intermediate_size=module.ffn_dim,
+                router_top_k=module.top_k,
+                router_norm=True,
+                router_loss=False,
+                # router_capacity_factor_train = .
+                # router_capacity_factor_eval = .
+                mlp_activation="silu",
+                mlp_gated=True,
+                # enable_load_balance = .
+                # load_balance_tolerance = .
+                # load_balance_beam_width = .
+                # load_balance_group_swap_factor = .
+                # enable_kernel = .
+                # enable_comm_overlap = .
+                # enable_hierarchical_comm = .
+                return_gate_logits=True,
+            )
+            dtype = module.gate.weight.dtype
+            device = module.gate.weight.device
+            sparse_mlp = SparseMLP(**moe_kwargs).to(dtype).to(device)
 
-        sparse_mlp = SparseMLP(**moe_kwargs).to(dtype).to(device)
-        w1 = None
-        w2 = None
-        w3 = None
-        for i in module.experts:
-            wi_1 = i.w1.weight.data.transpose(0, 1).unsqueeze(0)
-            wi_2 = i.w2.weight.data.transpose(0, 1).unsqueeze(0)
-            wi_3 = i.w3.weight.data.transpose(0, 1).unsqueeze(0)
-            if w1 is None:
-                w1 = wi_1
+            # cat all experts
+            w1 = None
+            w2 = None
+            w3 = None
+            for i in module.experts:
+                # origin
+                wi_1 = i.w1.weight.data.clone().transpose(0, 1).unsqueeze(0)
+                wi_2 = i.w2.weight.data.clone().transpose(0, 1).unsqueeze(0)
+                wi_3 = i.w3.weight.data.clone().transpose(0, 1).unsqueeze(0)
+                # cat
+                w1 = wi_1 if w1 is None else torch.cat([w1, wi_1], dim=0)
+                w2 = wi_2 if w2 is None else torch.cat([w2, wi_2], dim=0)
+                w3 = wi_3 if w3 is None else torch.cat([w3, wi_3], dim=0)
+
+            # get local experts
+            if is_moe_tensor(sparse_mlp.experts.wi_gate):
+                ep_rank = get_ep_rank(sparse_mlp.experts.wi_gate)
+                expert_num = sparse_mlp.experts.wi_gate.shape[0]
+                expert_slice = slice(ep_rank * expert_num, (ep_rank + 1) * expert_num)
             else:
-                w1 = torch.cat([w1, wi_1], dim=0)
-            if w2 is None:
-                w2 = wi_2
-            else:
-                w2 = torch.cat([w2, wi_2], dim=0)
-            if w3 is None:
-                w3 = wi_3
-            else:
-                w3 = torch.cat([w3, wi_3], dim=0)
+                expert_slice = slice(None)
+            w1 = w1[expert_slice].clone().detach()
+            w2 = w2[expert_slice].clone().detach()
+            w3 = w3[expert_slice].clone().detach()
+            assert (
+                w1.shape == sparse_mlp.experts.wi_gate.shape
+            ), f"current shape: {w1.shape}, target shape:{sparse_mlp.experts.wi_gate.shape}"
+            assert (
+                w2.shape == sparse_mlp.experts.wo.shape
+            ), f"current shape: {w2.shape}, target shape:{sparse_mlp.experts.wo.shape}"
+            assert (
+                w3.shape == sparse_mlp.experts.wi_up.shape
+            ), f"current shape: {w3.shape}, target shape:{sparse_mlp.experts.wi_up.shape}"
 
-        sparse_mlp.experts.wi_gate.data = w1[:2]
-        sparse_mlp.experts.wi_up.data = w3[:2]
-        sparse_mlp.experts.wo.data = w2[:2]
-        sparse_mlp.gate_weight = module.gate.weight
+            # assign new param to colossal moe moudle
+            sparse_mlp.experts.wi_gate.data = w1
+            sparse_mlp.experts.wi_up.data = w3
+            sparse_mlp.experts.wo.data = w2
+            sparse_mlp.gate_weight = module.gate.weight
 
-        return sparse_mlp.to(dtype).to(device)
+            # TODO: fix
+            # the old weight is referenced somewhere so we can not del it.
+            # Change data pointer of old weight to release memory.
+            # The pointer will not be used and can be any pointer.
+            for i in module.experts:
+                i.w1.weight.data = w1
+                i.w2.weight.data = w2
+                i.w3.weight.data = w3
+
+        return sparse_mlp

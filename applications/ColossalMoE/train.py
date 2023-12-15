@@ -1,41 +1,25 @@
 import argparse
-from typing import Dict
 
 import torch
 import torch.distributed as dist
 from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from transformers import AutoTokenizer, T5Tokenizer
+from transformers import AutoTokenizer
 from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
-from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
 
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
-from colossalai.moe.layers import apply_load_balance
-from colossalai.moe.manager import MOE_MANAGER
+from colossalai.lazy import LazyInitContext
+from colossalai.moe import MOE_MANAGER, apply_load_balance
+from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
 
 def move_to_cuda(batch, device):
     return {k: v.to(device) for k, v in batch.items()}
-
-
-def tokenize_data(batch, tokenizer: T5Tokenizer, max_length: int) -> Dict:
-    texts = ["<pad>" + sample["prompt"] + sample["completion"] for sample in batch]
-    data = tokenizer(
-        texts,
-        return_tensors="pt",
-        padding="max_length",
-        truncation=True,
-        max_length=max_length,
-        add_special_tokens=False,
-    )
-    data = {k: v.cuda() for k, v in data.items()}
-    data["labels"] = data["input_ids"].clone()
-    return data
 
 
 class RandomDataset(Dataset):
@@ -188,7 +172,6 @@ def main():
     # Launch ColossalAI
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
-    test_mode = args.model_name == "test"
 
     # Set plugin
     booster_kwargs = {}
@@ -247,15 +230,20 @@ def main():
     coordinator.print_on_master(f"Set plugin as {plugin.__class__.__name__}")
 
     # Build OpenMoe model
-    config = MixtralConfig(
-        hidden_size=32,
-        intermediate_size=64,
-        num_hidden_layers=4,
-        num_attention_heads=4,
-        num_key_value_heads=4,
-        use_cache=False,
-    )
-    model = MixtralForCausalLM(config).bfloat16()
+    # config = MixtralConfig(
+    #     hidden_size=2048,
+    #     intermediate_size=4096,
+    #     num_hidden_layers=4,
+    #     num_attention_heads=4,
+    #     num_key_value_heads=4,
+    #     use_cache=False,
+    # )
+    config = MixtralConfig.from_pretrained("mistralai/Mixtral-8x7B-Instruct-v0.1")
+    config.use_cache = False
+    # config.num_local_experts = 1
+    init_ctx = LazyInitContext(default_device=get_current_device())
+    with init_ctx:
+        model = MixtralForCausalLM(config).bfloat16()
     coordinator.print_on_master(f"Finish init model with config:\n{config}")
 
     # Enable gradient checkpointing
@@ -270,7 +258,7 @@ def main():
     )
 
     # Set optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = HybridAdam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
@@ -292,7 +280,6 @@ def main():
         ) as pbar:
             for step in pbar:
                 if use_pipeline:
-                    exit()
                     # Forward pass
                     outputs = booster.execute_pipeline(
                         train_dataloader_iter,
@@ -307,11 +294,9 @@ def main():
                         loss = outputs["loss"]
                         pbar.set_postfix({"loss": loss.item()})
                 else:
-                    print("1111111\n\n")
                     # Forward pass
                     data = next(train_dataloader_iter)
                     data = move_to_cuda(data, torch.cuda.current_device())
-                    print(data)
                     outputs = model(**data)
                     loss = outputs["loss"]
                     # Backward
