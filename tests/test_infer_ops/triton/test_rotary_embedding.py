@@ -41,7 +41,6 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype, eps=1e-5, device="cuda"):
     hidden_size = kv_cache_config.pop("hidden_size")
     num_layers = kv_cache_config.pop("num_layers")
     num_attention_heads = kv_cache_config.pop("num_attention_heads")
-    hidden_size // num_attention_heads
     block_size = kv_cache_config["block_size"]
     max_batch_size = kv_cache_config["max_batch_size"]
     kv_cache_config["max_input_len"]
