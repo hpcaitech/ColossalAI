@@ -129,6 +129,7 @@ def rotary_embedding_fwd(
         cos: cosine for rotary embedding, [total_tokens, head_dim]
         sin: sine for rotary embedding, [total_tokens, head_dim]
         k_cache: physical cache for key, [:, head_num, head_dim]
+        tokens_offset: offset ids of key in k_cache, [total_tokens]
     """
     q_total_tokens = q.shape[0]
     q_head_num = q.shape[1]
