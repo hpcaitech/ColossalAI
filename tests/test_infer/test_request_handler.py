@@ -1,3 +1,4 @@
+from colossalai.inference.config import InferenceConfig
 from colossalai.inference.core.request_handler import RequestHandler, RunningList
 from colossalai.inference.inference_struct import Sequence
 
@@ -31,6 +32,9 @@ def test_request_handler():
     """
     Test main function of RequestHandler
     """
+    config = InferenceConfig(
+        max_input_len=10,
+    )
     RequestHandler()
 
 

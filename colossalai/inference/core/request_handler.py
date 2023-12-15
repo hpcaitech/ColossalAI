@@ -109,6 +109,9 @@ class RequestHandler:
         Add the request to waiting list.
         """
         assert not self._find_sequence(req.request_id), f"Sequence {req.request_id} already exists."
+        assert (
+            req.prompt_len < self.inference_config.max_input_len
+        ), f"Sequence {req.request_id} exceeds input length limit"
         self.waiting_list[req.prompt_len * 3 / self.inference_config.max_input_len].append(req)
 
     def abort_sequence(self, request_id: str):
