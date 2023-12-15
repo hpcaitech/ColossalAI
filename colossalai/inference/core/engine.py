@@ -33,6 +33,7 @@ class InferenceEngine:
         tokenizer (Union[PreTrainedTokenizer, PreTrainedTokenizerFast]): Path of the tokenizer to use.
         inference_config (Optional[InferenceConfig], optional): Store the configuration information related to inference.
         verbose (bool): Determine whether or not to log the generation process.
+        model_policy ("Policy"): the policy to shardformer model. It will be determined by the model type if not provided.
     """
 
     def __init__(
@@ -41,6 +42,7 @@ class InferenceEngine:
         tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
         inference_config: Optional["InferenceConfig"] = None,
         verbose: bool = False,
+        model_policy: Policy = None,
     ) -> None:
         assert inference_config, "Please provide inference_config."
         self.tokenizer = tokenizer
@@ -56,7 +58,7 @@ class InferenceEngine:
             self.dtype = torch.bfloat16
             model.to(torch.bfloat16)
 
-        if inference_config.model_policy is None:
+        if model_policy is None:
             model_policy = model_policy_map[self.model_config.model_type]()
 
         pg_mesh = ProcessGroupMesh(inference_config.pp_size, inference_config.tp_size)

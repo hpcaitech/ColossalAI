@@ -5,8 +5,6 @@ from typing import Optional, Union
 import torch
 import torch.distributed as dist
 
-from colossalai.shardformer.policies.base_policy import Policy
-
 GibiByte = 1024**3
 
 logger = logging.Logger(__name__)
@@ -19,9 +17,6 @@ class InferenceConfig:
     Args:
         micro_batch_size (int): the micro batch size. Only useful when `pp_size` > 1.
         micro_batch_buffer_size (int): the buffer size for micro batch. Normally, it should be the same as the number of pipeline stages.
-        model_policy ("Policy"): the policy to shardformer model. It will be determined by the model type if not provided.
-        use_fast_tokenizer (bool): Whether to use fast tokenizer.
-        trust_remote_code (bool): Whether to trust remote code from huggingface.
         max_batch_size (int): Maximum batch size.
         max_output_len (int): Maximum output length.
         max_input_len (int): Maximum input length.
@@ -40,9 +35,6 @@ class InferenceConfig:
 
     micro_batch_size: int = (1,)
     micro_batch_buffer_size: int = (None,)
-    model_policy: Policy = None
-    use_fast_tokenizer: bool = False
-    trust_remote_code: bool = False
     max_batch_size: int = 8
     max_output_len: int = 256
     max_input_len: int = 256
