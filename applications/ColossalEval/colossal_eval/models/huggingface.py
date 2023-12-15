@@ -116,10 +116,10 @@ class HuggingFaceModel(BaseModel):
             shard_config: Shard config for tensor parallel.
 
         """
-        model_kwargs.setdefault("torch_dtype", torch.float16)
-
         if "torch_dtype" in model_kwargs:
             model_kwargs["torch_dtype"] = eval(model_kwargs["torch_dtype"])
+        else:
+            model_kwargs.setdefault("torch_dtype", torch.float16)
 
         if "config" in model_kwargs:
             model_kwargs["config"] = AutoConfig.from_pretrained(model_kwargs["config"])
@@ -586,11 +586,10 @@ class HuggingFaceCausalLM(HuggingFaceModel):
             shard_config: Shard config for tensor parallel.
 
         """
-
-        model_kwargs.setdefault("torch_dtype", torch.float16)
-
         if "torch_dtype" in model_kwargs:
             model_kwargs["torch_dtype"] = eval(model_kwargs["torch_dtype"])
+        else:
+            model_kwargs.setdefault("torch_dtype", torch.float16)
 
         if "config" in model_kwargs:
             model_kwargs["config"] = AutoConfig.from_pretrained(model_kwargs["config"])
