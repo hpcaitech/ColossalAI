@@ -2,10 +2,10 @@ from typing import List
 
 import torch
 
-from colossalai.inference.inference_struct import BatchHandler, RequsetStatus, Sequence
 from colossalai.inference.kv_cache import KVCacheManager
 from colossalai.inference.logit_processors import logit_processor
 from colossalai.inference.sampler import *
+from colossalai.inference.struct import BatchInfo, RequsetStatus, Sequence
 
 
 class RunningList:
@@ -67,8 +67,8 @@ class RequestHandler:
         self.running_list: RunningList = RunningList(inference_config.ratio)
         self.waiting_list: List[List] = [[], [], []]
         self.done_list: List[Sequence] = []
-        self.running_batch = BatchHandler(is_prompts=False)
-        self.prefill_batch = BatchHandler(is_prompts=True)
+        self.running_batch = BatchInfo(is_prompts=False)
+        self.prefill_batch = BatchInfo(is_prompts=True)
 
     def _init_cache(self, inference_config):
         self.cache_manager = KVCacheManager(inference_config)
