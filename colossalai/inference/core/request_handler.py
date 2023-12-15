@@ -1,10 +1,12 @@
 from typing import List
 
 import torch
+
 from colossalai.inference.inference_struct import BatchHandler, RequsetStatus, Sequence
 from colossalai.inference.kv_cache import KVCacheManager
 from colossalai.inference.logit_processors import logit_processor
 from colossalai.inference.sampler import *
+
 
 class RunningList:
     def __init__(self, ratio):
@@ -12,7 +14,7 @@ class RunningList:
         self.decoding = []
         self.prefill = []
 
-    def append(self, seq):
+    def append(self, seq: Sequence):
         # add seq to prefilling list first.
         self.prefill.append(seq)
 
@@ -52,7 +54,8 @@ class RequestHandler:
         self.running_list: RunningList = RunningList(inference_config.ratio)
         self.waiting_list: List[List] = [[], [], []]
         self.done_list: List[Sequence] = []
-        self.batch_info = BatchHandler()
+        self.running_batch = BatchHandler(is_prompts=False)
+        self.prefill_batch = BatchHandler(is_prompts=True)
 
     def _init_cache(self, inference_config):
         self.cache_manager = KVCacheManager(inference_config)
@@ -64,7 +67,6 @@ class RequestHandler:
         """
         The main logic of request handler.
         """
-
         if self._has_waiting():
             # Try to allocate cache blocks for the sequence using a priority of prompt length.
             for lst in reversed(self.waiting_list):
@@ -81,7 +83,13 @@ class RequestHandler:
                         self.cache_manager.allocate_context_from_block_table(seq.block_table_index)
                         lst.pop(0)
 
-        self.batch_info.update_batch(self.running_list)
+        if self.running_list.ready_for_prefill():
+            for seq in self.running_list.prefill:
+                seq.mark_running()
+            self.prefill_batch.init_batch(self.running_batch.prefill)
+            return self.prefill_batch
+
+        return self.running_batch
 
     def add_sequence(self, req: Sequence):
         """
@@ -116,7 +124,7 @@ class RequestHandler:
 
         return None
 
-    def _sample(self,probs: torch.Tensor, logprobs: torch.Tensor,generation_config):
+    def _sample(self, probs: torch.Tensor, logprobs: torch.Tensor, generation_config):
         if generation_config.num_beams == 1:
             if generation_config.do_sample:
                 sample_tokens = greedy_sample()
@@ -127,42 +135,53 @@ class RequestHandler:
 
         return sample_tokens
 
-    def mark_finished(self,sequence:Sequence,generation_config):
-        if sequence.output_token_id[-1] == generation_config.eos_id or  sequence.output_len >= generation_config.max_output_len: 
+    def mark_finished(self, sequence: Sequence, generation_config):
+        if (
+            sequence.output_token_id[-1] == generation_config.eos_id
+            or sequence.output_len >= generation_config.max_output_len
+        ):
             sequence.mark_finished()
-    
+
     def check_unfinished_seqs(self) -> bool:
         return self._has_waiting() or not self.running_list.is_empty()
 
-    def search_tokens(self,generation_config,logits):
+    def search_tokens(self, generation_config, logits):
         """
-	    Sample tokens for finished requests.
-	    """ 
-        # do logit processor 
+        Sample tokens for finished requests.
+        """
+        # do logit processor
         # NOTE: need to decide the granularity to process logits (sequence or batch)
-        for type in ['top_p','top_k','min_p']:
+        for type in ["top_p", "top_k", "min_p"]:
             if type in generation_config:
-                logits = logit_processor(type,logits)
+                logits = logit_processor(type, logits)
 
         # calculate probs
         probs = torch.softmax(logits, dim=-1, dtype=torch.float)
         logprobs = torch.log_softmax(logits, dim=-1, dtype=torch.float)
 
         # sample the next tokens
-        sample_tokens = self._sample(probs,logprobs,generation_config)
+        sample_tokens = self._sample(probs, logprobs, generation_config)
 
-        for idx,sample in enumerate(sample_tokens):
-            sequence =  self.batch_info.sequences_set[idx]
+        for idx, sample in enumerate(sample_tokens):
+            sequence = self.running_batch.sequences_set[idx]
             sequence.append(sample)
-            self.mark_finished(sequence,generation_config)
+            self.mark_finished(sequence, generation_config)
 
     def update(self):
         """
         Update current running list and done list
         """
-        for seq in self.batch_info.sequences_set:
+        if not self.prefill_batch.is_empty:
+            self.running_list.decoding.extend(self.running_list.prefill)
+            self.running_batch.add_seqs(self.running_list.prefill)
+            self.running_list.prefill.clear()
+            self.running_batch.clear_batch()
+
+        for seq in self.running_batch.sequences_set:
             if seq.check_finish():
                 self.done_list.append(seq)
                 self.running_list.remove(seq)
+                self.running_batch.sequences_set.remove(seq)
                 self.cache_manager.free_block_table(seq.block_table_index)
+
         return self.done_list

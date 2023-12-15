@@ -66,21 +66,21 @@ class Sequence:
         Get length of prompts
         """
         return len(self.input_token_id)
-    
+
     @property
     def sentence_len(self) -> int:
         """
         Get length of current sentence.
         """
         return len(self.input_token_id) + len(self.output_token_id)
-    
+
     @property
     def input_len(self) -> None:
         """
         Get length of input sentence.
         """
         return len(self.input_token_id)
-    
+
     @property
     def output_len(self) -> None:
         """
@@ -93,10 +93,17 @@ class Sequence:
         Check whether inference is over.
         """
         return RequsetStatus.is_finished(self.status)
-    
-    def mark_finished(self)-> None:
+
+    def mark_running(self) -> None:
         """
-        Set status for finished req
+        Set status for prefill reqs.
+        """
+        assert self.status == RequsetStatus.WAITING, "Sequence is not in WAITTING STATUS"
+        self.status = RequsetStatus.RUNNING
+
+    def mark_finished(self) -> None:
+        """
+        Set status for finished reqs.
         """
         self.status = RequsetStatus.COMPLETED
 
@@ -118,6 +125,7 @@ class BatchHandler:
 
     sequences_set: Set[Sequence]
     block_table: Dict[int, int]
+    is_prompts: bool = True
 
     @classmethod
     def init_batch(cls, seqs: List[Sequence]) -> "BatchHandler":
@@ -183,3 +191,7 @@ class BatchHandler:
             ), "The sequence has not been added to sequences_set, but it is already in block_table."
             self.sequences_set.add(seq)
             self.block_table[seq.request_id] = seq.block_table_index
+
+    @property
+    def is_empty(self) -> bool:
+        return len(self.sequences_set) > 0
