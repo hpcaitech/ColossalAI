@@ -33,8 +33,8 @@ class InferenceConfig:
         revision (Optional[str]): The specific version(a branch, name, a commit id, or a tag name) of model to use.
     """
 
-    micro_batch_size: int = (1,)
-    micro_batch_buffer_size: int = (None,)
+    micro_batch_size: int = 1
+    micro_batch_buffer_size: int = None
     max_batch_size: int = 8
     max_output_len: int = 256
     max_input_len: int = 256

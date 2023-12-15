@@ -204,6 +204,7 @@ class BatchInfo:
         Args:
             seqs (List["Sequence"]): The list of new sequences.
         """
+
         if not isinstance(seqs, list):
             seqs = [seqs]
 
