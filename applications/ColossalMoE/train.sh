@@ -1,6 +1,6 @@
 
 
-NUM_GPU=4
+NUM_GPU=8
 MODEL="8b"
 SEQ_LENGTH=2048
 BATCH_SIZE=1
@@ -17,13 +17,13 @@ LR=0.00001
 #     --extra_dp_size 2
 
 # ep
-CUDA_LAUNCH_BLOCKING=1 torchrun --standalone --nproc_per_node $NUM_GPU train.py \
+torchrun --standalone --nproc_per_node $NUM_GPU train.py \
     --num_epoch 1 \
     --model_name $MODEL \
-    --plugin "ep_zero" \
+    --plugin "ep" \
     --batch_size $BATCH_SIZE \
     --lr $LR \
-    --zero_stage 1
+    --zero_stage 2
 
 # hybrid
 # torchrun --standalone --nproc_per_node $NUM_GPU train.py \
