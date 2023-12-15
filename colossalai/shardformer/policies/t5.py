@@ -261,7 +261,7 @@ class T5BasePolicy(Policy):
 
         # in the case of T5EncoderModel, set decoder starting stage to num_stages since it doesn't exist
         if num_decoder_layers == 0:
-            return Policy.distribute_layers(num_encoder_layers, num_stages), num_stages
+            return self.distribute_layers(num_encoder_layers, num_stages), num_stages
 
         # the number of stages distributed between encoder and decoder is optimized in this way:
         # num_encoder_stages = argmin(abs(num_encoder_layers / encoder_stages - num_decoder_layers / decoder_stages))
@@ -272,8 +272,8 @@ class T5BasePolicy(Policy):
         num_encoder_stages = np.argmin([objective(i) for i in range(1, num_stages)]) + 1
         num_decoder_stages = num_stages - num_encoder_stages
 
-        encoder_distribution = Policy.distribute_layers(num_encoder_layers, num_encoder_stages)
-        decoder_distribution = Policy.distribute_layers(num_decoder_layers, num_decoder_stages)
+        encoder_distribution = self.distribute_layers(num_encoder_layers, num_encoder_stages)
+        decoder_distribution = self.distribute_layers(num_decoder_layers, num_decoder_stages)
         return encoder_distribution + decoder_distribution, num_encoder_stages
 
     @staticmethod
@@ -285,9 +285,9 @@ class T5BasePolicy(Policy):
         Return the starting/ending idx of layers in encoder/decoder
         """
         if stage < decoder_starting_stage:
-            return Policy.get_stage_index(layers_per_stage[:decoder_starting_stage], stage)
+            return self.get_stage_index(layers_per_stage[:decoder_starting_stage], stage)
         else:
-            return Policy.get_stage_index(layers_per_stage[decoder_starting_stage:], stage - decoder_starting_stage)
+            return self.get_stage_index(layers_per_stage[decoder_starting_stage:], stage - decoder_starting_stage)
 
     def get_held_layers(self) -> List[nn.Module]:
         """Get pipeline layers for current stage."""
