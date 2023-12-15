@@ -292,9 +292,8 @@ class WhisperPolicy(Policy):
     def postprocess(self):
         return self.model
 
-    @staticmethod
     def distribute_whisper_layers(
-        num_encoder_layers: int, num_decoder_layers: int, num_stages: int
+        self, num_encoder_layers: int, num_decoder_layers: int, num_stages: int
     ) -> Tuple[List[int], int]:
         """
         Distribute whisper layers into stages when pipeline parallel is used.
@@ -327,9 +326,8 @@ class WhisperPolicy(Policy):
         decoder_distribution = self.distribute_layers(num_decoder_layers, num_decoder_stages)
         return encoder_distribution + decoder_distribution, num_encoder_stages
 
-    @staticmethod
     def get_whisper_stage_index(
-        layers_per_stage: List[int], stage: int, decoder_starting_stage: int
+        self, layers_per_stage: List[int], stage: int, decoder_starting_stage: int
     ) -> Tuple[bool, int, int]:
         """
         Input the distribution of layers among stages, the current stage and the first stage of decoder.
