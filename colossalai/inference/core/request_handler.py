@@ -9,6 +9,15 @@ from colossalai.inference.sampler import *
 
 
 class RunningList:
+    """
+    RunningList is an structure for recording the running sequences, contains prefill and decoding list.
+    Prefilling samples will be hold until the actual ratio of prefill samples versus decoding samples exceeds ratio.
+
+    Args:
+        ratio: float
+        decoding/prefill: list that contains prefill or decoding samples
+    """
+
     def __init__(self, ratio):
         self.ratio = ratio
         self.decoding = []
@@ -18,20 +27,24 @@ class RunningList:
         # add seq to prefilling list first.
         self.prefill.append(seq)
 
-    def find_seq(self, seq_id):
+    def find_seq(self, request_id):
         for seq in self.decoding:
-            if seq_id == seq.seq_id:
+            if request_id == seq.request_id:
                 return seq
         for seq in self.prefill:
-            if seq_id == seq.seq_id:
+            if request_id == seq.request_id:
                 return seq
         return None
 
     def remove(self, seq):
-        self.decoding.remove(seq)
-        self.prefill.remove(seq)
+        try:
+            self.decoding.remove(seq)
+        except:
+            self.prefill.remove(seq)
 
     def ready_for_prefill(self):
+        if not self.decoding:
+            return len(self.prefill) > 0
         return len(self.prefill) / len(self.decoding) >= self.ratio
 
     def is_empty(self):
@@ -74,7 +87,7 @@ class RequestHandler:
                     seq = lst[0]
                     if seq.prompt_len > self.inference_config.max_input_len:
                         # If the prompt length is longer than max_input_len, abort the sequence.
-                        self.abort_sequence(seq.seq_id)
+                        self.abort_sequence(seq.request_id)
                         break
                     # Try to allocate cache blocks for the sequence.
                     if self.cache_manager.num_available_blocks > self.cache_manager.max_blocks_per_sequence:
@@ -86,7 +99,7 @@ class RequestHandler:
         if self.running_list.ready_for_prefill():
             for seq in self.running_list.prefill:
                 seq.mark_running()
-            self.prefill_batch.init_batch(self.running_batch.prefill)
+            self.prefill_batch.init_batch(self.running_list.prefill)
             return self.prefill_batch
 
         return self.running_batch
@@ -95,31 +108,31 @@ class RequestHandler:
         """
         Add the request to waiting list.
         """
-        assert not self._find_sequence(req.seq_id), f"Sequence {req.seq_id} already exists."
+        assert not self._find_sequence(req.request_id), f"Sequence {req.request_id} already exists."
         self.waiting_list[req.prompt_len * 3 / self.inference_config.max_input_len].append(req)
 
-    def abort_sequence(self, seq_id: str):
+    def abort_sequence(self, request_id: str):
         """
         Abort the request.
         """
-        seq = self._find_sequence(seq_id)
+        seq = self._find_sequence(request_id)
         self.cache_manager.free_block_table(seq.block_table)
         if seq.status == RequsetStatus.WAITING:
             seq.status = RequsetStatus.ABORTED
-            self.waiting_list.remove(seq_id)  # maybe wrong
+            self.waiting_list.remove(request_id)  # maybe wrong
         else:
-            self.running_list.remove(seq_id)
+            self.running_list.remove(request_id)
 
-    def _find_sequence(self, seq_id: str) -> Sequence:
+    def _find_sequence(self, request_id: str) -> Sequence:
         """
-        Find the request by seq_id.
+        Find the request by request_id.
         """
         for priority, lst in enumerate(self.waiting_list):
             for seq in lst:
-                if seq.seq_id == seq_id:
+                if seq.request_id == request_id:
                     return seq, priority
 
-        if self.running_list.find_seq(seq_id):
+        if self.running_list.find_seq(request_id):
             return seq
 
         return None
@@ -164,7 +177,7 @@ class RequestHandler:
 
         for idx, sample in enumerate(sample_tokens):
             sequence = self.running_batch.sequences_set[idx]
-            sequence.append(sample)
+            sequence.output_token_id.append(sample)
             self.mark_finished(sequence, generation_config)
 
     def update(self):
