@@ -1,3 +1,4 @@
+ordered_set
 transformers==4.34.0
 auto-gptq==0.5.0
 git+https://github.com/ModelTC/lightllm.git@ece7b43f8a6dfa74027adc77c2c176cff28c76c8
