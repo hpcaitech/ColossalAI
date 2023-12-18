@@ -2,6 +2,7 @@ import argparse
 
 import torch
 import torch.distributed as dist
+from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
 from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -182,6 +183,7 @@ def main():
         "enable_jit_fused": args.use_kernel,
         "precision": args.precision,
         "zero_stage": args.zero_stage,
+        "checkpoint_io": MixtralMoECheckpointIO,
     }
     mgr_dict = {}
     if args.plugin == "ep":
@@ -240,10 +242,12 @@ def main():
     # )
     config = MixtralConfig.from_pretrained("mistralai/Mixtral-8x7B-Instruct-v0.1")
     config.use_cache = False
-    # config.num_local_experts = 1
     init_ctx = LazyInitContext(default_device=get_current_device())
     with init_ctx:
-        model = MixtralForCausalLM(config).bfloat16()
+        model = MixtralForCausalLM.from_pretrained(
+            "/home/lczxl/.cache/huggingface/hub/models--mistralai--Mixtral-8x7B-Instruct-v0.1/snapshots/f1ca00645f0b1565c7f9a1c863d2be6ebf896b04",
+            config=config,
+        ).bfloat16()
     coordinator.print_on_master(f"Finish init model with config:\n{config}")
 
     # Enable gradient checkpointing
@@ -320,7 +324,7 @@ def main():
                     booster.save_model(model, args.output_path, shard=True)
 
         # save checkpoint at the end of each epochs
-        booster.save_model(model, args.output_path, shard=True)
+        booster.save_model(model, args.output_path, shard=True, size_per_shard=5120)
         coordinator.print_on_master(f"Saving model checkpoint to {args.output_path}")
 
     # Finish training
