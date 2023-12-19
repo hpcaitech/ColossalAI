@@ -7,7 +7,7 @@ from colossalai.inference.config import InferenceConfig
 from colossalai.inference.kv_cache import KVCacheManager
 from colossalai.inference.logit_processors import logit_processor
 from colossalai.inference.sampler import *
-from colossalai.inference.struct import BatchInfo, RequsetStatus, Sequence
+from colossalai.inference.struct import BatchInfo, Sequence
 
 
 class RunningList:
@@ -96,7 +96,7 @@ class RequestHandler:
                         if self.cache_manager.check_allocation(seq):
                             # If succeed, add the sequence to running list.
                             self.running_list.append(seq)
-                            self.cache_manager.allocate_context_from_block_table(seq.block_table_index, seq.prompt_len)
+                            self.cache_manager.allocate_context_from_block_table(seq.block_table, seq.prompt_len)
                             lst.remove(seq)
 
         if self.running_list.ready_for_prefill():
@@ -123,11 +123,11 @@ class RequestHandler:
         Abort the request.
         """
         seq, priority = self._find_sequence(request_id)
-        if seq.status == RequsetStatus.WAITING:
-            seq.status = RequsetStatus.ABORTED
+        if seq.status.is_waiting:
+            seq.mark_aborted()
             self.waiting_list[priority].remove(seq)
-        elif seq.status == RequsetStatus.RUNNING:
-            self.cache_manager.free_block_table(seq.block_table_index)
+        elif seq.status.is_running():
+            self.cache_manager.free_block_table(seq.block_table)
             self.running_list.remove(seq)
         else:
             try:
@@ -186,11 +186,7 @@ class RequestHandler:
 
         # sample the next tokens
         sample_tokens = self._sample(probs, logprobs, generation_config)
-
-        for idx, sample in enumerate(sample_tokens):
-            sequence = self.running_batch.sequences_set[idx]
-            sequence.output_token_id.append(sample)
-            self.mark_finished(sequence, generation_config)
+        self.running_batch.update_batch_tokens(sample_tokens)
 
     def update(self):
         """
@@ -207,6 +203,6 @@ class RequestHandler:
                 self.done_list.append(seq)
                 self.running_list.remove(seq)
                 self.running_batch.sequences_set.remove(seq)
-                self.cache_manager.free_block_table(seq.block_table_index)
+                self.cache_manager.free_block_table(seq.block_table)
 
         return self.done_list

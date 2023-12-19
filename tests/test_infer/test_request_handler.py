@@ -1,23 +1,27 @@
+import pytest
 import torch
 from transformers.models.llama import LlamaConfig
 
+import colossalai
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.core.request_handler import RequestHandler, RunningList
-from colossalai.inference.struct import RequsetStatus, Sequence
+from colossalai.inference.struct import RequestStatus, Sequence
+from colossalai.testing import spawn
 
 
-def test_running_list():
+def check_running_list():
     """
     Test the RunningList Structure.
     """
-    running_list = RunningList(ratio=1.2)
+    running_list = RunningList(prefill_ratio=1.2)
     seq1 = Sequence(
         request_id=1,
         prompt="abc",
-        token_id=[1, 2, 3],
+        input_token_id=[1, 2, 3],
         block_size=16,
+        eos_token_id=0,
         sample_params=None,
-        block_table_index=1,
+        block_table=1,
     )
 
     running_list.append(seq1)
@@ -31,12 +35,11 @@ def test_running_list():
     assert running_list.is_empty()
 
 
-def test_request_handler():
+def check_request_handler():
     """
     Test main function of RequestHandler
     """
     inference_config = InferenceConfig(
-        model="",
         max_input_len=10,
         max_output_len=10,
         block_size=8,
@@ -50,10 +53,11 @@ def test_request_handler():
     seq1 = Sequence(
         request_id=1,
         prompt="abc",
-        token_id=[1, 2, 3, 4, 5],
+        input_token_id=[1, 2, 3, 4, 5],
         block_size=16,
+        eos_token_id=0,
         sample_params=None,
-        block_table_index=torch.tensor([0, 0]),
+        block_table=torch.tensor([0, 0]),
     )
     request_handler.add_sequence(seq1)
     # the priority should be 1
@@ -62,11 +66,21 @@ def test_request_handler():
 
     request_handler.abort_sequence(seq1.request_id)
     assert not request_handler._has_waiting()
-    seq1.status = RequsetStatus.WAITING
+    seq1.status = RequestStatus.WAITING
     request_handler.add_sequence(seq1)
     request_handler.schedule()
 
 
+def run_dist(rank, world_size, port):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, port=port, host="localhost")
+    check_running_list()
+    check_request_handler()
+
+
+@pytest.mark.dist
+def test_running_list_and_request_handler():
+    spawn(run_dist, 1)
+
+
 if __name__ == "__main__":
-    # test_running_list()
-    test_request_handler()
+    test_running_list_and_request_handler()

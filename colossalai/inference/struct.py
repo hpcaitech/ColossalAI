@@ -99,6 +99,13 @@ class Sequence:
         """
         return len(self.input_token_id)
 
+    @property
+    def output_len(self) -> int:
+        """
+        Get length of output sentence.
+        """
+        return len(self.output_token_id)
+
     def check_finish(self) -> bool:
         """
         Check whether the inference is finished.
@@ -124,13 +131,19 @@ class Sequence:
         Set status for prefill reqs.
         """
         assert self.status == RequestStatus.WAITING, "Sequence is not in WAITTING STATUS"
-        self.status = RequestStatus.TOKEN
+        self.status = RequestStatus.PREFILL
 
     def mark_finished(self) -> None:
         """
         Set status for finished reqs.
         """
         self.status = RequestStatus.COMPLETED
+
+    def mark_aborted(self) -> None:
+        """
+        Set status for aborted reqs.
+        """
+        self.status = RequestStatus.ABORTED
 
     def __repr__(self) -> str:
         return (
@@ -148,7 +161,7 @@ class BatchInfo:
     Information to be passed and used for a batch of sequences.
     """
 
-    sequences_set: OrderedSet["Sequence"]
+    sequences_set: OrderedSet["Sequence"] = None
     is_prompts: bool = True
 
     @classmethod
