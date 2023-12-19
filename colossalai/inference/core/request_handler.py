@@ -60,6 +60,7 @@ class RequestHandler:
 
     Args:
        inference_config: Configuration for initialize and manage kv cache.
+       model_config: Configuration for model
     """
 
     def __init__(self, inference_config: InferenceConfig, model_config: PretrainedConfig) -> None:
