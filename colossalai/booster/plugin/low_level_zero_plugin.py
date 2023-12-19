@@ -1,5 +1,6 @@
 import logging
 import warnings
+import enum
 import os
 from functools import partial
 from pathlib import Path
@@ -42,6 +43,11 @@ def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
 
 
 SUPPORTED_PRECISION = ["fp16", "bf16", "fp32"]
+
+class OptimizerParamCheckState(enum.Enum):
+    ORIGIN_PARAM_FINDED = 0
+    ORIGIN_PARAM_NOT_FIND = -1
+    LORA_PARM_EXISTED = -2
 
 
 class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
@@ -354,15 +360,18 @@ class LowLevelZeroPlugin(DPPluginBase):
     def get_param_group_id(self, optimizer: Optimizer, origin_param: Parameter, lora_param: Parameter):
         origin_param_id = id(origin_param)
         lora_param_id = id(lora_param)
-        target_group_id = -1
+        target_group_id = None
         for group_id, param_group in enumerate(optimizer.param_groups):
             for p in param_group['params']:
                 if id(p) == lora_param_id:
                     # check if the lora parameter exists.
-                    return -2
+                    return target_group_id, OptimizerParamCheckState.LORA_PARM_EXISTED
                 if id(p) == origin_param_id:
                     target_group_id = group_id
-        return target_group_id
+        if target_group_id is not None:
+            return target_group_id, OptimizerParamCheckState.ORIGIN_PARAM_FINDED
+        else:
+            return target_group_id, OptimizerParamCheckState.ORIGIN_PARAM_NOT_FIND
     
     def add_lora_params_to_optimizer(self, model, optimizer):
         """ add lora parameters to optimizer """
@@ -374,12 +383,12 @@ class LowLevelZeroPlugin(DPPluginBase):
             if 'lora_A' in name or 'lora_B' in name:
                 origin_key = name.replace("lora_A.", "")
                 origin_key = origin_key.replace("lora_B.", "")
-                origin_key = origin_key.replace(f"{model.active_adapter}.", "")
+                origin_key = origin_key.replace(f"{model.active_adapter}", "base_layer")
                 origin_param = name2param[origin_key]
-                group_id = self.get_param_group_id(optimizer, origin_param, param)
-                if group_id == -1:
+                group_id, check_state = self.get_param_group_id(optimizer, origin_param, param)
+                if check_state == OptimizerParamCheckState.ORIGIN_PARAM_NOT_FIND:
                     warnings.warn("Origin parameter {origin_key} related to {name} doesn't exist in optimizer param_groups.")
-                elif group_id >= 0:
+                elif check_state == OptimizerParamCheckState.ORIGIN_PARAM_FINDED and group_id is not None and group_id >= 0:
                     optimizer.param_groups[group_id]['params'].append(param)
     
     def configure(
