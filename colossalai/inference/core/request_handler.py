@@ -16,14 +16,14 @@ class RunningList:
     Prefilling samples will be hold until the actual ratio of prefill samples versus decoding samples exceeds ratio.
 
     Args:
-        prefill_ratio: float
-        decoding/prefill: list that contains prefill or decoding samples
+        prefill_ratio: (float) A ratio for determing whether to perform prefill or not.
+        prefill: (List) List that contains default inputs, defaults to [].
     """
 
-    def __init__(self, prefill_ratio):
+    def __init__(self, prefill_ratio: str, prefill: List[Sequence] = []):
         self.prefill_ratio = prefill_ratio
-        self.decoding = []
-        self.prefill = []
+        self.decoding: List[Sequence] = []
+        self.prefill: List[Sequence] = prefill
 
     def append(self, seq: Sequence):
         # add seq to prefilling list first.
@@ -87,17 +87,17 @@ class RequestHandler:
             # Try to allocate cache blocks for the sequence using a priority of prompt length.
             for lst in reversed(self.waiting_list):
                 if lst:
-                    seq = lst[0]
-                    if seq.prompt_len > self.inference_config.max_input_len:
-                        # If the prompt length is longer than max_input_len, abort the sequence.
-                        self.abort_sequence(seq.request_id)
-                        break
-                    # Try to allocate cache blocks for the sequence.
-                    if self.cache_manager.num_available_blocks > self.cache_manager.max_blocks_per_sequence:
-                        # If succeed, add the sequence to running list.
-                        self.running_list.append(seq)
-                        self.cache_manager.allocate_context_from_block_table(seq.block_table_index, seq.prompt_len)
-                        lst.pop(0)
+                    for seq in lst:
+                        if seq.prompt_len > self.inference_config.max_input_len:
+                            # If the prompt length is longer than max_input_len, abort the sequence.
+                            self.abort_sequence(seq.request_id)
+                            break
+                        # Try to allocate cache blocks for the sequence.
+                        if self.cache_manager.check_allocation(seq):
+                            # If succeed, add the sequence to running list.
+                            self.running_list.append(seq)
+                            self.cache_manager.allocate_context_from_block_table(seq.block_table_index, seq.prompt_len)
+                            lst.remove(seq)
 
         if self.running_list.ready_for_prefill():
             for seq in self.running_list.prefill:
@@ -115,6 +115,7 @@ class RequestHandler:
         assert (
             req.prompt_len < self.inference_config.max_input_len
         ), f"Sequence {req.request_id} exceeds input length limit"
+
         self.waiting_list[req.prompt_len * 3 // self.inference_config.max_input_len].append(req)
 
     def abort_sequence(self, request_id: str):
@@ -124,7 +125,7 @@ class RequestHandler:
         seq, priority = self._find_sequence(request_id)
         if seq.status == RequsetStatus.WAITING:
             seq.status = RequsetStatus.ABORTED
-            self.waiting_list[priority].remove(seq)  # maybe wrong
+            self.waiting_list[priority].remove(seq)
         elif seq.status == RequsetStatus.RUNNING:
             self.cache_manager.free_block_table(seq.block_table_index)
             self.running_list.remove(seq)
@@ -199,7 +200,7 @@ class RequestHandler:
             self.running_list.decoding.extend(self.running_list.prefill)
             self.running_batch.add_seqs(self.running_list.prefill)
             self.running_list.prefill.clear()
-            self.running_batch.clear_batch()
+            self.prefill_batch.clear_batch()
 
         for seq in self.running_batch.sequences_set:
             if seq.check_finish():

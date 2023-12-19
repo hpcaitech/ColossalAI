@@ -4,6 +4,7 @@ import torch
 from transformers.configuration_utils import PretrainedConfig
 
 from colossalai.inference.config import InferenceConfig
+from colossalai.inference.struct import Sequence
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
 
@@ -116,6 +117,10 @@ class KVCacheManager:
         #      which will make the max_blocks_per_sequence dynamic based on the prompt lengths of sequences
         #      in the current batch.
         return self.max_blocks_per_sequence
+
+    def check_allocation(self, seq: Sequence) -> bool:
+        num_blocks_needed = (seq.prompt_len + self.max_output_length + self.block_size - 1) // self.block_size
+        return num_blocks_needed <= self.num_available_blocks
 
     def get_block_kv_ptrs(self, block_id: int, layer_id: int) -> Tuple[List[int], List[int]]:
         """Get the key and value pointers of physical caches (of specific layer) corresponding to a logical cache block."""
