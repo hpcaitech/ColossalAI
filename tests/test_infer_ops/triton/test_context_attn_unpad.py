@@ -1,9 +1,19 @@
+import pytest
 import torch
 import torch.nn.functional as F
+from packaging import version
 
 from colossalai.kernel.triton import context_attention_unpadded
 from colossalai.testing import clear_cache_before_run, parameterize
 from colossalai.utils import get_current_device
+
+try:
+    HAS_TRITON = True
+except ImportError:
+    HAS_TRITON = False
+    print("please install triton from https://github.com/openai/triton")
+
+TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 
 
 def torch_attn_ref(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, seq_len: int, num_heads: int, head_size: int):
@@ -49,6 +59,7 @@ def torch_attn_unpad(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, context_
     return torch.cat(out_torch, dim=0)
 
 
+@pytest.mark.skipif(not (HAS_TRITON and TRITON_CUDA_SUPPORT), reason="requires triton")
 @clear_cache_before_run()
 @parameterize("bsz", [4, 7, 9])
 @parameterize("block_size", [8, 16])
