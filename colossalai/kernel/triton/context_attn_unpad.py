@@ -38,7 +38,7 @@ def _fwd_context_paged_attention_kernel_v2(
 ):
     cur_seq_idx = tl.program_id(0)
     cur_head_idx = tl.program_id(1)
-    block_start_m = tl.program_id(2)  # Br, 这个打不满，max_input_len // Block_M
+    block_start_m = tl.program_id(2)  # Br
     # Only consider MHA for llama for now
     # cur_kv_head_idx = cur_head_idx
 
@@ -56,7 +56,7 @@ def _fwd_context_paged_attention_kernel_v2(
     qkv_offset = prev_seq_len_sum.to(tl.int64) * stride_qt + cur_head_idx.to(tl.int64) * stride_qh
     Q_block_ptr = tl.make_block_ptr(
         base=Q + qkv_offset,
-        shape=(MAX_SEQ_LEN, BLOCK_DMODEL),  # 大几率超出当前seq范围 需要用boundary_check
+        shape=(MAX_SEQ_LEN, BLOCK_DMODEL),
         strides=(stride_qt, stride_qd),
         offsets=(block_start_m * BLOCK_M, 0),
         block_shape=(BLOCK_M, BLOCK_DMODEL),
@@ -135,11 +135,14 @@ def context_attention_unpadded(
     q: torch.Tensor,  # [num_tokens, num_heads, head_size]
     k: torch.Tensor,  # [num_tokens, num_heads, head_size]
     v: torch.Tensor,  # [num_tokens, num_heads, head_size]
-    # k_cache: torch.Tensor, # [num_blocks, num_heads, head_size, block_size]
-    # v_cache: torch.Tensor, # [num_blocks, num_heads, head_size, block_size]
+    k_cache: torch.Tensor,  # [num_blocks, num_heads, head_size, block_size]
+    v_cache: torch.Tensor,  # [num_blocks, num_heads, head_size, block_size]
     context_lengths: torch.Tensor,  # [num_seqs]
     block_tables: torch.Tensor,  # [num_seqs, max_blocks_per_sequence]
+    block_size: int,
 ):
+    # NOTE KV copy to k/v caches are not included in for now (k_cache/v_cache/block_size are not used),
+    # and will be added in preceding updates soon.
     q = q.contiguous()
     k = k.contiguous()
     v = v.contiguous()
@@ -181,7 +184,7 @@ def context_attention_unpadded(
         output.stride(0),
         output.stride(1),
         output.stride(2),
-        context_lengths,  # [num_seqs]
+        context_lengths,
         sm_scale,
         num_heads,
         MAX_SEQ_LEN=max_seq_len,
