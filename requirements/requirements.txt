@@ -16,3 +16,4 @@ ray
 sentencepiece
 google
 protobuf
+peft>=0.7.1
