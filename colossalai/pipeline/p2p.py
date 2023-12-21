@@ -45,6 +45,18 @@ def _cuda_safe_tensor_to_object(tensor: torch.Tensor, tensor_size: torch.Size) -
     return unpickle
 
 
+def check_for_nccl_backend(group):
+    pg = group or c10d._get_default_group()
+    # Gate PG wrapper check on Gloo availability.
+    if c10d._GLOO_AVAILABLE:
+        # It is not expected for PG to be wrapped many times, but support it just
+        # in case
+        while isinstance(pg, c10d._ProcessGroupWrapper):
+            pg = pg.wrapped_pg
+
+    return c10d.is_nccl_available() and pg.name() == c10d.Backend.NCCL
+
+
 # NOTE: FIXME: NPU DOES NOT support isend nor irecv, so broadcast is kept for future use
 def _broadcast_object_list(
     object_list: List[Any], src: int, group: ProcessGroup, device: Optional[Union[torch.device, str, int]] = None
