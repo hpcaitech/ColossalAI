@@ -1,4 +1,4 @@
-from typing import Callable, Iterator, List, Tuple, Union
+from typing import Callable, Dict, Iterator, List, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -49,6 +49,12 @@ class DPPluginWrapper(DPPluginBase):
         pass
 
     def no_sync(self, model: nn.Module) -> Iterator[None]:
+        pass
+
+    def enable_lora(self, model: nn.Module, pretrained_dir: str, lora_config: Dict) -> nn.Module:
+        pass
+
+    def support_lora(self) -> bool:
         pass
 
 
