@@ -21,5 +21,4 @@ flash_attn==2.0.5
 datasets
 pydantic
 ray
-ordered_set
 #auto-gptq now not support torch1.12
