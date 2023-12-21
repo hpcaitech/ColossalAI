@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 from transformers.modeling_attn_mask_utils import AttentionMaskConverter
-from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
+from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
 
 class NoPadPagedAttention(nn.Module):
@@ -59,13 +59,12 @@ class NoPadPagedAttention(nn.Module):
         assert q.shape[0] == k.shape[0] == v.shape[0]
         assert context_lengths.shape[0] == block_tables.shape[0]
         shape = (bsz, max_seq_len, num_heads, head_size)
-        self.pad_and_reshape(q, context_lengths, max_seq_len, num_heads, head_size).transpose(1, 2)
-        self.pad_and_reshape(k, context_lengths, max_seq_len, num_heads, head_size).transpose(1.2)
+        query = self.pad_and_reshape(q, context_lengths, max_seq_len, num_heads, head_size).transpose(1, 2)
+        key = self.pad_and_reshape(k, context_lengths, max_seq_len, num_heads, head_size).transpose(1.2)
         value = self.pad_and_reshape(v, context_lengths, max_seq_len, num_heads, head_size).transpose(1, 2)
 
         attn_mask = AttentionMaskConverter._make_causal_mask(shape, q.dtype, q.device, past_key_values_length=0)
         self.generate_padding_mask(context_lengths, max_seq_len)
 
-        cos, sin = self.rotary_emb(
-            value,
-        )
+        cos, sin = self.rotary_emb(value, max_seq_len)
+        query, value = apply_rotary_pos_emb(query, key)

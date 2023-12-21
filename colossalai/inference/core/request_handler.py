@@ -20,10 +20,10 @@ class RunningList:
         prefill: (List) List that contains default inputs, defaults to [].
     """
 
-    def __init__(self, prefill_ratio: str, prefill: List[Sequence] = []):
+    def __init__(self, prefill_ratio: str, prefill: List[Sequence] = None):
         self.prefill_ratio = prefill_ratio
         self.decoding: List[Sequence] = []
-        self.prefill: List[Sequence] = prefill
+        self.prefill: List[Sequence] = prefill if prefill is not None else []
 
     def append(self, seq: Sequence):
         # add seq to prefilling list first.
@@ -38,11 +38,13 @@ class RunningList:
                 return seq
         return None
 
-    def remove(self, seq):
-        try:
+    def remove(self, seq: Sequence):
+        if seq in self.decoding:
             self.decoding.remove(seq)
-        except:
+        elif seq in self.prefill:
             self.prefill.remove(seq)
+        else:
+            raise ValueError(f"sequence {seq.request_id} is not in running list")
 
     def ready_for_prefill(self):
         if not self.decoding:
