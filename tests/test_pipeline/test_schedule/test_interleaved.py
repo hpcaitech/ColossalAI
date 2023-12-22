@@ -37,12 +37,13 @@ def pp_linear_fwd(
     stage_mgr: PipelineStageManager = None,
     model_chunk_id: int = None,
 ):
-    if stage_mgr.is_first_stage(model_chunk_id):
-        return {"input_obj": forward(data)}
-    elif stage_mgr.is_last_stage(model_chunk_id):
-        return forward(input_obj)
-    else:
-        return {"input_obj": forward(input_obj)}
+    with stage_mgr.switch_model_chunk_id(model_chunk_id):
+        if stage_mgr.is_first_stage():
+            return {"input_obj": forward(data)}
+        elif stage_mgr.is_last_stage():
+            return forward(input_obj)
+        else:
+            return {"input_obj": forward(input_obj)}
 
 
 def run_pp(
@@ -107,7 +108,7 @@ def run_pp(
     )
 
     # check loss
-    if stage_manager.is_last_stage(-1):
+    if stage_manager.is_last_stage(ignore_chunk=True):
         assert torch.allclose(torch_loss, pp_ret["loss"])
 
     # check gradients
@@ -119,12 +120,31 @@ def run_pp(
     # step
     torch_optimizer.step()
     pp_optimizer.step()
+    pp_optimizer.zero_grad()
 
     # check updated param
     for i in range(num_model_chunk):
         idx = world_size * i + rank
         assert torch.allclose(torch_model.layers[idx].weight, sharded_model[i].weight)
         assert torch.allclose(torch_model.layers[idx].bias, sharded_model[i].bias)
+
+    # forward only
+    with torch.no_grad():
+        torch_output = torch_model(input_list[0])
+        torch_loss = criterion(torch_output)
+
+        pp_ret = schedule.forward_backward_step(
+            sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True, return_outputs=True
+        )
+        if stage_manager.is_last_stage(ignore_chunk=True):
+            assert torch.allclose(torch_loss, pp_ret["loss"])
+
+        for layer in sharded_model:
+            if layer.weight.grad is None:
+                assert layer.weight.grad is None and layer.bias.grad is None
+            else:
+                assert torch.allclose(layer.weight.grad, torch.zeros_like(layer.weight.grad))
+                assert torch.allclose(layer.bias.grad, torch.zeros_like(layer.bias.grad))
 
 
 @pytest.mark.dist

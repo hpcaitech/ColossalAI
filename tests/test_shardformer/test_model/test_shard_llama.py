@@ -44,7 +44,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
-    if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
+    if (stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True)) and booster.plugin.zero_stage == 0:
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-6, 1e-4
         else:
@@ -63,7 +63,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     sharded_optimizer.step()
 
     # check last hidden state & loss
-    if stage_manager is None or stage_manager.is_last_stage():
+    if stage_manager is None or stage_manager.is_last_stage(ignore_chunk=True):
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
         else:
@@ -75,7 +75,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
     # check weights
-    if stage_manager is None or stage_manager.is_first_stage():
+    if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-4, 1e-3
         else:
@@ -175,6 +175,17 @@ def run_llama_test(test_config):
             "num_microbatches": 4,
             "enable_all_optimization": False,
             "use_lazy_init": False,
+            "precision": "fp16",
+            "zero_stage": 1,
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "pp_style": "interleaved",
+            "num_model_chunks": 2,
+            "num_microbatches": 4,
+            "enable_all_optimization": False,
             "precision": "fp16",
             "zero_stage": 1,
             "initial_scale": 1,

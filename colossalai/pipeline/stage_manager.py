@@ -1,3 +1,4 @@
+import contextlib
 from typing import Dict, List, Optional, Tuple
 
 import torch.distributed as dist
@@ -68,45 +69,39 @@ class PipelineStageManager:
             # for shardformer, hold model chunk id
             self.model_chunk_id: Optional[int] = None
 
-    def is_first_stage(self, model_chunk_id: Optional[int] = None) -> bool:
+    def is_first_stage(self, ignore_chunk: bool = False) -> bool:
         """Is the current stage the first stage.
 
         NOTE:
             1. if using interleaved pipeline parallel, the first stage is the first chunk of the first device.
-            2. invoke is_first_stage() with model_chunk_id < 0 is equivalent to invoke is_first_device()
+            2. invoke is_first_stage() with ignore_chunk=True is equivalent to invoke is_first_device()
 
         Returns:
             bool: Whether the current stage is the first stage.
         """
-        if self.is_interleave and model_chunk_id is None:
-            model_chunk_id = self.model_chunk_id
-        assert self.is_interleave ^ (
-            model_chunk_id is None
-        ), "model_chunk_id must be specified when using interleaved pipeline"
-        if not self.is_interleave or model_chunk_id < 0:
+        assert isinstance(ignore_chunk, bool)
+        assert not self.is_interleave or (ignore_chunk or self.model_chunk_id is not None)
+        if not self.is_interleave or ignore_chunk:
             return self.stage == 0
         else:
-            return self.stage == 0 and model_chunk_id == 0
+            return self.stage == 0 and self.model_chunk_id == 0
 
-    def is_last_stage(self, model_chunk_id: Optional[int] = None) -> bool:
+    def is_last_stage(self, ignore_chunk: bool = False) -> bool:
         """Is the current stage the last stage.
 
         NOTE:
             1. if using interleaved pipeline parallel, the last stage is the last chunk of the last device.
-            2. invoke is_last_stage() with model_chunk_id < 0 is equivalent to invoke is_last_device()
+            2. invoke is_last_stage() with ignore_chunk=True is equivalent to invoke is_last_device()
 
         Returns:
             bool: Whether the current stage is the last stage.
         """
-        if self.is_interleave and model_chunk_id is None:
-            model_chunk_id = self.model_chunk_id
-        assert self.is_interleave ^ (
-            model_chunk_id is None
-        ), "model_chunk_id must be specified when using interleaved pipeline"
-        if not self.is_interleave or model_chunk_id < 0:
+        assert isinstance(ignore_chunk, bool)
+        assert not self.is_interleave or (ignore_chunk or self.model_chunk_id is not None)
+        if not self.is_interleave or ignore_chunk:
             return self.stage == self.num_stages - 1
         else:
-            return self.stage == self.num_stages - 1 and model_chunk_id == self.num_model_chunks - 1
+            return self.stage == self.num_stages - 1 and self.model_chunk_id == self.num_model_chunks - 1
 
     @property
     def num_stages(self) -> int:
@@ -174,3 +169,10 @@ class PipelineStageManager:
             ProcessGroup: Process group of the given stages.
         """
         return self.pg_mesh.get_group_along_axis(self.pipeline_axis, stages)
+
+    @contextlib.contextmanager
+    def switch_model_chunk_id(self, model_chunk_id: int):
+        old_model_chunk_id = self.model_chunk_id
+        self.model_chunk_id = model_chunk_id
+        yield
+        self.model_chunk_id = old_model_chunk_id
