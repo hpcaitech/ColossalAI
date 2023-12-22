@@ -1,4 +1,5 @@
 import ctypes
+import os
 import random
 from contextlib import contextmanager
 from functools import partial
@@ -21,7 +22,8 @@ from torch.utils.data.distributed import DistributedSampler
 from colossalai.amp.naive_amp.mixed_precision_optimizer import MixedPrecisionOptimizer
 from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.interface import ModelWrapper, OptimizerWrapper, AMPModelMixin
+from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
+from colossalai.logging import get_dist_logger
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
@@ -982,6 +984,13 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.custom_policy = custom_policy
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
+            if os.getenv("NCCL_BUFFSIZE") is None:
+                logger = get_dist_logger()
+                logger.warning(
+                    "Setting NCCL_BUFFSIZE to 128MB to avoid p2p hangs. " "Please increase it if hangs still happen."
+                )
+                os.environ["NCCL_BUFFSIZE"] = "134217728"
+
             assert pp_style in ["1f1b", "interleaved"], "Unsupported pipeline parallelism style"
             assert pp_style == "interleaved" or num_model_chunks == 1, "num_model_chunks must be 1 when using 1f1b"
             assert (
