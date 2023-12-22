@@ -6,6 +6,27 @@ from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
 
+def copy_to_cache(source, cache, lengths, block_tables):
+    """
+    Func: copy key/value into key/value cache.
+
+    Args:   key/value: shape [bsz,seq_len,num_heads,head_size]
+            cache: shape [num_blocks, num_heads, head_size, block_size]
+    """
+    bsz, max_seq_len = block_tables.shape
+    num_blocks, num_heads, head_size, block_size = cache.shape
+    needed_blocks = (lengths + block_size - 1) // block_size
+    for i in range(bsz):
+        seq_len = lengths[i]
+        block_num = needed_blocks[i]
+        token_id = 0
+        for block_idx in range(block_num - 1):
+            cache[block_tables[i][block_idx]] = source[i][token_id : token_id + block_size].permute(1, 2, 0)
+            token_id += block_size
+        cache[block_tables[i][block_num - 1]] = source[i][token_id:seq_len].permute(1, 2, 0)
+    return cache
+
+
 class NoPadPagedAttention(nn.Module):
     """
     Pure Torch implementation version of paged_attention.
@@ -67,4 +88,17 @@ class NoPadPagedAttention(nn.Module):
         self.generate_padding_mask(context_lengths, max_seq_len)
 
         cos, sin = self.rotary_emb(value, max_seq_len)
-        query, value = apply_rotary_pos_emb(query, key)
+        query, value = apply_rotary_pos_emb(query, key, cos, sin)
+
+
+def test_copy():
+    q = torch.rand((2, 10, 3, 3))
+    q[:, -1:, :, :] = 0
+    cache = torch.empty(8, 3, 3, 8)
+    block_tables = torch.tensor([[0, 1], [2, 3]])
+    lengths = torch.tensor([9, 8])
+    copy_to_cache(q, cache, lengths, block_tables)
+
+
+if __name__ == "__main__":
+    test_copy()
