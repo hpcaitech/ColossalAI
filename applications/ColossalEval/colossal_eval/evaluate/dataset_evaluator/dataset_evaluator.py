@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import colossal_eval.evaluate.dataset_evaluator.metrics as metric_helper
 import numpy as np
@@ -279,7 +279,9 @@ class DatasetEvaluator(object):
 
         return self.evaluation_results
 
-    def get_evaluation_results(self, data: List[Dict], dataset_name: str, model_name: str, metrics: List[str]):
+    def get_evaluation_results(
+        self, data: Dict[str, Union[str, Dict]], dataset_name: str, model_name: str, metrics: List[str]
+    ):
         """
         Evaluate inference data on the given metrics.
 
@@ -290,10 +292,11 @@ class DatasetEvaluator(object):
             metrics: Metrics used to evaluate.
 
         """
-        self.data = data
+        self.data = data["inference_results"]
         self.dataset_name = dataset_name
+        self.dataset_class = data["dataset_class"]
         self.model_name = model_name
-        self.categories = list(data.keys())
+        self.categories = list(self.data.keys())
         self.metrics = metrics
         self.judgements = {}
 
@@ -313,9 +316,7 @@ class DatasetEvaluator(object):
 
         for metric in self.metrics:
             # Train and reference split use same metric as test split.
-            self.suggested_categories[metric] = metric_helper.metrics4subcategory[self.dataset_name.split("_")[0]][
-                metric
-            ]
+            self.suggested_categories[metric] = metric_helper.metrics4subcategory[self.dataset_class][metric]
             if "ALL" in self.suggested_categories[metric]:
                 self.suggested_categories[metric] = self.categories
                 self.metric_total_length[metric] = self.total_length
