@@ -4,6 +4,7 @@ import torch
 import torch.distributed as dist
 from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
 from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
+from colossal_moe.models.mixtral_layer import replace_moe_layer
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
@@ -15,12 +16,46 @@ from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParall
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.moe import MOE_MANAGER, apply_load_balance
-from colossalai.nn.optimizer import HybridAdam
+# from colossalai.nn.optimizer import HybridAdam
+from torch.optim import Adam as HybridAdam
 from colossalai.utils import get_current_device
+import argparse
+import os
+from functools import partial
+from typing import Dict
 
+import torch
+import torch.distributed as dist
+from datasets import load_dataset
+from huggingface_hub import snapshot_download
+from torch.utils.data import Dataset
+from tqdm import tqdm
+from transformers import T5Tokenizer
+from transformers.models.llama import LlamaConfig
+
+import colossalai
+from colossalai.booster import Booster
+from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
+from colossalai.cluster import DistCoordinator
+from colossalai.moe.layers import apply_load_balance
+from colossalai.moe.manager import MOE_MANAGER
+from colossalai.moe.utils import skip_init
+from colossalai.utils import get_current_device
 
 def move_to_cuda(batch, device):
     return {k: v.to(device) for k, v in batch.items()}
+
+def load_ckpt(repo_name: str, model, booster: Booster):
+    ckpt_path = snapshot_download(repo_name)
+    # single ckpt
+    if os.path.exists(os.path.join(ckpt_path, "pytorch_model.bin")):
+        ckpt_path = os.path.join(ckpt_path, "pytorch_model.bin")
+    # shard ckpt
+    elif os.path.exists(os.path.join(ckpt_path, "pytorch_model.bin.index.json")):
+        ckpt_path = os.path.join(ckpt_path, "pytorch_model.bin.index.json")
+    else:
+        raise ValueError(f"Invalid checkpoint path: {ckpt_path}")
+    booster.load_model(model, ckpt_path)
 
 
 class RandomDataset(Dataset):
@@ -240,26 +275,30 @@ def main():
     #     num_key_value_heads=4,
     #     use_cache=False,
     # )
-    config = MixtralConfig.from_pretrained("mistralai/Mixtral-8x7B-Instruct-v0.1")
+    config = MixtralConfig.from_pretrained("mistralai/Mixtral-8x7B-v0.1")
     config.use_cache = False
-    init_ctx = LazyInitContext(default_device=get_current_device())
-    with init_ctx:
-        model = MixtralForCausalLM.from_pretrained(
-            "/home/lczxl/.cache/huggingface/hub/models--mistralai--Mixtral-8x7B-Instruct-v0.1/snapshots/f1ca00645f0b1565c7f9a1c863d2be6ebf896b04",
-            config=config,
-        ).bfloat16()
+    config.num_local_experts = 1
+    # torch.set_default_tensor_type(torch.float16)
+    model = MixtralForCausalLM(config)
+    model = model.to(torch.bfloat16) if args.precision == "bf16" else model.to(torch.float16)
+    model = model.to(get_current_device())
+    replace_moe_layer(model)
+    # torch.set_default_tensor_type(torch.float32)
+    print(f"0-2 param num: {sum(p.numel() for p in model.parameters())/ 1000.0 ** 3}GB, memory: {torch.cuda.memory_allocated()/ 1000.0 ** 3}GB")
     coordinator.print_on_master(f"Finish init model with config:\n{config}")
 
     # Enable gradient checkpointing
     model.gradient_checkpointing_enable()
 
     # Prepare tokenizer and dataloader
-    tokenizer = AutoTokenizer.from_pretrained("mistralai/Mixtral-8x7B-Instruct-v0.1")
+    tokenizer = AutoTokenizer.from_pretrained("mistralai/Mixtral-8x7B-v0.1")
     dataset = RandomDataset(num_samples=20, tokenizer=tokenizer)
     collate_fn = None
     dataloader = plugin.prepare_dataloader(
         dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, collate_fn=collate_fn
     )
+    torch.cuda.synchronize()
+    print(f"1 param num: {sum(p.numel() for p in model.parameters())/ 1000.0 ** 3}GB, memory: {torch.cuda.memory_allocated()/ 1000.0 ** 3}GB")
 
     # Set optimizer
     optimizer = HybridAdam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -267,6 +306,12 @@ def main():
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
+    torch.cuda.synchronize()
+    print(f"2-1 param num: {sum(p.numel() for p in model.parameters())/ 1000.0 ** 3}GB, memory: {torch.cuda.memory_allocated()/ 1000.0 ** 3}GB")
+    load_ckpt("mistralai/Mixtral-8x7B-v0.1", model, booster)
+    torch.cuda.synchronize()
+    print(f"2 param num: {sum(p.numel() for p in model.parameters())/ 1000.0 ** 3}GB, memory: {torch.cuda.memory_allocated()/ 1000.0 ** 3}GB")
+
     use_pipeline = isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     coordinator.print_on_master(f"Finish init booster")
@@ -303,8 +348,12 @@ def main():
                     data = move_to_cuda(data, torch.cuda.current_device())
                     outputs = model(**data)
                     loss = outputs["loss"]
+                    print(f"3 param num: {sum(p.numel() for p in model.parameters())/ 1000.0 ** 3}GB, memory: {torch.cuda.memory_allocated()/ 1000.0 ** 3}GB")
+
                     # Backward
                     booster.backward(loss, optimizer)
+                    print(f"4 param num: {sum(p.numel() for p in model.parameters())/ 1000.0 ** 3}GB, memory: {torch.cuda.memory_allocated()/ 1000.0 ** 3}GB")
+
                     pbar.set_postfix({"loss": loss.item()})
 
                 optimizer.step()

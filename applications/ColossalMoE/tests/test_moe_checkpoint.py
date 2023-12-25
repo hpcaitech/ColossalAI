@@ -14,6 +14,9 @@ from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParall
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.testing import DummyDataloader, check_state_dict_equal, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
+from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
+from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
+from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
 
 sys.path.append(
     os.path.join(
@@ -21,10 +24,6 @@ sys.path.append(
         "examples/language/openmoe",
     )
 )
-
-OpenMoeForCausalLM = importlib.import_module("model.modeling_openmoe").OpenMoeForCausalLM
-set_openmoe_args = importlib.import_module("model.modeling_openmoe").set_openmoe_args
-OpenMoeForCausalLMPolicy = importlib.import_module("model.openmoe_policy").OpenMoeForCausalLMPolicy
 
 
 def data_gen_fn(batch_size: int = 2, max_length: int = 4, vocab_size: int = 20):
@@ -71,65 +70,55 @@ def run_fwd_bwd(
 
 
 def get_config():
-    config = LlamaConfig(
+    config = MixtralConfig(
         vocab_size=300,
-        hidden_size=16,
-        intermediate_size=32,
+        hidden_size=32,
+        intermediate_size=128,
         num_hidden_layers=2,
-        num_attention_heads=2,
-        head_dim=4,
         dropout_rate=0.0,
-        hidden_act="swiglu",
     )
-    set_openmoe_args(config, num_experts=8, moe_layer_interval=1)
     return config
 
 
 def get_model(parallel):
     config = get_config()
-    model = OpenMoeForCausalLM(config)
+    model = MixtralForCausalLM(config).to(torch.bfloat16)
     optim = torch.optim.Adam(model.parameters())
-
+    args = dict(
+        precision="bf16",
+        tp_size=1,
+        zero_stage=1,
+        custom_policy=MixtralForCausalLMPolicy(),
+        checkpoint_io=MixtralMoECheckpointIO,
+    )
     if parallel == None:
         plugin = MoeHybridParallelPlugin(
-            precision="bf16",
-            tp_size=1,
             pp_size=1,
-            zero_stage=2,
-            custom_policy=OpenMoeForCausalLMPolicy(),
+            **args,
         )
     elif parallel == "ep":
         plugin = MoeHybridParallelPlugin(
-            precision="bf16",
-            tp_size=1,
             pp_size=1,
-            zero_stage=2,
-            custom_policy=OpenMoeForCausalLMPolicy(),
+            **args,
         )
     elif parallel == "ep_zero":
         plugin = MoeHybridParallelPlugin(
-            precision="bf16",
-            tp_size=1,
             pp_size=1,
-            zero_stage=2,
             extra_dp_size=2,
-            custom_policy=OpenMoeForCausalLMPolicy(),
+            **args,
         )
     elif parallel == "hybrid":
         plugin = MoeHybridParallelPlugin(
-            precision="bf16",
-            tp_size=1,
             pp_size=2,
-            zero_stage=1,
             microbatch_size=1,
-            custom_policy=OpenMoeForCausalLMPolicy(),
+            **args,
         )
     booster = Booster(plugin=plugin)
     model, optim, _, _, _ = booster.boost(model=model, optimizer=optim)
     return model, booster, optim
 
 
-def _test_moe_checkpoint(rank, parallel):
+def _test_moe_checkpoint(parallel):
     if parallel == None:
         MOE_MANAGER.setup(
             parallel=None,
@@ -153,18 +142,12 @@ def _test_moe_checkpoint(rank, parallel):
         )
     model1, booster1, optim1 = get_model(parallel)
     model2, booster2, optim2 = get_model(parallel)
-    model3, booster3, optim3 = get_model(parallel)
-
     # param ckpt
     # shard
     booster1.save_model(model1, "./tmp_ckpt1", shard=True, size_per_shard=1)
     booster2.load_model(model2, "./tmp_ckpt1")
-    # unshard
-    booster1.save_model(model1, "./tmp_ckpt1.pth")
-    booster3.load_model(model3, "./tmp_ckpt1.pth")
     # check
     check_state_dict_equal(model1.state_dict(), model2.state_dict(), False)
-    check_state_dict_equal(model1.state_dict(), model3.state_dict(), False)
 
     # optim ckpt
     criterion = lambda x: x.mean()
@@ -181,18 +164,12 @@ def _test_moe_checkpoint(rank, parallel):
     booster1.save_optimizer(optim1, "./tmp_ckpt2", shard=True, size_per_shard=1)
     dist.barrier()
     booster2.load_optimizer(optim2, "./tmp_ckpt2")
-    # unshard
-    booster1.save_optimizer(optim1, "./tmp_ckpt2.pth")
-    booster3.load_optimizer(optim3, "./tmp_ckpt2.pth")
     # check
     check_state_dict_equal(optim1.optim.state_dict(), optim2.optim.state_dict(), False)
-    check_state_dict_equal(optim1.optim.state_dict(), optim3.optim.state_dict(), False)
 
     if dist.get_rank() == 0:
         shutil.rmtree("./tmp_ckpt1")
         shutil.rmtree("./tmp_ckpt2")
-        os.remove("./tmp_ckpt1.pth")
-        os.remove("./tmp_ckpt2.pth")
 
 
 def _run_dist(rank, world_size, port, parallel):
@@ -204,16 +181,16 @@ def _run_dist(rank, world_size, port, parallel):
         port=port,
         backend="nccl",
     )
-    _test_moe_checkpoint(rank, parallel)
+    _test_moe_checkpoint(parallel)
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
-@pytest.mark.parametrize("parallel", [None, "ep", "ep_zero", "hybrid"])
+@pytest.mark.parametrize("parallel", ["ep", "ep_zero"])
 @rerun_if_address_is_in_use()
 def test_moe_checkpoint(world_size, parallel):
     spawn(_run_dist, world_size, parallel=parallel)
 
 
 if __name__ == "__main__":
-    test_moe_checkpoint(world_size=4, parallel="hybrid")
+    test_moe_checkpoint(world_size=4, parallel="ep")

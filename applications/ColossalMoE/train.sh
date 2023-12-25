@@ -13,7 +13,7 @@ LR=0.00001
 #     --plugin "ep_zero" \
 #     --batch_size $BATCH_SIZE \
 #     --lr $LR \
-#     --zero_stage 1 \
+#     --zero_stage 2 \
 #     --extra_dp_size 2
 
 # ep

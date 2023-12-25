@@ -48,18 +48,6 @@ class MixtralPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             raise NotImplementedError("Tensor parallelism is not supported for Mixtral model now.")
 
-        # use colossal moe module
-        self.append_or_create_submodule_replacement(
-            description=[
-                SubModuleReplacementDescription(
-                    suffix="block_sparse_moe",
-                    target_module=MixtralSparseMLP,
-                ),
-            ],
-            policy=policy,
-            target_key=MixtralDecoderLayer,
-        )
-
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
             self.append_or_create_submodule_replacement(
