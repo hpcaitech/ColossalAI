@@ -21,8 +21,7 @@ class RequestStatus(enum.Enum):
 
     # running status
     WAITING = enum.auto()
-    PREFILL = enum.auto()
-    TOKEN = enum.auto()
+    RUNNING = enum.auto()
     ABORTED = enum.auto()
 
     # completion status
@@ -40,10 +39,7 @@ class RequestStatus(enum.Enum):
 
     @staticmethod
     def is_running(status: "RequestStatus") -> bool:
-        return status in [
-            RequestStatus.PREFILL,
-            RequestStatus.TOKEN,
-        ]
+        return status == RequestStatus.RUNNING
 
     @staticmethod
     def is_waiting(status: "RequestStatus") -> bool:
@@ -131,7 +127,7 @@ class Sequence:
         Set status for prefill reqs.
         """
         assert self.status == RequestStatus.WAITING, "Sequence is not in WAITTING STATUS"
-        self.status = RequestStatus.PREFILL
+        self.status = RequestStatus.RUNNING
 
     def mark_finished(self) -> None:
         """
