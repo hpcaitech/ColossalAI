@@ -42,29 +42,29 @@ def check_config_and_inference():
         max_output_len=256,
     )
 
-    assert sequence.get_sentence_len() == 3
-    assert sequence.get_input_len() == 3
-    assert sequence.get_output_len() == 0
+    assert sequence.sentence_len == 3
+    assert sequence.prompt_len == 3
+    assert sequence.output_len == 0
     assert sequence.check_finish() == False
 
     batch = BatchInfo.init_batch([sequence])
     batch.add_seqs([sequence2, sequence3])
     batch.add_seqs([sequence])
 
-    assert batch.is_empty() == False
+    assert batch.is_empty == False
     assert batch.get_batch_size() == 3
     batch.update_batch_tokens([1, 2, 3])
     seq = batch.abort_seq(sequence)
     seq2 = batch.fliter_batch()[0]
 
     assert batch.get_batch_size() == 1
-    assert seq.get_output_len() == 1
+    assert seq.output_len == 1
     assert seq.output_token_id == [1]
-    assert seq2.get_output_len() == 1
+    assert seq2.output_len == 1
     assert seq2.output_token_id == [2]
 
     batch.clear_batch()
-    assert batch.is_empty() == True
+    assert batch.is_empty == True
 
 
 def run_dist(rank, world_size, port):
