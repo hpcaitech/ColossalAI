@@ -1,12 +1,12 @@
 import argparse
+import os
 
 import torch
 import torch.distributed as dist
 from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
-from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
 from colossal_moe.models.mixtral_layer import replace_moe_layer
-from torch.utils.data import Dataset
-from tqdm import tqdm
+from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
+from huggingface_hub import snapshot_download
 from transformers import AutoTokenizer
 from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
 
@@ -14,29 +14,7 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
-from colossalai.lazy import LazyInitContext
-from colossalai.moe import MOE_MANAGER, apply_load_balance
-from colossalai.utils import get_current_device
-import argparse
-import os
-from functools import partial
-from typing import Dict
-
-import torch
-import torch.distributed as dist
-from datasets import load_dataset
-from huggingface_hub import snapshot_download
-from torch.utils.data import Dataset
-from tqdm import tqdm
-from transformers import T5Tokenizer
-from transformers.models.llama import LlamaConfig
-
-import colossalai
-from colossalai.booster import Booster
-from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
-from colossalai.cluster import DistCoordinator
-from colossalai.moe.layers import apply_load_balance
-from colossalai.moe.manager import MOE_MANAGER
+from colossalai.moe import MOE_MANAGER
 from colossalai.moe.utils import skip_init
 from colossalai.utils import get_current_device
 
@@ -88,9 +66,7 @@ def parse_args():
         choices=["fp32", "bf16", "fp16"],
         help="The mixed precision training.",
     )
-    parser.add_argument(
-        "--seed", type=int, default=42, help="A seed for reproducible training."
-    )
+    parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
 
     # kernel
     parser.add_argument(
@@ -147,11 +123,7 @@ def main():
     config.num_local_experts = 1  # dont change this. it will not affect model
     with skip_init():
         model = MixtralForCausalLM(config)
-    model = (
-        model.to(torch.bfloat16)
-        if args.precision == "bf16"
-        else model.to(torch.float16)
-    )
+    model = model.to(torch.bfloat16) if args.precision == "bf16" else model.to(torch.float16)
     model = model.to(get_current_device())
     coordinator.print_on_master(f"Finish init model with config:\n{config}")
 

@@ -1,4 +1,3 @@
-import importlib
 import os
 import shutil
 import sys
@@ -6,7 +5,9 @@ import sys
 import pytest
 import torch
 import torch.distributed as dist
-from transformers.models.llama import LlamaConfig
+from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
+from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
+from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
 
 import colossalai
 from colossalai.booster import Booster
@@ -14,9 +15,6 @@ from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParall
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.testing import DummyDataloader, check_state_dict_equal, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
-from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
-from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
-from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
 
 sys.path.append(
     os.path.join(

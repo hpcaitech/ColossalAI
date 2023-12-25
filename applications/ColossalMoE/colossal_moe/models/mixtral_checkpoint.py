@@ -2,52 +2,14 @@ import logging
 import os
 from pathlib import Path
 
-import torch.distributed as dist
-import torch.nn as nn
-import copy
-import logging
-import os
-from pathlib import Path
-from shutil import rmtree
-from typing import Dict, Iterator, Optional, OrderedDict, Tuple
-
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from torch.distributed import ProcessGroup
 
-from colossalai.checkpoint_io import CheckpointIndexFile, HybridParallelCheckpointIO
-from colossalai.checkpoint_io.utils import (
-    StateDictSharder,
-    gather_distributed_param,
-    get_model_base_filenames,
-    get_optimizer_base_filenames,
-    is_safetensors_available,
-    load_shard_state_dict,
-    load_state_dict,
-    load_state_dict_into_model,
-    load_states_into_optimizer,
-    save_config_file,
-    save_param_groups,
-    save_state_dict,
-    save_state_dict_shards,
-    sharded_optimizer_loading_epilogue,
-)
-from colossalai.interface import OptimizerWrapper
-from colossalai.moe.manager import MOE_MANAGER
-from colossalai.tensor.moe_tensor.api import (
-    get_dp_group,
-    get_dp_rank,
-    get_dp_size,
-    get_ep_group,
-    get_ep_rank,
-    get_ep_size,
-    is_moe_tensor,
-)
 from colossalai.checkpoint_io import CheckpointIndexFile
 from colossalai.checkpoint_io.utils import is_safetensors_available, load_shard_state_dict, load_state_dict_into_model
 from colossalai.moe import MoECheckpintIO
-from colossalai.tensor.moe_tensor.api import get_ep_rank, get_ep_size, is_moe_tensor
+from colossalai.tensor.moe_tensor.api import get_dp_rank, get_ep_group, get_ep_rank, get_ep_size, is_moe_tensor
 
 
 class MixtralMoECheckpointIO(MoECheckpintIO):
@@ -62,8 +24,8 @@ class MixtralMoECheckpointIO(MoECheckpintIO):
         model_param_dict = dict(model.named_parameters())
         for name, param in list(state_dict.items()):
             if ".gate.weight" in name:
-                    new_name = "module." + name.replace(".gate.weight", ".gate_weight")
-                    state_dict[new_name] = state_dict.pop(name)
+                new_name = "module." + name.replace(".gate.weight", ".gate_weight")
+                state_dict[new_name] = state_dict.pop(name)
             elif ".experts." in name:
                 # if is moe tensor
                 # in our moe module, expert is cat as one tensor
@@ -94,7 +56,7 @@ class MixtralMoECheckpointIO(MoECheckpintIO):
                     state_dict[model_param_name] = new_param
                 state_dict.pop(name)
             else:
-                new_name =  "module." + name
+                new_name = "module." + name
                 state_dict[new_name] = state_dict.pop(name)
 
         for name, param in list(state_dict.items()):

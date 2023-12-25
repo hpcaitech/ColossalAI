@@ -1,10 +1,9 @@
 import torch
 import torch.nn as nn
-from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock, MixtralDecoderLayer
+from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralSparseMoeBlock
 
 from colossalai.lazy import LazyInitContext
 from colossalai.moe import SparseMLP
-from colossalai.tensor.moe_tensor.api import get_ep_rank, is_moe_tensor
 
 
 class MixtralSparseMLP:
