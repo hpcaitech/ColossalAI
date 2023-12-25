@@ -146,7 +146,8 @@ def main():
     coordinator.print_on_master(f"Finish load ckpt")
 
     text = ["Hello my name is"]
-    inputs = tokenizer(text, return_tensors="pt").to(torch.cuda.current_device())
+    tokenizer.pad_token = tokenizer.unk_token
+    inputs = tokenizer(text, return_tensors="pt", padding=True).to(torch.cuda.current_device())
     outputs = model.module.generate(**inputs, max_new_tokens=20)
     outputs = tokenizer.batch_decode(outputs)[0]
     print(outputs)
