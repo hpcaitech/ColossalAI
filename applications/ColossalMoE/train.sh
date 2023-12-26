@@ -1,5 +1,5 @@
 NUM_GPU=8
-MODEL="/home/zhaoxuanlei/.cache/huggingface/hub/models--mistralai--Mixtral-8x7B-v0.1/snapshots/58301445dc1378584211722b7ebf8743ec4e192b"
+MODEL="mistralai/Mixtral-8x7B-v0.1"
 SEQ_LENGTH=2048
 BATCH_SIZE=1
 LR=0.00001
