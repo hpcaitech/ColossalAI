@@ -1,6 +1,6 @@
 import pytest
 import transformers
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, GenerationConfig
 
 import colossalai
 from colossalai.inference.config import InferenceConfig
@@ -11,21 +11,24 @@ from colossalai.testing import spawn
 def check_inference_engine():
     model = transformers.LlamaForCausalLM(
         transformers.LlamaConfig(
-            vocab_size=20000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=4
+            vocab_size=50000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=4
         )
     )
     tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
-    inference_config = InferenceConfig()
+    inference_config = InferenceConfig(max_output_len=5)
     inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
 
     inputs = [
-        "介绍一下北京",
+        "介绍一下今天的北京",
         "介绍一下武汉",
     ]
 
     inference_engine.add_request(prompts=inputs)
     assert inference_engine.request_handler._has_waiting()
-    # outputs = inference_engine.generate(None)
+    generation_config = GenerationConfig(top_k=2, top_p=0.8, do_sample=True)
+    outputs = inference_engine.generate(generation_config)
+
+    print("outputs: ", outputs)
 
     # Engine still gets some bug
 

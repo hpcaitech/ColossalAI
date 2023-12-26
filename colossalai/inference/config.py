@@ -97,3 +97,6 @@ class InferenceConfig:
         ], "dtype should be one of 'fp16', 'fp32', 'bf16', torch.float32, torch.float16, torch.bfloat16"
         assert self.max_batch_size <= 64, "Max batch size exceeds the constraint"
         assert self.quant_mode in ["smoothquant", "gptq", None], "quant should be one of 'smoothquant', 'gptq'"
+        assert (
+            self.max_input_len + self.max_output_len <= self.max_seq_len
+        ), "The sum of max_input_len and max_output_len must be smaller than max_seq_len."

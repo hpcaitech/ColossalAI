@@ -112,7 +112,7 @@ class KVCacheManager:
 
     def get_kv_cache(self):
         """Get k_cache and v_cache"""
-        return self._kv_cache[0], self._kv_cache[1]
+        return self._kv_caches[0], self._kv_caches[1]
 
     def get_max_blocks_per_sequence(self) -> int:
         """Get the maximum number of blocks that can be allocated for a single sequence."""
@@ -122,7 +122,7 @@ class KVCacheManager:
         return self.max_blocks_per_sequence
 
     def check_allocation(self, seq: Sequence) -> bool:
-        num_blocks_needed = (seq.prompt_len + self.max_output_length + self.block_size - 1) // self.block_size
+        num_blocks_needed = (seq.input_len + self.max_output_length + self.block_size - 1) // self.block_size
         return num_blocks_needed <= self.num_available_blocks
 
     def get_block_kv_ptrs(self, block_id: int, layer_id: int) -> Tuple[List[int], List[int]]:
