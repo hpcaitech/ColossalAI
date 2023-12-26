@@ -24,3 +24,16 @@ Yon can use colossalai run to launch inference:
 ```bash
 bash infer.sh
 ```
+If you already have downloaded model weights, you can change name to your weights position in `infer.sh`.
+
+### 3. Train
+You first need to create `./hostfile`, listing the ip address of all your devices, such as:
+```bash
+111.111.111.110
+111.111.111.111
+```
+Then yon can use colossalai run to launch train:
+```bash
+bash train.sh
+```
+It requires 16 H100 (80G) to run the training. The number of GPUs should be divided by 8. If you already have downloaded model weights, you can change name to your weights position in `train.sh`.
