@@ -3,19 +3,22 @@ from typing import Callable, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch import Tensor
-from torch.nn import Module
-from transformers.modeling_outputs import CausalLMOutputWithPast
-from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralForCausalLM, MixtralModel
+from torch.nn import CrossEntropyLoss, Module
+from transformers.models.mixtral.modeling_mixtral import (
+    MixtralDecoderLayer,
+    MixtralForCausalLM,
+    MixtralModel,
+    MoeCausalLMOutputWithPast,
+    _prepare_4d_causal_attention_mask,
+    load_balancing_loss_func,
+)
 from transformers.utils import logging
 
-from colossalai.moe.manager import MOE_MANAGER
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
-
-from .mixtral_layer import MixtralSparseMLP
+from colossalai.shardformer.shard import ShardConfig
 
 __all__ = ["MixtralPolicy", "MixtralForCausalLMPolicy"]
 
@@ -122,21 +125,6 @@ class MixtralPolicy(Policy):
 
         return held_layers
 
-    @staticmethod
-    def distribute_layers(num_layers: int, num_stages: int) -> List[int]:
-        """Divide layers into stages"""
-        if num_layers == 24 and num_stages == 4:
-            return [7, 7, 7, 3]
-        elif num_layers == 24 and num_stages == 2:
-            return [15, 9]
-        elif num_layers == 12 and num_stages == 4:
-            return [5, 5, 5, 1]
-        elif num_layers == 12 and num_stages == 2:
-            return [8, 4]
-        else:
-            print(f"num_layers: {num_layers}, num_stages: {num_stages} not optimized, use origin pp policy")
-            return Policy.distribute_layers(num_layers, num_stages)
-
 
 class MixtralModelPolicy(MixtralPolicy):
     def __init__(self) -> None:
@@ -183,7 +171,6 @@ class MixtralForCausalLMPolicy(MixtralPolicy):
             policy.update(new_item)
 
         if self.pipeline_stage_manager:
-            raise NotImplementedError("Pipeline parallelism is not supported for Mixtral model now.")
             # set None as default
             self.set_pipeline_forward(
                 model_cls=MixtralForCausalLM,
@@ -226,7 +213,7 @@ class MixtralPipelineForwards:
 
     @staticmethod
     def mixtral_model_forward(
-        self: MixtralModel,
+        self,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -235,28 +222,54 @@ class MixtralPipelineForwards:
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
+        output_router_logits: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,
+        past_router_logits: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
-        past_router_aux_loss: Optional[torch.FloatTensor] = None,
-        past_router_z_loss: Optional[torch.FloatTensor] = None,
+        shard_config: ShardConfig = None,
     ):
-        # reset moe loss for different data
-        MOE_MANAGER.reset_loss()
+        r"""
+        Args:
+            labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+                Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+                config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+                (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
 
+        Returns:
+
+        Example:
+
+        ```python
+        >>> from transformers import AutoTokenizer, MixtralForCausalLM
+
+        >>> model = MixtralForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
+        >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
+
+        >>> prompt = "Hey, are you conscious? Can you talk to me?"
+        >>> inputs = tokenizer(prompt, return_tensors="pt")
+
+        >>> # Generate
+        >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
+        >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+        "Hey, are you conscious? Can you talk to me?\nI'm not conscious, but I can talk to you."
+        ```"""
         logger = logging.get_logger(__name__)
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_router_logits = (
+            output_router_logits if output_router_logits is not None else self.config.output_router_logits
+        )
+
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
-
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # retrieve input_ids and inputs_embeds
         if stage_manager.is_first_stage():
+            # retrieve input_ids and inputs_embeds
             if input_ids is not None and inputs_embeds is not None:
                 raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
             elif input_ids is not None:
@@ -305,18 +318,18 @@ class MixtralPipelineForwards:
 
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
-        if attention_mask is None:
-            attention_mask = torch.ones(
-                (batch_size, seq_length_with_past),
-                dtype=torch.bool,
-                device=hidden_states.device,
+        if self._use_flash_attention_2:
+            # 2d mask is passed through the layers
+            attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
+        else:
+            # 4d mask is passed through the layers
+            attention_mask = _prepare_4d_causal_attention_mask(
+                attention_mask,
+                (batch_size, seq_length),
+                hidden_states,
+                past_key_values_length,
+                sliding_window=self.config.sliding_window,
             )
-        attention_mask = self._prepare_decoder_attention_mask(
-            attention_mask,
-            (batch_size, seq_length),
-            hidden_states,
-            past_key_values_length,
-        )
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
@@ -328,7 +341,8 @@ class MixtralPipelineForwards:
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        next_decoder_cache = () if use_cache else None
+        all_router_logits = () if output_router_logits else None
+        next_decoder_cache = None
 
         start_idx, end_idx = stage_index[0], stage_index[1]
         for idx, decoder_layer in enumerate(self.layers[start_idx:end_idx], start=start_idx):
@@ -342,7 +356,7 @@ class MixtralPipelineForwards:
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
                         # None for past_key_value
-                        return module(*inputs, output_attentions, None)
+                        return module(*inputs)
 
                     return custom_forward
 
@@ -352,23 +366,28 @@ class MixtralPipelineForwards:
                     attention_mask,
                     position_ids,
                     None,
+                    output_attentions,
+                    output_router_logits,
                 )
             else:
                 layer_outputs = decoder_layer(
                     hidden_states,
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    past_key_value=past_key_value,
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
+                    attention_mask,
+                    position_ids,
+                    past_key_value,
+                    output_attentions,
+                    output_router_logits,
+                    use_cache,
                 )
 
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
+                next_decoder_cache = (layer_outputs[2 if output_attentions else 1],)
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
+            if output_router_logits:
+                all_router_logits += (layer_outputs[-1],)
 
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
@@ -378,33 +397,23 @@ class MixtralPipelineForwards:
             all_hidden_states += (hidden_states,)
         next_cache = next_decoder_cache if use_cache else None
 
-        # concat past losses with current ones
-        router_aux_loss, router_z_loss = MOE_MANAGER.get_loss()
-        if past_router_aux_loss is not None and past_router_z_loss is not None:
-            router_aux_loss = past_router_aux_loss + router_aux_loss
-            router_z_loss = past_router_z_loss + router_z_loss
-
+        if output_router_logits and past_router_logits is not None:
+            all_router_logits = past_router_logits + all_router_logits
         if stage_manager.is_last_stage():
             return tuple(
-                [
-                    hidden_states,
-                    next_cache,
-                    all_hidden_states,
-                    all_self_attns,
-                    router_aux_loss,
-                    router_z_loss,
-                ]
+                v
+                for v in [hidden_states, next_cache, all_hidden_states, all_self_attns, all_router_logits]
+                if v is not None
             )
         # always return dict for imediate stage
         return {
             "hidden_states": hidden_states,
-            "router_aux_loss": router_aux_loss,
-            "router_z_loss": router_z_loss,
+            "past_router_logits": all_router_logits,
         }
 
     @staticmethod
     def mixtral_for_causal_lm_forward(
-        self: MixtralForCausalLM,
+        self,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -414,13 +423,13 @@ class MixtralPipelineForwards:
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
+        output_router_logits: Optional[bool] = True,
         return_dict: Optional[bool] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,
+        past_router_logits: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
-        chunk_head: Optional[bool] = True,
-        past_router_aux_loss: Optional[torch.FloatTensor] = None,
-        past_router_z_loss: Optional[torch.FloatTensor] = None,
+        shard_config: ShardConfig = None,
     ):
         r"""
         Args:
@@ -434,21 +443,25 @@ class MixtralPipelineForwards:
         Example:
 
         ```python
-        >>> from transformers import AutoTokenizer, LlamaForCausalLM
+        >>> from transformers import AutoTokenizer, MixtralForCausalLM
 
-        >>> model = LlamaForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
+        >>> model = MixtralForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
         >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
 
-        >>> prompt = "Hey, are you consciours? Can you talk to me?"
+        >>> prompt = "Hey, are you conscious? Can you talk to me?"
         >>> inputs = tokenizer(prompt, return_tensors="pt")
 
         >>> # Generate
         >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
         >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-        "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
+        "Hey, are you conscious? Can you talk to me?\nI'm not conscious, but I can talk to you."
         ```"""
         logger = logging.get_logger(__name__)
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_router_logits = (
+            output_router_logits if output_router_logits is not None else self.config.output_router_logits
+        )
+
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
@@ -473,90 +486,58 @@ class MixtralPipelineForwards:
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            output_router_logits=output_router_logits,
             return_dict=return_dict,
             stage_manager=stage_manager,
             hidden_states=hidden_states,
             stage_index=stage_index,
-            past_router_aux_loss=past_router_aux_loss,
-            past_router_z_loss=past_router_z_loss,
+            past_router_logits=past_router_logits,
         )
+        past_key_values = None
 
         if stage_manager.is_last_stage():
-            (
-                hidden_states,
-                past_key_values,
-                all_hidden_states,
-                attentions,
-                router_aux_loss,
-                router_z_loss,
-            ) = outputs
-
-            if self.pretraining_tp > 1:
-                lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.pretraining_tp, dim=0)
-                logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.pretraining_tp)]
-                logits = torch.cat(logits, dim=-1)
+            hidden_states = outputs[0]
+            logits = self.lm_head(hidden_states)
+            logits = logits.float()
 
             loss = None
-            # if no training, just do forward
-            if labels is None:
-                logits = self.lm_head(hidden_states)
-                logits = logits.float()
-            # the vocab size for Mixtral is 30w+
-            # which causes great activation memory in training, up to 20G for one sequence
-            # so we use chunk and checkpoint to reduce memory
-            else:
-                if chunk_head == True:
+            if labels is not None:
+                # Shift so that tokens < n predict n
+                shift_logits = logits[..., :-1, :].contiguous()
+                shift_labels = labels[..., 1:].contiguous()
+                # Flatten the tokens
+                loss_fct = CrossEntropyLoss()
+                shift_logits = shift_logits.view(-1, self.config.vocab_size)
+                shift_labels = shift_labels.view(-1)
+                # Enable model parallelism
+                shift_labels = shift_labels.to(shift_logits.device)
+                loss = loss_fct(shift_logits, shift_labels)
 
-                    def create_custom_forward(module):
-                        def custom_forward(*inputs):
-                            logits = module(inputs[0])
-                            logits = logits.float()
-                            # Shift so that tokens < n predict n
-                            shift_logits = logits[..., :-1, :].contiguous().float()
-                            shift_labels = inputs[1][..., 1:].contiguous()
-                            # Flatten the tokens
-                            loss = self._calculate_loss(shift_logits, shift_labels)
-                            return loss
-
-                        return custom_forward
-
-                    aux_loss, z_loss = self._calculate_router_loss(router_aux_loss, router_z_loss)
-                    loss = aux_loss + z_loss
-                    for batch_idx in range(hidden_states.shape[0]):
-                        loss = loss + torch.utils.checkpoint.checkpoint(
-                            create_custom_forward(self.lm_head),
-                            hidden_states[batch_idx : batch_idx + 1, :],
-                            labels[batch_idx : batch_idx + 1, :],
-                        )
-                    logits = None
-                else:
-                    logits = self.lm_head(hidden_states)
-                    logits = logits.float()
-                    # Shift so that tokens < n predict n
-                    shift_logits = logits[..., :-1, :].contiguous()
-                    shift_labels = labels[..., 1:].contiguous()
-                    # Flatten the tokens
-                    aux_loss, z_loss = self._calculate_router_loss(router_aux_loss, router_z_loss)
-                    loss = aux_loss + z_loss
-                    loss = loss + self._calculate_loss(shift_logits, shift_labels)
+            aux_loss = None
+            if output_router_logits:
+                aux_loss = load_balancing_loss_func(outputs[-1], self.num_experts, self.num_experts_per_tok)
+                if labels is not None:
+                    loss += self.router_aux_loss_coef * aux_loss
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
+                if output_router_logits:
+                    output = (aux_loss,) + output
                 return (loss,) + output if loss is not None else output
 
-            return CausalLMOutputWithPast(
+            return MoeCausalLMOutputWithPast(
                 loss=loss,
+                aux_loss=aux_loss,
                 logits=logits,
-                past_key_values=past_key_values,
-                hidden_states=all_hidden_states,
-                attentions=attentions,
+                past_key_values=None,
+                hidden_states=outputs[0],
+                attentions=None,
+                router_logits=outputs[-1],
             )
         else:
-            hidden_states = outputs["hidden_states"]
-            router_aux_loss = outputs["router_aux_loss"]
-            router_z_loss = outputs["router_z_loss"]
-            return {
-                "hidden_states": hidden_states,
-                "past_router_aux_loss": router_aux_loss,
-                "past_router_z_loss": router_z_loss,
-            }
+            out = {}
+            hidden_states = outputs.get("hidden_states")
+            out["hidden_states"] = hidden_states
+            if output_router_logits:
+                out["past_router_logits"] = outputs["past_router_logits"]
+            return out

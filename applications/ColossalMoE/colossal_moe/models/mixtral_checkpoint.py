@@ -42,6 +42,9 @@ class MixtralMoECheckpointIO(MoECheckpintIO):
                 elif ".w3." in name:
                     model_param_name = name.replace(name[str_idx:], ".experts.wi_up")
                 model_param_name = "module." + model_param_name
+                # skip for pipeline
+                if model_param_name not in model_param_dict:
+                    continue
                 model_param = model_param_dict[model_param_name]
                 assert is_moe_tensor(model_param)
                 # get expert range
@@ -59,8 +62,6 @@ class MixtralMoECheckpointIO(MoECheckpintIO):
                 new_name = "module." + name
                 state_dict[new_name] = state_dict.pop(name)
 
-        for name, param in list(state_dict.items()):
-            assert name in model_param_dict, f"{name} not in model. model param dict: {model_param_dict.keys()}"
         dist.barrier()
         return state_dict
 
@@ -145,7 +146,7 @@ class MixtralMoECheckpointIO(MoECheckpintIO):
             if ".experts." in name:
                 if ".experts.gate_weight" in name:
                     new_name = name.replace(".experts.gate_weight", ".experts.gate.weight")
-                    state_dict[new_name] = state_dict.pop(name)
+                    state_dict[new_name] = state_dict.pop(name).cpu()
                 elif ".experts." in name and is_moe_tensor(param):
                     ep_group = get_ep_group(param)
                     ep_rank = get_ep_rank(param)
@@ -171,6 +172,8 @@ class MixtralMoECheckpointIO(MoECheckpintIO):
                                 new_param = all_param[i].transpose(-1, -2)
                                 state_dict[new_name] = new_param.cpu()
                             state_dict.pop(name)
+                else:
+                    state_dict[name] = param.cpu()
 
         for name, param in list(state_dict.items()):
             new_name = name.replace("module.", "")
@@ -178,12 +181,23 @@ class MixtralMoECheckpointIO(MoECheckpintIO):
 
         if self.pp_size > 1:
             if self.dp_rank == 0:
-                out = [None for _ in range(self.pp_size)]
-                dist.all_gather_object(out, state_dict, group=self.pp_group)
-                if self.pp_rank == 0:
-                    new_state_dict = {}
-                    for o in out:
-                        new_state_dict.update(o)
-                    state_dict = new_state_dict
+                # gather state_dict from every pp rank
+                # because ckpt is large, we split it into 10 parts
+                # and gather them one by one
+                new_state_dict = {}
+                state_dict_keys = list(state_dict.keys())
+                gap_keys = len(state_dict_keys) // 10
+                for i in range(10):
+                    cur_keys = state_dict_keys[(i - 1) * gap_keys : i * gap_keys]
+                    cur_state_dict = {}
+                    for k in cur_keys:
+                        cur_state_dict[k] = state_dict[k]
+                    out = [None for _ in range(self.pp_size)]
+                    dist.all_gather_object(out, cur_state_dict, group=self.pp_group)
+                    if self.pp_rank == 0:
+                        for o in out:
+                            for k, v in o.items():
+                                new_state_dict[k] = v.cpu()
+                state_dict = new_state_dict
         dist.barrier()
         return state_dict

@@ -2,14 +2,10 @@ import argparse
 import os
 
 import torch
-import torch.distributed as dist
 from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
 from colossal_moe.models.mixtral_layer import replace_moe_layer
 from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
 from huggingface_hub import snapshot_download
-
-# from colossalai.nn.optimizer import HybridAdam
-from torch.optim import Adam as HybridAdam
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
@@ -22,6 +18,7 @@ from colossalai.cluster import DistCoordinator
 from colossalai.moe import MOE_MANAGER, apply_load_balance
 from colossalai.moe.layers import apply_load_balance
 from colossalai.moe.manager import MOE_MANAGER
+from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
 
@@ -29,21 +26,15 @@ def move_to_cuda(batch, device):
     return {k: v.to(device) for k, v in batch.items()}
 
 
-def load_ckpt(repo_name: str, model, booster: Booster):
-    ckpt_path = snapshot_download(repo_name)
-    # single ckpt
-    if os.path.exists(os.path.join(ckpt_path, "pytorch_model.bin")):
-        ckpt_path = os.path.join(ckpt_path, "pytorch_model.bin")
-    # shard ckpt
-    elif os.path.exists(os.path.join(ckpt_path, "pytorch_model.bin.index.json")):
-        ckpt_path = os.path.join(ckpt_path, "pytorch_model.bin.index.json")
-    else:
-        raise ValueError(f"Invalid checkpoint path: {ckpt_path}")
+def load_ckpt(ckpt_path: str, model, booster: Booster):
+    if not os.path.exists(os.path.join(ckpt_path, "model.safetensors.index.json")):
+        ckpt_path = snapshot_download(ckpt_path)
+    ckpt_path = os.path.join(ckpt_path, "model.safetensors.index.json")
     booster.load_model(model, ckpt_path)
 
 
 class RandomDataset(Dataset):
-    def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000, tokenizer=None):
+    def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 100, tokenizer=None):
         self.num_samples = num_samples
         self.max_length = max_length
         self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device())
@@ -66,16 +57,15 @@ def parse_args():
     parser.add_argument(
         "--model_name",
         type=str,
-        default="base",
-        choices=["base", "8b", "test"],
+        default="mistralai/Mixtral-8x7B-v0.1",
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
         "--plugin",
         type=str,
         default="hybrid",
-        choices=["ep", "ep_zero", "hybrid"],
-        help="Parallel methos. ep_zero is recommended for general cases. ep can provides least memory consumption and hybrid suits large scale training.",
+        choices=["hybrid"],
+        help="Parallel methods.",
     )
     parser.add_argument(
         "--output_path",
@@ -105,18 +95,6 @@ def parse_args():
     )
     parser.add_argument("--max_length", type=int, default=2048, help="Max sequence length.")
     parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
-    parser.add_argument(
-        "--dataset",
-        type=str,
-        default="yizhongw/self_instruct",
-        help="dataset name from `datasets` repo.",
-    )
-    parser.add_argument(
-        "--task_name",
-        type=str,
-        default="super_natural_instructions",
-        help="task of corresponding dataset.",
-    )
 
     # optim
     parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate.")
@@ -124,10 +102,6 @@ def parse_args():
 
     # zero stage for all plugins
     parser.add_argument("--zero_stage", type=int, default=2, help="zero stage.")
-    # ep_zero plugin
-    parser.add_argument(
-        "--extra_dp_size", type=int, default=1, help="ep_zero plugin's moe dp size. Recommended to be 2 or 4."
-    )
     # hybrid plugin
     parser.add_argument("--pp_size", type=int, default=2, help="pp size for hybrid plugin")
     parser.add_argument("--dp_size", type=int, default=1, help="dp size for hybrid plugin")
@@ -144,24 +118,6 @@ def parse_args():
         "--use_layernorm_kernel",
         action="store_true",
         help="Use layernorm kernel. Need to install apex. Raise error if not installed.",
-    )
-
-    # loss
-    parser.add_argument(
-        "--router_aux_loss_factor",
-        type=float,
-        default=0.01,
-        help="Moe router z loss. You can refer to STMoE for details.",
-    )
-    parser.add_argument(
-        "--router_z_loss_factor",
-        type=float,
-        default=0.0001,
-        help="Moe router aux loss. You can refer to STMoE for details.",
-    )
-    parser.add_argument("--label_smoothing", type=float, default=0.0, help="Label smoothing.")
-    parser.add_argument(
-        "--z_loss_factor", type=float, default=0.0001, help="The final outputs' classification z loss factor."
     )
 
     # load balance
@@ -205,34 +161,7 @@ def main():
         "checkpoint_io": MixtralMoECheckpointIO,
     }
     mgr_dict = {}
-    if args.plugin == "ep":
-        dp_size = dist.get_world_size()
-        plugin = MoeHybridParallelPlugin(
-            pp_size=1,
-            **hybrid_dict,
-        )
-        MOE_MANAGER.setup(
-            parallel="EP",
-            max_ep_size=dp_size,
-            **mgr_dict,
-        )
-    elif args.plugin == "ep_zero":
-        dp_size = dist.get_world_size()
-        use_ep_inside = False
-        plugin = MoeHybridParallelPlugin(
-            pp_size=1,
-            extra_dp_size=args.extra_dp_size,
-            use_ep_inside=use_ep_inside,
-            **hybrid_dict,
-        )
-        MOE_MANAGER.setup(
-            parallel="EP",
-            max_ep_size=dp_size // args.extra_dp_size,
-            use_ep_inside=use_ep_inside,
-            **mgr_dict,
-        )
-    elif args.plugin == "hybrid":
-        dp_size = dist.get_world_size() // args.pp_size
+    if args.plugin == "hybrid":
         plugin = MoeHybridParallelPlugin(
             pp_size=args.pp_size,
             microbatch_size=args.microbatch_size,
@@ -250,42 +179,26 @@ def main():
         raise ValueError(f"Invalid plugin {args.plugin}")
     coordinator.print_on_master(f"Set plugin as {plugin.__class__.__name__}")
 
-    # Build OpenMoe model
-    # config = MixtralConfig(
-    #     hidden_size=2048,
-    #     intermediate_size=4096,
-    #     num_hidden_layers=4,
-    #     num_attention_heads=4,
-    #     num_key_value_heads=4,
-    #     use_cache=False,
-    # )
-    config = MixtralConfig.from_pretrained("mistralai/Mixtral-8x7B-v0.1")
+    # Build Mixtral model
+    config = MixtralConfig.from_pretrained(args.model_name)
     config.use_cache = False
     config.num_local_experts = 1
-    # torch.set_default_tensor_type(torch.float16)
     model = MixtralForCausalLM(config)
+    model.num_experts = 8
     model = model.to(torch.bfloat16) if args.precision == "bf16" else model.to(torch.float16)
     model = model.to(get_current_device())
-    replace_moe_layer(model)
-    # torch.set_default_tensor_type(torch.float32)
-    print(
-        f"0-2 param num: {sum(p.numel() for p in model.parameters())/ 1000.0 ** 3}GB, memory: {torch.cuda.memory_allocated()/ 1000.0 ** 3}GB"
-    )
+    replace_moe_layer(model, enable_kernel=args.use_kernel)
     coordinator.print_on_master(f"Finish init model with config:\n{config}")
 
     # Enable gradient checkpointing
     model.gradient_checkpointing_enable()
 
     # Prepare tokenizer and dataloader
-    tokenizer = AutoTokenizer.from_pretrained("mistralai/Mixtral-8x7B-v0.1")
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     dataset = RandomDataset(num_samples=20, tokenizer=tokenizer)
     collate_fn = None
     dataloader = plugin.prepare_dataloader(
         dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, collate_fn=collate_fn
-    )
-    torch.cuda.synchronize()
-    print(
-        f"1 param num: {sum(p.numel() for p in model.parameters())/ 1000.0 ** 3}GB, memory: {torch.cuda.memory_allocated()/ 1000.0 ** 3}GB"
     )
 
     # Set optimizer
@@ -294,19 +207,13 @@ def main():
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
-    torch.cuda.synchronize()
-    print(
-        f"2-1 param num: {sum(p.numel() for p in model.parameters())/ 1000.0 ** 3}GB, memory: {torch.cuda.memory_allocated()/ 1000.0 ** 3}GB"
-    )
-    load_ckpt("mistralai/Mixtral-8x7B-v0.1", model, booster)
-    torch.cuda.synchronize()
-    print(
-        f"2 param num: {sum(p.numel() for p in model.parameters())/ 1000.0 ** 3}GB, memory: {torch.cuda.memory_allocated()/ 1000.0 ** 3}GB"
-    )
-
     use_pipeline = isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     coordinator.print_on_master(f"Finish init booster")
+
+    # Load ckpt
+    load_ckpt(args.model_name, model, booster)
+    coordinator.print_on_master(f"Finish load checkpoint")
 
     # Start finetuning
     coordinator.print_on_master(f"Start finetuning")
@@ -340,16 +247,8 @@ def main():
                     data = move_to_cuda(data, torch.cuda.current_device())
                     outputs = model(**data)
                     loss = outputs["loss"]
-                    print(
-                        f"3 param num: {sum(p.numel() for p in model.parameters())/ 1000.0 ** 3}GB, memory: {torch.cuda.memory_allocated()/ 1000.0 ** 3}GB"
-                    )
-
                     # Backward
                     booster.backward(loss, optimizer)
-                    print(
-                        f"4 param num: {sum(p.numel() for p in model.parameters())/ 1000.0 ** 3}GB, memory: {torch.cuda.memory_allocated()/ 1000.0 ** 3}GB"
-                    )
-
                     pbar.set_postfix({"loss": loss.item()})
 
                 optimizer.step()

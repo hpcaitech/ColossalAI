@@ -26,13 +26,10 @@ def move_to_cuda(batch, device):
     return batch
 
 
-def load_ckpt(repo_name: str, model, booster: Booster):
-    ckpt_path = snapshot_download(repo_name)
-    # shard ckpt
-    if os.path.exists(os.path.join(ckpt_path, "model.safetensors.index.json")):
-        ckpt_path = os.path.join(ckpt_path, "model.safetensors.index.json")
-    else:
-        raise ValueError(f"Invalid checkpoint path: {ckpt_path}")
+def load_ckpt(ckpt_path: str, model, booster: Booster):
+    if not os.path.exists(os.path.join(ckpt_path, "model.safetensors.index.json")):
+        ckpt_path = snapshot_download(ckpt_path)
+    ckpt_path = os.path.join(ckpt_path, "model.safetensors.index.json")
     booster.load_model(model, ckpt_path)
 
 
@@ -42,8 +39,7 @@ def parse_args():
     parser.add_argument(
         "--model_name",
         type=str,
-        default="8x7b",
-        choices=["8x7b"],
+        default="mistralai/Mixtral-8x7B-v0.1",
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -118,8 +114,7 @@ def main():
     coordinator.print_on_master(f"Set plugin as {plugin.__class__.__name__}")
 
     # Build mixtral model
-    model_name = "mistralai/Mixtral-8x7B-v0.1"
-    config = MixtralConfig.from_pretrained(model_name)
+    config = MixtralConfig.from_pretrained(args.model_name)
     config.num_local_experts = 1  # dont change this. it will not affect model
     with skip_init():
         model = MixtralForCausalLM(config)
@@ -134,7 +129,7 @@ def main():
     coordinator.print_on_master(f"Finish replace moe module")
 
     # Prepare tokenizer and dataloader
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
@@ -142,10 +137,10 @@ def main():
     coordinator.print_on_master(f"Finish init booster")
 
     # load ckpt
-    load_ckpt(model_name, model, booster)
+    load_ckpt(args.model_name, model, booster)
     coordinator.print_on_master(f"Finish load ckpt")
 
-    text = ["Hello my name is"]
+    text = ["Hello my name is", "1+1=?"]
     tokenizer.pad_token = tokenizer.unk_token
     inputs = tokenizer(text, return_tensors="pt", padding=True).to(torch.cuda.current_device())
     outputs = model.module.generate(**inputs, max_new_tokens=20)

@@ -18,7 +18,7 @@ class MixtralSparseMLP:
         )
 
     @staticmethod
-    def from_native_module(module: MixtralSparseMoeBlock, *args, **kwargs) -> nn.Module:
+    def from_native_module(module: MixtralSparseMoeBlock, enable_kernel: bool) -> nn.Module:
         r"""
         Convert a native pytorch layer norm module to FusedLayerNorm module provided by apex,
         and optionally marking parameters for gradient aggregation.
@@ -52,7 +52,7 @@ class MixtralSparseMLP:
                 # load_balance_tolerance = .
                 # load_balance_beam_width = .
                 # load_balance_group_swap_factor = .
-                # enable_kernel = .
+                enable_kernel=enable_kernel,
                 # enable_comm_overlap = .
                 # enable_hierarchical_comm = .
                 return_gate_logits=True,
@@ -64,7 +64,7 @@ class MixtralSparseMLP:
         return sparse_mlp
 
 
-def replace_moe_layer(model: nn.Module) -> nn.Module:
+def replace_moe_layer(model: nn.Module, enable_kernel: bool = False) -> nn.Module:
     """
     Reverse the replace layer operation
 
@@ -72,7 +72,9 @@ def replace_moe_layer(model: nn.Module) -> nn.Module:
         module (torch.nn.Module): The object of layer to shard
     """
     if isinstance(model, MixtralDecoderLayer):
-        model.block_sparse_moe = MixtralSparseMLP.from_native_module(model.block_sparse_moe)
+        model.block_sparse_moe = MixtralSparseMLP.from_native_module(
+            model.block_sparse_moe, enable_kernel=enable_kernel
+        )
     else:
         for _, child in model.named_children():
-            replace_moe_layer(child)
+            replace_moe_layer(child, enable_kernel)

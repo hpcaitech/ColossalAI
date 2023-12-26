@@ -1,38 +1,19 @@
-
-
 NUM_GPU=8
-MODEL="8b"
+MODEL="/home/zhaoxuanlei/.cache/huggingface/hub/models--mistralai--Mixtral-8x7B-v0.1/snapshots/58301445dc1378584211722b7ebf8743ec4e192b"
 SEQ_LENGTH=2048
 BATCH_SIZE=1
 LR=0.00001
 
-# ep zero
-# torchrun --standalone --nproc_per_node $NUM_GPU train.py \
-#     --num_epoch 1 \
-#     --model_name $MODEL \
-#     --plugin "ep_zero" \
-#     --batch_size $BATCH_SIZE \
-#     --lr $LR \
-#     --zero_stage 2 \
-#     --extra_dp_size 2
-
-# ep
-torchrun --standalone --nproc_per_node $NUM_GPU train.py \
+# hybrid
+# torchrun --standalone --nproc_per_node $NUM_GPU \
+colossalai run --nproc_per_node $NUM_GPU --hostfile "hostfile" \
+    train.py \
     --num_epoch 1 \
     --model_name $MODEL \
-    --plugin "ep" \
+    --plugin "hybrid" \
     --batch_size $BATCH_SIZE \
     --lr $LR \
-    --zero_stage 2
-
-# hybrid
-# torchrun --standalone --nproc_per_node $NUM_GPU train.py \
-#     --num_epoch 1 \
-#     --model_name $MODEL \
-#     --plugin "hybrid" \
-#     --batch_size $BATCH_SIZE \
-#     --lr $LR \
-#     --zero_stage 1 \
-#     --pp_size 2 \
-#     --dp_size 1 \
-#     --ep_size 2 \
+    --zero_stage 1 \
+    --pp_size 2 \
+    --dp_size 1 \
+    --ep_size 8 \
