@@ -142,38 +142,37 @@ class MixtralMoECheckpointIO(MoECheckpintIO):
     @torch.no_grad()
     def pre_save_model(self, model: nn.Module) -> dict:
         state_dict = model.state_dict()
-        for name, param in model.named_parameters():
-            if ".experts." in name:
-                if ".experts.gate_weight" in name:
-                    new_name = name.replace(".experts.gate_weight", ".experts.gate.weight")
-                    state_dict[new_name] = state_dict.pop(name).cpu()
-                elif ".experts." in name and is_moe_tensor(param):
-                    ep_group = get_ep_group(param)
-                    ep_rank = get_ep_rank(param)
-                    ep_size = get_ep_size(param)
-                    dp_rank = get_dp_rank(param)
+        for name, param in list(model.named_parameters()):
+            if ".gate_weight" in name:
+                new_name = name.replace(".gate_weight", ".gate.weight")
+                state_dict[new_name] = state_dict.pop(name).cpu()
+            elif ".experts." in name:
+                ep_group = get_ep_group(param)
+                ep_rank = get_ep_rank(param)
+                ep_size = get_ep_size(param)
+                dp_rank = get_dp_rank(param)
 
-                    if dp_rank == 0:
-                        param = param.data.cuda()
-                        all_param = [torch.zeros_like(param) for _ in range(ep_size)]
-                        # gather param from every ep rank
-                        dist.all_gather(all_param, param, group=ep_group)
-                        if ep_rank == 0:
-                            all_param = torch.cat(all_param, dim=0)
-                            assert all_param.shape[0] == 8
-                            for i in range(8):
-                                if ".wi_gate" in name:
-                                    new_name = name.replace(".experts.wi_gate", f".experts.{i}.w1.weight")
-                                elif ".wi_up" in name:
-                                    new_name = name.replace(".experts.wi_up", f".experts.{i}.w3.weight")
-                                elif ".wo" in name:
-                                    new_name = name.replace(".experts.wo", f".experts.{i}.w2.weight")
-                                new_name = new_name.replace("module.", "")
-                                new_param = all_param[i].transpose(-1, -2)
-                                state_dict[new_name] = new_param.cpu()
-                            state_dict.pop(name)
-                else:
-                    state_dict[name] = param.cpu()
+                if dp_rank == 0:
+                    param = param.data.cuda()
+                    all_param = [torch.zeros_like(param) for _ in range(ep_size)]
+                    # gather param from every ep rank
+                    dist.all_gather(all_param, param, group=ep_group)
+                    if ep_rank == 0:
+                        all_param = torch.cat(all_param, dim=0)
+                        assert all_param.shape[0] == 8
+                        for i in range(8):
+                            if ".wi_gate" in name:
+                                new_name = name.replace(".experts.wi_gate", f".experts.{i}.w1.weight")
+                            elif ".wi_up" in name:
+                                new_name = name.replace(".experts.wi_up", f".experts.{i}.w3.weight")
+                            elif ".wo" in name:
+                                new_name = name.replace(".experts.wo", f".experts.{i}.w2.weight")
+                            new_name = new_name.replace("module.", "")
+                            new_param = all_param[i].transpose(-1, -2)
+                            state_dict[new_name] = new_param.cpu()
+                        state_dict.pop(name)
+            else:
+                state_dict[name] = param.cpu()
 
         for name, param in list(state_dict.items()):
             new_name = name.replace("module.", "")
@@ -186,9 +185,9 @@ class MixtralMoECheckpointIO(MoECheckpintIO):
                 # and gather them one by one
                 new_state_dict = {}
                 state_dict_keys = list(state_dict.keys())
-                gap_keys = len(state_dict_keys) // 10
+                gap_keys = len(state_dict_keys) // 10 + 1
                 for i in range(10):
-                    cur_keys = state_dict_keys[(i - 1) * gap_keys : i * gap_keys]
+                    cur_keys = state_dict_keys[i * gap_keys : (i + 1) * gap_keys]
                     cur_state_dict = {}
                     for k in cur_keys:
                         cur_state_dict[k] = state_dict[k]

@@ -1,11 +1,11 @@
 import os
 import shutil
-import sys
 
 import pytest
 import torch
 import torch.distributed as dist
 from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
+from colossal_moe.models.mixtral_layer import replace_moe_layer
 from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
 from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
 
@@ -15,13 +15,6 @@ from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParall
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.testing import DummyDataloader, check_state_dict_equal, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
-
-sys.path.append(
-    os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        "examples/language/openmoe",
-    )
-)
 
 
 def data_gen_fn(batch_size: int = 2, max_length: int = 4, vocab_size: int = 20):
@@ -71,7 +64,7 @@ def get_config():
     config = MixtralConfig(
         vocab_size=300,
         hidden_size=32,
-        intermediate_size=128,
+        intermediate_size=16,
         num_hidden_layers=2,
         dropout_rate=0.0,
     )
@@ -81,6 +74,7 @@ def get_config():
 def get_model(parallel):
     config = get_config()
     model = MixtralForCausalLM(config).to(torch.bfloat16)
+    replace_moe_layer(model)
     optim = torch.optim.Adam(model.parameters())
     args = dict(
         precision="bf16",
@@ -89,20 +83,9 @@ def get_model(parallel):
         custom_policy=MixtralForCausalLMPolicy(),
         checkpoint_io=MixtralMoECheckpointIO,
     )
-    if parallel == None:
+    if parallel == "ep":
         plugin = MoeHybridParallelPlugin(
             pp_size=1,
-            **args,
-        )
-    elif parallel == "ep":
-        plugin = MoeHybridParallelPlugin(
-            pp_size=1,
-            **args,
-        )
-    elif parallel == "ep_zero":
-        plugin = MoeHybridParallelPlugin(
-            pp_size=1,
-            extra_dp_size=2,
             **args,
         )
     elif parallel == "hybrid":
@@ -117,6 +100,13 @@ def get_model(parallel):
 
 
 def _test_moe_checkpoint(parallel):
+    if dist.get_rank() == 0:
+        if os.path.exists("./tmp_ckpt1"):
+            shutil.rmtree("./tmp_ckpt1")
+        if os.path.exists("./tmp_ckpt2"):
+            shutil.rmtree("./tmp_ckpt2")
+    dist.barrier()
+
     if parallel == None:
         MOE_MANAGER.setup(
             parallel=None,
@@ -124,11 +114,6 @@ def _test_moe_checkpoint(parallel):
     elif parallel == "ep":
         MOE_MANAGER.setup(
             parallel="EP",
-        )
-    elif parallel == "ep_zero":
-        MOE_MANAGER.setup(
-            parallel="EP",
-            max_ep_size=2,
         )
     elif parallel == "hybrid":
         MOE_MANAGER.setup(
@@ -184,11 +169,11 @@ def _run_dist(rank, world_size, port, parallel):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
-@pytest.mark.parametrize("parallel", ["ep", "ep_zero"])
+@pytest.mark.parametrize("parallel", ["ep", "hybrid"])
 @rerun_if_address_is_in_use()
 def test_moe_checkpoint(world_size, parallel):
     spawn(_run_dist, world_size, parallel=parallel)
 
 
 if __name__ == "__main__":
-    test_moe_checkpoint(world_size=4, parallel="ep")
+    test_moe_checkpoint(world_size=4, parallel="hybrid")

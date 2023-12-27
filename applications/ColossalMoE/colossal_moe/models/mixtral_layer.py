@@ -44,17 +44,17 @@ class MixtralSparseMLP:
                 router_top_k=module.top_k,
                 router_norm=True,
                 router_loss=False,
-                # router_capacity_factor_train = .
-                # router_capacity_factor_eval = .
+                # router_capacity_factor_train=
+                # router_capacity_factor_eval=
                 mlp_activation="silu",
                 mlp_gated=True,
-                # enable_load_balance = .
-                # load_balance_tolerance = .
-                # load_balance_beam_width = .
-                # load_balance_group_swap_factor = .
+                # enable_load_balance=
+                # load_balance_tolerance=
+                # load_balance_beam_width=
+                # load_balance_group_swap_factor=
                 enable_kernel=enable_kernel,
-                # enable_comm_overlap = .
-                # enable_hierarchical_comm = .
+                # enable_comm_overlap=
+                # enable_hierarchical_comm=
                 return_gate_logits=True,
             )
             dtype = module.gate.weight.dtype
