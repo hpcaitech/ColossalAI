@@ -110,10 +110,9 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
         ctx.process_group = process_group
         ctx.async_grad_allreduce = async_grad_allreduce
 
+        output = torch.matmul(input_, weight.t())
         if bias is not None:
-            output = F.linear(input_, weight, bias)
-        else:
-            output = F.linear(input_, weight)
+            output = output + bias
 
         return output
 
@@ -171,10 +170,9 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
 
         input_parallel = _gather(input_, dim, process_group)
 
+        output = torch.matmul(input_parallel, weight.t())
         if bias is not None:
-            output = F.linear(input_parallel, weight, bias)
-        else:
-            output = F.linear(input_parallel, weight)
+            output = output + bias
 
         return output
 
