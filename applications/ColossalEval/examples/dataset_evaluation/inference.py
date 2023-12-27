@@ -11,6 +11,8 @@ import colossalai
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.logging import get_dist_logger
 from colossalai.shardformer import ShardConfig
+from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
+from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
 
 logger = get_dist_logger()
 
@@ -112,6 +114,21 @@ def main(args):
         else None
     )
 
+    moe_config = (
+        {
+            "tp_size": args.tp_size,
+            "ep_size": args.ep_size,
+            "custom_policy": MixtralForCausalLMPolicy(),
+            "enable_fused_normalization": False,
+            "enable_jit_fused": False,
+            "precision": "fp32",
+            "checkpoint_io": MixtralMoECheckpointIO,
+            "zero_stage": 1,
+        }
+        if args.ep_size > 1
+        else None
+    )
+
     inference_data = {}
     dataset_classes = {}
     debug_args = {}
@@ -185,6 +202,10 @@ def main(args):
         paramerters.update({"logger": logger})
         paramerters.update({"prompt_template": utils.prompt_templates[paramerters["prompt_template"]]})
         paramerters.update({"shard_config": shard_config})
+        paramerters.update({"moe_config": moe_config})
+
+        if rank == 0:
+            logger.info(f"Model Parameter: {paramerters}")
 
         model_ = model_class(**paramerters)
         if not issubclass(model_class, models.BaseModel):
@@ -253,6 +274,7 @@ if __name__ == "__main__":
     parser.add_argument("--load_dataset", default=False, action="store_true")
     parser.add_argument("--inference_save_path", type=str, default=None, help="path to save inference results")
     parser.add_argument("--tp_size", type=int, default=1, help="tensor parallel size, used for large model inference")
+    parser.add_argument("--ep_size", type=int, default=1, help="export parallel size, used for MOE model inference")
     args = parser.parse_args()
 
     main(args)
