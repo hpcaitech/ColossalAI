@@ -61,10 +61,10 @@ def torch_attn_unpad(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, context_
 
 @pytest.mark.skipif(not (HAS_TRITON and TRITON_CUDA_SUPPORT), reason="requires triton")
 @clear_cache_before_run()
-@parameterize("bsz", [4])
+@parameterize("bsz", [4, 7, 9])
 @parameterize("block_size", [32])
-@parameterize("max_num_blocks_per_seq", [10])
-@parameterize("same_context_len", [True])
+@parameterize("max_num_blocks_per_seq", [7, 10])
+@parameterize("same_context_len", [True, False])
 def test_context_attention(bsz, block_size, max_num_blocks_per_seq, same_context_len):
     torch.manual_seed(123)
 
@@ -84,7 +84,8 @@ def test_context_attention(bsz, block_size, max_num_blocks_per_seq, same_context
         context_lengths = torch.tensor([max_seq_len for _ in range(num_seqs)], dtype=torch.int32, device=device)
     else:
         context_lengths = torch.randint(low=1, high=max_seq_len, size=(num_seqs,), dtype=torch.int32, device=device)
-    print("context_lengths: \n", context_lengths)
+    # print(f"{bsz}/{block_size}/{max_num_blocks_per_seq}/{same_context_len}===========================================")
+    # print("context_lengths: \n", context_lengths)
     num_tokens = torch.sum(context_lengths).item()
 
     qkv = torch.randn(size=(num_tokens, num_heads + 2 * num_kv_heads, head_size), dtype=dtype, device=device)
@@ -101,8 +102,6 @@ def test_context_attention(bsz, block_size, max_num_blocks_per_seq, same_context
     block_tables = torch.full(size=(num_seqs, max_num_blocks_per_seq), fill_value=-1, dtype=torch.int32)
     num_tokens_processed = 0
     for i, seq_len in enumerate(context_lengths.tolist()):
-        # print(f">> iter {i}, seq len: {seq_len}")
-
         right_bound = (seq_len + block_size - 1) // block_size  # open bound
         block_tables[i, :right_bound] = torch.arange(block_id, block_id + right_bound, dtype=torch.int32)
         # manually fill k_cache_torch and v_cache_torch by copying from k and v
@@ -114,40 +113,25 @@ def test_context_attention(bsz, block_size, max_num_blocks_per_seq, same_context
             k_block = k[num_tokens_processed : num_tokens_processed + allocated_locs, :, :].permute(1, 2, 0)
             v_block = v[num_tokens_processed : num_tokens_processed + allocated_locs, :, :].permute(1, 2, 0)
 
-            # print("  k_block shape: ", k_block.shape, k_block.size())
-            # 占位不满的情况
             cur_block_size_occupied = k_block.shape[-1]
             assert cur_block_size_occupied <= block_size
-            k_cache_torch[block_id, :, :, :cur_block_size_occupied] = k_block  # .clone().contiguous()
-            v_cache_torch[block_id, :, :, :cur_block_size_occupied] = v_block  # .clone().contiguous()
+            k_cache_torch[block_id, :, :, :cur_block_size_occupied] = k_block
+            v_cache_torch[block_id, :, :, :cur_block_size_occupied] = v_block
 
             num_tokens_processed += allocated_locs
             block_id += 1
-            # print(f"block_id: {block_id}, num_tokens: {num_tokens_processed}, k_cache_torch size: ", k_cache_torch.size())
 
     block_tables = block_tables.to(device=device)
 
     out_torch = torch_attn_unpad(q, k, v, context_lengths)
-    print(block_tables)
+    # print(block_tables)
     out_triton = context_attention_unpadded(
         q, k, v, k_cache_triton, v_cache_triton, context_lengths, block_tables, block_size
     )
 
-    print("Out shapes:\n", out_torch.shape, out_triton.shape)
-
     assert torch.allclose(out_torch, out_triton, atol=1e-2, rtol=1e-3)
-
-    print("torch k cache shape: ", k_cache_torch.shape)
-    print("triton k cache shape: ", k_cache_triton.shape)
-
-    for block_idx in range(k_cache_torch.shape[0]):
-        print(f" block_idx {block_idx}")
-        print(k_cache_torch[block_idx])
-        print(k_cache_triton[block_idx])
-        assert torch.allclose(k_cache_torch[block_idx], k_cache_triton[block_idx], atol=1e-2, rtol=1e-3)
     assert torch.allclose(k_cache_torch, k_cache_triton)
-
-    # assert torch.allclose(v_cache_torch, v_cache_triton)
+    assert torch.allclose(v_cache_torch, v_cache_triton)
 
 
 if __name__ == "__main__":

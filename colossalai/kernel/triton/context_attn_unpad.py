@@ -41,7 +41,6 @@ def _fwd_context_paged_attention_kernel(
     sm_scale,
     # blocks_allocated,
     H: tl.constexpr,
-    MAX_BLOCKS_PER_SEQ: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     MAX_SEQ_LEN: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,  # head_size, or head_dim (synonym)
@@ -53,6 +52,10 @@ def _fwd_context_paged_attention_kernel(
     block_start_m = tl.program_id(2)  # Br, 这个打不满，max_input_len // Block_M
     # Only consider MHA for llama for now
     # cur_kv_head_idx = cur_head_idx
+
+    # NOTE It requires BLOCK_M, BLOCK_N, and BLOCK_SIZE to be the same
+    tl.static_assert(BLOCK_M == BLOCK_N)
+    tl.static_assert(BLOCK_N == BLOCK_SIZE)
 
     # get the current sequence length from provided context lengths tensor
     cur_seq_len = tl.load(context_lengths + cur_seq_idx)
@@ -68,7 +71,7 @@ def _fwd_context_paged_attention_kernel(
     qkv_offset = prev_seq_len_sum.to(tl.int64) * stride_qt + cur_head_idx.to(tl.int64) * stride_qh
     Q_block_ptr = tl.make_block_ptr(
         base=Q + qkv_offset,
-        shape=(MAX_SEQ_LEN, BLOCK_DMODEL),  # 大几率超出当前seq范围 需要用boundary_check
+        shape=(MAX_SEQ_LEN, BLOCK_DMODEL),
         strides=(stride_qt, stride_qd),
         offsets=(block_start_m * BLOCK_M, 0),
         block_shape=(BLOCK_M, BLOCK_DMODEL),
@@ -104,31 +107,7 @@ def _fwd_context_paged_attention_kernel(
     # FIXME hack requires BLOCK_M == BLOCK_N == BLOCK_SIZE
     cur_block_table_idx = block_start_m  # block indexes on block table (i.e. 0, 1, 2, ..., max_blocks_per_seq)
     cur_block_id = tl.load(block_table_ptr + cur_block_table_idx * stride_btb)
-    # cur_block_id = tl.load(BLOCK_TABLES + cur_seq_idx * stride_bts + cur_block_table_idx * stride_btb)
-    prev_block_id = cur_block_id
-
-    # last_kv_block_idx = tl.load(BLOCK_TABLES + cur_seq_idx * stride_bts + blocks_allocated * stride_btb)
-    # is_kvcache_contiguous = tl.where(last_kv_block_idx - first_kv_block_idx + 1 == blocks_allocated , 1, 0)
-    # num_blocks_per_blockN = BLOCK_N // BLOCK_SIZE
-
-    # cur_block_id = first_kv_block_idx.to(tl.int64)
     kvcache_offset = cur_block_id * stride_cacheb + cur_head_idx * stride_cacheh
-    KCache_block_ptr = tl.make_block_ptr(
-        base=KCache + kvcache_offset,
-        shape=(BLOCK_DMODEL, BLOCK_SIZE),
-        strides=(stride_cached, stride_cachebs),
-        offsets=(0, 0),
-        block_shape=(BLOCK_DMODEL, BLOCK_SIZE),
-        order=(0, 1),
-    )
-    VCache_block_ptr = tl.make_block_ptr(
-        base=VCache + kvcache_offset,
-        shape=(BLOCK_DMODEL, BLOCK_SIZE),
-        strides=(stride_cached, stride_cachebs),
-        offsets=(0, 0),
-        block_shape=(BLOCK_DMODEL, BLOCK_SIZE),
-        order=(0, 1),
-    )
 
     offsets_m = block_start_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offsets_n = tl.arange(0, BLOCK_N)
@@ -164,23 +143,34 @@ def _fwd_context_paged_attention_kernel(
         acc += tl.dot(p_ij_hat, v)
         l_i = l_ij
         m_i = m_ij
-        V_block_ptr = tl.advance(V_block_ptr, (BLOCK_N, 0))
         K_block_ptr = tl.advance(K_block_ptr, (0, BLOCK_N))
-
-        # Copy k/v to corresponding cache blocks one by one
-        # cur_block_id = tl.load(block_table_ptr + cur_block_table_idx * stride_btb)
-        inc_on_cache_bs_axis = (cur_block_id - prev_block_id + 1) * stride_cacheh * stride_cached
-        KCache_block_ptr = tl.advance(KCache_block_ptr, (0, inc_on_cache_bs_axis))
-        VCache_block_ptr = tl.advance(VCache_block_ptr, (0, inc_on_cache_bs_axis))
-        tl.store(KCache_block_ptr, k.to(KCache.type.element_ty))
-        # tl.store(VCache_block_ptr, v.to(VCache.type.element_ty), boundary_check=(1, 0))
-
-        prev_block_id = cur_block_id
-        cur_block_table_idx += 1
-        cur_block_id = tl.load(block_table_ptr + cur_block_table_idx * stride_btb)
+        V_block_ptr = tl.advance(V_block_ptr, (BLOCK_N, 0))
 
     acc = acc / l_i[:, None]
     tl.store(O_block_ptr, acc.to(O.type.element_ty), boundary_check=(1, 0))
+
+    # Copy k to corresponding cache block
+    kd_offsets = tl.arange(0, BLOCK_DMODEL)
+    kt_offsets = block_start_m * BLOCK_M + tl.arange(0, BLOCK_M)  # % dimension M (not passed in)
+    k_offsets = K + qkv_offset + kd_offsets[:, None] * stride_kd + kt_offsets[None, :] * stride_kt
+    k = tl.load(k_offsets, mask=kt_offsets[None, :] < cur_seq_len, other=0.0)
+    kcached_offsets = tl.arange(0, BLOCK_DMODEL)
+    kcachebs_offsets = tl.arange(0, BLOCK_SIZE)
+    kcache_offsets = (
+        KCache + kvcache_offset + kcached_offsets[:, None] * stride_cached + kcachebs_offsets[None, :] * stride_cachebs
+    )
+    tl.store(kcache_offsets, k, mask=kcachebs_offsets[None, :] < cur_seq_len - block_start_m * BLOCK_SIZE)
+    # Copy v to corresponding cache block
+    vd_offsets = kd_offsets
+    vt_offsets = block_start_m * BLOCK_N + tl.arange(0, BLOCK_N)  # % dimension N (not passed in)
+    v_offsets = V + qkv_offset + vt_offsets[:, None] * stride_vt + vd_offsets[None, :] * stride_vd
+    v = tl.load(v_offsets, mask=vt_offsets[:, None] < cur_seq_len, other=0.0)
+    vcached_offsets = kcached_offsets
+    vcachebs_offsets = kcachebs_offsets
+    vcache_offsets = (
+        VCache + kvcache_offset + vcachebs_offsets[:, None] * stride_cachebs + vcached_offsets[None, :] * stride_cached
+    )
+    tl.store(vcache_offsets, v, mask=vcachebs_offsets[:, None] < cur_seq_len - block_start_m * BLOCK_SIZE)
 
     return
 
@@ -217,15 +207,11 @@ def context_attention_unpadded(
 
     output = torch.zeros_like(q)
 
-    # TODO We might want to add autotune for BLOCK_M and BLOCK_N
     # FIXME For now, BLOCK_N is supposed to be equivalent with the size of physical cache block
-    BLOCK_M = BLOCK_N = 32
-    assert BLOCK_N == block_size
-    assert BLOCK_N in {16, 32}
+    assert block_size in {16, 32, 64, 128}
+    BLOCK_M = BLOCK_N = block_size
 
     grid = (num_seqs, num_heads, triton.cdiv(max_seq_len, BLOCK_M))
-
-    print(f"grid: {num_seqs}, {num_heads}, {triton.cdiv(max_seq_len, BLOCK_M)}")
 
     _fwd_context_paged_attention_kernel[grid](
         q,
@@ -257,7 +243,6 @@ def context_attention_unpadded(
         sm_scale,
         # num_blocks_allocated,
         num_heads,
-        max_blocks_per_seq,
         block_size,
         MAX_SEQ_LEN=max_seq_len,
         BLOCK_DMODEL=Lk,
