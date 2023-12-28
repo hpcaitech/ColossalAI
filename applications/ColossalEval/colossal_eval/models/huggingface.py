@@ -575,7 +575,7 @@ class HuggingFaceCausalLM(HuggingFaceModel):
     """
 
     def _load_model(
-        self, path: str, model_kwargs: dict, peft_path: Optional[str] = None, shard_config: ShardConfig = None
+        self, path: str, model_kwargs: dict, peft_path: Optional[str] = None, shard_config: ShardConfig = None, moe_config = None
     ):
         """
         Load model.

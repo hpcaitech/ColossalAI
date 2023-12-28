@@ -16,6 +16,7 @@ from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
 
 logger = get_dist_logger()
 
+DUMMY_INPUT = "[dummy]"
 
 def rm_and_merge(
     dp_size: int,
@@ -219,10 +220,33 @@ def main(args):
 
                 if few_shot_args[dataset_name] and category_data["inference_kwargs"].get("few_shot_data", None) is None:
                     raise Exception(f"Dataset {dataset_name} doesn't have few-shot data for category {category}!")
-
-                answers_to_dump = copy.deepcopy(category_data)
+                
+    
+                sample_len = len(category_data["data"])
+                print("Original Len:", sample_len)
                 partition_size = len(category_data["data"]) // dp_size
                 redundant = len(category_data["data"]) % dp_size
+
+                if redundant != 0:
+                    dummy_to_add = dp_size - redundant
+                    for _ in range(dummy_to_add):
+                        # dummy data to avoid redundant
+                        category_data["data"].append(
+                            {
+                                "dataset": category_data["data"][0]["dataset"],
+                                "split": category_data["data"][0]["split"],
+                                "category": category_data["data"][0]["category"],
+                                "instruction": category_data["data"][0]["instruction"],
+                                "input": DUMMY_INPUT,
+                                "output": "",
+                                "target": "A"
+                            }
+                        )
+                    partition_size = len(category_data["data"]) // dp_size
+                    redundant = len(category_data["data"]) % dp_size
+                    assert redundant == 0
+
+                answers_to_dump = copy.deepcopy(category_data)
 
                 # Ensure that the amount of data for inference is as consistent as possible across different processes.
                 lengths = [partition_size for _ in range(dp_size)]
@@ -244,6 +268,8 @@ def main(args):
                     )
                     prev_questions = answers_per_rank
 
+                answers_per_rank = [ans for ans in answers_per_rank if ans["input"] != DUMMY_INPUT]
+                
                 answers_to_dump["data"] = answers_per_rank
 
                 if tp_rank == 0:
