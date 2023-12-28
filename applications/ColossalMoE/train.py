@@ -224,7 +224,7 @@ def main():
         with tqdm(
             range(total_len),
             desc=f"Epoch [{epoch + 1}/{args.num_epoch}]",
-            disable=not coordinator.is_master(),
+            disable=not coordinator.is_master() if use_pipeline == False else not is_pp_last_stage,
         ) as pbar:
             for step in pbar:
                 if use_pipeline:
