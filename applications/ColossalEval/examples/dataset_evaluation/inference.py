@@ -223,7 +223,7 @@ def main(args):
                 
     
                 sample_len = len(category_data["data"])
-                print("Original Len:", sample_len)
+
                 partition_size = len(category_data["data"]) // dp_size
                 redundant = len(category_data["data"]) % dp_size
 
