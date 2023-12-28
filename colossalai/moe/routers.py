@@ -149,7 +149,14 @@ class Top1Router(MoeRouter):
                 low=torch.tensor(0.0, device=get_current_device()), high=torch.tensor(1.0, device=get_current_device())
             ).rsample
 
-    def forward(self, inputs: torch.Tensor, use_kernel: bool = False, ep_group: Optional[ProcessGroup] = None) -> Tuple:
+    def forward(
+        self,
+        inputs: torch.Tensor,
+        use_kernel: bool = False,
+        ep_group: Optional[ProcessGroup] = None,
+        use_loss: bool = False,
+        use_norm: bool = False,
+    ) -> Tuple:
         """
         Args:
             inputs (torch.Tensor): The input tensor of shape (batch_size * seq_len, num_experts).
