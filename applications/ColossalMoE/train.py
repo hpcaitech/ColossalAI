@@ -235,6 +235,7 @@ def main():
     # Load ckpt
     load_ckpt(args.model_name, model, booster)
     optimizer.sync_moe_master_param()
+    optimizer.update_master_params(model)
     coordinator.print_on_master(f"Finish load checkpoint")
 
     # Start finetuning
