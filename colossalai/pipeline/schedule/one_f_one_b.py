@@ -177,6 +177,8 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             next_rank (int, optional): The rank of the recipient of the tensor.
         """
         if not self.stage_manager.is_last_stage():
+            if not self.send_metadata_forward and self.metadata_recv_backward is not None:
+                send_prior_fallback = None  # must not fallback
             output_tensor_grad = self.comm.send_forward_recv_backward(
                 output_object,
                 next_rank,
@@ -201,6 +203,8 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             prev_rank (int, optional): The rank of the recipient of the tensor.
         """
         if not self.stage_manager.is_first_stage():
+            if not self.send_metadata_backward and self.metadata_recv_forward is not None:
+                send_prior_fallback = None  # must not fallback
             input_tensor = self.comm.send_backward_recv_forward(
                 output_object,
                 prev_rank,
