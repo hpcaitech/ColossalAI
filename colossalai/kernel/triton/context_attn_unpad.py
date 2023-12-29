@@ -63,7 +63,7 @@ def _fwd_context_paged_attention_kernel(
     # we assume that the input Q/K/V is contiguous, and thus here `prev_seq_len_sum`
     # could be considered as the start index of the current sequence.
     # FIXME might want to explore better way to get the summation of prev seq lengths.
-    # `tl.sum(tensor[:end])` is invalid as tensor slice is not supported.
+    # `tl.sum(tensor[:end])` is invalid as tensor slice is not supported in triton.
     prev_seq_len_sum = 0
     for i in range(0, cur_seq_idx):
         prev_seq_len_sum += tl.load(context_lengths + i)
@@ -207,7 +207,7 @@ def context_attention_unpadded(
 
     output = torch.zeros_like(q)
 
-    # FIXME For now, BLOCK_N is supposed to be equivalent with the size of physical cache block
+    # FIXME For now, BLOCK_M and BLOCK_N are supposed to be equivalent with the size of physical cache block
     assert block_size in {16, 32, 64, 128}
     BLOCK_M = BLOCK_N = block_size
 
