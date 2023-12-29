@@ -603,10 +603,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # update param for moe ep
         # move grad to master param and compute norm
         if len(self.working_moe_params) > 0:
-            if self._sync_master_param == False:
-                for master_moe_param, working_moe_param in zip(self.master_moe_params, self.working_moe_params):
-                    master_moe_param.data = working_moe_param.data.clone().to(torch.float32).detach()
-                self._sync_master_param = True
             moe_grads = []
             for master_moe_param, working_moe_param in zip(self.master_moe_params, self.working_moe_params):
                 if master_moe_param.grad is not None:
@@ -666,6 +662,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     dist.all_gather(all_splited_param, splited_param.to(device).to(self._dtype), group=self.dp_pg)
                 working_param.data.copy_(flatten(all_splited_param)[: working_param.numel()].reshape_as(working_param))
             self.optim.param_groups[group_id]["params"] = self._master_param_groups_of_current_rank[group_id]
+
+    def sync_moe_master_param(self):
+        for master_moe_param, working_moe_param in zip(self.master_moe_params, self.working_moe_params):
+            master_moe_param.data = working_moe_param.data.clone().to(torch.float32).detach()
 
     def _compute_grad_norm(self, gradients: List[Tensor], norm_type: int = 2) -> float:
         r"""
