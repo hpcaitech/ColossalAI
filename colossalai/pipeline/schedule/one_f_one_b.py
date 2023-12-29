@@ -94,7 +94,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
                 self.send_metadata_backward = True
                 self.metadata_recv_forward = None
                 self.metadata_recv_backward = None
-            
+
         self.last_batch_size = self.batch_size
 
     def load_micro_batch(self) -> Any:
@@ -166,7 +166,9 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             self.comm.send_backward(input_object, prev_rank, send_metadata=self.send_metadata_backward)
             self.send_metadata_backward = not self.enable_metadata_cache
 
-    def send_forward_recv_backward(self, output_object: Any, next_rank: int = None) -> Any:
+    def send_forward_recv_backward(
+        self, output_object: Any, next_rank: int = None, send_prior_fallback: Optional[bool] = None
+    ) -> Any:
         """Sends the input tensor to the next stage and copy the gradient tensor from the next stage in pipeline.
            For 1F1B.
 
@@ -180,6 +182,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
                 next_rank,
                 send_metadata=self.send_metadata_forward,
                 metadata_recv=self.metadata_recv_backward,
+                send_prior_fallback=send_prior_fallback,
             )
             self.send_metadata_forward = not self.enable_metadata_cache
             if self.enable_metadata_cache and self.metadata_recv_backward is None:
@@ -187,7 +190,9 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
 
             return output_tensor_grad
 
-    def send_backward_recv_forward(self, output_object: Any, prev_rank: int = None) -> Any:
+    def send_backward_recv_forward(
+        self, output_object: Any, prev_rank: int = None, send_prior_fallback: Optional[bool] = None
+    ) -> Any:
         """Sends the gradient tensor to the previous stage and copy the input tensor from the previous stage in pipeline.
            For 1F1B.
 
@@ -201,6 +206,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
                 prev_rank,
                 send_metadata=self.send_metadata_backward,
                 metadata_recv=self.metadata_recv_forward,
+                send_prior_fallback=send_prior_fallback,
             )
             self.send_metadata_backward = not self.enable_metadata_cache
             if self.enable_metadata_cache and self.metadata_recv_forward is None:
@@ -365,7 +371,9 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             last_iteration = i == (num_microbatches_remaining - 1)
 
             output_obj = self.forward_step(model, input_obj, criterion, accum_loss, outputs)
-            output_obj_grad = self.send_forward_recv_backward(output_obj)
+            output_obj_grad = self.send_forward_recv_backward(
+                output_obj, send_prior_fallback=self.stage_manager.stage % 2 == 0
+            )
             # Add input_obj and output_obj to end of list.
             input_objs.append(input_obj)
             output_objs.append(output_obj)
@@ -379,7 +387,9 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             if last_iteration:
                 self.send_backward(input_obj_grad)
             else:
-                input_obj = self.send_backward_recv_forward(input_obj_grad)
+                input_obj = self.send_backward_recv_forward(
+                    input_obj_grad, send_prior_fallback=self.stage_manager.stage % 2 == 0
+                )
 
         # Run cooldown backward passes.
         for i in range(num_warmup_microbatches):
