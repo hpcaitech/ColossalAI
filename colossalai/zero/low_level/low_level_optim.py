@@ -173,13 +173,14 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # if there are moe params, store in addtional group in optim
         if len(self.working_moe_params) > 0:
+            self._sync_master_param = False
             param_group = dict()
             for key, value in self.optim.param_groups[0].items():
                 if key != "params":
                     param_group[key] = value
             self.master_moe_params = []
             for param in self.working_moe_params:
-                self.master_moe_params.append(param.to(torch.float32))
+                self.master_moe_params.append(param.clone().to(torch.float32).detach())
             param_group["params"] = self.master_moe_params
             self.optim.param_groups.append(param_group)
 
@@ -602,6 +603,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # update param for moe ep
         # move grad to master param and compute norm
         if len(self.working_moe_params) > 0:
+            if self._sync_master_param == False:
+                for master_moe_param, working_moe_param in zip(self.master_moe_params, self.working_moe_params):
+                    master_moe_param.data = working_moe_param.data.clone().to(torch.float32).detach()
+                self._sync_master_param = True
             moe_grads = []
             for master_moe_param, working_moe_param in zip(self.master_moe_params, self.working_moe_params):
                 if master_moe_param.grad is not None:

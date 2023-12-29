@@ -209,6 +209,7 @@ def main():
     model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
     use_pipeline = isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
+    pp_print_rank = is_pp_last_stage and (coordinator.local_rank == "0")
     coordinator.print_on_master(f"Finish init booster")
 
     # Load ckpt
@@ -224,7 +225,7 @@ def main():
         with tqdm(
             range(total_len),
             desc=f"Epoch [{epoch + 1}/{args.num_epoch}]",
-            disable=not coordinator.is_master() if use_pipeline == False else not is_pp_last_stage,
+            disable=not coordinator.is_master() if use_pipeline == False else not pp_print_rank,
         ) as pbar:
             for step in pbar:
                 if use_pipeline:
@@ -238,7 +239,7 @@ def main():
                         return_outputs=True,
                     )
                     # Backward and optimize
-                    if is_pp_last_stage:
+                    if pp_print_rank:
                         loss = outputs["loss"]
                         pbar.set_postfix({"loss": loss.item()})
                 else:
