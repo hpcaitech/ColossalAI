@@ -41,10 +41,10 @@ class InterleavedSchedule(PipelineSchedule):
 
         # P2PMeta cache
         self.enable_metadata_cache = enable_metadata_cache
-        self.send_metadata_forward = True
-        self.send_metadata_backward = True
-        self.metadata_recv_forward = None
-        self.metadata_recv_backward = None
+        self.send_tensor_metadata = True
+        self.send_grad_metadata = True
+        self.tensor_metadata_recv = None
+        self.grad_metadata_recv = None
 
     def load_batch(self, data_iter: Iterable, device: Optional[torch.device] = None) -> None:
         """Load a batch from data iterator.
@@ -77,10 +77,10 @@ class InterleavedSchedule(PipelineSchedule):
             # NOTE: disable metadata cache when batch size changes (not valid anymore)
             if self.batch_size != self.last_batch_size:
                 self.enable_metadata_cache = False
-                self.send_metadata_forward = True
-                self.send_metadata_backward = True
-                self.metadata_recv_forward = None
-                self.metadata_recv_backward = None
+                self.send_tensor_metadata = True
+                self.send_grad_metadata = True
+                self.tensor_metadata_recv = None
+                self.grad_metadata_recv = None
 
         self.last_batch_size = self.batch_size
 
@@ -128,9 +128,9 @@ class InterleavedSchedule(PipelineSchedule):
         """
         with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if not self.stage_manager.is_first_stage():
-                input_tensor = self.comm.recv_forward(prev_rank, metadata_recv=self.metadata_recv_forward)
-                if self.enable_metadata_cache and self.metadata_recv_forward is None:
-                    self.metadata_recv_forward = create_fast_send_metadata(input_tensor)
+                input_tensor = self.comm.recv_forward(prev_rank, metadata_recv=self.tensor_metadata_recv)
+                if self.enable_metadata_cache and self.tensor_metadata_recv is None:
+                    self.tensor_metadata_recv = create_fast_send_metadata(input_tensor)
 
                 return input_tensor
 
@@ -147,13 +147,13 @@ class InterleavedSchedule(PipelineSchedule):
         """
         with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if not self.stage_manager.is_last_stage():
-                output_tensor_grad = self.comm.recv_backward(next_rank, metadata_recv=self.metadata_recv_backward)
-                if self.enable_metadata_cache and self.metadata_recv_backward is None:
-                    self.metadata_recv_backward = create_fast_send_metadata(output_tensor_grad)
+                output_tensor_grad = self.comm.recv_backward(next_rank, metadata_recv=self.grad_metadata_recv)
+                if self.enable_metadata_cache and self.grad_metadata_recv is None:
+                    self.grad_metadata_recv = create_fast_send_metadata(output_tensor_grad)
 
                 return output_tensor_grad
 
-    def send_forward(self, model_chunk_id: int, output_object: Any, next_rank: int = None) -> None:
+    def send_forward(self, model_chunk_id: int, output_tensor: Any, next_rank: int = None) -> None:
         """Sends the input tensor to the next stage in pipeline.
            For interleaved 1F1B.
 
@@ -164,10 +164,10 @@ class InterleavedSchedule(PipelineSchedule):
         """
         with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if not self.stage_manager.is_last_stage():
-                self.comm.send_forward(output_object, next_rank, send_metadata=self.send_metadata_forward)
-                self.send_metadata_forward = not self.enable_metadata_cache
+                self.comm.send_forward(output_tensor, next_rank, send_metadata=self.send_tensor_metadata)
+                self.send_tensor_metadata = not self.enable_metadata_cache
 
-    def send_backward(self, model_chunk_id: int, input_object: Any, prev_rank: int = None) -> None:
+    def send_backward(self, model_chunk_id: int, input_tensor_grad: Any, prev_rank: int = None) -> None:
         """Sends the gradient tensor to the previous stage in pipeline.
            For interleaved 1F1B.
 
@@ -178,14 +178,14 @@ class InterleavedSchedule(PipelineSchedule):
         """
         with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if not self.stage_manager.is_first_stage():
-                self.comm.send_backward(input_object, prev_rank, send_metadata=self.send_metadata_backward)
-                self.send_metadata_backward = not self.enable_metadata_cache
+                self.comm.send_backward(input_tensor_grad, prev_rank, send_metadata=self.send_grad_metadata)
+                self.send_grad_metadata = not self.enable_metadata_cache
 
     def send_forward_recv_backward(
         self,
         model_chunk_id_send: int,
         model_chunk_id_recv: int,
-        output_object: Any,
+        output_tensor: Any,
         next_rank: Optional[int] = None,
         send_prior_fallback: Optional[bool] = None,
     ) -> Any:
@@ -195,29 +195,29 @@ class InterleavedSchedule(PipelineSchedule):
             recv_data = not self.stage_manager.is_last_stage()
 
         if send_data and recv_data:
+            if not self.send_forward_recv_backward and self.grad_metadata_recv is not None:
+                send_prior_fallback = None  # must not fallback
             output_tensor_grad = self.comm.send_forward_recv_backward(
-                output_object,
+                output_tensor,
                 next_rank,
-                send_metadata=self.send_metadata_forward,
-                metadata_recv=self.metadata_recv_backward,
+                send_metadata=self.send_tensor_metadata,
+                metadata_recv=self.grad_metadata_recv,
                 send_prior_fallback=send_prior_fallback,
             )
-            self.send_metadata_forward = not self.enable_metadata_cache
-            if self.enable_metadata_cache and self.metadata_recv_backward is None:
-                self.metadata_recv_backward = create_fast_send_metadata(output_tensor_grad)
+            self.send_tensor_metadata = not self.enable_metadata_cache
+            if self.enable_metadata_cache and self.grad_metadata_recv is None:
+                self.grad_metadata_recv = create_fast_send_metadata(output_tensor_grad)
             return output_tensor_grad
 
-        elif send_data:
-            return self.send_forward(model_chunk_id_send, output_object)
-
-        elif recv_data:
-            return self.recv_backward(model_chunk_id_recv)
+        # send only or recv only
+        self.send_forward(model_chunk_id_send, output_tensor)
+        return self.recv_backward(model_chunk_id_recv)
 
     def send_backward_recv_forward(
         self,
         model_chunk_id_send: int,
         model_chunk_id_recv: int,
-        output_object: Any,
+        input_tensor_grad: Any,
         prev_rank: Optional[int] = None,
         send_prior_fallback: Optional[bool] = None,
     ) -> Any:
@@ -227,47 +227,47 @@ class InterleavedSchedule(PipelineSchedule):
             recv_data = not self.stage_manager.is_first_stage()
 
         if send_data and recv_data:
+            if not self.send_backward_recv_backward and self.tensor_metadata_recv is not None:
+                send_prior_fallback = None  # must not fallback
             input_tensor = self.comm.send_backward_recv_forward(
-                output_object,
+                input_tensor_grad,
                 prev_rank,
-                send_metadata=self.send_metadata_backward,
-                metadata_recv=self.metadata_recv_forward,
+                send_metadata=self.send_grad_metadata,
+                metadata_recv=self.tensor_metadata_recv,
                 send_prior_fallback=send_prior_fallback,
             )
-            self.send_metadata_backward = not self.enable_metadata_cache
-            if self.enable_metadata_cache and self.metadata_recv_forward is None:
-                self.metadata_recv_forward = create_fast_send_metadata(input_tensor)
+            self.send_grad_metadata = not self.enable_metadata_cache
+            if self.enable_metadata_cache and self.tensor_metadata_recv is None:
+                self.tensor_metadata_recv = create_fast_send_metadata(input_tensor)
             return input_tensor
 
-        elif send_data:
-            return self.send_backward(model_chunk_id_send, output_object)
-
-        elif recv_data:
-            return self.recv_forward(model_chunk_id_recv)
+        # send only or recv only
+        self.send_backward(model_chunk_id_send, input_tensor_grad)
+        return self.recv_forward(model_chunk_id_recv)
 
     def send_forward_recv_forward(
-        self, model_chunk_id_send: int, model_chunk_id_recv: int, output_obj: Any, send_prior: bool
+        self, model_chunk_id_send: int, model_chunk_id_recv: int, output_tensor: Any, send_prior: bool
     ):
         if send_prior:
-            self.send_forward(model_chunk_id_send, output_obj)
-            input_obj = self.recv_forward(model_chunk_id_recv)
+            self.send_forward(model_chunk_id_send, output_tensor)
+            input_tensor = self.recv_forward(model_chunk_id_recv)
         else:
-            input_obj = self.recv_forward(model_chunk_id_recv)
-            self.send_forward(model_chunk_id_send, output_obj)
+            input_tensor = self.recv_forward(model_chunk_id_recv)
+            self.send_forward(model_chunk_id_send, output_tensor)
 
-        return input_obj
+        return input_tensor
 
     def send_backward_recv_backward(
-        self, model_chunk_id_send: int, model_chunk_id_recv: int, output_obj: Any, send_prior: bool
+        self, model_chunk_id_send: int, model_chunk_id_recv: int, input_tensor_grad: Any, send_prior: bool
     ):
         if send_prior:
-            self.send_backward(model_chunk_id_send, output_obj)
-            input_obj = self.recv_backward(model_chunk_id_recv)
+            self.send_backward(model_chunk_id_send, input_tensor_grad)
+            output_tensor_grad = self.recv_backward(model_chunk_id_recv)
         else:
-            input_obj = self.recv_backward(model_chunk_id_recv)
-            self.send_backward(model_chunk_id_send, output_obj)
+            output_tensor_grad = self.recv_backward(model_chunk_id_recv)
+            self.send_backward(model_chunk_id_send, input_tensor_grad)
 
-        return input_obj
+        return output_tensor_grad
 
     def forward_step(
         self,
@@ -388,7 +388,7 @@ class InterleavedSchedule(PipelineSchedule):
                 input_obj = self.send_forward_recv_forward(
                     model_chunk_id_send=model_chunk_id,
                     model_chunk_id_recv=self.get_model_chunk_id(i + 1, is_forward=True),
-                    output_obj=output_obj,
+                    output_tensor=output_obj,
                     send_prior=self.stage_manager.stage % 2 == 0,
                 )
             else:
@@ -447,7 +447,7 @@ class InterleavedSchedule(PipelineSchedule):
                 input_obj = self.send_forward_recv_forward(
                     model_chunk_id_send=model_chunk_id,
                     model_chunk_id_recv=self.get_model_chunk_id(i + 1, is_forward=True),
-                    output_obj=output_obj,
+                    output_tensor=output_obj,
                     send_prior=self.stage_manager.stage % 2 == 0,
                 )
 
@@ -472,27 +472,38 @@ class InterleavedSchedule(PipelineSchedule):
             input_obj_grad = self.backward_step(optimizer, _input_obj, _output_obj, output_obj_grad)
 
             # NOTE: perform 2x communication for forward and backward
-            if last_iteration and num_microbatch == num_microbatch_remaining:
-                model_chunk_id = self.get_model_chunk_id(i + num_warmup_microbatch, is_forward=True)
-                self.send_forward(model_chunk_id, output_obj)
-            else:
-                output_obj_grad = self.send_forward_recv_backward(
-                    model_chunk_id_send=self.get_model_chunk_id(i + num_warmup_microbatch, is_forward=True),
-                    model_chunk_id_recv=self.get_model_chunk_id(i + 1, is_forward=False),
-                    output_object=output_obj,
-                    send_prior_fallback=self.stage_manager.stage % 2 == 0,
-                )
+            def send_forward_recv_backward():
+                if last_iteration and num_microbatch == num_microbatch_remaining:
+                    model_chunk_id = self.get_model_chunk_id(i + num_warmup_microbatch, is_forward=True)
+                    self.send_forward(model_chunk_id, output_obj)
+                else:
+                    output_obj_grad = self.send_forward_recv_backward(
+                        model_chunk_id_send=self.get_model_chunk_id(i + num_warmup_microbatch, is_forward=True),
+                        model_chunk_id_recv=self.get_model_chunk_id(i + 1, is_forward=False),
+                        output_tensor=output_obj,
+                        send_prior_fallback=self.stage_manager.stage % 2 == 0,
+                    )
+                    return output_obj_grad
 
-            if last_iteration:
-                model_chunk_id = self.get_model_chunk_id(i, is_forward=False)
-                self.send_backward(model_chunk_id, input_obj_grad)
+            def send_backward_recv_forward():
+                if last_iteration:
+                    model_chunk_id = self.get_model_chunk_id(i, is_forward=False)
+                    self.send_backward(model_chunk_id, input_obj_grad)
+                else:
+                    input_obj = self.send_backward_recv_forward(
+                        model_chunk_id_send=self.get_model_chunk_id(i, is_forward=False),
+                        model_chunk_id_recv=self.get_model_chunk_id(i + num_warmup_microbatch + 1, is_forward=True),
+                        input_tensor_grad=input_obj_grad,
+                        send_prior_fallback=self.stage_manager.stage % 2 == 0 and i > 0,
+                    )
+                    return input_obj
+
+            if self.stage_manager.stage % 2 == 0:
+                output_obj_grad = send_forward_recv_backward()
+                input_obj = send_backward_recv_forward()
             else:
-                input_obj = self.send_backward_recv_forward(
-                    model_chunk_id_send=self.get_model_chunk_id(i, is_forward=False),
-                    model_chunk_id_recv=self.get_model_chunk_id(i + num_warmup_microbatch + 1, is_forward=True),
-                    output_object=input_obj_grad,
-                    send_prior_fallback=self.stage_manager.stage % 2 == 0,
-                )
+                input_obj = send_backward_recv_forward()
+                output_obj_grad = send_forward_recv_backward()
 
         if num_microbatch_remaining == 0:
             model_chunk_id = self.get_model_chunk_id(0, is_forward=False)
@@ -508,10 +519,10 @@ class InterleavedSchedule(PipelineSchedule):
             input_obj_grad = self.backward_step(optimizer, _input_obj, _output_obj, output_obj_grad)
 
             if not last_iteration:
-                self.send_backward_recv_backward(
+                output_obj_grad = self.send_backward_recv_backward(
                     model_chunk_id_send=self.get_model_chunk_id(i, is_forward=False),
                     model_chunk_id_recv=self.get_model_chunk_id(i + 1, is_forward=False),
-                    output_obj=input_obj_grad,
+                    input_tensor_grad=input_obj_grad,
                     send_prior=self.stage_manager.stage % 2 == 0,
                 )
             else:
