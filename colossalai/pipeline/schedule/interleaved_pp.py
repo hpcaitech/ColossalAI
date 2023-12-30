@@ -432,7 +432,6 @@ class InterleavedSchedule(PipelineSchedule):
 
         model_chunk_id = self.get_model_chunk_id(0, is_forward=True)
         input_obj = self.recv_forward(model_chunk_id)
-
         # Run warmup forward passes.
         for i in range(num_warmup_microbatch):
             last_iteration = i == num_warmup_microbatch - 1
@@ -508,7 +507,6 @@ class InterleavedSchedule(PipelineSchedule):
         if num_microbatch_remaining == 0:
             model_chunk_id = self.get_model_chunk_id(0, is_forward=False)
             output_obj_grad = self.recv_backward(model_chunk_id)
-
         # Run cooldown backward passes.
         for i in range(num_microbatch_remaining, num_microbatch):
             last_iteration = i == num_microbatch - 1
@@ -523,7 +521,7 @@ class InterleavedSchedule(PipelineSchedule):
                     model_chunk_id_send=self.get_model_chunk_id(i, is_forward=False),
                     model_chunk_id_recv=self.get_model_chunk_id(i + 1, is_forward=False),
                     input_tensor_grad=input_obj_grad,
-                    send_prior=self.stage_manager.stage % 2 == 0,
+                    send_prior=self.stage_manager.stage % 2 == 0 and i > num_microbatch_remaining,
                 )
             else:
                 model_chunk_id = self.get_model_chunk_id(i, is_forward=False)
