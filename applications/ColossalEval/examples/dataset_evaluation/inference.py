@@ -1,6 +1,7 @@
 import argparse
 import copy
 import os
+from os import walk
 from typing import Dict, List
 
 import torch
@@ -213,10 +214,21 @@ def main(args):
         if not issubclass(model_class, models.BaseModel):
             raise ValueError(f"Model class {model_parameter['model_class']} is not a subclass of BaseModel.")
 
+        existing_categories = next(walk(os.path.join(args.inference_save_path, model_name)), (None, None, []))[2]
         for dataset_name, split_data in inference_data.items():
             start = 0
             prev_questions = None
             for category, category_data in split_data.items():
+                category_to_check = f"{dataset_name}_{category}"
+
+                if any(
+                    existing_category
+                    for existing_category in existing_categories
+                    if existing_category.startswith(category_to_check)
+                ):
+                    logger.info(f"Dataset: {dataset_name}, Category: {category} has already existed. Skip.")
+                    continue
+
                 num_turn = category_data["inference_kwargs"].get("turns", 1)
 
                 if few_shot_args[dataset_name] and category_data["inference_kwargs"].get("few_shot_data", None) is None:
@@ -267,7 +279,7 @@ def main(args):
                     prev_questions = answers_per_rank
 
                 if moe_config is not None:
-                    answers_per_rank = [ans for ans in answers_per_rank if ans["input"] != DUMMY_INPUT]      
+                    answers_per_rank = [ans for ans in answers_per_rank if ans["input"] != DUMMY_INPUT]
 
                 answers_to_dump["data"] = answers_per_rank
 
