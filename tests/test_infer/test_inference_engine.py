@@ -28,6 +28,7 @@ def check_inference_engine():
     generation_config = GenerationConfig(top_k=2, top_p=0.8, do_sample=True)
     outputs = inference_engine.generate(generation_config)
 
+    print("len(outputs): ", len(outputs))
     print("outputs: ", outputs)
 
     # Engine still gets some bug

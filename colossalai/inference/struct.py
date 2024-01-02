@@ -106,7 +106,7 @@ class Sequence:
             return True
 
         if self.output_token_id:
-            if self.output_token_id[-1] >= self.eos_token_id or len(self.output_token_id) == self.max_output_len:
+            if self.output_token_id[-1] == self.eos_token_id or self.output_len >= self.max_output_len:
                 self.status = RequestStatus.COMPLETED
                 return True
 
