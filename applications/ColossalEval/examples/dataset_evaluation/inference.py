@@ -6,17 +6,18 @@ from typing import Dict, List
 import torch
 import torch.distributed as dist
 from colossal_eval import dataset, models, utils
+from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
+from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
 
 import colossalai
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.logging import get_dist_logger
 from colossalai.shardformer import ShardConfig
-from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
-from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
 
 logger = get_dist_logger()
 
 DUMMY_INPUT = "[dummy]"
+
 
 def rm_and_merge(
     dp_size: int,
@@ -220,9 +221,8 @@ def main(args):
 
                 if few_shot_args[dataset_name] and category_data["inference_kwargs"].get("few_shot_data", None) is None:
                     raise Exception(f"Dataset {dataset_name} doesn't have few-shot data for category {category}!")
-                
-    
-                sample_len = len(category_data["data"])
+
+                len(category_data["data"])
 
                 partition_size = len(category_data["data"]) // dp_size
                 redundant = len(category_data["data"]) % dp_size
@@ -239,7 +239,7 @@ def main(args):
                                 "instruction": category_data["data"][0]["instruction"],
                                 "input": DUMMY_INPUT,
                                 "output": "",
-                                "target": "A"
+                                "target": "A",
                             }
                         )
                     partition_size = len(category_data["data"]) // dp_size
@@ -269,7 +269,7 @@ def main(args):
                     prev_questions = answers_per_rank
 
                 answers_per_rank = [ans for ans in answers_per_rank if ans["input"] != DUMMY_INPUT]
-                
+
                 answers_to_dump["data"] = answers_per_rank
 
                 if tp_rank == 0:

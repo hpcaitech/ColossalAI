@@ -1,24 +1,24 @@
-
 import os
 from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
+from colossal_moe.models.mixtral_layer import replace_moe_layer
 from peft import PeftModel
 from transformers import AutoConfig, AutoModelForCausalLM
-
-from colossalai.shardformer import ShardConfig
-from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
-from colossal_moe.models.mixtral_layer import replace_moe_layer
-from colossalai.moe.utils import skip_init
-from colossalai.moe import MOE_MANAGER
-from colossalai.cluster import DistCoordinator
+
 from colossalai.booster import Booster
+from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
+from colossalai.cluster import DistCoordinator
+from colossalai.moe import MOE_MANAGER
+from colossalai.moe.utils import skip_init
+from colossalai.shardformer import ShardConfig
 
 from .huggingface import HuggingFaceModel
 
 IGNORE_INDEX = -100
+
 
 class MixtralModel(HuggingFaceModel):
     """
@@ -39,7 +39,12 @@ class MixtralModel(HuggingFaceModel):
     """
 
     def _load_model(
-        self, path: str, model_kwargs: dict, peft_path: Optional[str] = None, shard_config: ShardConfig = None, moe_config: dict = None
+        self,
+        path: str,
+        model_kwargs: dict,
+        peft_path: Optional[str] = None,
+        shard_config: ShardConfig = None,
+        moe_config: dict = None,
     ):
         """
         Load model.
@@ -58,7 +63,7 @@ class MixtralModel(HuggingFaceModel):
 
         if "config" in model_kwargs:
             model_kwargs["config"] = AutoConfig.from_pretrained(model_kwargs["config"])
-    
+
         if moe_config is not None:
             coordinator = DistCoordinator()
 
@@ -100,7 +105,7 @@ class MixtralModel(HuggingFaceModel):
                 self.model = PeftModel.from_pretrained(self.model, peft_path, is_trainable=False)
 
         self.model.eval()
-    
+
     @torch.no_grad()
     def generate(self, inputs: List[str], max_new_tokens: int, **kwargs) -> List[str]:
         """Generate results given a list of inputs and get logits of the first new token over choices.
@@ -191,9 +196,9 @@ class MixtralModel(HuggingFaceModel):
             batch_first=True,
             padding_value=IGNORE_INDEX,
         )  # (bsz, max_len)
-        
-        labels = torch.flip(reversed_labels, dims=(1,)).to(torch.cuda.current_device())  # (bsz, max_len) 
-        
+
+        labels = torch.flip(reversed_labels, dims=(1,)).to(torch.cuda.current_device())  # (bsz, max_len)
+
         # Padding to model max length
         to_pad = self.model_max_length - input_ids.size(1)
         input_ids = F.pad(input_ids, (to_pad, 0), value=self.tokenizer.pad_token_id)

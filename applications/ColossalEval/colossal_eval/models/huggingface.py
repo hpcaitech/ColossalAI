@@ -58,7 +58,9 @@ class HuggingFaceModel(BaseModel):
         )
         self._load_tokenizer(path=path, tokenizer_path=tokenizer_path, tokenizer_kwargs=tokenizer_kwargs)
 
-        self._load_model(path=path, model_kwargs=model_kwargs, peft_path=peft_path, shard_config=shard_config, moe_config=moe_config)
+        self._load_model(
+            path=path, model_kwargs=model_kwargs, peft_path=peft_path, shard_config=shard_config, moe_config=moe_config
+        )
 
     def _get_choices_indices(self, language: str):
         """
@@ -105,7 +107,12 @@ class HuggingFaceModel(BaseModel):
                 self.tokenizer.pad_token_id = self.tokenizer.eod_id
 
     def _load_model(
-        self, path: str, model_kwargs: dict, peft_path: Optional[str] = None, shard_config: ShardConfig = None, moe_config: dict = None
+        self,
+        path: str,
+        model_kwargs: dict,
+        peft_path: Optional[str] = None,
+        shard_config: ShardConfig = None,
+        moe_config: dict = None,
     ):
         """
         Load model.
@@ -575,7 +582,12 @@ class HuggingFaceCausalLM(HuggingFaceModel):
     """
 
     def _load_model(
-        self, path: str, model_kwargs: dict, peft_path: Optional[str] = None, shard_config: ShardConfig = None, moe_config = None
+        self,
+        path: str,
+        model_kwargs: dict,
+        peft_path: Optional[str] = None,
+        shard_config: ShardConfig = None,
+        moe_config=None,
     ):
         """
         Load model.
