@@ -10,6 +10,7 @@ import triton
 import triton.language as tl
 
 
+# Triton 2.1.0
 @triton.jit
 def _fwd_context_paged_attention_kernel(
     Q,
@@ -42,14 +43,13 @@ def _fwd_context_paged_attention_kernel(
     # blocks_allocated,
     H: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
-    MAX_SEQ_LEN: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,  # head_size, or head_dim (synonym)
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     cur_seq_idx = tl.program_id(0)
     cur_head_idx = tl.program_id(1)
-    block_start_m = tl.program_id(2)  # Br, 这个打不满，max_input_len // Block_M
+    block_start_m = tl.program_id(2)  # Br, max_input_len // Block_M
     # Only consider MHA for llama for now
     # cur_kv_head_idx = cur_head_idx
 
@@ -207,7 +207,8 @@ def context_attention_unpadded(
 
     output = torch.zeros_like(q)
 
-    # FIXME For now, BLOCK_M and BLOCK_N are supposed to be equivalent with the size of physical cache block
+    # FIXME For now, BLOCK_M and BLOCK_N are supposed to be equivalent with
+    # the size of physical cache block (i.e. `block_size`)
     assert block_size in {16, 32, 64, 128}
     BLOCK_M = BLOCK_N = block_size
 
@@ -244,7 +245,6 @@ def context_attention_unpadded(
         # num_blocks_allocated,
         num_heads,
         block_size,
-        MAX_SEQ_LEN=max_seq_len,
         BLOCK_DMODEL=Lk,
         BLOCK_M=BLOCK_M,
         BLOCK_N=BLOCK_N,
