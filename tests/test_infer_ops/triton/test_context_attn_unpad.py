@@ -57,9 +57,9 @@ def torch_attn_unpad(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, context_
 
 
 @pytest.mark.skipif(not (HAS_TRITON and TRITON_CUDA_SUPPORT), reason="requires triton")
-@pytest.mark.parametrize("bsz", [4, 7, 9])
-@pytest.mark.parametrize("block_size", [16, 32])
-@pytest.mark.parametrize("max_num_blocks_per_seq", [7, 10])
+@pytest.mark.parametrize("bsz", [4, 7, 32])
+@pytest.mark.parametrize("block_size", [16, 32, 64])
+@pytest.mark.parametrize("max_num_blocks_per_seq", [7, 10, 32])
 @pytest.mark.parametrize("same_context_len", [True, False])
 def test_context_attention(bsz: int, block_size: int, max_num_blocks_per_seq: int, same_context_len: bool):
     torch.manual_seed(123)

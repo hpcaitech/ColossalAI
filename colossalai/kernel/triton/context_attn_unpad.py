@@ -71,7 +71,7 @@ def _fwd_context_paged_attention_kernel(
     qkv_offset = prev_seq_len_sum.to(tl.int64) * stride_qt + cur_head_idx.to(tl.int64) * stride_qh
     Q_block_ptr = tl.make_block_ptr(
         base=Q + qkv_offset,
-        shape=(MAX_SEQ_LEN, BLOCK_DMODEL),
+        shape=(cur_seq_len, BLOCK_DMODEL),
         strides=(stride_qt, stride_qd),
         offsets=(block_start_m * BLOCK_M, 0),
         block_shape=(BLOCK_M, BLOCK_DMODEL),
@@ -79,7 +79,7 @@ def _fwd_context_paged_attention_kernel(
     )
     K_block_ptr = tl.make_block_ptr(
         base=K + qkv_offset,
-        shape=(BLOCK_DMODEL, MAX_SEQ_LEN),
+        shape=(BLOCK_DMODEL, cur_seq_len),
         strides=(stride_kd, stride_kt),
         offsets=(0, 0),
         block_shape=(BLOCK_DMODEL, BLOCK_N),
@@ -87,7 +87,7 @@ def _fwd_context_paged_attention_kernel(
     )
     V_block_ptr = tl.make_block_ptr(
         base=V + qkv_offset,
-        shape=(MAX_SEQ_LEN, BLOCK_DMODEL),
+        shape=(cur_seq_len, BLOCK_DMODEL),
         strides=(stride_vt, stride_vd),
         offsets=(0, 0),
         block_shape=(BLOCK_N, BLOCK_DMODEL),
