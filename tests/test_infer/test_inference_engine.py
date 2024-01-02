@@ -44,7 +44,7 @@ def run_dist(rank, world_size, port):
     check_inference_engine(True)
     check_inference_engine(False)
 
-    # TODO: There are some in sampler
+    # TODO: There are some bugs in sampler.
     # for s1, s2 in zip(cai_outputs, transformer_outputs):
     #     assert s1 == s2
 
