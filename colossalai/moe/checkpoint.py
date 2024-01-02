@@ -224,6 +224,7 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
             size_per_shard (int, optional): Size per shard in MB. Defaults to 1024.
             use_safetensors (bool, optional): Whether to use safe tensors. Defaults to False.
         """
+        torch.cuda.empty_cache()
         if os.path.isfile(checkpoint):
             logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
             return
@@ -265,6 +266,7 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
                         f"index located at {save_index_file}."
                     )
         dist.barrier()
+        torch.cuda.empty_cache()
 
     # ========================================================
     # Abstract methods for optimizer loading/saving implementation

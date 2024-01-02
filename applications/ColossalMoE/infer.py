@@ -6,7 +6,6 @@ import torch.distributed as dist
 from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
 from colossal_moe.models.mixtral_layer import replace_moe_layer
 from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
-from huggingface_hub import snapshot_download
 from transformers import AutoTokenizer
 from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
 
@@ -17,20 +16,7 @@ from colossalai.cluster import DistCoordinator
 from colossalai.moe import MOE_MANAGER
 from colossalai.moe.utils import skip_init
 from colossalai.utils import get_current_device
-
-
-def move_to_cuda(batch, device):
-    for k, v in batch.items():
-        if isinstance(v, torch.Tensor):
-            batch[k] = v.to(device)
-    return batch
-
-
-def load_ckpt(ckpt_path: str, model, booster: Booster):
-    if not os.path.exists(os.path.join(ckpt_path, "model.safetensors.index.json")):
-        ckpt_path = snapshot_download(ckpt_path)
-    ckpt_path = os.path.join(ckpt_path, "model.safetensors.index.json")
-    booster.load_model(model, ckpt_path)
+from colossal_moe.utils import load_ckpt
 
 
 def parse_args():
@@ -118,6 +104,7 @@ def main():
     config.num_local_experts = 1  # dont change this. it will not affect model
     with skip_init():
         model = MixtralForCausalLM(config)
+    model.num_experts = 8
     model = model.to(torch.bfloat16) if args.precision == "bf16" else model.to(torch.float16)
     model = model.to(get_current_device())
     coordinator.print_on_master(f"Finish init model with config:\n{config}")

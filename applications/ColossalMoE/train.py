@@ -1,11 +1,11 @@
 import argparse
-import os
+import torch.distributed as dist
 
 import torch
 from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
 from colossal_moe.models.mixtral_layer import replace_moe_layer
 from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
-from huggingface_hub import snapshot_download
+from colossal_moe.utils import load_ckpt, move_to_cuda
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
@@ -23,16 +23,13 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
 
-def move_to_cuda(batch, device):
-    return {k: v.to(device) for k, v in batch.items()}
 
-
-def load_ckpt(ckpt_path: str, model, booster: Booster):
-    if not os.path.exists(os.path.join(ckpt_path, "model.safetensors.index.json")):
-        ckpt_path = snapshot_download(ckpt_path)
-    ckpt_path = os.path.join(ckpt_path, "model.safetensors.index.json")
-    booster.load_model(model, ckpt_path)
-
+@torch.no_grad()
+def get_global_loss(loss, booster):
+    global_loss = loss.clone().detach()
+    dist.all_reduce(tensor=global_loss, op=dist.ReduceOp.SUM, group=booster.plugin.dp_group)
+    global_loss.div_(booster.plugin.dp_size)
+    return global_loss
 
 class RandomDataset(Dataset):
     def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 100, tokenizer=None):
@@ -207,7 +204,13 @@ def main():
     )
 
     # Set optimizer
-    optimizer = HybridAdam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = HybridAdam(
+        model_params=model.parameters(),
+        lr=args.lr,
+        betas=(0.9, 0.95),
+        weight_decay=args.weight_decay,
+        adamw_mode=True,
+    )
     
     # Set lr scheduler
     lr_scheduler = CosineAnnealingWarmupLR(
@@ -229,13 +232,10 @@ def main():
     )
     use_pipeline = isinstance(booster.plugin, MoeHybridParallelPlugin) and booster.plugin.pp_size > 1
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
-    pp_print_rank = is_pp_last_stage and (coordinator.local_rank == "0")
     coordinator.print_on_master(f"Finish init booster")
 
     # Load ckpt
-    load_ckpt(args.model_name, model, booster)
-    optimizer.sync_moe_master_param()
-    optimizer.update_master_params(model)
+    load_ckpt(args.model_name, model, booster, optimizer)
     coordinator.print_on_master(f"Finish load checkpoint")
 
     # Start finetuning
@@ -247,7 +247,7 @@ def main():
         with tqdm(
             range(total_len),
             desc=f"Epoch [{epoch + 1}/{args.num_epoch}]",
-            disable=not coordinator.is_master() if use_pipeline == False else not pp_print_rank,
+            disable=not coordinator.is_master() if use_pipeline == False else not is_pp_last_stage,
         ) as pbar:
             for step in pbar:
                 if use_pipeline:
@@ -261,9 +261,11 @@ def main():
                         return_outputs=True,
                     )
                     # Backward and optimize
-                    if pp_print_rank:
+                    if is_pp_last_stage:
                         loss = outputs["loss"]
-                        pbar.set_postfix({"loss": loss.item()})
+                        global_loss = get_global_loss(loss, booster)
+                        if coordinator._local_rank == '0':
+                            pbar.set_postfix({"Loss": global_loss.item()})
                 else:
                     # Forward pass
                     data = next(train_dataloader_iter)

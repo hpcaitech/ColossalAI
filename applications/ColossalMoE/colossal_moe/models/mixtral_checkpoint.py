@@ -141,6 +141,7 @@ class MixtralMoECheckpointIO(MoECheckpintIO):
 
     @torch.no_grad()
     def pre_save_model(self, model: nn.Module) -> dict:
+        torch.cuda.empty_cache()
         state_dict = model.state_dict()
         for name, param in list(model.named_parameters()):
             if ".gate_weight" in name:
@@ -177,7 +178,8 @@ class MixtralMoECheckpointIO(MoECheckpintIO):
         for name, param in list(state_dict.items()):
             new_name = name.replace("module.", "")
             state_dict[new_name] = state_dict.pop(name)
-
+        
+        torch.cuda.empty_cache()
         if self.pp_size > 1:
             if self.dp_rank == 0:
                 # gather state_dict from every pp rank
@@ -185,8 +187,9 @@ class MixtralMoECheckpointIO(MoECheckpintIO):
                 # and gather them one by one
                 new_state_dict = {}
                 state_dict_keys = list(state_dict.keys())
-                gap_keys = len(state_dict_keys) // 10 + 1
-                for i in range(10):
+                gap_key_num = min(30, len(state_dict_keys))
+                gap_keys = (len(state_dict_keys) + gap_key_num - 1) // gap_key_num
+                for i in range(gap_key_num):
                     cur_keys = state_dict_keys[i * gap_keys : (i + 1) * gap_keys]
                     cur_state_dict = {}
                     for k in cur_keys:
