@@ -222,12 +222,10 @@ def main(args):
                 if few_shot_args[dataset_name] and category_data["inference_kwargs"].get("few_shot_data", None) is None:
                     raise Exception(f"Dataset {dataset_name} doesn't have few-shot data for category {category}!")
 
-                len(category_data["data"])
-
                 partition_size = len(category_data["data"]) // dp_size
                 redundant = len(category_data["data"]) % dp_size
 
-                if redundant != 0:
+                if moe_config is not None and redundant != 0:
                     dummy_to_add = dp_size - redundant
                     for _ in range(dummy_to_add):
                         # dummy data to avoid redundant
@@ -268,7 +266,8 @@ def main(args):
                     )
                     prev_questions = answers_per_rank
 
-                answers_per_rank = [ans for ans in answers_per_rank if ans["input"] != DUMMY_INPUT]
+                if moe_config is not None:
+                    answers_per_rank = [ans for ans in answers_per_rank if ans["input"] != DUMMY_INPUT]      
 
                 answers_to_dump["data"] = answers_per_rank
 
