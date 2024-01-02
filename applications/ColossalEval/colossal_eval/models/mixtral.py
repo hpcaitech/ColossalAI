@@ -1,13 +1,11 @@
 
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
-import torch.distributed as dist
 import torch.nn.functional as F
 from peft import PeftModel
 from transformers import AutoConfig, AutoModelForCausalLM
-from colossal_eval.utils import is_rank_0
 
 from colossalai.shardformer import ShardConfig
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
@@ -92,6 +90,8 @@ class MixtralModel(HuggingFaceModel):
 
             if os.path.exists(os.path.join(path, "model.safetensors.index.json")):
                 booster.load_model(model, os.path.join(path, "model.safetensors.index.json"))
+            elif os.path.exists(os.path.join(path, "pytorch_model.bin.index.json")):
+                booster.load_model(model, os.path.join(path, "pytorch_model.bin.index.json"))
             self.model = model.module
             coordinator.print_on_master("Finished loading model checkpoint")
         else:
