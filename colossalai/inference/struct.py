@@ -308,7 +308,7 @@ class BatchInfo:
                 input_len_list.append(1)
 
         return torch.tensor(input_list, dtype=torch.long, device=self.device), torch.tensor(
-            input_len_list, dtype=torch.int, device=device
+            input_len_list, dtype=torch.int, device=self.device
         )
 
     def get_sequence_lengths(self):

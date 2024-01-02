@@ -230,18 +230,13 @@ class InferenceEngine:
         self.request_handler.search_tokens(self.generation_config, logits)
         finished_sequences = self.request_handler.update()
 
-        print("finished_sequences: ", finished_sequences)
-
         # Decode completed sentences.
         for seq in finished_sequences:
-            print("seq.output_token_id: ", seq.output_token_id)
             if seq.prompt:
                 output_str = self.tokenizer.decode(seq.output_token_id, skip_special_tokens=True)
                 output_list.append(seq.prompt + output_str)
             else:
                 output_str = self.tokenizer.decode(seq.input_token_id + seq.output_token_id, skip_special_tokens=True)
                 output_list.append(output_str)
-
-        print("len(output_list): ", len(output_list))
 
         return output_list
