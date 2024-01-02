@@ -159,3 +159,7 @@ coverage.xml
 # ignore testmon and coverage files
 .coverage
 .testmondata*
+
+applications/ColossalEval/examples/dataset_evaluation/*.sh
+applications/ColossalEval/examples/dataset_evaluation/config/evaluation/*.json
+applications/ColossalEval/examples/dataset_evaluation/config/inference/*.json
