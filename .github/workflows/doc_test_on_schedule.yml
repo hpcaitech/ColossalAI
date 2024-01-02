@@ -12,7 +12,7 @@ jobs:
     name: Test the changed Doc
     runs-on: [self-hosted, gpu]
     container:
-      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      image: hpcaitech/pytorch-cuda:2.0.0-11.7.0
       options: --gpus all --rm
     timeout-minutes: 60
     steps:
