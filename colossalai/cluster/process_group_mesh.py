@@ -45,7 +45,7 @@ class ProcessGroupMesh:
         self._ranks_to_group: Dict[Tuple[int, ...], ProcessGroup] = {}
         self._group_to_ranks: Dict[ProcessGroup, Tuple[int, ...]] = {}
 
-    def __del__(self):
+    def destroy_mesh_process_groups(self):
         r"""
         Destructor method for the ProcessGroupMesh class.
 
