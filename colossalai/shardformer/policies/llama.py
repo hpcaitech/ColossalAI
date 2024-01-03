@@ -130,7 +130,7 @@ class LlamaPolicy(Policy):
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_flash_attention_forward(),
+                    "forward": get_llama_flash_attention_forward(self.shard_config),
                 },
                 policy=policy,
                 target_key=LlamaAttention,
@@ -249,6 +249,8 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
         from transformers import LlamaForCausalLM
 
         policy = super().module_policy()
+
+        setattr(self.shard_config, "causal_lm", True)
 
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
