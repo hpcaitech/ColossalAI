@@ -5,7 +5,7 @@ import torch.distributed as dist
 from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
 from colossal_moe.models.mixtral_layer import replace_moe_layer
 from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
-from colossal_moe.utils import load_ckpt, move_to_cuda
+from colossal_moe.utils import load_checkpoint, load_model, move_to_cuda, save_checkpoint
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
@@ -58,6 +58,7 @@ def parse_args():
         default="mistralai/Mixtral-8x7B-v0.1",
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
+    parser.add_argument("--load_checkpoint", type=str, default=None, help="Load checkpoint")
     parser.add_argument(
         "--plugin",
         type=str,
@@ -235,8 +236,12 @@ def main():
     coordinator.print_on_master(f"Finish init booster")
 
     # Load ckpt
-    load_ckpt(args.model_name, model, booster, optimizer)
-    coordinator.print_on_master(f"Finish load checkpoint")
+    if args.load_checkpoint is None:
+        load_model(args.model_name, model, booster, optimizer)
+        coordinator.print_on_master(f"Finish load checkpoint")
+    else:
+        load_checkpoint(args.load_checkpoint, booster, model, optimizer, lr_scheduler)
+        coordinator.print_on_master(f"Finish load optimizer")
 
     # Start finetuning
     coordinator.print_on_master(f"Start finetuning")
@@ -291,7 +296,17 @@ def main():
                 # save ckeckpoint
                 if (step + 1) % args.save_interval == 0:
                     coordinator.print_on_master(f"Saving model checkpoint to {args.output_path}")
-                    booster.save_model(model, args.output_path, shard=True)
+                    save_checkpoint(
+                        args.output_path,
+                        booster,
+                        model,
+                        optimizer,
+                        lr_scheduler,
+                        epoch,
+                        step,
+                        args.batch_size,
+                        coordinator,
+                    )
 
         # save checkpoint at the end of each epochs
         booster.save_model(model, args.output_path, shard=True, size_per_shard=5120)

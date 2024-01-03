@@ -400,28 +400,33 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
 
                 file_path = os.path.join(ckpt_root_path, filename)
                 state_dict = load_shard_state_dict(Path(file_path), use_safetensors=False)
+
+                # Then shard the loaded optimizer states if using tp/zero.
+                for pid, state in list(state_dict.items()):
+                    if pid in id_map:
+                        param = id_map[pid]
+                        if master_to_working_map is not None and id(param) in master_to_working_map:
+                            working_param = master_to_working_map[id(param)]
+                        elif (
+                            hasattr(optimizer, "moe_master_to_working_map")
+                            and id(param) in optimizer.moe_master_to_working_map
+                        ):
+                            working_param = optimizer.moe_master_to_working_map[id(param)]
+                        else:
+                            working_param = param
+                        original_shape = optimizer.param_info["param2shape"][id(working_param)]
+                        sharded_state = self.pre_load_optim(
+                            state,
+                            working_param,
+                            current_shape=working_param.shape,
+                            original_shape=original_shape,
+                            device="cpu",
+                            inplace=True,
+                        )
+                        state_dict[pid] = sharded_state
+
                 load_states_into_optimizer(optimizer.optim, state_dict, id_map, strict=True)
                 loaded_file.add(filename)
-
-        # Then shard the loaded optimizer states if using tp/zero.
-        for param, state in optimizer.optim.state.items():
-            device = param.device
-            if master_to_working_map is not None and id(param) in master_to_working_map:
-                working_param = master_to_working_map[id(param)]
-            elif hasattr(optimizer, "moe_master_to_working_map") and id(param) in optimizer.moe_master_to_working_map:
-                working_param = optimizer.moe_master_to_working_map[id(param)]
-            else:
-                working_param = param
-            original_shape = optimizer.param_info["param2shape"][id(working_param)]
-            sharded_state = self.pre_load_optim(
-                state,
-                working_param,
-                current_shape=working_param.shape,
-                original_shape=original_shape,
-                device=device,
-                inplace=True,
-            )
-            optimizer.optim.state[param] = sharded_state
 
         sharded_optimizer_loading_epilogue(optimizer.optim)
         if self.verbose and self.coordinator.is_master():

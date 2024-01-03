@@ -1,11 +1,11 @@
 import argparse
-import os
 
 import torch
 import torch.distributed as dist
 from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
 from colossal_moe.models.mixtral_layer import replace_moe_layer
 from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
+from colossal_moe.utils import load_model
 from transformers import AutoTokenizer
 from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
 
@@ -16,7 +16,6 @@ from colossalai.cluster import DistCoordinator
 from colossalai.moe import MOE_MANAGER
 from colossalai.moe.utils import skip_init
 from colossalai.utils import get_current_device
-from colossal_moe.utils import load_ckpt
 
 
 def parse_args():
@@ -124,7 +123,7 @@ def main():
     coordinator.print_on_master(f"Finish init booster")
 
     # load ckpt
-    load_ckpt(args.model_name, model, booster)
+    load_model(args.model_name, model, booster)
     coordinator.print_on_master(f"Finish load ckpt")
 
     text = ["Hello my name is", "1+1=?"]
