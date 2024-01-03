@@ -170,7 +170,7 @@ class PagedAttention(nn.Module):
         bsz, seq_len, num_heads, head_size = q.shape
         block_size = k_cache.shape[-1]
         assert q.shape[0] == k.shape[0] == v.shape[0] == block_tables.shape[0]
-        max_seq_len = block_tables.shape[-1] * block_size
+        block_tables.shape[-1] * block_size
         shape = (bsz, seq_len, num_heads, head_size)
         input_shape = shape[:2]
         q = q.transpose(1, 2)
@@ -197,7 +197,7 @@ class PagedAttention(nn.Module):
 
         if attn_output.size() != (bsz, num_heads, seq_len, head_size):
             raise ValueError(f"Got wrong attn_output, should be in shape {(bsz,num_heads,seq_len,head_size)}.")
-        attn_output = attn_output.transpose(1, 2).contiguous().reshape(bsz, max_seq_len, -1)
+        attn_output = attn_output.transpose(1, 2).contiguous().reshape(bsz, seq_len, -1)
 
         return attn_output
 
@@ -211,23 +211,32 @@ class PagedAttention(nn.Module):
         lengths: torch.Tensor,  # [num_seqs]: input_lengths + output_lengths
         block_tables: torch.Tensor,  # [num_seqs,max_blocks_per_sequence]
     ):
-        bsz, seq_len, num_heads, head_size = q.shape
+        bsz, _, num_heads, head_size = q.shape
         block_size = k_cache.shape[-1]
-
+        seq_len = max(lengths)
         assert q.shape[0] == k.shape[0] == v.shape[0] == block_tables.shape[0]
         max_seq_len = block_tables.shape[-1] * block_size
         (bsz, max_seq_len, num_heads, head_size)
-        key = convert_kvcache(k, k_cache, lengths, block_tables)  # bsz, seqlen,
-        value = convert_kvcache(v, v_cache, lengths, block_tables)
-
-        attn_mask = AttentionMaskConverter._make_causal_mask(q.shape, q.dtype, q.device, past_key_values_length=seq_len)
+        attn_mask = AttentionMaskConverter._make_causal_mask(
+            q.shape[:2], q.dtype, q.device, past_key_values_length=seq_len - 1
+        )
         self.generate_padding_mask(lengths, max_seq_len)
         cos, sin = self.rotary_emb(v, max_seq_len)
-        query, key = apply_rotary_pos_emb(q, key, cos, sin)
-        attn_weights = torch.matmul(query, key.transpose(2, 3)) / math.sqrt(head_size)
 
-        if attn_weights.size() != (bsz, num_heads, seq_len, head_size):
-            raise ValueError(f"Got wrong attn_weights, should be in shape {(bsz,num_heads,max_seq_len,head_size)}.")
+        position_ids = lengths - 1
+        position_ids = position_ids.unsqueeze(1)
+
+        query, key = apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=2)
+        key = convert_kvcache(key, k_cache, lengths, block_tables)  # bsz, seqlen,
+        value = convert_kvcache(v, v_cache, lengths, block_tables)
+
+        query = query.transpose(1, 2)
+        key = key.transpose(1, 2)
+        value = value.transpose(1, 2)
+
+        attn_weights = torch.matmul(query, key.transpose(2, 3)) / math.sqrt(head_size)
+        if attn_weights.size() != (bsz, num_heads, 1, seq_len):
+            raise ValueError(f"Got wrong attn_weights, should be in shape {(bsz,num_heads,1,seq_len)}.")
 
         if attn_mask is not None:
             attn_weights += attn_mask
@@ -236,8 +245,8 @@ class PagedAttention(nn.Module):
         # attn_weights = nn.functional.dropout(attn_weights,p=self.attention_dropout,training=False) maybe useless
         attn_output = torch.matmul(attn_weights, value)
 
-        if attn_output.size() != (bsz, num_heads, max_seq_len, head_size):
-            raise ValueError(f"Got wrong attn_output, should be in shape {(bsz,num_heads,max_seq_len,head_size)}.")
+        if attn_output.size() != (bsz, num_heads, 1, head_size):
+            raise ValueError(f"Got wrong attn_output, should be in shape {(bsz,num_heads,1,head_size)}.")
         attn_output = attn_output.transpose(1, 2).contiguous().reshape(bsz, max_seq_len, -1)
 
         return attn_output

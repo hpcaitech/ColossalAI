@@ -44,20 +44,29 @@ def test_context_attention():
     )
     block_tables = torch.tensor([[0, 1]])
     attn.nopad_context_forward(q, k, v, k_cache, v_cache, context_lengths, block_tables)
-
     # test padded q/k/v
     pad_q = pad_k = pad_v = q.unsqueeze(0)
     attn.pad_context_forward(pad_q, pad_k, pad_v, k_cache, v_cache, context_lengths, block_tables)
 
 
 def test_decoding_attention():
-    pass
+    attn = PagedAttention(4, 4)
+    q = k = v = torch.randn(2, 1, 4, 4)
+    k_cache = torch.empty(8, 4, 4, 8)
+    v_cache = torch.empty(8, 4, 4, 8)
+    past_kv = torch.randn(2, 8, 4, 4)
+    context_lenghths = torch.tensor([8, 8])
+    block_tables = torch.tensor([[0, 1], [2, 3]])
+    copy_to_cache(past_kv, k_cache, lengths=context_lenghths, block_tables=block_tables)
+    copy_to_cache(past_kv, v_cache, lengths=context_lenghths, block_tables=block_tables)
+    attn.pad_decoding_forward(q, k, v, k_cache, v_cache, lengths=context_lenghths + 1, block_tables=block_tables)
 
 
 def check_attention_layer():
     test_copy_to_cache()
     test_convert_kvcache()
     test_context_attention()
+    test_decoding_attention()
 
 
 def run_dist(rank, world_size, port):
