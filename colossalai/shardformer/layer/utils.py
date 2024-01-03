@@ -53,23 +53,24 @@ class SeqParallelUtils:
         assert (model is not None) ^ (grads is not None), "Exactly one of model and grads must be not None."
 
         # Get the size of the process group, which determines whether synchronization is needed.
-        tp_size = get_world_size(tp_group) if tp_group is not None else 1
+        # tp_size = get_world_size(tp_group) if tp_group is not None else 1
 
-        if tp_size == 1:
-            # If the process group size is 1, no synchronization is required.
-            return
-
+        # if tp_size == 1:
+        #     # If the process group size is 1, no synchronization is required.
+        #     return
+        print("在这呢")
         if model is not None:
             # If `model` is provided, extract partial derived gradients from the model's parameters.
             grads = []
             for p in model.parameters():
-                if p.grad is not None and SeqParallelUtils.is_sp_partial_derived_param(p):
+                if p.grad is not None:
                     grads.append(p.grad.data)
+            print("在这呢", len(grads))
 
             # Flatten and reduce the gradients using the specified process group.
             coalesced = _flatten_dense_tensors(grads)
-            dist.all_reduce(coalesced, op=dist.ReduceOp.SUM, group=tp_group)
-
+            dist.all_reduce(coalesced, op=dist.ReduceOp.SUM, group=None)
+            print("all-reduce了")
             # Unflatten the synchronized gradients and update the model's gradients.
             for buf, synced in zip(grads, _unflatten_dense_tensors(coalesced, grads)):
                 buf.copy_(synced)

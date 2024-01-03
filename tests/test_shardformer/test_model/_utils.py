@@ -23,6 +23,11 @@ from colossalai.shardformer.policies.auto_policy import Policy
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 
 
+def print_rank(prompt, value, rank=0):
+    if dist.get_rank() == rank:
+        print(f"rank-{rank}, {prompt}: {value}")
+
+
 def build_model(
     model_fn,
     enable_fused_normalization=True,
@@ -122,7 +127,6 @@ def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_c
         sharded_model = copy.deepcopy(org_model)
     if use_lazy_init:
         ctx.materialize(org_model)
-
     org_model = org_model.cuda()
     org_optimizer = Adam(org_model.parameters(), lr=1e-3)
     sharded_optimizer = Adam(sharded_model.parameters(), lr=1e-3)
@@ -155,11 +159,15 @@ def run_forward_backward_with_hybrid_plugin(
     data = data_gen_fn()
     shard_test_data = {}
     for k, v in data.items():
-        shard_test_data[k] = (
-            data[k].clone()
-            if booster.plugin.shard_config.test_seq_parallelism is False
-            else torch.chunk(data[k].clone(), dist.get_world_size(), dim=1)[dist.get_rank()]
-        )
+        if k == "attention_mask":
+            shard_test_data[k] = data[k].clone()
+        else:
+            shard_test_data[k] = (
+                data[k].clone()
+                if booster.plugin.shard_config.test_seq_parallelism is False
+                # else data[k].clone()
+                else torch.chunk(data[k].clone(), dist.get_world_size(), dim=1)[dist.get_rank()]
+            )
     unshard_test_data = {}
     for k, v in data.items():
         unshard_test_data[k] = data[k].clone()
@@ -188,15 +196,12 @@ def run_forward_backward_with_hybrid_plugin(
         sharded_loss = sharded_output["loss"]
     else:
         shard_test_data = {k: v.cuda() for k, v in shard_test_data.items()}
-        sharded_output = sharded_model(**shard_test_data)
-
+        sharded_output, decoder_output_shard, ret_model_shard = sharded_model(**shard_test_data)
         sharded_loss = criterion(sharded_output)
         sharded_optimizer.backward(sharded_loss)
-
     org_model.train()
     unshard_test_data = {k: v.cuda() for k, v in unshard_test_data.items()}
-    org_output = org_model(**unshard_test_data)
-
+    org_output, decoder_output_ori, ret_model_ori = org_model(**unshard_test_data)
     org_loss = criterion(org_output)
     org_loss.backward()
 
@@ -209,13 +214,16 @@ def check_output_hidden_state(
     stage_manager: Optional[PipelineStageManager] = None,
     atol: float = 1e-5,
     rtol: float = 1e-3,
-    dim: int = 0,
+    booster: Booster = None,
 ):
     org_hidden_state = org_output.last_hidden_state
 
     if stage_manager and stage_manager.is_last_stage(ignore_chunk=True):
         sharded_hidden_state = sharded_output["outputs"]["last_hidden_state"]
     else:
+        # if booster and booster.plugin.shard_config.test_seq_parallelism:
+        #     sharded_hidden_state = sharded_output
+        # else:
         sharded_hidden_state = sharded_output.last_hidden_state
 
     assert_close(org_hidden_state.float(), sharded_hidden_state.float(), atol=atol, rtol=rtol)

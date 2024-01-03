@@ -76,7 +76,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             atol, rtol = 5e-3, 5e-3
 
         if org_model.__class__.__name__ == "LlamaModel":
-            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
+            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol, booster=booster)
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
@@ -92,7 +92,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     # check grads
     check_all_grad_tensors(grads_to_check)
-
     torch.cuda.empty_cache()
 
 
@@ -105,7 +104,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "num_microbatches": 1,
             "test_seq_parallelism": True,
             "use_lazy_init": True,
-            "precision": "fp16",
+            "precision": "fp32",
             "initial_scale": 1,
         }
     ],
