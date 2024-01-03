@@ -15,6 +15,7 @@ from ..modeling.llama import (
     get_llama_model_forward_for_flash_attn,
     get_lm_forward_with_dist_cross_entropy,
     test_llama_seq_parallel_attention,
+    test_llama_seq_parallel_model,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -63,7 +64,7 @@ class LlamaPolicy(Policy):
                     self.model.config.num_key_value_heads // sequence_parallelism_size
                 )
                 decoder_attribute_replacement["num_key_value_groups"] = (
-                    self.model.config.hidden_size // self.model.config.num_attention_heads
+                    self.model.config.num_attention_heads // self.model.config.num_key_value_heads
                 )
             policy[LlamaAttention] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
@@ -75,6 +76,13 @@ class LlamaPolicy(Policy):
                 },
                 policy=policy,
                 target_key=LlamaAttention,
+            )
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": test_llama_seq_parallel_model(),
+                },
+                policy=policy,
+                target_key=LlamaModel,
             )
 
         if self.shard_config.enable_tensor_parallelism:
