@@ -21,7 +21,6 @@ def multinomial_sample(
     """
     Sample tokens in a random phase.
     """
-    # max_best_of = generation_config.best_of
     random_results = torch.multinomial(probs, num_samples=1, replacement=True).cpu()
     return random_results
 

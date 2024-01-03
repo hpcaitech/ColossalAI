@@ -1,4 +1,9 @@
+import random
+
+import numpy as np
 import pytest
+import torch
+import transformers
 from transformers import AutoTokenizer, GenerationConfig
 
 import colossalai
@@ -7,7 +12,15 @@ from colossalai.inference.core.engine import InferenceEngine
 from colossalai.testing import spawn
 
 
+def setup_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
+
 def check_inference_engine(test_cai=False):
+    setup_seed(20)
     tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
     model = transformers.LlamaForCausalLM(
         transformers.LlamaConfig(
@@ -16,8 +29,8 @@ def check_inference_engine(test_cai=False):
     )
 
     inputs = [
-        "介绍一下今天的北京",
-        "介绍一下武汉",
+        "介绍一下北京,",
+        "介绍一下武汉,",
     ]
 
     if test_cai:
@@ -25,28 +38,26 @@ def check_inference_engine(test_cai=False):
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
-        generation_config = GenerationConfig(top_k=2, top_p=0.8, do_sample=True)
+        generation_config = GenerationConfig(do_sample=False)
         outputs = inference_engine.generate(generation_config)
     else:
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
         inputs = tokenizer.batch_encode_plus(inputs, padding=True, return_tensors="pt")["input_ids"]
-        generation_config = GenerationConfig(
-            top_k=2, top_p=0.8, do_sample=True, pad_token_id=tokenizer.pad_token_id, max_new_tokens=1
-        )
+        generation_config = GenerationConfig(do_sample=False, pad_token_id=tokenizer.pad_token_id, max_new_tokens=1)
         outputs = model.generate(inputs, generation_config=generation_config)
         outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+
     return outputs
 
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, port=port, host="localhost")
-    check_inference_engine(True)
-    check_inference_engine(False)
+    cai_outputs = check_inference_engine(True)
+    transformer_outputs = check_inference_engine(False)
 
-    # TODO: There are some bugs in sampler.
-    # for s1, s2 in zip(cai_outputs, transformer_outputs):
-    #     assert s1 == s2
+    for s1, s2 in zip(cai_outputs, transformer_outputs):
+        assert s1 == s2
 
 
 @pytest.mark.dist

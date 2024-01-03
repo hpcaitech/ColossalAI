@@ -232,11 +232,7 @@ class InferenceEngine:
 
         # Decode completed sentences.
         for seq in finished_sequences:
-            if seq.prompt:
-                output_str = self.tokenizer.decode(seq.output_token_id, skip_special_tokens=True)
-                output_list.append(seq.prompt + output_str)
-            else:
-                output_str = self.tokenizer.decode(seq.input_token_id + seq.output_token_id, skip_special_tokens=True)
-                output_list.append(output_str)
+            output_str = self.tokenizer.decode(seq.input_token_id + seq.output_token_id, skip_special_tokens=True)
+            output_list.append(output_str)
 
         return output_list
