@@ -7,6 +7,8 @@ from colossalai.kernel.triton import context_attention_unpadded
 from colossalai.utils import get_current_device
 
 try:
+    import triton  # noqa
+
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
