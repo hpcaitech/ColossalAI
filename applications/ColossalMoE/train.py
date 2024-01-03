@@ -1,7 +1,7 @@
 import argparse
-import torch.distributed as dist
 
 import torch
+import torch.distributed as dist
 from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
 from colossal_moe.models.mixtral_layer import replace_moe_layer
 from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
@@ -10,7 +10,6 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
 from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
-from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 
 import colossalai
 from colossalai.booster import Booster
@@ -19,9 +18,9 @@ from colossalai.cluster import DistCoordinator
 from colossalai.moe import MOE_MANAGER, apply_load_balance
 from colossalai.moe.layers import apply_load_balance
 from colossalai.moe.manager import MOE_MANAGER
+from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
-
 
 
 @torch.no_grad()
@@ -30,6 +29,7 @@ def get_global_loss(loss, booster):
     dist.all_reduce(tensor=global_loss, op=dist.ReduceOp.SUM, group=booster.plugin.dp_group)
     global_loss.div_(booster.plugin.dp_size)
     return global_loss
+
 
 class RandomDataset(Dataset):
     def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 100, tokenizer=None):
@@ -97,7 +97,7 @@ def parse_args():
     # optim
     parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate.")
     parser.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay to use.")
-    
+
     # lr scheduler
     parser.add_argument("--num_epochs", type=int, default=1, help="Number of training epochs")
     parser.add_argument("--warmup_steps", type=int, default=None, help="Warmup steps")
@@ -197,7 +197,7 @@ def main():
 
     # Prepare tokenizer and dataloader
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-    dataset = RandomDataset(num_samples=20, tokenizer=tokenizer)
+    dataset = RandomDataset(num_samples=100, tokenizer=tokenizer)
     collate_fn = None
     dataloader = plugin.prepare_dataloader(
         dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, collate_fn=collate_fn
@@ -211,7 +211,7 @@ def main():
         weight_decay=args.weight_decay,
         adamw_mode=True,
     )
-    
+
     # Set lr scheduler
     lr_scheduler = CosineAnnealingWarmupLR(
         optimizer=optimizer,
@@ -264,7 +264,7 @@ def main():
                     if is_pp_last_stage:
                         loss = outputs["loss"]
                         global_loss = get_global_loss(loss, booster)
-                        if coordinator._local_rank == '0':
+                        if coordinator._local_rank == "0":
                             pbar.set_postfix({"Loss": global_loss.item()})
                 else:
                     # Forward pass

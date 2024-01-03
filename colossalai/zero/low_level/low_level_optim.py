@@ -175,12 +175,18 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if len(self.working_moe_params) > 0:
             self._sync_master_param = False
             param_group = dict()
+            # create fp32 master param
             for key, value in self.optim.param_groups[0].items():
                 if key != "params":
                     param_group[key] = value
             self.master_moe_params = []
             for param in self.working_moe_params:
                 self.master_moe_params.append(param.clone().to(torch.float32).detach())
+            # create mapping from master to working for optimizer io
+            self.moe_master_to_working_map = {}
+            for master_moe_param, working_moe_param in zip(self.master_moe_params, self.working_moe_params):
+                self.moe_master_to_working_map[id(master_moe_param)] = working_moe_param
+            # add to optim
             param_group["params"] = self.master_moe_params
             self.optim.param_groups.append(param_group)
 

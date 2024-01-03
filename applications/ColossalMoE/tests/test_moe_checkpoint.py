@@ -126,6 +126,12 @@ def _test_moe_checkpoint(parallel):
     model1, booster1, optim1 = get_model(parallel)
     model2, booster2, optim2 = get_model(parallel)
     # param ckpt
+    # check not equal
+    try:
+        check_state_dict_equal(model1.state_dict(), model2.state_dict(), False)
+        raise AssertionError("state_dict should not be equal")
+    except:
+        pass
     # shard
     booster1.save_model(model1, "./tmp_ckpt1", shard=True, size_per_shard=1)
     booster2.load_model(model2, "./tmp_ckpt1")
