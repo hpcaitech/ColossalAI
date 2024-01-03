@@ -103,7 +103,10 @@ def _fwd_context_paged_attention_kernel(
 
     # block table for the current sequence
     block_table_ptr = BLOCK_TABLES + cur_seq_idx * stride_bts
-    cur_block_table_idx = block_start_m  # block indexes on block table (i.e. 0, 1, 2, ..., max_blocks_per_seq)
+    # block indexes on block table (i.e. 0, 1, 2, ..., max_blocks_per_seq)
+    # Consider `block_start_m` as the logical block idx in the current block table,
+    # as we have BLOCK_M the same size as the block size.
+    cur_block_table_idx = block_start_m
     cur_block_id = tl.load(block_table_ptr + cur_block_table_idx * stride_btb)
     kvcache_offset = cur_block_id * stride_cacheb + cur_kv_head_idx * stride_cacheh
 
@@ -150,7 +153,7 @@ def _fwd_context_paged_attention_kernel(
     if cur_head_idx % KV_GROUPS == 0:
         # Copy k to corresponding cache block
         kd_offsets = tl.arange(0, BLOCK_DMODEL)
-        kt_offsets = block_start_m * BLOCK_M + tl.arange(0, BLOCK_M)  # % dimension M (not passed in)
+        kt_offsets = block_start_m * BLOCK_M + tl.arange(0, BLOCK_M)
         k_offsets = K + kv_offset + kd_offsets[:, None] * stride_kd + kt_offsets[None, :] * stride_kt
         k = tl.load(k_offsets, mask=kt_offsets[None, :] < cur_seq_len, other=0.0)
         kcached_offsets = tl.arange(0, BLOCK_DMODEL)
@@ -164,7 +167,7 @@ def _fwd_context_paged_attention_kernel(
         tl.store(kcache_offsets, k, mask=kcachebs_offsets[None, :] < cur_seq_len - block_start_m * BLOCK_SIZE)
         # Copy v to corresponding cache block
         vd_offsets = kd_offsets
-        vt_offsets = block_start_m * BLOCK_N + tl.arange(0, BLOCK_N)  # % dimension N (not passed in)
+        vt_offsets = block_start_m * BLOCK_N + tl.arange(0, BLOCK_N)
         v_offsets = V + kv_offset + vt_offsets[:, None] * stride_vt + vd_offsets[None, :] * stride_vd
         v = tl.load(v_offsets, mask=vt_offsets[:, None] < cur_seq_len, other=0.0)
         vcached_offsets = kcached_offsets
@@ -184,8 +187,8 @@ def context_attention_unpadded(
     q: torch.Tensor,  # [num_tokens, num_heads, head_size]
     k: torch.Tensor,  # [num_tokens, num_kv_heads, head_size]
     v: torch.Tensor,  # [num_tokens, num_kv_heads, head_size]
-    k_cache: torch.Tensor,  # [num_blocks, num_heads, head_size, block_size]
-    v_cache: torch.Tensor,  # [num_blocks, num_heads, head_size, block_size]
+    k_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_size, block_size]
+    v_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_size, block_size]
     context_lengths: torch.Tensor,  # [num_seqs]
     block_tables: torch.Tensor,  # [num_seqs, max_blocks_per_sequence],
     block_size: int,
