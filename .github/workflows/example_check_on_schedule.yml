@@ -24,7 +24,29 @@ jobs:
         all_loc=$( IFS=',' ; echo "${res[*]}" )
         echo "Found the examples: $all_loc"
         echo "matrix={\"directory\":$(echo "$all_loc")}" >> $GITHUB_OUTPUT
-
+  
+  prepare_cache_for_hf:
+    name: Prepare huggingface cache for example test
+    if: github.repository == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      options: --rm
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-repare-cache
+      cancel-in-progress: true
+    steps:
+      - name: Prepare bert weights to cache_dir
+        run: |
+          pip install transformers
+          export model_name="bert-base-uncased"
+          export cache_dir="/home/lcsoftware/gitact/actions-runner/_work/_temp/_github_home/hf_cache"
+          python -c "from transformers import AutoConfig, BertForSequenceClassification; cfg = AutoConfig.from_pretrained(\"${model_name}\", num_labels=3); BertForSequenceClassification.from_pretrained(\"${model_name}\", config=cfg, cache_dir=\"${cache_dir}\")"
+  
   weekly_check:
     if: github.repository == 'hpcaitech/ColossalAI'
     name: Weekly check all examples
@@ -43,11 +65,16 @@ jobs:
       - name: Install Colossal-AI
         run: |
           CUDA_EXT=1 pip install -v .
-
+          
       - name: Traverse all files
         run: |
           example_dir=${{ matrix.directory }}
           echo "Testing ${example_dir} now"
+          if [[ $example_dir == *language/bert* ]]; then
+            echo "restore Bert weights to ${PWD}/examples/${example_dir}"
+            cp -p -r /home/lcsoftware/gitact/actions-runner/_work/_temp/_github_home/hf_cache "${PWD}/examples/${example_dir}"
+            ls -A ${PWD}/examples/${example_dir} | grep *bert-base*
+          fi
           cd "${PWD}/examples/${example_dir}"
           bash test_ci.sh
         env:

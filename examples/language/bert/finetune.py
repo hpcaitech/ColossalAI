@@ -251,7 +251,7 @@ def main():
     cfg = AutoConfig.from_pretrained(model_name, num_labels=data_builder.num_labels)
 
     if model_name == "bert-base-uncased":
-        model = BertForSequenceClassification.from_pretrained(model_name, config=cfg).cuda()
+        model = BertForSequenceClassification.from_pretrained(model_name, config=cfg, cache_dir="./").cuda()
     elif model_name == "albert-xxlarge-v2":
         model = AlbertForSequenceClassification.from_pretrained(model_name, config=cfg)
     else:
