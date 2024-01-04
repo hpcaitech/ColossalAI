@@ -21,7 +21,7 @@ def multinomial_sample(
     """
     Sample tokens in a random phase.
     """
-    random_results = torch.multinomial(probs, num_samples=1, replacement=True).cpu()
+    random_results = torch.multinomial(probs, num_samples=1).squeeze(1)
     return random_results
 
 
