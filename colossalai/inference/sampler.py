@@ -42,9 +42,8 @@ def beam_search_sample(
 
     # NOTE: this beam search sample function is wrong now.
     """
-
-    # beam_width = generation_config.best_of
-    beam_width = 1
+    
+    beam_width = generation_config.num_beams
     results = []
     if is_prompt:
         # Prompt phase.
