@@ -37,7 +37,7 @@ class ModelSharder(object):
         self.policy.set_model(self.model)
         self.policy.set_shard_config(self.shard_config)
         self._preprocess()
-        # get shared params before release unheld layers, this avoid misjudgement of shared params (None is None)
+        # get shared params before release unheld layers, this avoid misjudgment of shared params (None is None)
         shared_params = self.policy.get_shared_params()
         held_layers = self._release_unheld_layers()
         self._replace_module(include=held_layers)
