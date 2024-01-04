@@ -159,7 +159,7 @@ def llama_attn_forward(
 
     _, _, _, block_size = k_cache.shape
 
-    # NOTE: context_attention_unpadded is unsed for testing accuracy and we can only use aligned inputs.
+    # NOTE: context_attention_unpadded is used for testing accuracy and we can only use aligned inputs.
     # The code below will be uncommented after the development of attention-related kernel is completed.
     if is_prompts:
         attn_output = context_attention_unpadded(
