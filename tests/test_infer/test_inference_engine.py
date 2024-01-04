@@ -26,7 +26,7 @@ def check_inference_engine(test_cai=False):
         transformers.LlamaConfig(
             vocab_size=50000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=4
         )
-    )
+    ).cuda()
 
     inputs = [
         "介绍一下北京,",
@@ -38,13 +38,16 @@ def check_inference_engine(test_cai=False):
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
-        generation_config = GenerationConfig(do_sample=False)
+        generation_config = GenerationConfig(do_sample=True, top_p=0.5, top_k=50)
         outputs = inference_engine.generate(generation_config)
     else:
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
         inputs = tokenizer.batch_encode_plus(inputs, padding=True, return_tensors="pt")["input_ids"]
-        generation_config = GenerationConfig(do_sample=False, pad_token_id=tokenizer.pad_token_id, max_new_tokens=1)
+        inputs = inputs.cuda()
+        generation_config = GenerationConfig(
+            do_sample=True, top_p=0.5, top_k=50, pad_token_id=tokenizer.pad_token_id, max_new_tokens=1
+        )
         outputs = model.generate(inputs, generation_config=generation_config)
         outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
