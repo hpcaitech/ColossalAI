@@ -2,7 +2,7 @@ import itertools
 from collections import OrderedDict
 from contextlib import nullcontext
 from functools import partial
-from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple, Union, TypeVar
 
 import torch
 import torch.distributed as dist
@@ -34,6 +34,8 @@ from .gemini_hook import GeminiZeROHook
 from .gemini_mgr import GeminiManager
 from .memory_tracer import MemStats, OrderedParamGenerator
 from .utils import get_temp_total_chunk_on_cuda
+
+T = TypeVar('T', bound='Module')
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX, _IncompatibleKeys
@@ -273,6 +275,25 @@ class GeminiDDP(ModelWrapper):
         if self.force_outputs_fp32:
             return _cast_float(outputs, torch.float)
         return outputs
+    
+    def eval(self: T) -> T:
+        r"""Sets the module in evaluation mode.
+
+        This has any effect only on certain modules. See documentations of
+        particular modules for details of their behaviors in training/evaluation
+        mode, if they are affected, e.g. :class:`Dropout`, :class:`BatchNorm`,
+        etc.
+
+        This is equivalent with :meth:`self.train(False) <torch.nn.Module.train>`.
+
+        See :ref:`locally-disable-grad-doc` for a comparison between
+        `.eval()` and several similar mechanisms that may be confused with it.
+
+        Returns:
+            Module: self
+        """
+        with ColoParamOpHookManager.use_hooks(self.param_op_hook):
+            return self.train(False)
 
     def _inference_forward(self, *args, **kwargs):
         """This function is only triggered for inference."""
