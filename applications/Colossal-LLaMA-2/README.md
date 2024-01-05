@@ -229,7 +229,7 @@ from modelscope import AutoModelForCausalLM, AutoTokenizer, snapshot_download
 # Colossal-LLaMA-2-7B-base
 model_dir = snapshot_download('colossalai/Colossal-LLaMA-2-7b-base', revision='v1.0.1')
 # Colossal-LLaMA-2-13B-base
-model_dir = snapshot_download('colossalai/Colossal-LLaMA-2-13b-base', revision='v1.0.1')
+model_dir = snapshot_download('colossalai/Colossal-LLaMA-2-13b-base', revision='v1.0.0')
 
 tokenizer = AutoTokenizer.from_pretrained(model_dir, device_map="auto", trust_remote_code=True)
 model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="auto", trust_remote_code=True).eval()
