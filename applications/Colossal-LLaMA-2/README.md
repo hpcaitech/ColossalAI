@@ -42,43 +42,56 @@
 - [Citations](#citations)
 
 ## News
+* [2024/01] [Further Enhancement for Chinese-LLaMA-2 13B Edition, with A Budget of Ten Thousands of RMB](TDOO)
 * [2023/09] [One Half-Day of Training Using a Few Hundred Dollars Yields Similar Results to Mainstream Large Models, Open-Source and Commercial-Free Domain-Specific Llm Solution](https://www.hpc-ai.tech/blog/one-half-day-of-training-using-a-few-hundred-dollars-yields-similar-results-to-mainstream-large-models-open-source-and-commercial-free-domain-specific-llm-solution)
 [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Colossal-LLaMA-2)
 [[blog]](https://www.hpc-ai.tech/blog/one-half-day-of-training-using-a-few-hundred-dollars-yields-similar-results-to-mainstream-large-models-open-source-and-commercial-free-domain-specific-llm-solution)
 [[HuggingFace model weights]](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base)
 [[Modelscope model weights]](https://www.modelscope.cn/models/colossalai/Colossal-LLaMA-2-7b-base/summary)
 
-
 ## Colossal-LLaMA-2-7B
 The [Colossal-AI](https://github.com/hpcaitech/ColossalAI) team has introduced the open-source model **Colossal-LLaMA-2-7B-base**. This model, a derivation of LLaMA-2, has undergone continual pre-training involving approximately 8.5 billion tokens over a duration of 15 hours with 64 A800 GPUs. At a cost of **less than $1,000**, you can achieve results **similar to those that cost millions of dollars to pretrain from scratch**. It is licensed under the LLaMA-2 license and [Apache 2.0 License](https://github.com/hpcaitech/ColossalAI/blob/main/LICENSE) **without any additional commercial use restrictions**. This solution can also be used to build models of specific domain knowledge or tasks.
 
 Colossal-LLaMA-2-7B-base is designed to accommodate both the Chinese and English languages, featuring an expansive context window spanning 4096 tokens. Remarkably, it has exhibited exceptional performance when benchmarked against models of equivalent scale in standard Chinese and English evaluation metrics, including C-Eval and MMLU, among others.
+
+
+## Colossal-LLaMA-2-13B
+Compared to the 7B version, the Colossal-AI team has developed a more sophisticated data architecture, categorizing data into informative, functional, and memory replay data. Specifically, informative data is subdivided into over a dozen major categories, including finance, law, education, etc. Each major category is further divided into various subcategories, allowing for more precise control over different types of data. Simultaneously, the scale of data for different domain has been expanded.
+
+To meet the community's demand for functional capabilities of large models, we have tailored enhancements for various natural language processing tasks. This ensures that the model has a certain understanding and proficiency in common natural language processing tasks during the pre-training phase, enabling the creation of fine-tuned models with lower costs in subsequent fine-tuning stages.
+
+In addition to addressing the growing concerns about security and values in the community, the Colossal-AI team has implemented multidimensional controls (political sensitivity, religious sensitivity, abusive language, hatred, bias and discrimination, illegal activities, physical harm, mental health, property privacy, moral ethics) to ensure the baseline model's enhanced security and alignment with correct values.
+
+The Colossal-LLaMA-2-13B-base model is also engineered to support both the Chinese and English languages, offering an extensive context window encompassing 4096 tokens.Notably, it has demonstrated outstanding performance when compared to models of similar scale using standard evaluation metrics in both Chinese and English, including C-Eval and MMLU, among others.
 
 ❗️**Important notice**:
 * All training data used for this project is collected from well-known public dataset.
 * We do not use any testing data from the evaluation benchmarks for training.
 
 ### Performance Evaluation
-We conducted comprehensive evaluation on 4 dataset and compare our Colossal-Llama-2-7b-base model with various models.
 
-* We use 5-shot for MMLU and calculate scores based on the logits of first predicted token.
-* We use 5-shot for CMMLU and calculate scores based on the logits of first predicted token.
-* We use 5-shot for AGIEval and only calculate scores for 4-choice questions using a combination metric of exact match and the logits of first predicted token. If any of the exact match or logits of first predicted token is correct, the model will get the score.
-* We use 0-shot for GAOKAO-Bench and only calculate scores for 4-choice questions based on the logits of first predicted token.
-The generation config for all dataset is greedy search.
-* We also provided CEval scores from its latest leaderboard or the official repository of the model.
+#### Model with ~7 Billion Parameters
+We conducted comprehensive evaluation on 4 datasets and compare our Colossal-Llama-2-7b-base model with various models.
+
+- We use 5-shot for MMLU and calculate scores based on the logits of first predicted token.
+- We use 5-shot for CMMLU and calculate scores based on the logits of first predicted token.
+- We use 5-shot for AGIEval and only calculate scores for 4-choice questions using a combination metric of exact match and the logits of first predicted token. If any of the exact match or logits of first predicted token is correct, the model will get the score.
+- We use 0-shot for GAOKAO-Bench and only calculate scores for 4-choice questions based on the logits of first predicted token.
+- The generation config for all dataset is greedy search.
+- We also provided CEval scores from its latest leaderboard or the official repository of the model.
+
+More details about metrics can be found in [Metrics](#metrics).
 
 |                                |  Backbone  | Tokens Consumed |  |         MMLU         |     CMMLU     | AGIEval | GAOKAO | CEval  |
-| :----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :-----: | :----: | :----: | :------------------------------: |
-|                                |           |        -        |                |        5-shot        |    5-shot     | 5-shot  | 0-shot | 5-shot |
+| :----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :-----: | :----: | :----: | :----------------------------: |
+|                                |     -      |        -        |                |        5-shot        |    5-shot     | 5-shot  | 0-shot | 5-shot |
 |          Baichuan-7B           |     -      |      1.2T       |             |    42.32 (42.30)     | 44.53 (44.02) |  38.72  | 36.74  | 42.80  |
-|       Baichuan-13B-Base        |     -      |      1.4T       |             |    50.51 (51.60)     | 55.73 (55.30) |  47.20  | 51.41  | 53.60  |
 |       Baichuan2-7B-Base        |     -      |      2.6T       |             |    46.97 (54.16)     | 57.67 (57.07) |  45.76  | 52.60  | 54.00  |
-|       Baichuan2-13B-Base       |     -      |      2.6T       |             |    54.84 (59.17)     | 62.62 (61.97) |  52.08  | 58.25  | 58.10  |
 |           ChatGLM-6B           |     -      |      1.0T       |             |    39.67 (40.63)     |   41.17 (-)   |  40.10  | 36.53  | 38.90  |
 |          ChatGLM2-6B           |     -      |      1.4T       |             |    44.74 (45.46)     |   49.40 (-)   |  46.36  | 45.49  | 51.70  |
-|          InternLM-7B           |     -      |      1.6T       |                |    46.70 (51.00)     |   52.00 (-)   |  44.77  | 61.64  | 52.80  |
+|          InternLM-7B           |     -      |        -        |                |    46.70 (51.00)     |   52.00 (-)   |  44.77  | 61.64  | 52.80  |
 |            Qwen-7B (original)             |     -      |      2.2T       |             | 54.29 (56.70) | 56.03 (58.80) |  52.47  | 56.42  | 59.60  |
+|            Qwen-7B             |     -      |      2.4T       |             | 58.33 (58.20) | 62.54 (62.20) |  64.34  | 74.05 | 63.50 |
 |                                |            |                 |                 |                      |               |         |        |        |
 |           Llama-2-7B           |     -      |      2.0T       |             |    44.47 (45.30)     |   32.97 (-)   |  32.60  | 25.46  |   -    |
 | Linly-AI/Chinese-LLaMA-2-7B-hf | Llama-2-7B |      1.0T       |             |        37.43         |     29.92     |  32.00  | 27.57  |   -    |
@@ -87,17 +100,49 @@ The generation config for all dataset is greedy search.
 | TigerResearch/tigerbot-7b-base | Llama-2-7B |      0.3T       |             |        43.73         |     42.04     |  37.64  | 30.61  |   -    |
 |  LinkSoul/Chinese-Llama-2-7b   | Llama-2-7B |        -        |                |        48.41         |     38.31     |  38.45  | 27.72  |   -    |
 |       FlagAlpha/Atom-7B        | Llama-2-7B |      0.1T       |             |        49.96         |     41.10     |  39.83  | 33.00  |   -    |
-| IDEA-CCNL/Ziya-LLaMA-13B-v1.1  | Llama-13B  |      0.11T      |            |        50.25         |     40.99     |  40.04  | 30.54  |   -    |
 |  |  |  |  |  |  |  |  |  |
-|    **Colossal-LLaMA-2-7b-base**    | Llama-2-7B |      **0.0085T**      |            |        53.06         |     49.89     |  51.48  | 58.82  |  50.2  |
+|    **Colossal-LLaMA-2-7b-base**    | Llama-2-7B |      **0.0085T**      |            |        53.06         |     49.89     |  51.48  | 58.82  |  50.20  |
 
 > The score in parentheses corresponds to the scores in the official repository of the model.
 >
 > We use zero-shot for ChatGLM models.
 >
-> Qwen-7B is now inaccessible in Hugging Face, we are using the latest version of it before it was made inaccessible. Only for dataset MMLU, the prompt would be "xxx Answer:"(remove the space after ":") and we calculate the logits over " A", " B", " C" and " D" for Qwen-7B. Qwen-7B tends to be much more deterministic than other models. For example, the logits over " A" can be `-inf` and softmax would be exact `0`.
+> To evaluate Qwen-7B on dataset MMLU, the prompt would be "xxx Answer:"(remove the space after ":") and we calculate the logits over " A", " B", " C" and " D" for Qwen-7B. Both the original and updated versions of Qwen-7B tend to be much more deterministic than other models. For example, the logits over " A" can be `-inf` and softmax would be exact `0`.
 >
 > For other models and other dataset, we calculate logits over "A", "B", "C" and "D".
+
+#### Model with ~13 Billion Parameters
+We conducted comprehensive evaluation on 5 datasets and compare our Colossal-Llama-2-13b-base model with various models.
+
+- We use 5-shot for MMLU and calculate scores based on the logits of first predicted token.
+- We use 5-shot for CMMLU and calculate scores based on the logits of first predicted token.
+- We use 8-shot for GSM and calculate scores based on the logits of first predicted token.
+- We use 5-shot for AGIEval and only calculate scores for 4-choice questions using a combination metric of exact match and the logits of first predicted token. If any of the exact match or logits of first predicted token is correct, the model will get the score.
+- We use 0-shot for GAOKAO-Bench and only calculate scores for 4-choice questions based on the logits of first predicted token.
+- The generation config for all dataset is greedy search.
+- We also provided CEval scores from its latest leaderboard or the official repository of the model.
+
+|                                 | Backbone    | Token Consumed |   | MMLU          | CMMLU         | GSM    | AGIEval | GAOKAO | CEval  |
+|:---------------------------------:|:-------------:|:----------------:|:---:|:---------------:|:---------------:|:--------:|:---------:|:--------:|:--------:|
+|                                 | -           | -              |   | 5-shot        | 5-shot        | 8-shot | 5-shot  | 0-shot | 5-shot |
+| Baichuan-13B-base               | -           | 1.4T           |   | 50.54 (51.60) | 55.52 (55.30) |  25.78 |  41.86  |  51.62 |  53.60 |
+| Baichuan2-13B-base              | -           | 2.6T           |   | 54.81 (59.17) | 62.68 (61.97) |  53.98 |  48.22  |  58.60 |  58.10 |
+| InternLM-20B                    | -           | 2.3T           |   | 60.51 (62.05) |   59.46 (-)   |  51.4  |  56.07  |  62.06 |    -   |
+| Qwen-14B                        | -           | 3.0T           |   |     66.51     |     71.08     |  61.33 |  66.62  |  80.82 |  72.1  |
+| Skywork-13B-base                | -           | 3.2T           |   |     61.84     |     61.93     |  54.28 |  53.13  |  63.02 |    -   |
+|                                 |             |                |   |               |               |        |         |        |        |
+|           Llama-2-13B           |      -      |      2.0T      |   |     55.35     |     38.14     |  31.31 |  40.07  |  27.86 |    -   |
+| Linly-AI/Chinese-LLaMA-2-13B-hf | Llama-2-13B |        -       |   |     51.82     |     42.73     |  36.01 |  39.47  |  28.28 |    -   |
+|     hfl/chinese-llama-2-13b     | Llama-2-13B |        -       |   |     51.51     |     42.83     |  23.20 |  40.46  |  30.89 |    -   |
+|  wenge-research/yayi-13b-llama2 | Llama-2-13B |        -       |   |      23.7     |     25.34     |  7.51  |  24.72  |  27.22 |    -   |
+| TigerResearch/tigerbot-13b-base | Llama-2-13B |        0.6T       |   |     52.31     |     51.74     |  44.50 |  42.70  |  38.22 |    -   |
+|     IDEA-CCNL/Ziya2-13B-Base    | Llama-2-13B |        0.65T       |   |     59.37     |     61.16     |  44.58 |  51.72  |  58.96 |    58.84   |
+|                                 |             |                |   |               |               |        |         |        |        |
+|    **Colossal-LLaMA-2-13b-base**    | Llama-2-13B |     **0.025T**     |   |     56.42     |      61.8     |  58.83 |  54.69  |  69.53 |  60.3  |
+
+> The score in parentheses corresponds to the scores in the official repository of the model.
+
+More details about metrics can be found in [Metrics](#metrics).
 
 ❗️ More details of the evaluation methods and reproduction of the results, please refer to [ColossalEval](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval).
 
@@ -113,17 +158,26 @@ The generation config for all dataset is greedy search.
 | Information Extraction  | The company's annual conference, featuring keynote speakers and exclusive product launches, will be held at the Los Angeles Convention Center from October 20th to October 23rd, 2021. Extract the date mentioned in the above sentence.  | The date mentioned in the sentence is October 20th to October 23rd, 2021.  |
 | Error Correction  | Please correct the syntax error and restructure the sentence: "Went to the store me and my friend."  | The given sentence "Went to the store me and my friend." is incorrect due to a syntax error and it lacks a subject. The corrected version with proper grammar and sentence structure would be: "My friend and I went to the store."  |
 
-❗️ More examples of question answering, please refer to [Colossal-LLaMA-2-7B-base Examples](docs/example.md).
+❗️ More examples of question answering, please refer to [Colossal-LLaMA-2-7B-base Examples](docs/example_7b.md).
 
 ### Training Logs
 We also recorded the training logs for the experiment
-
+#### Colossal-LLaMA-2-7b-base
 <p id="Colossal-LLaMA-2-Multi-stage-training" align="center">
 <img src="https://github.com/hpcaitech/public_assets/blob/main/applications/colossal-llama-2/trainingLossBySteps.jpeg?raw=true" width=600/>
 </p>
 
 <p id="Colossal-LLaMA-2-Multi-stage-training" align="center">
 <img src="https://github.com/hpcaitech/public_assets/blob/main/applications/colossal-llama-2/trainingLossByTokens.jpeg?raw=true" width=600/>
+</p>
+
+#### Colossal-LLaMA-2-13b-base
+<p id="Colossal-LLaMA-2-Multi-stage-training" align="center">
+<img src="https://github.com/hpcaitech/public_assets/blob/main/applications/colossal-llama-2/colossal-llama2-13b-by-step.jpeg?raw=true" width=600/>
+</p>
+
+<p id="Colossal-LLaMA-2-Multi-stage-training" align="center">
+<img src="https://github.com/hpcaitech/public_assets/blob/main/applications/colossal-llama-2/colossal-llama2-13b-by-token.jpeg?raw=true" width=600/>
 </p>
 
 ### Inference
