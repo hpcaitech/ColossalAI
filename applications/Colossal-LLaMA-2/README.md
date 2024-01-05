@@ -198,11 +198,17 @@ We also recorded the training logs for the experiment
 
 ### Inference
 #### Import from HuggingFace
-To load Colossal-LLaMA-2-7B-base model using Transformers, use the following code:
+To load `Colossal-LLaMA-2-7B-base` or `Colossal-LLaMA-2-13B-base` model using Transformers, use the following code:
 ```Python
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+# Colossal-LLaMA-2-7B-base
 model = AutoModelForCausalLM.from_pretrained("hpcai-tech/Colossal-LLaMA-2-7b-base", device_map="auto", trust_remote_code=True)
 tokenizer = AutoTokenizer.from_pretrained("hpcai-tech/Colossal-LLaMA-2-7b-base", trust_remote_code=True)
+# Colossal-LLaMA-2-13B-base
+model = AutoModelForCausalLM.from_pretrained("hpcai-tech/Colossal-LLaMA-2-13b-base", device_map="auto", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("hpcai-tech/Colossal-LLaMA-2-13b-base", trust_remote_code=True)
+
 input = "离离原上草，"
 inputs = tokenizer(input, return_tensors='pt')
 inputs = inputs.to('cuda:0')
@@ -219,13 +225,18 @@ print(tokenizer.decode(pred.cpu()[0], skip_special_tokens=True)[len(input):])
 You can also load our model using modelscope, use the following code:
 ```Python
 from modelscope import AutoModelForCausalLM, AutoTokenizer, snapshot_download
+# Colossal-LLaMA-2-7B-base
 model_dir = snapshot_download('colossalai/Colossal-LLaMA-2-7b-base', revision='v1.0.1')
+# Colossal-LLaMA-2-13B-base
+model_dir = snapshot_download('colossalai/Colossal-LLaMA-2-13b-base', revision='v0.0.0')
+
 tokenizer = AutoTokenizer.from_pretrained(model_dir, device_map="auto", trust_remote_code=True)
 model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="auto", trust_remote_code=True).eval()
 generation_kwargs = {"max_new_tokens": 256,
                      "top_p": 0.95,
                      "temperature": 0.3
                     }
+
 input = '离离原上草，'
 inputs = tokenizer(input, return_token_type_ids=False, return_tensors='pt')
 inputs = inputs.to('cuda:0')
