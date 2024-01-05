@@ -40,8 +40,41 @@
 [ColossalEval](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval) is a project which provides a uniform pipeline to help evaluate language models on different public dataset or your own dataset using both classic metrics and the help from GPTs. Currently we support AGIEval, CEval, CMMLU, CValues, GAOKAO-Bench, GSM8K, LongBench, MMLU, MtBench and SafetyBench. More details can be found in the following sections.
 
 ## Leaderboard
+### Model with ~13 Billion Parameters
+We conducted comprehensive evaluation on 5 datasets and compare our Colossal-Llama-2-13b-base model with various models.
 
-We conducted comprehensive evaluation on 4 dataset and compare our Colossal-Llama-2-7b-base model with various models.
+- We use 5-shot for MMLU and calculate scores based on the logits of first predicted token.
+- We use 5-shot for CMMLU and calculate scores based on the logits of first predicted token.
+- We use 8-shot for GSM and calculate scores based on the logits of first predicted token.
+- We use 5-shot for AGIEval and only calculate scores for 4-choice questions using a combination metric of exact match and the logits of first predicted token. If any of the exact match or logits of first predicted token is correct, the model will get the score.
+- We use 0-shot for GAOKAO-Bench and only calculate scores for 4-choice questions based on the logits of first predicted token.
+- The generation config for all dataset is greedy search.
+- We also provided CEval scores from its latest leaderboard or the official repository of the model.
+
+|                                 | Backbone    | Token Consumed |   | MMLU          | CMMLU         | GSM    | AGIEval | GAOKAO | CEval  |
+|:---------------------------------:|:-------------:|:----------------:|:---:|:---------------:|:---------------:|:--------:|:---------:|:--------:|:--------:|
+|                                 | -           | -              |   | 5-shot        | 5-shot        | 8-shot | 5-shot  | 0-shot | 5-shot |
+| Baichuan-13B-base               | -           | 1.4T           |   | 50.54 (51.60) | 55.52 (55.30) |  25.78 |  41.86  |  51.62 |  53.60 |
+| Baichuan2-13B-base              | -           | 2.6T           |   | 54.81 (59.17) | 62.68 (61.97) |  53.98 |  48.22  |  58.60 |  58.10 |
+| InternLM-20B                    | -           | 2.3T           |   | 60.51 (62.05) |   59.46 (-)   |  51.4  |  56.07  |  62.06 |    -   |
+| Qwen-14B                        | -           | 3.0T           |   |     66.51     |     71.08     |  61.33 |  66.62  |  80.82 |  72.1  |
+| Skywork-13B-base                | -           | 3.2T           |   |     61.84     |     61.93     |  54.28 |  53.13  |  63.02 |    -   |
+|                                 |             |                |   |               |               |        |         |        |        |
+|           Llama-2-13B           |      -      |      2.0T      |   |     55.35     |     38.14     |  31.31 |  40.07  |  27.86 |    -   |
+| Linly-AI/Chinese-LLaMA-2-13B-hf | Llama-2-13B |        -       |   |     51.82     |     42.73     |  36.01 |  39.47  |  28.28 |    -   |
+|     hfl/chinese-llama-2-13b     | Llama-2-13B |        -       |   |     51.51     |     42.83     |  23.20 |  40.46  |  30.89 |    -   |
+|  wenge-research/yayi-13b-llama2 | Llama-2-13B |        -       |   |      23.7     |     25.34     |  7.51  |  24.72  |  27.22 |    -   |
+| TigerResearch/tigerbot-13b-base | Llama-2-13B |        0.6T       |   |     52.31     |     51.74     |  44.50 |  42.70  |  38.22 |    -   |
+|     IDEA-CCNL/Ziya2-13B-Base    | Llama-2-13B |        0.65T       |   |     59.37     |     61.16     |  44.58 |  51.72  |  58.96 |    58.84   |
+|                                 |             |                |   |               |               |        |         |        |        |
+|    **Colossal-LLaMA-2-13b-base**    | Llama-2-13B |     **0.025T**     |   |     56.42     |      61.8     |  58.83 |  54.69  |  69.53 |  60.3  |
+
+> The score in parentheses corresponds to the scores in the official repository of the model.
+
+More details about metrics can be found in [Metrics](#metrics).
+
+### Model with ~7 Billion Parameters
+We conducted comprehensive evaluation on 4 datasets and compare our Colossal-Llama-2-7b-base model with various models.
 
 - We use 5-shot for MMLU and calculate scores based on the logits of first predicted token.
 - We use 5-shot for CMMLU and calculate scores based on the logits of first predicted token.
@@ -56,13 +89,10 @@ More details about metrics can be found in [Metrics](#metrics).
 | :----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :-----: | :----: | :----: | :----------------------------: |
 |                                |     -      |        -        |                |        5-shot        |    5-shot     | 5-shot  | 0-shot | 5-shot |
 |          Baichuan-7B           |     -      |      1.2T       |             |    42.32 (42.30)     | 44.53 (44.02) |  38.72  | 36.74  | 42.80  |
-|       Baichuan-13B-Base        |     -      |      1.4T       |             |    50.51 (51.60)     | 55.73 (55.30) |  47.20  | 51.41  | 53.60  |
 |       Baichuan2-7B-Base        |     -      |      2.6T       |             |    46.97 (54.16)     | 57.67 (57.07) |  45.76  | 52.60  | 54.00  |
-|       Baichuan2-13B-Base       |     -      |      2.6T       |             |    54.84 (59.17)     | 62.62 (61.97) |  52.08  | 58.25  | 58.10  |
 |           ChatGLM-6B           |     -      |      1.0T       |             |    39.67 (40.63)     |   41.17 (-)   |  40.10  | 36.53  | 38.90  |
 |          ChatGLM2-6B           |     -      |      1.4T       |             |    44.74 (45.46)     |   49.40 (-)   |  46.36  | 45.49  | 51.70  |
 |          InternLM-7B           |     -      |        -        |                |    46.70 (51.00)     |   52.00 (-)   |  44.77  | 61.64  | 52.80  |
-| InternLM-20B | - | 2.3T | | 60.96 (62.05) | 59.08 (-) | 57.96 | 61.92 | - |
 |            Qwen-7B (original)             |     -      |      2.2T       |             | 54.29 (56.70) | 56.03 (58.80) |  52.47  | 56.42  | 59.60  |
 |            Qwen-7B             |     -      |      2.4T       |             | 58.33 (58.20) | 62.54 (62.20) |  64.34  | 74.05 | 63.50 |
 |                                |            |                 |                 |                      |               |         |        |        |
