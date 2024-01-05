@@ -34,7 +34,8 @@ from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 from .pp_plugin_base import PipelinePluginBase
 
-DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
+DP_AXIS, PP_AXIS, TP_AXIS, SP_AXIS = 0, 1, 2, 3
+SUPPORT_SP_MODE = ["1", "2", "3"]
 
 
 def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
@@ -938,6 +939,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self,
         tp_size: int,
         pp_size: int,
+        sp_size: int = 1,
         precision: str = "fp16",
         zero_stage: int = 0,
         enable_all_optimization: bool = False,
@@ -945,6 +947,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_flash_attention: bool = False,
         enable_jit_fused: bool = False,
         enable_sequence_parallelism: bool = False,
+        sequence_parallelism_mode: str = None,
         enable_sequence_overlap: bool = False,
         num_microbatches: Optional[int] = None,
         microbatch_size: Optional[int] = None,
@@ -975,14 +978,36 @@ class HybridParallelPlugin(PipelinePluginBase):
         super().__init__()
         assert (
             dist.get_world_size() % (tp_size * pp_size) == 0
-        ), f"world size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
+        ), f"World size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
 
         if enable_sequence_parallelism:
-            assert tp_size > 1, "Sequence parallelism must be enabled when using tensor parallelism"
+            self.sequence_parallelism_mode = sequence_parallelism_mode if sequence_parallelism_mode is not None else "1"
+            assert (
+                self.sequence_parallelism_mode in SUPPORT_SP_MODE
+            ), f"Sequence parallelism mode {self.sequence_parallelism_mode} is not in the supported list {SUPPORT_SP_MODE}"
+            if self.sequence_parallelism_mode in ["1", "2"]:
+                assert (
+                    tp_size > 1
+                ), f"Sequence parallelism mode {self.sequence_parallelism_mode} must be enabled when using tensor parallelism"
+                if sp_size != 1:
+                    warnings.warn(
+                        f"The sp_size will be the same as tp_size in sequence parallelism mode {self.sequence_parallelism_mode}, will ignore the given sequence parallelism size."
+                    )
+                self.sp_size = tp_size
+                self.dp_size = dist.get_world_size() // (tp_size * pp_size)
+            elif self.sequence_parallelism_mode in ["3"]:
+                assert (
+                    tp_size == 1
+                ), f"Sequence parallelism mode {self.sequence_parallelism_mode} cannot be used with tensor parallelism"
+                self.sp_size = sp_size
+                self.dp_size = dist.get_world_size() // (sp_size * pp_size)
+        else:
+            self.dp_size = dist.get_world_size() // (tp_size * pp_size)
+            assert sp_size == 1, f"sp_size can only be set to a >1 number when enable_sequence_parallelism is True"
+            self.sp_size = 1
 
         self.tp_size = tp_size
         self.pp_size = pp_size
-        self.dp_size = dist.get_world_size() // (tp_size * pp_size)
         self.precision = precision
         self.zero_stage = zero_stage
         self.cpu_offload = cpu_offload
@@ -991,7 +1016,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_flash_attention = enable_flash_attention
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
-        self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size)
+        self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
         self.stage_manager = None
         self.schedule = None
         self.custom_policy = custom_policy
@@ -1032,9 +1057,14 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
         self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
         self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
+        if self.enable_sequence_parallelism and self.sequence_parallelism_mode in ["1", "2"]:
+            self.sp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
+        else:
+            self.sp_group = self.pg_mesh.get_group_along_axis(SP_AXIS)
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
+            sequence_parallel_process_group=self.sp_group,
             pipeline_stage_manager=self.stage_manager,
             enable_tensor_parallelism=self.tp_size > 1,
             enable_all_optimization=self.enable_all_optimization,
@@ -1042,6 +1072,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             enable_flash_attention=self.enable_flash_attention,
             enable_jit_fused=self.enable_jit_fused,
             enable_sequence_parallelism=enable_sequence_parallelism,
+            sequence_parallelism_mode=sequence_parallelism_mode,
             enable_sequence_overlap=enable_sequence_overlap,
             test_seq_parallelism=test_seq_parallelism,
         )

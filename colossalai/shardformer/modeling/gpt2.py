@@ -166,10 +166,11 @@ class GPT2PipelineForwards:
 
         # split the input tensor along sequence dimension
         # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
-        if shard_config.enable_sequence_parallelism:
-            hidden_states = split_forward_gather_backward(
-                hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
-            )
+        if shard_config and shard_config.enable_sequence_parallelism:
+            if shard_config.sequence_parallelism_mode == "1":
+                hidden_states = split_forward_gather_backward(
+                    hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
+                )
 
         # Going through held blocks.
         start_idx, end_idx = stage_index[0], stage_index[1]
@@ -224,10 +225,11 @@ class GPT2PipelineForwards:
                     all_cross_attentions = all_cross_attentions + (outputs[3 if use_cache else 2],)
 
         # When sequence parallelism done, gather the output tensor in forward and split it in backward
-        if shard_config.enable_sequence_parallelism:
-            hidden_states = gather_forward_split_backward(
-                hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
-            )
+        if shard_config and shard_config.enable_sequence_parallelism:
+            if shard_config.sequence_parallelism_mode == "1":
+                hidden_states = gather_forward_split_backward(
+                    hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
+                )
 
         if stage_manager.is_last_stage():
             hidden_states = self.ln_f(hidden_states)

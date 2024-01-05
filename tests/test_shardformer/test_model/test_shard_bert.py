@@ -155,6 +155,14 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 def run_bert_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_bert")
 
+    import torch.distributed as dist
+
+    def print_rank(prompt, value, rank=0):
+        if dist.get_rank() == rank:
+            print(f"rank-{rank}, {prompt}: {value}")
+
+    print_rank("test_config", test_config)
+
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 

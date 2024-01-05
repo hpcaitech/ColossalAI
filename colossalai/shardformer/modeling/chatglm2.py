@@ -198,10 +198,11 @@ class ChatGLMPipelineForwards:
         all_hidden_states = () if output_hidden_states else None
         start_idx, end_idx = stage_index[0], stage_index[1]
 
-        if shard_config.enable_sequence_parallelism:
-            hidden_states = split_forward_gather_backward(
-                hidden_states, dim=0, process_group=shard_config.tensor_parallel_process_group
-            )
+        if shard_config and shard_config.enable_sequence_parallelism:
+            if shard_config.sequence_parallelism_mode == "1":
+                hidden_states = split_forward_gather_backward(
+                    hidden_states, dim=0, process_group=shard_config.tensor_parallel_process_group
+                )
         for idx in range(start_idx, end_idx):
             layer = self.encoder._get_layer(idx)
             if output_hidden_states:
@@ -222,10 +223,11 @@ class ChatGLMPipelineForwards:
             if use_cache:
                 presents = presents + (kv_cache,)
 
-        if shard_config.enable_sequence_parallelism:
-            hidden_states = gather_forward_split_backward(
-                hidden_states, dim=0, process_group=shard_config.tensor_parallel_process_group
-            )
+        if shard_config and shard_config.enable_sequence_parallelism:
+            if shard_config.sequence_parallelism_mode == "1":
+                hidden_states = gather_forward_split_backward(
+                    hidden_states, dim=0, process_group=shard_config.tensor_parallel_process_group
+                )
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
         if stage_manager.is_last_stage():
