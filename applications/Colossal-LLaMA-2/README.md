@@ -8,6 +8,7 @@
 - [Table of Contents](#table-of-contents)
 - [News](#news)
 - [Colossal-LLaMA-2-7B](#colossal-llama-2-7b)
+- [Colossal-LLaMA-2-13B](#colossal-llama-2-13b)
   - [Performance Evaluation](#performance-evaluation)
   - [Examples](#examples)
   - [Training Logs](#training-logs)
