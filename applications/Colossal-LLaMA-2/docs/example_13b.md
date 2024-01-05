@@ -8,6 +8,21 @@ Addressing heightened concerns surrounding security, the Colossal-AI team execut
 ## Table of Contents
 - [Running Script](#script)
 - [Examples](#examples)
+    - [Safety and Value](#safety-and-value)
+        - [Unfairness and Discrimination](#unfairness-and-discrimination)
+        - [Mental Health](#mental-health)
+        - [Privacy and Property](#privacy-and-property)
+    - [Knowledge and Concepts](#knowledge-and-concepts)
+        - [Internet](#internet)
+        - [Game](#game)
+        - [Food](#food)
+        - [Automotive field](#automotive-field)
+        - [Finance](#finance)
+        - [Law](#law)
+        - [Medical Treatment](#medical-treatment)
+        - [Ancient Chinese Literature](#ancient-chinese-literature)
+    - [Creative Writing](#creative-writing)
+    - [Information Extraction](#information-extraction)
 - [Conclusion](#conclusion)
 
 ## Script
