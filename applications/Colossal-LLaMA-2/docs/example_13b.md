@@ -150,3 +150,4 @@ The Colossal-AI team has conducted comprehensive evaluation for safety and value
 
 
 ## Conclusion
+The Colossal-AI team's advanced 13B model, compared to the 7B version, features a refined data structure categorizing information into informative, functional, and memory replay data. Informative data is intricately subdivided into major categories, each further segmented for precise control. Concurrently, data scale across domains is expanded. Tailored enhancements meet community demands for large model capabilities in natural language processing tasks, ensuring proficiency during pre-training and cost-effective fine-tuning. Addressing security and values concerns, multidimensional controls are implemented, securing the baseline model and aligning it with correct values.
