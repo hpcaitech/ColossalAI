@@ -64,7 +64,7 @@ To meet the community's demand for functional capabilities of large models, we h
 
 In addition to addressing the growing concerns about security and values in the community, the Colossal-AI team has implemented multidimensional controls (political sensitivity, religious sensitivity, abusive language, hatred, bias and discrimination, illegal activities, physical harm, mental health, property privacy, moral ethics) to ensure the baseline model's enhanced security and alignment with correct values.
 
-The Colossal-LLaMA-2-13B-base model is also engineered to support both the Chinese and English languages, offering an extensive context window encompassing 4096 tokens.Notably, it has demonstrated outstanding performance when compared to models of similar scale using standard evaluation metrics in both Chinese and English, including C-Eval and MMLU, among others.
+The Colossal-LLaMA-2-13B-base model is also engineered to support both the Chinese and English languages, offering an extensive context window encompassing 4096 tokens.Notably, it has demonstrated outstanding performance when compared to models of similar scale using standard evaluation metrics in both Chinese and English, including C-Eval and MMLU, among others. It is licensed under the LLaMA-2 license and [Apache 2.0 License](https://github.com/hpcaitech/ColossalAI/blob/main/LICENSE) **without any additional commercial use restrictions**. This solution can also be used to build models of specific domain knowledge or tasks.
 
 ❗️**Important notice**:
 * All training data used for this project is collected from well-known public dataset.
