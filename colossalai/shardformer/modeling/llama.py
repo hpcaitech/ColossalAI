@@ -466,9 +466,7 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig):
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
-
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:
@@ -761,7 +759,6 @@ def test_llama_seq_parallel_attention():
         output_attentions: bool = False,
         use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        ret = None
         if self.config.pretraining_tp > 1:
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
             query_slices = self.q_proj.weight.split(
@@ -783,7 +780,6 @@ def test_llama_seq_parallel_attention():
             query_states = self.q_proj(hidden_states)
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
-        ret = (query_states,)
 
         # introduce sequence parallel
         query_states = all_to_all_comm(query_states)
@@ -857,10 +853,10 @@ def test_llama_seq_parallel_attention():
             attn_output = sum([F.linear(attn_output[i], o_proj_slices[i]) for i in range(self.config.pretraining_tp)])
         else:
             attn_output = self.o_proj(attn_output)
-        # ret = (past_key_value, )
+
         if not output_attentions:
             attn_weights = None
-        return attn_output, attn_weights, past_key_value, ret
+        return attn_output, attn_weights, past_key_value
 
     return forward
 
@@ -938,7 +934,7 @@ def test_llama_seq_parallel_model():
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
         next_decoder_cache = () if use_cache else None
-        decoder_output = []
+
         for idx, decoder_layer in enumerate(self.layers):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
@@ -968,7 +964,7 @@ def test_llama_seq_parallel_model():
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                 )
-                decoder_output.append((layer_outputs[-2], layer_outputs[-1]))
+
             hidden_states = layer_outputs[0]
 
             if use_cache:
@@ -979,7 +975,9 @@ def test_llama_seq_parallel_model():
 
         hidden_states = self.norm(hidden_states)
 
+        # Todo: Maybe this line can be optimized
         hidden_states = gather_forward_split_backward(hidden_states, 1, None)
+
         # add hidden states from the last decoder layer
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
@@ -988,17 +986,11 @@ def test_llama_seq_parallel_model():
         if not return_dict:
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
 
-        ret_model = "test_shard_model"
-
-        return (
-            BaseModelOutputWithPast(
-                last_hidden_state=hidden_states,
-                past_key_values=next_cache,
-                hidden_states=all_hidden_states,
-                attentions=all_self_attns,
-            ),
-            decoder_output,
-            ret_model,
+        return BaseModelOutputWithPast(
+            last_hidden_state=hidden_states,
+            past_key_values=next_cache,
+            hidden_states=all_hidden_states,
+            attentions=all_self_attns,
         )
 
     return forward

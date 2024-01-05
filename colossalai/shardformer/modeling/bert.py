@@ -186,13 +186,14 @@ class BertPipelineForwards:
         # split the input tensor along sequence dimension
         # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
         if shard_config is not None and shard_config.enable_sequence_parallelism:
-            hidden_states = split_forward_gather_backward(
-                hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
-            )
-            if encoder_hidden_states is not None:
-                encoder_hidden_states = split_forward_gather_backward(
-                    encoder_hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
+            if shard_config.sequence_parallelism_mode == "1":
+                hidden_states = split_forward_gather_backward(
+                    hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
                 )
+                if encoder_hidden_states is not None:
+                    encoder_hidden_states = split_forward_gather_backward(
+                        encoder_hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
+                    )
 
         for idx, encoder_layer in enumerate(self.encoder.layer[start_idx:end_idx], start=start_idx):
             if stage_manager.is_first_stage() and idx == 0:
@@ -240,9 +241,10 @@ class BertPipelineForwards:
 
         # When sequence parallelism done, gather the output tensor in forward and split it in backward
         if shard_config is not None and shard_config.enable_sequence_parallelism:
-            hidden_states = gather_forward_split_backward(
-                hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
-            )
+            if shard_config.sequence_parallelism_mode == "1":
+                hidden_states = gather_forward_split_backward(
+                    hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
+                )
 
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
