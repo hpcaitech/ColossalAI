@@ -76,26 +76,27 @@ def test_context_attention():
 
 def test_decoding_attention():
     # test the pipeline of decoding attention
-    attn = PagedAttention(4, 4)
-    q = k = v = torch.randn(2, 1, 4, 4)
-    k_cache = torch.empty(8, 4, 4, 8)
-    v_cache = torch.empty(8, 4, 4, 8)
-    past_kv = torch.randn(2, 8, 4, 4)
+    attn = PagedAttention(4, 8)
+    q = k = v = torch.randn(2, 1, 4, 8)
+    k_cache = torch.empty(8, 4, 8, 8)
+    v_cache = torch.empty(8, 4, 8, 8)
+    past_kv = torch.randn(2, 8, 4, 8)
     context_lenghths = torch.tensor([8, 8])
     lengths = context_lenghths + 1
     block_tables = torch.tensor([[0, 1], [2, 3]])
     copy_to_cache(past_kv, k_cache, lengths=context_lenghths, block_tables=block_tables)
     copy_to_cache(past_kv, v_cache, lengths=context_lenghths, block_tables=block_tables)
     attn.pad_decoding_forward(q, k, v, k_cache, v_cache, lengths=lengths, block_tables=block_tables)
+
     # test decoding accuracy, past_kv is reused
-    config = LlamaConfig(num_attention_heads=4, num_key_value_heads=None, hidden_size=16)
+    config = LlamaConfig(num_attention_heads=4, num_key_value_heads=None, hidden_size=32)
     transformer_attn = LlamaAttention(config)
     transformer_attn.layer_idx = 0
     transformer_attn.training = False
-    hidden_states = torch.randn(2, 1, 16)
-    proj_q = transformer_attn.q_proj(hidden_states).view(2, 1, 4, 4)
-    proj_k = transformer_attn.k_proj(hidden_states).view(2, 1, 4, 4)
-    proj_v = transformer_attn.v_proj(hidden_states).view(2, 1, 4, 4)
+    hidden_states = torch.randn(2, 1, 32)
+    proj_q = transformer_attn.q_proj(hidden_states).view(2, 1, 4, 8)
+    proj_k = transformer_attn.k_proj(hidden_states).view(2, 1, 4, 8)
+    proj_v = transformer_attn.v_proj(hidden_states).view(2, 1, 4, 8)
 
     llama_past_kv = DynamicCache()
     llama_past_kv.update(key_states=past_kv.transpose(1, 2), value_states=past_kv.transpose(1, 2), layer_idx=0)

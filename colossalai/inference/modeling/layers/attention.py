@@ -40,19 +40,19 @@ def copy_to_cache(source, cache, lengths, block_tables, type: str = "prefill"):
     return cache
 
 
-def convert_kvcache(source, cache, lengths, block_tables):
+def convert_kvcache(cache, lengths, block_tables):
     """
     Func: convert key/value cache for calculation
 
-    Args:   key/value(source): shape [bsz, 1, num_heads, head_size]
-            cache: shape [num_blocks, num_heads, head_size, block_size]
+    Args:   cache: shape [num_blocks, num_heads, head_size, block_size]
             lengths: key/value length
             block_tables
     """
     num_blocks, num_heads, head_size, block_size = cache.shape
 
     needed_blocks = (lengths + block_size - 1) // block_size
-    num_remaing_tokens = (lengths - 1) % block_size
+    num_remaing_tokens = lengths % block_size
+    num_remaing_tokens[num_remaing_tokens == 0] += block_size
     bsz = block_tables.shape[0]
     seq_len = max(lengths)
     padded_cache = []
@@ -60,16 +60,14 @@ def convert_kvcache(source, cache, lengths, block_tables):
         _cache = torch.cat(
             (
                 cache[block_tables[i][: needed_blocks[i] - 1]].permute((3, 0, 1, 2)).reshape(-1, num_heads, head_size),
-                cache[block_tables[i][needed_blocks[i] - 1], :, :, : num_remaing_tokens[i]].permute(2, 1, 0),
+                cache[block_tables[i][needed_blocks[i] - 1], :, :, : num_remaing_tokens[i]].permute(2, 0, 1),
             ),
             dim=0,
         )
-        concat_cache = torch.cat((_cache, source[i]), dim=0)
-        padding = seq_len - concat_cache.size(0)
+        padding = seq_len - _cache.size(0)
         if padding > 0:
-            concat_cache = F.pad(concat_cache, (0, 0, 0, 0, 0, 1))
-        padded_cache.append(concat_cache)
-
+            _cache = F.pad(_cache, (0, 0, 0, 0, 0, 1))
+        padded_cache.append(_cache)
     return torch.stack(padded_cache, dim=0)
 
 
@@ -237,8 +235,8 @@ class PagedAttention(nn.Module):
         copy_to_cache(key, k_cache, lengths=lengths, block_tables=block_tables, type="decoding")
         copy_to_cache(v, v_cache, lengths=lengths, block_tables=block_tables, type="decoding")
 
-        key = convert_kvcache(key, k_cache, lengths, block_tables)  # bsz, seqlen,
-        value = convert_kvcache(v, v_cache, lengths, block_tables)
+        key = convert_kvcache(k_cache, lengths, block_tables)  # bsz, seqlen,
+        value = convert_kvcache(v_cache, lengths, block_tables)
 
         query = query.transpose(1, 2)
         key = key.transpose(1, 2)
