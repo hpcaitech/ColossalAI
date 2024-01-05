@@ -82,7 +82,7 @@ We conducted comprehensive evaluation on 4 datasets and compare our Colossal-Lla
 - The generation config for all dataset is greedy search.
 - We also provided CEval scores from its latest leaderboard or the official repository of the model.
 
-More details about metrics can be found in [Metrics](#metrics).
+More details about metrics can be found in [Metrics](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval#metrics).
 
 |                                |  Backbone  | Tokens Consumed |  |         MMLU         |     CMMLU     | AGIEval | GAOKAO | CEval  |
 | :----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :-----: | :----: | :----: | :----------------------------: |
@@ -124,6 +124,8 @@ We conducted comprehensive evaluation on 5 datasets and compare our Colossal-Lla
 - The generation config for all dataset is greedy search.
 - We also provided CEval scores from its latest leaderboard or the official repository of the model.
 
+More details about metrics can be found in [Metrics](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval#metrics).
+
 |                                 | Backbone    | Token Consumed |   | MMLU          | CMMLU         | GSM    | AGIEval | GAOKAO | CEval  |
 |:---------------------------------:|:-------------:|:----------------:|:---:|:---------------:|:---------------:|:--------:|:---------:|:--------:|:--------:|
 |                                 | -           | -              |   | 5-shot        | 5-shot        | 8-shot | 5-shot  | 0-shot | 5-shot |
@@ -143,8 +145,6 @@ We conducted comprehensive evaluation on 5 datasets and compare our Colossal-Lla
 |    **Colossal-LLaMA-2-13b-base**    | Llama-2-13B |     **0.025T**     |   |     56.42     |      61.8     |  58.83 |  54.69  |  69.53 |  60.3  |
 
 > The score in parentheses corresponds to the scores in the official repository of the model.
-
-More details about metrics can be found in [Metrics](#metrics).
 
 ❗️ More details of the evaluation methods and reproduction of the results, please refer to [ColossalEval](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval).
 
