@@ -11,7 +11,7 @@ def copy_to_cache(source, cache, lengths, block_tables, type: str = "prefill"):
     Func: copy key/value into key/value cache.
 
     Args:   key/value(source): shape [bsz,seq_len,num_heads,head_size]
-            cache: shape [num_blocks, num_heads, head_size, block_size]
+            cache: shape [num_blocks, num_kv_heads, head_size, block_size]
             lengths: key/value lengths
             block_tables
     """
@@ -77,6 +77,9 @@ class PagedAttention:
 
     @staticmethod
     def pad_and_reshape(tensor, seq_lengths, max_seq_len, num_heads, head_size):
+        """
+        Transform 1D no_pad tensor into 2D padded tensor with shape [bsz,seq_len,num_heads,head_size]
+        """
         bsz = len(seq_lengths)
         padded_tensor = torch.zeros(bsz, max_seq_len, num_heads, head_size)
 
@@ -94,9 +97,26 @@ class PagedAttention:
         return padding_mask
 
     @staticmethod
+    def repeat_kv(hidden_states: torch.Tensor, n_rep: int = 1) -> torch.Tensor:
+        """
+        Essential component for MQA. Equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep).
+            Args: hidden_states(batch, num_key_value_heads, seqlen, head_dim)
+                  n_rep: times of repeatition.
+            Output: hidden_states (batch, num_attention_heads, seqlen, head_dim)
+        """
+        if n_rep == 1:
+            return hidden_states
+
+        batch, num_key_value_heads, seq_len, head_dim = hidden_states.shape
+        num_attention_heads = n_rep * num_key_value_heads
+        hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, seq_len, head_dim)
+
+        return hidden_states.reshape(batch, num_attention_heads, seq_len, head_dim)
+
+    @staticmethod
     def nopad_context_forward(
         q: torch.Tensor,  # [num_tokens, num_heads, head_size]
-        k: torch.Tensor,
+        k: torch.Tensor,  # [num_tokens, num_kv_heads, head_size]
         v: torch.Tensor,
         k_cache: torch.Tensor,  # [num_blocks, num_heads, head_size, block_size]
         v_cache: torch.Tensor,
@@ -108,6 +128,11 @@ class PagedAttention:
         """
         # Fisrt, do shape verification
         num_tokens, num_heads, head_size = q.shape
+        num_kv_heads = k.shape[-2]
+
+        assert num_heads % num_kv_heads == 0, "num_kv_heads should be divisible by num_heads"
+        num_kv_groups = num_heads // num_kv_heads
+
         block_size = k_cache.shape[-1]
         bsz, max_blocks_per_sequence = block_tables.shape
         max_seq_len = max_blocks_per_sequence * block_size
@@ -116,15 +141,22 @@ class PagedAttention:
         assert context_lengths.shape[0] == block_tables.shape[0]
         shape = (bsz, max_seq_len, num_heads, head_size)
         input_shape = shape[:2]
-        q = PagedAttention.pad_and_reshape(q, context_lengths, max_seq_len, num_heads, head_size).transpose(1, 2)
-        k = PagedAttention.pad_and_reshape(k, context_lengths, max_seq_len, num_heads, head_size).transpose(1, 2)
-        v = PagedAttention.pad_and_reshape(v, context_lengths, max_seq_len, num_heads, head_size).transpose(1, 2)
 
-        copy_to_cache(k.transpose(1, 2), k_cache, lengths=context_lengths, block_tables=block_tables)
-        copy_to_cache(v.transpose(1, 2), v_cache, lengths=context_lengths, block_tables=block_tables)
+        q = PagedAttention.pad_and_reshape(
+            q, context_lengths, max_seq_len, num_heads, head_size
+        )  # bsz,seqlen,num_heads,head_size
+        k = PagedAttention.pad_and_reshape(k, context_lengths, max_seq_len, num_heads, head_size)
+        v = PagedAttention.pad_and_reshape(v, context_lengths, max_seq_len, num_heads, head_size)
+
+        copy_to_cache(k, k_cache, lengths=context_lengths, block_tables=block_tables)
+        copy_to_cache(v, v_cache, lengths=context_lengths, block_tables=block_tables)
 
         attn_mask = AttentionMaskConverter._make_causal_mask(input_shape, q.dtype, q.device, past_key_values_length=0)
-        attn_mask += PagedAttention.generate_padding_mask(context_lengths, max_seq_len)
+        attn_mask = attn_mask + PagedAttention.generate_padding_mask(context_lengths, max_seq_len)
+
+        q = q.transpose(1, 2)
+        k = PagedAttention.repeat_kv(k.transpose(1, 2), num_kv_groups)
+        v = PagedAttention.repeat_kv(v.transpose(1, 2), num_kv_groups)
 
         # position_ids = torch.arange(0, max_seq_len, dtype=torch.long, device=query.device)
         # position_ids = position_ids.unsqueeze(0)
@@ -145,12 +177,14 @@ class PagedAttention:
             raise ValueError(f"Got wrong attn_output, should be in shape {(bsz,num_heads,max_seq_len,head_size)}.")
         attn_output = attn_output.transpose(1, 2).contiguous().reshape(bsz, max_seq_len, -1)
 
+        del attn_weights
+
         return attn_output
 
     @staticmethod
     def pad_context_forward(
         q: torch.Tensor,  # [batch_size, seq_len, num_heads, head_size]
-        k: torch.Tensor,
+        k: torch.Tensor,  # [batch_size, seq_len, num_kv_heads, head_size]
         v: torch.Tensor,
         k_cache: torch.Tensor,  # [num_blocks, num_heads, head_size, block_size]
         v_cache: torch.Tensor,
@@ -159,6 +193,9 @@ class PagedAttention:
     ):
         # Firt, do shape verification
         bsz, seq_len, num_heads, head_size = q.shape
+        num_kv_heads = k.shape[-2]
+        assert num_heads % num_kv_heads == 0, "num_kv_heads should be divisible by num_heads"
+        num_kv_groups = num_heads // num_kv_heads
         block_size = k_cache.shape[-1]
         assert q.shape[0] == k.shape[0] == v.shape[0] == block_tables.shape[0]
         block_tables.shape[-1] * block_size
@@ -170,12 +207,12 @@ class PagedAttention:
         copy_to_cache(v, v_cache, lengths=context_lengths, block_tables=block_tables)
 
         q = q.transpose(1, 2)
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
+        k = PagedAttention.repeat_kv(k.transpose(1, 2), num_kv_groups)
+        v = PagedAttention.repeat_kv(v.transpose(1, 2), num_kv_groups)
 
         attn_weights = torch.matmul(q, k.transpose(2, 3)) / math.sqrt(head_size)
         attn_mask = AttentionMaskConverter._make_causal_mask(input_shape, q.dtype, q.device, past_key_values_length=0)
-        attn_mask += PagedAttention.generate_padding_mask(context_lengths, seq_len)
+        attn_mask = attn_mask + PagedAttention.generate_padding_mask(context_lengths, seq_len)
 
         if attn_weights.size() != (bsz, num_heads, seq_len, seq_len):
             raise ValueError(f"Got wrong attn_weights, should be in shape {(bsz,num_heads,seq_len,seq_len)}.")
@@ -190,57 +227,66 @@ class PagedAttention:
 
         attn_output = attn_output.transpose(1, 2).contiguous().reshape(bsz, seq_len, -1)
 
+        del attn_weights
+
         return attn_output
 
     @staticmethod
     def pad_decoding_forward(
         q: torch.Tensor,  # [bsz, 1, num_heads, head_size]
-        k: torch.Tensor,
+        k: torch.Tensor,  # [bsz, 1, num_kv_heads, head_size]
         v: torch.Tensor,
         k_cache: torch.Tensor,  # [num_blocks, num_heads, head_size, block_size]
         v_cache: torch.Tensor,
         lengths: torch.Tensor,  # [num_seqs]: input_lengths + output_lengths
         block_tables: torch.Tensor,  # [num_seqs,max_blocks_per_sequence]
     ):
+        # Firt, do shape verification.
         bsz, _, num_heads, head_size = q.shape
+
+        num_kv_heads = k.shape[-2]
+        assert num_heads % num_kv_heads == 0, "num_kv_heads should be divisible by num_heads"
+        num_kv_groups = num_heads // num_kv_heads
         block_size = k_cache.shape[-1]
         seq_len = max(lengths)
 
         assert q.shape[0] == k.shape[0] == v.shape[0] == block_tables.shape[0]
-        max_seq_len = block_tables.shape[-1] * block_size
+        block_tables.shape[-1] * block_size
+
         attn_mask = AttentionMaskConverter._make_causal_mask(
             q.shape[:2], q.dtype, q.device, past_key_values_length=seq_len - 1
         )
-        PagedAttention.generate_padding_mask(lengths, max_seq_len)
-
+        attn_mask = attn_mask + PagedAttention.generate_padding_mask(lengths, seq_len).unsqueeze(1).unsqueeze(2)
         # cos, sin = self.rotary_emb(v, max_seq_len)
         # position_ids = lengths - 1
         # position_ids = position_ids.unsqueeze(1)
         # query, key = apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=2)
 
-        copy_to_cache(key, k_cache, lengths=lengths, block_tables=block_tables, type="decoding")
+        copy_to_cache(k, k_cache, lengths=lengths, block_tables=block_tables, type="decoding")
         copy_to_cache(v, v_cache, lengths=lengths, block_tables=block_tables, type="decoding")
 
-        key = convert_kvcache(k_cache, lengths, block_tables)  # bsz, seqlen,
-        value = convert_kvcache(v_cache, lengths, block_tables)
+        k = convert_kvcache(k_cache, lengths, block_tables)  # bsz, seqlen,
+        v = convert_kvcache(v_cache, lengths, block_tables)
 
-        query = query.transpose(1, 2)
-        key = key.transpose(1, 2)
-        value = value.transpose(1, 2)
+        q = q.transpose(1, 2)
+        k = PagedAttention.repeat_kv(k.transpose(1, 2), num_kv_groups)
+        v = PagedAttention.repeat_kv(v.transpose(1, 2), num_kv_groups)
 
-        attn_weights = torch.matmul(query, key.transpose(2, 3)) / math.sqrt(head_size)
+        attn_weights = torch.matmul(q, k.transpose(2, 3)) / math.sqrt(head_size)
         if attn_weights.size() != (bsz, num_heads, 1, seq_len):
             raise ValueError(f"Got wrong attn_weights, should be in shape {(bsz,num_heads,1,seq_len)}.")
 
         if attn_mask is not None:
             attn_weights += attn_mask
 
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query.dtype)
-        attn_output = torch.matmul(attn_weights, value)
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(q.dtype)
+        attn_output = torch.matmul(attn_weights, v)
 
         if attn_output.size() != (bsz, num_heads, 1, head_size):
             raise ValueError(f"Got wrong attn_output, should be in shape {(bsz,num_heads,1,head_size)}.")
         attn_output = attn_output.transpose(1, 2).contiguous().reshape(bsz, 1, -1)
+
+        del attn_weights
 
         return attn_output
 
