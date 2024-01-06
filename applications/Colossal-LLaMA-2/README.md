@@ -234,8 +234,8 @@ model_dir = snapshot_download('colossalai/Colossal-LLaMA-2-13b-base', revision='
 
 tokenizer = AutoTokenizer.from_pretrained(model_dir, device_map="auto", trust_remote_code=True)
 model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="auto", trust_remote_code=True).eval()
-generation_kwargs = {"max_new_tokens": 256, 
-                     "top_p": 0.95, 
+generation_kwargs = {"max_new_tokens": 256,
+                     "top_p": 0.95,
                      "temperature": 0.3
                     }
 
