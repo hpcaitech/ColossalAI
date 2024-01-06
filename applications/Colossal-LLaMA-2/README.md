@@ -216,6 +216,7 @@ inputs = inputs.to('cuda:0')
 pred = model.generate(**inputs,
                         max_new_tokens=256,
                         do_sample=True,
+                        temperature=0.3,
                         top_k=50,
                         top_p=0.95,
                         num_return_sequences=1)
@@ -238,7 +239,7 @@ generation_kwargs = {"max_new_tokens": 256,
                      "temperature": 0.3
                     }
 
-input = '离离原上草，\n\n->\n\n'
+input = '明月松间照，\n\n->\n\n'
 inputs = tokenizer(input, return_token_type_ids=False, return_tensors='pt')
 inputs = inputs.to('cuda:0')
 output = model.generate(**inputs, **generation_kwargs)
