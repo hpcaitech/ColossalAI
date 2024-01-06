@@ -207,7 +207,7 @@ class LlamaPolicy(Policy):
             layers_per_stage = self.distribute_layers(
                 len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
             )
-            stage_indices = Policy.get_stage_index(
+            stage_indices = self.get_stage_index(
                 layers_per_stage,
                 stage_manager.stage,
                 num_model_chunks=stage_manager.num_model_chunks,
