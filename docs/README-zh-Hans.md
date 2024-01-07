@@ -117,8 +117,6 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 - 使用友好
   - 基于参数文件的并行化
-- 推理
-  - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
@@ -214,7 +212,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 - [DreamBooth微调](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/dreambooth): 仅需3-5张目标主题图像个性化微调
 
-<p id="inference" align="center">
+<p id="inference-sd" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20Inference.jpg" width=800/>
 </p>
 
