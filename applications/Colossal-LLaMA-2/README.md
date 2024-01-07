@@ -263,7 +263,7 @@ python inference_example.py \
     --temperature 0.3 \
     --top_k 50 \
     --top_p 0.95 \
-    --input_txt "YOUR_PROMPT_OR_QUESTION" 
+    --input_txt "YOUR_PROMPT_OR_QUESTION"
 ```
 Here is details about CLI arguments:
 * Model path: `--model_path`. HF repo name or local path of the model.
