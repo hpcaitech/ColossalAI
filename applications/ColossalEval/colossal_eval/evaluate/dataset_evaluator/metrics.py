@@ -25,7 +25,7 @@ metrics4subcategory = {
         "per_byte_ppl_score": ["ALL"],
     },
     # The commented are non 4-choice questions.
-    "agieval": {
+    "AGIEvalDataset": {
         "combined_single_choice_accuracy": [
             # "lsat-ar",
             # "lsat-lr",
@@ -103,14 +103,14 @@ metrics4subcategory = {
         ],
         "ppl_score": ["ALL"],
     },
-    "cmmlu": {
+    "CMMLUDataset": {
         "first_token_accuracy": ["ALL"],
         "single_choice_accuracy": ["ALL"],
         "perplexity": ["ALL"],
         "ppl_score_over_choices": ["ALL"],
         "ppl_score": ["ALL"],
     },
-    "gaokaobench": {
+    "GaoKaoBenchDataset": {
         "combined_single_choice_accuracy": [
             "English MCQs",
             "Biology MCQs",
@@ -170,7 +170,7 @@ metrics4subcategory = {
         "ppl_score_over_choices": ["ALL"],
         "ppl_score": ["ALL"],
     },
-    "longbench": {
+    "LongBenchDataset": {
         "f1_score": ["hotpotqa", "2wikimqa", "musique", "narrativeqa", "qasper", "multifieldqa_en", "triviaqa"],
         "f1_zh_score": ["multifieldqa_zh"],
         "rouge_score": ["gov_report", "qmsum", "multi_news", "samsum"],
@@ -183,7 +183,7 @@ metrics4subcategory = {
         "perplexity": ["ALL"],
         "ppl_score": ["ALL"],
     },
-    "mmlu": {
+    "MMLUDataset": {
         "first_token_accuracy": ["ALL"],
         "single_choice_accuracy": ["ALL"],
         "accuracy": ["ALL"],
@@ -191,11 +191,11 @@ metrics4subcategory = {
         "ppl_score_over_choices": ["ALL"],
         "ppl_score": ["ALL"],
     },
-    "mtbench": {"mtbench_single_judge": ["ALL"]},
-    "cvalues": {"first_token_accuracy": ["ALL"]},
-    "safetybench_zh": {"first_token_accuracy": ["ALL"]},
-    "safetybench_en": {"first_token_accuracy": ["ALL"]},
-    "gsm": {
+    "MTBenchDataset": {"mtbench_single_judge": ["ALL"]},
+    "CValuesDataset": {"first_token_accuracy": ["ALL"]},
+    "SafetyBenchZHDataset": {"first_token_accuracy": ["ALL"]},
+    "SafetyBenchENDataset": {"first_token_accuracy": ["ALL"]},
+    "GSMDataset": {
         "loss_over_all_tokens": ["ALL"],
         "gsm_accuracy": ["ALL"],
     },

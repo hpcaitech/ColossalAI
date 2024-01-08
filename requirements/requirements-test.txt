@@ -1,5 +1,4 @@
 diffusers
-fbgemm-gpu==0.2.0
 pytest
 coverage==7.2.3
 git+https://github.com/hpcaitech/pytest-testmon
@@ -16,7 +15,7 @@ triton==2.1.0
 requests==2.27.1 # downgrade to avoid huggingface error https://github.com/huggingface/transformers/issues/17611
 SentencePiece
 ninja
-flash_attn==2.0.5
+flash_attn
 datasets
 pydantic
 ray

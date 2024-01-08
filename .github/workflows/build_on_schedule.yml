@@ -12,7 +12,7 @@ jobs:
     if: github.repository == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, 8-gpu]
     container:
-      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      image: hpcaitech/pytorch-cuda:2.0.0-11.7.0
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
     timeout-minutes: 40
     steps:
