@@ -24,6 +24,7 @@
 </div>
 
 ## 新闻
+* [2024/01] [Inference Performance Improved by 46%, Open Source Solution Breaks the Length Limit of LLM for Multi-Round Conversations](https://hpc-ai.com/blog/Colossal-AI-SwiftInfer)
 * [2024/01] [Construct Refined 13B Private Model With Just $5000 USD, Upgraded Colossal-AI Llama-2 Open Source](https://hpc-ai.com/blog/colossal-llama-2-13b)
 * [2023/11] [Enhanced MoE Parallelism, Open-source MoE Model Training Can Be 9 Times More Efficient](https://www.hpc-ai.tech/blog/enhanced-moe-parallelism-open-source-moe-model-training-can-be-9-times-more-efficient)
 * [2023/09] [One Half-Day of Training Using a Few Hundred Dollars Yields Similar Results to Mainstream Large Models, Open-Source and Commercial-Free Domain-Specific LLM Solution](https://www.hpc-ai.tech/blog/one-half-day-of-training-using-a-few-hundred-dollars-yields-similar-results-to-mainstream-large-models-open-source-and-commercial-free-domain-specific-llm-solution)
@@ -69,8 +70,9 @@
    </ul>
  </li>
 <li>
-   <a href="#推理-Energon-AI-样例展示">推理 (Energon-AI) 样例展示</a>
+   <a href="#推理">推理</a>
    <ul>
+     <li><a href="#SwiftInfer">SwiftInfer:打破LLM多轮对话的长度限制，推理加速46%</a></li>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">1750亿参数OPT在线推理服务</a></li>
      <li><a href="#BLOOM-Inference">1760亿参数 BLOOM</a></li>
@@ -115,8 +117,6 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 - 使用友好
   - 基于参数文件的并行化
-- 推理
-  - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
@@ -212,7 +212,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 - [DreamBooth微调](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/dreambooth): 仅需3-5张目标主题图像个性化微调
 
-<p id="inference" align="center">
+<p id="inference-sd" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20Inference.jpg" width=800/>
 </p>
 
@@ -344,7 +344,12 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 
-## 推理 (Energon-AI) 样例展示
+## 推理
+<p id="SwiftInfer" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/SwiftInfer.jpg" width=800/>
+</p>
+
+- [SwiftInfer](https://github.com/hpcaitech/SwiftInfer): Inference performance improved by 46%, open source solution breaks the length limit of LLM for multi-round conversations
 
 <p id="GPT-3-Inference" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference_GPT-3.jpg" width=800/>

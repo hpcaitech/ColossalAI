@@ -25,6 +25,7 @@
 </div>
 
 ## Latest News
+* [2024/01] [Inference Performance Improved by 46%, Open Source Solution Breaks the Length Limit of LLM for Multi-Round Conversations](https://hpc-ai.com/blog/Colossal-AI-SwiftInfer)
 * [2024/01] [Construct Refined 13B Private Model With Just $5000 USD, Upgraded Colossal-AI Llama-2 Open Source](https://hpc-ai.com/blog/colossal-llama-2-13b)
 * [2023/11] [Enhanced MoE Parallelism, Open-source MoE Model Training Can Be 9 Times More Efficient](https://www.hpc-ai.tech/blog/enhanced-moe-parallelism-open-source-moe-model-training-can-be-9-times-more-efficient)
 * [2023/09] [One Half-Day of Training Using a Few Hundred Dollars Yields Similar Results to Mainstream Large Models, Open-Source and Commercial-Free Domain-Specific LLM Solution](https://www.hpc-ai.tech/blog/one-half-day-of-training-using-a-few-hundred-dollars-yields-similar-results-to-mainstream-large-models-open-source-and-commercial-free-domain-specific-llm-solution)
@@ -70,8 +71,9 @@
    </ul>
  </li>
  <li>
-   <a href="#Inference-Energon-AI-Demo">Inference (Energon-AI) Demo</a>
+   <a href="#Inference">Inference</a>
    <ul>
+     <li><a href="#SwiftInfer">SwiftInfer:Breaks the Length Limit of LLM for Multi-Round Conversations with 46% Acceleration</a></li>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">OPT-175B Online Serving for Text Generation</a></li>
      <li><a href="#BLOOM-Inference">176B BLOOM</a></li>
@@ -120,9 +122,6 @@ distributed training and inference in a few lines.
 
 - Friendly Usage
   - Parallelism based on the configuration file
-
-- Inference
-  - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -220,7 +219,7 @@ Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion v1]
 
 - [DreamBooth Fine-tuning](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/dreambooth): Personalize your model using just 3-5 images of the desired subject.
 
-<p id="inference" align="center">
+<p id="inference-sd" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20Inference.jpg" width=800/>
 </p>
 
@@ -350,7 +349,12 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 
-## Inference (Energon-AI) Demo
+## Inference
+<p id="SwiftInfer" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/SwiftInfer.jpg" width=800/>
+</p>
+
+- [SwiftInfer](https://github.com/hpcaitech/SwiftInfer): Inference performance improved by 46%, open source solution breaks the length limit of LLM for multi-round conversations
 
 <p id="GPT-3-Inference" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference_GPT-3.jpg" width=800/>
