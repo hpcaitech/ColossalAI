@@ -8,7 +8,7 @@ import colossalai
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.kv_cache import CacheBlock, KVCacheManager
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import parameterize, spawn
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 
 @parameterize(
@@ -155,6 +155,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_if_address_is_in_use()
 def test_cache_manager():
     spawn(run_dist, 1)
 

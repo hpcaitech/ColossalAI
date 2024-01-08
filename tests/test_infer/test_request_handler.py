@@ -6,7 +6,7 @@ import colossalai
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.core.request_handler import RequestHandler, RunningList
 from colossalai.inference.struct import RequestStatus, Sequence
-from colossalai.testing import spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def check_running_list():
@@ -78,6 +78,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_if_address_is_in_use()
 def test_running_list_and_request_handler():
     spawn(run_dist, 1)
 
