@@ -3,7 +3,7 @@ import pytest
 import colossalai
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.struct import BatchInfo, Sequence
-from colossalai.testing import spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def check_config_and_inference():
@@ -74,6 +74,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_if_address_is_in_use()
 def test_config_and_inference():
     spawn(run_dist, 1)
 
