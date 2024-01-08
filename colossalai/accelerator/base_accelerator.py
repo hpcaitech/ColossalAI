@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -9,6 +9,8 @@ __all__ = ["BaseAccelerator"]
 
 
 class BaseAccelerator(ABC):
+    support_set_device: bool = True
+
     def __init__(self, name: str, communication_backend: str, is_synchronous: bool) -> None:
         self._name = name
         self._communication_backend = communication_backend
@@ -59,7 +61,7 @@ class BaseAccelerator(ABC):
         """
 
     @abstractmethod
-    def set_device(self, device: Union[torch.device, int]) -> None:
+    def set_device(self, device: Optional[Union[torch.device, int]] = None) -> None:
         """
         Bind the current process to a device.
         """
@@ -106,7 +108,7 @@ class BaseAccelerator(ABC):
     @abstractmethod
     def get_device_capability(self, device=None) -> Tuple[int, int]:
         """
-        Gets the npu capability of a device.
+        Gets the capability of a device.
         """
 
     @abstractmethod
@@ -124,7 +126,7 @@ class BaseAccelerator(ABC):
     @abstractmethod
     def utilization(self, device=None) -> int:
         """
-        Returns the percent of time over the past sample period during which one or more kernels was executing on the GPU as given by nvidia-smi
+        Returns the percent of time over the past sample period during which one or more kernels was executing on the device as given by nvidia-smi or npu-smi, etc.
         """
 
     # =======================
@@ -133,7 +135,7 @@ class BaseAccelerator(ABC):
     @abstractmethod
     def get_rng_state(self, device="cuda") -> torch.Tensor:
         """
-        Returns the random number generator state of the specified GPU as a ByteTensor.
+        Returns the random number generator state of the specified device as a ByteTensor.
         """
 
     @abstractmethod
@@ -145,7 +147,7 @@ class BaseAccelerator(ABC):
     @abstractmethod
     def set_rng_state(self, new_state: torch.ByteTensor, device: str = "cuda") -> None:
         """
-        Sets the random number generator state of the specified GPU.
+        Sets the random number generator state of the specified device.
         """
 
     @abstractmethod
@@ -157,31 +159,31 @@ class BaseAccelerator(ABC):
     @abstractmethod
     def manual_seed(self, seed: int) -> None:
         """
-        Sets the seed for generating random numbers for the current GPU.
+        Sets the seed for generating random numbers for the current device.
         """
 
     @abstractmethod
     def manual_seed_all(self, seed: int) -> None:
         """
-        Sets the seed for generating random numbers on all GPUs.
+        Sets the seed for generating random numbers on all devices.
         """
 
     @abstractmethod
     def seed(self) -> None:
         """
-        Sets the seed for generating random numbers to a random number for the current GPU.
+        Sets the seed for generating random numbers to a random number for the current device.
         """
 
     @abstractmethod
     def seed_all(self) -> None:
         """
-        Sets the seed for generating random numbers to a random number on all GPUs.
+        Sets the seed for generating random numbers to a random number on all devices.
         """
 
     @abstractmethod
     def initial_seed(self) -> int:
         """
-        Returns the current random seed of the current GPU.
+        Returns the current random seed of the current device.
         """
 
     # =======================
@@ -190,7 +192,7 @@ class BaseAccelerator(ABC):
     @abstractmethod
     def empty_cache(self) -> None:
         """
-        Releases all unoccupied cached memory currently held by the caching allocator so that those can be used in other GPU application and visible in nvidia-smi.
+        Releases all unoccupied cached memory currently held by the caching allocator so that those can be used in other device application and visible in nvidia-smi.
         """
 
     @abstractmethod
@@ -214,37 +216,37 @@ class BaseAccelerator(ABC):
     @abstractmethod
     def memory_allocated(self, device=None) -> int:
         """
-        Returns the current GPU memory occupied by tensors in bytes for a given device.
+        Returns the current device memory occupied by tensors in bytes for a given device.
         """
 
     @abstractmethod
     def max_memory_allocated(self, device=None) -> int:
         """
-        Returns the maximum GPU memory occupied by tensors in bytes for a given device.
+        Returns the maximum device memory occupied by tensors in bytes for a given device.
         """
 
     @abstractmethod
     def reset_max_memory_allocated(self, device=None) -> None:
         """
-        Resets the starting point in tracking maximum GPU memory occupied by tensors for a given device.
+        Resets the starting point in tracking maximum device memory occupied by tensors for a given device.
         """
 
     @abstractmethod
     def reset_max_memory_cached(self, device=None) -> None:
         """
-        Resets the starting point in tracking maximum GPU memory managed by the caching allocator for a given device.
+        Resets the starting point in tracking maximum device memory managed by the caching allocator for a given device.
         """
 
     @abstractmethod
     def memory_reserved(self, device=None) -> int:
         """
-        Returns the current GPU memory managed by the caching allocator in bytes for a given device.
+        Returns the current device memory managed by the caching allocator in bytes for a given device.
         """
 
     @abstractmethod
     def max_memory_reserved(self, device=None) -> int:
         """
-        Returns the maximum GPU memory managed by the caching allocator in bytes for a given device.
+        Returns the maximum device memory managed by the caching allocator in bytes for a given device.
         """
 
     @abstractmethod
@@ -256,7 +258,7 @@ class BaseAccelerator(ABC):
     @abstractmethod
     def reset_peak_memory_stats(self, device=None) -> None:
         """
-        Resets the "peak" stats tracked by the CUDA memory allocator.
+        Resets the "peak" stats tracked by the device memory allocator.
         """
 
     # =======================
@@ -266,13 +268,13 @@ class BaseAccelerator(ABC):
     @abstractmethod
     def Stream(self, device=None, priority=0, **kwargs):
         """
-        A CUDA stream is a linear sequence of execution that belongs to a specific device, independent from other streams. See cuda-semantics for details.
+        A device stream is a linear sequence of execution that belongs to a specific device, independent from other streams. See cuda-semantics for details.
         """
 
     @abstractmethod
     def Event(self, enable_timing: bool = False, blocking: bool = False, interprocess: bool = False):
         """
-        CUDA events are synchronization markers that can be used to monitor the device's progress, to accurately measure timing, and to synchronize CUDA streams.
+        device events are synchronization markers that can be used to monitor the device's progress, to accurately measure timing, and to synchronize CUDA streams.
         """
 
     @abstractmethod

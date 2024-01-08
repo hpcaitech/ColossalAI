@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
+import resource
 from contextlib import nullcontext
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import psutil
 import torch
 
 from .base_accelerator import BaseAccelerator
@@ -11,6 +13,7 @@ __all__ = ["CpuAccelerator"]
 
 
 class CpuAccelerator(BaseAccelerator):
+    support_set_device: bool = False
     """
     Accelerator class for cpu.
     """
@@ -33,7 +36,7 @@ class CpuAccelerator(BaseAccelerator):
         """
         raise RuntimeError("this method is not supported for cpu accelerator")
 
-    def set_device(self, device: Union[torch.device, int]) -> None:
+    def set_device(self, device: Optional[Union[torch.device, int]] = None) -> None:
         """
         Bind the current process to a device.
         """
@@ -200,25 +203,18 @@ class CpuAccelerator(BaseAccelerator):
         """
         Returns the current GPU memory managed by the caching allocator in bytes for a given device.
         """
-        import psutil
-
-        memory_info = psutil.virtual_memory()
-        raise memory_info.used
+        return psutil.Process().memory_info().rss
 
     def max_memory_reserved(self, device=None) -> int:
         """
         Returns the maximum GPU memory managed by the caching allocator in bytes for a given device.
         """
-        raise RuntimeError("this method is not supported for cpu accelerator")
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 
     def set_per_process_memory_fraction(self, fraction: float, device=None) -> None:
         """
         Set memory fraction for a process.
         """
-        import resource
-
-        import psutil
-
         max_memory = int(psutil.virtual_memory().total * fraction)
         _, hard = resource.getrlimit(resource.RLIMIT_AS)
         resource.setrlimit(resource.RLIMIT_AS, (max_memory, hard))

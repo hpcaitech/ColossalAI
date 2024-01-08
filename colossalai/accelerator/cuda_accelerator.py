@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -33,7 +33,7 @@ class CudaAccelerator(BaseAccelerator):
         """
         return torch.cuda.current_device()
 
-    def set_device(self, device: Union[torch.device, int]) -> None:
+    def set_device(self, device: Optional[Union[torch.device, int]] = None) -> None:
         """
         Bind the current process to a device.
         """

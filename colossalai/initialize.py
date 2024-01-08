@@ -47,7 +47,9 @@ def launch(
     if rank == 0:
         warnings.warn("`config` is deprecated and will be removed soon.")
 
-    backend = get_accelerator().communication_backend
+    cur_accelerator = get_accelerator()
+
+    backend = cur_accelerator.communication_backend
 
     # init default process group
     init_method = f"tcp://[{host}]:{port}"
@@ -55,7 +57,8 @@ def launch(
 
     # set cuda device
     # if local rank is not given, calculate automatically
-    get_accelerator().set_device(local_rank)
+    if cur_accelerator.support_set_device:
+        cur_accelerator.set_device(local_rank)
 
     set_seed(seed)
 
