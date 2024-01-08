@@ -7,11 +7,11 @@ from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotar
 
 import colossalai
 from colossalai.inference.modeling.layers.attention import PagedAttention, convert_kvcache, copy_to_cache
-from colossalai.testing import spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def test_copy_to_cache():
-    key = torch.ones((2, 10, 3, 3))
+    key = torch.ones((2, 11, 3, 3))
     key[0, 9, :, :] = 0
     key[1, -2:, :, :] = 0
     cache = torch.zeros(8, 3, 3, 8)
@@ -115,7 +115,7 @@ def test_decoding_attention():
 
     cos, sin = transformer_attn.rotary_emb(proj_v, 16)
     position_ids = lengths - 1
-    position_ids = position_ids.unsqueeze(1)
+    position_ids = position_ids.unsqueeze(1)  # NOTE: this may be wrong
     proj_q, proj_k = apply_rotary_pos_emb(proj_q, proj_k, cos, sin, position_ids, unsqueeze_dim=2)
 
     llama_past_kv = DynamicCache()
@@ -149,6 +149,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_if_address_is_in_use()
 def test_attention_layer():
     spawn(run_dist, 1)
 

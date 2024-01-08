@@ -16,7 +16,7 @@ def copy_to_cache(source, cache, lengths, block_tables, type: str = "prefill"):
             block_tables
     """
     num_blocks, num_heads, head_size, block_size = cache.shape
-    bsz, max_seq_len = block_tables.shape
+    bsz, max_blocks_per_seq = block_tables.shape
     needed_blocks = (lengths + block_size - 1) // block_size
 
     if type == "prefill":
@@ -27,7 +27,9 @@ def copy_to_cache(source, cache, lengths, block_tables, type: str = "prefill"):
             for block_idx in range(block_num - 1):
                 cache[block_tables[i][block_idx]] = source[i][token_id : token_id + block_size].permute(1, 2, 0)
                 token_id += block_size
-            cache[block_tables[i][block_num - 1]] = source[i][token_id:seq_len].permute(1, 2, 0)
+            cache[block_tables[i][block_num - 1], :, :, : seq_len - token_id] = source[i][token_id:seq_len].permute(
+                1, 2, 0
+            )
     elif type == "decoding":
         assert len(source[0]) == 1, "seq_len should be equal to 1 when decoding."
         source = source.squeeze(1)
@@ -38,13 +40,14 @@ def copy_to_cache(source, cache, lengths, block_tables, type: str = "prefill"):
     return cache
 
 
-def convert_kvcache(cache, lengths, block_tables):
+def convert_kvcache(cache, lengths, block_tables, pad_id=0):
     """
     Func: convert key/value cache for calculation
 
     Args:   cache: shape [num_blocks, num_heads, head_size, block_size]
             lengths: key/value length
             block_tables
+            pad_id: padded_id
     """
     num_blocks, num_heads, head_size, block_size = cache.shape
 
@@ -64,7 +67,7 @@ def convert_kvcache(cache, lengths, block_tables):
         )
         padding = seq_len - _cache.size(0)
         if padding > 0:
-            _cache = F.pad(_cache, (0, 0, 0, 0, 0, 1))
+            _cache = F.pad(_cache, (0, 0, 0, 0, 0, 1), value=pad_id)
         padded_cache.append(_cache)
     return torch.stack(padded_cache, dim=0)
 

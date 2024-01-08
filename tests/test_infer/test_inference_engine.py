@@ -5,7 +5,7 @@ from transformers import AutoTokenizer
 import colossalai
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
-from colossalai.testing import spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def check_inference_engine():
@@ -39,6 +39,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_if_address_is_in_use()
 def test_inference_engine():
     spawn(run_dist, 1)
 
