@@ -2,7 +2,6 @@ import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
-import torch.distributed as dist
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
@@ -13,8 +12,8 @@ from ..modeling.llama import (
     LlamaPipelineForwards,
     get_llama_flash_attention_forward,
     get_lm_forward_with_dist_cross_entropy,
-    test_llama_seq_parallel_attention,
-    test_llama_seq_parallel_model,
+    get_llama_seq_parallel_attention_forward,
+    get_llama_seq_parallel_model_forward,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -47,13 +46,18 @@ class LlamaPolicy(Policy):
         else:
             norm_cls = RMSNorm
 
-        if self.shard_config.enable_sequence_parallelism:
-            self.shard_config.enable_sequence_parallelism = False
-            warnings.warn("Llama doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
+        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        # overlap = self.shard_config.enable_sequence_overlap
+        # sp_partial_derived = sp_mode in ["1"]
 
-        # todo: seq
-        if self.shard_config.test_seq_parallelism:
-            sequence_parallelism_size = dist.get_world_size()
+        # todo: Support SP for LlaMa model
+        if sp_mode == "1":
+            self.shard_config.enable_sequence_parallelism = False
+            self.shard_config.sequence_parallelism_mode = None
+            sp_mode = None
+            warnings.warn("Llama doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
+        elif sp_mode == "3":
+            sequence_parallelism_size = self.shard_config.sequence_parallel_size
             decoder_attribute_replacement = {
                 "num_heads": self.model.config.num_attention_heads // sequence_parallelism_size,
                 "head_dim": self.model.config.hidden_size // self.model.config.num_attention_heads,
@@ -71,14 +75,14 @@ class LlamaPolicy(Policy):
 
             self.append_or_create_method_replacement(
                 description={
-                    "forward": test_llama_seq_parallel_attention(),
+                    "forward": get_llama_seq_parallel_attention_forward(),
                 },
                 policy=policy,
                 target_key=LlamaAttention,
             )
             self.append_or_create_method_replacement(
                 description={
-                    "forward": test_llama_seq_parallel_model(),
+                    "forward": get_llama_seq_parallel_model_forward(),
                 },
                 policy=policy,
                 target_key=LlamaModel,

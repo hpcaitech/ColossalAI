@@ -95,7 +95,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             atol, rtol = 5e-3, 5e-3
 
         if org_model.__class__.__name__ == "ChatGLMModel":
-            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol, dim=1)
+            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 

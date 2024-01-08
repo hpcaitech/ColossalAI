@@ -35,7 +35,12 @@ class SeqParallelUtils:
         return getattr(param, "partial_derived", False)
 
     @staticmethod
-    def allreduce_partial_data_grad(tp_group: ProcessGroup, model: nn.Module = None, grads: List[torch.Tensor] = None):
+    def allreduce_partial_data_grad(
+        process_group: ProcessGroup,
+        model: nn.Module = None,
+        grads: List[torch.Tensor] = None,
+        require_flag: bool = True,
+    ):
         """
         Allreduce partial derived gradients across the specified process group.
 
@@ -53,9 +58,9 @@ class SeqParallelUtils:
         assert (model is not None) ^ (grads is not None), "Exactly one of model and grads must be not None."
 
         # Get the size of the process group, which determines whether synchronization is needed.
-        tp_size = get_world_size(tp_group) if tp_group is not None else 1
+        group_size = get_world_size(process_group) if process_group is not None else 1
 
-        if tp_size == 1:
+        if group_size == 1:
             # If the process group size is 1, no synchronization is required.
             return
 
@@ -63,12 +68,15 @@ class SeqParallelUtils:
             # If `model` is provided, extract partial derived gradients from the model's parameters.
             grads = []
             for p in model.parameters():
-                if p.grad is not None and SeqParallelUtils.is_sp_partial_derived_param(p):
-                    grads.append(p.grad.data)
+                if p.grad is not None:
+                    if require_flag and SeqParallelUtils.is_sp_partial_derived_param(p):
+                        grads.append(p.grad.data)
+                    elif not require_flag:
+                        grads.append(p.grad.data)
 
             # Flatten and reduce the gradients using the specified process group.
             coalesced = _flatten_dense_tensors(grads)
-            dist.all_reduce(coalesced, op=dist.ReduceOp.SUM, group=tp_group)
+            dist.all_reduce(coalesced, op=dist.ReduceOp.SUM, group=process_group)
 
             # Unflatten the synchronized gradients and update the model's gradients.
             for buf, synced in zip(grads, _unflatten_dense_tensors(coalesced, grads)):
@@ -76,7 +84,7 @@ class SeqParallelUtils:
         else:
             # If `grads` are provided explicitly, synchronize those gradients directly.
             coalesced = _flatten_dense_tensors(grads)
-            dist.all_reduce(coalesced, op=dist.ReduceOp.SUM, group=tp_group)
+            dist.all_reduce(coalesced, op=dist.ReduceOp.SUM, group=process_group)
             for buf, synced in zip(grads, _unflatten_dense_tensors(coalesced, grads)):
                 buf.copy_(synced)
 

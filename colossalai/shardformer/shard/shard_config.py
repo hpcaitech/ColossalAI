@@ -38,7 +38,6 @@ class ShardConfig:
     enable_sequence_parallelism: bool = False
     sequence_parallelism_mode: str = None
     enable_sequence_overlap: bool = False
-    test_seq_parallelism: bool = False
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
     # pipeline_parallel_size: int
     # data_parallel_size: int

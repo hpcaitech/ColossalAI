@@ -177,10 +177,10 @@ def run_forward_backward_with_hybrid_plugin(
             shard_test_data[k] = data[k].clone()
         else:
             shard_test_data[k] = (
-                data[k].clone()
-                if booster.plugin.shard_config.test_seq_parallelism is False
-                # else data[k].clone()
-                else torch.chunk(data[k].clone(), dist.get_world_size(), dim=1)[dist.get_rank()]
+                torch.chunk(data[k].clone(), booster.plugin.shard_config.sequence_parallel_size, dim=1)[dist.get_rank()]
+                if booster.plugin.shard_config.enable_sequence_parallelism
+                and booster.plugin.shard_config.sequence_parallelism_mode == "3"
+                else data[k].clone()
             )
     unshard_test_data = {}
     for k, v in data.items():
@@ -250,16 +250,12 @@ def check_output_hidden_state(
     stage_manager: Optional[PipelineStageManager] = None,
     atol: float = 1e-5,
     rtol: float = 1e-3,
-    booster: Booster = None,
 ):
     org_hidden_state = org_output.last_hidden_state
 
     if stage_manager and stage_manager.is_last_stage(ignore_chunk=True):
         sharded_hidden_state = sharded_output["outputs"]["last_hidden_state"]
     else:
-        # if booster and booster.plugin.shard_config.test_seq_parallelism:
-        #     sharded_hidden_state = sharded_output
-        # else:
         sharded_hidden_state = sharded_output.last_hidden_state
 
     assert_close(org_hidden_state.float(), sharded_hidden_state.float(), atol=atol, rtol=rtol)

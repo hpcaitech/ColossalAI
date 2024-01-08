@@ -55,8 +55,11 @@ class BloomPolicy(Policy):
             norm_cls = col_nn.FusedLayerNorm
         else:
             norm_cls = col_nn.LayerNorm
-        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
+
+        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
         overlap = self.shard_config.enable_sequence_overlap
+        sp_partial_derived = sp_mode in ["1"]
+
         if self.shard_config.enable_tensor_parallelism:
             policy[BloomBlock] = ModulePolicyDescription(
                 attribute_replacement={
@@ -70,12 +73,12 @@ class BloomPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attention.query_key_value",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        kwargs={"seq_parallel_mode": sp_mode, "overlap": overlap},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.dense",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.attention_dropout",
@@ -84,12 +87,12 @@ class BloomPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="mlp.dense_h_to_4h",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        kwargs={"seq_parallel_mode": sp_mode, "overlap": overlap},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.dense_4h_to_h",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                 ],
             )
@@ -132,19 +135,19 @@ class BloomPolicy(Policy):
                 SubModuleReplacementDescription(
                     suffix="input_layernorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 SubModuleReplacementDescription(
                     suffix="post_attention_layernorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
             ],
             policy=policy,
             target_key=BloomBlock,
         )
 
-        if use_sequence_parallel:
+        if sp_mode == "1":
             self.append_or_create_method_replacement(
                 description={"forward": get_bloom_sequence_parallel_forward_fn(self.shard_config)},
                 policy=policy,
