@@ -200,6 +200,7 @@ jobs:
       - name: Store Colossal-AI Cache
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
+          cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/test_cuda_ext_cache/
           cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
 
       - name: Restore Testmon Cache
