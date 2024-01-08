@@ -14,7 +14,7 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLM
 
 
 def get_flash_core_attention_forward():
-    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
+    from colossalai.kernel import AttnMaskType, ColoAttention
 
     from .chatglm2_6b.modeling_chatglm import CoreAttention
 

@@ -1,4 +1,10 @@
-import warnings
+from typing import Optional
+
+import torch
+
+from ..base_extension import BaseExtension
+from ..utils import print_rank_0
+from .utils import SeqLenInfo
 
 HAS_MEM_EFF_ATTN = False
 try:
@@ -12,19 +18,13 @@ try:
 
     HAS_MEM_EFF_ATTN = True
 except ImportError:
-    warnings.warn("please install xformers from https://github.com/facebookresearch/xformers")
-    HAS_MEM_EFF_ATTN = False
+    pass
 
 if HAS_MEM_EFF_ATTN:
     """
     A general attention module using the flash attention kernels from xformers:
     https://github.com/facebookresearch/xformers/tree/main/xformers/ops/fmha
     """
-    from typing import Optional
-
-    import torch
-
-    from .utils import SeqLenInfo
 
     allow_alibi = True
     for op in MemoryEfficientAttentionCutlassOp:
@@ -36,6 +36,7 @@ if HAS_MEM_EFF_ATTN:
         v: torch.Tensor,
         seq_len_info_q: SeqLenInfo,
         seq_len_info_kv: SeqLenInfo,
+        origin_attn_mask: Optional[torch.Tensor] = None,
         bias: Optional[torch.Tensor] = None,
         dropout_p: float = 0.0,
         scale: float = None,
@@ -68,3 +69,23 @@ if HAS_MEM_EFF_ATTN:
             out = out.squeeze(0)
 
         return out
+
+
+class CudaMemoryEfficentAttnExtension(BaseExtension):
+    def __init__(self) -> None:
+        super().__init__()
+
+    @property
+    def requires_build(self) -> bool:
+        return False
+
+    def build(self):
+        pass
+
+    def is_available(self):
+        if HAS_MEM_EFF_ATTN == False:
+            print_rank_0("ImportError: please install xformers from https://github.com/facebookresearch/xformers")
+        return HAS_MEM_EFF_ATTN
+
+    def load(self):
+        return mem_eff_attention

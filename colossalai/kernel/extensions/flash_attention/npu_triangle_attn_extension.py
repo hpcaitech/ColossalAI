@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
 
 import torch
 from einops import rearrange
+
+from ..base_extension import BaseExtension
+from ..utils import print_rank_0
 
 HAS_NPU_TRIANGLE_ATTENTION = False
 try:
@@ -24,7 +26,7 @@ try:
 
     HAS_NPU_TRIANGLE_ATTENTION = True
 except ImportError:
-    logging.warning("Import torch_npu Error.")
+    pass
 
 
 if HAS_NPU_TRIANGLE_ATTENTION:
@@ -33,11 +35,13 @@ if HAS_NPU_TRIANGLE_ATTENTION:
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        attn_mask: torch.Tensor = None,
+        seq_len_info_q=None,
+        seq_len_info_kv=None,
         origin_attn_mask: torch.Tensor = None,
-        scale: float = 1.0,
         dropout_p: float = 0.0,
-        is_causal: bool = True,
+        scale: float = 1.0,
+        causal=None,
+        padded=None,
         block_size=512,
     ):
         """
@@ -113,3 +117,25 @@ if HAS_NPU_TRIANGLE_ATTENTION:
         # Context layer. [b, sq, hp]
         # =========================
         return context_layer
+
+
+class NpuTriangleAttnExtension(BaseExtension):
+    def __init__(self) -> None:
+        super().__init__()
+
+    @property
+    def requires_build(self) -> bool:
+        return False
+
+    def build(self):
+        pass
+
+    def is_available(self):
+        if HAS_NPU_TRIANGLE_ATTENTION == False:
+            print_rank_0(
+                "ImportError: please install latest torch_npu with 'npu_confusion_transpose' and 'npu_scaled_masked_softmax' api."
+            )
+        return HAS_NPU_TRIANGLE_ATTENTION
+
+    def load(self):
+        return npu_triangle_attention
