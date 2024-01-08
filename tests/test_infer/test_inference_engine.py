@@ -9,7 +9,7 @@ from transformers import AutoTokenizer, GenerationConfig
 import colossalai
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
-from colossalai.testing import spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def setup_seed(seed):
@@ -24,21 +24,24 @@ def check_inference_engine(test_cai=False):
     tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
     model = transformers.LlamaForCausalLM(
         transformers.LlamaConfig(
-            vocab_size=50000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=4
+            vocab_size=50000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=16
         )
     ).cuda()
 
     inputs = [
-        "介绍一下北京,",
+        "介绍一下今天的北京,",
         "介绍一下武汉,",
     ]
 
+    output_len = 16
+    do_sample = True
+
     if test_cai:
-        inference_config = InferenceConfig(max_output_len=1)
+        inference_config = InferenceConfig(max_output_len=output_len)
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
-        generation_config = GenerationConfig(do_sample=True, top_p=0.5, top_k=50)
+        generation_config = GenerationConfig(do_sample=do_sample, top_p=0.5, top_k=50)
         outputs = inference_engine.generate(generation_config)
     else:
         tokenizer.pad_token = tokenizer.eos_token
@@ -46,7 +49,7 @@ def check_inference_engine(test_cai=False):
         inputs = tokenizer.batch_encode_plus(inputs, padding=True, return_tensors="pt")["input_ids"]
         inputs = inputs.cuda()
         generation_config = GenerationConfig(
-            do_sample=True, top_p=0.5, top_k=50, pad_token_id=tokenizer.pad_token_id, max_new_tokens=1
+            do_sample=do_sample, top_p=0.5, top_k=50, pad_token_id=tokenizer.pad_token_id, max_new_tokens=output_len
         )
         outputs = model.generate(inputs, generation_config=generation_config)
         outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
@@ -64,6 +67,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_if_address_is_in_use()
 def test_inference_engine():
     spawn(run_dist, 1)
 
