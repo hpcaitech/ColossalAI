@@ -175,7 +175,8 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         process_group: ProcessGroup = None,
         async_communication: bool = False,
         gather_output: bool = False,
-        seq_parallel: bool = False,
+        # seq_parallel: bool = False,
+        seq_parallel_mode: str = None,
         overlap: bool = False,
         skip_bias_add: bool = False,
         n_fused: int = 3,
@@ -190,7 +191,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         self.in_features = in_features
         self.out_features = out_features
         self.gather_output = gather_output
-        self.seq_parallel = seq_parallel
+        self.seq_parallel_mode = seq_parallel_mode
         self.overlap = overlap
         self.skip_bias_add = skip_bias_add
         self.device = device
@@ -312,16 +313,16 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
 
-        if self.seq_parallel:
-            input_parallel = input_
-            output_parallel = matmul_gather_forward_reducescatter_backward(
-                input_parallel, self.weight, bias, self.process_group, True, 1, self.overlap
-            )
-        else:
+        if self.seq_parallel_mode is None:
             # Set up backprop all-reduce.
             input_parallel = reduce_backward(input_, self.process_group)
             output_parallel = matmul_with_async_comm(
                 input_parallel, self.weight, bias, self.process_group, self.async_communication
+            )
+        elif self.seq_parallel_mode == "1":
+            input_parallel = input_
+            output_parallel = matmul_gather_forward_reducescatter_backward(
+                input_parallel, self.weight, bias, self.process_group, True, 1, self.overlap
             )
 
         if self.gather_output:
@@ -366,7 +367,8 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         dtype: torch.dtype = None,
         device: torch.device = None,
         process_group: ProcessGroup = None,
-        seq_parallel: bool = False,
+        # seq_parallel: bool = False,
+        seq_parallel_mode: str = None,
         parallel_input: bool = True,
         skip_bias_add: bool = False,
         weight: Optional[Parameter] = None,
@@ -385,7 +387,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         self.parallel_input = parallel_input
         self.skip_bias_add = skip_bias_add
         self.process_group = process_group
-        self.seq_parallel = seq_parallel
+        self.seq_parallel_mode = seq_parallel_mode
         self.num_partitions = dist.get_world_size(self.process_group)
 
         if skip_bias_add and not bias:
@@ -529,10 +531,10 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
                 output = torch.cat(output_parallel_list, dim=-1)
         else:
             output_parallel = torch.matmul(input_, self.weight)
-            if self.seq_parallel:
-                output = linear_reducescatter_forward_gather_backward(output_parallel, self.process_group, 1)
-            else:
+            if self.seq_parallel_mode is None:
                 output = reduce_forward(output_parallel, self.process_group)
+            elif self.seq_parallel_mode == "1":
+                output = linear_reducescatter_forward_gather_backward(output_parallel, self.process_group, 1)
 
         if not self.skip_bias_add:
             if self.bias is not None:

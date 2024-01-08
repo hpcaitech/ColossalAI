@@ -54,6 +54,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         shard_config: ShardConfig,
         dp_group: ProcessGroup,
         tp_group: ProcessGroup,
+        sp_group: ProcessGroup,
         use_ddp: bool,
         ddp_config: dict,
         custom_policy: Policy,
@@ -62,6 +63,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         self.shard_config = shard_config
         self.dp_group = dp_group
         self.tp_group = tp_group
+        self.sp_group = sp_group
         self.use_dpp = use_ddp
         self.require_grad_sync = True
 
@@ -170,21 +172,30 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
             None
         """
 
-        if self.shard_config.test_seq_parallelism:
-            if grads is not None:
-                # Synchronize provided gradient tensors across the tensor parallelism group.
-                SeqParallelUtils.allreduce_partial_data_grad(tp_group=self.tp_group, grads=grads)
+        if self.shard_config.enable_sequence_parallelism:
+            if self.shard_config.sequence_parallelism_mode in ["1", "2"]:
+                # If sequence parallelism is enabled and mode is 1 or 2, gradients are synchronized
+                # across the tensor parallelism group.
+                group = self.tp_group
+                require_flag = True
+            elif self.shard_config.sequence_parallelism_mode == "3":
+                # If sequence parallelism is enabled and mode is 3, gradients are synchronized
+                # across the sequence parallelism group.
+                group = self.sp_group
+                require_flag = False
             else:
-                # Synchronize gradients from the model across the tensor parallelism group.
-                SeqParallelUtils.allreduce_partial_data_grad(tp_group=self.tp_group, model=self.module)
+                raise ValueError(f"Unknown sequence parallelism mode: {self.shard_config.sequence_parallelism_mode}")
 
-        if self.tp_group.size() > 1 and self.shard_config.enable_sequence_parallelism:
             if grads is not None:
                 # Synchronize provided gradient tensors across the tensor parallelism group.
-                SeqParallelUtils.allreduce_partial_data_grad(tp_group=self.tp_group, grads=grads)
+                SeqParallelUtils.allreduce_partial_data_grad(
+                    process_group=group, grads=grads, require_flag=require_flag
+                )
             else:
                 # Synchronize gradients from the model across the tensor parallelism group.
-                SeqParallelUtils.allreduce_partial_data_grad(tp_group=self.tp_group, model=self.module)
+                SeqParallelUtils.allreduce_partial_data_grad(
+                    process_group=group, model=self.module, require_flag=require_flag
+                )
 
     def forward(self, *args, **kwargs):
         if self.convert_fn is not None:
@@ -740,7 +751,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
 
         if self.require_grad_sync and grads_to_sync is not None:
             # Synchronize sequence parallelism gradients if required.
-            SeqParallelUtils.allreduce_partial_data_grad(tp_group=self.tp_pg, grads=grads_to_sync)
+            SeqParallelUtils.allreduce_partial_data_grad(process_group=self.tp_pg, grads=grads_to_sync)
         else:
             return
 
@@ -947,7 +958,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self,
         tp_size: int,
         pp_size: int,
-        sp_size: int = 1,
+        sp_size: int = None,
         precision: str = "fp16",
         zero_stage: int = 0,
         enable_all_optimization: bool = False,
@@ -982,7 +993,6 @@ class HybridParallelPlugin(PipelinePluginBase):
         pp_style: str = "1f1b",
         num_model_chunks: int = 1,
         enable_metadata_cache: bool = True,
-        test_seq_parallelism: bool = False,
     ) -> None:
         super().__init__()
         assert (
@@ -1008,11 +1018,13 @@ class HybridParallelPlugin(PipelinePluginBase):
                 assert (
                     tp_size == 1
                 ), f"Sequence parallelism mode {self.sequence_parallelism_mode} cannot be used with tensor parallelism"
-                self.sp_size = sp_size
-                self.dp_size = dist.get_world_size() // (sp_size * pp_size)
+                self.sp_size = dist.get_world_size() if sp_size is None else sp_size
+                self.dp_size = dist.get_world_size() // (self.sp_size * pp_size)
         else:
             self.dp_size = dist.get_world_size() // (tp_size * pp_size)
-            assert sp_size == 1, f"sp_size can only be set to a >1 number when enable_sequence_parallelism is True"
+            assert (
+                sp_size == 1 or sp_size is None
+            ), f"sp_size can only be set to a >1 number when enable_sequence_parallelism is True"
             self.sp_size = 1
 
         self.tp_size = tp_size
@@ -1084,7 +1096,6 @@ class HybridParallelPlugin(PipelinePluginBase):
             sequence_parallelism_mode=sequence_parallelism_mode,
             enable_sequence_overlap=enable_sequence_overlap,
             parallel_output=parallel_output,
-            test_seq_parallelism=test_seq_parallelism,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
@@ -1159,6 +1170,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 shard_config=self.shard_config,
                 dp_group=self.dp_group,
                 tp_group=self.tp_group,
+                sp_group=self.sp_group,
                 use_ddp=use_ddp,
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,

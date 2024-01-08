@@ -55,8 +55,11 @@ class ChatGLMPolicy(Policy):
                 norm_cls = col_nn.RMSNorm
             else:
                 norm_cls = col_nn.LayerNorm
-        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
+
+        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
         overlap = self.shard_config.enable_sequence_overlap
+        sp_partial_derived = sp_mode in ["1"]
+
         if self.shard_config.enable_tensor_parallelism:
             policy[ChatGLMModel] = ModulePolicyDescription(
                 attribute_replacement={},
@@ -91,12 +94,12 @@ class ChatGLMPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attention.query_key_value",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel, "seq_parallel_dim": 0, "overlap": overlap},
+                        kwargs={"seq_parallel_mode": sp_mode, "seq_parallel_dim": 0, "overlap": overlap},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.dense",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel, "seq_parallel_dim": 0},
+                        kwargs={"seq_parallel_mode": sp_mode, "seq_parallel_dim": 0},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.core_attention.attention_dropout",
@@ -110,12 +113,12 @@ class ChatGLMPolicy(Policy):
                 SubModuleReplacementDescription(
                     suffix="input_layernorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 SubModuleReplacementDescription(
                     suffix="post_attention_layernorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
             ],
             policy=policy,
@@ -145,7 +148,7 @@ class ChatGLMPolicy(Policy):
             )
 
         # use sequence parallel
-        if use_sequence_parallel:
+        if sp_mode == "1":
             self.append_or_create_method_replacement(
                 description={"forward": get_chatglm_sequence_parallel_forward_fn(self.shard_config)},
                 policy=policy,
