@@ -184,12 +184,16 @@ jobs:
         if: needs.detect.outputs.anyExtensionFileChanged != 'true'
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
+          ls /github/home/
+          ls /github/home/cuda_ext_cache/
           if [ -d /github/home/cuda_ext_cache ] && [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ]; then
             cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
+            echo "Cache restored"
           fi
 
       - name: Install Colossal-AI
         run: |
+          ls .
           CUDA_EXT=1 pip install -v -e .
           pip install -r requirements/requirements-test.txt
 
