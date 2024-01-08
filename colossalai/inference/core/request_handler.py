@@ -110,6 +110,10 @@ class RequestHandler:
             self.prefill_batch.init_batch(self.running_list.prefill)
             return self.prefill_batch
 
+        if not self.running_batch.is_empty:
+            for seq in self.running_batch.sequences_set:
+                self.cache_manager.allocate_token_from_block_table(seq.block_table, seq.sentence_len)
+
         return self.running_batch
 
     def add_sequence(self, req: Sequence):
