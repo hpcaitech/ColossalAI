@@ -32,7 +32,7 @@ def set_obj_list_element(obj, attr: str, value):
     r"""
     Set the element to value of a list object
 
-    It used like set_obj_list_element(obj, 'lyaers[0]', new_layer), it will set obj.layers[0] to value
+    It used like set_obj_list_element(obj, 'layers[0]', new_layer), it will set obj.layers[0] to value
 
     Args:
         obj (object): The object to set

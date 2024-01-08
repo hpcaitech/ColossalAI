@@ -79,9 +79,9 @@ Following are the description `ShardConfig`'s arguments:
 
 - `enable_sequence_overlap`: Whether to turn on sequence overlap, which overlap the computation and communication in sequence parallelism. It can only be used when `enable_sequence_parallelism` is True. Defaults to False.
 
--  `enable_all_optimization`: Whether to turn on all optimization tools including `fused normalizaion`, `flash attention`, `JIT fused operators`, `sequence parallelism` and `sequence overlap`. Defaults to False.
+-  `enable_all_optimization`: Whether to turn on all optimization tools including `fused normalization`, `flash attention`, `JIT fused operators`, `sequence parallelism` and `sequence overlap`. Defaults to False.
 
-- `extra_kwargs`: A dict to store extra kwargs for ShardFomer.
+- `extra_kwargs`: A dict to store extra kwargs for ShardFormer.
 
 ### Write your own policy
 
