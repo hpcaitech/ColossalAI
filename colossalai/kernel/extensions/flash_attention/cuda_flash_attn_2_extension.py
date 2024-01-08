@@ -1,10 +1,14 @@
-import warnings
 from typing import Optional
 
 import torch
 
+from ..base_extension import BaseExtension
+from ..utils import print_rank_0
+from .utils import SeqLenInfo
+
 
 def is_ampere_or_better_gpu():
+    # Check Ampere GPUs or newer
     if torch.cuda.is_available():
         device = torch.device("cuda")
         properties = torch.cuda.get_device_properties(device)
@@ -13,24 +17,20 @@ def is_ampere_or_better_gpu():
     return False
 
 
-# "Check Ampere GPUs or newer"
 HAS_FLASH_ATTN = False
+ERROR_MSG = None
 if is_ampere_or_better_gpu():
-    HAS_FLASH_ATTN = True
-else:
-    warnings.warn("FlashAttention only supports Ampere GPUs or newer.")
-    HAS_FLASH_ATTN = False
-try:
-    from flash_attn.flash_attn_interface import flash_attn_func, flash_attn_varlen_func
+    try:
+        from flash_attn.flash_attn_interface import flash_attn_func, flash_attn_varlen_func
 
-    HAS_FLASH_ATTN = True
-except ImportError:
-    warnings.warn("please install flash_attn from https://github.com/HazyResearch/flash-attention")
-    HAS_FLASH_ATTN = False
+        HAS_FLASH_ATTN = True
+    except ImportError:
+        ERROR_MSG = "ImportError: please install flash_attn from https://github.com/HazyResearch/flash-attention"
+else:
+    ERROR_MSG = "ImportError: FlashAttention only supports Ampere GPUs or newer."
+
 
 if HAS_FLASH_ATTN:
-
-    from .utils import SeqLenInfo
 
     def flash_attention(
         q: torch.Tensor,
@@ -38,6 +38,7 @@ if HAS_FLASH_ATTN:
         v: torch.Tensor,
         seq_len_info_q: SeqLenInfo,
         seq_len_info_kv: SeqLenInfo,
+        origin_attn_mask: Optional[torch.Tensor] = None,
         bias: Optional[torch.Tensor] = None,
         dropout_p: float = 0.0,
         scale: float = None,
@@ -77,3 +78,23 @@ if HAS_FLASH_ATTN:
         else:
             attn_out = flash_attn_func(q, k, v, dropout_p=dropout_p, softmax_scale=scale, causal=causal)
         return attn_out
+
+
+class CudaFlashAttnExtension(BaseExtension):
+    def __init__(self) -> None:
+        super().__init__()
+
+    @property
+    def requires_build(self):
+        return False
+
+    def build(self):
+        pass
+
+    def is_available(self):
+        if HAS_FLASH_ATTN == False:
+            print_rank_0(ERROR_MSG)
+        return HAS_FLASH_ATTN
+
+    def load(self):
+        return flash_attention

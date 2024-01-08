@@ -1,16 +1,20 @@
 import torch
 from einops import rearrange
 
+from ..base_extension import BaseExtension
+
 
 def npu_sdpa_attention(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    attn_mask: torch.Tensor = None,
+    seq_len_info_q=None,
+    seq_len_info_kv=None,
     origin_attn_mask: torch.Tensor = None,
-    scale: float = 1.0,
     dropout_p: float = 0.0,
-    is_causal: bool = True,
+    scale: float = 1.0,
+    causal=None,
+    padded=None,
 ):
     """
     The scaled dot product attention.
@@ -39,3 +43,18 @@ def npu_sdpa_attention(
     )
     output = rearrange(output, "b h s d -> b s (h d)")
     return output
+
+
+class NpuSdpaAttnExtension(BaseExtension):
+    def __init__(self) -> None:
+        super().__init__()
+
+    @property
+    def requires_build(self) -> bool:
+        return False
+
+    def build(self):
+        pass
+
+    def load(self):
+        return npu_sdpa_attention

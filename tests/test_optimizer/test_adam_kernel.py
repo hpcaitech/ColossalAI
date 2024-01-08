@@ -90,9 +90,9 @@ class FusedAdamKernel(AdamKernel):
 class CPUAdamKernel(AdamKernel):
     def __init__(self, lr: float, beta1: float, beta2: float, eps: float, weight_decay: float, use_adamw: bool) -> None:
         super().__init__(lr, beta1, beta2, eps, weight_decay, use_adamw)
-        from colossalai.kernel.op_builder import CPUAdamBuilder
+        from colossalai.kernel import CPUAdamLoader
 
-        cpu_optim = CPUAdamBuilder().load()
+        cpu_optim = CPUAdamLoader().load()
 
         self.cpu_adam_op = cpu_optim.CPUAdamOptimizer(lr, beta1, beta2, eps, weight_decay, use_adamw)
 

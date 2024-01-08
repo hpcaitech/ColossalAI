@@ -26,7 +26,7 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 def get_whisper_flash_attention_forward():
     from transformers.models.whisper.modeling_whisper import WhisperAttention
 
-    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
+    from colossalai.kernel import AttnMaskType, ColoAttention
 
     def shape(tensor: torch.Tensor, seq_len: int, bsz: int, num_heads: int, head_dim: int):
         return tensor.view(bsz, seq_len, num_heads, head_dim).contiguous()

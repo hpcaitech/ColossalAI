@@ -1,3 +1,4 @@
+import enum
 from dataclasses import dataclass
 from typing import Iterable, Tuple
 
@@ -80,3 +81,9 @@ class SeqLenInfo:
         max_seqlen = max(seqlens)
         cu_seqlens = F.pad(torch.cumsum(seqlens, dim=0, dtype=torch.int32), (1, 0)).to(device)
         return SeqLenInfo(seqlens.tolist(), indices, max_seqlen, cu_seqlens)
+
+
+class AttnMaskType(enum.Enum):
+    padding = 1
+    causal = 2
+    paddedcausal = 3
