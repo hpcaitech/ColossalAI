@@ -60,7 +60,7 @@ def convert_kvcache(cache, lengths, block_tables, pad_id=0):
     for i in range(bsz):
         _cache = torch.cat(
             (
-                cache[block_tables[i][: needed_blocks[i] - 1]].permute((3, 0, 1, 2)).reshape(-1, num_heads, head_size),
+                cache[block_tables[i][: needed_blocks[i] - 1]].permute((0, 3, 1, 2)).reshape(-1, num_heads, head_size),
                 cache[block_tables[i][needed_blocks[i] - 1], :, :, : num_remaing_tokens[i]].permute(2, 0, 1),
             ),
             dim=0,
