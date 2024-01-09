@@ -298,6 +298,10 @@ class Top2Router(MoeRouter):
             dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=ep_group)
             capacity = max_num.item()
 
+        capacity_tensor = torch.tensor(capacity, device=get_current_device())
+        dist.all_reduce(capacity_tensor, group=ep_group)
+        capacity = int(capacity_tensor.item()) // dist.get_world_size(ep_group)
+
         rank1 = moe_cumsum(mask1, use_kernel=self.use_kernel)  # rank1: [s, e]
         rank2 = moe_cumsum(mask2, use_kernel=self.use_kernel)
         rank2 += torch.sum(mask1, dim=-2, keepdim=True)
