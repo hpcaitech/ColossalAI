@@ -133,7 +133,7 @@ class CaiInferEngine:
         """
         assert isinstance(
             input_list, (BatchEncoding, dict)
-        ), f"Only accept BatchEncoding or dict as input, but get {input_list.__class__.__name__}."
+        ), f"Only accept BatchEncoding or dict as input, but got {input_list.__class__.__name__}."
         if isinstance(input_list, BatchEncoding):
             input_list = input_list.data
         out, timestamp = self.schedule.generate_step(self.model, iter([input_list]))

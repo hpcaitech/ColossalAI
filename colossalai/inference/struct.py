@@ -268,7 +268,7 @@ class BatchInfo:
         for seq, token in zip(self.sequences_set, tokens):
             if not isinstance(token, list):
                 if not isinstance(token, int):
-                    raise TypeError(f"The token type must be List[int] or int, but get {type(token)}.")
+                    raise TypeError(f"The token type must be List[int] or int, but got {type(token)}.")
                 token = [token]
             seq.output_token_id += token
             seq.check_finish()

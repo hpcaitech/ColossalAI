@@ -112,7 +112,7 @@ class KVCacheManager:
 
     def get_kv_cache(self):
         """Get k_cache and v_cache"""
-        return self._kv_caches[0], self._kv_caches[1]
+        return self._kv_caches
 
     def get_max_blocks_per_sequence(self) -> int:
         """Get the maximum number of blocks that can be allocated for a single sequence."""
