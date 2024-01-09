@@ -4,10 +4,10 @@ import torch.distributed as dist
 import torch.nn as nn
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.moe import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
-from colossalai.utils import get_current_device
 from tests.test_moe.moe_utils import MoeGradientHandler
 
 BATCH_SIZE = 4
@@ -38,7 +38,7 @@ def run_test(rank, world_size, port):
         layer_list.append(moe_layer)
 
     model = nn.ModuleList(layer_list)
-    model = model.to(get_current_device())
+    model = model.to(get_accelerator().get_current_device())
     dist_dict = MOE_MANAGER.parallel_info_dict
     assert_equal_in_group(layer_list[0].experts.wi.data, dist_dict[1].dp_group)
     assert_equal_in_group(layer_list[0].experts.wo.data, dist_dict[1].dp_group)
@@ -52,7 +52,7 @@ def run_test(rank, world_size, port):
 
     rank = dist.get_rank()
     torch.cuda.manual_seed(78 + rank)
-    data = torch.randn(BATCH_SIZE, DIM, device=get_current_device())
+    data = torch.randn(BATCH_SIZE, DIM, device=get_accelerator().get_current_device())
     grad = torch.randn_like(data)
 
     MOE_MANAGER.reset_loss()

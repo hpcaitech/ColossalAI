@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 
-from colossalai.utils import get_current_device
+from colossalai.accelerator import get_accelerator
 
 from .base import OnPolicyTrainer
 from .callbacks import Callback
@@ -105,7 +105,7 @@ class PPOTrainer(OnPolicyTrainer):
         self.critic_optim = critic_optim
 
         self.offload_inference_models = offload_inference_models
-        self.device = get_current_device()
+        self.device = get_accelerator().get_current_device()
 
     def _before_fit(
         self,

@@ -6,7 +6,6 @@ import torch.nn as nn
 import colossalai
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin
 from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroModel
-from colossalai.utils import get_current_device
 from colossalai.zero.gemini.gemini_ddp import GeminiDDP
 
 from .ddp import DDPStrategy
@@ -158,9 +157,19 @@ class GeminiStrategy(DDPStrategy):
 
         warnings.warn(f"Stage 3 only supports fp16. Precision is set to fp16.")
 
+        # colossalai has changed api for get_current_device in 0.3.4 version or newer
+        try:
+            from colossalai.accelerator import get_accelerator
+
+            chunk_init_device = get_accelerator().get_current_device()
+        except:
+            from colossalai.utils import get_current_device
+
+            chunk_init_device = get_current_device()
+
         # NOTE: dist should be initialized before calling get_current_device()
         plugin_initializer = lambda: GeminiPlugin(
-            chunk_init_device=get_current_device(),
+            chunk_init_device=chunk_init_device,
             placement_policy=placement_policy,
             shard_param_frac=shard_param_frac,
             offload_optim_frac=offload_optim_frac,

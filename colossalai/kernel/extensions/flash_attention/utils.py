@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 from einops import rearrange
 
-from colossalai.utils.device import get_current_device
+from colossalai.accelerator import get_accelerator
 
 
 class Unpad(torch.autograd.Function):
@@ -70,7 +70,9 @@ class SeqLenInfo:
     cu_seqlens: torch.Tensor = None
 
     @staticmethod
-    def materialize(attn_mask: torch.Tensor = None, size: Tuple[int] = None, device=get_current_device()):
+    def materialize(
+        attn_mask: torch.Tensor = None, size: Tuple[int] = None, device=get_accelerator().get_current_device()
+    ):
         if attn_mask is not None:
             indices = torch.nonzero(attn_mask.flatten(), as_tuple=False).flatten().to(device)
             seqlens = attn_mask.sum(dim=-1, dtype=torch.int32).flatten()

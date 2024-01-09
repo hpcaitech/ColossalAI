@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Parameter
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.communication import broadcast
 from colossalai.legacy.context import ParallelMode, seed
 from colossalai.legacy.core import global_context as gpc
@@ -19,7 +20,6 @@ from colossalai.legacy.utils.checkpointing import (
     partition_tensor_parallel_state_dict,
 )
 from colossalai.nn import init as init
-from colossalai.utils.device import get_current_device
 
 from ..base_layer import ParallelLayer
 from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
@@ -84,7 +84,7 @@ class Linear2p5D(ParallelLayer):
         self.hidden_size_per_partition = divide(out_features, self.tesseract_dim)
 
         # create weight, shape: [k/q, h/q]
-        factory_kwargs = {"device": get_current_device(), "dtype": dtype}
+        factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
         self.weight = Parameter(
             torch.empty(self.input_size_per_partition, self.hidden_size_per_partition, **factory_kwargs)
         )
@@ -272,7 +272,7 @@ class LayerNorm2p5D(ParallelLayer):
         self.partitioned_partition = divide(normalized_shape, self.tesseract_dim)  # *
 
         # create parameters
-        factory_kwargs = {"device": get_current_device(), "dtype": dtype}
+        factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
 
         self.weight = Parameter(torch.ones(self.partitioned_partition, **factory_kwargs))
         if bias:
@@ -451,18 +451,24 @@ class PatchEmbedding2p5D(ParallelLayer):
             self.weight = Parameter(
                 torch.empty(
                     (self.embed_size_per_partition, in_chans, *self.patch_size),
-                    device=get_current_device(),
+                    device=get_accelerator().get_current_device(),
                     dtype=dtype,
                 )
             )
-            self.bias = Parameter(torch.empty(self.embed_size_per_partition, device=get_current_device(), dtype=dtype))
+            self.bias = Parameter(
+                torch.empty(self.embed_size_per_partition, device=get_accelerator().get_current_device(), dtype=dtype)
+            )
 
             self.cls_token = Parameter(
-                torch.zeros((1, 1, self.embed_size_per_partition), device=get_current_device(), dtype=dtype)
+                torch.zeros(
+                    (1, 1, self.embed_size_per_partition), device=get_accelerator().get_current_device(), dtype=dtype
+                )
             )
             self.pos_embed = Parameter(
                 torch.zeros(
-                    (1, self.num_patches + 1, self.embed_size_per_partition), device=get_current_device(), dtype=dtype
+                    (1, self.num_patches + 1, self.embed_size_per_partition),
+                    device=get_accelerator().get_current_device(),
+                    dtype=dtype,
                 )
             )
 
@@ -632,7 +638,9 @@ class Embedding2p5D(ParallelLayer):
         self.embed_kwargs = kwargs
 
         self.weight = Parameter(
-            torch.empty((num_embeddings, embed_dim_per_partition), device=get_current_device(), dtype=dtype)
+            torch.empty(
+                (num_embeddings, embed_dim_per_partition), device=get_accelerator().get_current_device(), dtype=dtype
+            )
         )
 
         self.reset_parameters(weight_initializer)
@@ -772,7 +780,7 @@ class VocabParallelEmbedding2p5D(ParallelLayer):
         self.weight = Parameter(
             torch.empty(
                 (self.num_embeddings_per_partition, self.embed_dim_per_partition),
-                device=get_current_device(),
+                device=get_accelerator().get_current_device(),
                 dtype=dtype,
             )
         )
@@ -910,11 +918,18 @@ class Classifier2p5D(ParallelLayer):
             self.has_weight = False
         else:
             self.weight = Parameter(
-                torch.empty(self.num_classes, self.input_size_per_partition, device=get_current_device(), dtype=dtype)
+                torch.empty(
+                    self.num_classes,
+                    self.input_size_per_partition,
+                    device=get_accelerator().get_current_device(),
+                    dtype=dtype,
+                )
             )
             self.has_weight = True
         if bias:
-            self.bias = Parameter(torch.zeros(self.num_classes, device=get_current_device(), dtype=dtype))
+            self.bias = Parameter(
+                torch.zeros(self.num_classes, device=get_accelerator().get_current_device(), dtype=dtype)
+            )
         else:
             self.bias = None
 
@@ -1068,7 +1083,7 @@ class VocabParallelClassifier2p5D(ParallelLayer):
         self.hidden_size_per_partition = divide(num_classes, self.tesseract_dim)
 
         # create weight, shape: [k/q, h/q]
-        factory_kwargs = {"device": get_current_device(), "dtype": dtype}
+        factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
         if weight is not None:
             self.weight = weight
             self.has_weight = False

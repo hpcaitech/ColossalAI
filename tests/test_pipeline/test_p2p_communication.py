@@ -3,11 +3,11 @@ import torch
 import torch.distributed as dist
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from colossalai.utils import get_current_device
 
 
 def check_p2p_communication():
@@ -17,7 +17,7 @@ def check_p2p_communication():
 
     rank = dist.get_rank()
 
-    tensor = torch.ones(1, device=get_current_device())
+    tensor = torch.ones(1, device=get_accelerator().get_current_device())
 
     if rank == 0:
         p2p.send_forward(tensor)

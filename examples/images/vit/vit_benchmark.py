@@ -33,9 +33,10 @@ def get_data_batch(batch_size, num_labels, num_channels=3, height=224, width=224
 
 
 def colo_memory_cap(size_in_GB):
-    from colossalai.utils import colo_device_memory_capacity, colo_set_process_memory_fraction, get_current_device
+    from colossalai.accelerator import get_accelerator
+    from colossalai.utils import colo_device_memory_capacity, colo_set_process_memory_fraction
 
-    cuda_capacity = colo_device_memory_capacity(get_current_device())
+    cuda_capacity = colo_device_memory_capacity(get_accelerator().get_current_device())
     if size_in_GB * (1024**3) < cuda_capacity:
         colo_set_process_memory_fraction(size_in_GB * (1024**3) / cuda_capacity)
         print(f"Limiting GPU memory usage to {size_in_GB} GB")

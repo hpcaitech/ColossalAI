@@ -8,7 +8,8 @@ import pytest
 import torch
 from torch import Tensor
 
-from colossalai.utils import get_current_device, multi_tensor_applier
+from colossalai.accelerator import get_accelerator
+from colossalai.utils import multi_tensor_applier
 
 _FUSED_ALLOWED_P_G_TYPES = [
     (torch.float, torch.half),
@@ -155,7 +156,9 @@ def test_fused_adam_kernel(adamw, weight_decay, p_dtype, g_dtype):
         rtol, atol = 1e-3, 1e-3
     if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
         rtol, atol = 4e-3, 4e-3
-    check_adam_kernel(FusedAdamKernel, adamw, weight_decay, p_dtype, g_dtype, get_current_device(), 3, rtol, atol)
+    check_adam_kernel(
+        FusedAdamKernel, adamw, weight_decay, p_dtype, g_dtype, get_accelerator().get_current_device(), 3, rtol, atol
+    )
 
 
 @pytest.mark.parametrize("adamw", [False, True])

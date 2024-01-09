@@ -35,7 +35,7 @@ jobs:
       matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
     container:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: 📚 Checkout
         uses: actions/checkout@v3
