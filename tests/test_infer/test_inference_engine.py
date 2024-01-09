@@ -11,7 +11,6 @@ from colossalai.inference.config import InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
-
 def setup_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
