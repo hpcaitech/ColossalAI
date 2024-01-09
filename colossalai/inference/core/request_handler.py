@@ -198,8 +198,6 @@ class RequestHandler:
             if type in config_dict and config_dict[type] is not None:
                 logits = logit_processor(type, logits, config_dict[type])
 
-        torch.cuda.synchronize()
-
         # calculate probs
         probs = torch.softmax(logits, dim=-1, dtype=torch.float)
         logprobs = torch.log_softmax(logits, dim=-1, dtype=torch.float)
