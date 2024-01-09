@@ -7,7 +7,7 @@ from colossalai.inference.config import InferenceConfig
 from colossalai.inference.kv_cache import KVCacheManager
 from colossalai.inference.logit_processors import logit_processor
 from colossalai.inference.sampler import *
-from colossalai.inference.struct import BatchInfo, Sequence
+from colossalai.inference.struct import BatchInfo, RequestStatus, Sequence
 from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger(__name__)
@@ -104,7 +104,7 @@ class RequestHandler:
                                 f"the prompt(Request id = {seq.request_id}) length is longer than max_input_len, abort this sequence."
                             )
                             self.abort_sequence(seq.request_id)
-                            remove_list.append(seq)
+                            break
                         # Try to allocate cache blocks for the sequence.
                         if self.cache_manager.check_allocation(seq):
                             # If succeed, add the sequence to running list.
@@ -139,9 +139,10 @@ class RequestHandler:
         """
         Abort the request.
         """
-        seq, _ = self._find_sequence(request_id)
-        if seq.status.is_waiting:
+        seq, priority = self._find_sequence(request_id)
+        if seq.status == RequestStatus.WAITING:
             seq.mark_aborted()
+            self.waiting_list[priority].remove(seq)
         elif seq.status.is_running():
             self.cache_manager.free_block_table(seq.block_table)
             self.running_list.remove(seq)

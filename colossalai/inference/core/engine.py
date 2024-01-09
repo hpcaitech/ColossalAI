@@ -191,7 +191,14 @@ class InferenceEngine:
                 prompt = None
             else:
                 prompt = prompts[i]
-            block_table = torch.full([self.inference_config.max_seq_len], -1, device=self.device)
+
+            max_blocks_per_sequence = (
+                self.inference_config.max_input_len
+                + self.inference_config.max_output_len
+                + self.inference_config.block_size
+                - 1
+            ) // self.inference_config.block_size
+            block_table = torch.full([max_blocks_per_sequence], -1, device=self.device)
             sequence = Sequence(
                 request_id,
                 prompt,
