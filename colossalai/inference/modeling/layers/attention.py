@@ -196,6 +196,7 @@ class PagedAttention:
         v_cache: torch.Tensor,
         context_lengths: torch.Tensor,  # [num_seqs]
         block_tables: torch.Tensor,  # [num_seqs,max_blocks_per_sequence]
+        attn_mask: torch.Tensor = None,  # [bsz, input_lengths + output_lengths]
     ):
         # Firt, do shape verification
         bsz, seq_len, num_heads, head_size = q.shape
@@ -205,8 +206,6 @@ class PagedAttention:
         block_size = k_cache.shape[-1]
         assert q.shape[0] == k.shape[0] == v.shape[0] == block_tables.shape[0]
         block_tables.shape[-1] * block_size
-        shape = (bsz, seq_len, num_heads, head_size)
-        input_shape = shape[:2]
 
         # Copy kv to memory(rotary embedded)
         copy_to_cache(k, k_cache, lengths=context_lengths, block_tables=block_tables)
@@ -217,8 +216,16 @@ class PagedAttention:
         v = PagedAttention.repeat_kv(v.transpose(1, 2), num_kv_groups)
 
         attn_weights = torch.matmul(q, k.transpose(2, 3)) / math.sqrt(head_size)
-        attn_mask = AttentionMaskConverter._make_causal_mask(input_shape, q.dtype, q.device, past_key_values_length=0)
-        attn_mask = attn_mask + PagedAttention.generate_padding_mask(context_lengths, seq_len)
+
+        if attn_mask is not None:
+            padding_mask = AttentionMaskConverter._expand_mask(attn_mask, q.dtype, seq_len)
+
+        attn_mask = AttentionMaskConverter._make_causal_mask(
+            (bsz, seq_len), q.dtype, q.device, past_key_values_length=seq_len - seq_len
+        )
+
+        if padding_mask is not None:
+            attn_mask = attn_mask.masked_fill(padding_mask.bool(), torch.finfo(q.dtype).min)
 
         if attn_weights.size() != (bsz, num_heads, seq_len, seq_len):
             raise ValueError(f"Got wrong attn_weights, should be in shape {(bsz,num_heads,seq_len,seq_len)}.")
@@ -246,27 +253,17 @@ class PagedAttention:
         v_cache: torch.Tensor,
         lengths: torch.Tensor,  # [num_seqs]: input_lengths + output_lengths
         block_tables: torch.Tensor,  # [num_seqs,max_blocks_per_sequence]
+        attn_mask: torch.Tensor = None,  # [bsz, input_lengths + output_lengths]
     ):
         # Firt, do shape verification.
-        bsz, _, num_heads, head_size = q.shape
+        bsz, q_length, num_heads, head_size = q.shape
 
         num_kv_heads = k.shape[-2]
         assert num_heads % num_kv_heads == 0, "num_kv_heads should be divisible by num_heads"
         num_kv_groups = num_heads // num_kv_heads
-        block_size = k_cache.shape[-1]
         seq_len = max(lengths)
 
         assert q.shape[0] == k.shape[0] == v.shape[0] == block_tables.shape[0]
-        block_tables.shape[-1] * block_size
-
-        attn_mask = AttentionMaskConverter._make_causal_mask(
-            q.shape[:2], q.dtype, q.device, past_key_values_length=seq_len - 1
-        )
-        attn_mask = attn_mask + PagedAttention.generate_padding_mask(lengths, seq_len).unsqueeze(1).unsqueeze(2)
-        # cos, sin = self.rotary_emb(v, max_seq_len)
-        # position_ids = lengths - 1
-        # position_ids = position_ids.unsqueeze(1)
-        # query, key = apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=2)
 
         copy_to_cache(k, k_cache, lengths=lengths, block_tables=block_tables, type="decoding")
         copy_to_cache(v, v_cache, lengths=lengths, block_tables=block_tables, type="decoding")
@@ -283,8 +280,16 @@ class PagedAttention:
             raise ValueError(f"Got wrong attn_weights, should be in shape {(bsz,num_heads,1,seq_len)}.")
 
         if attn_mask is not None:
-            attn_weights += attn_mask
+            padding_mask = AttentionMaskConverter._expand_mask(attn_mask, q.dtype, query_length)
 
+        attn_mask = AttentionMaskConverter._make_causal_mask(
+            (bsz, q_length), q.dtype, q.device, past_key_values_length=seq_len - query_length
+        )
+
+        if padding_mask is not None:
+            attn_mask = attn_mask.masked_fill(padding_mask.bool(), torch.finfo(q.dtype).min)
+
+        attn_weights += attn_mask
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(q.dtype)
         attn_output = torch.matmul(attn_weights, v)
 
