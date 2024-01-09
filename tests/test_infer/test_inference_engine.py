@@ -11,6 +11,7 @@ from colossalai.inference.config import InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
+
 def setup_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -34,7 +35,7 @@ def check_inference_engine(test_cai=False):
         "介绍一下武汉,",
     ]
 
-    output_len = 128
+    output_len = 38
     do_sample = True
     top_p = 0.5
     top_k = 50

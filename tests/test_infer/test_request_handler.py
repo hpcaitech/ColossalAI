@@ -57,7 +57,7 @@ def check_request_handler():
         block_size=16,
         eos_token_id=0,
         sample_params=None,
-        block_table=torch.tensor([0, 0]),
+        block_table=torch.tensor([-1, -1]),
     )
     request_handler.add_sequence(seq1)
     # the priority should be 1
