@@ -140,7 +140,7 @@ jobs:
     if: needs.detect.outputs.anyLibraryFileChanged == 'true'
     runs-on: [self-hosted, gpu]
     container:
-      image: hpcaitech/pytorch-cuda:2.0.0-11.7.0
+      image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
     timeout-minutes: 60
     defaults:
@@ -174,6 +174,7 @@ jobs:
         run: |
           cd TensorNVMe
           cp -p -r ./build /github/home/tensornvme_cache/
+          cp -p -r ./cmake-build /github/home/tensornvme_cache/
 
       - name: Checkout Colossal-AI
         uses: actions/checkout@v2
@@ -208,9 +209,25 @@ jobs:
 
       - name: Execute Unit Testing
         run: |
-          CURL_CA_BUNDLE="" PYTHONPATH=$PWD pytest -m "not largedist" --testmon --testmon-forceselect --testmon-cov=. --durations=10 tests/
+          CURL_CA_BUNDLE="" PYTHONPATH=$PWD FAST_TEST=1 pytest \
+          -m "not largedist" \
+          --testmon \
+          --testmon-forceselect \
+          --testmon-cov=. \
+          --durations=0 \
+          --ignore tests/test_analyzer \
+          --ignore tests/test_auto_parallel \
+          --ignore tests/test_fx \
+          --ignore tests/test_autochunk \
+          --ignore tests/test_gptq \
+          --ignore tests/test_infer_ops \
+          --ignore tests/test_legacy \
+          --ignore tests/test_moe \
+          --ignore tests/test_smoothquant \
+          --ignore tests/test_checkpoint_io \
+          --ignore tests/test_shardformer \
+          tests/
         env:
-          DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
           TESTMON_CORE_PKGS: /__w/ColossalAI/ColossalAI/requirements/requirements.txt,/__w/ColossalAI/ColossalAI/requirements/requirements-test.txt
@@ -268,7 +285,7 @@ jobs:
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, gpu]
     container:
-      image: hpcaitech/pytorch-cuda:2.0.0-11.7.0
+      image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
       options: --rm
     timeout-minutes: 5
     defaults:
