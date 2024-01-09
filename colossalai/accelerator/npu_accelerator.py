@@ -7,11 +7,8 @@ import torch.distributed as dist
 
 from .base_accelerator import BaseAccelerator
 
-IS_NPU_AVAILABLE = False
 try:
     import torch_npu  # noqa
-
-    IS_NPU_AVAILABLE = True
 except ImportError:
     pass
 
