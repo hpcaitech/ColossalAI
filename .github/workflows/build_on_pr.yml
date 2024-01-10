@@ -211,9 +211,6 @@ jobs:
         run: |
           CURL_CA_BUNDLE="" PYTHONPATH=$PWD FAST_TEST=1 pytest \
           -m "not largedist" \
-          --testmon \
-          --testmon-forceselect \
-          --testmon-cov=. \
           --durations=0 \
           --ignore tests/test_analyzer \
           --ignore tests/test_auto_parallel \
