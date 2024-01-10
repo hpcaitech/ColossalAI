@@ -20,10 +20,10 @@ jobs:
         id: check-avai
         run: |
           avai=true
-          for i in $(seq 0 7);
+          for i in $(seq 0 3);
           do
             gpu_used=$(nvidia-smi -i $i --query-gpu=memory.used --format=csv,noheader,nounits)
-            [ "$gpu_used" -gt "10000" ] && avai=false
+            [ "$gpu_used" -gt "2000" ] && avai=false
           done
 
           echo "GPU is available: $avai"
@@ -62,7 +62,7 @@ jobs:
         run: |
           PYTHONPATH=$PWD pytest --durations=0 tests
         env:
-          DATA: /data/scratch/cifar-10
+          NCCL_SHM_DISABLE: 1
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
           LLAMA_PATH: /data/scratch/llama-tiny
 
