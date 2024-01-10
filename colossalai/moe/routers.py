@@ -49,7 +49,7 @@ class MoeRouter(nn.Module, ABC):
         if ep_group is not None:
             num_tokens_tensor = torch.tensor(num_tokens, device=get_current_device())
             dist.all_reduce(num_tokens_tensor, group=ep_group)
-            num_tokens = num_tokens_tensor.item()
+            num_tokens = num_tokens_tensor.item() / dist.get_world_size(ep_group)
         capacity_factor = self.capacity_factor_train if self.training else self.capacity_factor_eval
         capacity = math.floor(self.k_value * capacity_factor * num_tokens / num_experts)
         capacity += capacity % 2
