@@ -1,7 +1,5 @@
 """
-Our config consists of two parts:
-    1. inference_config: configs for inference, it is a unified api that wraps all the configs for inference.
-    2. generation_config: configs for generation, it is inherited from huggingface.
+Our config contains various options for inference optimization, it is a unified API that wraps all the configurations for inference.
 """
 
 import logging
@@ -30,7 +28,6 @@ class InferenceConfig:
         dtype (Union[str, torch.dtype]): The data type for weights and activations.
         tp_size (int): Tensor parallel size.
         pp_size (int): Pipeline parallel size.
-        max_seq_len (int): Maximum length of input sentence.
         beam_width (int): The maximum beam width used to initialize KV Cache.
             During generation, the beam width provided as sampling parameter should be less than or equivalent to this value.
         prefill_ratio (Optional[float]): A controling ratio for prefill and decoding in running list, we will do a step of prefill
@@ -48,7 +45,6 @@ class InferenceConfig:
     dtype: Union[str, torch.dtype] = torch.float32
     tp_size: int = 1
     pp_size: int = 1
-    max_seq_len: int = 512
     # TODO: beam search is not support for now
     beam_width: int = 1
     # the ratio of prefill sequences to decoding sequences, we do prefill step once the actual value exceeds ratio
@@ -95,6 +91,9 @@ class InferenceConfig:
             torch.float32,
             torch.float16,
             torch.bfloat16,
-        ], "dtype should be one of 'fp16', 'fp32', 'bf16', torch.float32, torch.float16, torch.bfloat16"
-        assert self.max_batch_size <= 64, "Max batch size exceeds the constraint"
-        assert self.quant_mode in ["smoothquant", "gptq", None], "quant should be one of 'smoothquant', 'gptq'"
+        ], f"dtype should be one of 'fp16', 'fp32', 'bf16', torch.float32, torch.float16, torch.bfloat16, but got {self.dtype}."
+        assert self.quant_mode in [
+            "smoothquant",
+            "gptq",
+            None,
+        ], f"quant should be one of 'smoothquant', 'gptq', but got {self.quant_mode}."

@@ -58,7 +58,12 @@ class KVCacheManager:
         # Parallel settings
         self.tp_size = config.tp_size
         # Model settings
-        self.dtype = config.dtype
+        if config.dtype == "fp32" or config.dtype == torch.float32:
+            self.dtype = torch.float32
+        elif config.dtype == "fp16" or config.dtype == torch.float16:
+            self.dtype = torch.float16
+        else:
+            self.dtype = torch.bfloat16
         self.elem_size_in_bytes = torch.tensor([], dtype=self.dtype).element_size()
         self.num_layers = get_model_config_attr(model_config, "num_hidden_layers")
         # For now we focus on MHA only, TODO add handling for MQA and GQA
@@ -110,6 +115,10 @@ class KVCacheManager:
         """Get the number of available cache blocks."""
         return self._available_blocks
 
+    def get_kv_cache(self):
+        """Get k_cache and v_cache"""
+        return self._kv_caches
+
     def get_max_blocks_per_sequence(self) -> int:
         """Get the maximum number of blocks that can be allocated for a single sequence."""
         # TODO Consider removing this function as we plan to implement "half-dynamic" batching in schduler/request handler,
@@ -118,7 +127,7 @@ class KVCacheManager:
         return self.max_blocks_per_sequence
 
     def check_allocation(self, seq: Sequence) -> bool:
-        num_blocks_needed = (seq.prompt_len + self.max_output_length + self.block_size - 1) // self.block_size
+        num_blocks_needed = (seq.input_len + self.max_output_length + self.block_size - 1) // self.block_size
         return num_blocks_needed <= self.num_available_blocks
 
     def get_block_kv_ptrs(self, block_id: int, layer_id: int) -> Tuple[List[int], List[int]]:

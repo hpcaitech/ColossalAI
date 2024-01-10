@@ -43,11 +43,12 @@ def check_config_and_inference():
     )
 
     assert sequence.sentence_len == 3
-    assert sequence.prompt_len == 3
+    assert sequence.input_len == 3
     assert sequence.output_len == 0
     assert sequence.check_finish() == False
 
-    batch = BatchInfo.init_batch([sequence])
+    batch = BatchInfo(is_prompts=False)
+    batch.init_batch([sequence])
     batch.add_seqs([sequence2, sequence3])
     batch.add_seqs([sequence])
 

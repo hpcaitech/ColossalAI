@@ -21,8 +21,7 @@ def multinomial_sample(
     """
     Sample tokens in a random phase.
     """
-    max_best_of = generation_config.best_of
-    random_results = torch.multinomial(probs, num_samples=max_best_of, replacement=True).cpu()
+    random_results = torch.multinomial(probs, num_samples=1).squeeze(1)
     return random_results
 
 
@@ -44,7 +43,7 @@ def beam_search_sample(
     # NOTE: this beam search sample function is wrong now.
     """
 
-    beam_width = generation_config.best_of
+    beam_width = generation_config.num_beams
     results = []
     if is_prompt:
         # Prompt phase.
