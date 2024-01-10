@@ -75,6 +75,8 @@ class SeqParallelUtils:
                         grads.append(p.grad.data)
 
             # Flatten and reduce the gradients using the specified process group.
+            if len(grads) == 0:
+                return
             coalesced = _flatten_dense_tensors(grads)
             dist.all_reduce(coalesced, op=dist.ReduceOp.SUM, group=process_group)
 

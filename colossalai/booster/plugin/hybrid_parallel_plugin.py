@@ -1012,7 +1012,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     warnings.warn(
                         f"The sp_size will be the same as tp_size in sequence parallelism mode {self.sequence_parallelism_mode}, will ignore the given sequence parallelism size."
                     )
-                self.sp_size = tp_size
+                self.sp_size = 1
                 self.dp_size = dist.get_world_size() // (tp_size * pp_size)
             elif self.sequence_parallelism_mode in ["3"]:
                 assert (
