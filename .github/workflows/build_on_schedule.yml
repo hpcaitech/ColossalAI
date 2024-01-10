@@ -60,7 +60,10 @@ jobs:
       - name: Unit Testing
         if: steps.check-avai.outputs.avai == 'true'
         run: |
-          PYTHONPATH=$PWD pytest --durations=0 tests
+          PYTHONPATH=$PWD pytest \
+          -m "not largedist" \
+          --durations=0 \
+          tests/
         env:
           NCCL_SHM_DISABLE: 1
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
