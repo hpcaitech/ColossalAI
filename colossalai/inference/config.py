@@ -28,7 +28,6 @@ class InferenceConfig:
         dtype (Union[str, torch.dtype]): The data type for weights and activations.
         tp_size (int): Tensor parallel size.
         pp_size (int): Pipeline parallel size.
-        max_seq_len (int): Maximum length of input sentence.
         beam_width (int): The maximum beam width used to initialize KV Cache.
             During generation, the beam width provided as sampling parameter should be less than or equivalent to this value.
         prefill_ratio (Optional[float]): A controling ratio for prefill and decoding in running list, we will do a step of prefill
@@ -46,7 +45,6 @@ class InferenceConfig:
     dtype: Union[str, torch.dtype] = torch.float32
     tp_size: int = 1
     pp_size: int = 1
-    max_seq_len: int = 512
     # TODO: beam search is not support for now
     beam_width: int = 1
     # the ratio of prefill sequences to decoding sequences, we do prefill step once the actual value exceeds ratio
@@ -99,6 +97,3 @@ class InferenceConfig:
             "gptq",
             None,
         ], f"quant should be one of 'smoothquant', 'gptq', but got {self.quant_mode}."
-        assert (
-            self.max_input_len + self.max_output_len <= self.max_seq_len
-        ), f"The sum of max_input_len {self.max_input_len} and max_output_len {self.max_output_len} must be smaller than max_seq_len {self.max_seq_len}."

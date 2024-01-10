@@ -58,7 +58,12 @@ class KVCacheManager:
         # Parallel settings
         self.tp_size = config.tp_size
         # Model settings
-        self.dtype = config.dtype
+        if config.dtype == "fp32" or config.dtype == torch.float32:
+            self.dtype = torch.float32
+        elif config.dtype == "fp16" or config.dtype == torch.float16:
+            self.dtype = torch.float16
+        else:
+            self.dtype = torch.bfloat16
         self.elem_size_in_bytes = torch.tensor([], dtype=self.dtype).element_size()
         self.num_layers = get_model_config_attr(model_config, "num_hidden_layers")
         # For now we focus on MHA only, TODO add handling for MQA and GQA
