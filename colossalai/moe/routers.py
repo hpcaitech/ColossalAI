@@ -45,9 +45,13 @@ class MoeRouter(nn.Module, ABC):
         self._z_loss = None
         self.use_kernel = use_kernel
 
-    def get_capacity(self, logits_shape):
+    def get_capacity(self, num_tokens, num_experts, ep_group=None):
+        if ep_group is not None:
+            num_tokens_tensor = torch.tensor(num_tokens, device=get_current_device())
+            dist.all_reduce(num_tokens_tensor, group=ep_group)
+            num_tokens = num_tokens_tensor.item()
         capacity_factor = self.capacity_factor_train if self.training else self.capacity_factor_eval
-        capacity = math.floor(self.k_value * capacity_factor * logits_shape[-2] / logits_shape[-1])
+        capacity = math.floor(self.k_value * capacity_factor * num_tokens / num_experts)
         capacity += capacity % 2
         capacity = max(capacity, self.min_capacity)
         assert capacity > 0
@@ -174,7 +178,8 @@ class Top1Router(MoeRouter):
         assert inputs.dtype == torch.float
         probs = F.softmax(inputs, dim=-1)
         num_experts = probs.size(-1)
-        capacity = self.get_capacity(inputs.shape)
+        num_tokens = inputs.size(0)
+        capacity = self.get_capacity(num_tokens, num_experts, ep_group)
 
         top1_idx = torch.argmax(inputs, dim=-1)
         mask = F.one_hot(top1_idx, num_classes=num_experts).to(torch.int32)
@@ -275,7 +280,8 @@ class Top2Router(MoeRouter):
             probs = probs / routing_weights.sum(dim=-1, keepdim=True)
 
         num_experts = probs.size(-1)
-        capacity = self.get_capacity(inputs.shape)
+        num_tokens = inputs.size(0)
+        capacity = self.get_capacity(num_tokens, num_experts, ep_group)
 
         top1_idx = torch.argmax(probs, dim=-1)
         mask1 = F.one_hot(top1_idx, num_classes=num_experts).to(torch.int32)
@@ -297,10 +303,10 @@ class Top2Router(MoeRouter):
             max_num = torch.max(torch.sum(cmask, dim=0))
             dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=ep_group)
             capacity = max_num.item()
-
-        capacity_tensor = torch.tensor(capacity, device=get_current_device())
-        dist.all_reduce(capacity_tensor, group=ep_group)
-        capacity = int(capacity_tensor.item()) // dist.get_world_size(ep_group)
+        print(f"capacity: {capacity}")
+        # capacity_tensor = torch.tensor(capacity, device=get_current_device())
+        # dist.all_reduce(capacity_tensor, group=ep_group)
+        # capacity = int(capacity_tensor.item()) // dist.get_world_size(ep_group)
 
         rank1 = moe_cumsum(mask1, use_kernel=self.use_kernel)  # rank1: [s, e]
         rank2 = moe_cumsum(mask2, use_kernel=self.use_kernel)
