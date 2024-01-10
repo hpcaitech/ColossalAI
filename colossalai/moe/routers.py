@@ -303,7 +303,6 @@ class Top2Router(MoeRouter):
             max_num = torch.max(torch.sum(cmask, dim=0))
             dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=ep_group)
             capacity = max_num.item()
-        print(f"capacity: {capacity}")
         # capacity_tensor = torch.tensor(capacity, device=get_current_device())
         # dist.all_reduce(capacity_tensor, group=ep_group)
         # capacity = int(capacity_tensor.item()) // dist.get_world_size(ep_group)
