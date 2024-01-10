@@ -10,8 +10,12 @@
 - [Colossal-LLaMA-2-7B](#colossal-llama-2-7b)
 - [Colossal-LLaMA-2-13B](#colossal-llama-2-13b)
   - [Performance Evaluation](#performance-evaluation)
+    - [Model with ~7 Billion Parameters](#model-with-7-billion-parameters)
+    - [Model with ~13 Billion Parameters](#model-with-13-billion-parameters)
   - [Examples](#examples)
   - [Training Logs](#training-logs)
+    - [Colossal-LLaMA-2-7b-base](#colossal-llama-2-7b-base)
+    - [Colossal-LLaMA-2-13b-base](#colossal-llama-2-13b-base)
   - [Inference](#inference)
     - [Import from HuggingFace](#import-from-huggingface)
     - [Import from Modelscope](#import-from-modelscope)
@@ -25,14 +29,14 @@
     - [1. Init Tokenizer Preparation](#1-init-tokenizer-preparation)
     - [2. Init Model Preparation](#2-init-model-preparation)
     - [3. Data Preparation](#3-data-preparation)
-        - [3.1 Data for Pretraining](#31-data-for-pretraining)
-        - [3.2 Data for Supervised Fine-tuning](#32-data-for-supervised-fine-tuning)
+      - [3.1 Data for Pretraining](#31-data-for-pretraining)
+      - [3.2 Data for Supervised Fine-tuning](#32-data-for-supervised-fine-tuning)
     - [4. Command Line Arguments for Training](#4-command-line-arguments-for-training)
-        - [4.1 Arguments for Pretraining](#41-arguments-for-pretraining)
-        - [4.2 Arguments for Supervised Fine-tuning](#42-arguments-for-supervised-fine-tuning)
+      - [4.1 Arguments for Pretraining](#41-arguments-for-pretraining)
+      - [4.2 Arguments for Supervised Fine-tuning](#42-arguments-for-supervised-fine-tuning)
     - [5. Running Command](#5-running-command)
-        - [5.1 Command for Pretraining](#51-command-for-pretraining)
-        - [5.2 Command for Supervised Fine-tuning](#52-command-for-supervised-fine-tuning)
+      - [5.1 Command for Pretraining](#51-command-for-pretraining)
+      - [5.2 Command for Supervised Fine-tuning](#52-command-for-supervised-fine-tuning)
 - [Technical Insights](#technical-insights)
   - [Data](#data)
   - [Tokenizer](#tokenizer)
@@ -366,7 +370,7 @@ python prepare_pretrain_dataset.py \
 ```
 Here is details about CLI arguments:
 * Source data directory: `data_input_dirs`. Each `<JSONL_DIR>` can have multiple file in `jsonl` format.
-* Tokenzier directory: `tokenizer_dir`. Path to the tokenizer in Hugging Face format.
+* Tokenizer directory: `tokenizer_dir`. Path to the tokenizer in Hugging Face format.
 * Data cache directory: `data_cache_dir`. Directory to store Hugging Face data cache. Default case will create `cache` folder locally.
 * Output directory for jsonl format: `data_jsonl_output_dir`. Output directory to store converted dataset in jsonl format.
 * Output directory for arrow format: `data_arrow_output_dir`. Output directory to store converted dataset in arrow format, which can be used for training directly.
@@ -386,7 +390,7 @@ Examples:
 Command to convert jsonl dataset to arrow format is similar to the command in [3.1 Data for Pretraining](#31-data-for-pretraining). In `prepare_sft_dataset.py`, we don't concatenate different data samples.
 ```
 python prepare_sft_dataset.py.py \
-    --data_input_dirs "<JOSNL_DIR_1>,<JOSNL_DIR_2>,<JOSNL_DIR_3>" \
+    --data_input_dirs "<JSONL_DIR_1>,<JSONL_DIR_2>,<JSONL_DIR_3>" \
     --tokenizer_dir "<TOKENIZER_DIR>" \
     --data_cache_dir "jsonl_to_arrow_cache" \
     --data_jsonl_output_dir "spliced_tokenized_output_jsonl" \
@@ -428,7 +432,7 @@ Here is details about CLI arguments:
 * Mixed precision: `--mixed_precision`. The default value is "fp16". "fp16" and "bf16" are supported.
 * Gradient clipping: `--gradient_clipping`. The default value is 1.0.
 * Weight decay: `-w`, `--weight_decay`. The default value is 0.1.
-* Warmup steps: `-s`, `--warmup_steps`. The default value is calcuated by 0.025 warmup ratio.
+* Warmup steps: `-s`, `--warmup_steps`. The default value is calculated by 0.025 warmup ratio.
 * Gradient checkpointing: `--use_grad_checkpoint`. The default value is `False`. This saves memory at the cost of speed. You'd better enable this option when training with a large batch size.
 * Flash attention: `--use_flash_attn`. If you want to use flash attention, you must install `flash-attn` and related packages. The default value is `False`. This is helpful to accelerate training while saving memory. We recommend you always use flash attention.
 * Freeze non-embedding parameters: `--freeze_non_embeds_params`. Freeze non-embedding parameters. It can be helpful to align embeddings after extending vocabulary size.
@@ -488,7 +492,7 @@ The following figure shows the data processing pipeline conducted for Colossal-L
 ❗️**Important**: We will open-source our data-processing toolkit soon, stay tuned!
 
 ### Tokenizer
-The original LLaMA-2 vacabulary comprises fewer than a thousand Chinese characters, thus proves inadequate for encoding comprehensive Chinese texts effectively. Secondly, the utilization of byte tokens presents a challenge for transformer encoders to capture the semantic nuances of Chinese characters.
+The original LLaMA-2 vocabulary comprises fewer than a thousand Chinese characters, thus proves inadequate for encoding comprehensive Chinese texts effectively. Secondly, the utilization of byte tokens presents a challenge for transformer encoders to capture the semantic nuances of Chinese characters.
 
 To address the above issues, we extend LLaMA-2 vocabulary from 32,000 to 69,104. To adapt the LLaMA-2 model for use with the Colossal-LLaMA-2 tokenizer, we initialize the new word embeddings by calculating the mean values from the original LLaMA-2 embeddings and subsequently append these new rows to the end of the original embedding matrices.
 
