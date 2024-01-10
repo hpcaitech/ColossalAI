@@ -9,7 +9,7 @@ except ImportError:
 # There may exist import error even if we have triton installed.
 if HAS_TRITON:
     from .context_attn_unpad import context_attention_unpadded
-    from .decoding_attn_unpad import decoding_attention_unpadded
+    from .flash_decoding_unpad import decoding_attention_unpadded
     from .fused_layernorm import layer_norm
     from .gptq_triton import gptq_fused_linear_triton
     from .softmax import softmax
