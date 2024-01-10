@@ -264,7 +264,6 @@ def main(args):
                     lengths[(j + start) % dp_size] += 1
 
                 start = (start + redundant) % dp_size
-
                 for turn in range(num_turn):
                     if turn == 0:
                         questions = category_data["data"][
@@ -272,7 +271,7 @@ def main(args):
                         ]
                     else:
                         questions = prev_questions
-
+                    print(f"[{dist.get_rank()}] num samples {len(questions)}")
                     answers_per_rank = model_.inference(
                         questions, inference_kwargs=category_data["inference_kwargs"], debug=debug_args[dataset_name]
                     )
