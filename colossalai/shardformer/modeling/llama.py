@@ -17,15 +17,15 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForS
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.layer._operation import (
+    _gather,
+    all_to_all_comm,
+    gather_forward_split_backward,
+    split_forward_gather_backward,
+)
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import cross_entropy_1d
-from colossalai.shardformer.layer._operation import all_to_all_comm, gather_forward_split_backward
-
-
-def print_rank(prompt, value, rank=0):
-    if dist.get_rank() == rank:
-        print(f"rank-{rank}, {prompt}: {value}")
 
 
 try:
@@ -428,7 +428,8 @@ class LlamaPipelineForwards:
             return {"hidden_states": hidden_states}
 
 
-def get_llama_flash_attention_forward(shard_config: ShardConfig):
+
+def get_llama_flash_attention_forward(sp_mode, sp_size):
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
     from colossalai.nn.layer.colo_attention import AttnMaskType, ColoAttention
@@ -451,6 +452,8 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig):
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
+        if sp_mode == "2":
+            q_len *= sp_size
         assert q_len % 4 == 0, "Flash Attention Error: The sequence length should be a multiple of 4."
 
         query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
@@ -610,7 +613,8 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         )
 
     return forward
-def get_llama_seq_parallel_attention_forward():
+
+def get_llama_seq_parallel_attention_forward(sp_mode, sp_size):
     def rotate_half(x):
         """Rotates half the hidden dims of the input."""
         x1 = x[..., : x.shape[-1] // 2]
@@ -647,6 +651,11 @@ def get_llama_seq_parallel_attention_forward():
         output_attentions: bool = False,
         use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        bsz, q_len, _ = hidden_states.size()
+
+        # sp: modify sp_len when sequence parallel mode is 2
+        if sp_mode == "2":
+            q_len *= sp_size
         if self.config.pretraining_tp > 1:
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
             query_slices = self.q_proj.weight.split(
@@ -669,30 +678,21 @@ def get_llama_seq_parallel_attention_forward():
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
 
-        # introduce sequence parallel
-        query_states = all_to_all_comm(query_states)
-        key_states = all_to_all_comm(key_states)
-        value_states = all_to_all_comm(value_states)
-
-        bsz, q_len, _ = query_states.size()
+        # sp: all-to-all comminucation when introducing sequence parallel
+        if sp_mode == "3":
+            query_states = all_to_all_comm(query_states)
+            key_states = all_to_all_comm(key_states)
+            value_states = all_to_all_comm(value_states)
+            bsz, q_len, _ = query_states.size()
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
-        past_key_value_length = 0
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
-            past_key_value_length = past_key_value[0].shape[2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-
-        # modify position ids
-        position_ids_device = position_ids.device if position_ids is not None else hidden_states.device
-        position_ids = torch.arange(
-            past_key_value_length, q_len + past_key_value_length, dtype=torch.long, device=position_ids_device
-        )
-        position_ids = position_ids.unsqueeze(0).view(-1, q_len)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:
@@ -724,6 +724,7 @@ def get_llama_seq_parallel_attention_forward():
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_output = torch.matmul(attn_weights, value_states)
+
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(
                 f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
@@ -731,9 +732,12 @@ def get_llama_seq_parallel_attention_forward():
             )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
-        # attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
-        attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim)
-        attn_output = all_to_all_comm(attn_output, None, scatter_dim=1, gather_dim=2)
+        # sp: all-to-all comminucation when introducing sequence parallel
+        if sp_mode == "3":
+            attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim)
+            attn_output = all_to_all_comm(attn_output, None, scatter_dim=1, gather_dim=2)
+        else:
+            attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
         if self.config.pretraining_tp > 1:
             attn_output = attn_output.split(self.hidden_size // self.config.pretraining_tp, dim=2)
@@ -748,8 +752,8 @@ def get_llama_seq_parallel_attention_forward():
 
     return forward
 
-
-def get_llama_seq_parallel_model_forward():
+  
+def get_llama_seq_parallel_model_forward(sp_mode, sp_size):
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -780,11 +784,16 @@ def get_llama_seq_parallel_model_forward():
         else:
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
+        # sp: modify seq_length when using sequence parallel
+        seq_length *= sp_size
+
         seq_length_with_past = seq_length
         past_key_values_length = 0
 
         if past_key_values is not None:
             past_key_values_length = past_key_values[0][0].shape[2]
+            # modify past_key_values_length when using sequence parallel
+            past_key_values_length *= sp_size
             seq_length_with_past = seq_length_with_past + past_key_values_length
 
         if position_ids is None:
@@ -797,13 +806,20 @@ def get_llama_seq_parallel_model_forward():
             position_ids = position_ids.view(-1, seq_length).long()
 
         if inputs_embeds is None:
-            inputs_embeds = self.embed_tokens(input_ids)
+            if sp_mode == "2":
+                input_ids = _gather(input_ids, 1, None)
+                inputs_embeds = self.embed_tokens(input_ids)
+                input_ids = input_ids.chunk(4, dim=1)[torch.distributed.get_rank()]
+                inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, None)
+            else:
+                inputs_embeds = self.embed_tokens(input_ids)
 
         # embed positions
         if attention_mask is None:
             attention_mask = torch.ones(
                 (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
             )
+        attention_mask = _gather(attention_mask, 1, None)
 
         attention_mask = self._prepare_decoder_attention_mask(
             attention_mask, attention_mask.shape, inputs_embeds, past_key_values_length

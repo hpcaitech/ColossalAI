@@ -47,42 +47,53 @@ class LlamaPolicy(Policy):
             norm_cls = RMSNorm
 
         sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        sp_size = self.shard_config.sequence_parallel_size
         # overlap = self.shard_config.enable_sequence_overlap
         # sp_partial_derived = sp_mode in ["1"]
-
         # todo: Support SP for LlaMa model
         if sp_mode == "1":
             self.shard_config.enable_sequence_parallelism = False
             self.shard_config.sequence_parallelism_mode = None
             sp_mode = None
             warnings.warn("Llama doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
-        elif sp_mode == "3":
-            sequence_parallelism_size = self.shard_config.sequence_parallel_size
-            decoder_attribute_replacement = {
-                "num_heads": self.model.config.num_attention_heads // sequence_parallelism_size,
-                "head_dim": self.model.config.hidden_size // self.model.config.num_attention_heads,
-            }
-            if getattr(self.model.config, "num_key_value_heads", False):
-                decoder_attribute_replacement["num_key_value_heads"] = (
-                    self.model.config.num_key_value_heads // sequence_parallelism_size
-                )
-                decoder_attribute_replacement["num_key_value_groups"] = (
-                    self.model.config.num_attention_heads // self.model.config.num_key_value_heads
-                )
-            policy[LlamaAttention] = ModulePolicyDescription(
-                attribute_replacement=decoder_attribute_replacement,
-            )
-
+        elif sp_mode == "2":
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_seq_parallel_attention_forward(),
+                    "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size),
                 },
                 policy=policy,
                 target_key=LlamaAttention,
             )
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_seq_parallel_model_forward(),
+                    "forward": get_llama_seq_parallel_model_forward(sp_mode, sp_size),
+                },
+                policy=policy,
+                target_key=LlamaModel,
+            )
+        elif sp_mode == "3":
+            decoder_attribute_replacement = {
+                "num_heads": self.model.config.num_attention_heads // sp_size,
+                "head_dim": self.model.config.hidden_size // self.model.config.num_attention_heads,
+            }
+            if getattr(self.model.config, "num_key_value_heads", False):
+                decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
+                decoder_attribute_replacement["num_key_value_groups"] = (
+                    self.model.config.num_attention_heads // self.model.config.num_key_value_heads
+                )
+            policy[LlamaAttention] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+            )
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size),
+                },
+                policy=policy,
+                target_key=LlamaAttention,
+            )
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_llama_seq_parallel_model_forward(sp_mode, sp_size),
                 },
                 policy=policy,
                 target_key=LlamaModel,
@@ -104,30 +115,37 @@ class LlamaPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.gate_proj",
                         target_module=Linear1D_Col,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.up_proj",
                         target_module=Linear1D_Col,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.down_proj",
                         target_module=Linear1D_Row,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                 ],
             )
@@ -170,7 +188,7 @@ class LlamaPolicy(Policy):
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_flash_attention_forward(self.shard_config),
+                    "forward": get_llama_flash_attention_forward(sp_mode, sp_size),
                 },
                 policy=policy,
                 target_key=LlamaAttention,

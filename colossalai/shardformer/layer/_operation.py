@@ -168,6 +168,49 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
         return grad_input, grad_weight, grad_bias, None, None, None
 
 
+def _AllgatherLinear(input_, weight, process_group):
+    group_size = dist.get_world_size(process_group)
+    cur_rank = dist.get_rank(process_group)
+
+    input_shape = input_.shape
+    weight_shape = weight.shape
+
+    output_tensors = [torch.empty((input_shape[0], input_shape[1], weight_shape[0])) for _ in range(group_size)]
+
+    # initialization of ring communication
+    input_shape[1]
+    recv_rank = cur_rank + 1 if cur_rank + 1 < group_size else 0
+    send_rank = cur_rank - 1 if cur_rank > 0 else group_size - 1
+    recv_tensor = input_.clone()
+    send_tensor = input_.clone()
+
+    recv_op = dist.P2POp(dist.irecv, recv_tensor, recv_rank, group=process_group)
+    send_op = dist.P2POp(dist.isend, send_tensor, send_rank, group=process_group)
+    handles = dist.batch_isend_irecv([send_op, recv_op])
+    # first round: special case, retrive from local tensor
+    output_tensors[0] = F.linear(input_, weight)
+    for i in range(group_size - 2):
+        for handle in handles:
+            handle.wait()
+
+        tmp_tensor = send_tensor
+        send_tensor = recv_tensor
+        recv_tensor = tmp_tensor
+
+        recv_op = dist.P2POp(dist.irecv, recv_tensor, recv_rank, group=process_group)
+        send_op = dist.P2POp(dist.isend, send_tensor, send_rank, group=process_group)
+        handles = dist.batch_isend_irecv([recv_op, send_op])
+
+        # actual computation
+        output_tensors[i + 1] = F.linear(send_tensor, weight)
+
+    # final round: special case, no need to send/recv again
+    for handle in handles:
+        handle.wait()
+    output_tensors[group_size - 1] = F.linear(recv_tensor, weight)
+    return torch.cat(output_tensors[group_size - cur_rank :] + output_tensors[: group_size - cur_rank], dim=1)
+
+
 class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
     """Gather input from sequence parallel in forward and reduce-scatter gradient in backward
 
@@ -187,12 +230,11 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         ctx.dim = dim
         ctx.overlap = overlap
 
-        input_parallel = _gather(input_, dim, process_group)
-
         if bias is not None:
+            input_parallel = _gather(input_, dim, process_group)
             output = F.linear(input_parallel, weight, bias)
         else:
-            output = F.linear(input_parallel, weight)
+            output = _AllgatherLinear(input_, weight, process_group)
 
         return output
 
@@ -299,7 +341,116 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         return output, grad_weight, grad_bias, None, None, None, None
 
 
+def _ReduceScatterLinear(input_, weight, process_group):
+    group_size = dist.get_world_size(process_group)
+    cur_rank = dist.get_rank(process_group)
+
+    input_shape = input_.shape
+
+    # initialization of ring communication
+    # communicate(e.g.): 0->1->2->3
+    # compute(e.g.): 3->2->1->0
+    input_tensors = list(torch.split(input_, int(input_shape[1] / group_size), dim=1))
+    input_tensors = input_tensors[cur_rank:] + input_tensors[:cur_rank]
+    input_tensors.reverse()
+    recv_rank = cur_rank - 1 if cur_rank > 0 else group_size - 1
+    send_rank = cur_rank + 1 if cur_rank + 1 < group_size else 0
+
+    # first round: special case, no reduce operation
+    output_tensor = F.linear(input_tensors[0], weight)
+    recv_tensor = output_tensor.clone()
+    send_tensor = output_tensor.clone()
+    recv_op = dist.P2POp(dist.irecv, recv_tensor, recv_rank, group=process_group)
+    send_op = dist.P2POp(dist.isend, send_tensor, send_rank, group=process_group)
+    handles = dist.batch_isend_irecv([recv_op, send_op])
+    for i in range(group_size - 2):
+        # actual computation
+        output_tensor = F.linear(input_tensors[i + 1], weight)
+
+        for handle in handles:
+            handle.wait()
+        output_tensor += recv_tensor
+
+        tmp_tensor = send_tensor
+        send_tensor = output_tensor
+        output_tensor = tmp_tensor
+
+        recv_op = dist.P2POp(dist.irecv, recv_tensor, recv_rank, group=process_group)
+        send_op = dist.P2POp(dist.isend, send_tensor, send_rank, group=process_group)
+        handles = dist.batch_isend_irecv([recv_op, send_op])
+
+    # final round: special case, no need to send/recv again
+    output_tensor = F.linear(input_tensors[group_size - 1], weight)
+    for handle in handles:
+        handle.wait()
+    output_tensor += recv_tensor
+    return output_tensor
+
+
 class _LinearWithReduceScatterForwardGatherBackward(torch.autograd.Function):
+    """Reduce-scatter input from sequence parallel in forward and gather gradient in backward
+
+    Args:
+        input_ (`torch.Tensor`): The input tensor from sequence parallel region.
+        process_group (`torch.distributed.ProcessGroup`): The process group used for collective communication.
+        overlap (`bool`): Whther to overlap the all_gather op and gradient calculate in backward.
+
+    """
+
+    @staticmethod
+    def forward(ctx, input_, weight, bias, process_group, dim):
+        ctx.save_for_backward(input_, weight, bias)
+        ctx.use_bias = bias is not None
+        ctx.process_group = process_group
+        ctx.dim = dim
+
+        if bias is not None:
+            partial_output = F.linear(input_, weight, bias)
+        else:
+            return _ReduceScatterLinear(input_, weight, process_group)
+
+        output_shape = list(partial_output.shape)
+        assert (
+            output_shape[dim] % dist.get_world_size(process_group) == 0
+        ), f"The dimension to split ({output_shape[dim]}) is not a multiple of tensor parallel size ({dist.get_world_size(process_group)}). "
+        output_shape[dim] = output_shape[dim] // dist.get_world_size(process_group)
+
+        output_list = [
+            item.contiguous() for item in torch.chunk(partial_output, dist.get_world_size(process_group), dim=dim)
+        ]
+        output = torch.empty(output_shape, dtype=partial_output.dtype, device=partial_output.device).contiguous()
+        dist.reduce_scatter(output, output_list, group=process_group)
+
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input_, weight, bias = ctx.saved_tensors
+        use_bias = ctx.use_bias
+        dim = ctx.dim
+        process_group = ctx.process_group
+
+        # In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias. Used in FusedLayerNorm
+        if use_bias:
+            bias = bias.view(bias.shape)
+
+        grad_output = _gather(grad_output, dim, process_group)
+
+        # TODO Need to fully optimize
+        total_input = input_
+        grad_input = grad_output.matmul(weight)
+        grad_output = grad_output.contiguous()
+        # Convert the tensor shapes to 2D for execution compatibility
+        if len(grad_output.shape) > 2:
+            grad_output = grad_output.view(-1, grad_output.shape[-1])
+            total_input = total_input.view(-1, total_input.shape[-1])
+        grad_weight = grad_output.t().matmul(total_input)
+        grad_bias = grad_output.sum(dim=0) if use_bias else None
+
+        return grad_input, grad_weight, grad_bias, None, None
+
+
+class _ReduceScatterForwardGatherBackward(torch.autograd.Function):
     """Gather input from sequence parallel in forward and reduce-scatter gradient in backward
 
     Args:
@@ -661,8 +812,12 @@ def linear_gather_forward_reducescatter_backward(
     )
 
 
-def linear_reducescatter_forward_gather_backward(input_, process_group, dim):
-    return _LinearWithReduceScatterForwardGatherBackward.apply(input_, process_group, dim)
+def reducescatter_forward_gather_backward(input_, process_group, dim):
+    return _ReduceScatterForwardGatherBackward.apply(input_, process_group, dim)
+
+
+def linear_reducescatter_forward_gather_backward(input_, weight, bias=None, process_group=None, dim=1):
+    return _LinearWithReduceScatterForwardGatherBackward.apply(input_, weight, bias, process_group, dim)
 
 
 def matmul_gather_forward_reducescatter_backward(
