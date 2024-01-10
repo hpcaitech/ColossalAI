@@ -10,20 +10,20 @@ jobs:
   build:
     name: Build and Test Colossal-AI
     if: github.repository == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, 8-gpu]
+    runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:2.0.0-11.7.0
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
-    timeout-minutes: 40
+    timeout-minutes: 90
     steps:
       - name: Check GPU Availability # ensure all GPUs have enough memory
         id: check-avai
         run: |
           avai=true
-          for i in $(seq 0 7);
+          for i in $(seq 0 3);
           do
             gpu_used=$(nvidia-smi -i $i --query-gpu=memory.used --format=csv,noheader,nounits)
-            [ "$gpu_used" -gt "10000" ] && avai=false
+            [ "$gpu_used" -gt "2000" ] && avai=false
           done
 
           echo "GPU is available: $avai"
@@ -60,9 +60,12 @@ jobs:
       - name: Unit Testing
         if: steps.check-avai.outputs.avai == 'true'
         run: |
-          PYTHONPATH=$PWD pytest --durations=0 tests
+          PYTHONPATH=$PWD pytest \
+          -m "not largedist" \
+          --durations=0 \
+          tests/
         env:
-          DATA: /data/scratch/cifar-10
+          NCCL_SHM_DISABLE: 1
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
           LLAMA_PATH: /data/scratch/llama-tiny
 

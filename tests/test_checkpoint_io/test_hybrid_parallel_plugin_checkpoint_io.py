@@ -40,7 +40,7 @@ else:
 
 @clear_cache_before_run()
 @parameterize("shard", [True, False])
-@parameterize("model_name", ["transformers_gpt"])
+@parameterize("model_name", ["transformers_llama_for_casual_lm"])
 @parameterize("size_per_shard", [32])
 @parameterize("test_config", TEST_CONFIGS)
 def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_config: dict):

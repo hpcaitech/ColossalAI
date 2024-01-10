@@ -12,7 +12,7 @@ if version.parse(torch.__version__) >= version.parse("1.12.0"):
 
 from colossalai.interface import OptimizerWrapper
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from tests.kit.model_zoo import model_zoo
+from tests.kit.model_zoo import model_zoo, IS_FAST_TEST, COMMON_MODELS
 
 
 # test basic fsdp function
@@ -42,7 +42,12 @@ def run_fn(model_fn, data_gen_fn, output_transform_fn):
 
 
 def check_torch_fsdp_plugin():
-    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in model_zoo.items():
+    if IS_FAST_TEST:
+        registry = model_zoo.get_sub_registry(COMMON_MODELS)
+    else:
+        registry = model_zoo
+
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in registry.items():
         if any(
             element in name
             for element in [
