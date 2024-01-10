@@ -188,7 +188,7 @@ class LlamaPolicy(Policy):
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_flash_attention_forward(sp_mode, sp_size),
+                    "forward": get_llama_flash_attention_forward(shard_config=self.shard_config),
                 },
                 policy=policy,
                 target_key=LlamaAttention,

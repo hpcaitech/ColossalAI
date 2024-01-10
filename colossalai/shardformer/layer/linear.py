@@ -411,10 +411,10 @@ class Linear1D_Row(ParallelModule):
                 output = torch.cat(output_parallel_list, dim=-1)
         else:
             if self.seq_parallel_mode is None:
-                output_parallel = F.linear(input_, self.weight)
+                output_parallel = linear_with_async_comm(input_, self.weight, None, None, False)
                 output = reduce_forward(output_parallel, self.process_group)
             elif self.seq_parallel_mode == "1":
-                output_parallel = F.linear(input_, self.weight)
+                output_parallel = linear_with_async_comm(input_, self.weight, None, None, False)
                 output = linear_reducescatter_forward_gather_backward(
                     output_parallel, self.process_group, self.seq_parallel_dim
                 )

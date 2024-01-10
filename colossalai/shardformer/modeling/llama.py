@@ -428,8 +428,7 @@ class LlamaPipelineForwards:
             return {"hidden_states": hidden_states}
 
 
-
-def get_llama_flash_attention_forward(sp_mode, sp_size):
+def get_llama_flash_attention_forward(shard_config):
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
     from colossalai.nn.layer.colo_attention import AttnMaskType, ColoAttention
@@ -452,8 +451,8 @@ def get_llama_flash_attention_forward(sp_mode, sp_size):
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
-        if sp_mode == "2":
-            q_len *= sp_size
+        if shard_config.sequence_parallelism_mode == "2":
+            q_len *= shard_config.sequence_parallel_size
         assert q_len % 4 == 0, "Flash Attention Error: The sequence length should be a multiple of 4."
 
         query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
@@ -752,7 +751,7 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size):
 
     return forward
 
-  
+
 def get_llama_seq_parallel_model_forward(sp_mode, sp_size):
     def forward(
         self,
