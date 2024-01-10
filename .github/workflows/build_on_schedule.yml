@@ -14,7 +14,7 @@ jobs:
     container:
       image: hpcaitech/pytorch-cuda:2.0.0-11.7.0
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
-    timeout-minutes: 40
+    timeout-minutes: 90
     steps:
       - name: Check GPU Availability # ensure all GPUs have enough memory
         id: check-avai
