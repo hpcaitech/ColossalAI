@@ -181,7 +181,7 @@ def _flash_decoding_fwd_reduce_kernel(
 
 # Decoding Stage
 # Used with blocked KV Cache (PagedAttention)
-def decoding_attention_unpadded(
+def flash_decoding(
     q: torch.Tensor,  # [bsz(e.g.num_tokens), 1, num_heads, head_dim]
     k_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
     v_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
