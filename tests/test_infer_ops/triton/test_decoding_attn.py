@@ -1,10 +1,10 @@
 import pytest
 import torch
-import torch.nn.functional as F
 from packaging import version
 
 from colossalai.kernel.triton import flash_decoding_fwd
 from colossalai.utils import get_current_device
+from tests.test_infer_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache, torch_attn_ref
 
 try:
     import triton  # noqa
@@ -17,53 +17,6 @@ except ImportError:
 TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 
 
-def torch_attn_ref(
-    q: torch.Tensor,  # [bsz, num_heads, 1, head_dim]
-    k: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_dim]
-    v: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_dim]
-    attention_mask: torch.Tensor,
-    bsz: int,
-    seq_len: int,
-    kv_seq_len: int,
-    num_heads: int,
-    head_dim: int,
-):
-    qk = torch.matmul(q, k.transpose(2, 3))
-    attn_scores = qk / (head_dim**0.5)
-
-    assert attn_scores.shape == (bsz, num_heads, seq_len, kv_seq_len), "Invalid shape of attention scores"
-    # for left-side padding
-    if attention_mask.size() != (bsz, 1, seq_len, kv_seq_len):
-        raise ValueError(
-            f"Attention mask should be of size {(bsz, 1, seq_len, kv_seq_len)}, but is {attention_mask.size()}"
-        )
-
-    attn_scores = attn_scores + attention_mask
-    attn_weights = F.softmax(attn_scores.to(dtype=torch.float32), dim=-1).to(dtype=q.dtype)
-    out = torch.matmul(attn_weights, v)
-    if out.size() != (bsz, num_heads, seq_len, head_dim):
-        raise ValueError(
-            f"`attn_output` should be of size {(bsz, num_heads, seq_len, head_dim)}, but is" f" {out.size()}"
-        )
-    out = out.transpose(1, 2).contiguous()
-    return out
-
-
-# This method is adapted from src/transformers/models/llama/modeling_llama.py
-# in huggingface transformers repository
-# https://github.com/huggingface/transformers/blob/3b7675b2b844b02d4821b827871a21ad16dd446c/src/transformers/models/llama/modeling_llama.py#L273
-def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
-    """
-    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep).
-    The hidden states go from (bsz, num_key_value_heads, seq_len, head_dim) to (bsz, num_attention_heads, seq_len, head_dim)
-    """
-    if n_rep == 1:
-        return hidden_states
-    bsz, num_key_value_heads, seq_len, head_dim = hidden_states.shape
-    hidden_states = hidden_states[:, :, None, :, :].expand(bsz, num_key_value_heads, n_rep, seq_len, head_dim)
-    return hidden_states.reshape(bsz, num_key_value_heads * n_rep, seq_len, head_dim)
-
-
 def torch_decoding(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, context_lengths: torch.Tensor):
     assert context_lengths.dim() == 1, "context_lengths should be a 1D tensor"
     assert q.size(1) == 1, "Only used for decoding"
@@ -72,19 +25,13 @@ def torch_decoding(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, context_le
     bsz, _, num_heads, head_dim = q.shape
     _, kv_seq_len, num_kv_heads, _ = k.shape
     assert num_heads % num_kv_heads == 0, "Invalid kv heads and attention heads."
-    kv_group_num = num_heads // num_kv_heads
-    q = q.transpose(1, 2)
-    k = k.transpose(1, 2)
-    v = v.transpose(1, 2)
-    k = repeat_kv(k, kv_group_num)
-    v = repeat_kv(v, kv_group_num)
     padding_mask = torch.zeros((bsz, 1, 1, kv_seq_len), dtype=torch.float32, device=q.device)
     for i in range(bsz):
         cur_seq_len = context_lengths[i].item()
         assert cur_seq_len <= kv_seq_len
         padding_mask[i, :, :, : kv_seq_len - cur_seq_len] = float("-inf")
 
-    out = torch_attn_ref(q, k, v, padding_mask, bsz, 1, kv_seq_len, num_heads, head_dim)
+    out = torch_attn_ref(q, k, v, padding_mask, bsz, 1, kv_seq_len, num_heads, num_kv_heads, head_dim)
     return out
 
 
@@ -108,10 +55,10 @@ def test_flash_decoding(
     torch.cuda.synchronize()
     torch.cuda.reset_peak_memory_stats()
 
-    head_dim = 128
-    q_len = 1
     num_kv_heads = num_attn_heads // kv_group_num
     assert isinstance(num_kv_heads, int) and num_kv_heads > 0, "Invalid number of kv heads."
+    q_len = 1
+    head_dim = 128
     max_seq_len = block_size * max_num_blocks_per_seq
     dtype = torch.float16
     device = get_current_device()
@@ -131,29 +78,10 @@ def test_flash_decoding(
     cache_shape = (bsz * max_num_blocks_per_seq, num_kv_heads, head_dim, block_size)
     k_cache = torch.zeros(size=cache_shape, dtype=dtype, device=device)
     v_cache = torch.zeros(size=cache_shape, dtype=dtype, device=device)
-    # Mock allocation on block tables and blocked kv caches
-    block_id = 0
-    block_tables = torch.full(size=(bsz, max_num_blocks_per_seq), fill_value=-1, dtype=torch.int32)
-    num_tokens_processed = 0
-    for i, seq_len in enumerate(context_lengths.tolist()):
-        right_bound = (seq_len + block_size - 1) // block_size  # open bound
-        block_tables[i, :right_bound] = torch.arange(block_id, block_id + right_bound, dtype=torch.int32)
-        # Manually fill kv caches by copying from k and v
-        for i in range(right_bound):
-            if i == right_bound - 1:
-                allocated_locs = seq_len % block_size or block_size
-            else:
-                allocated_locs = block_size
-            k_block = k[num_tokens_processed : num_tokens_processed + allocated_locs, :, :].permute(1, 2, 0)
-            v_block = v[num_tokens_processed : num_tokens_processed + allocated_locs, :, :].permute(1, 2, 0)
-            cur_block_size_occupied = k_block.shape[-1]
-            assert cur_block_size_occupied <= block_size, "Invalid occupied size of block during mock allocation"
-            k_cache[block_id, :, :, :cur_block_size_occupied] = k_block
-            v_cache[block_id, :, :, :cur_block_size_occupied] = v_block
-
-            num_tokens_processed += allocated_locs
-            block_id += 1
-
+    # Mock allocation on block tables as well as blocked kv caches
+    block_tables = mock_alloc_block_table_and_kvcache(
+        k, v, k_cache, v_cache, context_lengths, bsz, max_num_blocks_per_seq, block_size
+    )
     block_tables = block_tables.to(device=device)
 
     q = q.view(bsz, q_len, num_attn_heads, head_dim)
