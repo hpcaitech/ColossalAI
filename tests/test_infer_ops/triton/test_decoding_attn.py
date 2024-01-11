@@ -18,18 +18,18 @@ TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 
 
 def torch_attn_ref(
-    q: torch.Tensor,  # [bsz, num_heads, 1, head_size]
-    k: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_size]
-    v: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_size]
+    q: torch.Tensor,  # [bsz, num_heads, 1, head_dim]
+    k: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_dim]
+    v: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_dim]
     attention_mask: torch.Tensor,
     bsz: int,
     seq_len: int,
     kv_seq_len: int,
     num_heads: int,
-    head_size: int,
+    head_dim: int,
 ):
     qk = torch.matmul(q, k.transpose(2, 3))
-    attn_scores = qk / (head_size**0.5)
+    attn_scores = qk / (head_dim**0.5)
 
     assert attn_scores.shape == (bsz, num_heads, seq_len, kv_seq_len), "Invalid shape of attention scores"
     # for left-side padding
@@ -41,9 +41,9 @@ def torch_attn_ref(
     attn_scores = attn_scores + attention_mask
     attn_weights = F.softmax(attn_scores.to(dtype=torch.float32), dim=-1).to(dtype=q.dtype)
     out = torch.matmul(attn_weights, v)
-    if out.size() != (bsz, num_heads, seq_len, head_size):
+    if out.size() != (bsz, num_heads, seq_len, head_dim):
         raise ValueError(
-            f"`attn_output` should be of size {(bsz, num_heads, seq_len, head_size)}, but is" f" {out.size()}"
+            f"`attn_output` should be of size {(bsz, num_heads, seq_len, head_dim)}, but is" f" {out.size()}"
         )
     out = out.transpose(1, 2).contiguous()
     return out
@@ -64,14 +64,12 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     return hidden_states.reshape(bsz, num_key_value_heads * n_rep, seq_len, head_dim)
 
 
-def torch_decoding_unpad(
-    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, context_lengths: torch.Tensor  # [bsz, 1, num]
-):
+def torch_decoding(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, context_lengths: torch.Tensor):
     assert context_lengths.dim() == 1, "context_lengths should be a 1D tensor"
-    assert q.size(1) == 1, "only used for decoding"
+    assert q.size(1) == 1, "Only used for decoding"
     assert k.shape == v.shape
 
-    bsz, _, num_heads, head_size = q.shape
+    bsz, _, num_heads, head_dim = q.shape
     _, kv_seq_len, num_kv_heads, _ = k.shape
     assert num_heads % num_kv_heads == 0, "Invalid kv heads and attention heads."
     kv_group_num = num_heads // num_kv_heads
@@ -80,14 +78,13 @@ def torch_decoding_unpad(
     v = v.transpose(1, 2)
     k = repeat_kv(k, kv_group_num)
     v = repeat_kv(v, kv_group_num)
-
     padding_mask = torch.zeros((bsz, 1, 1, kv_seq_len), dtype=torch.float32, device=q.device)
     for i in range(bsz):
         cur_seq_len = context_lengths[i].item()
         assert cur_seq_len <= kv_seq_len
         padding_mask[i, :, :, : kv_seq_len - cur_seq_len] = float("-inf")
 
-    out = torch_attn_ref(q, k, v, padding_mask, bsz, 1, kv_seq_len, num_heads, head_size)
+    out = torch_attn_ref(q, k, v, padding_mask, bsz, 1, kv_seq_len, num_heads, head_dim)
     return out
 
 
@@ -107,8 +104,11 @@ def test_flash_decoding(
     same_context_len: bool,
 ):
     torch.manual_seed(123)
+    torch.cuda.empty_cache()
+    torch.cuda.synchronize()
+    torch.cuda.reset_peak_memory_stats()
 
-    head_size = 128
+    head_dim = 128
     q_len = 1
     num_kv_heads = num_attn_heads // kv_group_num
     assert isinstance(num_kv_heads, int) and num_kv_heads > 0, "Invalid number of kv heads."
@@ -116,27 +116,22 @@ def test_flash_decoding(
     dtype = torch.float16
     device = get_current_device()
 
-    torch.cuda.empty_cache()
-    torch.cuda.synchronize()
-    torch.cuda.reset_peak_memory_stats()
-
     if same_context_len:
         context_lengths = torch.tensor([max_seq_len for _ in range(bsz)], dtype=torch.int32, device=device)
     else:
         context_lengths = torch.randint(low=1, high=max_seq_len, size=(bsz,), dtype=torch.int32, device=device)
     num_tokens = torch.sum(context_lengths).item()
 
-    q_size = (bsz, q_len, num_attn_heads, head_size)
+    q_size = (bsz, q_len, num_attn_heads, head_dim)
     q = torch.empty(size=q_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
-    kv_size = (num_tokens, 2 * num_kv_heads, head_size)
+    kv_size = (num_tokens, 2 * num_kv_heads, head_dim)
     kv = torch.empty(size=kv_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
     k, v = torch.split(kv, [num_kv_heads, num_kv_heads], dim=-2)
 
-    cache_shape = (bsz * max_num_blocks_per_seq, num_kv_heads, head_size, block_size)
+    cache_shape = (bsz * max_num_blocks_per_seq, num_kv_heads, head_dim, block_size)
     k_cache = torch.zeros(size=cache_shape, dtype=dtype, device=device)
     v_cache = torch.zeros(size=cache_shape, dtype=dtype, device=device)
-
-    # Mock allocation on block tables
+    # Mock allocation on block tables and blocked kv caches
     block_id = 0
     block_tables = torch.full(size=(bsz, max_num_blocks_per_seq), fill_value=-1, dtype=torch.int32)
     num_tokens_processed = 0
@@ -158,9 +153,10 @@ def test_flash_decoding(
 
             num_tokens_processed += allocated_locs
             block_id += 1
+
     block_tables = block_tables.to(device=device)
 
-    q = q.view(bsz, q_len, num_attn_heads, head_size)
+    q = q.view(bsz, q_len, num_attn_heads, head_dim)
     out_triton = decoding_attention_unpadded(
         q,
         k_cache,
@@ -168,15 +164,15 @@ def test_flash_decoding(
         context_lengths,
         block_tables,
         block_size,
-        num_kv_group=kv_group_num,
+        kv_group_num,
     )
-    out_triton = out_triton.unsqueeze(1)
+    out_triton = out_triton.unsqueeze(1)  # [bsz, 1, num_heads, head_dim]
 
-    # rebuild kv for torch attention
-    # q   [bsz, 1, num_heads, head_size]
-    # k/v [num_tokens, num_kv_heads, head_size]
+    # rebuild (batched) kv with padding for torch attention
+    # q   [bsz, 1, num_heads, head_dim]
+    # k/v [num_tokens, num_kv_heads, head_dim]
     max_seq_len = context_lengths.max().item()
-    k_torch = torch.zeros((bsz, max_seq_len, num_kv_heads, head_size), dtype=k.dtype, device=k.device)
+    k_torch = torch.zeros((bsz, max_seq_len, num_kv_heads, head_dim), dtype=k.dtype, device=k.device)
     v_torch = torch.zeros_like(k_torch)
     prev_len_sum = 0
     for i, seq_len in enumerate(context_lengths.tolist()):
@@ -184,8 +180,8 @@ def test_flash_decoding(
         k_torch[i, -seq_len:, :, :] = k[prev_len_sum : prev_len_sum + seq_len]
         v_torch[i, -seq_len:, :, :] = v[prev_len_sum : prev_len_sum + seq_len]
         prev_len_sum += seq_len
-    # k/v [bsz, max_seq_len, num_kv_heads, head_size]
-    out_torch = torch_decoding_unpad(q, k_torch, v_torch, context_lengths)
+    # k/v [bsz, max_seq_len, num_kv_heads, head_dim]
+    out_torch = torch_decoding(q, k_torch, v_torch, context_lengths)
 
     assert out_torch.shape == out_triton.shape
     assert torch.allclose(out_torch, out_triton, atol=1e-3, rtol=1e-4)

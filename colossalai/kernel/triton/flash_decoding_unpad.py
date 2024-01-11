@@ -5,11 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-"""
-Assumption: In prefill/context stage, we use an unpadded input (fused tensor of multiple sequences)
-then in decoding stage, we will use unpadded input as well for consistency.
-"""
-
 
 # Triton 2.1.0
 @triton.jit
@@ -17,7 +12,7 @@ def _flash_decoding_fwd_kernel(
     Q,  # [batch_size, head_num, head_dim]
     KCache,  # [num_blocks, num_kv_heads, head_dim, block_size]
     VCache,  # [num_blocks, num_kv_heads, head_dim, block_size]
-    block_tables,  # [batch_size, (max_input_len + max_output_len)//cache_block_size]
+    block_tables,  # [batch_size, max_blocks_per_sequence]
     mid_o,  # [batch_size, head_num, kv_split_num, head_dim]
     mid_o_lse,  # [batch_size, head_num, kv_split_num]
     context_lengths,  # [batch_size]
@@ -51,7 +46,7 @@ def _flash_decoding_fwd_kernel(
     offsets_dmodel = tl.arange(0, BLOCK_DMODEL)
 
     # NOTE It requires BLOCK_KV and BLOCK_SIZE to be the same
-    # TODO might want to replace with BLOCK_KV % BLOCK_SIZE == 0
+    # TODO might want to replace with BLOCK_KV % BLOCK_SIZE == 0 (optimize BLOCK_KV as multiple of BLOCK_SIZE)
     #      and then support calculating multiple kv cache blocks on an instance
     tl.static_assert(BLOCK_KV == BLOCK_SIZE)
 
@@ -61,14 +56,8 @@ def _flash_decoding_fwd_kernel(
     offsets_q = cur_seq_idx * stride_qt + cur_head_idx * stride_qh + offsets_dmodel * stride_qd
     q = tl.load(Q + offsets_q)
 
-    # TODO for now, BLOCK_KV == BLOCK_SIZE
-    # optimize BLOCK_KV as multiple of BLOCK_SIZE
-
     # block table for the current sequence
     block_table_ptr = block_tables + cur_seq_idx * stride_bts
-
-    # kcached_offsets = offsets_dmodel
-    kcachebs_offsets = tl.arange(0, BLOCK_SIZE)
 
     # actually current block table current block start idx
     # cur_bt_start_idx = block_start_kv * (BLOCK_KV // BLOCK_SIZE)
@@ -84,10 +73,10 @@ def _flash_decoding_fwd_kernel(
     )
     tl.device_assert(cur_occupied_size >= 0)
 
-    kvcache_offset = cur_block_id * stride_cacheb + cur_kv_head_idx * stride_cacheh
+    offset_kvcache = cur_block_id * stride_cacheb + cur_kv_head_idx * stride_cacheh
 
     K_block_ptr = tl.make_block_ptr(
-        base=KCache + kvcache_offset,
+        base=KCache + offset_kvcache,
         shape=(BLOCK_DMODEL, cur_occupied_size),
         strides=(stride_cached, stride_cachebs),
         offsets=(0, 0),
@@ -95,7 +84,7 @@ def _flash_decoding_fwd_kernel(
         order=(0, 1),
     )
     V_block_ptr = tl.make_block_ptr(
-        base=VCache + kvcache_offset,
+        base=VCache + offset_kvcache,
         shape=(BLOCK_DMODEL, cur_occupied_size),
         strides=(stride_cached, stride_cachebs),
         offsets=(0, 0),
@@ -113,29 +102,28 @@ def _flash_decoding_fwd_kernel(
     # Refer to https://github.com/openai/triton/discussions/895
     S_ij += tl.sum(q[:, None] * k_cur_block, 0)
     S_ij *= sm_scale
-    S_ij += tl.where(block_start_kv * BLOCK_KV + kcachebs_offsets < cur_kv_seq_len, 0, float("-inf"))
+    S_ij += tl.where(block_start_kv * BLOCK_KV + tl.arange(0, BLOCK_SIZE) < cur_kv_seq_len, 0, float("-inf"))
 
     m = tl.max(S_ij, 0)
     S_ij -= m
     p_ij_hat = tl.exp(S_ij)
     l = tl.sum(p_ij_hat, 0)
-
     p_ij_hat = p_ij_hat.to(v_cur_block.type.element_ty)
     acc += tl.sum(v_cur_block * p_ij_hat[None, :], 1)
     acc = acc / l
 
-    mid_o_offsets = (
+    offsets_mid_o = (
         cur_seq_idx * stride_mid_ot
         + cur_head_idx * stride_mid_oh
         + block_start_kv * stride_mid_ob
         + offsets_dmodel * stride_mid_od
     )
-    tl.store(mid_o + mid_o_offsets, acc)
-    mid_o_lse_offsets = (
+    tl.store(mid_o + offsets_mid_o, acc)
+    offsets_mid_o_lse = (
         cur_seq_idx * stride_mid_o_lset + cur_head_idx * stride_mid_o_lseh + block_start_kv * stride_mid_o_lseb
     )
     # logsumexp L^(j) = m^(j) + log(l^(j))
-    tl.store(mid_o_lse + mid_o_lse_offsets, m + tl.log(l))
+    tl.store(mid_o_lse + offsets_mid_o_lse, m + tl.log(l))
 
 
 # Triton 2.1.0
@@ -164,8 +152,8 @@ def _flash_decoding_fwd_reduce_kernel(
     cur_kv_seq_len = tl.load(context_lengths + cur_seq_idx)
     offsets_dmodel = tl.arange(0, BLOCK_DMODEL)
 
-    # i.e. block kv in stage 1
-    # TODO optimize by using max seq len, for loop static range
+    # NOTE currently the block size BLOCK_KV splitting kv is relatively small as we have
+    # BLOCK_KV == BLOCK_SIZE for now. We might want to decrease the number of blocks of kv splitted.
     kv_split_num = (cur_kv_seq_len + BLOCK_KV - 1) // BLOCK_KV
     m_i = float("-inf")  # max logic
     l = 0.0  # sum exp
@@ -192,27 +180,31 @@ def _flash_decoding_fwd_reduce_kernel(
 
 
 # Decoding Stage
+# Used with blocked KV Cache (PagedAttention)
 def decoding_attention_unpadded(
-    q: torch.Tensor,  # [num_tokens(e.g.batch_size), 1, num_heads, head_dim]
+    q: torch.Tensor,  # [bsz(e.g.num_tokens), 1, num_heads, head_dim]
     k_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
     v_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
     context_lengths: torch.Tensor,  # [batch_size]
     block_tables: torch.Tensor,  # [batch_size, max_blocks_per_sequence]
-    # max_seq_len: int,
     block_size: int,
-    num_kv_group: int,
+    num_kv_group: int = 1,
 ):
     bsz, _, num_heads, head_dim = q.shape
 
     assert head_dim in {32, 64, 128, 256}
     assert context_lengths.shape[0] == block_tables.shape[0] == bsz, (
         f"Got incompatible batch size (number of seqs):\n"
-        f"  Conext lengths {context_lengths.shape[0]}, Block tables {block_tables.shape[0]}, "
+        f"  Conext lengths bsz {context_lengths.shape[0]}, Block tables bsz {block_tables.shape[0]}, "
         f"batch size {bsz}"
     )
+    assert k_cache.size(-1) == v_cache.size(-1) == block_size, (
+        f"Got incompatible block size on kv caches:\n"
+        f"  assigned block_size {block_size}, k_cache block_size {k_cache.size(-1)}, "
+        f"v_cache block_size {v_cache.size(-1)}"
+    )
     # NOTE `context_lengths` records the (kv) sequence lengths incorporating past kv sequence lengths.
-    num_seqs = context_lengths.size(0)  # e.g. batch size
-    # TODO might want to pass max_seq_len (recorded as a var in somewhere) in as an arg
+    bsz = context_lengths.size(0)  # e.g. the number of seqs
     max_seq_len = context_lengths.max().item()
     sm_scale = 1.0 / (head_dim**0.5)
 
@@ -221,21 +213,15 @@ def decoding_attention_unpadded(
     assert block_size in {16, 32, 64, 128}
     BLOCK_KV = block_size
 
-    # follow kv cache block size for now
-    mid_o = torch.zeros(
-        size=(num_seqs, num_heads, (max_seq_len + BLOCK_KV - 1) // BLOCK_KV, head_dim),
-        dtype=torch.float32,
-        device=q.device,
-    )
-    mid_o_lse = torch.zeros(
-        size=(num_seqs, num_heads, (max_seq_len + BLOCK_KV - 1) // BLOCK_KV), dtype=torch.float32, device=q.device
-    )
+    kv_max_split_num = (max_seq_len + BLOCK_KV - 1) // BLOCK_KV
+    mid_o = torch.zeros(size=(bsz, num_heads, kv_max_split_num, head_dim), dtype=torch.float32, device=q.device)
+    mid_o_lse = torch.zeros(size=(bsz, num_heads, kv_max_split_num), dtype=torch.float32, device=q.device)
 
-    # FIXME
     if q.dim() == 4:
+        assert q.size(1) == 1, f"q_len is supposed to be 1 but is {q.size(1)}"
         q = q.squeeze(1)
 
-    grid = (num_seqs, num_heads, triton.cdiv(max_seq_len, BLOCK_KV))
+    grid = (bsz, num_heads, triton.cdiv(max_seq_len, BLOCK_KV))
     _flash_decoding_fwd_kernel[grid](
         q,
         k_cache,
@@ -246,7 +232,7 @@ def decoding_attention_unpadded(
         context_lengths,
         q.stride(0),
         q.stride(1),
-        q.stride(2),  # corresponds to squeezed q
+        q.stride(2),
         k_cache.stride(0),
         k_cache.stride(1),
         k_cache.stride(2),
@@ -268,15 +254,13 @@ def decoding_attention_unpadded(
     )
 
     output = torch.zeros_like(q)
-    # TODO might want to move outside kernel
     output = output.view(-1, output.size(-2), output.size(-1))
 
-    grid = (num_seqs, num_heads)
+    grid = (bsz, num_heads)
     _flash_decoding_fwd_reduce_kernel[grid](
         mid_o,
         mid_o_lse,
         output,
-        # output.view(-1, output.size(-2), output.size(-1)),
         context_lengths,
         mid_o.stride(0),
         mid_o.stride(1),
