@@ -93,10 +93,8 @@ def mock_alloc_block_table_and_kvcache(
                 allocated_locs = block_size
             k_block = k[num_tokens_processed : num_tokens_processed + allocated_locs, :, :].permute(1, 2, 0)
             v_block = v[num_tokens_processed : num_tokens_processed + allocated_locs, :, :].permute(1, 2, 0)
-            cur_block_size_occupied = k_block.shape[-1]
-            assert cur_block_size_occupied <= block_size, "Invalid occupied size of block during mock allocation"
-            k_cache[block_id, :, :, :cur_block_size_occupied] = k_block
-            v_cache[block_id, :, :, :cur_block_size_occupied] = v_block
+            k_cache[block_id, :, :, :allocated_locs] = k_block
+            v_cache[block_id, :, :, :allocated_locs] = v_block
 
             num_tokens_processed += allocated_locs
             block_id += 1
