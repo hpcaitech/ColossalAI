@@ -126,12 +126,15 @@ def main():
     load_model(args.model_name, model, booster)
     coordinator.print_on_master(f"Finish load ckpt")
 
-    text = ["Hello my name is", "1+1=?"]
+    if coordinator.rank == 0:
+        text = ["Hello my name is"]
+    else:
+        text = ["What's the largest country in the world?", "How many people live in China?", "帮我续写这首诗：离离原上草"]
     tokenizer.pad_token = tokenizer.unk_token
     inputs = tokenizer(text, return_tensors="pt", padding=True).to(torch.cuda.current_device())
     outputs = model.module.generate(**inputs, max_new_tokens=20)
-    outputs = tokenizer.batch_decode(outputs)[0]
-    print(outputs)
+    outputs = tokenizer.batch_decode(outputs)
+    print(f"[{coordinator.rank}] {outputs}")
 
 
 if __name__ == "__main__":
