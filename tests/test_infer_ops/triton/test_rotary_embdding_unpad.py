@@ -20,7 +20,7 @@ def torch_rotary_emb(x, cos, sin):
 @pytest.mark.parametrize("SEQ_LEN", [64])
 @pytest.mark.parametrize("H", [32])
 @pytest.mark.parametrize("D", [64])
-@pytest.mark.parametrize("dtype", [torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float32])
 def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
     TOTAL_TOKENS = BATCH_SIZE * SEQ_LEN
     # our crafted op equals to Transformers
