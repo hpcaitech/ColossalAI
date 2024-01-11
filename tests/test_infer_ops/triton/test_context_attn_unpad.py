@@ -153,6 +153,6 @@ def test_context_attention(
     out_torch = torch_attn_unpad(q, k, v, context_lengths)
 
     assert out_torch.shape == out_triton.shape
-    assert torch.allclose(out_torch, out_triton, atol=1e-2, rtol=1e-3)
+    assert torch.allclose(out_torch, out_triton, atol=1e-4, rtol=1e-4)
     assert torch.allclose(k_cache_torch, k_cache_triton)
     assert torch.allclose(v_cache_torch, v_cache_triton)

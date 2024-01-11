@@ -48,9 +48,9 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
     k_ref = torch_rotary_emb(k, cos, sin)
     rotary_embedding(q, k, cos, sin)
 
-    assert torch.allclose(q, q_ref, atol=1e-2, rtol=1e-3)
-    assert torch.allclose(k, k_ref, atol=1e-2, rtol=1e-3)
+    assert torch.allclose(q, q_ref, atol=1e-4, rtol=1e-4)
+    assert torch.allclose(k, k_ref, atol=1e-4, rtol=1e-4)
 
 
 if __name__ == "__main__":
-    test_rotary_emb(4, 64, 32, 64, torch.float16)
+    test_rotary_emb(4, 64, 32, 64, torch.float32)
