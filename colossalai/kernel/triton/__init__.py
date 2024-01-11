@@ -9,14 +9,14 @@ except ImportError:
 # There may exist import error even if we have triton installed.
 if HAS_TRITON:
     from .context_attn_unpad import context_attention_unpadded
-    from .flash_decoding_unpad import flash_decoding
+    from .flash_decoding import flash_decoding_fwd
     from .fused_layernorm import layer_norm
     from .gptq_triton import gptq_fused_linear_triton
     from .softmax import softmax
 
     __all__ = [
         "context_attention_unpadded",
-        "flash_decoding",
+        "flash_decoding_fwd",
         "softmax",
         "layer_norm",
         "gptq_fused_linear_triton",

@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 from packaging import version
 
-from colossalai.kernel.triton import flash_decoding
+from colossalai.kernel.triton import flash_decoding_fwd
 from colossalai.utils import get_current_device
 
 try:
@@ -157,7 +157,7 @@ def test_flash_decoding(
     block_tables = block_tables.to(device=device)
 
     q = q.view(bsz, q_len, num_attn_heads, head_dim)
-    out_triton = flash_decoding(
+    out_triton = flash_decoding_fwd(
         q,
         k_cache,
         v_cache,
