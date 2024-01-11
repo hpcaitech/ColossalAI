@@ -261,7 +261,7 @@ def decoding_attention_unpadded(
         mid_o_lse.stride(1),
         mid_o_lse.stride(2),
         sm_scale,
-        KV_GROUPS=1,
+        KV_GROUPS=num_kv_group,
         BLOCK_KV=block_size,
         BLOCK_SIZE=block_size,
         BLOCK_DMODEL=head_dim,

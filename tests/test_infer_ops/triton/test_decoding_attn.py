@@ -18,9 +18,9 @@ TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 
 
 def torch_attn_ref(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
+    q: torch.Tensor,  # [bsz, num_heads, 1, head_size]
+    k: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_size]
+    v: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_size]
     attention_mask: torch.Tensor,
     bsz: int,
     seq_len: int,
@@ -49,16 +49,37 @@ def torch_attn_ref(
     return out
 
 
-def torch_decoding_unpad(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, context_lengths: torch.Tensor):
+# This method is adapted from src/transformers/models/llama/modeling_llama.py
+# in huggingface transformers repository
+# https://github.com/huggingface/transformers/blob/3b7675b2b844b02d4821b827871a21ad16dd446c/src/transformers/models/llama/modeling_llama.py#L273
+def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+    """
+    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep).
+    The hidden states go from (bsz, num_key_value_heads, seq_len, head_dim) to (bsz, num_attention_heads, seq_len, head_dim)
+    """
+    if n_rep == 1:
+        return hidden_states
+    bsz, num_key_value_heads, seq_len, head_dim = hidden_states.shape
+    hidden_states = hidden_states[:, :, None, :, :].expand(bsz, num_key_value_heads, n_rep, seq_len, head_dim)
+    return hidden_states.reshape(bsz, num_key_value_heads * n_rep, seq_len, head_dim)
+
+
+def torch_decoding_unpad(
+    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, context_lengths: torch.Tensor  # [bsz, 1, num]
+):
     assert context_lengths.dim() == 1, "context_lengths should be a 1D tensor"
     assert q.size(1) == 1, "only used for decoding"
     assert k.shape == v.shape
 
     bsz, _, num_heads, head_size = q.shape
     _, kv_seq_len, num_kv_heads, _ = k.shape
+    assert num_heads % num_kv_heads == 0, "Invalid kv heads and attention heads."
+    kv_group_num = num_heads // num_kv_heads
     q = q.transpose(1, 2)
     k = k.transpose(1, 2)
     v = v.transpose(1, 2)
+    k = repeat_kv(k, kv_group_num)
+    v = repeat_kv(v, kv_group_num)
 
     padding_mask = torch.zeros((bsz, 1, 1, kv_seq_len), dtype=torch.float32, device=q.device)
     for i in range(bsz):
@@ -75,7 +96,7 @@ def torch_decoding_unpad(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, cont
 @pytest.mark.parametrize("block_size", [16, 32, 64])
 @pytest.mark.parametrize("max_num_blocks_per_seq", [8, 32])
 @pytest.mark.parametrize("num_attn_heads", [16])
-@pytest.mark.parametrize("kv_group_num", [1])
+@pytest.mark.parametrize("kv_group_num", [1, 2, 16])
 @pytest.mark.parametrize("same_context_len", [True, False])
 def test_flash_decoding(
     bsz: int,
@@ -89,8 +110,8 @@ def test_flash_decoding(
 
     head_size = 128
     q_len = 1
-    num_seqs = bsz
     num_kv_heads = num_attn_heads // kv_group_num
+    assert isinstance(num_kv_heads, int) and num_kv_heads > 0, "Invalid number of kv heads."
     max_seq_len = block_size * max_num_blocks_per_seq
     dtype = torch.float16
     device = get_current_device()
@@ -100,9 +121,9 @@ def test_flash_decoding(
     torch.cuda.reset_peak_memory_stats()
 
     if same_context_len:
-        context_lengths = torch.tensor([max_seq_len for _ in range(num_seqs)], dtype=torch.int32, device=device)
+        context_lengths = torch.tensor([max_seq_len for _ in range(bsz)], dtype=torch.int32, device=device)
     else:
-        context_lengths = torch.randint(low=1, high=max_seq_len, size=(num_seqs,), dtype=torch.int32, device=device)
+        context_lengths = torch.randint(low=1, high=max_seq_len, size=(bsz,), dtype=torch.int32, device=device)
     num_tokens = torch.sum(context_lengths).item()
 
     q_size = (bsz, q_len, num_attn_heads, head_size)
@@ -117,7 +138,7 @@ def test_flash_decoding(
 
     # Mock allocation on block tables
     block_id = 0
-    block_tables = torch.full(size=(num_seqs, max_num_blocks_per_seq), fill_value=-1, dtype=torch.int32)
+    block_tables = torch.full(size=(bsz, max_num_blocks_per_seq), fill_value=-1, dtype=torch.int32)
     num_tokens_processed = 0
     for i, seq_len in enumerate(context_lengths.tolist()):
         right_bound = (seq_len + block_size - 1) // block_size  # open bound
@@ -147,13 +168,13 @@ def test_flash_decoding(
         context_lengths,
         block_tables,
         block_size,
-        num_kv_group=1,
+        num_kv_group=kv_group_num,
     )
     out_triton = out_triton.unsqueeze(1)
 
+    # rebuild kv for torch attention
     # q   [bsz, 1, num_heads, head_size]
     # k/v [num_tokens, num_kv_heads, head_size]
-    # rebuild kv
     max_seq_len = context_lengths.max().item()
     k_torch = torch.zeros((bsz, max_seq_len, num_kv_heads, head_size), dtype=k.dtype, device=k.device)
     v_torch = torch.zeros_like(k_torch)
