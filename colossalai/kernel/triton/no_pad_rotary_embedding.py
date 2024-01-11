@@ -74,6 +74,7 @@ def rotary_embedding_kernel(
     out0 = loaded_data0 * loaded_cos[:, None, :] - loaded_data1 * loaded_sin[:, None, :]
     out1 = loaded_data0 * loaded_sin[:, None, :] + loaded_data1 * loaded_cos[:, None, :]
 
+    # concat
     tl.store(
         rotary_data + off_data0,
         out0,
