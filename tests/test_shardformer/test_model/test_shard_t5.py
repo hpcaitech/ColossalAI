@@ -79,27 +79,28 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     torch.cuda.empty_cache()
 
 
-# TODO t5 pipeline parallelism should be fixed, can't send non-tensor data
 @parameterize(
     "test_config",
     [
-        # {
-        #     "tp_size": 2,
-        #     "pp_size": 2,
-        #     "num_microbatches": 2,
-        #     "enable_all_optimization": True,
-        #     "use_lazy_init": True,
-        #     "precision": "fp16",
-        #     "initial_scale": 1,
-        # },
-        # {
-        #     "tp_size": 1,
-        #     "pp_size": 2,
-        #     "num_microbatches": 4,
-        #     "use_lazy_init": False,
-        #     "precision": "fp16",
-        #     "initial_scale": 1,
-        # },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "enable_metadata_cache": False,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 4,
+            "enable_metadata_cache": False,
+            "use_lazy_init": False,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
         {
             "tp_size": 4,
             "pp_size": 1,
@@ -107,14 +108,15 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "use_lazy_init": False,
             "precision": "fp32",
         },
-        # {
-        #     "tp_size": 1,
-        #     "pp_size": 4,
-        #     "num_microbatches": 4,
-        #     "enable_all_optimization": False,
-        #     "use_lazy_init": False,
-        #     "precision": "fp32",
-        # },
+        {
+            "tp_size": 1,
+            "pp_size": 4,
+            "num_microbatches": 4,
+            "enable_metadata_cache": False,
+            "enable_all_optimization": False,
+            "use_lazy_init": False,
+            "precision": "fp32",
+        },
         {"tp_size": 2, "pp_size": 1, "enable_all_optimization": True, "use_lazy_init": False, "precision": "fp32"},
         {
             "tp_size": 2,
@@ -125,16 +127,17 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "fp16",
             "initial_scale": 1,
         },
-        # {
-        #     "tp_size": 1,
-        #     "pp_size": 2,
-        #     "num_microbatches": 2,
-        #     "enable_all_optimization": True,
-        #     "use_lazy_init": True,
-        #     "zero_stage": 1,
-        #     "precision": "fp16",
-        #     "initial_scale": 1,
-        # },
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "enable_metadata_cache": False,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "zero_stage": 1,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
     ],
 )
 @clear_cache_before_run()
@@ -160,6 +163,7 @@ def run_t5_test(test_config):
             "tp_size": 2,
             "pp_size": 2,
             "num_microbatches": 4,
+            "enable_metadata_cache": False,
             "enable_all_optimization": False,
             "use_lazy_init": False,
             "precision": "fp32",
@@ -169,6 +173,7 @@ def run_t5_test(test_config):
             "tp_size": 2,
             "pp_size": 2,
             "num_microbatches": 4,
+            "enable_metadata_cache": False,
             "enable_all_optimization": False,
             "use_lazy_init": False,
             "precision": "fp16",
@@ -209,7 +214,6 @@ def test_t5():
 @pytest.mark.largedist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
-@pytest.mark.skip(reason="t5 pipeline parallelism should be fixed, can't send non-tensor data")
 def test_t5_3d():
     spawn(check_t5_3d, 8)
 
