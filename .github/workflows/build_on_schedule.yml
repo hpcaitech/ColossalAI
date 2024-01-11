@@ -13,15 +13,16 @@ jobs:
     runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:2.0.0-11.7.0
-      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
+      options: --gpus all --rm -v /dev/shm -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
     timeout-minutes: 90
     steps:
       - name: Check GPU Availability # ensure all GPUs have enough memory
         id: check-avai
         run: |
           avai=true
-          for i in $(seq 0 3);
-          do
+          ngpu=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
+          endIndex=$(($ngpu-1))
+          for i in $(seq 0 $endIndex);
             gpu_used=$(nvidia-smi -i $i --query-gpu=memory.used --format=csv,noheader,nounits)
             [ "$gpu_used" -gt "2000" ] && avai=false
           done
@@ -74,7 +75,7 @@ jobs:
         if: ${{ failure() }}
         run: |
           url=$SERVER_URL/$REPO/actions/runs/$RUN_ID
-          msg="Scheduled Build and Test failed on 8 GPUs, please visit $url for details"
+          msg="Scheduled Build and Test failed, please visit $url for details"
           echo $msg
           python .github/workflows/scripts/send_message_to_lark.py -m "$msg" -u $WEBHOOK_URL
         env:
