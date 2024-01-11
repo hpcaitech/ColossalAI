@@ -152,7 +152,6 @@ def check_gemini_plugin(
             failed_info[name] = err
             if early_stop:
                 break
-        print(name)
 
     if dist.get_rank() == 0:
         print(f"Init method: {init_method}")
