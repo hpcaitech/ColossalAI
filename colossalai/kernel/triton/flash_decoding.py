@@ -36,14 +36,14 @@ def _flash_decoding_fwd_kernel(
     KV_GROUPS: tl.constexpr,
     BLOCK_KV: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
-    BLOCK_DMODEL: tl.constexpr,
+    HEAD_DIM: tl.constexpr,
 ):
     cur_seq_idx = tl.program_id(0)
     cur_head_idx = tl.program_id(1)
     block_start_kv = tl.program_id(2)  # for splitting k/v
 
     cur_kv_head_idx = cur_head_idx // KV_GROUPS
-    offsets_dmodel = tl.arange(0, BLOCK_DMODEL)
+    offsets_dmodel = tl.arange(0, HEAD_DIM)
 
     # NOTE It requires BLOCK_KV and BLOCK_SIZE to be the same
     # TODO might want to replace with BLOCK_KV % BLOCK_SIZE == 0 (optimize BLOCK_KV as multiple of BLOCK_SIZE)
@@ -77,23 +77,23 @@ def _flash_decoding_fwd_kernel(
 
     K_block_ptr = tl.make_block_ptr(
         base=KCache + offset_kvcache,
-        shape=(BLOCK_DMODEL, cur_occupied_size),
+        shape=(HEAD_DIM, cur_occupied_size),
         strides=(stride_cached, stride_cachebs),
         offsets=(0, 0),
-        block_shape=(BLOCK_DMODEL, BLOCK_SIZE),
+        block_shape=(HEAD_DIM, BLOCK_SIZE),
         order=(0, 1),
     )
     V_block_ptr = tl.make_block_ptr(
         base=VCache + offset_kvcache,
-        shape=(BLOCK_DMODEL, cur_occupied_size),
+        shape=(HEAD_DIM, cur_occupied_size),
         strides=(stride_cached, stride_cachebs),
         offsets=(0, 0),
-        block_shape=(BLOCK_DMODEL, BLOCK_SIZE),
+        block_shape=(HEAD_DIM, BLOCK_SIZE),
         order=(0, 1),
     )
     k_cur_block = tl.load(K_block_ptr)
     v_cur_block = tl.load(V_block_ptr)
-    acc = tl.zeros([BLOCK_DMODEL], dtype=tl.float32)
+    acc = tl.zeros([HEAD_DIM], dtype=tl.float32)
     # use block size of the paged/blocked kv cache
     S_ij = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
 
@@ -144,20 +144,20 @@ def _flash_decoding_fwd_reduce_kernel(
     stride_oh,
     stride_od,
     BLOCK_KV: tl.constexpr,
-    BLOCK_DMODEL: tl.constexpr,
+    HEAD_DIM: tl.constexpr,
 ):
     cur_seq_idx = tl.program_id(0)
     cur_head_idx = tl.program_id(1)
 
     cur_kv_seq_len = tl.load(context_lengths + cur_seq_idx)
-    offsets_dmodel = tl.arange(0, BLOCK_DMODEL)
+    offsets_dmodel = tl.arange(0, HEAD_DIM)
 
     # NOTE currently the block size BLOCK_KV splitting kv is relatively small as we have
     # BLOCK_KV == BLOCK_SIZE for now. We might want to decrease the number of blocks of kv splitted.
     kv_split_num = (cur_kv_seq_len + BLOCK_KV - 1) // BLOCK_KV
     m_i = float("-inf")  # max logic
     l = 0.0  # sum exp
-    acc = tl.zeros([BLOCK_DMODEL], dtype=tl.float32)
+    acc = tl.zeros([HEAD_DIM], dtype=tl.float32)
 
     offsets_mid_o = cur_seq_idx * stride_mid_ot + cur_head_idx * stride_mid_oh + offsets_dmodel
     offset_mid_lse = cur_seq_idx * stride_o_lset + cur_head_idx * stride_o_lseh
@@ -250,7 +250,7 @@ def flash_decoding_fwd(
         KV_GROUPS=num_kv_group,
         BLOCK_KV=block_size,
         BLOCK_SIZE=block_size,
-        BLOCK_DMODEL=head_dim,
+        HEAD_DIM=head_dim,
     )
 
     output = torch.zeros_like(q)
@@ -273,7 +273,7 @@ def flash_decoding_fwd(
         output.stride(1),
         output.stride(2),
         BLOCK_KV=block_size,
-        BLOCK_DMODEL=head_dim,
+        HEAD_DIM=head_dim,
     )
 
     return output

@@ -21,10 +21,10 @@ def torch_attn_unpad(
     q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, context_lengths: torch.Tensor, num_heads: int, num_kv_heads: int
 ):
     # Process sequence one by one and concatenate them together.
-    # q,k,v [num_tokens(sum(context_lengths)), num_heads, head_size]
+    # q,k,v [num_tokens(sum(context_lengths)), num_heads, head_dim]
     assert context_lengths.dim() == 1, "context_lengths should be a 1D tensor"
 
-    _, num_heads, head_size = q.shape
+    _, num_heads, head_dim = q.shape
     out_torch = []
     start_idx = 0
     for seq_i in range(len(context_lengths)):
@@ -43,7 +43,7 @@ def torch_attn_unpad(
             seq_len,
             num_heads,
             num_kv_heads,
-            head_size,
+            head_dim,
         )
         out_torch.append(torch_attn_ref_out.squeeze(0))
         start_idx = end_idx
@@ -74,7 +74,7 @@ def test_context_attention(
 
     num_kv_heads = num_attn_heads // kv_group_num
     assert isinstance(num_kv_heads, int) and num_kv_heads > 0, "Invalid number of kv heads."
-    head_size = 32
+    head_dim = 32
     max_seq_len = max_num_blocks_per_seq * block_size
     dtype = torch.float16
     device = get_current_device()
@@ -85,11 +85,11 @@ def test_context_attention(
         context_lengths = torch.randint(low=1, high=max_seq_len, size=(bsz,), dtype=torch.int32, device=device)
     num_tokens = torch.sum(context_lengths).item()
 
-    qkv_size = (num_tokens, num_attn_heads + 2 * num_kv_heads, head_size)
+    qkv_size = (num_tokens, num_attn_heads + 2 * num_kv_heads, head_dim)
     qkv = torch.empty(size=qkv_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
     q, k, v = torch.split(qkv, [num_attn_heads, num_kv_heads, num_kv_heads], dim=-2)
 
-    cache_shape = (bsz * max_num_blocks_per_seq, num_kv_heads, head_size, block_size)
+    cache_shape = (bsz * max_num_blocks_per_seq, num_kv_heads, head_dim, block_size)
     k_cache_torch = torch.zeros(size=cache_shape, dtype=dtype, device=device)
     k_cache_triton = torch.zeros_like(k_cache_torch)
     v_cache_torch = torch.zeros(size=cache_shape, dtype=dtype, device=device)
