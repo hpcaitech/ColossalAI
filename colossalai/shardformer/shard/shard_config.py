@@ -22,8 +22,8 @@ class ShardConfig:
         enable_flash_attention (bool, optional): Whether to switch on flash attention. Defaults to False.
         enable_jit_fused (bool, optional): Whether to switch on JIT fused operators. Defaults to False.
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism, which partitions non-tensor-parallel regions along the sequence dimension. Defaults to False.
-        enable_sequence_overlap (bool): Whether to turn on sequence overlap, wheich overlap the computation and communication in sequence parallelism. It can only be used when enable_sequence_parallelism is True. Defaults to False.
-        enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalizaion', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
+        enable_sequence_overlap (bool): Whether to turn on sequence overlap, which overlap the computation and communication in sequence parallelism. It can only be used when enable_sequence_parallelism is True. Defaults to False.
+        enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalization', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
     """
     tensor_parallel_process_group: Optional[ProcessGroup] = None
     pipeline_stage_manager: Optional[PipelineStageManager] = None

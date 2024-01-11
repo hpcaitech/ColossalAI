@@ -13,7 +13,7 @@ from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from tests.kit.model_zoo import model_zoo
+from tests.kit.model_zoo import model_zoo, COMMON_MODELS, IS_FAST_TEST
 
 
 def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, zero_size, tp_size) -> Optional[str]:
@@ -66,7 +66,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, zero_size, t
 # @parameterize('init_method', ['lazy', 'none', 'colo'])
 
 
-@parameterize("subset", ["torchvision", "transformers", "diffusers"])
+@parameterize("subset", [COMMON_MODELS] if IS_FAST_TEST else ["torchvision", "transformers", "diffusers"])
 @parameterize("init_method", ["none"])
 @parameterize("zero_size", [2])
 @parameterize("tp_size", [2])

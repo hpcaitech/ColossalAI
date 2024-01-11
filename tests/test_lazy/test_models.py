@@ -1,11 +1,11 @@
 import pytest
 from lazy_init_utils import SUPPORT_LAZY, check_lazy_init
 
-from tests.kit.model_zoo import model_zoo
+from tests.kit.model_zoo import model_zoo, IS_FAST_TEST, COMMON_MODELS
 
 
 @pytest.mark.skipif(not SUPPORT_LAZY, reason="requires torch >= 1.12.0")
-@pytest.mark.parametrize("subset", ["torchvision", "diffusers", "timm", "transformers", "torchaudio", "deepfm", "dlrm"])
+@pytest.mark.parametrize("subset", [COMMON_MODELS] if IS_FAST_TEST else ["torchvision", "diffusers", "timm", "transformers", "torchaudio", "deepfm", "dlrm"])
 @pytest.mark.parametrize("default_device", ["cpu", "cuda"])
 def test_torchvision_models_lazy_init(subset, default_device):
     sub_model_zoo = model_zoo.get_sub_registry(subset)
