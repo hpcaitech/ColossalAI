@@ -162,10 +162,7 @@ def create_send_metadata(
         strict (bool, optional): whether to check if the object is supported for fast send
         return_tensor (bool, optional): whether to return tensor objects
     """
-    filtered_object = (
-        {key: value for key, value in object.items() if value is not None} if isinstance(object, dict) else object
-    )
-    objs, tree_spec = tree_flatten(filtered_object)
+    objs, tree_spec = tree_flatten(object)
     tensor_metadata, tensor_objs = [], []
     non_tensor_obj_idx, non_tensor_objs = [], []
     for idx, obj in enumerate(objs):
