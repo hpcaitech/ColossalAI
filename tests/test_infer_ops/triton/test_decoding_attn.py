@@ -1,3 +1,4 @@
+import pytest
 import torch
 import torch.nn.functional as F
 from packaging import version
@@ -31,7 +32,6 @@ def torch_attn_ref(
     attn_scores = qk / (head_size**0.5)
 
     assert attn_scores.shape == (bsz, num_heads, seq_len, kv_seq_len), "Invalid shape of attention scores"
-
     # for left-side padding
     if attention_mask.size() != (bsz, 1, seq_len, kv_seq_len):
         raise ValueError(
@@ -39,9 +39,7 @@ def torch_attn_ref(
         )
 
     attn_scores = attn_scores + attention_mask
-
     attn_weights = F.softmax(attn_scores.to(dtype=torch.float32), dim=-1).to(dtype=q.dtype)
-
     out = torch.matmul(attn_weights, v)
     if out.size() != (bsz, num_heads, seq_len, head_size):
         raise ValueError(
@@ -52,9 +50,6 @@ def torch_attn_ref(
 
 
 def torch_decoding_unpad(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, context_lengths: torch.Tensor):
-    # E.g.
-    # q torch.Size([4, 1, 16, 128])
-    # k/v torch.Size([4, 64, 16, 128])
     assert context_lengths.dim() == 1, "context_lengths should be a 1D tensor"
     assert q.size(1) == 1, "only used for decoding"
     assert k.shape == v.shape
@@ -75,21 +70,28 @@ def torch_decoding_unpad(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, cont
     return out
 
 
-if __name__ == "__main__":
+@pytest.mark.skipif(not (HAS_TRITON and TRITON_CUDA_SUPPORT), reason="requires triton")
+@pytest.mark.parametrize("bsz", [4, 7, 32])
+@pytest.mark.parametrize("block_size", [16, 32, 64])
+@pytest.mark.parametrize("max_num_blocks_per_seq", [8, 32])
+@pytest.mark.parametrize("num_attn_heads", [16])
+@pytest.mark.parametrize("kv_group_num", [1])
+@pytest.mark.parametrize("same_context_len", [True, False])
+def test_flash_decoding(
+    bsz: int,
+    block_size: int,
+    max_num_blocks_per_seq: int,
+    num_attn_heads: int,
+    kv_group_num: int,
+    same_context_len: bool,
+):
     torch.manual_seed(123)
 
-    # to be moved to a func
-    bsz = 4
-    block_size = 16
-    max_num_blocks_per_seq = 4
-    num_attn_heads = num_kv_heads = 16
     head_size = 128
-    same_context_len = False
-    max_seq_len = block_size * max_num_blocks_per_seq
-
     q_len = 1
     num_seqs = bsz
-    kv_group_num = num_attn_heads // num_kv_heads
+    num_kv_heads = num_attn_heads // kv_group_num
+    max_seq_len = block_size * max_num_blocks_per_seq
     dtype = torch.float16
     device = get_current_device()
 
@@ -149,7 +151,7 @@ if __name__ == "__main__":
     )
     out_triton = out_triton.unsqueeze(1)
 
-    # q [bsz, 1, num_heads, head_size]
+    # q   [bsz, 1, num_heads, head_size]
     # k/v [num_tokens, num_kv_heads, head_size]
     # rebuild kv
     max_seq_len = context_lengths.max().item()

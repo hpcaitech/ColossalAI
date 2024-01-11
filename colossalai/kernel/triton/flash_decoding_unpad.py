@@ -234,7 +234,6 @@ def decoding_attention_unpadded(
     # FIXME
     if q.dim() == 4:
         q = q.squeeze(1)
-        print(q.stride())
 
     grid = (num_seqs, num_heads, triton.cdiv(max_seq_len, BLOCK_KV))
     _flash_decoding_fwd_kernel[grid](
