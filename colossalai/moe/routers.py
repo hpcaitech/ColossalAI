@@ -49,7 +49,7 @@ class MoeRouter(nn.Module, ABC):
         if ep_group is not None:
             num_tokens_tensor = torch.tensor(num_tokens, device=get_current_device())
             dist.all_reduce(num_tokens_tensor, group=ep_group)
-            num_tokens = num_tokens_tensor.item() / dist.get_world_size(ep_group)
+            num_tokens = num_tokens_tensor.item() // dist.get_world_size(ep_group)
         capacity_factor = self.capacity_factor_train if self.training else self.capacity_factor_eval
         capacity = math.floor(self.k_value * capacity_factor * num_tokens / num_experts)
         capacity += capacity % 2
@@ -303,9 +303,6 @@ class Top2Router(MoeRouter):
             max_num = torch.max(torch.sum(cmask, dim=0))
             dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=ep_group)
             capacity = max_num.item()
-        # capacity_tensor = torch.tensor(capacity, device=get_current_device())
-        # dist.all_reduce(capacity_tensor, group=ep_group)
-        # capacity = int(capacity_tensor.item()) // dist.get_world_size(ep_group)
 
         rank1 = moe_cumsum(mask1, use_kernel=self.use_kernel)  # rank1: [s, e]
         rank2 = moe_cumsum(mask2, use_kernel=self.use_kernel)
