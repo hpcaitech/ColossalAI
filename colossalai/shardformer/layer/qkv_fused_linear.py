@@ -25,12 +25,12 @@ from colossalai.tensor.d_tensor.api import (
 
 from ._operation import (
     gather_forward_split_backward,
-    linear_reducescatter_forward_gather_backward,
     linear_with_async_comm,
     matmul_gather_forward_reducescatter_backward,
     matmul_with_async_comm,
     reduce_backward,
     reduce_forward,
+    reducescatter_forward_gather_backward,
     split_forward_gather_backward,
 )
 from .parallel_module import ParallelModule
@@ -534,7 +534,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
             if self.seq_parallel_mode is None:
                 output = reduce_forward(output_parallel, self.process_group)
             elif self.seq_parallel_mode == "1":
-                output = linear_reducescatter_forward_gather_backward(output_parallel, self.process_group, 1)
+                output = reducescatter_forward_gather_backward(output_parallel, self.process_group, 1)
 
         if not self.skip_bias_add:
             if self.bias is not None:

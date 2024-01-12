@@ -401,7 +401,6 @@ class _LinearWithReduceScatterForwardGatherBackward(torch.autograd.Function):
         ctx.use_bias = bias is not None
         ctx.process_group = process_group
         ctx.dim = dim
-
         if bias is not None:
             partial_output = F.linear(input_, weight, bias)
         else:
