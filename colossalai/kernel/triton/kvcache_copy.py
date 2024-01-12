@@ -32,7 +32,7 @@ def _copy_to_kvcache_seqlen1_kernel(
     block_id = tl.load(block_table_ptr + last_bt_block_idx * stride_btb)
     offsets_in_last_block = (cur_kv_seq_len % block_size) * stride_cachebs
     offsets_dmodel = tl.arange(0, HEAD_DIM)
-    offsets_kv = cur_seq_idx * stride_kt + cur_kv_head_idx * stride_cacheh + offsets_dmodel * stride_kd
+    offsets_kv = cur_seq_idx * stride_kt + cur_kv_head_idx * stride_kh + offsets_dmodel * stride_kd
     kv = tl.load(KV + offsets_kv)
     offsets_kvcache = (
         block_id * stride_cacheb
@@ -69,7 +69,7 @@ def copy_kv_to_blocked_cache(
     # [bsz, 1, num_kv_heads, head_dim] -> [bsz, num_kv_heads, 1, head_dim]
     k = k.squeeze(dim=1)
 
-    num_warps = head_dim // 16
+    num_warps = triton.next_power_of_2(head_dim)
 
     grid = (bsz, num_kv_heads)
     _copy_to_kvcache_seqlen1_kernel[grid](
