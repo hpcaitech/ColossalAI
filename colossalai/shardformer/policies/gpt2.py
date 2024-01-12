@@ -5,7 +5,12 @@ from torch import Tensor, nn
 
 import colossalai.shardformer.layer as col_nn
 
-from ..modeling.gpt2 import GPT2PipelineForwards, get_gpt2_flash_attention_forward, gpt2_sequence_parallel_forward_fn
+from ..modeling.gpt2 import (
+    GPT2PipelineForwards,
+    get_gpt2_flash_attention_forward,
+    get_lm_forward_with_dist_cross_entropy,
+    gpt2_sequence_parallel_forward_fn,
+)
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -142,7 +147,7 @@ class GPT2Policy(Policy):
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_gpt2_flash_attention_forward(),
+                    "forward": get_gpt2_flash_attention_forward(self.shard_config),
                 },
                 policy=policy,
                 target_key=GPT2Attention,
@@ -227,14 +232,17 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
 
         module_policy = super().module_policy()
 
+        setattr(self.shard_config, "causal_lm", True)
+
         if self.shard_config.enable_tensor_parallelism:
             addon_module = {
                 GPT2LMHeadModel: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True}
+                            suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": False}
                         )
-                    ]
+                    ],
+                    method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
                 )
             }
             module_policy.update(addon_module)

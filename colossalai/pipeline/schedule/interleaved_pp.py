@@ -23,7 +23,7 @@ class InterleavedSchedule(PipelineSchedule):
         num_model_chunks: int,
         num_microbatch: Optional[int] = None,
         microbatch_size: Optional[int] = None,
-        enable_metadata_cache: bool = True,
+        enable_metadata_cache: bool = False,
     ) -> None:
         super().__init__(stage_manager)
         assert (
