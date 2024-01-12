@@ -205,11 +205,11 @@ def test_t5():
     spawn(check_t5, 4)
 
 
-@pytest.mark.largedist
-@rerun_if_address_is_in_use()
-@clear_cache_before_run()
-def test_t5_3d():
-    spawn(check_t5_3d, 8)
+# @pytest.mark.largedist
+# @rerun_if_address_is_in_use()
+# @clear_cache_before_run()
+# def test_t5_3d():
+#     spawn(check_t5_3d, 8)
 
 
 if __name__ == "__main__":

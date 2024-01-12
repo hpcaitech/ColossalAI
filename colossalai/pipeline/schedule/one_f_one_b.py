@@ -30,7 +30,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         stage_manager: PipelineStageManager,
         num_microbatches: Optional[int] = None,
         microbatch_size: Optional[int] = None,
-        enable_metadata_cache: bool = True,
+        enable_metadata_cache: bool = False,
     ) -> None:
         """1F1B pipeline schedule.
 

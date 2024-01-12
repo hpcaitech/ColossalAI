@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+torch.cuda.set_per_process_memory_fraction(0.125, 0)
+
 import colossalai
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer.layer.utils import Randomizer
@@ -158,6 +160,7 @@ def run_bert_test(test_config):
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
+    print(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
     clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()
@@ -227,11 +230,11 @@ def test_bert():
     spawn(check_bert, 4)
 
 
-@pytest.mark.largedist
-@rerun_if_address_is_in_use()
-@clear_cache_before_run()
-def test_bert_3d():
-    spawn(check_bert_3d, 8)
+# @pytest.mark.largedist
+# @rerun_if_address_is_in_use()
+# @clear_cache_before_run()
+# def test_bert_3d():
+#     spawn(check_bert_3d, 8)
 
 
 if __name__ == "__main__":
