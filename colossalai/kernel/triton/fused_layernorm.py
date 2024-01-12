@@ -18,7 +18,6 @@ if HAS_TRITON:
         X,  # pointer to the input
         Y,  # pointer to the output
         W,  # pointer to the weights
-        B,  # pointer to the biases
         stride,  # how much to increase the pointer when moving by 1 row
         N,  # number of columns in X
         eps,  # epsilon to avoid division by zero
@@ -41,7 +40,7 @@ if HAS_TRITON:
         for off in range(0, N, BLOCK_SIZE):
             cols = off + tl.arange(0, BLOCK_SIZE)
             x = tl.load(X + cols, mask=cols < N, other=0.0).to(tl.float32)
-            x = tl.where(cols < N, x - mean, 0.0)
+            x = tl.where(cols < N, x, 0.0)
             _var += x * x
         var = tl.sum(_var, axis=0) / N
         rstd = 1 / tl.sqrt(var + eps)
@@ -50,15 +49,15 @@ if HAS_TRITON:
             cols = off + tl.arange(0, BLOCK_SIZE)
             mask = cols < N
             w = tl.load(W + cols, mask=mask)
-            b = tl.load(B + cols, mask=mask)
             x = tl.load(X + cols, mask=mask, other=0.0).to(tl.float32)
-            x_hat = (x - mean) * rstd
-            y = x_hat * w + b
+            x_hat = x * rstd
+            # y = x_hat * w + b
+            y = x_hat * w
             # Write output
             tl.store(Y + cols, y.to(tl.float16), mask=mask)
 
     @torch.no_grad()
-    def layer_norm(x, weight, bias, eps):
+    def layer_norm(x, weight, eps):
         # allocate output
         y = torch.empty_like(x)
         # reshape input data into 2D tensor
@@ -73,6 +72,6 @@ if HAS_TRITON:
         num_warps = min(max(BLOCK_SIZE // 256, 1), 8)
         # enqueue kernel
         _layer_norm_fwd_fused[(M,)](
-            x_arg, y, weight, bias, x_arg.stride(0), N, eps, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
+            x_arg, y, weight, x_arg.stride(0), N, eps, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
         )
         return y
