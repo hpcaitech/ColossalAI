@@ -51,7 +51,6 @@ if HAS_TRITON:
             w = tl.load(W + cols, mask=mask)
             x = tl.load(X + cols, mask=mask, other=0.0).to(tl.float32)
             x_hat = x * rstd
-            # y = x_hat * w + b
             y = x_hat * w
             # Write output
             tl.store(Y + cols, y.to(tl.float16), mask=mask)

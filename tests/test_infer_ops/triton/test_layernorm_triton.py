@@ -35,8 +35,7 @@ def test_layer_norm(M, N):
     y_triton = layer_norm(x, weight, eps=eps)
     y_llama = rms_norm.forward(x).to(dtype)
 
-    print("max delta: ", torch.max(torch.abs(y_triton - y_llama)))
-    assert torch.allclose(y_triton, y_llama, atol=1e-2, rtol=0)
+    assert torch.allclose(y_triton, y_llama, atol=1e-3, rtol=0)
 
 if __name__ == "__main__":
     test_layer_norm()
