@@ -9,6 +9,7 @@ except:
 
 try:
     import fused_weight_gradient_mlp_cuda
+
     _grad_accum_fusion_available = True
 except ImportError:
     _grad_accum_fusion_available = False
@@ -403,7 +404,6 @@ class _LinearWithReduceScatterForwardGatherBackward(torch.autograd.Function):
         ctx.use_bias = bias is not None
         ctx.process_group = process_group
         ctx.dim = dim
-
         if bias is not None:
             partial_output = F.linear(input_, weight, bias)
         else:
@@ -582,7 +582,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
             input_parallel = torch.cat(tensor_list, dim=dim).contiguous()
             # calculate gradient
             if len(input_parallel.shape) > 2:
-                input_parallel = input_parallel.view(-1, input_parallel.shape[-1])   
+                input_parallel = input_parallel.view(-1, input_parallel.shape[-1])
             grad_weight = input_parallel.t().matmul(grad_output)
             # wait until reduce-scatter finished
             reducescatter_handle.wait()

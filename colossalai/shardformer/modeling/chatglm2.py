@@ -85,6 +85,7 @@ def get_jit_fused_glm_block_forward():
         # hidden_states: [s, b, h]
         # Layer norm at the beginning of the transformer layer.
         layernorm_output = self.input_layernorm(hidden_states)
+        print("hidden_states", hidden_states.shape)
         # Self attention.
         attention_output, kv_cache = self.self_attention(
             layernorm_output,
@@ -372,6 +373,7 @@ def get_chatglm_sequence_parallel_forward_fn(shard_config: ShardConfig):
         inputs_embeds = split_forward_gather_backward(
             inputs_embeds, dim=0, process_group=shard_config.tensor_parallel_process_group
         )
+        print("inputs_embeds", inputs_embeds.shape)
         hidden_states, presents, all_hidden_states, all_self_attentions = self.encoder(
             inputs_embeds,
             full_attention_mask,
