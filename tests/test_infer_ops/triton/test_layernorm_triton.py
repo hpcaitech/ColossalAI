@@ -35,7 +35,7 @@ def test_layer_norm(M, N):
     y_triton = layer_norm(x, weight, eps=eps)
     y_llama = rms_norm.forward(x).to(dtype)
 
-    assert torch.allclose(y_triton, y_llama, atol=1e-3, rtol=0)
+    assert torch.allclose(y_triton, y_llama, atol=1e-5, rtol=1e-5)
 
 if __name__ == "__main__":
     test_layer_norm()
