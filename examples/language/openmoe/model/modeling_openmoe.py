@@ -78,7 +78,6 @@ def set_openmoe_args(
     """
     MoE related arguments.
     It inserts the MoE arguments into the Llama config.
-
     Args:
         config (LlamaConfig): Transformers Llama config.
         num_experts (int, optional): Number of experts.
@@ -396,11 +395,7 @@ class OpenMoeAttention(nn.Module):
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         if HAS_FLASH_ATTN and self.use_kernel:
-            # from flash_attn import flash_attn_func
-            # If we use `from flash_attn import flash_attn_func` directly, 
-            # AutoModelForCausalLM.from_pretrained will treat flash_attn as a compulsory dependency and raise error if it cannot be found.
-            # Here is a workaround to avoid the error.
-            exec("from flash_attn import flash_attn_func")  
+            from flash_attn import flash_attn_func  
 
             query_states = query_states.transpose(1, 2)
             key_states = key_states.transpose(1, 2)
@@ -551,11 +546,9 @@ LLAMA_START_DOCSTRING = r"""
     This model inherits from [`PreTrainedModel`]. Check the superclass documentation for the generic methods the
     library implements for all its model (such as downloading or saving, resizing the input embeddings, pruning heads
     etc.)
-
     This model is also a PyTorch [torch.nn.Module](https://pytorch.org/docs/stable/nn.html#torch.nn.Module) subclass.
     Use it as a regular PyTorch Module and refer to the PyTorch documentation for all matter related to general usage
     and behavior.
-
     Parameters:
         config ([`LlamaConfig`]):
             Model configuration class with all the parameters of the model. Initializing with a config file does not
@@ -596,44 +589,33 @@ LLAMA_INPUTS_DOCSTRING = r"""
         input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
             Indices of input sequence tokens in the vocabulary. Padding will be ignored by default should you provide
             it.
-
             Indices can be obtained using [`AutoTokenizer`]. See [`PreTrainedTokenizer.encode`] and
             [`PreTrainedTokenizer.__call__`] for details.
-
             [What are input IDs?](../glossary#input-ids)
         attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
             Mask to avoid performing attention on padding token indices. Mask values selected in `[0, 1]`:
-
             - 1 for tokens that are **not masked**,
             - 0 for tokens that are **masked**.
-
             [What are attention masks?](../glossary#attention-mask)
-
             Indices can be obtained using [`AutoTokenizer`]. See [`PreTrainedTokenizer.encode`] and
             [`PreTrainedTokenizer.__call__`] for details.
-
             If `past_key_values` is used, optionally only the last `decoder_input_ids` have to be input (see
             `past_key_values`).
-
             If you want to change padding behavior, you should read [`modeling_opt._prepare_decoder_attention_mask`]
             and modify to your needs. See diagram 1 in [the paper](https://arxiv.org/abs/1910.13461) for more
             information on the default strategy.
-
             - 1 indicates the head is **not masked**,
             - 0 indicates the head is **masked**.
         position_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Indices of positions of each input sequence tokens in the position embeddings. Selected in the range `[0,
             config.n_positions - 1]`.
-
             [What are position IDs?](../glossary#position-ids)
         past_key_values (`tuple(tuple(torch.FloatTensor))`, *optional*, returned when `use_cache=True` is passed or when `config.use_cache=True`):
             Tuple of `tuple(torch.FloatTensor)` of length `config.n_layers`, with each tuple having 2 tensors of shape
             `(batch_size, num_heads, sequence_length, embed_size_per_head)`) and 2 additional tensors of shape
             `(batch_size, num_heads, encoder_sequence_length, embed_size_per_head)`.
-
             Contains pre-computed hidden-states (key and values in the self-attention blocks and in the cross-attention
             blocks) that can be used (see `past_key_values` input) to speed up sequential decoding.
-
             If `past_key_values` are used, the user can optionally input only the last `decoder_input_ids` (those that
             don't have their past key value states given to this model) of shape `(batch_size, 1)` instead of all
             `decoder_input_ids` of shape `(batch_size, sequence_length)`.
@@ -662,7 +644,6 @@ LLAMA_INPUTS_DOCSTRING = r"""
 class OpenMoeModel(OpenMoePreTrainedModel):
     """
     Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`LlamaDecoderLayer`]
-
     Args:
         config: LlamaConfig
     """
@@ -897,20 +878,14 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
                 Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
                 config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
                 (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
-
         Returns:
-
         Example:
-
         ```python
         >>> from transformers import AutoTokenizer, LlamaForCausalLM
-
         >>> model = LlamaForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
         >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
-
         >>> prompt = "Hey, are you conscious? Can you talk to me?"
         >>> inputs = tokenizer(prompt, return_tensors="pt")
-
         >>> # Generate
         >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
         >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
@@ -1049,11 +1024,9 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
 
     def _calculate_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """Compute cross entropy and entropy for log probs and targets.
-
         Args:
             logits: [batch, length, num_classes] float array.
             targets: categorical targets [batch, length] int array.
-
         Returns:
             Tuple of scalar loss.
         """
@@ -1086,23 +1059,19 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
 
 class ZLossCrossEntropy(torch.autograd.Function):
     """Computes cross entropy loss with stable custom gradient.
-
     Computes a stabilized-gradient version of:
         -jnp.sum(targets * nn.log_softmax(logits), axis=-1)
-
     If z_loss > 0, then an auxiliary loss equal to z_loss*log(z)^2
     will be added to the cross entropy loss (z = softmax normalization constant).
     The two uses of z_loss are:
     1. To keep the logits from drifting too far from zero, which can cause
         unacceptable roundoff errors in bfloat16.
     2. To encourage the logits to be normalized log-probabilities.
-
     Args:
         logits: [batch, length, num_classes] float array.
         targets: categorical one-hot targets [batch, length, num_classes] float
         array.
         z_loss: coefficient for auxilliary z-loss loss term.
-
     Returns:
         tuple with the total loss and the z_loss, both
         float arrays with shape [batch, length].
