@@ -6,10 +6,8 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
-
 from colossalai.moe._operation import AllGather, AllToAll, HierarchicalAllToAll, MoeCombine, MoeDispatch, ReduceScatter
 from colossalai.moe.experts import MLPExperts
-from colossalai.moe.load_balance import LoadBalancer
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.routers import MoeRouter, get_router_cls
 from colossalai.moe.utils import create_ep_hierarchical_group, get_noise_generator
@@ -119,6 +117,7 @@ class SparseMLP(nn.Module):
         # load balance
         self.enable_load_balance = enable_load_balance
         if self.enable_load_balance == True:
+            from colossalai.moe.load_balance import LoadBalancer
             self.load_balancer = LoadBalancer(
                 experts=self.experts,
                 gate=self.gate_weight,
