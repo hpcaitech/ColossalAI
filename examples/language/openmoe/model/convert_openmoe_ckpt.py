@@ -27,16 +27,19 @@ Steps:
       --pytorch_dump_path=$HOME/t5_1_1_small_pt
     ```
 """
-
 import argparse
+from accelerate import init_empty_weights
 import collections
-
+from flax.core import lazy_init
+import numpy as np
 import torch
 from flax import traverse_util
 from modeling_openmoe import OpenMoeForCausalLM
 from t5x import checkpoints
+from t5x.checkpoint_importer import LazyAwaitableArray
 from transformers import LlamaConfig
 from transformers.utils import logging
+
 
 logging.set_verbosity_info()
 
@@ -122,10 +125,10 @@ def convert_t5x_to_pytorch(variables: dict, *, num_layers: int, moe_interval: in
         layer_norm = t5x_layer_norm_lookup(old, i, "decoder", "pre_self_attention_layer_norm")
         k, o, q, v = t5x_attention_lookup(old, i, "decoder", "self_attention")
         new[f"model.layers.{i}.input_layernorm.weight"] = layer_norm
-        new[f"model.layers.{i}.self_attn.k_proj.weight"] = k.T
-        new[f"model.layers.{i}.self_attn.o_proj.weight"] = o.T
-        new[f"model.layers.{i}.self_attn.q_proj.weight"] = q.T
-        new[f"model.layers.{i}.self_attn.v_proj.weight"] = v.T
+        new[f"model.layers.{i}.self_attn.k_proj.weight"] = np.transpose(k)
+        new[f"model.layers.{i}.self_attn.o_proj.weight"] = np.transpose(o)
+        new[f"model.layers.{i}.self_attn.q_proj.weight"] = np.transpose(q)
+        new[f"model.layers.{i}.self_attn.v_proj.weight"] = np.transpose(v)
 
         # Block i, layer 2 (MLP).
         layer_norm = t5x_layer_norm_lookup(old, i, "decoder", "pre_mlp_layer_norm")
@@ -134,7 +137,7 @@ def convert_t5x_to_pytorch(variables: dict, *, num_layers: int, moe_interval: in
         if (i + 1) % moe_interval == 0:
             # moe
             gate = t5x_gate_lookup(old, i, "decoder", split_mlp_wi)
-            new[f"model.layers.{i}.mlp.gate_weight"] = gate.T
+            new[f"model.layers.{i}.mlp.gate_weight"] = np.transpose(gate)
             wi, wo = t5x_experts_lookup(old, i, "decoder", split_mlp_wi)
             new[f"model.layers.{i}.mlp.experts.wi_gate"] = wi[0]
             new[f"model.layers.{i}.mlp.experts.wi_up"] = wi[1]
@@ -143,82 +146,82 @@ def convert_t5x_to_pytorch(variables: dict, *, num_layers: int, moe_interval: in
             layer_norm = t5x_layer_norm_lookup(old, i, "decoder", "pre_extra_mlp_layer_norm")
             new[f"model.layers.{i}.pre_extra_mlp_layernorm.weight"] = layer_norm
             wi, wo = t5x_extra_mlp_lookup(old, i, "decoder", split_mlp_wi)
-            new[f"model.layers.{i}.extra_mlp.gate_proj.weight"] = wi[0].T
-            new[f"model.layers.{i}.extra_mlp.up_proj.weight"] = wi[1].T
-            new[f"model.layers.{i}.extra_mlp.down_proj.weight"] = wo.T
+            new[f"model.layers.{i}.extra_mlp.gate_proj.weight"] = np.transpose(wi[0])
+            new[f"model.layers.{i}.extra_mlp.up_proj.weight"] = np.transpose(wi[1])
+            new[f"model.layers.{i}.extra_mlp.down_proj.weight"] = np.transpose(wo)
         else:
             wi, wo = t5x_mlp_lookup(old, i, "decoder", split_mlp_wi)
-            new[f"model.layers.{i}.mlp.gate_proj.weight"] = wi[0].T
-            new[f"model.layers.{i}.mlp.up_proj.weight"] = wi[1].T
-            new[f"model.layers.{i}.mlp.down_proj.weight"] = wo.T
+            new[f"model.layers.{i}.mlp.gate_proj.weight"] = np.transpose(wi[0])
+            new[f"model.layers.{i}.mlp.up_proj.weight"] = np.transpose(wi[1])
+            new[f"model.layers.{i}.mlp.down_proj.weight"] = np.transpose(wo)
 
     new["model.norm.weight"] = old["decoder/decoder_norm/scale"]
 
     # LM Head (only in v1.1 checkpoints, in v1.0 embeddings are used instead)
     if "decoder/logits_dense/kernel" in old:
-        new["lm_head.weight"] = old["decoder/logits_dense/kernel"].T
+        new["lm_head.weight"] = np.transpose(old["decoder/logits_dense/kernel"])
 
     return new
 
 
-def make_state_dict(converted_params):
-    """Prepares a state dict for the PyTorch model."""
-    # Make a state dict with torch tensors.
-    state_dict = collections.OrderedDict([(k, torch.from_numpy(v.copy())) for (k, v) in converted_params.items()])
-
+def load_t5x_weights_in_t5(config, t5x_checkpoint_path, dtype, lazy):
+    """get T5x converted params."""
+    variables = checkpoints.load_t5x_checkpoint(t5x_checkpoint_path,
+                                                restore_dtype=dtype,
+                                                lazy_parameters=lazy)
+    converted_params = convert_t5x_to_pytorch(variables,
+                                              num_layers=config.num_hidden_layers,
+                                              moe_interval=config.moe_layer_interval)
+    if lazy:
+        state_dict = collections.OrderedDict()
+        for k, v in converted_params.items():
+            if isinstance(v, np.ndarray):
+                assert len(v.shape)==0 and isinstance(v.item(), LazyAwaitableArray)
+                state_dict[k] = torch.from_numpy(v.item().get().T.copy())
+            else:
+                state_dict[k] = torch.from_numpy(v.get().copy())
+    else:
+        state_dict = collections.OrderedDict([(k, torch.from_numpy(v.copy())) for (k, v) in converted_params.items()])
+    # del converted_params
     return state_dict
 
-
-def load_t5x_weights_in_t5(model, config, t5x_checkpoint_path):
-    """Replaces the params in model witht the T5X converted params."""
-    variables = checkpoints.load_t5x_checkpoint(t5x_checkpoint_path)
-    converted = convert_t5x_to_pytorch(variables,
-                                       num_layers=config.num_hidden_layers,
-                                       moe_interval=config.moe_layer_interval)
-    state_dict = make_state_dict(converted)
-    model.load_state_dict(state_dict, strict=True)
-
-
-def convert_t5x_checkpoint_to_pytorch(t5x_checkpoint_path, config_file, pytorch_dump_path):
+def convert_t5x_checkpoint_to_pytorch(t5x_checkpoint_path, config_file, pytorch_dump_path,
+                                      target_dtype='float32', lazy=False):
     """Loads the config and model, converts the T5X checkpoint, and saves a PyTorch checkpoint."""
-    # Initialise PyTorch model
     config = LlamaConfig.from_json_file(config_file)
-    print(f"Building PyTorch model from configuration: {config}")
     # Non-v1.1 checkpoints could also use T5Model, but this works for all.
     # The v1.0 checkpoints will simply have an LM head that is the word embeddings.
-    model = OpenMoeForCausalLM(config)
+    print("Get state_dict from jax checkpoint")
+    state_dict = load_t5x_weights_in_t5(config, t5x_checkpoint_path,
+                                        dtype=target_dtype, lazy=lazy)
 
-    # Load weights from tf checkpoint
-    load_t5x_weights_in_t5(model, config, t5x_checkpoint_path)
+    print(f"Building PyTorch model from config and checkpoint: {config}")
+    with init_empty_weights():
+        model = OpenMoeForCausalLM(config)
+        print('Empty Model Initialized.')
+    # assign=True: https://pytorch.org/tutorials/recipes/recipes/module_load_state_dict_tips.html
+    model.load_state_dict(state_dict, assign=True, strict=True)
 
     # Save pytorch-model
-    print(f"Save PyTorch model to {pytorch_dump_path}")
     model.save_pretrained(pytorch_dump_path)
-
-    # Verify that we can load the checkpoint.
-    model.from_pretrained(pytorch_dump_path)
+    print(f"Save PyTorch Model Checkpoint to {pytorch_dump_path}")
     print("Done")
 
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Converts a native T5X checkpoint into a PyTorch checkpoint.")
-    # Required parameters
-    parser.add_argument("--t5x_checkpoint_path",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="Path to the T5X checkpoint.")
-    parser.add_argument(
-        "--config_file",
-        default=None,
-        type=str,
-        required=True,
-        help="The config json file corresponding to the pre-trained T5 model.\nThis specifies the model architecture.",
-    )
-    parser.add_argument("--pytorch_dump_path",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="Path to the output PyTorch model.")
+    parser = argparse.ArgumentParser(description="Convert t5x checkpoint to PyTorch format.")
+    
+    parser.add_argument("--t5x_checkpoint_path", type=str, required=True, help="Path to the original t5x checkpoint")
+    parser.add_argument("--config_file", type=str, required=True, help="Path to the configuration file")
+    parser.add_argument("--pytorch_dump_path", type=str, required=True, help="Path for the output PyTorch Checkpoint")
+    parser.add_argument("--target_dtype", type=str, choices=['float32', 'float16'], required=True, help="Target data type for the PyTorch Checkpoint")
+    parser.add_argument("--lazy", action="store_true", help="Use lazy loading for the PyTorch model")
+
     args = parser.parse_args()
-    convert_t5x_checkpoint_to_pytorch(args.t5x_checkpoint_path, args.config_file, args.pytorch_dump_path)
+
+    convert_t5x_checkpoint_to_pytorch(args.t5x_checkpoint_path,
+                                      args.config_file,
+                                      args.pytorch_dump_path,
+                                      args.target_dtype,
+                                      args.lazy)
