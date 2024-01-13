@@ -1,5 +1,8 @@
+accelerate==0.25.0
 colossalai >= 0.3.3
 torch >= 1.8.1
-transformers >= 4.20.0, <= 4.34.0
-sentencepiece
-datasets
+transformers==4.34.0
+sentencepiece==0.1.99
+datasets==2.14.7
+numpy==1.23.5
+flash_attn
