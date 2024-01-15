@@ -74,8 +74,8 @@ def main():
     parser.add_argument("--tp", type=int, default=1, help="Tensor parallel size")
     parser.add_argument("--extra_dp", type=int, default=1, help="Extra data parallel size, used for Gemini")
     parser.add_argument("--pp", type=int, default=1, help="Pipeline parallel size")
-    parser.add_argument("--mbs", type=int, default=1)
-    parser.add_argument("--zero", type=int, default=0)
+    parser.add_argument("--mbs", type=int, default=1, help="Micro batch size of pipeline parallel")
+    parser.add_argument("--zero", type=int, default=0, help="Zero Stage when hybrid plugin is enabled")
     args = parser.parse_args()
 
     colossalai.launch_from_torch({})
@@ -98,7 +98,13 @@ def main():
             extra_dp_size=args.extra_dp,
         )
     elif args.plugin == "gemini_auto":
-        plugin = GeminiPlugin(placement_policy="auto", precision="bf16", warmup_non_model_data_ratio=args.warmup_ratio, tp_size=args.tp, extra_dp_size=args.extra_dp)
+        plugin = GeminiPlugin(
+            placement_policy="auto",
+            precision="bf16",
+            warmup_non_model_data_ratio=args.warmup_ratio,
+            tp_size=args.tp,
+            extra_dp_size=args.extra_dp,
+        )
     elif args.plugin == "fsdp":
         if use_empty_init:
             plugin = TorchFSDPPlugin(
@@ -137,7 +143,7 @@ def main():
             zero_stage=args.zero,
             num_model_chunks=2,
             enable_fused_normalization=torch.cuda.is_available(),
-            num_microbatches=args.mbs,
+            microbatch_size=args.mbs,
             precision="bf16",
         )
     elif args.plugin == "3d_cpu":
@@ -147,7 +153,7 @@ def main():
             zero_stage=args.zero,
             cpu_offload=True,
             enable_fused_normalization=torch.cuda.is_available(),
-            num_microbatches=args.mbs,
+            microbatch_size=args.mbs,
             initial_scale=2**8,
             precision="bf16",
         )

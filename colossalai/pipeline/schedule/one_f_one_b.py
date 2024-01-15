@@ -85,6 +85,10 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             assert self.last_batch_size is None or self.last_batch_size == self.batch_size
             assert self.batch_size == self.microbatch_size * self.num_microbatches
 
+            assert (
+                self.num_microbatches >= self.stage_manager.num_stages
+            ), "Number of microbatch should be larger than number of stages"
+
         if self.forward_only:
             self.num_microbatches = (self.batch_size - 1) // self.microbatch_size + 1
             # NOTE: disable metadata cache when batch size changes (not valid anymore)
