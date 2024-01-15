@@ -78,6 +78,7 @@ class RequestHandler:
         device = torch.cuda.current_device()
         self.running_batch = BatchInfo(is_prompts=False, device=device)
         self.prefill_batch = BatchInfo(is_prompts=True, device=device)
+        self.max_batch_size = inference_config.max_batch_size
 
     def _init_cache(self, model_config):
         self.cache_manager = KVCacheManager(self.inference_config, model_config)
@@ -106,7 +107,7 @@ class RequestHandler:
                             self.abort_sequence(seq.request_id)
                             break
                         # Try to allocate cache blocks for the sequence.
-                        if self.cache_manager.check_allocation(seq):
+                        if self.cache_manager.check_allocation(seq) and (len(self.running_list.prefill) + len(self.running_list.decoding)) < self.max_batch_size:
                             # If succeed, add the sequence to running list.
                             remove_list.append(seq)
                             self.running_list.append(seq)

@@ -77,16 +77,26 @@ def llama_model_forward(
     block_tables = batch.get_block_table_tensor()
     attention_mask = batch.get_attn_mask(padding_id)
 
-    # TODO After the nopad version is implemented, we will use the following code to get sequence_lengths.
-    # sequence_lengths = batch.get_sequence_lengths()
-    sequence_lengths = attention_mask.sum(dim=-1, dtype=torch.int32)
+    if attention_mask is not None:
+        # TODO After the nopad version is implemented, we will use the following code to get sequence_lengths.
+        # sequence_lengths = batch.get_sequence_lengths()
+        sequence_lengths = attention_mask.sum(dim=-1, dtype=torch.int32)
+    else:
+        sequence_lengths = batch.get_sequence_lengths()
+    
     max_seq_len = sequence_lengths.max().item()
 
-    if batch.is_prompts:
-        # Here, we generate position_ids through the input tensor, which can align with the output precision of the transformer.
-        position_ids = generate_padding_position_id(attention_mask)
+    if attention_mask is not None:
+        if batch.is_prompts:
+            # Here, we generate position_ids through the input tensor, which can align with the output precision of the transformer.
+            position_ids = generate_padding_position_id(attention_mask)
+        else:
+            position_ids = (attention_mask.sum(dim=-1) - 1).reshape(-1, 1)
     else:
-        position_ids = (attention_mask.sum(dim=-1) - 1).reshape(-1, 1)
+        position_ids = torch.arange(
+            max_seq_len - 1, max_seq_len, dtype=torch.long, device=batch.device
+        )
+        position_ids = position_ids.unsqueeze(0)
 
     hidden_states = self.embed_tokens(input_ids)
 
@@ -181,13 +191,19 @@ def llama_attn_forward(
 
     if is_prompts:
         if HAS_TRITON:
-            query_states, key_states, value_states, indices = unpading_input(
-                query_states, key_states, value_states, attention_mask
-            )
+            if attention_mask is not None:
+                query_states, key_states, value_states, indices = unpading_input(
+                    query_states, key_states, value_states, attention_mask
+                )
+            else:
+                query_states = query_states.view(-1, self.num_heads, self.head_dim)
+                key_states = key_states.view(-1, self.num_heads, self.head_dim)
+                value_states = value_states.view(-1, self.num_heads, self.head_dim)
             attn_output = context_attention_unpadded(
                 query_states, key_states, value_states, k_cache, v_cache, sequence_lengths, block_tables, block_size
             )
-            attn_output = pad_input(attn_output, indices, bsz, q_len)
+            if attention_mask is not None:
+                attn_output = pad_input(attn_output, indices, bsz, q_len)
         else:
             attn_output = PagedAttention.pad_context_forward(
                 query_states, key_states, value_states, k_cache, v_cache, sequence_lengths, block_tables, attention_mask
@@ -198,13 +214,9 @@ def llama_attn_forward(
             copy_to_cache(value_states, v_cache, lengths=sequence_lengths, block_tables=block_tables, type="decoding")
             attn_output = flash_decoding_fwd(query_states, k_cache, v_cache, sequence_lengths, block_tables, block_size)
         else:
-            query_states, key_states, value_states, indices = unpading_input(
-                query_states, key_states, value_states, attention_mask
+            attn_output = PagedAttention.pad_decoding_forward(
+            query_states, key_states, value_states, k_cache, v_cache, sequence_lengths, block_tables, attention_mask
             )
-            attn_output = context_attention_unpadded(
-                query_states, key_states, value_states, k_cache, v_cache, sequence_lengths, block_tables, block_size
-            )
-            attn_output = pad_input(attn_output, indices, bsz, q_len)
 
     attn_output = attn_output.view(bsz, q_len, self.num_heads, self.head_dim)
     attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
@@ -212,13 +224,13 @@ def llama_attn_forward(
 
     return attn_output
 
-
+@torch.no_grad()
 def generate_padding_position_id(attention_mask: torch.Tensor) -> torch.Tensor:
     position_ids = attention_mask.long().cumsum(-1) - 1
     position_ids.masked_fill_(attention_mask == 0, 1)
     return position_ids
 
-
+@torch.no_grad()
 def unpading_input(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attention_mask: torch.Tensor):
     indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
     batch_size, kv_seq_len, num_key_value_heads, head_dim = q.shape
