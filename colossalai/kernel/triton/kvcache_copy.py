@@ -8,8 +8,8 @@ import triton.language as tl
 def _copy_to_kvcache_seqlen1_kernel(
     KV,  # K or V
     KVCache,  # KCache or VCache
-    BLOCK_TABLES,  # [batch_size, max_blocks_per_sequence]
-    context_lengths,  # [batch_size]
+    BLOCK_TABLES,
+    context_lengths,
     stride_kt,
     stride_kh,
     stride_kd,
@@ -25,7 +25,6 @@ def _copy_to_kvcache_seqlen1_kernel(
     cur_seq_idx = tl.program_id(0)
     cur_kv_head_idx = tl.program_id(1)
 
-    # TODO might want to move indices calculation outside kernel
     cur_kv_seq_len = tl.load(context_lengths + cur_seq_idx)
     last_bt_block_idx = cur_kv_seq_len // block_size
     block_table_ptr = BLOCK_TABLES + cur_seq_idx * stride_bts
@@ -63,13 +62,12 @@ def copy_kv_to_blocked_cache(
         f"batch size {bsz}"
     )
 
-    # NOTE Remind to modify if the shape of kv cahce is changed.
+    # Modify if the shape of kv cahce is changed.
     block_size = k_cache.size(-1)
-
-    # [bsz, 1, num_kv_heads, head_dim] -> [bsz, num_kv_heads, 1, head_dim]
+    # [bsz, 1, num_kv_heads, head_dim] -> [bsz, num_kv_heads, head_dim]
     k = k.squeeze(dim=1)
 
-    num_warps = triton.next_power_of_2(head_dim)
+    num_warps = triton.next_power_of_2(head_dim // 32)
 
     grid = (bsz, num_kv_heads)
     _copy_to_kvcache_seqlen1_kernel[grid](

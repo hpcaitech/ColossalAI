@@ -35,7 +35,7 @@ def test_copy_kv_to_caches(
     torch.cuda.synchronize()
     torch.cuda.reset_peak_memory_stats()
 
-    head_dim = 4
+    head_dim = 128
     max_seq_len = block_size * max_num_blocks_per_seq
     dtype = torch.float16
     device = get_current_device()
@@ -69,9 +69,7 @@ def test_copy_kv_to_caches(
     for seq_i in range(bsz):
         ki = new_k[seq_i]
         ki = ki.squeeze()
-
         context_len_i = context_lengths[seq_i]
-
         target_block_id = block_tables[seq_i, context_len_i // block_size]
         offsets_in_block = context_len_i % block_size
         target = k_cache[target_block_id, :, :, offsets_in_block]
@@ -80,6 +78,4 @@ def test_copy_kv_to_caches(
 
 
 if __name__ == "__main__":
-    # test_copy_kv_to_caches(32, 32, 32, 16, False)
-    # test_copy_kv_to_caches(4, 4, 4, 2, True)
-    test_copy_kv_to_caches(32, 32, 8, 16, False)
+    test_copy_kv_to_caches(4, 32, 8, 16, False)
