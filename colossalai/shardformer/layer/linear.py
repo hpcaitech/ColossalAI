@@ -25,9 +25,9 @@ from colossalai.tensor.d_tensor.api import (
 from ._operation import (
     gather_forward_split_backward,
     linear_gather_forward_reducescatter_backward,
-    linear_reducescatter_forward_gather_backward,
     linear_with_async_comm,
     reduce_forward,
+    reducescatter_forward_gather_backward,
     split_forward_gather_backward,
 )
 from .parallel_module import ParallelModule
@@ -410,7 +410,7 @@ class Linear1D_Row(ParallelModule):
         else:
             output_parallel = linear_with_async_comm(input_, self.weight, None, None, False)
             if self.seq_parallel:
-                output = linear_reducescatter_forward_gather_backward(
+                output = reducescatter_forward_gather_backward(
                     output_parallel, self.process_group, self.seq_parallel_dim
                 )
             else:
