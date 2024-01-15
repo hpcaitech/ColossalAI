@@ -110,7 +110,7 @@ class RequestHandler:
                             break
 
                         # stop feeding new sequence into running list to assure
-                        if self.cache_manager.num_available_blocks <= self.running_list.total_seq_num:
+                        if self.cache_manager.num_available_blocks <= self.running_list.total_seq_num():
                             break
 
                         # Try to allocate cache blocks for the sequence.
@@ -133,8 +133,10 @@ class RequestHandler:
                 recycle = self.cache_manager.allocate_token_from_block_table(seq.block_table, seq.sentence_len)
                 if recycle:
                     seq.recycle()
-                    self.running_batch.remove(seq)
+                    self.running_batch.del_seq(seq)
+                    self.running_list.remove(seq)
                     self.waiting_list[-1].append(seq)
+
                     # the recycled sequences are handled with highest priority.
 
         return self.running_batch

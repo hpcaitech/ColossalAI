@@ -139,7 +139,7 @@ class Sequence:
         Recycle a running sequnce to waiitting list
         """
         assert (
-            not self.status.is_finished and not self.status == RequestStatus.ABORTED
+            not self.check_finish() and not self.status == RequestStatus.ABORTED
         ), "The running sequence \
         is already done but it still in running list"
         self.status = RequestStatus.WAITING
@@ -254,6 +254,12 @@ class BatchInfo:
                 logger.warning(f"The sequence(request_id {seq.request_id}) is already in sequences_set.")
                 continue
             self.sequences_set.add(seq)
+
+    def del_seq(self, seq: Sequence) -> Sequence:
+        """
+        Delete sequence in batch
+        """
+        self.sequences_set.discard(seq)
 
     @property
     def is_empty(self) -> None:
