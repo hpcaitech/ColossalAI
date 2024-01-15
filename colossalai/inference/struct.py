@@ -134,6 +134,16 @@ class Sequence:
         """
         self.status = RequestStatus.ABORTED
 
+    def recycle(self) -> None:
+        """
+        Recycle a running sequnce to waiitting list
+        """
+        assert (
+            not self.status.is_finished and not self.status == RequestStatus.ABORTED
+        ), "The running sequence \
+        is already done but it still in running list"
+        self.status = RequestStatus.WAITING
+
     def __repr__(self) -> str:
         return (
             f"(request_id={self.request_id}, "
