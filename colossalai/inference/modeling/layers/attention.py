@@ -31,7 +31,7 @@ def copy_to_cache(source, cache, lengths, block_tables, type: str = "prefill"):
                 1, 2, 0
             )
     elif type == "decoding":
-        assert len(source[0]) == 1, "seq_len should be equal to 1 when decoding."
+        assert source.size(1) == 1, "seq_len should be equal to 1 when decoding."
         source = source.squeeze(1)
         slot_idx = (lengths + block_size - 1) % block_size
         for i in range(bsz):

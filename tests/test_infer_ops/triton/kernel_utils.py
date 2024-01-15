@@ -100,3 +100,29 @@ def mock_alloc_block_table_and_kvcache(
             block_id += 1
 
     return block_tables
+
+
+def mock_alloc_single_token(block_tables: torch.Tensor, context_lengths: torch.Tensor, block_size: int):
+    """Allocate 1 token on the block table for each seqs in block tables.
+    It won't change provided context_lengths
+    """
+
+    # consider max_block_id as the last physical block allocated
+    # NOTE It assumes all the blocks preceding this block have been allocated
+    max_block_id = torch.max(block_tables).item()
+    # the indices on each block table representing the cache block to be allocated one more token
+    alloc_local_block_indices = context_lengths // block_size
+    # offsets of the token to be allocated on the target block (for each seq)
+    alloc_block_offsets = context_lengths % block_size
+
+    require_new_block = alloc_block_offsets == 0
+    new_block_ids = torch.arange(
+        max_block_id + 1,
+        max_block_id + 1 + require_new_block.sum(),
+        dtype=block_tables.dtype,
+        device=block_tables.device,
+    )
+
+    if new_block_ids.numel():
+        new_block_alloc_local_indices = alloc_local_block_indices[require_new_block]
+        block_tables[require_new_block, new_block_alloc_local_indices] = new_block_ids
