@@ -57,6 +57,9 @@ class RunningList:
     def is_empty(self):
         return not self.decoding and not self.prefill
 
+    def total_seq_num(self):
+        return len(self.decoding) + len(self.prefill)
+
 
 class RequestHandler:
     """
@@ -105,6 +108,11 @@ class RequestHandler:
                             )
                             self.abort_sequence(seq.request_id)
                             break
+
+                        # stop feeding new sequence into running list to assure
+                        if self.cache_manager.num_available_blocks <= self.running_list.total_seq_num:
+                            break
+
                         # Try to allocate cache blocks for the sequence.
                         if self.cache_manager.check_allocation(seq):
                             # If succeed, add the sequence to running list.
@@ -113,6 +121,7 @@ class RequestHandler:
                             self.cache_manager.allocate_context_from_block_table(seq.block_table, seq.input_len)
                     for seq in remove_list:
                         lst.remove(seq)
+
         if self.running_list.ready_for_prefill():
             for seq in self.running_list.prefill:
                 seq.mark_running()
@@ -121,7 +130,12 @@ class RequestHandler:
 
         if not self.running_batch.is_empty:
             for seq in self.running_batch.sequences_set:
-                self.cache_manager.allocate_token_from_block_table(seq.block_table, seq.sentence_len)
+                recycle = self.cache_manager.allocate_token_from_block_table(seq.block_table, seq.sentence_len)
+                if recycle:
+                    seq.recycle()
+                    self.running_batch.remove(seq)
+                    self.waiting_list[-1].append(seq)
+                    # the recycled sequences are handled with highest priority.
 
         return self.running_batch
 
