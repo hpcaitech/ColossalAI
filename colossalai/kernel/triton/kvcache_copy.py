@@ -67,7 +67,7 @@ def copy_kv_to_blocked_cache(
     # [bsz, 1, num_kv_heads, head_dim] -> [bsz, num_kv_heads, head_dim]
     k = k.squeeze(dim=1)
 
-    num_warps = triton.next_power_of_2(head_dim // 32)
+    num_warps = 8 if head_dim > 128 else 4
 
     grid = (bsz, num_kv_heads)
     _copy_to_kvcache_seqlen1_kernel[grid](
