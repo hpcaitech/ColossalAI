@@ -48,6 +48,17 @@ class DelayerScheduler(_LRScheduler):
         else:
             raise NotImplementedError()
         return state_dict
+    
+    def load_state_dict(self, state_dict):
+        """Loads the schedulers state.
+
+        Args:
+            state_dict (dict): scheduler state. Should be an object returned
+                from a call to :meth:`state_dict`.
+        """
+        self.__dict__.update(state_dict)
+        if "after_scheduler_dict" in state_dict:
+            self.after_scheduler.load_state_dict(state_dict["after_scheduler_dict"])
 
     def get_lr(self):
         if self.last_epoch >= self.delay_epochs:
@@ -98,6 +109,17 @@ class WarmupScheduler(_LRScheduler):
         else:
             raise NotImplementedError()
         return state_dict
+    
+    def load_state_dict(self, state_dict):
+        """Loads the schedulers state.
+
+        Args:
+            state_dict (dict): scheduler state. Should be an object returned
+                from a call to :meth:`state_dict`.
+        """
+        self.__dict__.update(state_dict)
+        if "after_scheduler_dict" in state_dict:
+            self.after_scheduler.load_state_dict(state_dict["after_scheduler_dict"])
 
     def get_lr(self):
         if self.last_epoch >= self.warmup_epochs:
@@ -153,6 +175,17 @@ class WarmupDelayerScheduler(_LRScheduler):
         else:
             raise NotImplementedError()
         return state_dict
+    
+    def load_state_dict(self, state_dict):
+        """Loads the schedulers state.
+
+        Args:
+            state_dict (dict): scheduler state. Should be an object returned
+                from a call to :meth:`state_dict`.
+        """
+        self.__dict__.update(state_dict)
+        if "after_scheduler_dict" in state_dict:
+            self.after_scheduler.load_state_dict(state_dict["after_scheduler_dict"])
 
     def get_lr(self):
         if self.last_epoch >= self.warmup_epochs + self.delay_epochs:
