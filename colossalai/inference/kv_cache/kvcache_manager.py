@@ -273,7 +273,9 @@ class KVCacheManager:
         Returns:
             The remaining space required to be allocated (in other blocks).
         """
-        assert block.available_space > 0, "No available space on block to allocate but requries allocation."
+        assert (
+            block.available_space > 0
+        ), "Tried to allocate some space but found no available space left in chosen block."
         space_to_allocate = min(block.available_space, space_asked)
         block.allocate(space_to_allocate)
         return space_asked - space_to_allocate
