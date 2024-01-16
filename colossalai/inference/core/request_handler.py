@@ -119,7 +119,7 @@ class RequestHandler:
                             # If succeed, add the sequence to running list.
                             remove_list.append(seq)
                             self.running_list.append(seq)
-                            self.cache_manager.allocate_context_from_block_table(seq.block_table, seq.input_len)
+                            self.cache_manager.allocate_context_from_block_table(seq.block_table, seq.sentence_len)
                     for seq in remove_list:
                         lst.remove(seq)
 

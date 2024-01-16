@@ -89,8 +89,6 @@ class Sequence:
         """
         Get length of input sentence.
         """
-        if self.status == RequestStatus.RECYCLED:
-            return len(self.input_token_id) + len(self.output_token_id)
         return len(self.input_token_id)
 
     @property
@@ -124,7 +122,9 @@ class Sequence:
         """
         Set status for prefill reqs.
         """
-        assert self.status == RequestStatus.WAITING, "Sequence is not in WAITTING STATUS"
+        assert (
+            self.status == RequestStatus.WAITING or RequestStatus.RECYCLED
+        ), "Sequence is not in WAITTING/RECYCLED STATUS"
         self.status = RequestStatus.RUNNING
 
     def mark_finished(self) -> None:
@@ -143,9 +143,6 @@ class Sequence:
         """
         Recycle a running sequnce to waiitting list
         """
-        if self.check_finish():
-            print(self.sentence_len)
-        print(self.status)
         assert (
             not self.check_finish() and not self.status == RequestStatus.ABORTED
         ), "The running sequence \
@@ -170,7 +167,7 @@ class BatchInfo:
     Information to be passed and used for a batch of sequences.
     """
 
-    sequences_set: OrderedSet["Sequence"] = None
+    sequences_set: OrderedSet[Sequence] = None
     is_prompts: bool = True
     device: torch.device = None
 
@@ -215,12 +212,20 @@ class BatchInfo:
 
     def clear_batch(self) -> None:
         """
-        Clear sequence set and block table.
+        Clear sequence set and block table if we need to abort this batch.
+            Prefill: clear sequence set and move them to running batch(external)
+            Decoding: mark unfinished sequences as aborted.
         """
-        for seq in self.sequences_set:
-            if not seq.check_finish():
-                seq.status = RequestStatus.ABORTED
-        self.sequences_set.clear()
+        if self.is_prompts:
+            self.sequences_set.clear()
+
+        else:
+            for seq in self.sequences_set:
+                seq.mark_aborted()
+                if seq.check_finish():
+                    seq.mark_finished()
+
+            self.sequences_set.clear()
 
     def fliter_batch(self) -> List["Sequence"]:
         """
@@ -311,14 +316,18 @@ class BatchInfo:
 
         for seq in self.sequences_set:
             if self.is_prompts:
-                if seq.status == RequestStatus.RECYCLED:
-                    input_list.append(seq.input_token_id.extend(seq.output_token_id))
+                if seq.output_len > 0:
+                    seq_data = seq.input_token_id.extend(seq.output_token_id)
+                    print(seq_data)
+                    input_list.append(seq_data)
                 else:
                     input_list.append(seq.input_token_id)
             else:
                 input_list.append([seq.output_token_id[-1]])
 
-        return torch.tensor(input_list, dtype=torch.long, device=self.device)
+        max_seq_len = max(len(sub_list) for sub_list in input_list)
+
+        return _make_tensor_with_pad(input_list, max_seq_len, 0, dtype=torch.int)
 
     def get_1D_inputs(self) -> Tuple[torch.LongTensor, torch.Tensor]:
         """
@@ -354,7 +363,27 @@ class BatchInfo:
         for seq in self.sequences_set:
             past_values.append(seq.input_token_id + seq.output_token_id)
 
-        return torch.tensor(past_values, dtype=torch.int, device=self.device).ne(padding_id).long()
+        max_seq_len = max(len(sub_list) for sub_list in past_values)
+        attn_mask = _make_tensor_with_pad(past_values, max_seq_len, 0, dtype=torch.int, device=self.device)
+
+        return attn_mask.ne(padding_id).long()
 
     def __repr__(self) -> str:
         return f"(sequences_set={self.sequences_set}, " f"is_prompts={self.is_prompts})"
+
+
+def _pad_to_max(x: List[int], max_len: int, pad: int) -> List[int]:
+    assert len(x) <= max_len
+    return x + [pad] * (max_len - len(x))
+
+
+def _make_tensor_with_pad(
+    x: Union[List[List[int]], List[int]],
+    max_len: int,
+    pad: int,
+    dtype: torch.dtype,
+    device: Union[str, torch.device] = "cuda",
+    pin_memory: bool = False,
+):
+    padded_x = [_pad_to_max(x_i, max_len, pad) for x_i in x]
+    return torch.tensor(padded_x, dtype=dtype, device=device, pin_memory=pin_memory and str(device) == "cpu")
