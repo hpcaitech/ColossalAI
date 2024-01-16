@@ -239,16 +239,19 @@ def run_grad_acc_test(test_args):
             optimizer.step()
             optimizer.zero_grad()
 
-    if plugin.stage_manager is None:
-        for p1, p2 in zip(model.unwrap().parameters(), origin_model.parameters()):
-            if test_args["tp"] > 1:
-                p1 = gather_distributed_param(p1, keep_vars=False)
+    # tricky code here, shard the origin model, inorder to check the parameters in the same stage.
+    if plugin.stage_manager is not None:
+        origin_model, origin_optimizer, _, dataloader, _ = booster.boost(
+            origin_model, origin_optimizer, dataloader=dataloader
+        )
+        for p1, p2 in zip(model.unwrap().parameters(), origin_model.unwrap().parameters()):
             assert_close(p1.to(p2.dtype), p2, atol=1e-2, rtol=1e-2)
-    elif plugin.stage_manager.is_first_stage(ignore_chunk=True):
-        for p1, p2 in zip(model.unwrap().transformer.h[0].parameters(), origin_model.transformer.h[0].parameters()):
-            if test_args["tp"] > 1:
-                p1 = gather_distributed_param(p1, keep_vars=False)
-            assert_close(p1.to(p2.dtype), p2, atol=1e-2, rtol=1e-2)
+        return
+
+    for p1, p2 in zip(model.unwrap().parameters(), origin_model.parameters()):
+        if test_args["tp"] > 1:
+            p1 = gather_distributed_param(p1, keep_vars=False)
+        assert_close(p1.to(p2.dtype), p2, atol=1e-2, rtol=1e-2)
 
 
 def run_dist(rank, world_size, port, early_stop: bool = True):
