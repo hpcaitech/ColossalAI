@@ -10,7 +10,6 @@ from torch.utils.data import Dataset
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
-from colossalai.checkpoint_io.utils import gather_distributed_param
 from colossalai.fx import is_compatible_with_meta
 from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
@@ -239,16 +238,12 @@ def run_grad_acc_test(test_args):
             optimizer.step()
             optimizer.zero_grad()
 
-    if plugin.stage_manager is None:
-        for p1, p2 in zip(model.unwrap().parameters(), origin_model.parameters()):
-            if test_args["tp"] > 1:
-                p1 = gather_distributed_param(p1, keep_vars=False)
-            assert_close(p1.to(p2.dtype), p2, atol=1e-2, rtol=1e-2)
-    elif plugin.stage_manager.is_first_stage(ignore_chunk=True):
-        for p1, p2 in zip(model.unwrap().transformer.h[0].parameters(), origin_model.transformer.h[0].parameters()):
-            if test_args["tp"] > 1:
-                p1 = gather_distributed_param(p1, keep_vars=False)
-            assert_close(p1.to(p2.dtype), p2, atol=1e-2, rtol=1e-2)
+    # tricky code here, shard the origin model inorder to check the parameters in the same stage.
+    origin_model, origin_optimizer, _, dataloader, _ = booster.boost(
+        origin_model, origin_optimizer, dataloader=dataloader
+    )
+    for p1, p2 in zip(model.unwrap().parameters(), origin_model.unwrap().parameters()):
+        assert_close(p1.to(p2.dtype), p2, atol=1e-2, rtol=1e-2)
 
 
 def run_dist(rank, world_size, port, early_stop: bool = True):
