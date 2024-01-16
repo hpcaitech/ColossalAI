@@ -1,0 +1,20 @@
+{
+    "chat_template": "{{ bos_token }}{% for message in messages %}{% if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}{{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}{% endif %}{% if message['role'] == 'user' %}{{ '[INST] ' + message['content'] + ' [/INST]' }}{% elif message['role'] == 'assistant' %}{{ message['content'] + eos_token}}{% else %}{{ raise_exception('Only user and assistant roles are supported!') }}{% endif %}{% endfor %}",
+    "system_message": null,
+    "human_line_start": [
+        733,
+        16289,
+        28793
+    ],
+    "human_line_end": [
+        733,
+        28748,
+        16289,
+        28793
+    ],
+    "assistant_line_start": [],
+    "assistant_line_end": [
+        2
+    ],
+    "end_of_system_line_position": -1
+}

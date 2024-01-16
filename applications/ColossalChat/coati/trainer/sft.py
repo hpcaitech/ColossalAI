@@ -108,8 +108,8 @@ class SFTTrainer(SLTrainer):
             # gradient accumulation
             if (i + 1) % self.accumulation_steps == 0:
                 self.optimizer.step()
-                self.scheduler.step()
                 self.optimizer.zero_grad()
+                self.scheduler.step()
 
                 if self.writer:
                     self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
@@ -118,27 +118,27 @@ class SFTTrainer(SLTrainer):
                 self.accumulative_meter.reset()
                 step_bar.update()
 
-            # save checkpoint
-            if (
-                self.save_dir is not None
-                and self.save_interval is not None
-                and (self.num_train_step + 1) % self.save_interval == 0
-                and is_rank_0()
-            ):
-                save_checkpoint(
-                    save_dir=self.save_dir,
-                    booster=self.booster,
-                    model=self.model,
-                    optimizer=self.optimizer,
-                    lr_scheduler=self.scheduler,
-                    epoch=epoch,
-                    step=self.num_train_step + 1,
-                    batch_size=batch_size,
-                    coordinator=self.coordinator,
-                )
-                self.coordinator.print_on_master(
-                    f"Saved checkpoint at epoch {epoch} step {self.num_train_step} at folder {self.save_dir}"
-                )
+                # save checkpoint
+                if (
+                    self.save_dir is not None
+                    and self.save_interval is not None
+                    and (self.num_train_step + 1) % self.save_interval == 0
+                    and is_rank_0()
+                ):
+                    save_checkpoint(
+                        save_dir=self.save_dir,
+                        booster=self.booster,
+                        model=self.model,
+                        optimizer=self.optimizer,
+                        lr_scheduler=self.scheduler,
+                        epoch=epoch,
+                        step=self.num_train_step + 1,
+                        batch_size=batch_size,
+                        coordinator=self.coordinator,
+                    )
+                    self.coordinator.print_on_master(
+                        f"Saved checkpoint at epoch {epoch} step {self.num_train_step} at folder {self.save_dir}"
+                    )
         step_bar.close()
 
     def _eval(self, epoch: int):

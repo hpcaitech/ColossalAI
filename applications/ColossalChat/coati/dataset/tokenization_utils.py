@@ -8,7 +8,8 @@ import warnings
 from copy import deepcopy
 from typing import Any, Dict, List, Union
 
-from coati.dataset.conversation import Conversation, default_conversation
+from coati.dataset.conversation import Conversation
+from coati.dataset.utils import find_first_occurrence_subsequence, find_round_starts_and_ends
 from datasets import dataset_dict
 from torch.utils.data import ConcatDataset, Dataset
 from transformers import PreTrainedTokenizer
@@ -68,22 +69,25 @@ def supervised_tokenize_pretrain(
 def supervised_tokenize_sft(
     data_point: Dict[str, str],
     tokenizer: PreTrainedTokenizer,
-    conversation_template: Conversation = default_conversation,
+    conversation_template: Conversation = None,
     ignore_index: int = None,
     max_length: int = 4096,
 ) -> Dict[str, Union[int, str, List[int]]]:
     """
-    A tokenization function to tokenize an original pretraining data point as following:
-        {"messages": [{"from": "human", "content": "xxx"}, {"from": "assistant", "content": "xxx"}]}
+    A tokenization function to tokenize an original pretraining data point as following
+         and calculate corresponding labels for sft training:
+        "Something here can be system message[user_line_start]User line[User line end][Assistant line start]Assistant line[Assistant line end]...[Assistant line end]Something here"
+                                            ^
+                                end_of_system_line_position
+        
+    Args:
+        data_point: the data point of the following format
+            {"messages": [{"from": "human", "content": "xxx"}, {"from": "assistant", "content": "xxx"}]}
+        tokenizer: the tokenizer whose
+        conversation_template: the conversation template to apply
+        ignore_index: the ignore index when calculate loss during training
+        max_length: the maximum context length
     """
-    # assert tokenizer.add_bos_token is False and tokenizer.add_eos_token is False, (
-    #     "Initially set `tokenizer.add_bos_token` and `tokenizer.add_eos_token` to False, "
-    #     "add <bos> and <eos> manually later"
-    # )
-
-    assert (
-        tokenizer.bos_token == conversation_template.seps[0] and tokenizer.eos_token == conversation_template.seps[1]
-    ), "`bos_token` and `eos_token` should be the same with `conversation_template.seps`."
 
     if ignore_index is None:
         ignore_index = IGNORE_INDEX
@@ -95,9 +99,9 @@ def supervised_tokenize_sft(
     for mess in messages:
         from_str = mess["from"]
         if from_str.lower() == "human":
-            from_str = template.roles[0]
+            from_str = "user"
         elif from_str.lower() == "assistant":
-            from_str = template.roles[1]
+            from_str = "assistant"
         else:
             raise ValueError(f"Unsupported role {from_str.lower()}")
 
@@ -133,33 +137,20 @@ def supervised_tokenize_sft(
         )
 
     target_turn = turns[target_turn_index - 1]
-    prompt = template.get_prompt(2 * target_turn)
+    prompt, seps_info = template.get_prompt(2 * target_turn, get_seps_info=True)
+    seps_order = seps_info['seps_order']
+    end_of_system_line_position = seps_info['end_of_system_line_position']
     tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0]
-    template.messages = template.messages[0 : 2 * target_turn]
 
-    starts = []
-    ends = []
-    expect_bos = True
-    gpt_bos = False if template.messages[0][0] == template.roles[0] else True
-    gpt_eos = False if template.messages[0][0] == template.roles[0] else True
+    # Find start index and end index of each dialogue
+    starts, ends = find_round_starts_and_ends(tokenizer, template, prompt, tokenized, seps_order, end_of_system_line_position)
 
-    for i, token_id in enumerate(tokenized):
-        if token_id == tokenizer.bos_token_id and expect_bos:
-            if gpt_bos:
-                starts.append(i)
-            gpt_bos = not gpt_bos
-            expect_bos = not expect_bos
-            continue
-        if token_id == tokenizer.eos_token_id and not expect_bos:
-            if gpt_eos:
-                ends.append(i)
-            gpt_eos = not gpt_eos
-            expect_bos = not expect_bos
-
-    if len(starts) != target_turn or len(ends) != target_turn:
-        logger.info(
-            "Please check whether the tokenizer add additional `bos_token` and `eos_token`.\n\nOr the original message contains `bos_token` or `eos_token`."
-        )
+    if len(starts) != target_turn*2 or len(ends) != target_turn*2:
+        tokens = tokenizer.convert_ids_to_tokens(tokenized, skip_special_tokens=False)
+        corresponding_str = [tokenizer.convert_tokens_to_string([token]) for token in tokens]
+        token_str_mapping = [(tokenized[i], s) for i, s in enumerate(corresponding_str)]
+        raise ValueError(f"Please check whether the sequence control seperators are configed correctly \"{tokenizer.decode(getattr(template, sep_name), skip_special_tokens=False)}\" \
+            in the prompt {prompt}. Please manually set sequence control tokens if this message continue to occur constantly.\nToken mapping:\n{token_str_mapping}\nCurrent Setting:\n{str(template)}")
         return dict(
             input_ids=None,
             labels=None,
@@ -168,23 +159,54 @@ def supervised_tokenize_sft(
             seq_length=None,
             seq_category=None,
         )
+    target_turns = []
+    last_sep = None
+    cnt = 0
+    while len(seps_order)>0:
+        turn1 = seps_order.pop(0)
+        turn2 = seps_order.pop(0)
+        assert turn1.endswith('start') and turn2.endswith('end')
+        assert turn1.replace('start','end')==turn2
+        if turn1.startswith('assistant'):
+            target_turns.append(cnt)
+        cnt += 1
 
-    tokenized = [tokenizer.bos_token_id] + tokenized
+    starts=[starts[i] for i in target_turns]
+    ends=[ends[i] for i in target_turns]
+
+    if tokenizer.bos_token_id is not None:
+        tokenized = [tokenizer.bos_token_id] + tokenized
     labels = [ignore_index] * len(tokenized)
     for start, end in zip(starts, ends):
-        labels[start + 1 : end + 2] = tokenized[start + 1 : end + 2]
+        labels[start + 1 : end + 1] = tokenized[start + 1 : end + 1]
 
     labels_decode = deepcopy(labels)
-    for i, z in enumerate(labels_decode):
-        if z == ignore_index:
-            labels_decode[i] = tokenizer.eos_token_id
+    if tokenizer.eos_token_id is not None:
+        for i, z in enumerate(labels_decode):
+            if z == ignore_index:
+                labels_decode[i] = tokenizer.eos_token_id
+    else:
+        # If the tokenizer doesn't have eos_token or pad_token: Qwen
+        for i, z in enumerate(labels_decode):
+            if z == ignore_index:
+                labels_decode[i] = 1  # Label decode is for debugging only, it is not used in training
+ 
+    # For some model without bos/eos may raise the following errors
+    try:
+        inputs_decode = tokenizer.decode(tokenized)
+    except TypeError as e:
+        raise TypeError(str(e)+f'\nUnable to decode input_ids: {tokenized}')
 
-    # `inputs_decode` and `labels_decode` can be used to check whether the tokenization method is true.
+    try:
+        labels_decode = tokenizer.decode(labels_decode)
+    except TypeError as e:
+        raise TypeError(str(e)+f'\nUnable to decode labels: {labels_decode}')
+    
     return dict(
         input_ids=tokenized,
         labels=labels,
-        inputs_decode=tokenizer.decode(tokenized),
-        labels_decode=tokenizer.decode(labels_decode),
+        inputs_decode=inputs_decode,
+        labels_decode=labels_decode,
         seq_length=len(tokenized),
         seq_category=data_point["category"] if "category" in data_point else "None",
     )
@@ -193,13 +215,20 @@ def supervised_tokenize_sft(
 def tokenize_prompt_dataset(
     data_point: Dict[str, str],
     tokenizer: PreTrainedTokenizer,
-    conversation_template: Conversation = default_conversation,
+    conversation_template: Conversation = None,
     ignore_index: int = None,
     max_length: int = 4096,
 ) -> Dict[str, Union[int, str, List[int]]]:
     """
-    A tokenization function to tokenize an original pretraining data point as following:
-        {"messages": [{"from": "human", "content": "xxx"}, {"from": "assistant", "content": "xxx"}]}
+    A tokenization function to tokenize an original pretraining data point as following for ppo training:
+        "Something here can be system message[user_line_start]User line[User line end][Assistant line start]Assistant line[Assistant line end]...[Assistant line start]"      
+    Args:
+        data_point: the data point of the following format
+            {"messages": [{"from": "human", "content": "xxx"}, {"from": "assistant", "content": "xxx"}]}
+        tokenizer: the tokenizer whose
+        conversation_template: the conversation template to apply
+        ignore_index: the ignore index when calculate loss during training
+        max_length: the maximum context length
     """
 
     assert (
@@ -216,26 +245,22 @@ def tokenize_prompt_dataset(
     for mess in messages:
         from_str = mess["from"]
         if from_str.lower() == "human":
-            from_str = template.roles[0]
+            from_str = "user"
         elif from_str.lower() == "assistant":
-            from_str = template.roles[1]
+            from_str = "assistant"
         else:
             raise ValueError(f"Unsupported role {from_str.lower()}")
 
         template.append_message(from_str, mess["content"])
 
-    if len(template.messages) % 2 != 1:
-        # exclude the answer if provided. keep only the prompt
-        template.messages = template.messages[0:-1]
-
     # `target_turn_index` is the number of turns which exceeds `max_length - 1` for the first time.
-    turns = [i for i in range(1, (len(messages) + 1) // 2 + 1)]
+    turns = [i for i in range(0, len(messages)+1)]
 
-    lo, hi = 0, len(turns)
+    lo, hi = 0, len(turns)-1
     while lo < hi:
         mid = (lo + hi) // 2
         if max_length - 1 < len(
-            tokenizer([template.get_prompt(2 * turns[mid] - 1)], add_special_tokens=False)["input_ids"][0]
+            tokenizer([template.get_prompt(turns[mid])], add_special_tokens=False)["input_ids"][0]
         ):
             hi = mid
         else:
@@ -243,7 +268,7 @@ def tokenize_prompt_dataset(
     target_turn_index = lo
 
     # The tokenized length for first turn already exceeds `max_length - 1`.
-    if target_turn_index - 1 < 0:
+    if target_turn_index == 0:
         warnings.warn("The tokenized length for first turn already exceeds `max_length - 1`.")
         return dict(
             input_ids=None,
@@ -252,12 +277,35 @@ def tokenize_prompt_dataset(
             seq_category=None,
         )
 
-    target_turn = turns[target_turn_index - 1]
-    prompt = template.get_prompt(2 * target_turn - 1) + "Assistant: <s>"
-    tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0]
-    template.messages = template.messages[0 : 2 * target_turn - 1]
-    tokenized = [tokenizer.bos_token_id] + tokenized
+    target_turn = turns[target_turn_index]
+    if target_turn % 2 != 1:
+        # exclude the answer if provided. keep only the prompt
+        target_turn = target_turn - 1
 
+    # Sanity check: if the conversation template is correct.
+    prompt, seps_info = template.get_prompt(target_turn, get_seps_info=True)
+    seps_order = seps_info['seps_order']
+    end_of_system_line_position = seps_info['end_of_system_line_position']
+    tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0]
+
+    # Find start index and end index of each dialogue
+    starts, ends = find_round_starts_and_ends(tokenizer, template, prompt, tokenized, seps_order, end_of_system_line_position)
+
+    if len(starts) != target_turn or len(ends) != target_turn:
+        tokens = tokenizer.convert_ids_to_tokens(tokenized, skip_special_tokens=False)
+        corresponding_str = [tokenizer.convert_tokens_to_string([token]) for token in tokens]
+        token_str_mapping = [(tokenized[i], s) for i, s in enumerate(corresponding_str)]
+        raise ValueError(f"Please check whether the sequence control seperators are configed correctly \"{tokenizer.decode(getattr(template, sep_name), skip_special_tokens=False)}\" \
+            in the prompt {prompt}. Please manually set sequence control tokens if this message continue to occur constantly.\nToken mapping:\n{token_str_mapping}\nCurrent Setting:\n{str(template)}")
+        return dict(
+            input_ids=None,
+            labels=None,
+            inputs_decode=None,
+            labels_decode=None,
+            seq_length=None,
+            seq_category=None,
+        )
+    
     # `inputs_decode` and `labels_decode` can be used to check whether the tokenization method is true.
     return dict(
         input_ids=tokenized,
@@ -267,53 +315,62 @@ def tokenize_prompt_dataset(
     )
 
 
-def generate_loss_mask(template: Conversation, tokenizer: Any, context_len: int):
-    target_turn = int(len(template.messages) / 2)
-    prompt = template.get_prompt(2 * target_turn)
-    tokenized = tokenizer([prompt], add_special_tokens=False)
-    input_ids = tokenized["input_ids"][0]
-    attention_mask = tokenized["attention_mask"][0]
-    starts = []
-    ends = []
-    expect_bos = True
-    gpt_bos = False if template.messages[0][0] == template.roles[0] else True
-    gpt_eos = False if template.messages[0][0] == template.roles[0] else True
+def apply_rlhf_data_format(template: Conversation, tokenizer: Any, context_len: int, mask_out_target_assistant_line_end=False):
+    target_turn = int(len(template.messages)/2)
+    prompt, seps_info = template.get_prompt(target_turn * 2, get_seps_info=True)
+    seps_order = seps_info['seps_order']
+    end_of_system_line_position = seps_info['end_of_system_line_position']
+    tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0]
 
-    for i, token_id in enumerate(input_ids):
-        if token_id == tokenizer.bos_token_id and expect_bos:
-            if gpt_bos:
-                starts.append(i)
-            gpt_bos = not gpt_bos
-            expect_bos = not expect_bos
-            continue
-        if token_id == tokenizer.eos_token_id and not expect_bos:
-            if gpt_eos:
-                ends.append(i)
-            gpt_eos = not gpt_eos
-            expect_bos = not expect_bos
+    # Find start index and end index of each dialogue
+    starts, ends = find_round_starts_and_ends(tokenizer, template, prompt, tokenized, seps_order, end_of_system_line_position)
 
-    if len(starts) != target_turn or len(ends) != target_turn:
-        warnings.warn(
-            "Please check whether the tokenizer add additional `bos_token` and `eos_token`.\n\nOr the original message contains `bos_token` or `eos_token`."
-        )
-        return dict(input_ids=None, attention_mask=None, loss_mask=None)
+    if len(starts) != target_turn*2 or len(ends) != target_turn*2:
+        tokens = tokenizer.convert_ids_to_tokens(tokenized, skip_special_tokens=False)
+        corresponding_str = [tokenizer.convert_tokens_to_string([token]) for token in tokens]
+        token_str_mapping = [(tokenized[i], s) for i, s in enumerate(corresponding_str)]
+        raise ValueError(f"Please check whether the sequence control seperators are configed correctly \"{tokenizer.decode(getattr(template, sep_name), skip_special_tokens=False)}\" \
+            in the prompt {prompt}. Please manually set sequence control tokens if this message continue to occur constantly.\nToken mapping:\n{token_str_mapping}\nCurrent Setting:\n{str(template)}")
+        return dict(input_ids=None, loss_mask=None, label_decode=None)
 
-    input_ids = [tokenizer.bos_token_id] + input_ids
-    attention_mask = [1] + attention_mask
-    loss_mask = [0 for _ in range(len(input_ids))]
-    starts = starts[context_len:]
-    ends = ends[context_len:]
+    target_turns = []
+    last_sep = None
+    cnt = 0
+    while len(seps_order)>0:
+        turn1 = seps_order.pop(0)
+        turn2 = seps_order.pop(0)
+        assert turn1.endswith('start') and turn2.endswith('end')
+        assert turn1.replace('start','end')==turn2
+        if turn1.startswith('assistant'):
+            target_turns.append(cnt)
+        cnt += 1
+
+    starts=[starts[i] for i in target_turns][context_len:]
+    ends=[ends[i] for i in target_turns][context_len:]
+    if mask_out_target_assistant_line_end:
+        ends[-1] = ends[-1]-len(template.assistant_line_end)
+
+    if tokenizer.bos_token_id is not None:
+        tokenized = [tokenizer.bos_token_id] + tokenized
+    loss_mask = [0] * len(tokenized)
+    mask_token = tokenizer.eos_token_id or tokenizer.pad_token_id
+    if mask_token is None:
+        mask_token = 1 # If the tokenizer doesn't have eos_token or pad_token: Qwen
+
+    label_decode = [mask_token] * len(tokenized)
     for start, end in zip(starts, ends):
-        for i in range(start + 1, end + 2):
-            loss_mask[i] = 1 if attention_mask[i] else 0
-
-    return {"input_ids": input_ids, "attention_mask": attention_mask, "loss_mask": loss_mask}
+        for i in range(start + 1, end + 1):
+            loss_mask[i] = 1
+            label_decode[i] = tokenized[i]
+    label_decode = tokenizer.decode(label_decode, skip_special_tokens=False)
+    
+    return {"input_ids": tokenized, "loss_mask": loss_mask, "label_decode": label_decode}
 
 
 def tokenize_rlhf(
     data_point: Dict[str, str],
     tokenizer: PreTrainedTokenizer,
-    conversation_template: Conversation = default_conversation,
+    conversation_template: Conversation = None,
     ignore_index: int = None,
     max_length: int = 4096,
 ) -> Dict[str, Union[int, str, List[int]]]:
@@ -322,42 +379,39 @@ def tokenize_rlhf(
         {"context": [{"from": "human", "content": "xxx"}, {"from": "assistant", "content": "xxx"}],
         "chosen": {"from": "assistant", "content": "xxx"}, "rejected": {"from": "assistant", "content": "xxx"}}
     """
-    assert (
-        tokenizer.bos_token == conversation_template.seps[0] and tokenizer.eos_token == conversation_template.seps[1]
-    ), "`bos_token` and `eos_token` should be the same with `conversation_template.seps`."
-
     if ignore_index is None:
         ignore_index = IGNORE_INDEX
 
     context = data_point["context"]
     template = deepcopy(conversation_template)
-    template.messages = []
+    template.clear()
 
     for mess in context:
         from_str = mess["from"]
         if from_str.lower() == "human":
-            from_str = template.roles[0]
+            from_str = 'user'
         elif from_str.lower() == "assistant":
-            from_str = template.roles[1]
+            from_str = 'assistant'
         else:
             raise ValueError(f"Unsupported role {from_str.lower()}")
 
-        if len(template.messages) > 0 and from_str == template.messages[-1][0]:
-            template.messages[-1][1] = str(template.messages[-1][1] + mess["content"])
+        if len(template.messages) > 0 and from_str == template.messages[-1]['role']:
+            # Concate adjacent message from the same role
+            template.messages[-1]['content'] = str(template.messages[-1]['content'] + ' ' + mess["content"])
         else:
             template.append_message(from_str, mess["content"])
 
     if len(template.messages) % 2 != 1:
         warnings.warn(
-            "Please make sure leading context is started and ended with a line from human" + str(template.messages)
+            "Please make sure leading context starts and ends with a line from human\nLeading context: " + str(template.messages)
         )
         return dict(
             chosen_input_ids=None,
-            chosen_attention_mask=None,
             chosen_loss_mask=None,
+            chosen_label_decode=None,
             rejected_input_ids=None,
-            rejected_attention_mask=None,
             rejected_loss_mask=None,
+            rejected_label_decode=None
         )
     round_of_context = int((len(template.messages) - 1) / 2)
 
@@ -368,9 +422,9 @@ def tokenize_rlhf(
     for round in range(len(data_point["chosen"])):
         from_str = data_point["chosen"][round]["from"]
         if from_str.lower() == "human":
-            from_str = template.roles[0]
+            from_str = 'user'
         elif from_str.lower() == "assistant":
-            from_str = template.roles[1]
+            from_str = 'assistant'
         else:
             raise ValueError(f"Unsupported role {from_str.lower()}")
         chosen.append_message(from_str, data_point["chosen"][round]["content"])
@@ -378,20 +432,20 @@ def tokenize_rlhf(
     for round in range(len(data_point["rejected"])):
         from_str = data_point["rejected"][round]["from"]
         if from_str.lower() == "human":
-            from_str = template.roles[0]
+            from_str = 'user'
         elif from_str.lower() == "assistant":
-            from_str = template.roles[1]
+            from_str = 'assistant'
         else:
             raise ValueError(f"Unsupported role {from_str.lower()}")
         rejected.append_message(from_str, data_point["rejected"][round]["content"])
 
     (
         chosen_input_ids,
-        chosen_attention_mask,
         chosen_loss_mask,
+        chosen_label_decode,
         rejected_input_ids,
-        rejected_attention_mask,
         rejected_loss_mask,
+        rejected_label_decode
     ) = (None, None, None, None, None, None)
     if (
         len(tokenizer([chosen.get_prompt(len(chosen.messages))], add_special_tokens=False)["input_ids"][0])
@@ -399,34 +453,35 @@ def tokenize_rlhf(
         and len(tokenizer([rejected.get_prompt(len(rejected.messages))], add_special_tokens=False)["input_ids"][0])
         <= max_length - 1
     ):
-        chosen_data_packed = generate_loss_mask(chosen, tokenizer, round_of_context)
-        (chosen_input_ids, chosen_attention_mask, chosen_loss_mask) = (
+        chosen_data_packed = apply_rlhf_data_format(chosen, tokenizer, round_of_context)
+        (chosen_input_ids, chosen_loss_mask, chosen_label_decode) = (
             chosen_data_packed["input_ids"],
-            chosen_data_packed["attention_mask"],
             chosen_data_packed["loss_mask"],
+            chosen_data_packed["label_decode"]
         )
 
-        rejected_data_packed = generate_loss_mask(rejected, tokenizer, round_of_context)
-        (rejected_input_ids, rejected_attention_mask, rejected_loss_mask) = (
+        rejected_data_packed = apply_rlhf_data_format(rejected, tokenizer, round_of_context, 
+            mask_out_target_assistant_line_end=True)
+        (rejected_input_ids, rejected_loss_mask, rejected_label_decode) = (
             rejected_data_packed["input_ids"],
-            rejected_data_packed["attention_mask"],
             rejected_data_packed["loss_mask"],
+            rejected_data_packed["label_decode"]
         )
 
         return {
             "chosen_input_ids": chosen_input_ids,
-            "chosen_attention_mask": chosen_attention_mask,
             "chosen_loss_mask": chosen_loss_mask,
+            "chosen_label_decode": chosen_label_decode,
             "rejected_input_ids": rejected_input_ids,
-            "rejected_attention_mask": rejected_attention_mask,
             "rejected_loss_mask": rejected_loss_mask,
+            "rejected_label_decode": rejected_label_decode
         }
     else:
         return dict(
             chosen_input_ids=None,
-            chosen_attention_mask=None,
             chosen_loss_mask=None,
+            chosen_label_decode=None,
             rejected_input_ids=None,
-            rejected_attention_mask=None,
             rejected_loss_mask=None,
+            rejected_label_decode=None
         )

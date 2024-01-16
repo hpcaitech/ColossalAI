@@ -134,10 +134,6 @@ class RewardModelTrainer(SLTrainer):
             loss = self.loss_fn(chosen_reward, reject_reward).mean()
 
             self.booster.backward(loss=loss, optimizer=self.optimizer)
-            if self.num_train_step % self.accumulation_steps == self.accumulation_steps - 1:
-                self.optimizer.step()
-                self.optimizer.zero_grad()
-                self.actor_scheduler.step()
 
             accuracy = (chosen_reward > reject_reward).float()
 
@@ -150,43 +146,48 @@ class RewardModelTrainer(SLTrainer):
             self.accumulative_meter.add("rejected_rewards", rejected_rewards_mean.to(torch.float16).mean().item())
             self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
             self.accumulative_meter.add("accuracy", accuracy_mean.mean().to(torch.float16).item())
-            if self.writer and is_rank_0():
-                self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
-                self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
-                self.writer.add_scalar(
-                    "train/dist",
-                    self.accumulative_meter.get("chosen_rewards") - self.accumulative_meter.get("rejected_rewards"),
-                    self.num_train_step,
-                )
-                self.writer.add_scalar(
-                    "train/reward_chosen", self.accumulative_meter.get("chosen_rewards"), self.num_train_step
-                )
-                self.writer.add_scalar(
-                    "train/reward_reject", self.accumulative_meter.get("rejected_rewards"), self.num_train_step
-                )
-                self.writer.add_scalar("train/acc", self.accumulative_meter.get("accuracy"), self.num_train_step)
 
-            if i % self.accumulation_steps == self.accumulation_steps - 1:
-                self.num_train_step += 1
+            if (i + 1) % self.accumulation_steps == 0:
+                self.optimizer.step()
+                self.optimizer.zero_grad()
+                self.actor_scheduler.step()
                 step_bar.update()
+
+                if self.writer and is_rank_0():
+                    self.num_train_step += 1
+                    self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
+                    self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
+                    self.writer.add_scalar(
+                        "train/dist",
+                        self.accumulative_meter.get("chosen_rewards") - self.accumulative_meter.get("rejected_rewards"),
+                        self.num_train_step,
+                    )
+                    self.writer.add_scalar(
+                        "train/reward_chosen", self.accumulative_meter.get("chosen_rewards"), self.num_train_step
+                    )
+                    self.writer.add_scalar(
+                        "train/reward_reject", self.accumulative_meter.get("rejected_rewards"), self.num_train_step
+                    )
+                    self.writer.add_scalar("train/acc", self.accumulative_meter.get("accuracy"), self.num_train_step)
+
                 self.accumulative_meter.reset()
 
-            if self.save_interval > 0 and (self.num_train_step + 1) % self.save_interval == 0 and is_rank_0():
-                self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
-                save_checkpoint(
-                    save_dir=self.save_dir,
-                    booster=self.booster,
-                    model=self.model,
-                    optimizer=self.optimizer,
-                    lr_scheduler=self.actor_scheduler,
-                    epoch=epoch,
-                    step=i + 1,
-                    batch_size=batch_size,
-                    coordinator=self.coordinator,
-                )
-                self.coordinator.print_on_master(
-                    f"Saved checkpoint at epoch {epoch} step {(i + 1)/self.accumulation_steps} at folder {self.save_dir}"
-                )
+                if self.save_interval > 0 and (self.num_train_step + 1) % self.save_interval == 0 and is_rank_0():
+                    self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
+                    save_checkpoint(
+                        save_dir=self.save_dir,
+                        booster=self.booster,
+                        model=self.model,
+                        optimizer=self.optimizer,
+                        lr_scheduler=self.actor_scheduler,
+                        epoch=epoch,
+                        step=i + 1,
+                        batch_size=batch_size,
+                        coordinator=self.coordinator,
+                    )
+                    self.coordinator.print_on_master(
+                        f"Saved checkpoint at epoch {epoch} step {(i + 1)/self.accumulation_steps} at folder {self.save_dir}"
+                    )
         step_bar.close()
 
     def _eval(self, epoch):

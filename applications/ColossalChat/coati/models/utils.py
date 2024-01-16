@@ -110,16 +110,19 @@ def save_checkpoint(
 
     save_dir = os.path.join(save_dir, f"epoch-{epoch}_step-{step}")
     os.makedirs(os.path.join(save_dir, "modeling"), exist_ok=True)
-
+    print("save model")
     booster.save_model(model, os.path.join(save_dir, "modeling"), shard=True)
+    print("save optimizer")
 
     booster.save_optimizer(optimizer, os.path.join(save_dir, "optimizer"), shard=True)
+    print("save lr scheduler")
     booster.save_lr_scheduler(lr_scheduler, os.path.join(save_dir, "lr_scheduler"))
     running_states = {
         "epoch": epoch,
         "step": step,
         "sample_start_index": step * batch_size,
     }
+    print("save lr running states")
     if coordinator.is_master():
         save_json(running_states, os.path.join(save_dir, "running_states.json"))
 

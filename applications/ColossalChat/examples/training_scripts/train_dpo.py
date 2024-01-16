@@ -44,8 +44,13 @@ def train(args):
     # ==============================
     # Initialize Booster
     # ==============================
-
-    if args.plugin == "gemini":
+    if args.plugin == "ddp":
+        '''
+        Default torch ddp plugin without any acceleration, for 
+        debugging purpose acceleration, for debugging purpose
+        '''
+        plugin = TorchDDPPlugin(find_unused_parameters=True)
+    elif args.plugin == "gemini":
         plugin = GeminiPlugin(
             precision=args.mixed_precision,
             initial_scale=2**16,
@@ -95,8 +100,11 @@ def train(args):
     with init_ctx:
         model = AutoModelForCausalLM.from_pretrained(args.pretrain)
         disable_dropout(model)
-        ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain)
-        disable_dropout(ref_model)
+        if args.enable_reference_model:
+            ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain)
+            disable_dropout(ref_model)
+        else:
+            ref_model = None
 
         if args.lora_rank > 0:
             model = convert_to_lora_module(model, args.lora_rank, lora_train_bias=args.lora_train_bias)
@@ -114,9 +122,17 @@ def train(args):
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
-    _ = setup_conversation_template(tokenizer)
-    tokenizer.padding_side = "right"
-    tokenizer.pad_token = tokenizer.eos_token
+    if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
+        try:
+            # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen
+           tokenizer.pad_token = tokenizer.eos_token
+        except AttributeError as e:
+            logger.warning(f"Unable to set pad token to eos token, {str(e)}")
+    if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+        logger.warning("The tokenizer does not have a pad token which is required. May lead to unintended behavior in training, Please consider manually set them.")
+
+    tokenizer.add_bos_token = False
+    tokenizer.add_eos_token = False
 
     # configure optimizer
     optim = HybridAdam(
@@ -161,8 +177,8 @@ def train(args):
         lr_scheduler=lr_scheduler,
         dataloader=train_dataloader,
     )
-
-    ref_model, _, _, _, _ = ref_booster.boost(model=ref_model, dataloader=train_dataloader)
+    if ref_model is not None:
+        ref_model, _, _, _, _ = ref_booster.boost(model=ref_model, dataloader=train_dataloader)
     torch.set_default_dtype(torch.float)
 
     coordinator.print_on_master(f"Booster init max CUDA memory: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
@@ -267,6 +283,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_length", type=int, default=2048, help="Model max length")
     parser.add_argument("--max_epochs", type=int, default=3)
     parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--enable_reference_model", type=bool, default=True)
     parser.add_argument("--mixed_precision", type=str, default="fp16", choices=["fp16", "bf16"], help="Mixed precision")
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument(

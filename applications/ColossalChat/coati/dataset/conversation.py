@@ -1,118 +1,219 @@
-#    Copyright 2023 lm-sys@FastChat
-#
-#    Licensed under the Apache License, Version 2.0 (the "License");
-#    you may not use this file except in compliance with the License.
-#    You may obtain a copy of the License at
-#
-#        http://www.apache.org/licenses/LICENSE-2.0
-#
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS,
-#    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#    See the License for the specific language governing permissions and
-#    limitations under the License.
-
 import dataclasses
-from enum import Enum, auto
-from typing import List
+from typing import List, Dict, Any
+import json
+import os
 
 from transformers import PreTrainedTokenizer
+from coati.dataset.utils import (
+    find_all_occurrence_subsequence,
+    find_first_occurrence_subsequence,
+    find_sep_tokens
+)
+from colossalai.logging import get_dist_logger
 
+logger = get_dist_logger()
 
-class SeparatorStyle(Enum):
-    ADD_BOS_EOS_TOKEN = auto()
-
+DUMMY_SYSTEM_MSG = "Dummy system message"
+DUMMY_USER_MSG = "Dummy user message"
+DUMMY_ASSISTANT_MSG = "Dummy assistant message"
+DUMMY_MSG_WITH_SYSTEM = [
+        {
+          "role": "system",
+          "content": DUMMY_SYSTEM_MSG
+        },
+        {
+          "role": "user",
+          "content": DUMMY_USER_MSG
+        },
+        {
+          "role": "assistant",
+          "content": DUMMY_ASSISTANT_MSG
+        },
+        {
+          "role": "user",
+          "content": DUMMY_USER_MSG
+        },
+        {
+          "role": "assistant",
+          "content": DUMMY_ASSISTANT_MSG
+        },
+        {
+          "role": "user",
+          "content": DUMMY_USER_MSG
+        },
+        {
+          "role": "assistant",
+          "content": DUMMY_ASSISTANT_MSG
+        }
+      ]
+          
 
 @dataclasses.dataclass
 class Conversation:
-    system: str
-    roles: List[str]
-    messages: List[List[str]]
-    offset: int
-    sep_style: SeparatorStyle
-    seps: List[str]
+    tokenizer: PreTrainedTokenizer
+    system_message: str
+    chat_template: str
+    human_line_start: List[int] = None # List[int] tokens that indicate the start of a human line
+    human_line_end: List[int] = None  # List[int] tokens that indicate the end of a human line
+    assistant_line_start: List[int] = None # List[int] tokens that indicate the start of a assistant line
+    assistant_line_end: List[int] = None # List[int] tokens that indicate the end of a assistant line
+    end_of_system_line_position: int=None # The position of the end of system line in the chat_template
+
+    @classmethod
+    def from_config(cls, tokenizer: PreTrainedTokenizer, config: Dict):
+        """
+        Setup the conversation template from config
+        """
+        tokenizer.chat_template = config['chat_template']
+        conv = cls(tokenizer, config['system_message'], config['chat_template'], config['human_line_start'], config['human_line_end'],
+                config['assistant_line_start'], config['assistant_line_end'], config['end_of_system_line_position'])
+        conv.clear()
+        return conv
 
     def clear(self):
         self.messages = []
 
-    def get_prompt(self, length: int = None):
+    @classmethod
+    def get_conversation_template_keys(cls):
+        return ['system_message', 'chat_template', 'human_line_start', 'human_line_end', 'assistant_line_start', 'assistant_line_end', 'end_of_system_line_position']
+
+    def __str__(self):
+        return json.dumps({k:self.__dict__[k] for k in self.__dict__ if k not in ['tokenizer', 'messages']}, ensure_ascii=False, indent=4)
+
+    def get_prompt(self, length: int = None, get_seps_info: bool=False):
         if length is None:
             length = len(self.messages)
 
-        if self.sep_style == SeparatorStyle.ADD_BOS_EOS_TOKEN:
-            ret = self.system
-            for role, message in self.messages[0:length]:
-                if message:
-                    ret += role + ": " + self.seps[0] + message + " " + self.seps[1]
-                else:
-                    ret += role + ": " + self.seps[0]
-            return ret
+        assert length <= len(self.messages)
+        if self.system_message is not None:
+            messages = [{'role':'system','content':self.system_message}]+self.messages[:length]
         else:
-            raise ValueError(f"Invalid style: {self.sep_style}")
+            messages = self.messages[:length]
+        prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+        if get_seps_info:
+            seps_order = []
+            for message in self.messages[:length]:
+                if message['role'] == 'user':
+                    seps_order.append('human_line_start')
+                    seps_order.append('human_line_end')
+                elif message['role'] == 'assistant':
+                    seps_order.append('assistant_line_start')
+                    seps_order.append('assistant_line_end')
+            return prompt, {'end_of_system_line_position': self.end_of_system_line_position,
+                'seps_order': seps_order}
+        else:
+            return prompt
 
     def save_prompt(self):
-        if self.sep_style == SeparatorStyle.ADD_BOS_EOS_TOKEN:
-            ret = self.system
-            for role, message in self.messages:
-                if message:
-                    ret += role + ": " + self.seps[0] + message + self.seps[1] + "\n"
-                else:
-                    ret += role + ": " + self.seps[0]
-            return ret
-        else:
-            raise ValueError(f"Invalid style: {self.sep_style}")
+        return self.get_prompt()
 
-    def append_message(self, role, message):
-        self.messages.append([role, message])
+    def append_message(self, role: str, message: str):
+        assert role in ['user', 'assistant']
+        self.messages.append({'role':role, 'content':message})
 
     def copy(self):
         return Conversation(
-            system=self.system,
-            roles=self.roles,
-            messages=[[x, y] for x, y in self.messages],
-            offset=self.offset,
-            sep_style=self.sep_style,
-            seps=self.seps,
+            tokenizer=self.tokenizer,
+            chat_template=self.chat_template,
+            human_line_start=self.human_line_start,
+            human_line_end=self.human_line_end,
+            assistant_line_start=self.assistant_line_start,
+            assistant_line_end=self.assistant_line_end,
         )
 
-    def dict(self):
-        return {
-            "system": self.system,
-            "roles": self.roles,
-            "messages": self.messages,
-            "offset": self.offset,
-            "seps": self.seps,
-        }
-
-
-conv = Conversation(
-    system="A chat between a curious human and an artificial intelligence assistant. "
-    "The assistant gives helpful, detailed, and polite answers to the human's questions.\n\n",
-    roles=("Human", "Assistant"),
-    messages=[],
-    offset=0,
-    sep_style=SeparatorStyle.ADD_BOS_EOS_TOKEN,
-    seps=["<s>", "</s>"],
-)
-
-default_conversation = conv
-
-
-def setup_conversation_template(tokenizer: PreTrainedTokenizer) -> Conversation:
+def automatically_set_conversation_config(tokenizer: PreTrainedTokenizer, chat_template_config: Dict=None) -> dict:
     """
-    Setup the conversation template to use the bos and the eos of the tokenizer if application
-    Or setup the bos and the eos of the tokenizer to be the same as the separator of the conversation template
+    Automatically set up the conversation config for the tokenizer, if the tokenizer doesn't have a default chat_template,
+    raise error to remind the user to set it manually.
+
+    Args:
+        tokenizer: The tokenizer to use
     """
-    conversation_template = conv.copy()
-    if tokenizer.eos_token is None:
-        raise ValueError(
-            "The tokenizer you specified does not have a eos token, please manually set a eos token that can be tokenized into a single token"
-        )
-    if tokenizer.bos_token is None:
-        tokenizer.bos_token = tokenizer.eos_token
-    if len(tokenizer.tokenize(tokenizer.eos_token)) != 1:
-        raise ValueError("Please check your tokenizer to make sure the eos token can be tokenized into a single token")
-    if len(tokenizer.tokenize(tokenizer.bos_token)) != 1:
-        raise ValueError("Please check your tokenizer to make sure the bos token can be tokenized into a single token")
-    conversation_template.seps = [tokenizer.bos_token, tokenizer.eos_token]
-    return conversation_template
+    if not isinstance(tokenizer.chat_template, str) or len(tokenizer.chat_template)==0:
+        if isinstance(tokenizer.default_chat_template, str) and len(tokenizer.default_chat_template)>0:
+            tokenizer.chat_template = tokenizer.default_chat_template
+    if 'chat_template' in chat_template_config and chat_template_config['chat_template'] is not None:
+        tokenizer.chat_template = chat_template_config['chat_template']
+    assert isinstance(tokenizer.chat_template, str) and len(tokenizer.chat_template)>0, \
+        "Please set the chat_template of the tokenizer"
+    # Generate conversation template config for conversation with system messages
+    dummy_chat_messages = DUMMY_MSG_WITH_SYSTEM
+    if chat_template_config['system_message'] is not None:
+        dummy_chat_messages[0]['content']=chat_template_config['system_message']
+    else:
+        logger.info("No system message is provided, if the chat template requires a system message, please provide it.")
+        dummy_chat_messages.pop(0)
+    prompt = tokenizer.apply_chat_template(dummy_chat_messages, tokenize=False, add_generation_prompt=False)
+    occurances_of_user = find_all_occurrence_subsequence(prompt, DUMMY_USER_MSG)
+    occurances_of_assistant = find_all_occurrence_subsequence(prompt, DUMMY_ASSISTANT_MSG)
+    assert len(occurances_of_user) == len(occurances_of_assistant) == 3
+    assert prompt[occurances_of_user[0]+len(DUMMY_USER_MSG):occurances_of_assistant[0]] == \
+        prompt[occurances_of_user[1]+len(DUMMY_USER_MSG):occurances_of_assistant[1]] == \
+        prompt[occurances_of_user[2]+len(DUMMY_USER_MSG):occurances_of_assistant[2]]
+    human_line_end_and_assistant_line_start = prompt[occurances_of_user[0]+len(DUMMY_USER_MSG):occurances_of_assistant[0]]
+    assert prompt[occurances_of_assistant[0]+len(DUMMY_ASSISTANT_MSG):occurances_of_user[1]] == \
+        prompt[occurances_of_assistant[1]+len(DUMMY_ASSISTANT_MSG):occurances_of_user[2]]
+    assistant_line_end_and_human_line_start = prompt[occurances_of_assistant[0]+len(DUMMY_ASSISTANT_MSG):occurances_of_user[1]]
+    prompt_tail = prompt[occurances_of_assistant[-1]+len(DUMMY_ASSISTANT_MSG):]
+    assistant_line_end = ""
+    for i in range(len(prompt_tail)):
+        if prompt_tail[i]==assistant_line_end_and_human_line_start[i]:
+            assistant_line_end = prompt_tail[:i+1]
+    human_line_start = assistant_line_end_and_human_line_start[len(assistant_line_end):].strip()
+    assistant_line_end = assistant_line_end.strip()
+    human_line_end = human_line_end_and_assistant_line_start.strip()
+    assistant_line_start = ""
+    end_of_system_line_position = len(tokenizer([prompt[:occurances_of_user[0]]], add_special_tokens=False)["input_ids"][0])-len(human_line_start)
+    conversation_template_config = {
+        "chat_template": tokenizer.chat_template,
+        "system_message": chat_template_config['system_message'],
+        "human_line_start": [],
+        "human_line_end": [],
+        "assistant_line_start": [],
+        "assistant_line_end": [],
+        "end_of_system_line_position": end_of_system_line_position
+    }
+    conversation_template_config['human_line_start'] = find_sep_tokens(prompt, tokenizer, "human_line_start", 
+                                                                human_line_start, conversation_template_config)
+    conversation_template_config['human_line_end'] = find_sep_tokens(prompt, tokenizer, "human_line_end", 
+                                                                human_line_end, conversation_template_config)
+    conversation_template_config['assistant_line_start'] = find_sep_tokens(prompt, tokenizer, "assistant_line_start", 
+                                                                assistant_line_start, conversation_template_config)
+    conversation_template_config['assistant_line_end'] = find_sep_tokens(prompt, tokenizer, "assistant_line_end", 
+                                                                assistant_line_end, conversation_template_config)
+    return conversation_template_config
+
+def setup_conversation_template(tokenizer: PreTrainedTokenizer, chat_template_config: Dict=None, save_path: str=None) -> Conversation:
+    """
+    Setup the conversation template, if chat_template is given, will replace the default chat_template of the tokenizer
+    with it. Otherwise, the default chat_template will be used. If the tokenizer doesn't have a default chat_template,
+    raise error to remind the user to set it manually.
+
+    Args:
+        tokenizer: The tokenizer to use
+        chat_template_config: 
+            {
+                "system_message": str The system message to use
+                "chat_template": str The chat_template to use, if None, will use the default chat_template of the tokenizer
+                                if you want to use custom seps, please set the chat_template and the seps argument
+                "human_line_start": List[int] tokens that indicate the start of a human line,
+                "human_line_end": List[int] tokens that indicate the end of a human line,
+                "assistant_line_start": List[int] tokens that indicate the start of a assistant line,
+                "assistant_line_end": List[int]  tokens that indicate the end of a assistant line
+                "end_of_system_line_position": int For some prompt sequence control tokens may appear in system message,
+                                This field defines the index of the last token in the system message
+            }
+    """
+    if any([s not in chat_template_config.keys() for s in Conversation.get_conversation_template_keys()]):
+        # Try to automatically set up conversation template, if fail, it throws an error that you need to do it manually
+        assert "system_message" in chat_template_config, "Please provide system message."
+        logger.info("No conversation template config is provided or incomplete, will try generating the conversation tempalte config automatically.")
+        conversation_template_config = automatically_set_conversation_config(tokenizer, chat_template_config)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        with open(save_path, 'w', encoding='utf8') as f:
+            logger.info(f"Successfully generated a conversation tempalte config, save to {save_path}.")
+            json.dump(conversation_template_config, f, indent=4, ensure_ascii=False)
+        return Conversation.from_config(tokenizer, conversation_template_config)
+    else:
+        # Setup conversation manually
+        return Conversation.from_config(tokenizer, chat_template_config)

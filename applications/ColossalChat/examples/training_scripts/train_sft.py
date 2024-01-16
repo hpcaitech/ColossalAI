@@ -19,7 +19,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.booster.plugin import (
+    GeminiPlugin, 
+    HybridParallelPlugin, 
+    LowLevelZeroPlugin, 
+    TorchDDPPlugin
+)
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
@@ -44,7 +49,10 @@ def train(args):
     # Initialize Booster
     # ==============================
     if args.plugin == "ddp":
-        # default torch ddp plugin without any acceleration, for debugging purpose acceleration, for debugging purpose
+        '''
+        Default torch ddp plugin without any acceleration, for 
+        debugging purpose acceleration, for debugging purpose
+        '''
         plugin = TorchDDPPlugin(find_unused_parameters=True)
     elif args.plugin == "gemini":
         plugin = GeminiPlugin(
@@ -111,8 +119,15 @@ def train(args):
 
     # configure tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir or args.pretrain)
-    tokenizer.pad_token = tokenizer.eos_token
-    _ = setup_conversation_template(tokenizer)
+    if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
+        try:
+            # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen
+           tokenizer.pad_token = tokenizer.eos_token
+        except AttributeError as e:
+            logger.warning(f"Unable to set pad token to eos token, {str(e)}")
+    if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+        logger.warning("The tokenizer does not have a pad token which is required. May lead to unintended behavior in training, Please consider manually set them.")
+
     tokenizer.add_bos_token = False
     tokenizer.add_eos_token = False
 

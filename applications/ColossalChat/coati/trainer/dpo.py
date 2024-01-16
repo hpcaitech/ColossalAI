@@ -15,6 +15,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import trange
 from transformers import PreTrainedTokenizerBase
+import torch.nn.functional as F
 
 from colossalai.booster import Booster
 from colossalai.cluster import DistCoordinator
@@ -132,30 +133,33 @@ class DPOTrainer(SLTrainer):
                 batch["reject_attention_mask"],
                 batch["reject_loss_mask"],
             )
-
+            reject_loss_mask[:,-1]=False
             batch_size = chosen_input_ids.size()[0]
 
             actor_all_logits = self.model(
                 input_ids=torch.cat([chosen_input_ids, reject_input_ids]),
-                attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask]),
+                attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask])
             )["logits"].to(torch.float32)
             actor_chosen_logits = actor_all_logits[:batch_size]
             actor_reject_logits = actor_all_logits[batch_size:]
-
             logprob_actor_chosen = calc_masked_log_probs(actor_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:])
 
             logprob_actor_reject = calc_masked_log_probs(actor_reject_logits, reject_input_ids, reject_loss_mask[:, 1:])
 
-            self.ref_model.eval()
-            with torch.no_grad():
-                ref_all_logits = self.ref_model(
-                    input_ids=torch.cat([chosen_input_ids, reject_input_ids]),
-                    attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask]),
-                )["logits"].to(torch.float32)
-                ref_chosen_logits = ref_all_logits[:batch_size]
-                ref_reject_logits = ref_all_logits[batch_size:]
-                logprob_ref_chosen = calc_masked_log_probs(ref_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:])
-                logprob_ref_reject = calc_masked_log_probs(ref_reject_logits, reject_input_ids, reject_loss_mask[:, 1:])
+            if self.ref_model is not None:
+                self.ref_model.eval()
+                with torch.no_grad():
+                    ref_all_logits = self.ref_model(
+                        input_ids=torch.cat([chosen_input_ids, reject_input_ids]),
+                        attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask]),
+                    )["logits"].to(torch.float32)
+                    ref_chosen_logits = ref_all_logits[:batch_size]
+                    ref_reject_logits = ref_all_logits[batch_size:]
+                    logprob_ref_chosen = calc_masked_log_probs(ref_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:])
+                    logprob_ref_reject = calc_masked_log_probs(ref_reject_logits, reject_input_ids, reject_loss_mask[:, 1:])
+            else:
+                logprob_ref_chosen = None
+                logprob_ref_reject = None
 
             losses, chosen_rewards, rejected_rewards = self.actor_loss_fn(
                 logprob_actor_chosen,
@@ -207,22 +211,22 @@ class DPOTrainer(SLTrainer):
                     )
                 self.accumulative_meter.reset()
 
-            if (self.num_train_step + 1) % self.save_interval == 0 and is_rank_0():
-                self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
-                save_checkpoint(
-                    save_dir=self.save_dir,
-                    booster=self.booster,
-                    model=self.model,
-                    optimizer=self.optimizer,
-                    lr_scheduler=self.actor_scheduler,
-                    epoch=epoch,
-                    step=i + 1,
-                    batch_size=batch_size,
-                    coordinator=self.coordinator,
-                )
-                self.coordinator.print_on_master(
-                    f"Saved checkpoint at epoch {epoch} step {self.save_interval} at folder {self.save_dir}"
-                )
+                if (self.num_train_step + 1) % self.save_interval == 0 and is_rank_0():
+                    self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
+                    save_checkpoint(
+                        save_dir=self.save_dir,
+                        booster=self.booster,
+                        model=self.model,
+                        optimizer=self.optimizer,
+                        lr_scheduler=self.actor_scheduler,
+                        epoch=epoch,
+                        step=i + 1,
+                        batch_size=batch_size,
+                        coordinator=self.coordinator,
+                    )
+                    self.coordinator.print_on_master(
+                        f"Saved checkpoint at epoch {epoch} step {self.save_interval} at folder {self.save_dir}"
+                    )
 
         step_bar.close()
 

@@ -38,6 +38,7 @@ class BaseModel(nn.Module):
         dummy_input = torch.zeros((1, 1), dtype=torch.long).to(self.model.device)
         out = self.model(dummy_input)
         self.last_hidden_state_size = out.last_hidden_state.shape[-1]
+        # print("self.last_hidden_state_size: ",self.last_hidden_state_size)
 
     def resize_token_embeddings(self, *args, **kwargs):
         return self.model.resize_token_embeddings(*args, **kwargs)

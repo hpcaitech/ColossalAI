@@ -1,0 +1,20 @@
+{
+    "chat_template": "{% if not add_generation_prompt is defined %}{% set add_generation_prompt = false %}{% endif %}{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}",
+    "system_message": "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.\n\n",
+    "human_line_start": [
+        6,
+        3903
+    ],
+    "human_line_end": [
+        7,
+        144,
+        6,
+        765,
+        13611
+    ],
+    "assistant_line_start": [],
+    "assistant_line_end": [
+        7
+    ],
+    "end_of_system_line_position": 23
+}

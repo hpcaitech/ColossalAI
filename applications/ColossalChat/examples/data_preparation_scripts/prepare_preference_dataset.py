@@ -33,6 +33,10 @@ def main():
     parser.add_argument(
         "--tokenizer_dir", type=str, required=True, default=None, help="A directory containing the tokenizer"
     )
+    parser.add_argument(
+        "--conversation_template_config", type=str, default="conversation_template_config", help="Path \
+        to save conversation template config files."
+    )
     parser.add_argument("--data_cache_dir", type=str, default="cache", help="Data cache directory")
     parser.add_argument(
         "--data_jsonl_output_dir",
@@ -89,11 +93,26 @@ def main():
             end = 100
         train_splits.append(f"train[{start}%:{end}%]")
 
-    # Prepare to the tokenizer.
-
-    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir)
-    conversation_template = setup_conversation_template(tokenizer)
-    tokenizer.pad_token = tokenizer.eos_token
+    # Prepare the tokenizer.
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir, use_fast=False, trust_remote_code=True)
+    if os.path.exists(args.conversation_template_config):
+        conversation_template_config = json.load(open(args.conversation_template_config, "r", encoding='utf8'))
+        conversation_template = setup_conversation_template(tokenizer, 
+                                chat_template_config=conversation_template_config, 
+                                save_path=args.conversation_template_config)
+    else:
+        chat_template_config = {'system_message':"A chat between a curious human and an artificial intelligence assistant. "
+        "The assistant gives helpful, detailed, and polite answers to the human's questions.\n\n"}  # Use default system message
+        conversation_template = setup_conversation_template(tokenizer, chat_template_config=chat_template_config, 
+                                save_path=args.conversation_template_config)
+    if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
+        try:
+            # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen
+           tokenizer.pad_token = tokenizer.eos_token
+        except AttributeError as e:
+            logger.warning(f"Unable to set pad token to eos token, {str(e)}")
+    if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+        logger.warning("The tokenizer does not have a pad token which is required. May lead to unintended behavior in training, Please consider manually set them.")
 
     list_dataset = load_dataset(
         path="json",
@@ -105,6 +124,8 @@ def main():
     )
     for index, dataset in enumerate(list_dataset):
         assert isinstance(dataset, dataset_dict.Dataset)
+        if len(dataset)==0:
+            continue
         if args.num_samples_per_datafile > 0:
             # limit the number of samples in each dataset
             dataset = dataset.select(
@@ -155,7 +176,7 @@ def main():
             split="train",
         )
         dataset.save_to_disk(dataset_path=output_arrow_path, num_proc=min(len(dataset), cpu_count()))
-
+        
 
 if __name__ == "__main__":
     main()

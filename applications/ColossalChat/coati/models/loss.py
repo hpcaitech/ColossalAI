@@ -118,11 +118,16 @@ class DpoLoss(nn.Module):
             The losses tensor contains the DPO loss for each example in the batch.
             The chosen_rewards and rejected_rewards tensors contain the rewards for the chosen and rejected responses, respectively.
         """
+        # print(logprob_actor_chosen.shape, logprob_actor_reject.shape, logprob_ref_chosen.shape, logprob_ref_reject.shape, chosen_mask.shape, reject_mask.shape)
+        # temp = logprob_actor_chosen*chosen_mask
+        # print(temp[temp!=0])
+        # print(torch.exp(temp[temp!=0]))
+        # exit()
         logprob_actor_chosen = logprob_actor_chosen * chosen_mask
         logprob_actor_reject = logprob_actor_reject * reject_mask
-        logprob_ref_chosen = logprob_ref_chosen * chosen_mask
-        logprob_ref_reject = logprob_ref_reject * reject_mask
         if logprob_ref_chosen is not None and logprob_ref_reject is not None:
+            logprob_ref_chosen = logprob_ref_chosen * chosen_mask
+            logprob_ref_reject = logprob_ref_reject * reject_mask
             if len(logprob_ref_chosen.shape) == 2:
                 ref_logratios = logprob_ref_chosen.sum(-1) - logprob_ref_reject.sum(-1)
             else:

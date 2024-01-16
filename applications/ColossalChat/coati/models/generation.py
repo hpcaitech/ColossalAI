@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, List
 
 import torch
 import torch.distributed as dist
@@ -96,6 +96,7 @@ def _sample_streaming(
     early_stopping: bool = False,
     eos_token_id: Optional[int] = None,
     pad_token_id: Optional[int] = None,
+    stop_token_ids: Optional[List[int]] = None,
     top_k: Optional[int] = None,
     top_p: Optional[float] = None,
     temperature: Optional[float] = None,
@@ -138,12 +139,18 @@ def _sample_streaming(
 
         # update generated ids, model inputs for next step
         input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
+
         if update_model_kwargs_fn is not None:
             model_kwargs = update_model_kwargs_fn(outputs, next_tokens != eos_token_id, model_kwargs)
 
         # if eos_token was found in one sentence, set sentence to finished
         if eos_token_id is not None:
             unfinished_sequences = unfinished_sequences.mul((next_tokens != eos_token_id).long())
+        
+        if stop_token_ids is not None:
+            # If the last len(stop_token_ids) tokens of input_ids are equal to stop_token_ids, set sentence to finished.
+            tokens_to_check = input_ids[:, - len(stop_token_ids) : ]
+            unfinished_sequences = unfinished_sequences.mul(torch.any(tokens_to_check != torch.LongTensor(stop_token_ids).to(input_ids.device), dim=1).long())
 
         # stop when each sentence is finished if early_stopping=True
         if (

@@ -20,7 +20,12 @@ from transformers import AutoTokenizer
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
+from colossalai.booster.plugin import (
+    GeminiPlugin, 
+    HybridParallelPlugin, 
+    LowLevelZeroPlugin,
+    TorchDDPPlugin
+)
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
@@ -80,7 +85,13 @@ def train(args):
     # ==============================
     # Initialize Booster
     # ==============================
-    if args.plugin == "gemini":
+    if args.plugin == "ddp":
+        '''
+        Default torch ddp plugin without any acceleration, for 
+        debugging purpose acceleration, for debugging purpose
+        '''
+        plugin = TorchDDPPlugin(find_unused_parameters=True)
+    elif args.plugin == "gemini":
         plugin = GeminiPlugin(
             precision=args.mixed_precision,
             initial_scale=2**16,
@@ -134,9 +145,17 @@ def train(args):
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
-    _ = setup_conversation_template(tokenizer)
-    tokenizer.padding_side = "right"
-    tokenizer.pad_token = tokenizer.eos_token
+    if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
+        try:
+            # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen
+           tokenizer.pad_token = tokenizer.eos_token
+        except AttributeError as e:
+            logger.warning(f"Unable to set pad token to eos token, {str(e)}")
+    if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+        logger.warning("The tokenizer does not have a pad token which is required. May lead to unintended behavior in training, Please consider manually set them.")
+
+    tokenizer.add_bos_token = False
+    tokenizer.add_eos_token = False
 
     # configure loss function
     if args.loss_fn == "log_sig":
@@ -277,7 +296,7 @@ if __name__ == "__main__":
         "--plugin",
         type=str,
         default="gemini",
-        choices=["gemini", "gemini_auto", "zero2", "zero2_cpu", "3d"],
+        choices=["gemini", "gemini_auto", "zero2", "zero2_cpu", "3d", "ddp"],
         help="Choose which plugin to use",
     )
     parser.add_argument("--grad_clip", type=float, default=1.0, help="Gradient clipping value")

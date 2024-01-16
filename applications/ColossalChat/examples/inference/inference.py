@@ -1,10 +1,10 @@
 import argparse
 import os
 from copy import deepcopy
-
+import json
 import torch
 from chatio import dummy_io, rich_io, simple_io
-from coati.dataset.conversation import default_conversation
+from coati.dataset.conversation import setup_conversation_template
 from coati.models import generate_streaming
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -41,6 +41,9 @@ def generation_wrapper(*args, **kwargs):
 
 
 def main(args):
+
+    conversation_template_config = json.load(open(args.conversation_template_config, "r", encoding='utf8'))
+                            
     max_new_tokens = args.max_new_tokens
     model_max_length = args.model_max_length
     model, tokenizer = load_model_and_tokenizer(
@@ -48,8 +51,12 @@ def main(args):
     )
 
     assert max_new_tokens <= model_max_length
-    if not tokenizer.eos_token_id:
-        tokenizer.eos_token_id = "</s>"
+    if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
+        try:
+            # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen
+           tokenizer.pad_token = tokenizer.eos_token
+        except AttributeError as e:
+            logger.warning(f"Unable to set pad token to eos token, {str(e)}")
     tokenizer.padding_side = "left"
 
     model_kwargs = {
@@ -60,10 +67,9 @@ def main(args):
         # 'temperature': 1.0,
         # 'temperature':0.1,
     }
-    conv = deepcopy(default_conversation)
-
-    roles = conv.roles
     round = 1
+
+    conv = setup_conversation_template(tokenizer, conversation_template_config)
 
     while True:
         if args.io == "simple":
@@ -75,7 +81,7 @@ def main(args):
         else:
             raise ValueError(f"Unknown io type: {args.io}")
         # raw_text = print(">>> Human:", end=" ")
-        inp = chat_io.prompt_for_input(conv.roles[0])
+        inp = chat_io.prompt_for_input('user')
 
         if not inp:
             print("prompt should not be empty!")
@@ -92,12 +98,12 @@ def main(args):
 
         query_text = inp.strip()
 
-        conv.append_message(roles[0], query_text)
-        conv.append_message(roles[1], None)
+        conv.append_message('user', query_text)
 
-        chat_io.prompt_for_output(conv.roles[1])
+        chat_io.prompt_for_output('assistant')
 
         prompt = conv.get_prompt()
+        
         input_ids = tokenizer(prompt, return_tensors="pt", add_special_tokens=False)["input_ids"].to(
             torch.cuda.current_device()
         )
@@ -108,13 +114,14 @@ def main(args):
             max_length=model_max_length,
             temperature=0.7,
             early_stopping=True,
+            stop_token_ids = conversation_template_config['assistant_line_end'],
             **model_kwargs,
         )
 
         # print(f">>> Assistant:", end=" ")
         outputs = chat_io.stream_output(output_stream)
 
-        conv.messages[-1][-1] = outputs.strip()
+        conv.append_message('assistant', outputs.strip())
 
         with open("round.txt", mode="a", encoding="utf-8") as f:
             f.write("\n\n" + "=" * 10 + "\n")
@@ -130,6 +137,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default=None)
     parser.add_argument("--tokenizer_path", type=str, default=None)
+    parser.add_argument("--conversation_template_config", type=str, default=None)
     parser.add_argument("--model_max_length", type=int, default=2048)
     parser.add_argument("--max_new_tokens", type=int, default=512)
     parser.add_argument("--io", type=str, default="rich", choices=["simple", "rich", "dummy"])
