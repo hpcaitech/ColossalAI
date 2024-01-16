@@ -18,7 +18,21 @@ ColossalAI-Inference is a library which offers acceleration to Transformers mode
 
 ## 🛠 Design and Implementation
 
-To be added.
+### :book: Overview
+We build ColossalAI-Inference based on **Four** core components: `engine`,`request handler`,`cache manager(block cached)`, `hand crafted modeling`. **Engine** controls inference step, it recives `requests`, calls `request handler` to schedule a decoding batch and runs `modeling` to perform a iteration and returns finished `requests`. **Cache manager** is bound with `request handler`, updates cache blocks and logical block tables during schedule.
+
+The interaction between different components are shown below, you can also checkout detailed introduction below.:
+`fig`
+
+### :mailbox_closed: Design of engine
+Engine is designed as starter of inference loop. User can easily instantialize an infer engine with config and execute requests. We provids apis below in engine, you can refer to source code for more information:
+-  `generate`: main function, handle inputs and return outputs
+-  `add_request`: add request to waitting list
+-  `step`: perform one decoding iteration
+    - first, `request handler` schedules a batch to do prefill/decode
+    - then, invoke a model to generate a batch of token
+    - after that, do logit processing and sampling, check and decode finished requests
+
 
 ## 🕹 Usage
 
@@ -44,6 +58,7 @@ Notations:
 - [x] High-Performance Kernels
 - [x] Llama Modelling
 - [ ] Tensor Parallelism
+- [ ] Beam Search
 - [ ] Speculative Decoding
 - [ ] Continuous Batching
 - [ ] Online Inference
