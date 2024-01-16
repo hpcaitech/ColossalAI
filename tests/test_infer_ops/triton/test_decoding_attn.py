@@ -85,12 +85,24 @@ def test_flash_decoding(
     block_tables = block_tables.to(device=device)
 
     q = q.view(bsz, q_len, num_attn_heads, head_dim)
+
+    max_seq_len = context_lengths.max().item()
+    # the maximum block length splitted on kv should be the kv cache block size
+    kv_max_split_num = (max_seq_len + block_size - 1) // block_size
+    mid_output = torch.empty(
+        size=(bsz, num_attn_heads, kv_max_split_num, head_dim), dtype=torch.float32, device=q.device
+    )
+    mid_output_lse = torch.empty(size=(bsz, num_attn_heads, kv_max_split_num), dtype=torch.float32, device=q.device)
+
     out_triton = flash_decoding_fwd(
         q,
         k_cache,
         v_cache,
         context_lengths,
         block_tables,
+        max_seq_len,
+        mid_output,
+        mid_output_lse,
         block_size,
         kv_group_num,
     )

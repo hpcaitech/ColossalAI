@@ -15,7 +15,7 @@ def _flash_decoding_fwd_kernel(
     block_tables,  # [batch_size, max_blocks_per_sequence]
     mid_o,  # [batch_size, head_num, kv_split_num, head_dim]
     mid_o_lse,  # [batch_size, head_num, kv_split_num]
-    context_lengths,  # [batch_size]
+    kv_seq_len,  # [batch_size]
     stride_qt,
     stride_qh,
     stride_qd,
@@ -51,7 +51,7 @@ def _flash_decoding_fwd_kernel(
     tl.static_assert(BLOCK_KV == BLOCK_SIZE)
 
     # get the current (kv) sequence length from provided context lengths tensor
-    cur_kv_seq_len = tl.load(context_lengths + cur_seq_idx)
+    cur_kv_seq_len = tl.load(kv_seq_len + cur_seq_idx)
 
     offsets_q = cur_seq_idx * stride_qt + cur_head_idx * stride_qh + offsets_dmodel * stride_qd
     q = tl.load(Q + offsets_q)
@@ -132,7 +132,7 @@ def _flash_decoding_fwd_reduce_kernel(
     mid_o,  # [batch_size, head_num, kv_split_num, head_dim]
     mid_o_lse,  # [batch_size, head_num, kv_split_num]
     O,  # [batch_size, num_heads, head_dim] or [batch_size, 1, num_heads, head_dim]
-    context_lengths,
+    kv_seq_len,
     stride_mid_ot,
     stride_mid_oh,
     stride_mid_ob,
@@ -149,7 +149,7 @@ def _flash_decoding_fwd_reduce_kernel(
     cur_seq_idx = tl.program_id(0)
     cur_head_idx = tl.program_id(1)
 
-    cur_kv_seq_len = tl.load(context_lengths + cur_seq_idx)
+    cur_kv_seq_len = tl.load(kv_seq_len + cur_seq_idx)
     offsets_dmodel = tl.arange(0, HEAD_DIM)
 
     # NOTE currently the block size BLOCK_KV splitting kv is relatively small as we have
@@ -185,17 +185,20 @@ def flash_decoding_fwd(
     q: torch.Tensor,  # [bsz(e.g.num_tokens), 1, num_heads, head_dim]
     k_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
     v_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
-    context_lengths: torch.Tensor,  # [batch_size]
+    kv_seq_len: torch.Tensor,  # [batch_size]
     block_tables: torch.Tensor,  # [batch_size, max_blocks_per_sequence]
+    max_seq_len_in_batch: int,
+    mid_output: torch.Tensor,  # [bsz, num_heads, kv_max_split_num, head_dim]
+    mid_output_lse: torch.Tensor,  # [bsz, num_heads, kv_max_split_num]
     block_size: int,
     num_kv_group: int = 1,
 ):
     bsz, _, num_heads, head_dim = q.shape
 
     assert head_dim in {32, 64, 128, 256}
-    assert context_lengths.shape[0] == block_tables.shape[0] == bsz, (
+    assert kv_seq_len.shape[0] == block_tables.shape[0] == bsz, (
         f"Got incompatible batch size (number of seqs):\n"
-        f"  Conext lengths bsz {context_lengths.shape[0]}, Block tables bsz {block_tables.shape[0]}, "
+        f"  KV seq lengths bsz {kv_seq_len.shape[0]}, Block tables bsz {block_tables.shape[0]}, "
         f"batch size {bsz}"
     )
     assert k_cache.size(-1) == v_cache.size(-1) == block_size, (
@@ -203,9 +206,8 @@ def flash_decoding_fwd(
         f"  assigned block_size {block_size}, k_cache block_size {k_cache.size(-1)}, "
         f"v_cache block_size {v_cache.size(-1)}"
     )
-    # NOTE `context_lengths` records the (kv) sequence lengths incorporating past kv sequence lengths.
-    bsz = context_lengths.size(0)  # e.g. the number of seqs
-    max_seq_len = context_lengths.max().item()
+    # NOTE `kv_seq_len` records the (kv) sequence lengths incorporating past kv sequence lengths.
+    bsz = kv_seq_len.size(0)  # e.g. the number of seqs
     sm_scale = 1.0 / (head_dim**0.5)
 
     # NOTE BLOCK_KV could be considered as block splitting the sequence on k/v
@@ -213,23 +215,19 @@ def flash_decoding_fwd(
     assert block_size in {16, 32, 64, 128}
     BLOCK_KV = block_size
 
-    kv_max_split_num = (max_seq_len + BLOCK_KV - 1) // BLOCK_KV
-    mid_o = torch.zeros(size=(bsz, num_heads, kv_max_split_num, head_dim), dtype=torch.float32, device=q.device)
-    mid_o_lse = torch.zeros(size=(bsz, num_heads, kv_max_split_num), dtype=torch.float32, device=q.device)
-
     if q.dim() == 4:
         assert q.size(1) == 1, f"q_len is supposed to be 1 but is {q.size(1)}"
         q = q.squeeze(1)
 
-    grid = (bsz, num_heads, triton.cdiv(max_seq_len, BLOCK_KV))
+    grid = (bsz, num_heads, triton.cdiv(max_seq_len_in_batch, BLOCK_KV))
     _flash_decoding_fwd_kernel[grid](
         q,
         k_cache,
         v_cache,
         block_tables,
-        mid_o,
-        mid_o_lse,
-        context_lengths,
+        mid_output,
+        mid_output_lse,
+        kv_seq_len,
         q.stride(0),
         q.stride(1),
         q.stride(2),
@@ -239,13 +237,13 @@ def flash_decoding_fwd(
         k_cache.stride(3),
         block_tables.stride(0),
         block_tables.stride(1),
-        mid_o.stride(0),
-        mid_o.stride(1),
-        mid_o.stride(2),
-        mid_o.stride(3),
-        mid_o_lse.stride(0),
-        mid_o_lse.stride(1),
-        mid_o_lse.stride(2),
+        mid_output.stride(0),
+        mid_output.stride(1),
+        mid_output.stride(2),
+        mid_output.stride(3),
+        mid_output_lse.stride(0),
+        mid_output_lse.stride(1),
+        mid_output_lse.stride(2),
         sm_scale,
         KV_GROUPS=num_kv_group,
         BLOCK_KV=block_size,
@@ -253,22 +251,22 @@ def flash_decoding_fwd(
         HEAD_DIM=head_dim,
     )
 
-    output = torch.zeros_like(q)
+    output = torch.empty_like(q)
     output = output.view(-1, output.size(-2), output.size(-1))
 
     grid = (bsz, num_heads)
     _flash_decoding_fwd_reduce_kernel[grid](
-        mid_o,
-        mid_o_lse,
+        mid_output,
+        mid_output_lse,
         output,
-        context_lengths,
-        mid_o.stride(0),
-        mid_o.stride(1),
-        mid_o.stride(2),
-        mid_o.stride(3),
-        mid_o_lse.stride(0),
-        mid_o_lse.stride(1),
-        mid_o_lse.stride(2),
+        kv_seq_len,
+        mid_output.stride(0),
+        mid_output.stride(1),
+        mid_output.stride(2),
+        mid_output.stride(3),
+        mid_output_lse.stride(0),
+        mid_output_lse.stride(1),
+        mid_output_lse.stride(2),
         output.stride(0),
         output.stride(1),
         output.stride(2),
