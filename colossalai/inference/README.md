@@ -13,7 +13,6 @@
 
 
 ## 📌 Introduction
-
 ColossalAI-Inference is a library which offers acceleration to Transformers models, especially LLMs. In ColossalAI-Inference, we leverage high-performance kernels, KV cache, paged attention, continous batching and other techniques to accelerate the inference of LLMs. We also provide a unified interface for users to easily use our library.
 
 ## 🛠 Design and Implementation
@@ -32,6 +31,9 @@ Engine is designed as starter of inference loop. User can easily instantialize a
     - first, `request handler` schedules a batch to do prefill/decode
     - then, invoke a model to generate a batch of token
     - after that, do logit processing and sampling, check and decode finished requests
+
+### :game_die: Design of request_handler
+Request handler is responsible manage requests and schedule a proper batch from exisiting requests. According to existing work and experiments, we do believe that it is beneficial to increase the length of decoding sequences. In our design, we partition requests into three priorities depending on their lengths, the longer sequences are first considered.
 
 
 ## 🕹 Usage
