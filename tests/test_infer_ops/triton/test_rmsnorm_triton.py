@@ -2,7 +2,7 @@ import pytest
 import torch
 from packaging import version
 
-from colossalai.kernel.triton import layer_norm
+from colossalai.kernel.triton import rms_layernorm
 from colossalai.testing.utils import parameterize
 from transformers.models.llama.modeling_llama import LlamaRMSNorm
 
@@ -32,7 +32,7 @@ def test_layer_norm(M, N):
     rms_norm = LlamaRMSNorm(hidden_size=N, eps=eps).cuda()
     x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device="cuda")
 
-    y_triton = layer_norm(x, weight, eps=eps)
+    y_triton = rms_layernorm(x, weight, eps=eps)
     y_llama = rms_norm.forward(x).to(dtype)
 
     assert torch.allclose(y_triton, y_llama, atol=1e-5, rtol=1e-5)

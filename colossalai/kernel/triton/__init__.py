@@ -10,7 +10,7 @@ except ImportError:
 if HAS_TRITON:
     from .context_attn_unpad import context_attention_unpadded
     from .flash_decoding import flash_decoding_fwd
-    from .fused_layernorm import layer_norm
+    from .rms_layernorm import rms_layernorm
     from .gptq_triton import gptq_fused_linear_triton
     from .no_pad_rotary_embedding import rotary_embedding
     from .softmax import softmax
@@ -19,7 +19,7 @@ if HAS_TRITON:
         "context_attention_unpadded",
         "flash_decoding_fwd",
         "softmax",
-        "layer_norm",
+        "rms_layernorm",
         "gptq_fused_linear_triton",
         "rotary_embedding",
     ]

@@ -14,7 +14,7 @@ if HAS_TRITON:
     # https://triton-lang.org/main/getting-started/tutorials/05-layer-norm.html
 
     @triton.jit
-    def _layer_norm_fwd_fused(
+    def _rmsnorm_kernel(
         X,  # pointer to the input
         Y,  # pointer to the output
         W,  # pointer to the weights
@@ -23,18 +23,13 @@ if HAS_TRITON:
         eps,  # epsilon to avoid division by zero
         BLOCK_SIZE: tl.constexpr,
     ):
+
+        # This triton kernel implements Root Mean Square Layer Norm (RMSNorm).
+
         # Map the program id to the row of X and Y it should compute.
         row = tl.program_id(0)
         Y += row * stride
         X += row * stride
-        # Compute mean
-        mean = 0
-        _mean = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-        for off in range(0, N, BLOCK_SIZE):
-            cols = off + tl.arange(0, BLOCK_SIZE)
-            a = tl.load(X + cols, mask=cols < N, other=0.0).to(tl.float32)
-            _mean += a
-        mean = tl.sum(_mean, axis=0) / N
         # Compute variance
         _var = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
         for off in range(0, N, BLOCK_SIZE):
@@ -56,7 +51,7 @@ if HAS_TRITON:
             tl.store(Y + cols, y.to(tl.float16), mask=mask)
 
     @torch.no_grad()
-    def layer_norm(x, weight, eps):
+    def rms_layernorm(x, weight, eps):
         # allocate output
         y = torch.empty_like(x)
         # reshape input data into 2D tensor
@@ -70,7 +65,7 @@ if HAS_TRITON:
         # heuristics for number of warps
         num_warps = min(max(BLOCK_SIZE // 256, 1), 8)
         # enqueue kernel
-        _layer_norm_fwd_fused[(M,)](
+        _rmsnorm_kernel[(M,)](
             x_arg, y, weight, x_arg.stride(0), N, eps, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
         )
         return y
