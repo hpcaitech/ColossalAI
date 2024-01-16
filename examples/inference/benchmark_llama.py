@@ -95,7 +95,7 @@ def benchmark_inference(args):
 
         if args.dtype == "fp16":
             model = model.half()
-        elif args.dtype == "fp16":
+        elif args.dtype == "bf16":
             model = model.to(torch.bfloat16)
 
         # mbsz = args.mbsz

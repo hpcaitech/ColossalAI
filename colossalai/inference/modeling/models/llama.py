@@ -10,9 +10,9 @@ from transformers.models.llama.modeling_llama import (
     repeat_kv,
 )
 
-from colossalai.inference.modeling.layers.attention import PagedAttention, copy_to_cache
+from colossalai.inference.modeling.layers.attention import PagedAttention
 from colossalai.inference.struct import BatchInfo
-from colossalai.kernel.triton import context_attention_unpadded, flash_decoding_fwd
+from colossalai.kernel.triton import context_attention_unpadded, copy_kv_to_blocked_cache, flash_decoding_fwd
 from colossalai.logging import get_dist_logger
 
 from flash_attn.bert_padding import index_first_axis, pad_input  # noqa
@@ -83,7 +83,7 @@ def llama_model_forward(
         sequence_lengths = attention_mask.sum(dim=-1, dtype=torch.int32)
     else:
         sequence_lengths = batch.get_sequence_lengths()
-    
+
     max_seq_len = sequence_lengths.max().item()
 
     if attention_mask is not None:
@@ -93,9 +93,7 @@ def llama_model_forward(
         else:
             position_ids = (attention_mask.sum(dim=-1) - 1).reshape(-1, 1)
     else:
-        position_ids = torch.arange(
-            max_seq_len - 1, max_seq_len, dtype=torch.long, device=batch.device
-        )
+        position_ids = torch.arange(max_seq_len - 1, max_seq_len, dtype=torch.long, device=batch.device)
         position_ids = position_ids.unsqueeze(0)
 
     hidden_states = self.embed_tokens(input_ids)
@@ -199,6 +197,7 @@ def llama_attn_forward(
                 query_states = query_states.view(-1, self.num_heads, self.head_dim)
                 key_states = key_states.view(-1, self.num_heads, self.head_dim)
                 value_states = value_states.view(-1, self.num_heads, self.head_dim)
+
             attn_output = context_attention_unpadded(
                 query_states, key_states, value_states, k_cache, v_cache, sequence_lengths, block_tables, block_size
             )
@@ -210,12 +209,12 @@ def llama_attn_forward(
             )
     else:
         if HAS_TRITON:
-            copy_to_cache(key_states, k_cache, lengths=sequence_lengths, block_tables=block_tables, type="decoding")
-            copy_to_cache(value_states, v_cache, lengths=sequence_lengths, block_tables=block_tables, type="decoding")
+            copy_kv_to_blocked_cache(key_states, k_cache, context_lengths=sequence_lengths, block_tables=block_tables)
+            copy_kv_to_blocked_cache(value_states, v_cache, context_lengths=sequence_lengths, block_tables=block_tables)
             attn_output = flash_decoding_fwd(query_states, k_cache, v_cache, sequence_lengths, block_tables, block_size)
         else:
             attn_output = PagedAttention.pad_decoding_forward(
-            query_states, key_states, value_states, k_cache, v_cache, sequence_lengths, block_tables, attention_mask
+                query_states, key_states, value_states, k_cache, v_cache, sequence_lengths, block_tables, attention_mask
             )
 
     attn_output = attn_output.view(bsz, q_len, self.num_heads, self.head_dim)
@@ -224,11 +223,13 @@ def llama_attn_forward(
 
     return attn_output
 
+
 @torch.no_grad()
 def generate_padding_position_id(attention_mask: torch.Tensor) -> torch.Tensor:
     position_ids = attention_mask.long().cumsum(-1) - 1
     position_ids.masked_fill_(attention_mask == 0, 1)
     return position_ids
+
 
 @torch.no_grad()
 def unpading_input(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attention_mask: torch.Tensor):
