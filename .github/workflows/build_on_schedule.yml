@@ -23,6 +23,7 @@ jobs:
           ngpu=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
           endIndex=$(($ngpu-1))
           for i in $(seq 0 $endIndex);
+          do
             gpu_used=$(nvidia-smi -i $i --query-gpu=memory.used --format=csv,noheader,nounits)
             [ "$gpu_used" -gt "2000" ] && avai=false
           done
