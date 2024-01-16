@@ -29,6 +29,9 @@ class RequestStatus(enum.Enum):
     COMPLETED = enum.auto()
     LENGTH_CAPPED = enum.auto()
 
+    # recycle status
+    RECYCLED = enum.auto()
+
     @staticmethod
     def is_finished(status: "RequestStatus") -> bool:
         return status in [
@@ -86,6 +89,8 @@ class Sequence:
         """
         Get length of input sentence.
         """
+        if self.status == RequestStatus.RECYCLED:
+            return len(self.input_token_id) + len(self.output_token_id)
         return len(self.input_token_id)
 
     @property
@@ -138,13 +143,14 @@ class Sequence:
         """
         Recycle a running sequnce to waiitting list
         """
+        if self.check_finish():
+            print(self.sentence_len)
+        print(self.status)
         assert (
             not self.check_finish() and not self.status == RequestStatus.ABORTED
         ), "The running sequence \
         is already done but it still in running list"
-        self.status = RequestStatus.WAITING
-        self.input_token_id.extend(self.output_token_id)
-        self.output_token_id = []
+        self.status = RequestStatus.RECYCLED
 
     def __repr__(self) -> str:
         return (
@@ -305,7 +311,10 @@ class BatchInfo:
 
         for seq in self.sequences_set:
             if self.is_prompts:
-                input_list.append(seq.input_token_id)
+                if seq.status == RequestStatus.RECYCLED:
+                    input_list.append(seq.input_token_id.extend(seq.output_token_id))
+                else:
+                    input_list.append(seq.input_token_id)
             else:
                 input_list.append([seq.output_token_id[-1]])
 

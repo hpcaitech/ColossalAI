@@ -107,6 +107,7 @@ class RequestHandler:
                                 f"the prompt(Request id = {seq.request_id}) length is longer than max_input_len, abort this sequence."
                             )
                             self.abort_sequence(seq.request_id)
+                            remove_list.append(seq)
                             break
 
                         # stop feeding new sequence into running list to assure
