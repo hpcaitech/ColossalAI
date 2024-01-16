@@ -78,7 +78,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.skipif(version.parse(torch.__version__) < version.parse("1.12.0"), reason="requires torch1.12 or higher")
-# @rerun_if_address_is_in_use()
+@rerun_if_address_is_in_use()
 def test_torch_fsdp_plugin():
     spawn(run_dist, 2)
 
