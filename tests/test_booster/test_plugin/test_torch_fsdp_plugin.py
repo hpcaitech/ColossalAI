@@ -11,7 +11,7 @@ if version.parse(torch.__version__) >= version.parse("1.12.0"):
     from colossalai.booster.plugin import TorchFSDPPlugin
 
 from colossalai.interface import OptimizerWrapper
-from colossalai.testing import clear_cache_before_run, spawn
+from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import COMMON_MODELS, IS_FAST_TEST, model_zoo
 
 
