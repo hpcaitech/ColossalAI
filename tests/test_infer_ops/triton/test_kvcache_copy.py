@@ -107,11 +107,11 @@ def test_copy_kv_to_caches(
         assert torch.equal(orig, target)
 
 
-BATCH = 4
+BATCH = 16
 configs = [
     triton.testing.Benchmark(
-        x_names=["PAST_KVLEN"],
-        x_vals=[2**i - 1 for i in range(8, 13)],
+        x_names=["KV_SEQ_LEN"],
+        x_vals=[2**i for i in range(8, 13)],
         line_arg="provider",
         line_vals=["torch_copy_func", "triton_copy_func"],
         line_names=["torch_copy_func", "triton_copy_func"],
@@ -129,7 +129,7 @@ def benchmark_kvcache_copy(
     bsz: int,
     block_size: int,
     max_seq_len: int,
-    PAST_KVLEN: int,  # maximum past kv length (unequal context lens in batch) or past kv len (equal context lens)
+    KV_SEQ_LEN: int,  # maximum past kv length (unequal context lens in batch) or past kv len (equal context lens)
     num_kv_heads: int,
     same_context_len: bool,
 ):
@@ -140,7 +140,7 @@ def benchmark_kvcache_copy(
     dtype = torch.float16
     device = get_current_device()
 
-    assert PAST_KVLEN < max_seq_len, "Assigned maximum past kv length must be smaller or equal to maximum seq len"
+    assert KV_SEQ_LEN <= max_seq_len, "Assigned maximum kv length must be smaller or equal to maximum seq len"
 
     new_k, k_cache, context_lengths, block_tables = prepare_data(
         bsz,
@@ -149,7 +149,7 @@ def benchmark_kvcache_copy(
         block_size,
         max_seq_len // block_size,
         same_context_len,
-        PAST_KVLEN,
+        KV_SEQ_LEN,
         device=device,
         dtype=dtype,
     )
@@ -167,4 +167,4 @@ def benchmark_kvcache_copy(
 
 if __name__ == "__main__":
     test_copy_kv_to_caches(4, 32, 8, 16, True)
-    # benchmark_kvcache_copy.run(save_path=".")
+    # benchmark_kvcache_copy.run(save_path=".", print_data=True)
