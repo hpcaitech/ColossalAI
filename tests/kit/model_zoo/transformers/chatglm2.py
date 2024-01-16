@@ -2,7 +2,6 @@ import torch
 
 from colossalai.shardformer.modeling.chatglm2_6b.configuration_chatglm import ChatGLMConfig
 from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
-
 from ..registry import ModelAttribute, model_zoo
 
 # ================================

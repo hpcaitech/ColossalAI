@@ -6,7 +6,6 @@
 </p>
 
 - 70 billion parameter LLaMA2 model training accelerated by 195%
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama2)
 [[blog]](https://www.hpc-ai.tech/blog/70b-llama2-training)
 
 ### LLaMA1
@@ -15,7 +14,6 @@
 </p>
 
 - 65-billion-parameter large model pretraining accelerated by 38%
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/example/llama/examples/language/llama)
 [[blog]](https://www.hpc-ai.tech/blog/large-model-pretraining)
 
 ## Dataset
@@ -123,7 +121,7 @@ Here we will show an example of how to run training
 llama pretraining with `gemini, batch_size=16, sequence_length=4096, gradient_checkpoint=True, flash_attn=True`.
 
 #### a. Running environment
-This experiment was performed on 4 computing nodes with 32 A800 GPUs in total for LLaMA-1 65B. The nodes are
+This experiment was performed on 4 computing nodes with 32 A800/H800 80GB GPUs in total for LLaMA-1 65B or LLaMA-2 70B. The nodes are
 connected with RDMA and GPUs within one node are fully connected with NVLink.
 
 #### b. Running command
