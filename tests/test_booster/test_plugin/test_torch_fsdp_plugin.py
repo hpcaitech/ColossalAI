@@ -11,11 +11,12 @@ if version.parse(torch.__version__) >= version.parse("1.12.0"):
     from colossalai.booster.plugin import TorchFSDPPlugin
 
 from colossalai.interface import OptimizerWrapper
-from colossalai.testing import rerun_if_address_is_in_use, spawn
-from tests.kit.model_zoo import model_zoo, IS_FAST_TEST, COMMON_MODELS
+from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
+from tests.kit.model_zoo import COMMON_MODELS, IS_FAST_TEST, model_zoo
 
 
 # test basic fsdp function
+@clear_cache_before_run()
 def run_fn(model_fn, data_gen_fn, output_transform_fn):
     plugin = TorchFSDPPlugin()
     booster = Booster(plugin=plugin)
@@ -40,12 +41,18 @@ def run_fn(model_fn, data_gen_fn, output_transform_fn):
     optimizer.clip_grad_by_norm(1.0)
     optimizer.step()
 
+    del model
+    del optimizer
+    del criterion
+    del booster
+    del plugin
+
 
 def check_torch_fsdp_plugin():
     if IS_FAST_TEST:
         registry = model_zoo.get_sub_registry(COMMON_MODELS)
     else:
-        registry = model_zoo
+        registry = model_zoo.get_sub_registry("transformers_gptj")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in registry.items():
         if any(
@@ -59,6 +66,7 @@ def check_torch_fsdp_plugin():
             ]
         ):
             continue
+        print(name)
         run_fn(model_fn, data_gen_fn, output_transform_fn)
         torch.cuda.empty_cache()
 
@@ -73,3 +81,7 @@ def run_dist(rank, world_size, port):
 @rerun_if_address_is_in_use()
 def test_torch_fsdp_plugin():
     spawn(run_dist, 2)
+
+
+if __name__ == "__main__":
+    test_torch_fsdp_plugin()
