@@ -209,8 +209,12 @@ def llama_attn_forward(
             )
     else:
         if HAS_TRITON:
-            copy_kv_to_blocked_cache(key_states, k_cache, context_lengths=sequence_lengths, block_tables=block_tables)
-            copy_kv_to_blocked_cache(value_states, v_cache, context_lengths=sequence_lengths, block_tables=block_tables)
+            copy_kv_to_blocked_cache(
+                key_states, k_cache, context_lengths=sequence_lengths - 1, block_tables=block_tables
+            )
+            copy_kv_to_blocked_cache(
+                value_states, v_cache, context_lengths=sequence_lengths - 1, block_tables=block_tables
+            )
             attn_output = flash_decoding_fwd(query_states, k_cache, v_cache, sequence_lengths, block_tables, block_size)
         else:
             attn_output = PagedAttention.pad_decoding_forward(
