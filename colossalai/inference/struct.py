@@ -143,6 +143,8 @@ class Sequence:
         ), "The running sequence \
         is already done but it still in running list"
         self.status = RequestStatus.WAITING
+        self.input_token_id.extend(self.output_token_id)
+        self.output_token_id = []
 
     def __repr__(self) -> str:
         return (
