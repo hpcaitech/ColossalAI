@@ -254,6 +254,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
         self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
         self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
+        # TODO: Currently moe only support partially sequence parallel
+        self.sp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
+
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
             pipeline_stage_manager=self.stage_manager,
@@ -365,6 +368,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 shard_config=self.shard_config,
                 dp_group=self.dp_group,
                 tp_group=self.tp_group,
+                sp_group=self.sp_group,
                 use_ddp=use_ddp,
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,
