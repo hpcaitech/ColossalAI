@@ -236,6 +236,7 @@ class InferenceEngine:
         output_list = []
         batch = self.request_handler.schedule()
 
+        # TODO: padding_id is used for generating attn_mask and will be removed if nopad version is supported.
         logits = self.model(
             batch,
             self.k_cahce,
