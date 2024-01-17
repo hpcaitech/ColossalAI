@@ -57,6 +57,9 @@ class RunningList:
     def is_empty(self):
         return not self.decoding and not self.prefill
 
+    def total_seq_num(self):
+        return len(self.decoding) + len(self.prefill)
+
 
 class RequestHandler:
     """
