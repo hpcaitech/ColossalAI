@@ -11,9 +11,9 @@ from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Ro
 from ..modeling.llama import (
     LlamaPipelineForwards,
     get_llama_flash_attention_forward,
-    get_lm_forward_with_dist_cross_entropy,
     get_llama_seq_parallel_attention_forward,
     get_llama_seq_parallel_model_forward,
+    get_lm_forward_with_dist_cross_entropy,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -48,6 +48,7 @@ class LlamaPolicy(Policy):
 
         sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
         sp_size = self.shard_config.sequence_parallel_size
+        sp_group = self.shard_config.sequence_parallel_process_group
         # overlap = self.shard_config.enable_sequence_overlap
         # sp_partial_derived = sp_mode in ["1"]
         # todo: Support SP for LlaMa model
@@ -59,7 +60,7 @@ class LlamaPolicy(Policy):
         elif sp_mode == "2":
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size),
+                    "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
                 target_key=LlamaAttention,
@@ -86,7 +87,7 @@ class LlamaPolicy(Policy):
             )
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size),
+                    "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
                 target_key=LlamaAttention,
