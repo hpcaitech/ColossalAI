@@ -68,10 +68,10 @@ if HAS_LLAMA:
     loss_fn_for_seq_classification = lambda output: output["logits"].mean()
 
     config = LlamaConfig(
-        num_hidden_layers=4,
+        num_hidden_layers=8,
         hidden_size=64,
         intermediate_size=256,
-        num_attention_heads=4,
+        num_attention_heads=8,
         max_position_embeddings=128,
         num_labels=16,
     )
