@@ -13,7 +13,7 @@ from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.fx import is_compatible_with_meta
 from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device, set_seed
 from tests.kit.model_zoo import model_zoo
 
@@ -41,6 +41,7 @@ def move_to_cuda(batch):
     return {k: v.cuda() for k, v in batch.items()}
 
 
+@clear_cache_before_run()
 def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
     try:
         if init_method == "lazy":
@@ -96,7 +97,6 @@ def check_3d_plugin(init_method: str = "none", early_stop: bool = True):
         "transformers_llama_for_casual_lm"
     ).items():
         err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn)
-        torch.cuda.empty_cache()
 
         if err is None:
             passed_models.append(name)

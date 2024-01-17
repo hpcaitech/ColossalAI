@@ -9,6 +9,8 @@
 - [Table of Contents](#table-of-contents)
 - [Overview](#overview)
 - [Leaderboard](#leaderboard)
+  - [Model with ~13 Billion Parameters](#model-with-13-billion-parameters)
+  - [Model with ~7 Billion Parameters](#model-with-7-billion-parameters)
 - [Install](#install)
 - [Evaluation Process](#evaluation-process)
   - [Inference](#inference)
@@ -179,7 +181,7 @@ A data sample basically follow the format of Alpaca. It should contain the follo
 
 * `dataset` (str, compulsory): The name of the dataset.
 * `split` (str, compulsory): The split of the instruction.
-* `catrgory` (str, compulsory): The category of the instruction.
+* `category` (str, compulsory): The category of the instruction.
 * `instruction` (str, compulsory): The instruction for the LLM.
 * `input` (str, optional): The additional context of the instruction.
 * `output` (str, optional): The model output of the instruction.
@@ -392,18 +394,18 @@ To make it more easier to set the config, you only need to specify all metrics y
 
 - `combined_single_choice_accuracy`: A combination of `first_token_logit` and `single_choice_accuracy`. If one of these is correct, the model will get the score. It can be used in all dataset that contains single-choice questions.
 - `first_token_logit`: Calculate score based on softmax score over the given choices. If the argmax of the softmax is equal to the reference, the model will get the score. If there is `NaN` in softmax score, it will calculate the score using exact match. It can be used in all dataset that contains single-choice questions.
-- `single_choice_accuracy`: Calculate score using exact match. It will only get the first uppercase letter such as A, B, C or D that is not surrouded by lowercase letters. If the uppercase letter is equal to the reference, the model will get the score. It can be used in all dataset that contains single-choice questions.
-- `multi_choice_accuracy`: Calculate score on multi-choice questions. It will get a set of all uppercase letters such as A, B, C or D that is not surrouded by lowercase letters. If the prediction conatains uppercase letters that are not in reference. The model will get 0 score. If the prediction contains a uppercase letter that is in reference, the model will get a score of `1/len(reference)`. It is used in AGIEval and GAOKAO-Bench.
+- `single_choice_accuracy`: Calculate score using exact match. It will only get the first uppercase letter such as A, B, C or D that is not surrounded by lowercase letters. If the uppercase letter is equal to the reference, the model will get the score. It can be used in all dataset that contains single-choice questions.
+- `multi_choice_accuracy`: Calculate score on multi-choice questions. It will get a set of all uppercase letters such as A, B, C or D that is not surrounded by lowercase letters. If the prediction contains uppercase letters that are not in reference. The model will get 0 score. If the prediction contains a uppercase letter that is in reference, the model will get a score of `1/len(reference)`. It is used in AGIEval and GAOKAO-Bench.
 - `math_equivalence`: Code from [hendrycks](https://github.com/hendrycks/math/blob/main/modeling/math_equivalence.py). Compute scores over the prediction math formula and reference math formula. It is used in AGIEval and GAOKAO-Bench.
 - `f1_score`: Calculate English f1 score between prediction and reference. It is used in Longbench.
 - `f1_zh_score`: Calculate Chinese f1 score between prediction and reference. It is used in Longbench.
 - `rouge_score`: Calculate English f1 score between prediction and reference. It is used in GAOKAO-Bench and LongBench.
 - `rouge_zh_score`: Calculate Chinese rouge score between prediction and reference. It is used in GAOKAO-Bench and LongBench.
-- `retrieval_score`: Calculate English retrieval score between prediction and reference. It determines whether the ouput(which paragraph) corresponds to the given abstract. It is used in Longbench.
-- `retrieval_zh_score`: Calculate Chinese retrieval score between prediction and reference. It determines whether the ouput(which paragraph) corresponds to the given abstract. It is used in Longbench.
-- `classification_score`: Calculate classification score between prediction and reference. It determines whether the ouput(a class) is equal to the reference. It is used in Longbench.
+- `retrieval_score`: Calculate English retrieval score between prediction and reference. It determines whether the output(which paragraph) corresponds to the given abstract. It is used in Longbench.
+- `retrieval_zh_score`: Calculate Chinese retrieval score between prediction and reference. It determines whether the output(which paragraph) corresponds to the given abstract. It is used in Longbench.
+- `classification_score`: Calculate classification score between prediction and reference. It determines whether the output(a class) is equal to the reference. It is used in Longbench.
 - `code_sim_score`: Calculate similarity score between prediction and reference. It is used in Longbench.
-- `count_score`: Calculate count score between prediction and reference. It determines whether the ouput(number of given passages) is equal to the reference. It is used in Longbench.
+- `count_score`: Calculate count score between prediction and reference. It determines whether the output(number of given passages) is equal to the reference. It is used in Longbench.
 - `gsm_accuracy`: Calculate scores between prediction and reference.. It is used in GSM8K.
 - `perplexity`: Calculate perplexity. The formula is $ perplexity = \frac{1}{n} \sum_i e^{loss_i} $ where $n$ is the number of samples and $ loss_i $ is the average loss for sample $ i $. It can be used in all dataset.
 - `ppl_score`: Calculate perplexity score. The formula is $ ppl\_score = \frac{1}{n} \sum_i e^{-loss_i} $ where $n$ is the number of samples and $ loss_i $ is the average loss for sample $ i $. It can be used in all dataset.
@@ -455,7 +457,7 @@ def CustomizedMetric(prediction: str, reference: str):
 	return score
 ```
 
-Once you have successfully added your own metric, you should specify your metric both in `colossal_eval/evaluate/dataset_evaluator/metric.py` (suggest which subcategories shoule the metric be applied to) and your evaluation config.
+Once you have successfully added your own metric, you should specify your metric both in `colossal_eval/evaluate/dataset_evaluator/metric.py` (suggest which subcategories should the metric be applied to) and your evaluation config.
 
 ### How to Add a New Dataset?
 
