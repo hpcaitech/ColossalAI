@@ -65,7 +65,6 @@ def _flash_decoding_fwd_kernel(
     cur_block_id = tl.load(block_table_ptr + cur_bt_start_idx * stride_btb)
 
     if block_start_kv * BLOCK_KV >= cur_kv_seq_len:
-        # TODO might want to remove if-else block?
         return
 
     cur_occupied_size = tl.where(
@@ -181,18 +180,38 @@ def _flash_decoding_fwd_reduce_kernel(
 
 # Decoding Stage
 # Used with blocked KV Cache (PagedAttention)
-def flash_decoding_fwd(
-    q: torch.Tensor,  # [bsz(e.g.num_tokens), 1, num_heads, head_dim]
-    k_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
-    v_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
-    kv_seq_len: torch.Tensor,  # [batch_size]
-    block_tables: torch.Tensor,  # [batch_size, max_blocks_per_sequence]
+def flash_decoding_attention(
+    q: torch.Tensor,
+    k_cache: torch.Tensor,
+    v_cache: torch.Tensor,
+    kv_seq_len: torch.Tensor,
+    block_tables: torch.Tensor,
     max_seq_len_in_batch: int,
-    mid_output: torch.Tensor,  # [bsz, num_heads, kv_max_split_num, head_dim]
-    mid_output_lse: torch.Tensor,  # [bsz, num_heads, kv_max_split_num]
+    mid_output: torch.Tensor,
+    mid_output_lse: torch.Tensor,
     block_size: int,
     num_kv_group: int = 1,
 ):
+    """
+    Flash decoding implemented with a blocked KV Cache (PagedAttention) during decoding stage.
+
+    Args:
+        q (torch.Tensor):       [bsz, 1, num_heads, head_dim]
+        k_cache (torch.Tensor): [num_blocks, num_kv_heads, head_dim, block_size]
+        v_cache (torch.Tensor): [num_blocks, num_kv_heads, head_dim, block_size]
+        kv_seq_len (torch.Tensor): [batch_size]
+        block_tables (torch.Tensor): [batch_size, max_blocks_per_sequence]
+        max_seq_len_in_batch (int): Maximum sequence length in the batch.
+        mid_output (torch.Tensor): [ max_bsz , num_heads, kv_max_split_num, head_dim]
+            Intermediate output tensor. `max_bsz` should be greater than or equal to `bsz`.
+        mid_output_lse (torch.Tensor): [ max_bsz , num_heads, kv_max_split_num]
+            Log-sum-exp of intermediate output. `max_bsz` should be greater than or equal to `bsz`.
+        block_size (int): Size of each block in the blocked key/value cache.
+        num_kv_group (int, optional): Number of key/value groups. Defaults to 1.
+
+    Returns:
+        Output tensor with shape [bsz, num_heads, head_dim]
+    """
     bsz, _, num_heads, head_dim = q.shape
 
     assert head_dim in {32, 64, 128, 256}
@@ -219,7 +238,7 @@ def flash_decoding_fwd(
         assert q.size(1) == 1, f"q_len is supposed to be 1 but is {q.size(1)}"
         q = q.squeeze(1)
 
-    grid = (bsz, num_heads, triton.cdiv(max_seq_len_in_batch, BLOCK_KV))
+    grid = (triton.next_power_of_2(bsz), num_heads, triton.cdiv(triton.next_power_of_2(max_seq_len_in_batch), BLOCK_KV))
     _flash_decoding_fwd_kernel[grid](
         q,
         k_cache,

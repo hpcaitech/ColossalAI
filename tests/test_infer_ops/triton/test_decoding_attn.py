@@ -2,7 +2,7 @@ import pytest
 import torch
 from packaging import version
 
-from colossalai.kernel.triton import flash_decoding_fwd
+from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
 from tests.test_infer_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache, torch_attn_ref
 
@@ -94,7 +94,7 @@ def test_flash_decoding(
     )
     mid_output_lse = torch.empty(size=(bsz, num_attn_heads, kv_max_split_num), dtype=torch.float32, device=q.device)
 
-    out_triton = flash_decoding_fwd(
+    out_triton = flash_decoding_attention(
         q,
         k_cache,
         v_cache,

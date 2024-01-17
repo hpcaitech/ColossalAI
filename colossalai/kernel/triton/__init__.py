@@ -9,7 +9,7 @@ except ImportError:
 # There may exist import error even if we have triton installed.
 if HAS_TRITON:
     from .context_attn_unpad import context_attention_unpadded
-    from .flash_decoding import flash_decoding_fwd
+    from .flash_decoding import flash_decoding_attention
     from .flash_decoding_utils import FDIntermTensors
 
     from .rms_layernorm import rms_layernorm
@@ -20,7 +20,7 @@ if HAS_TRITON:
 
     __all__ = [
         "context_attention_unpadded",
-        "flash_decoding_fwd",
+        "flash_decoding_attention",
         "copy_kv_to_blocked_cache",
         "softmax",
         "rms_layernorm",
