@@ -26,7 +26,6 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
     # our crafted op equals to Transformers
     x0 = torch.randn(TOTAL_TOKENS, SEQ_LEN, D)
     x1 = torch.randn(TOTAL_TOKENS, SEQ_LEN, D)
-    print("x0.shape: ", x0.shape)
     emb = LlamaRotaryEmbedding(D)
     cos, sin = emb(x0, TOTAL_TOKENS)
     cos_2 = cos[:, :32]

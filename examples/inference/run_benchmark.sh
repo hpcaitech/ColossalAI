@@ -5,8 +5,6 @@ mode=$1
 
 mkdir -p logs
 
-# benchmark llama2-7b one single GPU
-
 CUDA_VISIBLE_DEVICES_set_n_least_memory_usage() {
     local n=${1:-"9999"}
     echo "GPU Memory Usage:"
@@ -25,11 +23,11 @@ CUDA_VISIBLE_DEVICES_set_n_least_memory_usage() {
 CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 1
 
 # benchmark llama2-7b one single GPU
-for bsz in 4 32 64; do
+for bsz in 16 32 64; do
     python3 ${PY_SCRIPT} -m llama2-7b --tp_size 1 --pp_size 1 -b $bsz -s 256 --output_len 128 --mode ${mode} | tee logs/${mode}_${GPU}_${bsz}_256.txt
 done
 
 
-# for bsz in 16 32 64; do
-#     python3 ${PY_SCRIPT} -m llama2-7b --tp_size 1 --pp_size 1 -b $bsz -s 1024 --output_len 128 --mode ${mode} | tee logs/${mode}_${GPU}_${bsz}_1024.txt
-# done
+for bsz in 16 32 64; do
+    python3 ${PY_SCRIPT} -m llama2-7b --tp_size 1 --pp_size 1 -b $bsz -s 1024 --output_len 128 --mode ${mode} | tee logs/${mode}_${GPU}_${bsz}_1024.txt
+done
