@@ -10,10 +10,11 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
 from colossalai.interface import OptimizerWrapper
-from colossalai.testing import rerun_if_address_is_in_use, spawn
-from tests.kit.model_zoo import model_zoo
+from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
+from tests.kit.model_zoo import COMMON_MODELS, IS_FAST_TEST, model_zoo
 
 
+@clear_cache_before_run()
 def run_fn(model_fn, data_gen_fn, output_transform_fn):
     plugin = TorchDDPPlugin()
     booster = Booster(plugin=plugin)
@@ -40,7 +41,12 @@ def run_fn(model_fn, data_gen_fn, output_transform_fn):
 
 
 def check_torch_ddp_plugin():
-    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in model_zoo.items():
+    if IS_FAST_TEST:
+        registry = model_zoo.get_sub_registry(COMMON_MODELS)
+    else:
+        registry = model_zoo
+
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in registry.items():
         if name == "dlrm_interactionarch":
             continue
         run_fn(model_fn, data_gen_fn, output_transform_fn)
