@@ -44,7 +44,7 @@ def check_config_and_inference():
     sequence.mark_running()
     assert sequence.status == RequestStatus.RUNNING
     sequence.recycle()
-    assert sequence.status == RequestStatus.WAITING
+    assert sequence.status == RequestStatus.RECYCLED
 
     assert sequence.sentence_len == 3
     assert sequence.input_len == 3
