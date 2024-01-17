@@ -190,7 +190,8 @@ def flash_decoding_attention(
     mid_output: torch.Tensor,
     mid_output_lse: torch.Tensor,
     block_size: int,
-    num_kv_group: int = 1,
+    sm_scale: int,
+    kv_group_num: int = 1,
 ):
     """
     Flash decoding implemented with a blocked KV Cache (PagedAttention) during decoding stage.
@@ -227,7 +228,6 @@ def flash_decoding_attention(
     )
     # NOTE `kv_seq_len` records the (kv) sequence lengths incorporating past kv sequence lengths.
     bsz = kv_seq_len.size(0)  # e.g. the number of seqs
-    sm_scale = 1.0 / (head_dim**0.5)
 
     # NOTE BLOCK_KV could be considered as block splitting the sequence on k/v
     # For now, BLOCK_KV is supposed to be equivalent with the size of physical cache block (i.e.`block_size`)
@@ -264,7 +264,7 @@ def flash_decoding_attention(
         mid_output_lse.stride(1),
         mid_output_lse.stride(2),
         sm_scale,
-        KV_GROUPS=num_kv_group,
+        KV_GROUPS=kv_group_num,
         BLOCK_KV=block_size,
         BLOCK_SIZE=block_size,
         HEAD_DIM=head_dim,

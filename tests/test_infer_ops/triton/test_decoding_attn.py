@@ -62,6 +62,8 @@ def test_flash_decoding(
 
     q_size = (bsz, q_len, num_attn_heads, head_dim)
     q = torch.empty(size=q_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
+    q = q.view(bsz, q_len, num_attn_heads, head_dim)
+
     kv_size = (num_tokens, 2 * num_kv_heads, head_dim)
     kv = torch.empty(size=kv_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
     k, v = torch.split(kv, [num_kv_heads, num_kv_heads], dim=-2)
@@ -75,8 +77,6 @@ def test_flash_decoding(
     )
     block_tables = block_tables.to(device=device)
 
-    q = q.view(bsz, q_len, num_attn_heads, head_dim)
-
     max_seq_len = context_lengths.max().item()
     # the maximum block length splitted on kv should be the kv cache block size
     kv_max_split_num = (max_seq_len + block_size - 1) // block_size
@@ -84,7 +84,7 @@ def test_flash_decoding(
         size=(bsz, num_attn_heads, kv_max_split_num, head_dim), dtype=torch.float32, device=q.device
     )
     mid_output_lse = torch.empty(size=(bsz, num_attn_heads, kv_max_split_num), dtype=torch.float32, device=q.device)
-
+    sm_scale = 1.0 / (head_dim**0.5)
     out_triton = flash_decoding_attention(
         q,
         k_cache,
@@ -94,15 +94,15 @@ def test_flash_decoding(
         max_seq_len,
         mid_output,
         mid_output_lse,
-        block_size,
-        kv_group_num,
+        block_size=block_size,
+        sm_scale=sm_scale,
+        kv_group_num=kv_group_num,
     )
     out_triton = out_triton.unsqueeze(1)  # [bsz, 1, num_heads, head_dim]
 
     # rebuild (batched) kv with padding for torch attention
     # q   [bsz, 1, num_heads, head_dim]
     # k/v [num_tokens, num_kv_heads, head_dim]
-    max_seq_len = context_lengths.max().item()
     k_torch = torch.zeros((bsz, max_seq_len, num_kv_heads, head_dim), dtype=k.dtype, device=k.device)
     v_torch = torch.zeros_like(k_torch)
     prev_len_sum = 0
@@ -126,11 +126,11 @@ BLOCK_SIZE = 32
 SAME_LEN = True
 configs = [
     triton.testing.Benchmark(
-        x_names=["PAST_KVLEN"],
-        x_vals=[2**i - 1 for i in range(8, 16)],
+        x_names=["KV_LEN"],
+        x_vals=[2**i for i in range(8, 12)],
         line_arg="provider",
         line_vals=["torch", "triton"],
-        line_names=["torch", "triton"],
+        line_names=["Torch", "Triton"],
         styles=[("red", "-"), ("blue", "-")],
         ylabel="ms",
         plot_name=f"decoding-block_size-{BLOCK_SIZE}-batch{BATCH}",
@@ -142,7 +142,7 @@ configs = [
 @triton.testing.perf_report(configs)
 def bench_kernel(
     bsz,
-    PAST_KVLEN,
+    KV_LEN,
     provider,
     block_size: int,
     kv_group_num: int,
@@ -152,7 +152,7 @@ def bench_kernel(
     rep = 100
 
     num_attn_heads = 16
-    max_num_blocks_per_seq = max(32, triton.cdiv(PAST_KVLEN + 1, block_size))
+    max_num_blocks_per_seq = max(32, triton.cdiv(KV_LEN, block_size))
 
     num_kv_heads = num_attn_heads // kv_group_num
     assert isinstance(num_kv_heads, int) and num_kv_heads > 0, "Invalid number of kv heads."
@@ -163,11 +163,9 @@ def bench_kernel(
     device = get_current_device()
 
     if same_context_len:
-        past_kv_lengths = torch.tensor([PAST_KVLEN for _ in range(bsz)], dtype=torch.int32, device=device)
+        kv_lengths = torch.tensor([KV_LEN for _ in range(bsz)], dtype=torch.int32, device=device)
     else:
-        past_kv_lengths = torch.randint(low=1, high=PAST_KVLEN, size=(bsz,), dtype=torch.int32, device=device)
-
-    kv_lengths = past_kv_lengths + 1
+        kv_lengths = torch.randint(low=1, high=KV_LEN, size=(bsz,), dtype=torch.int32, device=device)
     num_tokens = torch.sum(kv_lengths).item()
 
     q_size = (bsz, q_len, num_attn_heads, head_dim)
@@ -186,12 +184,12 @@ def bench_kernel(
     block_tables = block_tables.to(device=device)
 
     q = q.view(bsz, q_len, num_attn_heads, head_dim)
+    max_seq_len = kv_lengths.max().item()  # for random lengths
 
     if provider == "torch":
         # rebuild (batched) kv with padding for torch attention
         # q   [bsz, 1, num_heads, head_dim]
         # k/v [num_tokens, num_kv_heads, head_dim]
-        max_seq_len = kv_lengths.max().item()
         k_torch = torch.zeros((bsz, max_seq_len, num_kv_heads, head_dim), dtype=k.dtype, device=k.device)
         v_torch = torch.zeros_like(k_torch)
         prev_len_sum = 0
@@ -205,14 +203,16 @@ def bench_kernel(
         fn = lambda: torch_attn_ref(
             q, k_torch, v_torch, torch_padding_mask, bsz, 1, k_torch.size(1), num_attn_heads, num_kv_heads, head_dim
         )
+        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+        return ms
     elif provider == "triton":
-        max_seq_len = kv_lengths.max().item()
         # the maximum block length splitted on kv should be the kv cache block size
         kv_max_split_num = (max_seq_len + block_size - 1) // block_size
         mid_output = torch.empty(
             size=(bsz, num_attn_heads, kv_max_split_num, head_dim), dtype=torch.float32, device=q.device
         )
         mid_output_lse = torch.empty(size=(bsz, num_attn_heads, kv_max_split_num), dtype=torch.float32, device=q.device)
+        sm_scale = 1.0 / (head_dim**0.5)
         fn = lambda: flash_decoding_attention(
             q,
             k_cache,
@@ -222,12 +222,13 @@ def bench_kernel(
             max_seq_len,
             mid_output,
             mid_output_lse,
-            block_size,
-            kv_group_num,
+            block_size=block_size,
+            sm_scale=sm_scale,
+            kv_group_num=kv_group_num,
         ).unsqueeze(1)
 
-    ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-    return ms
+        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+        return ms
 
 
 if __name__ == "__main__":
