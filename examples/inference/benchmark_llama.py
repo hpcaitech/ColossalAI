@@ -109,7 +109,6 @@ def benchmark_inference(args):
                 prefill_ratio=1.2,
             )
             engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
-            print("initialized")
         else:
             engine = model
 

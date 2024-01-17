@@ -359,6 +359,9 @@ class BatchInfo:
         return torch.tensor(len_list, dtype=torch.int, device=self.device)
 
     def get_attn_mask(self, padding_id: int) -> torch.Tensor:
+        """
+        Generate and return attention mask.
+        """
         past_values = []
 
         for seq in self.sequences_set:
