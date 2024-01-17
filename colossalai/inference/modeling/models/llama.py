@@ -1,8 +1,6 @@
 # This code is adapted from huggingface transformers: https://github.com/huggingface/transformers/blob/v4.34.1/src/transformers/models/llama/modeling_llama.py
-import os
 from typing import List, Optional, Tuple
 
-os.environ["TORCH_USE_CUDA_DSA"] = "1"
 import torch
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
