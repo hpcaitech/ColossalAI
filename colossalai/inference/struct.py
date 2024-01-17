@@ -317,9 +317,10 @@ class BatchInfo:
         for seq in self.sequences_set:
             if self.is_prompts:
                 if seq.output_len > 0:
-                    seq_data = seq.input_token_id.extend(seq.output_token_id)
+                    print(seq.output_token_id)
+                    seq_data = seq.input_token_id + seq.output_token_id
                     print(seq_data)
-                    input_list.append(seq_data)
+                    input_list.append(seq.input_token_id + seq.output_token_id)
                 else:
                     input_list.append(seq.input_token_id)
             else:
