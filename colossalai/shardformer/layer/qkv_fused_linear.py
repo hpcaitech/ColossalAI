@@ -150,7 +150,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         device (`torch.device`): The device of parameters, defaults to None.
         n_fused (int): The number items fused, defaults to 3 (QKV).
         process_group (`torch.distributed.ProcessGroup`): The process group to be used for weight sharding and communication, defaults to None.
-        seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
+        seq_parallel_mode (str): If set to ``None``, it will not use sequence parallel, otherwise will use corresponding mode of sequence parallel, defaults to None.
         gather_output (bool, optional): If true, call all-gather on output and make Y available
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
@@ -175,7 +175,6 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         process_group: ProcessGroup = None,
         async_communication: bool = False,
         gather_output: bool = False,
-        # seq_parallel: bool = False,
         seq_parallel_mode: str = None,
         overlap: bool = False,
         skip_bias_add: bool = False,
@@ -348,7 +347,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         dtype (`torch.dtype`): The dtype of parameters, defaults to None.
         parallel_input (bool): If set to ``True``, it's assumed that the input is split, defaults to False.
         skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
-        seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
+        seq_parallel_mode (str): If set to ``None``, it will not use sequence parallel, otherwise will use corresponding mode of sequence parallel, defaults to None.
             which is preserved for kernel fusion, defaults to False
         weight_initializer (:class:`typing.Callable`, optional):
             The initializer of weight, defaults to kaiming uniform initializer.
@@ -367,7 +366,6 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         dtype: torch.dtype = None,
         device: torch.device = None,
         process_group: ProcessGroup = None,
-        # seq_parallel: bool = False,
         seq_parallel_mode: str = None,
         parallel_input: bool = True,
         skip_bias_add: bool = False,
