@@ -54,10 +54,11 @@ def test_flash_decoding(
     dtype = torch.float16
     device = get_current_device()
 
-    if same_context_len:
-        context_lengths = torch.tensor([max_seq_len for _ in range(bsz)], dtype=torch.int32, device=device)
-    else:
-        context_lengths = torch.randint(low=1, high=max_seq_len, size=(bsz,), dtype=torch.int32, device=device)
+    context_lengths = (
+        torch.tensor([max_seq_len for _ in range(bsz)], dtype=torch.int32, device=device)
+        if same_context_len
+        else torch.randint(low=1, high=max_seq_len, size=(bsz,), dtype=torch.int32, device=device)
+    )
     num_tokens = torch.sum(context_lengths).item()
 
     q_size = (bsz, q_len, num_attn_heads, head_dim)
@@ -127,7 +128,8 @@ SAME_LEN = True
 configs = [
     triton.testing.Benchmark(
         x_names=["KV_LEN"],
-        x_vals=[2**i for i in range(8, 12)],
+        x_vals=[2**i for i in range(8, 14)],
+        # x_vals=[x for x in range(256, 8192, 256)],
         line_arg="provider",
         line_vals=["torch", "triton"],
         line_names=["Torch", "Triton"],
@@ -162,10 +164,11 @@ def bench_kernel(
     dtype = torch.float16
     device = get_current_device()
 
-    if same_context_len:
-        kv_lengths = torch.tensor([KV_LEN for _ in range(bsz)], dtype=torch.int32, device=device)
-    else:
-        kv_lengths = torch.randint(low=1, high=KV_LEN, size=(bsz,), dtype=torch.int32, device=device)
+    kv_lengths = (
+        torch.tensor([max_seq_len for _ in range(bsz)], dtype=torch.int32, device=device)
+        if same_context_len
+        else torch.randint(low=1, high=max_seq_len, size=(bsz,), dtype=torch.int32, device=device)
+    )
     num_tokens = torch.sum(kv_lengths).item()
 
     q_size = (bsz, q_len, num_attn_heads, head_dim)
@@ -186,6 +189,7 @@ def bench_kernel(
     q = q.view(bsz, q_len, num_attn_heads, head_dim)
     max_seq_len = kv_lengths.max().item()  # for random lengths
 
+    quantiles = [0.5, 0.2, 0.8]
     if provider == "torch":
         # rebuild (batched) kv with padding for torch attention
         # q   [bsz, 1, num_heads, head_dim]
@@ -203,9 +207,8 @@ def bench_kernel(
         fn = lambda: torch_attn_ref(
             q, k_torch, v_torch, torch_padding_mask, bsz, 1, k_torch.size(1), num_attn_heads, num_kv_heads, head_dim
         )
-        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-        return ms
-    elif provider == "triton":
+        ms, min_ms, max_ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep, quantiles=quantiles)
+    if provider == "triton":
         # the maximum block length splitted on kv should be the kv cache block size
         kv_max_split_num = (max_seq_len + block_size - 1) // block_size
         mid_output = torch.empty(
@@ -227,10 +230,11 @@ def bench_kernel(
             kv_group_num=kv_group_num,
         ).unsqueeze(1)
 
-        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-        return ms
+        ms, min_ms, max_ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep, quantiles=quantiles)
+
+    return ms, min_ms, max_ms
 
 
 if __name__ == "__main__":
-    # test_flash_decoding(16, 32, 32, 16, 1, True)
-    bench_kernel.run(save_path=".", print_data=True)
+    test_flash_decoding(16, 32, 32, 16, 1, True)
+    # bench_kernel.run(save_path=".", print_data=True)
