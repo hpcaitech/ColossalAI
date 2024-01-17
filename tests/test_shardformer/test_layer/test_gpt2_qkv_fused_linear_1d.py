@@ -53,13 +53,18 @@ def rearrange(tensor: torch.Tensor, dim: int):
     return rearanged_tensor
 
 
-def check_linear_conv_1d_col(lazy_init: bool, seq_parallel: bool, overlap: bool):
+def check_linear_conv_1d_col(lazy_init: bool, seq_parallel_mode: str, overlap: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
     linear = Conv1D(192, 48).cuda()
     with ctx:
         linear_copy = Conv1D(192, 48).cuda()
     linear_conv_col = GPT2FusedLinearConv1D_Col.from_native_module(
-        linear_copy, process_group=None, gather_output=True, seq_parallel=seq_parallel, n_fused=3, overlap=overlap
+        linear_copy,
+        process_group=None,
+        gather_output=True,
+        seq_parallel_mode=seq_parallel_mode,
+        n_fused=3,
+        overlap=overlap,
     )
 
     assert linear.weight.shape == torch.Size([48, 192])
@@ -76,7 +81,9 @@ def check_linear_conv_1d_col(lazy_init: bool, seq_parallel: bool, overlap: bool)
     # check computation correctness
     x = torch.rand(1, 4, 48).cuda()
     out = linear(x)
-    x_for_shard = x.expand_as(x.clone()) if seq_parallel is False else torch.chunk(x.clone(), 2, dim=1)[dist.get_rank()]
+    x_for_shard = (
+        torch.chunk(x.clone(), 2, dim=1)[dist.get_rank()] if seq_parallel_mode == "1" else x.expand_as(x.clone())
+    )
     gather_out = linear_conv_col(x_for_shard)
     assert_close(rearrange(out, -1), gather_out)
 
@@ -88,14 +95,14 @@ def check_linear_conv_1d_col(lazy_init: bool, seq_parallel: bool, overlap: bool)
     assert_close(target_grad, linear_conv_col.weight.grad)
 
 
-def check_linear_conv_1d_row(lazy_init: bool, seq_parallel: bool):
+def check_linear_conv_1d_row(lazy_init: bool, seq_parallel_mode: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
 
     linear = Conv1D(192, 48).cuda()
     with ctx:
         linear_copy = Conv1D(192, 48).cuda()
     linear_row = GPT2FusedLinearConv1D_Row.from_native_module(
-        linear_copy, process_group=None, parallel_input=False, seq_parallel=seq_parallel
+        linear_copy, process_group=None, parallel_input=False, seq_parallel_mode=seq_parallel_mode
     )
 
     assert linear.weight.shape == torch.Size([48, 192])
@@ -112,7 +119,7 @@ def check_linear_conv_1d_row(lazy_init: bool, seq_parallel: bool):
     x = torch.rand(1, 4, 48).cuda()
     out = linear(x)
     gather_out = linear_row(x)
-    target_out = out if seq_parallel is False else torch.chunk(out.clone(), 2, dim=1)[dist.get_rank()]
+    target_out = torch.chunk(out.clone(), 2, dim=1)[dist.get_rank()] if seq_parallel_mode == "1" else out
     assert_close(target_out, gather_out)
 
     # check backward correctness
@@ -125,11 +132,11 @@ def check_linear_conv_1d_row(lazy_init: bool, seq_parallel: bool):
 
 
 @parameterize("lazy_init", [False, True])
-@parameterize("seq_parallel", [False, True])
+@parameterize("seq_parallel_mode", ["1", None])
 @parameterize("overlap", [True])
-def check_gpt2_qkv_fused_linear_1d(lazy_init: bool, seq_parallel: bool, overlap: bool):
-    check_linear_conv_1d_col(lazy_init, seq_parallel, overlap)
-    check_linear_conv_1d_row(lazy_init, seq_parallel)
+def check_gpt2_qkv_fused_linear_1d(lazy_init: bool, seq_parallel_mode: bool, overlap: bool):
+    check_linear_conv_1d_col(lazy_init, seq_parallel_mode, overlap)
+    check_linear_conv_1d_row(lazy_init, seq_parallel_mode)
 
 
 def run_dist(rank, world_size, port):
