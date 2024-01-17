@@ -35,6 +35,16 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     return q_embed, k_embed
 
 
+def get_cos_sin(lengths, cos_cache, sin_cache):
+    # NOTE sin_cache should be [ max_length, hidden_dim//2 ]
+    index_arrays = [torch.arange(length) for length in lengths]
+    indices = torch.cat(index_arrays)
+    cos_output = cos_cache[indices]
+    sin_output = sin_cache[indices]
+
+    return cos_output, sin_output
+
+
 def llama_causal_lm_forward(
     self: LlamaForCausalLM,
     batch: BatchInfo = None,
