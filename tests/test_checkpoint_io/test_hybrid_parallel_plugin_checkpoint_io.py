@@ -40,7 +40,7 @@ else:
 
 @clear_cache_before_run()
 @parameterize("shard", [True, False])
-@parameterize("model_name", ["transformers_gpt"])
+@parameterize("model_name", ["transformers_llama_for_casual_lm"])
 @parameterize("size_per_shard", [32])
 @parameterize("test_config", TEST_CONFIGS)
 def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_config: dict):
@@ -128,13 +128,8 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     new_optimizer.step()
 
     # Check updated weights.
-    stage_manager = booster.plugin.stage_manager
-
-    if stage_manager is None or stage_manager.is_first_stage():
-        assert_close_loose(model.unwrap().wte.weight.data, new_model.unwrap().wte.weight.data, atol=5e-3, rtol=5e-3)
-        assert_close_loose(
-            model.unwrap().h[0].mlp.c_fc.weight.data, new_model.unwrap().h[0].mlp.c_fc.weight.data, atol=5e-3, rtol=5e-3
-        )
+    for p1, p2 in zip(model.unwrap().parameters(), new_model.unwrap().parameters()):
+        assert_close_loose(p1, p2, atol=5e-3, rtol=5e-3)
 
     dist.barrier()
     Randomizer.reset_index()
