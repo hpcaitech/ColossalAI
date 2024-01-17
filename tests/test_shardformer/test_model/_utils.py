@@ -165,6 +165,11 @@ def run_forward_backward_with_hybrid_plugin(
         return loss
 
     data = data_gen_fn()
+    # for k, v in data.items():
+    #     size = list(v.shape)
+    #     tg_size = [1] * len(size)
+    #     tg_size[1] = 64 * 2
+    #     data[k] = v.repeat(tg_size)
 
     if (
         booster.plugin.shard_config.enable_sequence_parallelism
@@ -232,6 +237,7 @@ def run_forward_backward_with_hybrid_plugin(
     org_loss.backward()
 
     return org_loss, org_output, sharded_loss, sharded_output
+    # return sharded_loss, sharded_output, sharded_loss, sharded_output
 
 
 def check_output_hidden_state(
