@@ -40,7 +40,14 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
 
 
 def get_cos_sin(lengths, cos_cache, sin_cache):
-    # NOTE sin_cache should be [ max_length, hidden_dim//2 ]
+    """NOTE: sin_cache should be [ max_length, hidden_dim//2 ]
+    get 1D cos and sin for triton kernel.
+       Args: lengths (bsz,), sequence lengths
+             cos_cache/sin_cache: cached cos/sin shaped (2048, hidden_dim//2)
+    Usage: First,create cached cos/sin(Llama rotary)
+           Then use this function, like get_cos_sin(lengths,cos_cached[:,:hidden_dim//2],sin_cached[:,hidden_dim//2])
+           Last, call rotary_embedding triton kernel
+    """
     index_arrays = [torch.arange(length) for length in lengths]
     indices = torch.cat(index_arrays)
     cos_output = cos_cache[indices]
