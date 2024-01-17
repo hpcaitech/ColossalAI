@@ -2,13 +2,7 @@
 from typing import List, Optional, Tuple
 
 import torch
-from transformers.models.llama.modeling_llama import (
-    LlamaAttention,
-    LlamaDecoderLayer,
-    LlamaForCausalLM,
-    LlamaModel,
-    repeat_kv,
-)
+from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaForCausalLM, LlamaModel
 
 from colossalai.inference.modeling.layers.attention import PagedAttention
 from colossalai.inference.struct import BatchInfo
@@ -84,7 +78,7 @@ def llama_model_forward(
     else:
         sequence_lengths = batch.get_sequence_lengths()
 
-    max_seq_len = sequence_lengths.max().item()
+    kv_seq_len = sequence_lengths.max().item()
 
     if attention_mask is not None:
         if batch.is_prompts:
@@ -93,8 +87,12 @@ def llama_model_forward(
         else:
             position_ids = (attention_mask.sum(dim=-1) - 1).reshape(-1, 1)
     else:
-        position_ids = torch.arange(max_seq_len - 1, max_seq_len, dtype=torch.long, device=batch.device)
-        position_ids = position_ids.unsqueeze(0)
+        if batch.is_prompts:
+            position_ids = torch.arange(kv_seq_len, dtype=torch.long, device=batch.device)
+            position_ids = position_ids.unsqueeze(0)
+        else:
+            position_ids = torch.arange(kv_seq_len - 1, kv_seq_len, dtype=torch.long, device=batch.device)
+            position_ids = position_ids.unsqueeze(0)
 
     hidden_states = self.embed_tokens(input_ids)
 
@@ -108,7 +106,7 @@ def llama_model_forward(
             is_prompts=batch.is_prompts,
             sequence_lengths=sequence_lengths,
             attention_mask=attention_mask,
-            max_seq_len=max_seq_len,
+            kv_seq_len=kv_seq_len,
         )
 
     hidden_states = self.norm(hidden_states)
@@ -126,7 +124,7 @@ def llama_decoder_layer_forward(
     is_prompts: bool = True,
     sequence_lengths: int = None,
     attention_mask: torch.Tensor = None,
-    max_seq_len: int = 0,
+    kv_seq_len: int = 0,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     residual = hidden_states
 
@@ -141,7 +139,7 @@ def llama_decoder_layer_forward(
         is_prompts=is_prompts,
         sequence_lengths=sequence_lengths,
         attention_mask=attention_mask,
-        max_seq_len=max_seq_len,
+        kv_seq_len=kv_seq_len,
     )
 
     hidden_states = residual + hidden_states
@@ -167,7 +165,7 @@ def llama_attn_forward(
     is_prompts: bool = True,
     sequence_lengths: torch.Tensor = None,
     attention_mask: torch.Tensor = None,
-    max_seq_len: int = 0,
+    kv_seq_len: int = 0,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
     bsz, q_len, _ = hidden_states.size()
 
@@ -175,11 +173,8 @@ def llama_attn_forward(
     key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
     value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
-    cos, sin = self.rotary_emb(value_states, seq_len=max_seq_len)
+    cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
     query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-
-    key_states = repeat_kv(key_states, self.num_key_value_groups)
-    value_states = repeat_kv(value_states, self.num_key_value_groups)
 
     query_states = query_states.transpose(1, 2)
     key_states = key_states.transpose(1, 2)
@@ -209,12 +204,8 @@ def llama_attn_forward(
             )
     else:
         if HAS_TRITON:
-            copy_kv_to_blocked_cache(
-                key_states, k_cache, context_lengths=sequence_lengths - 1, block_tables=block_tables
-            )
-            copy_kv_to_blocked_cache(
-                value_states, v_cache, context_lengths=sequence_lengths - 1, block_tables=block_tables
-            )
+            copy_kv_to_blocked_cache(key_states, k_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
+            copy_kv_to_blocked_cache(value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
             attn_output = flash_decoding_fwd(query_states, k_cache, v_cache, sequence_lengths, block_tables, block_size)
         else:
             attn_output = PagedAttention.pad_decoding_forward(
