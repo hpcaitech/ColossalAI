@@ -465,6 +465,7 @@ def get_llama_flash_attention_forward(shard_config):
         bsz, q_len, _ = hidden_states.size()
         sp_mode = shard_config.sequence_parallelism_mode
         sp_size = shard_config.sequence_parallel_size
+        sp_group = shard_config.sequence_parallel_process_group
 
         if sp_mode == "2":
             q_len *= shard_config.sequence_parallel_size
@@ -476,9 +477,9 @@ def get_llama_flash_attention_forward(shard_config):
 
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "3":
-            query_states = all_to_all_comm(query_states)
-            key_states = all_to_all_comm(key_states)
-            value_states = all_to_all_comm(value_states)
+            query_states = all_to_all_comm(query_states, sp_group)
+            key_states = all_to_all_comm(key_states, sp_group)
+            value_states = all_to_all_comm(value_states, sp_group)
             bsz, q_len, _ = query_states.size()
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
@@ -535,7 +536,7 @@ def get_llama_flash_attention_forward(shard_config):
 
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "3":
-            attn_output = all_to_all_comm(attn_output, None, scatter_dim=1, gather_dim=2)
+            attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)
         attn_output = self.o_proj(attn_output)
 
         return attn_output, None, past_key_value
@@ -774,7 +775,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
     return forward
 
 
-def get_llama_seq_parallel_attention_forward(sp_mode, sp_size):
+def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
     def rotate_half(x):
         """Rotates half the hidden dims of the input."""
         x1 = x[..., : x.shape[-1] // 2]
@@ -839,9 +840,9 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size):
 
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "3":
-            query_states = all_to_all_comm(query_states)
-            key_states = all_to_all_comm(key_states)
-            value_states = all_to_all_comm(value_states)
+            query_states = all_to_all_comm(query_states, sp_group)
+            key_states = all_to_all_comm(key_states, sp_group)
+            value_states = all_to_all_comm(value_states, sp_group)
             bsz, q_len, _ = query_states.size()
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
@@ -894,7 +895,7 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size):
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "3":
             attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim)
-            attn_output = all_to_all_comm(attn_output, None, scatter_dim=1, gather_dim=2)
+            attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)
         else:
             attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
