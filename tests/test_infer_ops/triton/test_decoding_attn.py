@@ -93,10 +93,10 @@ def test_flash_decoding(
         v_cache,
         context_lengths,
         block_tables,
+        block_size,
         max_seq_len_in_b,
         mid_output,
         mid_output_lse,
-        block_size=block_size,
         sm_scale=sm_scale,
         kv_group_num=kv_group_num,
     )  # [bsz, 1, num_heads, head_dim]
@@ -221,10 +221,10 @@ def bench_kernel(
             v_cache,
             kv_lengths,
             block_tables,
+            block_size,
             max_seq_len_in_b,
             mid_output,
             mid_output_lse,
-            block_size=block_size,
             sm_scale=sm_scale,
             kv_group_num=kv_group_num,
         )  # [bsz, 1, num_heads, head_dim]

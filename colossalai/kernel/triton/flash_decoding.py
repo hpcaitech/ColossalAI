@@ -188,11 +188,11 @@ def flash_decoding_attention(
     v_cache: torch.Tensor,
     kv_seq_len: torch.Tensor,
     block_tables: torch.Tensor,
-    max_seq_len_in_batch: int,
-    mid_output: torch.Tensor,
-    mid_output_lse: torch.Tensor,
     block_size: int,
-    sm_scale: int,
+    max_seq_len_in_batch: int = None,
+    mid_output: torch.Tensor = None,
+    mid_output_lse: torch.Tensor = None,
+    sm_scale: int = None,
     kv_group_num: int = 1,
 ):
     """
@@ -235,6 +235,21 @@ def flash_decoding_attention(
     # For now, BLOCK_KV is supposed to be equivalent with the size of physical cache block (i.e.`block_size`)
     assert block_size in {16, 32, 64, 128}
     BLOCK_KV = block_size
+
+    sm_scale = 1.0 / (head_dim**0.5) if sm_scale is None else sm_scale
+    max_seq_len_in_batch = kv_seq_len.max().item() if max_seq_len_in_batch is None else max_seq_len_in_batch
+    # For compatibility (TODO revise modeling in future)
+    kv_max_split_num = (max_seq_len_in_batch + BLOCK_KV - 1) // BLOCK_KV
+    mid_output = (
+        torch.zeros(size=(bsz, num_heads, kv_max_split_num, head_dim), dtype=torch.float32, device=q.device)
+        if mid_output is None
+        else mid_output
+    )
+    mid_output_lse = (
+        torch.zeros(size=(bsz, num_heads, kv_max_split_num), dtype=torch.float32, device=q.device)
+        if mid_output_lse is None
+        else mid_output_lse
+    )
 
     grid = (triton.next_power_of_2(bsz), num_heads, triton.cdiv(triton.next_power_of_2(max_seq_len_in_batch), BLOCK_KV))
     _flash_decoding_fwd_kernel[grid](
