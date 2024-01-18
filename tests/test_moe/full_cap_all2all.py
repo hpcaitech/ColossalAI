@@ -2,6 +2,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.testing import assert_close
 from transformers.activations import ACT2FN
 
 tokens, n_experts = 7, 4
@@ -101,6 +102,12 @@ class MixtralSparseMoeBlock(nn.Module):
 
 class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        ep_size = dist.get_world_size()
+        ep_rank = dist.get_rank()
+        assert self.num_experts % ep_size == 0
+        num_experts_per_ep = self.num_experts // ep_size
+        expert_start_idx = ep_rank * num_experts_per_ep
+
         batch_size, sequence_length, hidden_dim = hidden_states.shape
         hidden_states = hidden_states.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
@@ -119,13 +126,26 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         output_split_sizes = torch.zeros_like(input_split_sizes)
         dist.all_to_all_single(output_split_sizes, input_split_sizes)
         output_states = torch.zeros(output_split_sizes.sum().item(), hidden_size).cuda()
-        dist.all_to_all_single(output_states, dispatch_states, output_split_sizes.tolist(), input_split_sizes.tolist())
+
+        input_split_list = input_split_sizes.view(ep_size, num_experts_per_ep).sum(dim=-1).tolist()
+        output_split_list = output_split_sizes.view(ep_size, num_experts_per_ep).sum(dim=-1).tolist()
+        dist.all_to_all_single(output_states, dispatch_states, output_split_list, input_split_list)
         # compute expert output
-        rank = dist.get_rank()
-        expert = self.experts[rank]
-        output_states = expert.act_fn(expert.w1(output_states)) * expert.w3(output_states)
-        output_states = expert.w2(output_states)
-        dist.all_to_all_single(dispatch_states, output_states, input_split_sizes.tolist(), output_split_sizes.tolist())
+        if num_experts_per_ep == 1:
+            # no need to split
+            expert = self.experts[expert_start_idx]
+            output_states = expert.act_fn(expert.w1(output_states)) * expert.w3(output_states)
+            output_states = expert.w2(output_states)
+        else:
+            output_states_splits = output_states.split(output_split_sizes.tolist())
+            output_states_list = []
+            for i, split_states in enumerate(output_states_splits):
+                expert = self.experts[expert_start_idx + i % num_experts_per_ep]
+                split_states = expert.act_fn(expert.w1(split_states)) * expert.w3(split_states)
+                split_states = expert.w2(split_states)
+                output_states_list.append(split_states)
+            output_states = torch.cat(output_states_list)
+        dist.all_to_all_single(dispatch_states, output_states, input_split_list, output_split_list)
 
         recover_experts_idx = torch.empty_like(selected_experts_idx)
         recover_experts_idx[selected_experts_idx] = torch.arange(
@@ -144,17 +164,10 @@ if __name__ == "__main__":
     dist.init_process_group(backend="nccl", init_method="env://")
     torch.cuda.set_device(dist.get_rank())
     torch.manual_seed(0)
-    # model = MixtralSparseMoeBlock(hidden_size, hidden_size * 2, n_experts, top_k).cuda()
-    # x = torch.rand(1, tokens, hidden_size).cuda()
-    # print(x)
-    # orig_output, orig_logits = model(x)
-    # model.__class__ = EPMixtralSparseMoeBlock
-    # ep_output, ep_logits = model(x)
-    # assert_close(orig_logits, ep_logits)
-    # assert_close(orig_output, ep_output)
-    x = torch.rand(8, device="cuda")
-    y = torch.zeros(8, device="cuda")
-    input_split_sizes = [1] * 8
-    output_split_sizes = [1] * 8
-    dist.all_to_all_single(x, y, input_split_sizes, output_split_sizes)
-    print(y)
+    model = MixtralSparseMoeBlock(hidden_size, hidden_size * 2, n_experts, top_k).cuda()
+    x = torch.rand(1, tokens, hidden_size).cuda()
+    orig_output, orig_logits = model(x)
+    model.__class__ = EPMixtralSparseMoeBlock
+    ep_output, ep_logits = model(x)
+    assert_close(orig_logits, ep_logits)
+    assert_close(orig_output, ep_output)
