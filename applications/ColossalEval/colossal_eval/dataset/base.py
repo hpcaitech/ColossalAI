@@ -12,8 +12,8 @@ class BaseDataset:
         logger: Logger for the dataset.
     """
 
-    def __init__(self, path, logger, few_shot):
-        self.dataset = self.load(path, logger, few_shot)
+    def __init__(self, path, logger, few_shot, forward_only=False, load_train=False, load_reference=False):
+        self.dataset = self.load(path, logger, few_shot, forward_only, load_train, load_reference)
 
     def save(self, save_path):
         """Save the converted dataset"""

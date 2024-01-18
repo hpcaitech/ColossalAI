@@ -11,14 +11,14 @@ import os
 import time
 from multiprocessing import cpu_count
 
+from colossal_llama2.dataset.spliced_and_tokenized_dataset import (
+    ClosedToConstantLengthSplicedDataset,
+    supervised_tokenize_pretrain,
+)
 from datasets import dataset_dict, load_dataset
 from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
 from colossalai.logging import get_dist_logger
-from colossal_llama2.dataset.spliced_and_tokenized_dataset import (
-    supervised_tokenize,
-    ClosedToConstantLengthSplicedDataset,
-)
 
 logger = get_dist_logger()
 
@@ -104,7 +104,7 @@ def main():
         assert isinstance(dataset, dataset_dict.Dataset)
         logger.info(f"Start to process part-{index}/{len(list_dataset)} of all original datasets.")
         dataset = dataset.map(
-            function=supervised_tokenize,
+            function=supervised_tokenize_pretrain,
             fn_kwargs={"tokenizer": tokenizer, "max_length": args.max_length},
             keep_in_memory=False,
             num_proc=min(len(dataset), cpu_count()),
@@ -149,5 +149,5 @@ def main():
         spliced_dataset.save_to_disk(dataset_path=output_arrow_path, num_proc=min(len(spliced_dataset), cpu_count()))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

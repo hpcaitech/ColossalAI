@@ -99,11 +99,20 @@ def get_prompt(line: Dict, dataset_name: str, logger: DistributedLogger) -> Dict
 
 # process few-shot raw_prompts
 def combine_prompt(prompt_path, dataset_name, load_explanation=True, chat_mode=False):
+    demostrations = []
+    demostration_en = "Here are the answers for the problems in the exam."
+    demostration_zh = "以下是考试中各个问题的答案。"
+
+    if dataset_name in english_qa_datasets or dataset_name in english_cloze_datasets:
+        demostrations.append(demostration_en)
+    elif dataset_name in chinese_qa_datasets or dataset_name in chinese_cloze_datasets:
+        demostrations.append(demostration_zh)
+
     skip_passage = False
     if dataset_name == "sat-en-without-passage":
         skip_passage = True
         dataset_name = "sat-en"
-    demostrations = []
+
     # read the prompts by context and explanation
     context_row = [0, 1, 3, 5, 7, 9]
     explanation_row = [0, 2, 4, 6, 8, 10]
@@ -153,7 +162,7 @@ def combine_prompt(prompt_path, dataset_name, load_explanation=True, chat_mode=F
         if chat_mode:
             demostrations.append((question_input,))
         else:
-            demostrations.append(question_input + "\n")
+            demostrations.append(question_input)
 
     return demostrations
 
@@ -178,7 +187,9 @@ class AGIEvalDataset(BaseDataset):
     """
 
     @staticmethod
-    def load(path: str, logger: DistributedLogger, few_shot: bool) -> List[Dict]:
+    def load(
+        path: str, logger: DistributedLogger, few_shot: bool, forward_only: bool, load_train: bool, load_reference: bool
+    ) -> List[Dict]:
         dataset = {"test": {}}
 
         files = glob.glob(os.path.join(path, "*.jsonl"))

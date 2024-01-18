@@ -78,10 +78,13 @@ class DistCrossEntropy(Function):
         # calculate the loss
         # loss = log(sum(exp(x[i]))) - x[class]
         loss = torch.where(target == ignore_index, 0.0, torch.log(sum_exp_logits) - pred_logits)
-        loss = torch.sum(loss).div_(torch.sum(loss != 0.0))
+        num_non_zero = torch.sum(loss != 0.0)
+        ctx.inv_num_non_zero = 1.0 / num_non_zero
+        loss = torch.sum(loss).div_(num_non_zero)
 
         # calculate the softmax
         exp_logits.div_(sum_exp_logits.unsqueeze(dim=-1))
+        exp_logits[target == ignore_index] = 0.0
         ctx.save_for_backward(exp_logits, mask, masked_target_1d)
 
         return loss
@@ -89,6 +92,7 @@ class DistCrossEntropy(Function):
     @staticmethod
     def backward(ctx, grad_output):
         # retrieve the saved tensors
+        grad_output = grad_output * ctx.inv_num_non_zero
         exp_logits, mask, masked_target_1d = ctx.saved_tensors
 
         # use exp logits as the input grad
@@ -100,7 +104,7 @@ class DistCrossEntropy(Function):
         grad_logits_2d[torch.arange(0, grad_logits_2d.shape[0]), masked_target_1d] -= update
 
         grad_logits.mul_(grad_output.unsqueeze(dim=-1))
-        return grad_logits, None, None
+        return grad_logits, None, None, None
 
 
 def cross_entropy_1d(

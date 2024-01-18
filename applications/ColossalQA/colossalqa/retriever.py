@@ -73,6 +73,7 @@ class CustomRetriever(BaseRetriever):
                 data_by_source[doc.metadata["source"]].append(doc)
         elif mode == "merge":
             data_by_source["merged"] = docs
+
         for source in data_by_source:
             if source not in self.vector_stores:
                 hash_encoding = hashlib.sha3_224(source.encode()).hexdigest()
@@ -81,8 +82,10 @@ class CustomRetriever(BaseRetriever):
                     os.remove(f"{self.sql_file_path}/{hash_encoding}.db")
                 # Create a new sql database to store indexes, sql files are stored in the same directory as the source file
                 sql_path = f"sqlite:///{self.sql_file_path}/{hash_encoding}.db"
-                self.vector_stores[source] = Chroma(embedding_function=embedding, collection_name=hash_encoding)
+                # to record the sql database with their source as index
                 self.sql_index_database[source] = f"{self.sql_file_path}/{hash_encoding}.db"
+
+                self.vector_stores[source] = Chroma(embedding_function=embedding, collection_name=hash_encoding)
                 self.record_managers[source] = SQLRecordManager(source, db_url=sql_path)
                 self.record_managers[source].create_schema()
             index(
@@ -92,6 +95,20 @@ class CustomRetriever(BaseRetriever):
                 cleanup=cleanup,
                 source_id_key="source",
             )
+
+    def clear_documents(self):
+        """Clear all document vectors from database"""
+        for source in self.vector_stores:
+            index(
+                [],
+                self.record_managers[source],
+                self.vector_stores[source],
+                cleanup="full",
+                source_id_key="source"
+            )
+        self.vector_stores = {}
+        self.sql_index_database = {}
+        self.record_managers = {}
 
     def __del__(self):
         for source in self.sql_index_database:

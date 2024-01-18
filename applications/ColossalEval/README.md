@@ -6,48 +6,84 @@
 
 ## Table of Contents
 
+- [Table of Contents](#table-of-contents)
 - [Overview](#overview)
 - [Leaderboard](#leaderboard)
+  - [Model with ~13 Billion Parameters](#model-with-13-billion-parameters)
+  - [Model with ~7 Billion Parameters](#model-with-7-billion-parameters)
 - [Install](#install)
 - [Evaluation Process](#evaluation-process)
   - [Inference](#inference)
-  	- [Dataset Preparation](#dataset-preparation)
+    - [Dataset Preparation](#dataset-preparation)
     - [Configuration](#configuration)
     - [How to Use](#how-to-use)
   - [Evaluation](#evaluation)
     - [Dataset Evaluation](#dataset-evaluation)
-      - [Configuration](#dataset-evaluation)
-      - [How to Use](#dataset-evaluation)
+      - [Configuration](#configuration-1)
+      - [How to Use](#how-to-use-1)
     - [GPT Evaluation](#gpt-evaluation)
-      - [Configuration](#gpt-evaluation)
-      - [How to Use](#gpt-evaluation)
+      - [Configuration](#configuration-2)
+      - [How to Use](#how-to-use-2)
 - [More Details](#more-details)
-  - [Inference Details](#inference-details)
-  - [Evaluation Details](#evaluation-details)
+  - [Inference](#inference-1)
+  - [Evaluation](#evaluation-1)
     - [Metrics](#metrics)
-  - [examples](#examples)
+  - [Examples](#examples)
     - [Dataset Evaluation Example](#dataset-evaluation-example)
     - [GPT Evaluation Example](#gpt-evaluation-example)
-- [To Do](#to-do)
 - [FAQ](#faq)
   - [How to Add a New Metric?](#how-to-add-a-new-metric)
   - [How to Add a New Dataset?](#how-to-add-a-new-dataset)
   - [How to Add a New Model?](#how-to-add-a-new-model)
+- [To do](#to-do)
 - [Citations](#citations)
 
 ## Overview
-[ColossalEval](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval) is a project which provides a uniform pipeline to help evaluate language models on different public dataset or your own dataset using both classic metrics and the help from GPTs. More details can be found in the following sections.
+[ColossalEval](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval) is a project which provides a uniform pipeline to help evaluate language models on different public dataset or your own dataset using both classic metrics and the help from GPTs. Currently we support AGIEval, CEval, CMMLU, CValues, GAOKAO-Bench, GSM8K, LongBench, MMLU, MtBench and SafetyBench. More details can be found in the following sections.
 
 ## Leaderboard
+### Model with ~13 Billion Parameters
+We conducted comprehensive evaluation on 5 datasets and compare our Colossal-Llama-2-13b-base model with various models.
 
-We conducted comprehensive evaluation on 4 dataset and compare our Colossal-Llama-2-7b-base model with various models.
+- We use 5-shot for MMLU and calculate scores based on the logits of first predicted token.
+- We use 5-shot for CMMLU and calculate scores based on the logits of first predicted token.
+- We use 8-shot for GSM and calculate scores based on the logits of first predicted token.
+- We use 5-shot for AGIEval and only calculate scores for 4-choice questions using a combination metric of exact match and the logits of first predicted token. If any of the exact match or logits of first predicted token is correct, the model will get the score.
+- We use 0-shot for GAOKAO-Bench and only calculate scores for 4-choice questions based on the logits of first predicted token.
+- The generation config for all dataset is greedy search.
+- We also provided CEval scores from its latest leaderboard or the official repository of the model.
+
+|                                 | Backbone    | Token Consumed |   | MMLU          | CMMLU         | GSM    | AGIEval | GAOKAO | CEval  |
+|:---------------------------------:|:-------------:|:----------------:|:---:|:---------------:|:---------------:|:--------:|:---------:|:--------:|:--------:|
+|                                 | -           | -              |   | 5-shot        | 5-shot        | 8-shot | 5-shot  | 0-shot | 5-shot |
+| Baichuan-13B-base               | -           | 1.4T           |   | 50.54 (51.60) | 55.52 (55.30) |  25.78 |  41.86  |  51.62 |  53.60 |
+| Baichuan2-13B-base              | -           | 2.6T           |   | 54.81 (59.17) | 62.68 (61.97) |  53.98 |  48.22  |  58.60 |  58.10 |
+| InternLM-20B                    | -           | 2.3T           |   | 60.51 (62.05) |   59.46 (-)   |  51.4  |  56.07  |  62.06 |    -   |
+| Qwen-14B                        | -           | 3.0T           |   |     66.51     |     71.08     |  61.33 |  66.62  |  80.82 |  72.1  |
+| Skywork-13B-base                | -           | 3.2T           |   |     61.84     |     61.93     |  54.28 |  53.13  |  63.02 |    -   |
+|                                 |             |                |   |               |               |        |         |        |        |
+|           Llama-2-13B           |      -      |      2.0T      |   |     55.35     |     38.14     |  31.31 |  40.07  |  27.86 |    -   |
+| Linly-AI/Chinese-LLaMA-2-13B-hf | Llama-2-13B |        -       |   |     51.82     |     42.73     |  36.01 |  39.47  |  28.28 |    -   |
+|     hfl/chinese-llama-2-13b     | Llama-2-13B |        -       |   |     51.51     |     42.83     |  23.20 |  40.46  |  30.89 |    -   |
+|  wenge-research/yayi-13b-llama2 | Llama-2-13B |        -       |   |      23.7     |     25.34     |  7.51  |  24.72  |  27.22 |    -   |
+| TigerResearch/tigerbot-13b-base | Llama-2-13B |        0.6T       |   |     52.31     |     51.74     |  44.50 |  42.70  |  38.22 |    -   |
+|     IDEA-CCNL/Ziya2-13B-Base    | Llama-2-13B |        0.65T       |   |     59.37     |     61.16     |  44.58 |  51.72  |  58.96 |    58.84   |
+|                                 |             |                |   |               |               |        |         |        |        |
+|    **Colossal-LLaMA-2-13b-base**    | Llama-2-13B |     **0.025T**     |   |     56.42     |      61.8     |  58.83 |  54.69  |  69.53 |  60.3  |
+
+> The score in parentheses corresponds to the scores in the official repository of the model.
+
+More details about metrics can be found in [Metrics](#metrics).
+
+### Model with ~7 Billion Parameters
+We conducted comprehensive evaluation on 4 datasets and compare our Colossal-Llama-2-7b-base model with various models.
 
 - We use 5-shot for MMLU and calculate scores based on the logits of first predicted token.
 - We use 5-shot for CMMLU and calculate scores based on the logits of first predicted token.
 - We use 5-shot for AGIEval and only calculate scores for 4-choice questions using a combination metric of exact match and the logits of first predicted token. If any of the exact match or logits of first predicted token is correct, the model will get the score.
 - We use 0-shot for GAOKAO-Bench and only calculate scores for 4-choice questions based on the logits of first predicted token.
 - The generation config for all dataset is greedy search.
-- We also provided CEval scores from its lastest leaderboard or the official repository of the model.
+- We also provided CEval scores from its latest leaderboard or the official repository of the model.
 
 More details about metrics can be found in [Metrics](#metrics).
 
@@ -55,13 +91,10 @@ More details about metrics can be found in [Metrics](#metrics).
 | :----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :-----: | :----: | :----: | :----------------------------: |
 |                                |     -      |        -        |                |        5-shot        |    5-shot     | 5-shot  | 0-shot | 5-shot |
 |          Baichuan-7B           |     -      |      1.2T       |             |    42.32 (42.30)     | 44.53 (44.02) |  38.72  | 36.74  | 42.80  |
-|       Baichuan-13B-Base        |     -      |      1.4T       |             |    50.51 (51.60)     | 55.73 (55.30) |  47.20  | 51.41  | 53.60  |
 |       Baichuan2-7B-Base        |     -      |      2.6T       |             |    46.97 (54.16)     | 57.67 (57.07) |  45.76  | 52.60  | 54.00  |
-|       Baichuan2-13B-Base       |     -      |      2.6T       |             |    54.84 (59.17)     | 62.62 (61.97) |  52.08  | 58.25  | 58.10  |
 |           ChatGLM-6B           |     -      |      1.0T       |             |    39.67 (40.63)     |   41.17 (-)   |  40.10  | 36.53  | 38.90  |
 |          ChatGLM2-6B           |     -      |      1.4T       |             |    44.74 (45.46)     |   49.40 (-)   |  46.36  | 45.49  | 51.70  |
 |          InternLM-7B           |     -      |        -        |                |    46.70 (51.00)     |   52.00 (-)   |  44.77  | 61.64  | 52.80  |
-| InternLM-20B | - | 2.3T | | 60.96 (62.05) | 59.08 (-) | 57.96 | 61.92 | - |
 |            Qwen-7B (original)             |     -      |      2.2T       |             | 54.29 (56.70) | 56.03 (58.80) |  52.47  | 56.42  | 59.60  |
 |            Qwen-7B             |     -      |      2.4T       |             | 58.33 (58.20) | 62.54 (62.20) |  64.34  | 74.05 | 63.50 |
 |                                |            |                 |                 |                      |               |         |        |        |
@@ -100,7 +133,7 @@ The evaluation process involves 2 steps which are `inference` and `evaluation`. 
 
 ### Inference
 
-The inference process consists of two parts.
+The inference process consists of two parts. We now support tensor parallel inference for large models using [ShardFormer](colossalai/shardformer) in the [example](applications/ColossalEval/examples/dataset_evaluation/inference.py) script.
 1. Preprocess and convert the original dataset.
 2. Config your tokenizer and model arguments to perform zero-shot or few-shot prompting.
 
@@ -148,7 +181,7 @@ A data sample basically follow the format of Alpaca. It should contain the follo
 
 * `dataset` (str, compulsory): The name of the dataset.
 * `split` (str, compulsory): The split of the instruction.
-* `catrgory` (str, compulsory): The category of the instruction.
+* `category` (str, compulsory): The category of the instruction.
 * `instruction` (str, compulsory): The instruction for the LLM.
 * `input` (str, optional): The additional context of the instruction.
 * `output` (str, optional): The model output of the instruction.
@@ -192,7 +225,7 @@ In this step, you will configure your tokenizer and model arguments to infer on 
 
 A config file consists of two parts.
 1. Model config. In model config, you need to specify model name, model path, model class, tokenizer arguments and model arguments. For model class, currently we support `HuggingFaceModel`, `HuggingFaceCausalLM`, `ChatGLMModel` and `ChatGLMModel2`. `HuggingFaceModel` is for models that can be loaded with `AutoModel` and `HuggingFaceCausalLM` is for models that can be loaded with `AutoModelForCausalLM`. `ChatGLMModel` and `ChatGLMModel2` are for ChatGLM and ChatGLM2 models respectively. You can check all model classes in `colossal_eval/models/__init__.py`. If your model should set `trust_remote_code` as true, specify it in the `tokenizer_kwargs` and `model_kwargs` fields.
-2. Dataset config. In dataset config, you need to specify dataset name, path and dataset class. Currently, we support zero-shot on dataset MMLU, CMMLU, AGIEval, GAOKAO-Bench and LongBench and few-shot on dataset MMLU, CMMLU and AGIEval. If you want to enable few shot, set `few_shot` as true. You can check all model classes in `colossal_eval/dataset/__init__.py`.
+2. Dataset config. In dataset config, you need to specify dataset name, path and dataset class. Currently, we support zero-shot on dataset MMLU, CMMLU, AGIEval, GAOKAO-Bench, GSM8K and LongBench and few-shot on dataset MMLU, CMMLU AGIEval and GSM8K. If you want to enable few shot, set `few_shot` as true. You can check all model classes in `colossal_eval/dataset/__init__.py`.
 
 Once you have all config ready, the program will run inference on all the given datasets on all the given models.
 
@@ -235,17 +268,20 @@ An example config using model class `HuggingFaceCausalLM` and dataset class `CMM
 
 Currently, we support Hugging Face models. The `tokenizer_kwargs` is the arguments used in `AutoTokenizer.from_pretrained()`. The `model_kwargs` is the arguments used in `AutoModel.from_pretrained` or `AutoModelForCausalLM.from_pretrained()`. `few_shot` will be set true if you want to enable few-shot prompting for the dataset. `debug` will be set true if you want to verify whether your prompt is right or wrong.
 
+> For GSM8K dataset, you can set additional flags `load_train` or `load_reference` for dataset configuration as true and during the inference process, the program will calculate loss summation over all tokens for each data sample. During the evaluation process, you can use metric `loss_over_all_tokens` to calculate the overall loss and use it for data leakage evaluation.
+
 #### How to Use
 An example script can be the following. The `configs/dataset_evaluation/inference.py` is the same in all examples provided.
 
 ```shell
-torchrun --nproc_per_node=1 inference.py \
+torchrun --nproc_per_node=4 inference.py \
     --config "path to config file" \
     --load_dataset \
+    --tp_size 2 \
     --inference_save_path "path to save inference results"
 ```
 
-You should specify the path to config file in `config`. You can run the script without specifying `load_dataset` if you already save the converted dataset or otherwise set it to first load the original dataset and save the converted dataset. You should specify the path to save inference results in `inference_save_path`.
+You should specify the path to config file in `config`. You can run the script without specifying `load_dataset` if you already save the converted dataset or otherwise set it to first load the original dataset and save the converted dataset. You should specify the path to save inference results in `inference_save_path`. If you want to use tensor parallel inference, specify the tensor parallel size in `--tp_size` and the process will automatically calculate  data parallel size.
 
 ### Evaluation
 
@@ -358,23 +394,25 @@ To make it more easier to set the config, you only need to specify all metrics y
 
 - `combined_single_choice_accuracy`: A combination of `first_token_logit` and `single_choice_accuracy`. If one of these is correct, the model will get the score. It can be used in all dataset that contains single-choice questions.
 - `first_token_logit`: Calculate score based on softmax score over the given choices. If the argmax of the softmax is equal to the reference, the model will get the score. If there is `NaN` in softmax score, it will calculate the score using exact match. It can be used in all dataset that contains single-choice questions.
-- `single_choice_accuracy`: Calculate score using exact match. It will only get the first uppercase letter such as A, B, C or D that is not surrouded by lowercase letters. If the uppercase letter is equal to the reference, the model will get the score. It can be used in all dataset that contains single-choice questions.
-- `multi_choice_accuracy`: Calculate score on multi-choice questions. It will get a set of all uppercase letters such as A, B, C or D that is not surrouded by lowercase letters. If the prediction conatains uppercase letters that are not in reference. The model will get 0 score. If the prediction contains a uppercase letter that is in reference, the model will get a score of `1/len(reference)`. It is used in AGIEval and GAOKAO-Bench.
+- `single_choice_accuracy`: Calculate score using exact match. It will only get the first uppercase letter such as A, B, C or D that is not surrounded by lowercase letters. If the uppercase letter is equal to the reference, the model will get the score. It can be used in all dataset that contains single-choice questions.
+- `multi_choice_accuracy`: Calculate score on multi-choice questions. It will get a set of all uppercase letters such as A, B, C or D that is not surrounded by lowercase letters. If the prediction contains uppercase letters that are not in reference. The model will get 0 score. If the prediction contains a uppercase letter that is in reference, the model will get a score of `1/len(reference)`. It is used in AGIEval and GAOKAO-Bench.
 - `math_equivalence`: Code from [hendrycks](https://github.com/hendrycks/math/blob/main/modeling/math_equivalence.py). Compute scores over the prediction math formula and reference math formula. It is used in AGIEval and GAOKAO-Bench.
 - `f1_score`: Calculate English f1 score between prediction and reference. It is used in Longbench.
 - `f1_zh_score`: Calculate Chinese f1 score between prediction and reference. It is used in Longbench.
 - `rouge_score`: Calculate English f1 score between prediction and reference. It is used in GAOKAO-Bench and LongBench.
 - `rouge_zh_score`: Calculate Chinese rouge score between prediction and reference. It is used in GAOKAO-Bench and LongBench.
-- `retrieval_score`: Calculate English retrieval score between prediction and reference. It determines whether the ouput(which paragraph) corresponds to the given abstract. It is used in Longbench.
-- `retrieval_zh_score`: Calculate Chinese retrieval score between prediction and reference. It determines whether the ouput(which paragraph) corresponds to the given abstract. It is used in Longbench.
-- `classification_score`: Calculate classification score between prediction and reference. It determines whether the ouput(a class) is equal to the reference. It is used in Longbench.
+- `retrieval_score`: Calculate English retrieval score between prediction and reference. It determines whether the output(which paragraph) corresponds to the given abstract. It is used in Longbench.
+- `retrieval_zh_score`: Calculate Chinese retrieval score between prediction and reference. It determines whether the output(which paragraph) corresponds to the given abstract. It is used in Longbench.
+- `classification_score`: Calculate classification score between prediction and reference. It determines whether the output(a class) is equal to the reference. It is used in Longbench.
 - `code_sim_score`: Calculate similarity score between prediction and reference. It is used in Longbench.
-- `count_score`: Calculate count score between prediction and reference. It determines whether the ouput(number of given passages) is equal to the reference. It is used in Longbench.
+- `count_score`: Calculate count score between prediction and reference. It determines whether the output(number of given passages) is equal to the reference. It is used in Longbench.
+- `gsm_accuracy`: Calculate scores between prediction and reference.. It is used in GSM8K.
 - `perplexity`: Calculate perplexity. The formula is $ perplexity = \frac{1}{n} \sum_i e^{loss_i} $ where $n$ is the number of samples and $ loss_i $ is the average loss for sample $ i $. It can be used in all dataset.
 - `ppl_score`: Calculate perplexity score. The formula is $ ppl\_score = \frac{1}{n} \sum_i e^{-loss_i} $ where $n$ is the number of samples and $ loss_i $ is the average loss for sample $ i $. It can be used in all dataset.
 - `ppl_score_over_choices`: Calculate perplexity score over choices. The formula is $ ppl\_score\_over\_choices= \frac{1}{n} \sum_i e^{-loss\_over\_choices_i} $ where $n$ is the number of samples and $ loss\_over\_choices_i $ is the loss on the first predicted token for sample $ i $. It can be used in all dataset that contains single-choice questions.
 - `per_byte_perplexity`: Calculate per byte perplexity. The formula is $ \frac{1}{n} \sum_i e^{\frac{loss_i}{byte_i}} $ where $n$ is the number of samples, $ loss_i $ is the total loss for sample $ i $ and $ byte_i $ is the number of bytes sample $ i $ occupies. It can be used in all dataset.
 - `per_byte_ppl_score`: Calculate per byte perplexity score. The formula is $ \frac{1}{n} \sum_i e^{-\frac{loss_i}{byte_i}} $ where $n$ is the number of samples, $ loss_i $ is the total loss for sample $ i $ and $ byte_i $ is the number of bytes sample $ i $ occupies. It can be used in all dataset.
+- `loss_over_all_tokens`: Calculate loss over all tokens. The formula is $ loss\_over\_all\_tokens = \frac{1}{n} \sum_i loss_i $ where $n$ is the total number of tokens of the dataset and $ loss_i $ is the loss summation for sample $ i $ over all tokens and $ \sum_i loss_i $ is the loss summation for all samples. It can be used in all dataset.
 
 We use `combined_single_choice_accuracy` and `first_token_logit` in the leaderboard.
 
@@ -419,7 +457,7 @@ def CustomizedMetric(prediction: str, reference: str):
 	return score
 ```
 
-Once you have successfully added your own metric, you should specify your metric both in `colossal_eval/evaluate/dataset_evaluator/metric.py` (suggest which subcategories shoule the metric be applied to) and your evaluation config.
+Once you have successfully added your own metric, you should specify your metric both in `colossal_eval/evaluate/dataset_evaluator/metric.py` (suggest which subcategories should the metric be applied to) and your evaluation config.
 
 ### How to Add a New Dataset?
 
@@ -519,6 +557,15 @@ year={2023}
       primaryClass={cs.CL}
 }
 
+@misc{xu2023cvalues,
+      title={CValues: Measuring the Values of Chinese Large Language Models from Safety to Responsibility},
+      author={Guohai Xu and Jiayi Liu and Ming Yan and Haotian Xu and Jinghui Si and Zhuoran Zhou and Peng Yi and Xing Gao and Jitao Sang and Rong Zhang and Ji Zhang and Chao Peng and Fei Huang and Jingren Zhou},
+      year={2023},
+      eprint={2307.09705},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
+
 @inproceedings{Zhang2023EvaluatingTP,
   title={Evaluating the Performance of Large Language Models on GAOKAO Benchmark},
   author={Xiaotian Zhang and Chunyang Li and Yi Zong and Zhengyu Ying and Liang He and Xipeng Qiu},
@@ -541,6 +588,20 @@ year={2023}
   year={2021}
 }
 
+@article{zhang2023safetybench,
+      title={SafetyBench: Evaluating the Safety of Large Language Models with Multiple Choice Questions},
+      author={Zhexin Zhang and Leqi Lei and Lindong Wu and Rui Sun and Yongkang Huang and Chong Long and Xiao Liu and Xuanyu Lei and Jie Tang and Minlie Huang},
+      journal={arXiv preprint arXiv:2309.07045},
+      year={2023}
+}
+
+@article{cobbe2021training,
+  title={Training verifiers to solve math word problems},
+  author={Cobbe, Karl and Kosaraju, Vineet and Bavarian, Mohammad and Chen, Mark and Jun, Heewoo and Kaiser, Lukasz and Plappert, Matthias and Tworek, Jerry and Hilton, Jacob and Nakano, Reiichiro and others},
+  journal={arXiv preprint arXiv:2110.14168},
+  year={2021}
+}
+
 @article{hendrycks2021ethics,
   title={Aligning AI With Shared Human Values},
   author={Dan Hendrycks and Collin Burns and Steven Basart and Andrew Critch and Jerry Li and Dawn Song and Jacob Steinhardt},
@@ -557,4 +618,12 @@ year={2023}
       primaryClass={cs.CL}
 }
 
+@misc{wei2023skywork,
+      title={Skywork: A More Open Bilingual Foundation Model},
+      author={Tianwen Wei and Liang Zhao and Lichang Zhang and Bo Zhu and Lijie Wang and Haihua Yang and Biye Li and Cheng Cheng and Weiwei Lü and Rui Hu and Chenxia Li and Liu Yang and Xilin Luo and Xuejie Wu and Lunan Liu and Wenjun Cheng and Peng Cheng and Jianhao Zhang and Xiaoyu Zhang and Lei Lin and Xiaokun Wang and Yutuan Ma and Chuanhai Dong and Yanqi Sun and Yifu Chen and Yongyi Peng and Xiaojuan Liang and Shuicheng Yan and Han Fang and Yahui Zhou},
+      year={2023},
+      eprint={2310.19341},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
 ```

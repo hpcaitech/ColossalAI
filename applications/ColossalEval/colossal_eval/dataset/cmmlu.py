@@ -86,8 +86,8 @@ default_inference_kwargs = {
 }
 
 
-def get_few_shot_data(data: List[Dict]):
-    few_shot_data = []
+def get_few_shot_data(data: List[Dict], subject):
+    few_shot_data = [f"以下是关于{subject}的单项选择题，请直接给出正确答案的选项。"]
     for i in data:
         few_shot_data.append(i["input"] + i["target"])
     return few_shot_data
@@ -101,7 +101,9 @@ class CMMLUDataset(BaseDataset):
     """
 
     @staticmethod
-    def load(path: str, logger: DistributedLogger, few_shot: bool) -> List[Dict]:
+    def load(
+        path: str, logger: DistributedLogger, few_shot: bool, forward_only: bool, load_train: bool, load_reference: bool
+    ) -> List[Dict]:
         dataset = {"dev": {}, "test": {}}
         for split in ["dev", "test"]:
             files = os.listdir(os.path.join(path, split))
@@ -120,7 +122,7 @@ class CMMLUDataset(BaseDataset):
 
                 if split == "test" and few_shot:
                     dataset[split][subject]["inference_kwargs"]["few_shot_data"] = get_few_shot_data(
-                        dataset["dev"][subject]["data"]
+                        dataset["dev"][subject]["data"], subject
                     )
 
                 with open(file_dir, encoding="utf-8") as f:

@@ -10,8 +10,8 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 
 # from colossalai.nn.optimizer import HybridAdam
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from tests.kit.model_zoo import model_zoo
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
+from tests.kit.model_zoo import COMMON_MODELS, IS_FAST_TEST, model_zoo
 
 # These models are not compatible with AMP
 _AMP_ERR_MODELS = ["timm_convit", "deepfm_interactionarch"]
@@ -21,6 +21,7 @@ _LOW_LEVEL_ZERO_ERR_MODELS = ["dlrm_interactionarch"]
 _STUCK_MODELS = ["transformers_albert_for_multiple_choice"]
 
 
+@clear_cache_before_run()
 def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
     device = get_accelerator().get_current_device()
     try:
@@ -62,7 +63,12 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
     ignore_models = _AMP_ERR_MODELS + _LOW_LEVEL_ZERO_ERR_MODELS + _STUCK_MODELS
     skipped_models = []
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in model_zoo.items():
+    if IS_FAST_TEST:
+        registry = model_zoo.get_sub_registry(COMMON_MODELS)
+    else:
+        registry = model_zoo
+
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in registry.items():
         # FIXME(ver217): fix these models
         if name in ignore_models:
             skipped_models.append(name)

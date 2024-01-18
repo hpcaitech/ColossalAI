@@ -154,7 +154,7 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
         remain = self.max_tokens - prompt_length
         while self.get_conversation_length() > remain:
             if len(self.buffered_history.messages) <= 2:
-                raise RuntimeError("Exeeed max_tokens, trunck size of retrieved documents is too large")
+                raise RuntimeError("Exceed max_tokens, trunk size of retrieved documents is too large")
             temp = self.buffered_history.messages.pop(0)
             self.summarized_history_temp.messages.append(temp)
             temp = self.buffered_history.messages.pop(0)

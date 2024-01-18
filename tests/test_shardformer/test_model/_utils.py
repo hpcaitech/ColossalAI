@@ -154,7 +154,7 @@ def run_forward_backward_with_hybrid_plugin(
 
     data = data_gen_fn()
 
-    if booster.plugin.enable_sequence_parallelism and booster.plugin.tp_size != 0:
+    if booster.plugin.shard_config.enable_sequence_parallelism and booster.plugin.tp_size != 0:
         seq_len = data["input_ids"].shape[-1]
         lcm = booster.plugin.tp_size * seq_len // math.gcd(booster.plugin.tp_size, seq_len)
         times = lcm // seq_len
@@ -203,7 +203,7 @@ def check_output_hidden_state(
 ):
     org_hidden_state = org_output.last_hidden_state
 
-    if stage_manager and stage_manager.is_last_stage():
+    if stage_manager and stage_manager.is_last_stage(ignore_chunk=True):
         sharded_hidden_state = sharded_output["outputs"]["last_hidden_state"]
     else:
         sharded_hidden_state = sharded_output.last_hidden_state
@@ -228,6 +228,10 @@ def check_weight(
     for suffix in layer_suffix:
         org_weight = getattr_(org_model, suffix).weight
         sharded_weight = getattr_(sharded_model, suffix).weight
+
+        # skip if layer is not held by this process
+        if sharded_weight is None:
+            continue
 
         if is_distributed_tensor(sharded_weight) or is_customized_distributed_tensor(sharded_weight):
             sharded_weight_list = [
