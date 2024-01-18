@@ -269,8 +269,7 @@ def flash_decoding_attention(
         HEAD_DIM=head_dim,
     )
 
-    output = torch.empty_like(q)  # already overlapped
-    output = torch.empty((bsz, 1, num_heads, head_dim), dtype=q.dtype, device=q.device)
+    output = torch.empty((bsz, 1, num_heads, head_dim), dtype=q.dtype, device=q.device)  # already overlapped
 
     grid = (bsz, num_heads)
     _flash_decoding_fwd_reduce_kernel[grid](
