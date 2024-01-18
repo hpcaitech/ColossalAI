@@ -21,9 +21,9 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
 # src/transformers/models/llama/modeling_llama.py
 # https://github.com/huggingface/transformers/blob/633215ba58fe5114d8c8d32e415a04600e010701/src/transformers/models/llama/modeling_llama.py#L350
 def torch_attn_ref(
-    q: torch.Tensor,  # [bsz, seq_len, num_heads, head_dim]
-    k: torch.Tensor,  # [bsz, kv_seq_len, num_heads, head_dim]
-    v: torch.Tensor,  # [bsz, kv_seq_len, num_heads, head_dim]
+    q: torch.Tensor,  # [bsz, num_heads, q_len, head_dim]
+    k: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_dim]
+    v: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_dim]
     attention_mask: torch.Tensor,  # [bsz, 1, seq_len, kv_seq_len]
     bsz: int,
     seq_len: int,
@@ -33,12 +33,6 @@ def torch_attn_ref(
     head_dim: int,
 ):
     assert q.shape[-1] == k.shape[-1] == v.shape[-1] == head_dim
-    q = q.view(bsz, seq_len, num_heads, head_dim)
-    k = k.view(bsz, kv_seq_len, num_kv_heads, head_dim)
-    v = v.view(bsz, kv_seq_len, num_kv_heads, head_dim)
-    q = q.transpose(1, 2)
-    k = k.transpose(1, 2)
-    v = v.transpose(1, 2)
 
     # repeat kv for GQA and MQA
     # k/v won't change if kv_group_num is 1

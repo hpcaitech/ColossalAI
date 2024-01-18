@@ -9,7 +9,7 @@ import triton.language as tl
 # Triton 2.1.0
 @triton.jit
 def _flash_decoding_fwd_kernel(
-    Q,  # [batch_size, head_num, head_dim]
+    Q,  # [batch_size, head_num, q_len(1), head_dim]
     KCache,  # [num_blocks, num_kv_heads, head_dim, block_size]
     VCache,  # [num_blocks, num_kv_heads, head_dim, block_size]
     block_tables,  # [batch_size, max_blocks_per_sequence]
@@ -18,6 +18,7 @@ def _flash_decoding_fwd_kernel(
     kv_seq_len,  # [batch_size]
     stride_qt,
     stride_qh,
+    stride_ql,
     stride_qd,
     stride_cacheb,
     stride_cacheh,
@@ -140,6 +141,7 @@ def _flash_decoding_fwd_reduce_kernel(
     stride_o_lseh,
     stride_o_lseb,
     stride_ob,
+    stride_ol,
     stride_oh,
     stride_od,
     BLOCK_KV: tl.constexpr,
@@ -197,7 +199,7 @@ def flash_decoding_attention(
     Flash decoding implemented with a blocked KV Cache (PagedAttention) during decoding stage.
 
     Args:
-        q (torch.Tensor):       [bsz, 1, num_heads, head_dim]
+        q (torch.Tensor):       [bsz, num_heads, q_len(1), head_dim]
         k_cache (torch.Tensor): [num_blocks, num_kv_heads, head_dim, block_size]
         v_cache (torch.Tensor): [num_blocks, num_kv_heads, head_dim, block_size]
         kv_seq_len (torch.Tensor): [batch_size]
@@ -211,9 +213,9 @@ def flash_decoding_attention(
         num_kv_group (int, optional): Number of key/value groups. Defaults to 1.
 
     Returns:
-        Output tensor with shape [bsz, num_heads, head_dim]
+        Output tensor with shape [bsz, num_heads, q_len, head_dim]
     """
-    bsz, _, num_heads, head_dim = q.shape
+    bsz, num_heads, _, head_dim = q.shape
 
     assert head_dim in {32, 64, 128, 256}
     assert kv_seq_len.shape[0] == block_tables.shape[0] == bsz, (
@@ -234,10 +236,6 @@ def flash_decoding_attention(
     assert block_size in {16, 32, 64, 128}
     BLOCK_KV = block_size
 
-    if q.dim() == 4:
-        assert q.size(1) == 1, f"q_len is supposed to be 1 but is {q.size(1)}"
-        q = q.squeeze(1)
-
     grid = (triton.next_power_of_2(bsz), num_heads, triton.cdiv(triton.next_power_of_2(max_seq_len_in_batch), BLOCK_KV))
     _flash_decoding_fwd_kernel[grid](
         q,
@@ -250,6 +248,7 @@ def flash_decoding_attention(
         q.stride(0),
         q.stride(1),
         q.stride(2),
+        q.stride(3),
         k_cache.stride(0),
         k_cache.stride(1),
         k_cache.stride(2),
@@ -270,8 +269,8 @@ def flash_decoding_attention(
         HEAD_DIM=head_dim,
     )
 
-    output = torch.empty_like(q)
-    output = output.view(-1, output.size(-2), output.size(-1))
+    output = torch.empty_like(q)  # already overlapped
+    output = torch.empty((bsz, 1, num_heads, head_dim), dtype=q.dtype, device=q.device)
 
     grid = (bsz, num_heads)
     _flash_decoding_fwd_reduce_kernel[grid](
@@ -289,6 +288,7 @@ def flash_decoding_attention(
         output.stride(0),
         output.stride(1),
         output.stride(2),
+        output.stride(3),
         BLOCK_KV=block_size,
         HEAD_DIM=head_dim,
     )

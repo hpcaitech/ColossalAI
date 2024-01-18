@@ -34,9 +34,9 @@ def torch_attn_unpad(
         mask[mask == 0.0] = float("-inf")
 
         torch_attn_ref_out = torch_attn_ref(
-            q[start_idx:end_idx].unsqueeze(0),
-            k[start_idx:end_idx].unsqueeze(0),
-            v[start_idx:end_idx].unsqueeze(0),
+            q[start_idx:end_idx].unsqueeze(0).transpose(1, 2),
+            k[start_idx:end_idx].unsqueeze(0).transpose(1, 2),
+            v[start_idx:end_idx].unsqueeze(0).transpose(1, 2),
             mask,
             1,  # set bsz as 1 as we're processing sequence one by one
             seq_len,
