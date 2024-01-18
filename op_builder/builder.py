@@ -218,12 +218,7 @@ class Builder(ABC):
         from torch.utils.cpp_extension import CppExtension, CUDAExtension
 
         if self.ext_type == "cpp":
-            return CppExtension(
-                name=self.prebuilt_import_path,
-                sources=self.strip_empty_entries(self.sources_files()),
-                include_dirs=self.strip_empty_entries(self.include_dirs()),
-                extra_compile_args=self.strip_empty_entries(self.cxx_flags()),
-            )
+            
 
         return CUDAExtension(
             name=self.prebuilt_import_path,
@@ -234,3 +229,5 @@ class Builder(ABC):
                 "nvcc": self.strip_empty_entries(self.nvcc_flags()),
             },
         )
+
+

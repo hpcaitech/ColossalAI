@@ -4,6 +4,7 @@ from .common import (
     disposable,
     ensure_path_exists,
     free_storage,
+    get_current_device,
     is_ddp_ignored,
     set_seed,
 )
@@ -22,5 +23,6 @@ __all__ = [
     "_cast_float",
     "free_storage",
     "set_seed",
+    "get_current_device",
     "is_ddp_ignored",
 ]

@@ -8,7 +8,7 @@ from colossalai.kernel.extensions.flash_attention import HAS_FLASH_ATTN, HAS_MEM
 from colossalai.testing import clear_cache_before_run, parameterize
 
 if HAS_MEM_EFF_ATTN or HAS_FLASH_ATTN:
-    from colossalai.kernel import AttnMaskType, ColoAttention
+    from colossalai.nn.layer.colo_attention import AttnMaskType, ColoAttention
 
 DTYPE = [torch.float16, torch.bfloat16, torch.float32]
 

@@ -3,7 +3,7 @@ from typing import Optional
 
 import torch
 
-from colossalai.kernel import CPUAdamLoader
+from colossalai.kernel.kernel_loader import CPUAdamLoader
 
 from .nvme_optimizer import NVMeOptimizer
 
