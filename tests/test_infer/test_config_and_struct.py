@@ -2,7 +2,7 @@ import pytest
 
 import colossalai
 from colossalai.inference.config import InferenceConfig
-from colossalai.inference.struct import BatchInfo, Sequence
+from colossalai.inference.struct import BatchInfo, RequestStatus, Sequence
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
@@ -41,6 +41,10 @@ def check_config_and_inference():
         eos_token_id=2,
         max_output_len=256,
     )
+    sequence.mark_running()
+    assert sequence.status == RequestStatus.RUNNING
+    sequence.recycle()
+    assert sequence.status == RequestStatus.RECYCLED
 
     assert sequence.sentence_len == 3
     assert sequence.input_len == 3

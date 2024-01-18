@@ -95,11 +95,10 @@ def benchmark_inference(args):
 
         if args.dtype == "fp16":
             model = model.half()
-        elif args.dtype == "bf16":
+        elif args.dtype == "fp16":
             model = model.to(torch.bfloat16)
 
-        # mbsz = args.mbsz
-        mbsz = args.batch_size
+        mbsz = args.mbsz
         if args.mode == "caiinference":
             inference_config = InferenceConfig(
                 dtype=args.dtype,

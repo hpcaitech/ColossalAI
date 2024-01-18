@@ -173,7 +173,10 @@ def llama_attn_forward(
     key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
     value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
+    kv_seq_len = max(sequence_lengths).item()
+
     cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+
     query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
     query_states = query_states.transpose(1, 2)
