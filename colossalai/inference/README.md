@@ -35,11 +35,38 @@ Engine is designed as starter of inference loop. User can easily instantialize a
 ### :game_die: Design of request_handler
 Request handler is responsible manage requests and schedule a proper batch from exisiting requests. According to existing work and experiments, we do believe that it is beneficial to increase the length of decoding sequences. In our design, we partition requests into three priorities depending on their lengths, the longer sequences are first considered.
 
+### :radio: Design of KV cache and cache manager
+We design a unified blocked type cache and cache manager to distribute memory. The physical memory is allocated before decoding and represented by a logical block table. During decoding process, cache manager administrate physical memory through `block table` and other components(i.e. engine) can focus on the light-weighted `block table`. Their details are introduced below.
+- `cache block` We group physical memory into different memory blocks. A typical cache block is shaped `(num_kv_heads, head_size, block_size)`. We decide block number beforehand. The memory allocation and computation are executed with the granularity of memory block.
+- `block table` Block table is the logical representation of cache blocks. Concretely, a block table of a single sequence is a 1D tensor, with each element holding a block id of allocated id or `-1` for non allocated. For more information, you can checkout the source code.
+
+### :railway_car: Modeling
+Modeling contains models and layers, which are hand-crafted for better performance easier usage. Deeply integrated with `shardformer`, we also construct policy for our models. In order to minimize users' learning costs, our models are aligned with [Transformers](https://github.com/huggingface/transformers)
 
 ## 🕹 Usage
 
+### :arrow_right: Quick Start
+You can enjoy your fast generation journey within three step
+```python
+# First, create a model in "transformers" way
+model = transformers.LlamaForCausalLM(config).cuda()
+# Second, create an inference_config
+inference_config = InferenceConfig(
+                dtype=args.dtype,
+                max_batch_size=mbsz,
+                max_input_len=args.seq_len,
+                max_output_len=args.output_len,
+            )
+# Third, create an engine with model and config
+engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
 
-To be added.
+# Try fast infrence now!
+prompts = {'How are you today?'}
+engine.generate(prompts)
+
+```
+
+### :bookmark: Customize your inference engine
 
 ## 🪅 Support Matrix
 
