@@ -129,7 +129,7 @@ SAME_LEN = True
 configs = [
     triton.testing.Benchmark(
         x_names=["KV_LEN"],
-        x_vals=[2**i for i in range(8, 12)],
+        x_vals=[2**i for i in range(8, 16)],
         # x_vals=[x for x in range(256, 8192, 256)],
         line_arg="provider",
         line_vals=["torch", "triton"],
@@ -234,5 +234,5 @@ def bench_kernel(
 
 
 if __name__ == "__main__":
-    # test_flash_decoding(16, 32, 32, 16, 1, True)
-    bench_kernel.run(save_path=".", print_data=True)
+    test_flash_decoding(16, 32, 32, 16, 1, True)
+    # bench_kernel.run(save_path=".", print_data=True)
