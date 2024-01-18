@@ -79,9 +79,9 @@ Following are the description `ShardConfig`'s arguments:
 
 - `enable_sequence_overlap`: Whether to turn on sequence overlap, which overlap the computation and communication in sequence parallelism. It can only be used when `enable_sequence_parallelism` is True. Defaults to False.
 
--  `enable_all_optimization`: Whether to turn on all optimization tools including `fused normalizaion`, `flash attention`, `JIT fused operators`, `sequence parallelism` and `sequence overlap`. Defaults to False.
+-  `enable_all_optimization`: Whether to turn on all optimization tools including `fused normalization`, `flash attention`, `JIT fused operators`, `sequence parallelism` and `sequence overlap`. Defaults to False.
 
-- `extra_kwargs`: A dict to store extra kwargs for ShardFomer.
+- `extra_kwargs`: A dict to store extra kwargs for ShardFormer.
 
 ### Write your own policy
 
@@ -116,17 +116,18 @@ We will follow this roadmap to develop Shardformer:
 
 | model |   tensor parallel    |  pipeline parallel   |   lazy initialization |  xformer   |  flash attn2 | jit fused operator | fused layernorm |  sequence parallel |  overlap |
 | :------: | :-----: | :-----: | :--------: | :---------: | :------: | :-----: | :-----: | :--------: | :---------: |
-| bert |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [x] |  [x] |
-| t5 |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
-| llama V1/V2 |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
-| gpt2 |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [x] |  [x] |
-| opt |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
-| bloom |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [x] |  [x] |
-| chatglm2 |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [x] | [x] |  [x] |  [x] |
-| vit |   [x]   |  [x]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
-| whisper |   [x]   |  [x]   |   [x] |  [x]   |  [x] | [ ] | [x] |  [ ] |  [ ] |
-| sam |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
-| blip2 |   [x]   |  [ ]   |   [ ] |  [x]   |  [x] | [x] | [x] |  [ ] |  [ ] |
+| bert |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [√] |  [√] |
+| t5 |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
+| llama V1/V2 |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
+| gpt2 |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [√] |  [√] |
+| opt |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
+| bloom |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [√] |  [√] |
+| chatglm2 |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [√] |  [√] |
+| vit |   [√]   |  [√]   |   [ ] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
+| whisper |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [ ] | [√] |  [ ] |  [ ] |
+| sam |   [√]   |  [ ]   |   [ ] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
+| blip2 |   [√]   |  [ ]   |   [ ] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
+| falcon |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [ ] | [√] |  [ ] |  [ ] |
 | roberta |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | albert |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | ernie |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
@@ -136,6 +137,7 @@ We will follow this roadmap to develop Shardformer:
 | swin |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | swin V2 |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
 | qwen |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
+| mistral |   [√]   |  [ ]   |   [ ] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
 
 
 ## 💡 API Design

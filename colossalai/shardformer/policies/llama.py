@@ -8,7 +8,11 @@ from torch.nn import Module
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, RMSNorm, VocabParallelEmbedding1D
 
-from ..modeling.llama import LlamaPipelineForwards, get_llama_flash_attention_forward
+from ..modeling.llama import (
+    LlamaPipelineForwards,
+    get_llama_flash_attention_forward,
+    get_lm_forward_with_dist_cross_entropy,
+)
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["LlamaPolicy", "LlamaForCausalLMPolicy", "LlamaForSequenceClassificationPolicy"]
@@ -126,7 +130,7 @@ class LlamaPolicy(Policy):
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_flash_attention_forward(),
+                    "forward": get_llama_flash_attention_forward(self.shard_config),
                 },
                 policy=policy,
                 target_key=LlamaAttention,
@@ -140,21 +144,42 @@ class LlamaPolicy(Policy):
     def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
         """If under pipeline parallel setting, replacing the original forward method of huggingface
         to customized forward method, and add this changing to policy."""
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            if self.model.__class__.__name__ == "LlamaModel":
-                module = self.model
-            else:
-                module = self.model.model
+        if self.pipeline_stage_manager is None:
+            return
 
+        stage_manager = self.pipeline_stage_manager
+        if self.model.__class__.__name__ == "LlamaModel":
+            module = self.model
+        else:
+            module = self.model.model
+
+        if stage_manager.is_interleave:
+            layers_per_stage = self.distribute_layers(
+                len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
+            )
+            stage_manager.stage_indices = Policy.get_stage_index(
+                layers_per_stage,
+                stage_manager.stage,
+                num_model_chunks=stage_manager.num_model_chunks,
+                num_stages=stage_manager.num_stages,
+            )
+            method_replacement = {
+                "forward": partial(new_forward, stage_manager=stage_manager, shard_config=self.shard_config)
+            }
+
+        else:
             layers_per_stage = Policy.distribute_layers(len(module.layers), stage_manager.num_stages)
             stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {"forward": partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+            method_replacement = {
+                "forward": partial(
+                    new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
+                )
+            }
             self.append_or_create_method_replacement(
                 description=method_replacement, policy=policy, target_key=model_cls
             )
 
-        return
+        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage."""
@@ -167,13 +192,32 @@ class LlamaPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
-        if stage_manager.is_first_stage():
-            held_layers.append(module.embed_tokens)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
-        held_layers.extend(module.layers[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            held_layers.append(module.norm)
+        if stage_manager.is_interleave:
+            assert stage_manager.num_model_chunks is not None
+            layers_per_stage = self.distribute_layers(
+                len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
+            )
+            stage_indices = Policy.get_stage_index(
+                layers_per_stage,
+                stage_manager.stage,
+                num_model_chunks=stage_manager.num_model_chunks,
+                num_stages=stage_manager.num_stages,
+            )
+            if stage_manager.is_first_stage(ignore_chunk=True):
+                held_layers.append(module.embed_tokens)
+            for start_idx, end_idx in stage_indices:
+                held_layers.extend(module.layers[start_idx:end_idx])
+            if stage_manager.is_last_stage(ignore_chunk=True):
+                held_layers.append(module.norm)
+
+        else:
+            layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
+            if stage_manager.is_first_stage():
+                held_layers.append(module.embed_tokens)
+            start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+            held_layers.extend(module.layers[start_idx:end_idx])
+            if stage_manager.is_last_stage():
+                held_layers.append(module.norm)
 
         return held_layers
 
@@ -206,15 +250,16 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
 
         policy = super().module_policy()
 
+        setattr(self.shard_config, "causal_lm", True)
+
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
             new_item = {
                 LlamaForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
-                        SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=Linear1D_Col, kwargs=dict(gather_output=True)
-                        )
-                    ]
+                        SubModuleReplacementDescription(suffix="lm_head", target_module=Linear1D_Col)
+                    ],
+                    method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
                 )
             }
             policy.update(new_item)
@@ -231,7 +276,7 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
         """Get pipeline layers for current stage."""
         stage_manager = self.pipeline_stage_manager
         held_layers = super().get_held_layers()
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.lm_head)
         return held_layers
 
@@ -284,7 +329,7 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
         """Get pipeline layers for current stage."""
         stage_manager = self.pipeline_stage_manager
         held_layers = super().get_held_layers()
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.score)
         return held_layers
 

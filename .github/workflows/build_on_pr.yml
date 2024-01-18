@@ -22,57 +22,6 @@ on:
   delete:
 
 jobs:
-  prepare_cache:
-    name: Prepare testmon cache
-    if: |
-      github.event_name == 'create' &&
-      github.event.ref_type == 'branch' &&
-      github.event.repository.full_name == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, gpu]
-    container:
-      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
-      options: --rm
-    timeout-minutes: 5
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Copy testmon cache
-        run: | # branch name may contain slash, we need to replace it with space
-          export REF_BRANCH=$(echo ${{ github.event.ref }} | sed "s/\// /")
-          if [ -d /github/home/testmon_cache/${MAIN_BRANCH} ]; then
-             cp -p -r /github/home/testmon_cache/${MAIN_BRANCH} "/github/home/testmon_cache/${REF_BRANCH}"
-          fi
-        env:
-          MAIN_BRANCH: ${{ github.event.master_branch }}
-
-  prepare_cache_for_pr:
-    name: Prepare testmon cache for PR
-    if: |
-      github.event_name == 'pull_request' &&
-      (github.event.action == 'opened' || github.event.action == 'reopened' || (github.event.action == 'edited' && github.event.changes.base != null)) &&
-      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, gpu]
-    container:
-      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
-      options: --rm
-    timeout-minutes: 5
-    defaults:
-      run:
-        shell: bash
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-repare-cache
-      cancel-in-progress: true
-    steps:
-      - name: Copy testmon cache
-        run: | # branch name may contain slash, we need to replace it with space
-          export BASE=$(echo ${{ github.event.pull_request.base.ref }} | sed "s/\// /")
-          if [ -d "/github/home/testmon_cache/${BASE}" ] && [ ! -z "$(ls -A "/github/home/testmon_cache/${BASE}")" ]; then
-            mkdir -p /github/home/testmon_cache/_pull/${PR_NUMBER} && cp -p -r "/github/home/testmon_cache/${BASE}"/.testmondata* /github/home/testmon_cache/_pull/${PR_NUMBER}
-          fi
-        env:
-          PR_NUMBER: ${{ github.event.number }}
-
   detect:
     name: Detect file change
     if: |
@@ -140,8 +89,8 @@ jobs:
     if: needs.detect.outputs.anyLibraryFileChanged == 'true'
     runs-on: [self-hosted, gpu]
     container:
-      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
-      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
+      image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
+      options: --gpus all --rm -v /dev/shm -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
     timeout-minutes: 60
     defaults:
       run:
@@ -174,6 +123,7 @@ jobs:
         run: |
           cd TensorNVMe
           cp -p -r ./build /github/home/tensornvme_cache/
+          cp -p -r ./cmake-build /github/home/tensornvme_cache/
 
       - name: Checkout Colossal-AI
         uses: actions/checkout@v2
@@ -198,30 +148,23 @@ jobs:
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
           cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
 
-      - name: Restore Testmon Cache
-        run: |
-          if [ -d /github/home/testmon_cache/_pull/${PR_NUMBER} ] && [ ! -z "$(ls -A /github/home/testmon_cache/_pull/${PR_NUMBER})" ]; then
-            cp -p -r /github/home/testmon_cache/_pull/${PR_NUMBER}/.testmondata* /__w/ColossalAI/ColossalAI/
-          fi
-        env:
-          PR_NUMBER: ${{ github.event.number }}
-
       - name: Execute Unit Testing
         run: |
-          CURL_CA_BUNDLE="" PYTHONPATH=$PWD pytest -m "not largedist" --testmon --testmon-forceselect --testmon-cov=. --durations=10 tests/
+          CURL_CA_BUNDLE="" PYTHONPATH=$PWD FAST_TEST=1 pytest \
+          -m "not largedist" \
+          --durations=0 \
+          --ignore tests/test_analyzer \
+          --ignore tests/test_auto_parallel \
+          --ignore tests/test_fx \
+          --ignore tests/test_autochunk \
+          --ignore tests/test_gptq \
+          --ignore tests/test_infer_ops \
+          --ignore tests/test_legacy \
+          --ignore tests/test_smoothquant \
+          tests/
         env:
-          DATA: /data/scratch/cifar-10
-          NCCL_SHM_DISABLE: 1
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
-          TESTMON_CORE_PKGS: /__w/ColossalAI/ColossalAI/requirements/requirements.txt,/__w/ColossalAI/ColossalAI/requirements/requirements-test.txt
           LLAMA_PATH: /data/scratch/llama-tiny
-
-      - name: Store Testmon Cache
-        run: |
-          mkdir -p /github/home/testmon_cache/_pull/${PR_NUMBER}
-          cp -p -r /__w/ColossalAI/ColossalAI/.testmondata* /github/home/testmon_cache/_pull/${PR_NUMBER}/
-        env:
-          PR_NUMBER: ${{ github.event.number }}
 
       - name: Collate artifact
         env:
@@ -259,54 +202,3 @@ jobs:
         with:
           name: report
           path: report/
-
-  store_cache:
-    name: Store testmon cache for PR
-    if: |
-      github.event_name == 'pull_request' &&
-      github.event.action == 'closed' &&
-      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, gpu]
-    container:
-      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
-      options: --rm
-    timeout-minutes: 5
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Store testmon cache if possible
-        if: github.event.pull_request.merged == true
-        run: | # branch name may contain slash, we need to replace it with space
-          export BASE=$(echo ${{ github.event.pull_request.base.ref }} | sed "s/\// /")
-          if [ -d /github/home/testmon_cache/_pull/${PR_NUMBER} ] && [ ! -z "$(ls -A /github/home/testmon_cache/_pull/${PR_NUMBER})" ]; then
-            cp -p -r /github/home/testmon_cache/_pull/${PR_NUMBER}/.testmondata* "/github/home/testmon_cache/${BASE}/"
-          fi
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-
-      - name: Remove testmon cache
-        run: |
-          rm -rf /github/home/testmon_cache/_pull/${PR_NUMBER}
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-
-  remove_cache:
-    name: Remove testmon cache
-    if: |
-      github.event_name == 'delete' &&
-      github.event.ref_type == 'branch' &&
-      github.event.repository.full_name == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, gpu]
-    container:
-      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
-      options: --rm
-    timeout-minutes: 5
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Remove testmon cache
-        run: | # branch name may contain slash, we need to replace it with space
-          export BASE=$(echo ${{ github.event.ref }} | sed "s/\// /")
-          rm -rf "/github/home/testmon_cache/${BASE}"

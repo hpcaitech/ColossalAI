@@ -88,6 +88,7 @@ class GLUEDataBuilder:
         )
 
     def val_dataloader(self):
+        #   as the last batch may not be divisible by the number of microbatches
         if len(self.eval_splits) == 1:
             return self.plugin.prepare_dataloader(self.dataset["validation"], batch_size=self.eval_batch_size)
         elif len(self.eval_splits) > 1:

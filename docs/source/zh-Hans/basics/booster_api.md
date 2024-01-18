@@ -23,7 +23,7 @@
 
 Booster 插件是管理并行配置的重要组件（eg：gemini 插件封装了 gemini 加速方案）。目前支持的插件如下：
 
-**_HybridParallelPlugin:_** HybirdParallelPlugin 插件封装了混合并行的加速解决方案。它提供的接口可以在张量并行，流水线并行以及两种数据并行方法（DDP, Zero）间进行任意的组合。
+**_HybridParallelPlugin:_** HybridParallelPlugin 插件封装了混合并行的加速解决方案。它提供的接口可以在张量并行，流水线并行以及两种数据并行方法（DDP, Zero）间进行任意的组合。
 
 **_GeminiPlugin:_** GeminiPlugin 插件封装了 gemini 加速解决方案，即基于块内存管理的 ZeRO 优化方案。
 

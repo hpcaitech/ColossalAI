@@ -4,6 +4,9 @@ All custom prompt templates are defined here.
 
 from langchain.prompts.prompt import PromptTemplate
 
+
+# Below are Chinese retrieval qa prompts
+
 _CUSTOM_SUMMARIZER_TEMPLATE_ZH = """请递进式地总结所提供的当前对话，将当前对话的摘要内容添加到先前已有的摘要上，返回一个融合了当前对话的新的摘要。
 
 例1:
@@ -26,8 +29,6 @@ Assistant: 因为人工智能将帮助人类充分发挥潜力。
 
 新的摘要:"""
 
-
-# Chinese retrieval qa prompt
 
 _ZH_RETRIEVAL_QA_PROMPT = """<指令>根据下列支持文档和对话历史，简洁和专业地来回答问题。如果无法从支持文档中得到答案，请说 “根据已知信息无法回答该问题”。回答中请不要涉及支持文档中没有提及的信息，答案请使用中文。 </指令>
 
@@ -70,7 +71,8 @@ Assistant: 我认识一个叫张三的人
 句子: {input}
 消除歧义的句子:"""
 
-# English retrieval qa prompt
+
+# Below are English retrieval qa prompts
 
 _EN_RETRIEVAL_QA_PROMPT = """[INST] <<SYS>>Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist content.
 If the answer cannot be infered based on the given context, please say "I cannot answer the question based on the information given.".<</SYS>>
@@ -105,20 +107,24 @@ sentence: {input}
 disambiguated sentence:"""
 
 
+# Prompt templates
+
+# English retrieval prompt, the model generates answer based on this prompt
 PROMPT_RETRIEVAL_QA_EN = PromptTemplate(
     template=_EN_RETRIEVAL_QA_PROMPT, input_variables=["question", "chat_history", "context"]
 )
-
+# English disambigate prompt, which replace any ambiguous references in the user's input with the specific names or entities mentioned in the chat history
 PROMPT_DISAMBIGUATE_EN = PromptTemplate(template=_EN_DISAMBIGUATION_PROMPT, input_variables=["chat_history", "input"])
 
+# Chinese summary prompt, which summarize the chat history
 SUMMARY_PROMPT_ZH = PromptTemplate(input_variables=["summary", "new_lines"], template=_CUSTOM_SUMMARIZER_TEMPLATE_ZH)
-
+# Chinese disambigate prompt, which replace any ambiguous references in the user's input with the specific names or entities mentioned in the chat history
 PROMPT_DISAMBIGUATE_ZH = PromptTemplate(template=_ZH_DISAMBIGUATION_PROMPT, input_variables=["chat_history", "input"])
-
+# Chinese retrieval prompt, the model generates answer based on this prompt
 PROMPT_RETRIEVAL_QA_ZH = PromptTemplate(
     template=_ZH_RETRIEVAL_QA_PROMPT, input_variables=["question", "chat_history", "context"]
 )
-
+# Chinese retrieval prompt for a use case to analyze fault causes
 PROMPT_RETRIEVAL_CLASSIFICATION_USE_CASE_ZH = PromptTemplate(
     template=_ZH_RETRIEVAL_CLASSIFICATION_USE_CASE, input_variables=["question", "context"]
 )

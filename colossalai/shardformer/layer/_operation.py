@@ -7,6 +7,12 @@ try:
 except:
     fused_mix_prec_layer_norm_cuda = None
 
+try:
+    import fused_weight_gradient_mlp_cuda
+    _grad_accum_fusion_available = True
+except ImportError:
+    _grad_accum_fusion_available = False
+
 
 class FusedLayerNormAffineFunction1D(torch.autograd.Function):
     r"""Layernorm
@@ -141,7 +147,19 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
             # all-reduce scheduled first and have GPU resources allocated
             _ = torch.empty(1, device=grad_output.device) + 1
 
-        grad_weight = grad_output.t().matmul(total_input)
+        if _grad_accum_fusion_available and weight.grad is not None:
+            grad = weight.grad
+            if grad.dtype == torch.float32:
+                fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(total_input, grad_output, grad)
+                grad_weight = None
+            elif grad.dtype == torch.float16:
+                fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(total_input, grad_output, grad)
+                grad_weight = None
+            else:
+                grad_weight = grad_output.t().matmul(total_input)
+        else:
+            grad_weight = grad_output.t().matmul(total_input)
+
         grad_bias = grad_output.sum(dim=0) if use_bias else None
 
         if ctx.async_grad_allreduce:
@@ -214,7 +232,19 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                 # reduce-scatter scheduled first and have GPU resources allocated
                 _ = torch.empty(1, device=grad_output.device) + 1
 
-            grad_weight = grad_output.t().matmul(total_input)
+            if _grad_accum_fusion_available and weight.grad is not None:
+                grad = weight.grad
+                if grad.dtype == torch.float32:
+                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(total_input, grad_output, grad)
+                    grad_weight = None
+                elif grad.dtype == torch.float16:
+                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(total_input, grad_output, grad)
+                    grad_weight = None
+                else:
+                    grad_weight = grad_output.t().matmul(total_input)
+            else:
+                grad_weight = grad_output.t().matmul(total_input)
+
             grad_bias = grad_output.sum(dim=0) if use_bias else None
 
             if ctx.async_grad_reduce_scatter:
@@ -249,7 +279,20 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
             # calculate gradient
             if len(input_parallel.shape) > 2:
                 input_parallel = input_parallel.view(-1, input_parallel.shape[-1])
-            grad_weight = grad_output.t().matmul(input_parallel)
+
+            if _grad_accum_fusion_available and weight.grad is not None:
+                grad = weight.grad
+                if grad.dtype == torch.float32:
+                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(input_parallel, grad_output, grad)
+                    grad_weight = None
+                elif grad.dtype == torch.float16:
+                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(input_parallel, grad_output, grad)
+                    grad_weight = None
+                else:
+                    grad_weight = grad_output.t().matmul(input_parallel)
+            else:
+                grad_weight = grad_output.t().matmul(input_parallel)
+            # grad_weight = grad_output.t().matmul(input_parallel)
             # wait until reduce-scatter finished
             reducescatter_handle.wait()
 
@@ -388,7 +431,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
             input_parallel = torch.cat(tensor_list, dim=dim).contiguous()
             # calculate gradient
             if len(input_parallel.shape) > 2:
-                input_parallel = input_parallel.view(-1, input_parallel.shape[-1])
+                input_parallel = input_parallel.view(-1, input_parallel.shape[-1])   
             grad_weight = input_parallel.t().matmul(grad_output)
             # wait until reduce-scatter finished
             reducescatter_handle.wait()
@@ -473,16 +516,17 @@ class _GatherForwardSplitBackward(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         return _split(grad_output, ctx.dim, ctx.process_group), None, None
-    
+
 
 class HookParameter(torch.autograd.Function):
     """In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias. Used in FusedLayerNorm"""
+
     @staticmethod
     def forward(ctx, input, weight, bias):
         ctx.save_for_backward(weight, bias)
         output = input
         return output
-    
+
     @staticmethod
     def backward(ctx, grad_output):
         weight, bias = ctx.saved_tensors
@@ -491,11 +535,10 @@ class HookParameter(torch.autograd.Function):
         if bias is not None:
             bias = bias.view(bias.shape)
         return grad_output, None, None
-    
+
 
 def hook_paramter_in_backward(input, weight=None, bias=None):
     return HookParameter.apply(input, weight, bias)
-
 
 
 def _reduce(input_, process_group):
@@ -522,7 +565,7 @@ def _split(input_, dim=-1, process_group=None):
 
     tensor_list = torch.split(input_, dim_size // world_size, dim=dim)
     rank = dist.get_rank(process_group)
-    output = tensor_list[rank].contiguous()
+    output = tensor_list[rank].clone().contiguous()
 
     return output
 

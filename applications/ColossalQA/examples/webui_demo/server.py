@@ -1,117 +1,102 @@
 import argparse
-import copy
-import json
 import os
-import random
-import string
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import List, Union
+
+
 from colossalqa.local.llm import ColossalAPI, ColossalLLM
 from colossalqa.data_loader.document_loader import DocumentLoader
+from colossalqa.mylogging import get_logger
 from colossalqa.retrieval_conversation_zh import ChineseRetrievalConversation
 from colossalqa.retriever import CustomRetriever
+from enum import Enum
+from fastapi import FastAPI, Request
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from RAG_ChatBot import RAG_ChatBot, DEFAULT_RAG_CFG
+from pydantic import BaseModel, Field
+import uvicorn
 
-# Define the mapping between embed_model_name(passed from Front End) and the actual path on the back end server
-EMBED_MODEL_DICT = {
-    "m3e": os.environ.get("EMB_MODEL_PATH", DEFAULT_RAG_CFG["embed_model_name_or_path"])
-}
-# Define the mapping between LLM_name(passed from Front End) and the actual path on the back end server
-LLM_DICT = {  
-    "chatglm2": os.environ.get("CHAT_LLM_PATH", "THUDM/chatglm-6b"),
-    "pangu": "Pangu_API",
-    "chatgpt": "OpenAI_API"
-}
+import config
+from RAG_ChatBot import RAG_ChatBot
+from utils import DocAction
 
-def randomword(length):
-    letters = string.ascii_lowercase
-    return "".join(random.choice(letters) for i in range(length)) 
 
-class ColossalQAServerRequestHandler(BaseHTTPRequestHandler):
-    chatbot = None  
-    def _set_response(self):
-        """
-        set http header for response
-        """
-        self.send_response(200)
-        self.send_header("Content-type", "application/json")
-        self.end_headers()
+logger = get_logger()
 
-    def do_POST(self):
-        content_length = int(self.headers["Content-Length"])
-        post_data = self.rfile.read(content_length)
-        received_json = json.loads(post_data.decode("utf-8"))
-        print(received_json)
-        # conversation_ready is False(user's first request): Need to upload files and initialize the RAG chain
-        if received_json["conversation_ready"] is False: 
-            self.rag_config = DEFAULT_RAG_CFG.copy()
-            try:
-                assert received_json["embed_model_name"] in EMBED_MODEL_DICT
-                assert received_json["llm_name"] in LLM_DICT
-                self.docs_files = received_json["docs"]
-                embed_model_name, llm_name = received_json["embed_model_name"], received_json["llm_name"]
-                
-                # Find the embed_model/llm ckpt path on the back end server.
-                embed_model_path, llm_path = EMBED_MODEL_DICT[embed_model_name], LLM_DICT[llm_name]  
-                self.rag_config["embed_model_name_or_path"] = embed_model_path 
+def parseArgs():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--http_host", default="0.0.0.0")
+    parser.add_argument("--http_port", type=int, default=13666)
+    return parser.parse_args()
 
-                # Create the storage path for knowledge base files
-                self.rag_config["retri_kb_file_path"] = os.path.join(os.environ["TMP"], "colossalqa_kb/"+randomword(20))
-                if not os.path.exists(self.rag_config["retri_kb_file_path"]):
-                    os.makedirs(self.rag_config["retri_kb_file_path"])
-                
-                if (embed_model_path is not None) and (llm_path is not None):
-                    # ---- Intialize LLM, QA_chatbot here ----
-                    print("Initializing LLM...")
-                    if llm_path == "Pangu_API":
-                        from colossalqa.local.pangu_llm import Pangu
-                        self.llm = Pangu(id=1)
-                        self.llm.set_auth_config()  # verify user's auth info here
-                        self.rag_config["mem_llm_kwargs"] = None
-                        self.rag_config["disambig_llm_kwargs"] = None
-                        self.rag_config["gen_llm_kwargs"] = None
-                    elif llm_path == "OpenAI_API":
-                        from langchain.llms import OpenAI
-                        self.llm = OpenAI()
-                        self.rag_config["mem_llm_kwargs"] = None
-                        self.rag_config["disambig_llm_kwargs"] = None
-                        self.rag_config["gen_llm_kwargs"] = None
-                    else:
-                        # ** (For Testing Only) **
-                        # In practice, all LLMs will run on the cloud platform and accessed by API, instead of running locally.
-                        # initialize model from model_path by using ColossalLLM 
-                        self.rag_config["mem_llm_kwargs"] = {"max_new_tokens": 50, "temperature": 1, "do_sample": True}
-                        self.rag_config["disambig_llm_kwargs"] = {"max_new_tokens": 30, "temperature": 1, "do_sample": True}
-                        self.rag_config["gen_llm_kwargs"] = {"max_new_tokens": 100, "temperature": 1, "do_sample": True}
-                        self.colossal_api = ColossalAPI(llm_name, llm_path)
-                        self.llm = ColossalLLM(n=1, api=self.colossal_api)
-                
-                    print(f"Initializing RAG Chain...")
-                    print("RAG_CONFIG: ", self.rag_config)
-                    self.__class__.chatbot = RAG_ChatBot(self.llm, self.rag_config)
-                    print("Loading Files....\n", self.docs_files)
-                    self.__class__.chatbot.load_doc_from_files(self.docs_files)
-                    # -----------------------------------------------------------------------------------
-                    res = {"response": f"文件上传完成，模型初始化完成，让我们开始对话吧！(后端模型:{llm_name})", "error": "", "conversation_ready": True}
-            except Exception as e:
-                res = {"response": "文件上传或模型初始化有误，无法开始对话。",
-                       "error": f"Error in File Uploading and/or RAG initialization. Error details: {e}", 
-                       "conversation_ready": False}
-        # conversation_ready is True: Chatbot and docs are all set. Ready to chat.
-        else:  
-            user_input = received_json["user_input"]
-            chatbot_response, self.__class__.chatbot.memory = self.__class__.chatbot.run(user_input, self.__class__.chatbot.memory)
-            res = {"response": chatbot_response, "error": "", "conversation_ready": True}
-        self._set_response()
-        self.wfile.write(json.dumps(res).encode("utf-8"))
+
+app = FastAPI()
+
+
+class DocUpdateReq(BaseModel):
+    doc_files: Union[List[str], str, None] = None
+    action: DocAction = DocAction.ADD
+
+class GenerationTaskReq(BaseModel):
+    user_input: str
+
+
+@app.post("/update")
+def update_docs(data: DocUpdateReq, request: Request):
+    if data.action == "add":
+        if isinstance(data.doc_files, str):
+            data.doc_files = [data.doc_files]
+        chatbot.load_doc_from_files(files = data.doc_files)
+        all_docs = ""
+        for doc in chatbot.docs_names:
+            all_docs += f"\t{doc}\n\n"
+        return {"response": f"文件上传完成，所有数据库文件：\n\n{all_docs}让我们开始对话吧！"}
+    elif data.action == "clear":
+        chatbot.clear_docs(**all_config["chain"])
+        return {"response": f"已清空数据库。"}
+
+
+@app.post("/generate")
+def generate(data: GenerationTaskReq, request: Request):
+    try:
+        chatbot_response, chatbot.memory = chatbot.run(data.user_input, chatbot.memory)
+        return {"response": chatbot_response, "error": ""}
+    except Exception as e:
+        return {"response": "模型生成回答有误", "error": f"Error in generating answers, details: {e}"}
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Chinese retrieval based conversation system")
-    parser.add_argument("--port", type=int, default=13666, help="port on localhost to start the server")
-    args = parser.parse_args()
-    server_address = ("localhost", args.port)
-    httpd = HTTPServer(server_address, ColossalQAServerRequestHandler)
-    print(f"Starting server on port {args.port}...")
-    httpd.serve_forever()
-    
+    args = parseArgs()
+
+    all_config = config.ALL_CONFIG
+    model_name = all_config["model"]["model_name"]
+
+    # initialize chatbot
+    logger.info(f"Initialize the chatbot from {model_name}")
+
+    if all_config["model"]["mode"] == "local":
+        colossal_api = ColossalAPI(model_name, all_config["model"]["model_path"])
+        llm = ColossalLLM(n=1, api=colossal_api)
+    elif all_config["model"]["mode"] == "api":
+        if model_name == "pangu_api":
+            from colossalqa.local.pangu_llm import Pangu
+            
+            gen_config = {
+                "user": "User",
+                "max_tokens": all_config["chain"]["disambig_llm_kwargs"]["max_new_tokens"],
+                "temperature": all_config["chain"]["disambig_llm_kwargs"]["temperature"],
+                "n": 1   # the number of responses generated
+            }
+            llm = Pangu(gen_config=gen_config)
+            llm.set_auth_config()  # verify user's auth info here
+        elif model_name == "chatgpt_api":
+            from langchain.llms import OpenAI
+            llm = OpenAI()
+    else:
+        raise ValueError("Unsupported mode.")
+
+    # initialize chatbot
+    chatbot = RAG_ChatBot(llm, all_config)
+
+    app_config = uvicorn.Config(app, host=args.http_host, port=args.http_port)
+    server = uvicorn.Server(config=app_config)
+    server.run()

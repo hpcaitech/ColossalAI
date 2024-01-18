@@ -461,16 +461,18 @@ Thanks so much to all of our amazing contributors!
 
 Coati is developed by ColossalAI Team:
 
-- [Fazzie](https://fazzie-key.cool/about/index.html)
-- [FrankLeeeee](https://github.com/FrankLeeeee)
-- [BlueRum](https://github.com/ht-zhou)
-- [ver217](https://github.com/ver217)
-- [ofey404](https://github.com/ofey404)
-- [Wenhao Chen](https://github.com/CWHer)
+- [ver217](https://github.com/ver217) Leading the project while contributing to the main framework.
+- [FrankLeeeee](https://github.com/FrankLeeeee) Providing ML infra support and also taking charge of both front-end and back-end development.
+- [htzhou](https://github.com/ht-zhou) Contributing to the algorithm and development for RM and PPO training.
+- [Fazzie](https://fazzie-key.cool/about/index.html) Contributing to the algorithm and development for SFT.
+- [ofey404](https://github.com/ofey404) Contributing to both front-end and back-end development.
+- [Wenhao Chen](https://github.com/CWHer) Contributing to subsequent code enhancements and performance improvements.
 
 The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
 - [Zangwei Zheng](https://github.com/zhengzangw)
 - [Xue Fuzhao](https://github.com/XueFuzhao)
+
+We also appreciate the valuable suggestions provided by [Jian Hu](https://github.com/hijkzzz) regarding the convergence of the PPO algorithm.
 
 ## Citations
 

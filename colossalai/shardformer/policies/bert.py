@@ -21,7 +21,7 @@ __all__ = [
     "BertPolicy",
     "BertModelPolicy",
     "BertForPreTrainingPolicy",
-    "BertLMdHeadModelPolicy",
+    "BertLMHeadModelPolicy",
     "BertForMaskedLMPolicy",
     "BertForNextSentencePredictionPolicy",
     "BertForSequenceClassificationPolicy",
@@ -249,15 +249,34 @@ class BertPolicy(Policy):
         return self.model
 
     def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
-        """If under pipeline parallel setting, replacing the original forward method of huggingface
-        to customized forward method, and add this changing to policy."""
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            if self.model.__class__.__name__ == "BertModel":
-                module = self.model
-            else:
-                module = self.model.bert
+        """
+        If under pipeline parallel setting, replacing the original forward method of huggingface
+        to customized forward method, and add this changing to policy.
+        """
+        if self.pipeline_stage_manager is None:
+            return
 
+        stage_manager = self.pipeline_stage_manager
+        if self.model.__class__.__name__ == "BertModel":
+            module = self.model
+        else:
+            module = self.model.bert
+
+        if stage_manager.is_interleave:
+            layers_per_stage = self.distribute_layers(
+                len(module.encoder.layer), stage_manager.num_stages * stage_manager.num_model_chunks
+            )
+            stage_manager.stage_indices = Policy.get_stage_index(
+                layers_per_stage,
+                stage_manager.stage,
+                num_model_chunks=stage_manager.num_model_chunks,
+                num_stages=stage_manager.num_stages,
+            )
+            method_replacement = {
+                "forward": partial(new_forward, stage_manager=stage_manager, shard_config=self.shard_config)
+            }
+
+        else:
             layers_per_stage = Policy.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
             stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
             method_replacement = {
@@ -265,11 +284,8 @@ class BertPolicy(Policy):
                     new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
                 )
             }
-            self.append_or_create_method_replacement(
-                description=method_replacement, policy=policy, target_key=model_cls
-            )
 
-        return
+        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
     def get_held_layers(self) -> List[Module]:
         """Get pipeline layers for current stage."""
@@ -282,13 +298,32 @@ class BertPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
-        if stage_manager.is_first_stage():
-            held_layers.append(module.embeddings)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
-        held_layers.extend(module.encoder.layer[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            held_layers.append(module.pooler)
+        if stage_manager.is_interleave:
+            assert stage_manager.num_model_chunks is not None
+            layers_per_stage = self.distribute_layers(
+                len(module.encoder.layer), stage_manager.num_stages * stage_manager.num_model_chunks
+            )
+            stage_indices = Policy.get_stage_index(
+                layers_per_stage,
+                stage_manager.stage,
+                num_model_chunks=stage_manager.num_model_chunks,
+                num_stages=stage_manager.num_stages,
+            )
+            if stage_manager.is_first_stage(ignore_chunk=True):
+                held_layers.append(module.embeddings)
+            for start_idx, end_idx in stage_indices:
+                held_layers.extend(module.encoder.layer[start_idx:end_idx])
+            if stage_manager.is_last_stage(ignore_chunk=True):
+                held_layers.append(module.pooler)
+
+        else:
+            layers_per_stage = self.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
+            if stage_manager.is_first_stage():
+                held_layers.append(module.embeddings)
+            start_idx, end_idx = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            held_layers.extend(module.encoder.layer[start_idx:end_idx])
+            if stage_manager.is_last_stage():
+                held_layers.append(module.pooler)
 
         return held_layers
 
@@ -335,7 +370,7 @@ class BertForPreTrainingPolicy(BertPolicy):
         """Get pipeline layers for current stage"""
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.cls)
 
         return held_layers
@@ -374,7 +409,7 @@ class BertLMHeadModelPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.cls)
         return held_layers
 
@@ -412,7 +447,7 @@ class BertForMaskedLMPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.cls)
         return held_layers
 
@@ -464,7 +499,7 @@ class BertForSequenceClassificationPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.dropout)
             held_layers.append(self.model.classifier)
         return held_layers
@@ -508,7 +543,7 @@ class BertForTokenClassificationPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.dropout)
             held_layers.append(self.model.classifier)
         return held_layers
@@ -539,7 +574,7 @@ class BertForNextSentencePredictionPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.cls)
         return held_layers
 
@@ -582,7 +617,7 @@ class BertForMultipleChoicePolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.dropout)
             held_layers.append(self.model.classifier)
         return held_layers
@@ -612,7 +647,7 @@ class BertForQuestionAnsweringPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage():
+        if stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.qa_outputs)
         return held_layers
 

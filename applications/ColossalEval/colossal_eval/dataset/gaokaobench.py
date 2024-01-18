@@ -69,7 +69,9 @@ class GaoKaoBenchDataset(BaseDataset):
     """
 
     @staticmethod
-    def load(path: str, logger: DistributedLogger, few_shot: bool) -> List[Dict]:
+    def load(
+        path: str, logger: DistributedLogger, few_shot: bool, forward_only: bool, load_train: bool, load_reference: bool
+    ) -> List[Dict]:
         dataset = {"test": {}}
         for category in ["Fill-in-the-blank_Questions", "Multiple-choice_Questions", "Open-ended_Questions"]:
             files = os.listdir(os.path.join(path, "data", category))

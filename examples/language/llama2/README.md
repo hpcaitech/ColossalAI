@@ -6,7 +6,6 @@
 </p>
 
 - 70 billion parameter LLaMA2 model training accelerated by 195%
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama2)
 [[blog]](https://www.hpc-ai.tech/blog/70b-llama2-training)
 
 ### LLaMA1
@@ -15,7 +14,6 @@
 </p>
 
 - 65-billion-parameter large model pretraining accelerated by 38%
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/example/llama/examples/language/llama)
 [[blog]](https://www.hpc-ai.tech/blog/large-model-pretraining)
 
 ## Dataset
@@ -103,7 +101,7 @@ Here is details about CLI arguments:
 - Max length: `-l`, `--max_length`. The default value is 4096.
 - Mixed precision: `-x`, `--mixed_precision`. The default value is "fp16". "fp16" and "bf16" are supported.
 - Save interval: `-i`, `--save_interval`. The interval (steps) of saving checkpoints. The default value is 1000.
-- Checkpoint directory: `-o`, `--save_dir`. The directoty path to save checkpoints. The default value is `checkpoint`.
+- Checkpoint directory: `-o`, `--save_dir`. The directory path to save checkpoints. The default value is `checkpoint`.
 - Checkpoint to load: `-f`, `--load`. The checkpoint path to load. The default value is `None`.
 - Gradient clipping: `--gradient_clipping`. The default value is 1.0.
 - Tensorboard log directory: `-t`, `--tensorboard_dir`. The directory path to save tensorboard logs. The default value is `tb_logs`.
@@ -123,7 +121,7 @@ Here we will show an example of how to run training
 llama pretraining with `gemini, batch_size=16, sequence_length=4096, gradient_checkpoint=True, flash_attn=True`.
 
 #### a. Running environment
-This experiment was performed on 4 computing nodes with 32 A800 GPUs in total for LLaMA-1 65B. The nodes are
+This experiment was performed on 4 computing nodes with 32 A800/H800 80GB GPUs in total for LLaMA-1 65B or LLaMA-2 70B. The nodes are
 connected with RDMA and GPUs within one node are fully connected with NVLink.
 
 #### b. Running command
@@ -217,7 +215,7 @@ Here is details about CLI arguments:
 - Max length: `-l`, `--max_length`. The default value is 4096.
 - Mixed precision: `-x`, `--mixed_precision`. The default value is "fp16". "fp16" and "bf16" are supported.
 - Save interval: `-i`, `--save_interval`. The interval (steps) of saving checkpoints. The default value is 1000.
-- Checkpoint directory: `-o`, `--save_dir`. The directoty path to save checkpoints. The default value is `checkpoint`.
+- Checkpoint directory: `-o`, `--save_dir`. The directory path to save checkpoints. The default value is `checkpoint`.
 - Checkpoint to load: `-f`, `--load`. The checkpoint path to load. The default value is `None`.
 - Gradient clipping: `--gradient_clipping`. The default value is 1.0.
 - Tensorboard log directory: `-t`, `--tensorboard_dir`. The directory path to save tensorboard logs. The default value is `tb_logs`.
