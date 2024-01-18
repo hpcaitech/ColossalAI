@@ -15,6 +15,7 @@ from colossalai.inference.modeling.models.llama import (
     llama_decoder_layer_forward,
     llama_model_forward,
 )
+from colossalai.inference.utils import init_to_get_rotary
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
 
 # import colossalai
@@ -163,3 +164,7 @@ class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
         )
 
         return policy
+
+    def postprocess(self):
+        init_to_get_rotary(self.model.model)
+        return self.model

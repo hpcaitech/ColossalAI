@@ -182,7 +182,7 @@ def _flash_decoding_fwd_reduce_kernel(
 # Decoding Stage
 # Used with blocked KV Cache (PagedAttention)
 def flash_decoding_fwd(
-    q: torch.Tensor,  # [bsz(e.g.num_tokens), 1, num_heads, head_dim]
+    q: torch.Tensor,  # [bsz(e.g.num_tokens), 1, num_heads, head_dim]/[bsz(e.g.num_tokens), num_heads, head_dim]
     k_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
     v_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
     context_lengths: torch.Tensor,  # [batch_size]
@@ -190,7 +190,12 @@ def flash_decoding_fwd(
     block_size: int,
     num_kv_group: int = 1,
 ):
-    bsz, _, num_heads, head_dim = q.shape
+    if q.dim() == 4:
+        bsz, _, num_heads, head_dim = q.shape
+    elif q.dim() == 3:
+        bsz, num_heads, head_dim = q.shape
+    else:
+        raise ValueError(f"The query dim should be 3 or 4, but got {q.dim()}.")
 
     assert head_dim in {32, 64, 128, 256}
     assert context_lengths.shape[0] == block_tables.shape[0] == bsz, (
