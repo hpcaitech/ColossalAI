@@ -166,3 +166,8 @@ def test_cpu_adam_kernel(adamw, weight_decay, p_dtype, g_dtype):
     if p_dtype is torch.float16 or g_dtype is torch.float16:
         rtol, atol = 1e-3, 1e-3
     check_adam_kernel(CPUAdamKernel, adamw, weight_decay, p_dtype, g_dtype, torch.device("cpu"), 3, rtol, atol)
+
+
+if __name__ == "__main__":
+    test_fused_adam_kernel(True, 0.1, torch.float, torch.half)
+    test_cpu_adam_kernel(True, 0.1, torch.float, torch.half)
