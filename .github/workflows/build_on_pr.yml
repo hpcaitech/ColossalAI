@@ -150,7 +150,7 @@ jobs:
 
       - name: Execute Unit Testing
         run: |
-          python tests/test_booster/test_plugin/test_gemini_plugin.py
+          python tests/test_optimizer/test_adam_kernel.py
         env:
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
           LLAMA_PATH: /data/scratch/llama-tiny
