@@ -69,7 +69,7 @@ def convert_kvcache(cache, lengths, block_tables, pad_id=0):
         )
         padding = seq_len - _cache.size(0)
         if padding > 0:
-            _cache = F.pad(_cache, (0, 0, 0, 0, 0, 1), value=pad_id)
+            _cache = F.pad(_cache, (0, 0, 0, 0, 0, padding), value=pad_id)
         padded_cache.append(_cache)
     return torch.stack(padded_cache, dim=0)
 
