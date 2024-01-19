@@ -135,7 +135,7 @@ jobs:
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
           if [ -d /github/home/cuda_ext_cache ] && [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ]; then
-            cp -p -r /github/home/cuda_ext_cache/* ~/.cache/colossalai
+            cp -p -r /github/home/cuda_ext_cache/torch_extensions ~/.cache/colossalai
           fi
 
       - name: Install Colossal-AI
@@ -146,7 +146,7 @@ jobs:
       - name: Store Colossal-AI Cache
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
-          cp -p -r ~/.cache/colossalai/* /github/home/cuda_ext_cache/
+          cp -p -r ~/.cache/colossalai/ /github/home/cuda_ext_cache/
 
       - name: Execute Unit Testing
         run: |
