@@ -16,23 +16,23 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 set_n_least_used_CUDA_VISIBLE_DEVICES 8
 # export CUDA_VISIBLE_DEVICES=6
 
-PROJECT_NAME="llama2-dpo"
-PARENT_SAVE_DIR="/home/yeanbang/data/experiments/dpo_ocra/ckpt"
-PARENT_TENSORBOARD_DIR="/home/yeanbang/data/experiments/dpo_ocra/tensorboard"
-PARENT_CONFIG_FILE="/home/yeanbang/data/experiments/dpo_ocra/train_config"
-PRETRAINED_MODEL_PATH="/home/yeanbang/data/experiments/sft/SlimOrca/ckptllama2-sft-2024-01-12-11-50-56/epoch-0_step-5000/modeling"
-PRETRAINED_TOKENIZER_PATH="princeton-nlp/Sheared-LLaMA-1.3B"
+PROJECT_NAME="dpo"
+PARENT_SAVE_DIR=""
+PARENT_TENSORBOARD_DIR=""
+PARENT_CONFIG_FILE=""
+PRETRAINED_MODEL_PATH="PATH/to/modeling"
+PRETRAINED_TOKENIZER_PATH=""
 declare -a dataset=(
-    /home/yeanbang/data/experiments/dpo_ocra/arrow/part-00000
-    /home/yeanbang/data/experiments/dpo_ocra/arrow/part-00001
-    /home/yeanbang/data/experiments/dpo_ocra/arrow/part-00002
-    /home/yeanbang/data/experiments/dpo_ocra/arrow/part-00003
-    /home/yeanbang/data/experiments/dpo_ocra/arrow/part-00004
-    /home/yeanbang/data/experiments/dpo_ocra/arrow/part-00005
-    /home/yeanbang/data/experiments/dpo_ocra/arrow/part-00006
-    /home/yeanbang/data/experiments/dpo_ocra/arrow/part-00007
-    /home/yeanbang/data/experiments/dpo_ocra/arrow/part-00008
-    /home/yeanbang/data/experiments/dpo_ocra/arrow/part-00009
+    YOUR/DATA/DIR/arrow/part-00000
+    YOUR/DATA/DIR/arrow/part-00001
+    YOUR/DATA/DIR/arrow/part-00002
+    YOUR/DATA/DIR/arrow/part-00003
+    YOUR/DATA/DIR/arrow/part-00004
+    YOUR/DATA/DIR/arrow/part-00005
+    YOUR/DATA/DIR/arrow/part-00006
+    YOUR/DATA/DIR/arrow/part-00007
+    YOUR/DATA/DIR/arrow/part-00008
+    YOUR/DATA/DIR/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)

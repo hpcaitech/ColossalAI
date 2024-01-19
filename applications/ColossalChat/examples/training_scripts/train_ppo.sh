@@ -15,38 +15,38 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 }
 set_n_least_used_CUDA_VISIBLE_DEVICES 8
 
-PROJECT_NAME="llama2-ppo"
-PARENT_SAVE_DIR="/home/yeanbang/data/experiments/ppo/ckpt"
-PARENT_TENSORBOARD_DIR="/home/yeanbang/data/experiments/ppo/tensorboard"
-PARENT_CONFIG_FILE="/home/yeanbang/data/experiments/ppo/train_config"
-PRETRAINED_MODEL_PATH="/home/yeanbang/data/experiments/sft/Alpaca/ckptsft-2024-01-18-12-45-11/modeling"
-REWARD_MODEL_PATH="/home/yeanbang/data/experiments/rm/hhh_aligh/ckptllama2-rm-2024-01-18-18-21-10/modeling"
-PRETRAINED_TOKENIZER_PATH="princeton-nlp/Sheared-LLaMA-1.3B"
-CONVERSATION_TEMPLATE_CONFIG_PATH="/home/yeanbang/data/ColossalAI/applications/ColossalChat/config/conversation_template/Sheared-LLaMA.json"
+PROJECT_NAME="ppo"
+PARENT_SAVE_DIR=""
+PARENT_TENSORBOARD_DIR=""
+PARENT_CONFIG_FILE=""
+PRETRAINED_MODEL_PATH="/PATH/TO/modeling"
+REWARD_MODEL_PATH="/PATH/TO/modeling"
+PRETRAINED_TOKENIZER_PATH=""
+CONVERSATION_TEMPLATE_CONFIG_PATH="/PATH/TO/TEPLATE/CONFIG/model_name.json"
 declare -a prompt_dataset=(
-    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00000
-    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00001
-    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00002
-    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00003
-    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00004
-    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00005
-    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00006
-    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00007
-    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00008
-    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00009
+    YOUR/PROMPT/DATA/DIR/arrow/part-00000
+    YOUR/PROMPT/DATA/DIR/arrow/part-00001
+    YOUR/PROMPT/DATA/DIR/arrow/part-00002
+    YOUR/PROMPT/DATA/DIR/arrow/part-00003
+    YOUR/PROMPT/DATA/DIR/arrow/part-00004
+    YOUR/PROMPT/DATA/DIR/arrow/part-00005
+    YOUR/PROMPT/DATA/DIR/arrow/part-00006
+    YOUR/PROMPT/DATA/DIR/arrow/part-00007
+    YOUR/PROMPT/DATA/DIR/arrow/part-00008
+    YOUR/PROMPT/DATA/DIR/arrow/part-00009
 )
 
 declare -a ptx_dataset=(
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00000
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00001
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00002
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00003
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00004
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00005
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00006
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00007
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00008
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00009
+    YOUR/SFT/DATA/DIR/arrow/part-00000
+    YOUR/SFT/DATA/DIR/arrow/part-00001
+    YOUR/SFT/DATA/DIR/arrow/part-00002
+    YOUR/SFT/DATA/DIR/arrow/part-00003
+    YOUR/SFT/DATA/DIR/arrow/part-00004
+    YOUR/SFT/DATA/DIR/arrow/part-00005
+    YOUR/SFT/DATA/DIR/arrow/part-00006
+    YOUR/SFT/DATA/DIR/arrow/part-00007
+    YOUR/SFT/DATA/DIR/arrow/part-00008
+    YOUR/SFT/DATA/DIR/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)

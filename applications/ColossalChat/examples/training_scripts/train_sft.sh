@@ -17,22 +17,22 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 # export CUDA_VISIBLE_DEVICES=4,5,6
 set_n_least_used_CUDA_VISIBLE_DEVICES 4
 PROJECT_NAME="sft"
-PARENT_SAVE_DIR="/home/yeanbang/data/experiments/sft/Alpaca/ckpt"
-PARENT_TENSORBOARD_DIR="/home/yeanbang/data/experiments/sft/Alpaca/tensorboard"
-PARENT_CONFIG_FILE="/home/yeanbang/data/experiments/sft/Alpaca/train_config"
-PRETRAINED_MODEL_PATH="princeton-nlp/Sheared-LLaMA-1.3B"
-PRETRAINED_TOKENIZER_PATH="princeton-nlp/Sheared-LLaMA-1.3B"
+PARENT_SAVE_DIR=""
+PARENT_TENSORBOARD_DIR=""
+PARENT_CONFIG_FILE=""
+PRETRAINED_MODEL_PATH="HUGGINGFACE/OR/LOCAL/MODEL/PATH"
+PRETRAINED_TOKENIZER_PATH=""
 declare -a dataset=(
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00000
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00001
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00002
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00003
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00004
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00005
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00006
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00007
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00008
-    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00009
+    YOUR/SFT/DATA/DIR/arrow/part-00000
+    YOUR/SFT/DATA/DIR/arrow/part-00001
+    YOUR/SFT/DATA/DIR/arrow/part-00002
+    YOUR/SFT/DATA/DIR/arrow/part-00003
+    YOUR/SFT/DATA/DIR/arrow/part-00004
+    YOUR/SFT/DATA/DIR/arrow/part-00005
+    YOUR/SFT/DATA/DIR/arrow/part-00006
+    YOUR/SFT/DATA/DIR/arrow/part-00007
+    YOUR/SFT/DATA/DIR/arrow/part-00008
+    YOUR/SFT/DATA/DIR/arrow/part-00009
 ) 
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
@@ -44,14 +44,13 @@ CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
 colossalai run --nproc_per_node 4 --master_port 31312 --hostfile ./hostfile train_sft.py \
     --pretrain $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
-    --save_interval 1000000 \
+    --save_interval 4000 \
     --dataset ${dataset[@]} \
     --save_path $SAVE_DIR \
     --config_file $CONFIG_FILE \
     --lora_rank 0 \
-    --plugin 3d \
-    --tp 4 \
-    --batch_size 32 \
+    --plugin zero2 \
+    --batch_size 8 \
     --max_epochs 1 \
     --accumulation_steps 1 \
     --lr 2e-5 \
