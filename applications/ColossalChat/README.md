@@ -124,7 +124,7 @@ pip install .
 
 ### RLHF Training Stage1 - Supervised Instructs Tuning
 
-Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. Here's a detailed guide on how to SFT your LLM with ColossalChat. More detais can be found in [./example/README.md](./examples/README.md)
+Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. Here's a detailed guide on how to SFT your LLM with ColossalChat. More details can be found in [./example/README.md](./examples/README.md)
 
 #### Step 1: Data Collection
 The first step in Stage 1 is to collect a dataset of human demonstrations of the following format.
@@ -149,12 +149,12 @@ The first step in Stage 1 is to collect a dataset of human demonstrations of the
 ```
 
 #### Step 2: Preprocessing
-Once you have collected your SFT dataset, you will need to preprocess it. This involves four steps: data cleaning, data deduplication, formating and tokenization. In this section, we will focus on formating and tokenization. 
+Once you have collected your SFT dataset, you will need to preprocess it. This involves four steps: data cleaning, data deduplication, formatting and tokenization. In this section, we will focus on formatting and tokenization. 
 
-In this code, we provide a flexible way for users to set the conversation template for formating chat data using Huggingface's newest feature--- chat template. Please follow the guide in [this document](./examples/README.md) on how to format and tokenize data.
+In this code, we provide a flexible way for users to set the conversation template for formatting chat data using Huggingface's newest feature--- chat template. Please follow the guide in [this document](./examples/README.md) on how to format and tokenize data.
 
 #### Step 3: Training
-Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning. More detais can be found in [./example/README.md](./examples/README.md).
+Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning. More details can be found in [./example/README.md](./examples/README.md).
 
 ### RLHF Training Stage2 - Training Reward Model
 
@@ -194,7 +194,7 @@ Below shows the preference dataset format used in training the reward model.
 Similar to the second step in the previous stage, we format the reward data into the same structured format as used in step 2 of the SFT stage. You can run [prepare_preference_dataset.sh](./examples/data_preparation_scripts/prepare_preference_dataset.sh) to prepare the preference data for reward model training.
 
 #### Step 3: Training
-You can run [train_rm.sh](./examples/training_scripts/train_rm.sh) to start the reward model training. More detais can be found in [./example/README.md](./examples/README.md).
+You can run [train_rm.sh](./examples/training_scripts/train_rm.sh) to start the reward model training. More details can be found in [./example/README.md](./examples/README.md).
 
 ### RLHF Training Stage3 - Proximal Policy Optimization
 
@@ -205,7 +205,7 @@ In stage3 we will use reinforcement learning algorithm--- Proximal Policy Optimi
 </p>
 
 #### Step 1: Data Collection
-PPO uses two kind of training data--- the prompt data and the pretrain data (optional). The first dataset is mandatory, data samples within the prompt dataset ends with a line from "human" and thus the "assistant" needs to generate a response to answer to the "human". Note that you can still use conversation that ends with a line from the "assistant", in that case, the last line will be dropped. Here is an example of the prompt dataset format.
+PPO uses two kind of training data--- the prompt data and the sft data (optional). The first dataset is mandatory, data samples within the prompt dataset ends with a line from "human" and thus the "assistant" needs to generate a response to answer to the "human". Note that you can still use conversation that ends with a line from the "assistant", in that case, the last line will be dropped. Here is an example of the prompt dataset format.
 
 ```json
 [
@@ -221,21 +221,8 @@ PPO uses two kind of training data--- the prompt data and the pretrain data (opt
 ]
 ```
 
-The second dataset--- pretrained dataset is optional, provide it if you want to use the ptx loss introduced in the [InstructGPT paper](https://arxiv.org/abs/2203.02155). It follows the following format.
-
-```json
-  [
-      {
-          "source": "", # system instruction
-          "Target": "Provide a list of the top 10 most popular mobile games in Asia\nThe top 10 most popular mobile games in Asia are:\n1) PUBG Mobile\n2) Pokemon Go\n3) Candy Crush Saga\n4) Free Fire\n5) Clash of Clans\n6) Mario Kart Tour\n7) Arena of Valor\n8) Fantasy Westward Journey\n9) Subway Surfers\n10) ARK Survival Evolved",
-      },
-      ...
-  ]
-  ```
 #### Step 2: Data Preprocessing
 To prepare the prompt dataset for PPO training, simply run [prepare_prompt_dataset.sh](./examples/data_preparation_scripts/prepare_prompt_dataset.sh)
-
-To prepare the pretrained dataset for PPO training, simply run [prepare_ptx_dataset.sh](./examples/data_preparation_scripts/prepare_ptx_dataset.sh)
 
 #### Step 3: Training
 You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to start PPO training. Here are some unique arguments for PPO, please refer to the training configuration section for other training configuration. More detais can be found in [./example/README.md](./examples/README.md).
@@ -245,8 +232,8 @@ You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to star
 --rm_pretrain $PRETRAINED_MODEL_PATH \ # reward model architectual
 --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
 --rm_checkpoint_path $REWARD_MODEL_PATH \ # reward model checkpoint path
---prompt_dataset ${prompt_dataset[@]} \ # List of string
---pretrain_dataset ${ptx_dataset[@]} \ # List of string
+--prompt_dataset ${prompt_dataset[@]} \ # List of string, the prompt dataset
+--ptx_dataset ${ptx_dataset[@]} \ # List of string, the SFT data used in the SFT stage
 --ptx_batch_size 1 \ # batch size for calculate ptx loss
 --ptx_coef 0.0 \ # none-zero if ptx loss is enable
 --num_episodes 2000 \ # number of episodes to train
@@ -411,7 +398,7 @@ booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
 
 ```
 
-- Option 2: Save the model weights, model config, generation config, as well as the optimizer, learning rate schedualer, running states (Note: tokenizer will not be saved) which are needed for resuming training.
+- Option 2: Save the model weights, model config, generation config, as well as the optimizer, learning rate scheduler, running states (Note: tokenizer will not be saved) which are needed for resuming training.
 ```python
 from coati.utils import save_checkpoint
 # save model checkpoint after fitting on only rank0

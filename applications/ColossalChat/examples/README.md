@@ -167,7 +167,7 @@ colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile trai
 
 <details><summary><b>Tensor Parallelism</b></summary>
 
-This option support Tensor Parallelism (TP). Note that if you want to use TP, zero and pipeline parellelism will be disabled. TP split large model weights/optimizer parameters/gradients into multiple small ones and distributes them to multiple GPUs, hence it is recommanded to use TP when your model is large (e.g. 20B and above) or your training algorithm consumes a lot of memory (e.g. PPO).
+This option support Tensor Parallelism (TP). Note that if you want to use TP, zero and pipeline parallelism will be disabled. TP split large model weights/optimizer parameters/gradients into multiple small ones and distributes them to multiple GPUs, hence it is recommended to use TP when your model is large (e.g. 20B and above) or your training algorithm consumes a lot of memory (e.g. PPO).
 
 Below shows how to use the TP in PPO training.
 ```
@@ -281,7 +281,7 @@ colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile trai
 
 - grad_clip: gradient larger than this value will be clipped.
 - weight_decay: weight decay hyper-parameter.
-- warmup_steps: number of warmup steps used in setting up the learning rate schedualer.
+- warmup_steps: number of warmup steps used in setting up the learning rate scheduler.
 - pretrain: pretrain model path, weights will be loaded from this pretrained model unless checkpoint_path is provided.
 - tokenizer_dir: specify where to load the tokenizer, if not provided, tokenizer will be loaded from pretrain model path.
 - dataset: a list of strings, each is a path to a folder contains buffered dataset files in arrow format.
@@ -291,8 +291,8 @@ colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile trai
 - max_length: input will be padded/truncate to max_length before feeding to the model.
 - max_epochs: number of epoch to train.
 - batch_size: training batch size.
-- mixed_precision: precision to use in training. Support 'fp16' and 'bf16'. Note that some device may not support the 'bf16' option, please refer to [Nvidia](https://developer.nvidia.com/) to check compatability.
-- save_interval: save the model weights as well as optimizer/schedualer states every save_interval steps/episodes.
+- mixed_precision: precision to use in training. Support 'fp16' and 'bf16'. Note that some device may not support the 'bf16' option, please refer to [Nvidia](https://developer.nvidia.com/) to check compatibility.
+- save_interval: save the model weights as well as optimizer/scheduler states every save_interval steps/episodes.
 - merge_lora_weights: whether to merge lora weights before saving the model
 - lr: the learning rate used in training.
 - accumulation_steps: accumulate gradient every accumulation_steps.
@@ -328,15 +328,15 @@ The first step in Stage 1 is to collect a dataset of human demonstrations of the
 ```
 
 #### Step 2: Preprocessing
-Once you have collected your SFT dataset, you will need to preprocess it. This involves four steps: data cleaning, data deduplication, formating and tokenization. In this section, we will focus on formating and tokenization. 
+Once you have collected your SFT dataset, you will need to preprocess it. This involves four steps: data cleaning, data deduplication, formatting and tokenization. In this section, we will focus on formatting and tokenization. 
 
-In this code we provide a flexible way for users to set the conversation template for formating chat data using Huggingface's newest feature--- chat template. Please follow the following steps to define your chat template and preprocess your data.
+In this code we provide a flexible way for users to set the conversation template for formatting chat data using Huggingface's newest feature--- chat template. Please follow the following steps to define your chat template and preprocess your data.
 
 - Step 1: (Optional). Define your conversation template. You need to provide a conversation template config file similar to the config files under the [config/conversation_template](./config/conversation_template/) directory. This config should include the following fields.
   ```json
   {
-      "chat_template": (Optional), A string of chat_template used for formating chat data. If not set (None), will use the default chat template of the provided tokenizer. To use a custom chat template, you need to mannually set this field. For more details on how to write a chat template in Jinja format, please read https://huggingface.co/docs/transformers/main/chat_templating,
-      "system_message": A string of system message to be added at the beggining of the prompt. If not set (None), no system message will be added,
+      "chat_template": (Optional), A string of chat_template used for formatting chat data. If not set (None), will use the default chat template of the provided tokenizer. To use a custom chat template, you need to manually set this field. For more details on how to write a chat template in Jinja format, please read https://huggingface.co/docs/transformers/main/chat_templating,
+      "system_message": A string of system message to be added at the beginning of the prompt. If not set (None), no system message will be added,
       "human_line_start": List of tokens that indicate the start of a line from human,
       "human_line_end": List of tokens that indicate the end of a line from human,
       "assistant_line_start": List of tokens that indicate the start of a line from assistant,
@@ -364,7 +364,7 @@ For example, our Colossal-LLaMA-2 format looks like,
 Human: <s> what are some pranks with a pen i can do?</s> Assistant: <s> Are you looking for practical joke ideas?</s>
 ...
 ```
-This covers a wide range of popular LLMs, including but not limmited to ChatGLM, LLaMA2, Mistral, QWen, Yi, Vicuna, Zephyr.
+This covers a wide range of popular LLMs, including but not limited to ChatGLM, LLaMA2, Mistral, QWen, Yi, Vicuna, Zephyr.
 
 #### Step 3: Training
 Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
@@ -411,7 +411,7 @@ You can run [train_rm.sh](./examples/training_scripts/train_rm.sh) to start the 
 
 #### Features and Tricks in RM Training
 
-- We recommand using the [Anthropic/hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf)and[rm-static](https://huggingface.co/datasets/Dahoas/rm-static) datasets for training the reward model.
+- We recommend using the [Anthropic/hh-rlhf](https://huggingface.co/datasets/Anthropic/hh-rlhf)and[rm-static](https://huggingface.co/datasets/Dahoas/rm-static) datasets for training the reward model.
 - We support 2 kinds of loss function named `log_sig`(used by OpenAI) and `log_exp`(used by Anthropic).
 - We log the training accuracy `train/acc`, `reward_chosen` and `reward_rejected` to monitor progress during training.
 - We use cosine-reducing lr-scheduler for RM training.
@@ -426,7 +426,7 @@ Before you move on the next stage, please check the following list to ensure tha
 
 Your training reward curves should look similar to the following charts.
 <p align="center">
-<img width="1000" alt="image" src="https://raw.githubusercontent.com/YeAnbang/imagehostingrepo/main/mean_reward_chart.png">
+<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/mean_reward_chart.png">
 </p>
 
 ### RLHF Training Stage3 - Proximal Policy Optimization
@@ -475,7 +475,7 @@ You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to star
 
 ```bash
 --pretrain $PRETRAINED_MODEL_PATH \
---rm_pretrain $PRETRAINED_MODEL_PATH \ # reward model architectual
+--rm_pretrain $PRETRAINED_MODEL_PATH \ # reward model architectural
 --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
 --rm_checkpoint_path $REWARD_MODEL_PATH \ # reward model checkpoint path
 --prompt_dataset ${prompt_dataset[@]} \ # List of string
@@ -510,11 +510,11 @@ experience buffer size
 ### Sample Training Results Using Default Script
 #### Reward
 <p align="center">
-<img width="700" alt="image" src="https://raw.githubusercontent.com/YeAnbang/imagehostingrepo/main/reward.png">
+<img width="700" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/reward.png">
 </p>
 
 ### Note on PPO Training
-#### Q1: My reward is nagtive
+#### Q1: My reward is negative
 Answer: Check your reward model trained in stage 1. If the reward model only generate negative reward, we actually will expect a negative reward. However, even though the reward is negative, the reward should go up.
 
 #### Q2: My actor loss is negative
@@ -524,8 +524,7 @@ Answer: This is normal for actor loss as PPO doesn't restrict the actor loss to 
 Answer: The causes to this problem are two-fold. Check your reward model, make sure that it gives positive and strong reward for good cases and negative, strong reward for bad responses. You should also try different hyperparameter settings.
 
 #### Q4: Generation is garbage
-Answer: Yes, this happens and is well documented by other implementations. After training for too many episodes, the actor gradually deviate from its original state, which may leads to decrease in language modeling capabilities. A way to fix this is to add suppervised loss during PPO. Set ptx_coef to a none-zero value (between 0 and 1), which balances PPO loss and sft loss.
-
+Answer: Yes, this happens and is well documented by other implementations. After training for too many episodes, the actor gradually deviate from its original state, which may leads to decrease in language modeling capabilities. A way to fix this is to add supervised loss during PPO. Set ptx_coef to a none-zero value (between 0 and 1), which balances PPO loss and sft loss.
 
 ## Alternative Option For RLHF: Direct Preference Optimization
 
@@ -541,6 +540,12 @@ For DPO training, you only need the preference dataset. Please follow the instru
 
 #### Step 2: Training
 You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to start DPO training. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
+
+#### DPO Result
+<p align="center">
+<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/DPO.png">
+</p>
+
 
 ## Inference example
 
