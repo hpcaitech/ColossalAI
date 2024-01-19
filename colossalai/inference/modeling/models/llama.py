@@ -9,7 +9,7 @@ from colossalai.inference.struct import BatchInfo
 from colossalai.kernel.triton import (
     context_attention_unpadded,
     copy_kv_to_blocked_cache,
-    flash_decoding_fwd,
+    flash_decoding_attention,
     rotary_embedding,
 )
 from colossalai.logging import get_dist_logger
@@ -213,7 +213,10 @@ def llama_attn_forward(
         else:
             copy_kv_to_blocked_cache(key_states, k_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
             copy_kv_to_blocked_cache(value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
-            attn_output = flash_decoding_fwd(query_states, k_cache, v_cache, sequence_lengths, block_tables, block_size)
+            attn_output = flash_decoding_attention(
+                query_states, k_cache, v_cache, sequence_lengths, block_tables, block_size
+            )
+            attn_output = attn_output.squeeze(1)
     else:
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
