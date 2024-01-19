@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import torch
 from torch.nn import functional as F
 
@@ -17,13 +19,22 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     return hidden_states.reshape(bsz, num_key_value_heads * n_rep, seq_len, head_dim)
 
 
+def prepare_padding_mask(kv_lengths: torch.Tensor, bsz: int, kv_seq_len: int, device="cuda"):
+    padding_mask = torch.zeros((bsz, 1, 1, kv_seq_len), dtype=torch.float32, device=device)
+    for i in range(bsz):
+        cur_seq_len = kv_lengths[i].item()
+        assert cur_seq_len <= kv_seq_len
+        padding_mask[i, :, :, : kv_seq_len - cur_seq_len] = float("-inf")
+    return padding_mask
+
+
 # Attention calculation adapted from HuggingFace transformers repository
 # src/transformers/models/llama/modeling_llama.py
 # https://github.com/huggingface/transformers/blob/633215ba58fe5114d8c8d32e415a04600e010701/src/transformers/models/llama/modeling_llama.py#L350
 def torch_attn_ref(
-    q: torch.Tensor,  # [bsz, seq_len, num_heads, head_dim]
-    k: torch.Tensor,  # [bsz, kv_seq_len, num_heads, head_dim]
-    v: torch.Tensor,  # [bsz, kv_seq_len, num_heads, head_dim]
+    q: torch.Tensor,  # [bsz, num_heads, q_len, head_dim]
+    k: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_dim]
+    v: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_dim]
     attention_mask: torch.Tensor,  # [bsz, 1, seq_len, kv_seq_len]
     bsz: int,
     seq_len: int,
@@ -31,14 +42,8 @@ def torch_attn_ref(
     num_heads: int,
     num_kv_heads: int,
     head_dim: int,
-):
+) -> torch.Tensor:
     assert q.shape[-1] == k.shape[-1] == v.shape[-1] == head_dim
-    q = q.view(bsz, seq_len, num_heads, head_dim)
-    k = k.view(bsz, kv_seq_len, num_kv_heads, head_dim)
-    v = v.view(bsz, kv_seq_len, num_kv_heads, head_dim)
-    q = q.transpose(1, 2)
-    k = k.transpose(1, 2)
-    v = v.transpose(1, 2)
 
     # repeat kv for GQA and MQA
     # k/v won't change if kv_group_num is 1
@@ -49,7 +54,6 @@ def torch_attn_ref(
 
     qk = torch.matmul(q, k.transpose(2, 3))
     attn_scores = qk / (head_dim**0.5)
-
     assert attn_scores.shape == (bsz, num_heads, seq_len, kv_seq_len), "Invalid shape of attention scores"
     # for left-side padding
     if attention_mask.size() != (bsz, 1, seq_len, kv_seq_len):
@@ -77,7 +81,7 @@ def mock_alloc_block_table_and_kvcache(
     num_seqs: int,
     max_num_blocks_per_seq: int,
     block_size: int,
-):
+) -> torch.Tensor:
     """Allocate block tables based on provided context lengths; and copy KV to blocked KV Cache."""
     block_id = 0
     block_tables = torch.full(size=(num_seqs, max_num_blocks_per_seq), fill_value=-1, dtype=torch.int32)
@@ -102,12 +106,10 @@ def mock_alloc_block_table_and_kvcache(
     return block_tables
 
 
-def mock_alloc_single_token(block_tables: torch.Tensor, context_lengths: torch.Tensor, block_size: int):
-    """Allocate 1 token on the block table for each seqs in block tables.
-    It won't change provided context_lengths
-    """
-
-    # consider max_block_id as the last physical block allocated
+def mock_alloc_single_token(block_tables: torch.Tensor, context_lengths: torch.Tensor, block_size: int) -> None:
+    # Allocate 1 token on the block table for each seqs in block tables.
+    # It won't change provided context_lengths.
+    # Consider max_block_id as the last physical block allocated
     # NOTE It assumes all the blocks preceding this block have been allocated
     max_block_id = torch.max(block_tables).item()
     # the indices on each block table representing the cache block to be allocated one more token
@@ -126,3 +128,36 @@ def mock_alloc_single_token(block_tables: torch.Tensor, context_lengths: torch.T
     if new_block_ids.numel():
         new_block_alloc_local_indices = alloc_local_block_indices[require_new_block]
         block_tables[require_new_block, new_block_alloc_local_indices] = new_block_ids
+
+
+def generate_caches_and_block_tables(
+    k_unpad, v_unpad, kv_lengths, bsz, max_num_blocks_per_seq, block_size, dtype=torch.float16, device="cuda"
+) -> Tuple[torch.Tensor, ...]:
+    # Mock generation of k/v blocked caches and block tables from providied kv unpad and seq lengths
+    # k_unpad/v_unpad [num_total_tokens, num_kv_heads, head_dim]
+    _, num_kv_heads, head_dim = k_unpad.shape
+    cache_shape = (bsz * max_num_blocks_per_seq, num_kv_heads, head_dim, block_size)
+    k_cache = torch.zeros(size=cache_shape, dtype=dtype, device=device)
+    v_cache = torch.zeros(size=cache_shape, dtype=dtype, device=device)
+    # Mock allocation on block tables as well as blocked kv caches
+    block_tables = mock_alloc_block_table_and_kvcache(
+        k_unpad, v_unpad, k_cache, v_cache, kv_lengths, bsz, max_num_blocks_per_seq, block_size
+    )
+    return k_cache, v_cache, block_tables
+
+
+def convert_kv_unpad_to_padded(
+    k_unpad: torch.Tensor, kv_seq_lengths: torch.Tensor, bsz: int, max_seq_len: int
+) -> torch.Tensor:
+    # Rebuild (batched) k/v with padding to be used by torch attention
+    # input k_unpad/v_unpad [num_total_tokens, num_kv_heads, head_dim]
+    # returns k/v padded    [bsz, num_kv_heads, max_seq_len, head_dim]
+    _, num_kv_heads, head_dim = k_unpad.shape
+    k_torch = torch.zeros((bsz, max_seq_len, num_kv_heads, head_dim), dtype=k_unpad.dtype, device=k_unpad.device)
+    prev_len_sum = 0
+    for i, seq_len in enumerate(kv_seq_lengths.tolist()):
+        # left-side padding
+        k_torch[i, -seq_len:, :, :] = k_unpad[prev_len_sum : prev_len_sum + seq_len]
+        prev_len_sum += seq_len
+    k_torch = k_torch.transpose(1, 2)
+    return k_torch
