@@ -1,9 +1,13 @@
+from copy import deepcopy
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.testing import assert_close
 from transformers.activations import ACT2FN
+
+from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler
 
 tokens, n_experts = 7, 4
 hidden_size = 8
@@ -125,12 +129,12 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         input_split_sizes = selected_experts.bincount()
         output_split_sizes = torch.zeros_like(input_split_sizes)
         dist.all_to_all_single(output_split_sizes, input_split_sizes)
-        output_states = torch.zeros(output_split_sizes.sum().item(), hidden_size).cuda()
 
         input_split_list = input_split_sizes.view(ep_size, num_experts_per_ep).sum(dim=-1).tolist()
         output_split_list = output_split_sizes.view(ep_size, num_experts_per_ep).sum(dim=-1).tolist()
-        dist.all_to_all_single(output_states, dispatch_states, output_split_list, input_split_list)
+        output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list)
         # compute expert output
+        output_states = MoeInGradScaler.apply(output_states, ep_size)
         if num_experts_per_ep == 1:
             # no need to split
             expert = self.experts[expert_start_idx]
@@ -140,13 +144,15 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
             output_states_splits = output_states.split(output_split_sizes.tolist())
             output_states_list = []
             for i, split_states in enumerate(output_states_splits):
+                if split_states.size(0) == 0:
+                    continue
                 expert = self.experts[expert_start_idx + i % num_experts_per_ep]
                 split_states = expert.act_fn(expert.w1(split_states)) * expert.w3(split_states)
                 split_states = expert.w2(split_states)
                 output_states_list.append(split_states)
             output_states = torch.cat(output_states_list)
-        dist.all_to_all_single(dispatch_states, output_states, input_split_list, output_split_list)
-
+        output_states = MoeOutGradScaler.apply(output_states, ep_size)
+        dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list)
         recover_experts_idx = torch.empty_like(selected_experts_idx)
         recover_experts_idx[selected_experts_idx] = torch.arange(
             selected_experts_idx.size(0), device=selected_experts_idx.device
@@ -160,14 +166,92 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         return output_states, router_logits
 
 
+from typing import Any, List, Optional
+
+
+def _all_to_all(
+    inputs: torch.Tensor,
+    input_split_sizes: Optional[List[int]] = None,
+    output_split_sizes: Optional[List[int]] = None,
+    group=None,
+    async_op: bool = False,
+):
+    """
+    Returns:
+        outputs: Tensor
+        handle: Optional[Work], if overlap is True
+    """
+    outputs_shape = list(inputs.shape)
+    if output_split_sizes is not None:
+        outputs_shape[0] = sum(output_split_sizes)
+    outputs = torch.empty(outputs_shape, dtype=inputs.dtype, device=inputs.device)
+    inputs = inputs.contiguous()
+    outputs = outputs.contiguous()
+    handle = dist.all_to_all_single(
+        outputs, inputs, output_split_sizes, input_split_sizes, group=group, async_op=async_op
+    )
+    return outputs, handle
+
+
+class AllToAllUneven(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx,
+        inputs,
+        input_split_sizes=None,
+        output_split_sizes=None,
+        group=None,
+        overlap: bool = False,
+    ):
+        """
+        Returns:
+            outputs: Tensor
+            handle: Optional[Work], if overlap is True
+        """
+        ctx.input_split_sizes = input_split_sizes
+        ctx.output_split_sizes = output_split_sizes
+        ctx.group = group
+        return _all_to_all(inputs, input_split_sizes, output_split_sizes, group, overlap)
+
+    @staticmethod
+    def backward(ctx: Any, *grad_outputs):
+        return (
+            _all_to_all(grad_outputs[0], ctx.output_split_sizes, ctx.input_split_sizes, ctx.group, False)[0],
+            None,
+            None,
+            None,
+            None,
+        )
+
+
+def all_to_all_uneven(
+    inputs: torch.Tensor,
+    input_split_sizes: Optional[List[int]] = None,
+    output_split_sizes: Optional[List[int]] = None,
+    group=None,
+    overlap: bool = False,
+):
+    return AllToAllUneven.apply(inputs, input_split_sizes, output_split_sizes, group, overlap)
+
+
 if __name__ == "__main__":
     dist.init_process_group(backend="nccl", init_method="env://")
     torch.cuda.set_device(dist.get_rank())
     torch.manual_seed(0)
-    model = MixtralSparseMoeBlock(hidden_size, hidden_size * 2, n_experts, top_k).cuda()
-    x = torch.rand(1, tokens, hidden_size).cuda()
-    orig_output, orig_logits = model(x)
+    orig_model = MixtralSparseMoeBlock(hidden_size, hidden_size * 2, n_experts, top_k).cuda()
+    x = torch.rand(1, tokens, hidden_size, requires_grad=True).cuda()
+    orig_output, orig_logits = orig_model(x)
+    model = deepcopy(orig_model)
     model.__class__ = EPMixtralSparseMoeBlock
     ep_output, ep_logits = model(x)
     assert_close(orig_logits, ep_logits)
     assert_close(orig_output, ep_output)
+    orig_loss = orig_output.mean()
+    orig_loss.backward()
+    ep_loss = ep_output.mean()
+    ep_loss.backward()
+    assert_close(orig_loss, ep_loss)
+    ep_p_to_name = {p: n for n, p in model.named_parameters()}
+    for p, ep_p in zip(orig_model.parameters(), model.parameters()):
+        if ep_p.grad is not None:
+            assert_close(p.grad, ep_p.grad)
