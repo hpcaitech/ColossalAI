@@ -1,10 +1,7 @@
-from typing import Optional
-
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributed import ProcessGroup
 from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralSparseMoeBlock
 
 from colossalai.lazy import LazyInitContext
@@ -15,11 +12,13 @@ from colossalai.tensor.moe_tensor.api import set_moe_tensor_info
 
 
 class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
-    def __init__(self, config, ep_group: Optional[ProcessGroup] = None):
+    def __init__(self, config):
         super().__init__(config)
-        self.setup_ep(ep_group)
+        self.setup_ep()
 
-    def setup_ep(self, ep_group: Optional[ProcessGroup]):
+    def setup_ep(self):
+        _, moe_info = MOE_MANAGER.get_info(self.num_experts)
+        ep_group = moe_info.ep_group
         self.ep_size = dist.get_world_size(ep_group) if ep_group is not None else 1
         self.ep_rank = dist.get_rank(ep_group) if ep_group is not None else 0
         assert self.num_experts % self.ep_size == 0
@@ -27,17 +26,14 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         self.expert_start_idx = self.ep_rank * self.num_experts_per_ep
         held_experts = self.experts[self.expert_start_idx : self.expert_start_idx + self.num_experts_per_ep]
         set_tensors_to_none(self.experts, exclude=set(held_experts))
-        _, moe_info = MOE_MANAGER.get_info(self.num_experts)
         for p in self.experts.parameters():
             set_moe_tensor_info(p, moe_info)
 
     @staticmethod
-    def from_native_module(
-        module: MixtralSparseMoeBlock, process_group: Optional[ProcessGroup] = None
-    ) -> "EPMixtralSparseMoeBlock":
+    def from_native_module(module: MixtralSparseMoeBlock) -> "EPMixtralSparseMoeBlock":
         LazyInitContext.materialize(module)
         module.__class__ = EPMixtralSparseMoeBlock
-        module.setup_ep(process_group)
+        module.setup_ep()
         return module
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -96,7 +92,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         return output_states, router_logits
 
 
-def replace_moe_layer(model: nn.Module, ep_process_group: ProcessGroup) -> nn.Module:
+def replace_moe_layer(model: nn.Module) -> nn.Module:
     """
     Reverse the replace layer operation
 
@@ -104,7 +100,7 @@ def replace_moe_layer(model: nn.Module, ep_process_group: ProcessGroup) -> nn.Mo
         module (torch.nn.Module): The object of layer to shard
     """
     if isinstance(model, MixtralDecoderLayer):
-        model.block_sparse_moe = EPMixtralSparseMoeBlock.from_native_module(model.block_sparse_moe, ep_process_group)
+        model.block_sparse_moe = EPMixtralSparseMoeBlock.from_native_module(model.block_sparse_moe)
     else:
         for _, child in model.named_children():
-            replace_moe_layer(child, ep_process_group)
+            replace_moe_layer(child)

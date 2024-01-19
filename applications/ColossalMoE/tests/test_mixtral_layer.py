@@ -18,11 +18,8 @@ top_k = 2
 
 
 def check_mixtral_moe_layer():
-    group = dist.new_group(list(range(dist.get_world_size())))
     torch.cuda.set_device(dist.get_rank())
-    MOE_MANAGER.setup(
-        parallel="ep", mode="fixed", fixed_dp_size=1, fixed_ep_size=dist.get_world_size(), fixed_pp_size=1
-    )
+    MOE_MANAGER.setup(parallel="ep", max_ep_size=dist.get_world_size())
     config = MixtralConfig(
         hidden_size=hidden_size,
         intermediate_size=hidden_size * 2,
@@ -34,7 +31,7 @@ def check_mixtral_moe_layer():
     x = torch.rand(1, tokens, hidden_size, requires_grad=True).cuda()
     orig_output, orig_logits = orig_model(x)
     model = deepcopy(orig_model)
-    model = EPMixtralSparseMoeBlock.from_native_module(model, group)
+    model = EPMixtralSparseMoeBlock.from_native_module(model)
     ep_output, ep_logits = model(x)
     assert_close(orig_logits, ep_logits)
     assert_close(orig_output, ep_output)
