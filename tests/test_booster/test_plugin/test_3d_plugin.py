@@ -17,6 +17,8 @@ from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_ad
 from colossalai.utils import get_current_device, set_seed
 from tests.kit.model_zoo import model_zoo
 
+print("a")
+
 
 class RandomDataset(Dataset):
     def __init__(self, num_samples: int = 100, max_length: int = 512, vocab_size: int = 32000):
