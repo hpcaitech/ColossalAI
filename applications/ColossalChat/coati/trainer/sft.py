@@ -6,9 +6,8 @@ import os
 from typing import Optional
 
 import torch
-from coati.models import save_checkpoint
 from coati.trainer.utils import all_reduce_mean
-from coati.utils import AccumulativeMeanMeter
+from coati.utils import AccumulativeMeanMeter, save_checkpoint
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
@@ -69,6 +68,8 @@ class SFTTrainer(SLTrainer):
         Args:
             train_dataloader: the dataloader to use for training
             eval_dataloader: the dataloader to use for evaluation
+            log_dir: the directory to save logs
+            use_wandb: whether to use wandb for logging
         """
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
@@ -105,7 +106,7 @@ class SFTTrainer(SLTrainer):
             self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
             self.booster.backward(loss=loss, optimizer=self.optimizer)
 
-            # gradient accumulation
+            # Gradient accumulation
             if (i + 1) % self.accumulation_steps == 0:
                 self.optimizer.step()
                 self.optimizer.zero_grad()
@@ -118,7 +119,7 @@ class SFTTrainer(SLTrainer):
                 self.accumulative_meter.reset()
                 step_bar.update()
 
-                # save checkpoint
+                # Save checkpoint
                 if (
                     self.save_dir is not None
                     and self.save_interval is not None

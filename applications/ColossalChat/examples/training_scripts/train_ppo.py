@@ -1,5 +1,6 @@
 import argparse
 import os
+import json
 import resource
 from contextlib import nullcontext
 
@@ -12,7 +13,10 @@ from coati.dataset import (
     setup_conversation_template,
     setup_distributed_dataloader,
 )
-from coati.models import Critic, RewardModel, convert_to_lora_module, disable_dropout
+from coati.models import (
+    Critic, RewardModel, convert_to_lora_module, 
+    disable_dropout
+)
 from coati.trainer import PPOTrainer
 from coati.utils import load_checkpoint, replace_with_flash_attention
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -25,7 +29,9 @@ from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
+from colossalai.logging import get_dist_logger
 
+logger = get_dist_logger()
 
 def train(args):
     # check lora compatibility
@@ -100,6 +106,14 @@ def train(args):
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
+    if os.path.exists(args.conversation_template_config):
+        conversation_template_config = json.load(open(args.conversation_template_config, "r", encoding='utf8'))
+        conversation_template = setup_conversation_template(tokenizer, 
+                                chat_template_config=conversation_template_config, 
+                                save_path=args.conversation_template_config)
+        stop_token_ids = conversation_template.assistant_line_end if len(conversation_template.assistant_line_end)>0 else None
+    else:
+        raise ValueError("Conversation template config is not provided or incorrect")
     if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
         try:
             # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen
@@ -151,13 +165,13 @@ def train(args):
         use_tp=args.tp > 1,
     )
 
-    if len(args.pretrain_dataset) > 0:
-        train_pretrain_dataset = load_tokenized_dataset(
-            dataset_paths=args.pretrain_dataset, mode="train", mode_map=mode_map
+    if len(args.ptx_dataset) > 0:
+        train_ptx_dataset = load_tokenized_dataset(
+            dataset_paths=args.ptx_dataset, mode="train", mode_map=mode_map
         )
         data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer, max_length=args.max_length)
         train_pretrain_dataloader = setup_distributed_dataloader(
-            dataset=train_pretrain_dataset,
+            dataset=train_ptx_dataset,
             batch_size=args.ptx_batch_size,
             shuffle=True,
             drop_last=True,
@@ -361,6 +375,7 @@ def train(args):
         actor_lr_scheduler,
         critic_lr_scheduler,
         tokenizer=tokenizer,
+        stop_token_ids=stop_token_ids,
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
         train_batch_size=args.train_batch_size,
@@ -413,13 +428,17 @@ def train(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--prompt_dataset", nargs="+", default=[])
-    parser.add_argument("--pretrain_dataset", nargs="+", default=[])
+    parser.add_argument("--ptx_dataset", nargs="+", default=[])
     parser.add_argument(
         "--plugin",
         type=str,
         default="gemini",
         choices=["gemini", "gemini_auto", "zero2", "zero2_cpu", "3d"],
         help="Choose which plugin to use",
+    )
+    parser.add_argument(
+        "--conversation_template_config", type=str, default=None, help="Path \
+        to save conversation template config files."
     )
     parser.add_argument("--grad_clip", type=float, default=1.0, help="Gradient clipping value")
     parser.add_argument("--weight_decay", type=float, default=0.1, help="Weight decay")
@@ -438,7 +457,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_interval", type=int, default=1000)
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--experience_batch_size", type=int, default=16)
-    parser.add_argument("--ptx_batch_size", type=int, default=1)
+    parser.add_argument("--ptx_batch_size", type=int, default=4)
     parser.add_argument("--lora_train_bias", type=str, default="none")
     parser.add_argument("--mixed_precision", type=str, default="fp16", choices=["fp16", "bf16"], help="Mixed precision")
     parser.add_argument("--accumulation_steps", type=int, default=8)

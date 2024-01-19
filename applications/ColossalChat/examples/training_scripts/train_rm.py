@@ -153,7 +153,7 @@ def train(args):
             logger.warning(f"Unable to set pad token to eos token, {str(e)}")
     if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
         logger.warning("The tokenizer does not have a pad token which is required. May lead to unintended behavior in training, Please consider manually set them.")
-
+    tokenizer.padding_side = "right"
     tokenizer.add_bos_token = False
     tokenizer.add_eos_token = False
 

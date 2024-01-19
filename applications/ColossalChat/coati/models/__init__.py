@@ -1,10 +1,10 @@
 from .base import BaseModel
 from .critic import Critic
-from .generation import generate, generate_streaming
+from .generation import generate, generate_streaming, update_model_kwargs_fn, prepare_inputs_fn
 from .lora import convert_to_lora_module
 from .loss import DpoLoss, LogExpLoss, LogSigLoss, PolicyLoss, ValueLoss
 from .reward_model import RewardModel
-from .utils import disable_dropout, load_checkpoint, save_checkpoint
+from .utils import disable_dropout
 
 __all__ = [
     "BaseModel",
@@ -15,10 +15,10 @@ __all__ = [
     "LogSigLoss",
     "LogExpLoss",
     "convert_to_lora_module",
-    "save_checkpoint",
-    "load_checkpoint",
     "DpoLoss",
     "generate",
     "generate_streaming",
     "disable_dropout",
+    "update_model_kwargs_fn",
+    "prepare_inputs_fn"
 ]

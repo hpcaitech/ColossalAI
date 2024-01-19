@@ -13,48 +13,40 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "Now CUDA_VISIBLE_DEVICES is set to:"
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
-set_n_least_used_CUDA_VISIBLE_DEVICES 4
-# NCCL IB environment variables
-export NCCL_IB_HCA=mlx5_1:1,mlx5_2:1,mlx5_3:1,mlx5_4:1
-export NCCL_IB_DISABLE=0
-export NCCL_SOCKET_IFNAME=eth0
-export NCCL_IB_GID_INDEX=3
-export NCCL_IB_TIMEOUT=23
-export NCCL_IB_RETRY_CNT=7
-export OMP_NUM_THREADS=8
-
+set_n_least_used_CUDA_VISIBLE_DEVICES 8
 
 PROJECT_NAME="llama2-ppo"
-PARENT_SAVE_DIR="save_dir/ckpt"
-PARENT_TENSORBOARD_DIR="save_dir/tensorboard"
-PARENT_CONFIG_FILE="save_dir/train_config"
-PRETRAINED_MODEL_PATH="sft_model_save_dir/modeling"
-REWARD_MODEL_PATH="reward_model_save_dir/modeling"
-PRETRAINED_TOKENIZER_PATH="pretrained/model/path"
+PARENT_SAVE_DIR="/home/yeanbang/data/experiments/ppo/ckpt"
+PARENT_TENSORBOARD_DIR="/home/yeanbang/data/experiments/ppo/tensorboard"
+PARENT_CONFIG_FILE="/home/yeanbang/data/experiments/ppo/train_config"
+PRETRAINED_MODEL_PATH="/home/yeanbang/data/experiments/sft/Alpaca/ckptsft-2024-01-18-12-45-11/modeling"
+REWARD_MODEL_PATH="/home/yeanbang/data/experiments/rm/hhh_aligh/ckptllama2-rm-2024-01-18-18-21-10/modeling"
+PRETRAINED_TOKENIZER_PATH="princeton-nlp/Sheared-LLaMA-1.3B"
+CONVERSATION_TEMPLATE_CONFIG_PATH="/home/yeanbang/data/ColossalAI/applications/ColossalChat/config/conversation_template/Sheared-LLaMA.json"
 declare -a prompt_dataset=(
-    path/to/prompt/data/arrow/part-00000
-    path/to/prompt/data/arrow/part-00001
-    path/to/prompt/data/arrow/part-00002
-    path/to/prompt/data/arrow/part-00003
-    path/to/prompt/data/arrow/part-00004
-    path/to/prompt/data/arrow/part-00005
-    path/to/prompt/data/arrow/part-00006
-    path/to/prompt/data/arrow/part-00007
-    path/to/prompt/data/arrow/part-00008
-    path/to/prompt/data/arrow/part-00009
+    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00000
+    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00001
+    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00002
+    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00003
+    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00004
+    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00005
+    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00006
+    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00007
+    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00008
+    /home/yeanbang/data/experiments/ppo/prompt_data/Alpaca/arrow/part-00009
 )
 
 declare -a ptx_dataset=(
-    path/to/ptx/data/arrow/part-00000
-    path/to/ptx/data/arrow/part-00001
-    path/to/ptx/data/arrow/part-00002
-    path/to/ptx/data/arrow/part-00003
-    path/to/ptx/data/arrow/part-00004
-    path/to/ptx/data/arrow/part-00005
-    path/to/ptx/data/arrow/part-00006
-    path/to/ptx/data/arrow/part-00007
-    path/to/ptx/data/arrow/part-00008
-    path/to/ptx/data/arrow/part-00009
+    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00000
+    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00001
+    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00002
+    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00003
+    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00004
+    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00005
+    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00006
+    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00007
+    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00008
+    /home/yeanbang/data/experiments/sft/Alpaca/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
@@ -62,28 +54,27 @@ FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
 
-colossalai run --nproc_per_node 4 --hostfile hostfile --master_port 30039 train_ppo.py \
+colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 31312 train_ppo.py \
     --pretrain $PRETRAINED_MODEL_PATH \
     --rm_pretrain $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
     --rm_checkpoint_path $REWARD_MODEL_PATH \
     --prompt_dataset ${prompt_dataset[@]} \
-    --pretrain_dataset ${ptx_dataset[@]} \
-    --ptx_batch_size 1 \
+    --conversation_template_config $CONVERSATION_TEMPLATE_CONFIG_PATH \
     --ptx_coef 0.0 \
     --plugin "zero2" \
-    --save_interval 200 \
+    --save_interval 500 \
     --save_path $SAVE_DIR \
     --num_episodes 2000 \
-    --num_collect_steps 1 \
+    --num_collect_steps 2 \
     --num_update_steps 1 \
-    --experience_batch_size 8 \
+    --experience_batch_size 4 \
     --train_batch_size 4 \
     --accumulation_steps 2 \
-    --lr 9e-6 \
+    --lr 1e-6 \
     --mixed_precision "bf16" \
-    --grad_clip 1.0 \
+    --grad_clip 0.1\
     --weight_decay 0.01 \
-    --warmup_steps 100 \
+    --warmup_steps 40 \
     --grad_checkpoint \
     --use_wandb

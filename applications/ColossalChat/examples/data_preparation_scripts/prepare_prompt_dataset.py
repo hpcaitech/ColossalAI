@@ -93,7 +93,7 @@ def main():
         train_splits.append(f"train[{start}%:{end}%]")
 
     # Prepare the tokenizer.
-    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir)
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir, use_fast=False, trust_remote_code=True)
     if os.path.exists(args.conversation_template_config):
         conversation_template_config = json.load(open(args.conversation_template_config, "r", encoding='utf8'))
         conversation_template = setup_conversation_template(tokenizer, 

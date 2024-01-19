@@ -34,5 +34,5 @@ class RewardModel(BaseModel):
         sequence_hidden_states = last_hidden_states[torch.arange(last_hidden_states.size(0)), sequence_lengths].type(
             self.value_head.weight.dtype
         )
-        values = self.value_head(sequence_hidden_states).squeeze(-1)  # ensure shape is (B,)
+        values = self.value_head(sequence_hidden_states).squeeze(-1)  # Ensure shape is (B,)
         return values

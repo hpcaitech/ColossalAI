@@ -41,6 +41,7 @@ class Experience:
         self.values = self.values.to(device)
         self.reward = self.reward.to(device)
         self.advantages = self.advantages.to(device)
+        self.kl = self.kl.to(device)
         if self.attention_mask is not None:
             self.attention_mask = self.attention_mask.to(device)
         if self.action_mask is not None:
@@ -52,6 +53,7 @@ class Experience:
         self.values = self.values.pin_memory()
         self.reward = self.reward.pin_memory()
         self.advantages = self.advantages.pin_memory()
+        self.kl = self.kl.pin_memory()
         if self.attention_mask is not None:
             self.attention_mask = self.attention_mask.pin_memory()
         if self.action_mask is not None:
@@ -60,6 +62,10 @@ class Experience:
 
 
 class ExperienceMaker(ABC):
+    """
+    Base class for experience makers.
+    """
+
     def __init__(
         self, actor: PreTrainedModel, critic: Critic, reward_model: RewardModel, initial_model: PreTrainedModel
     ) -> None:
@@ -71,4 +77,15 @@ class ExperienceMaker(ABC):
 
     @abstractmethod
     def make_experience(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **generate_kwargs) -> Experience:
+        """
+        Abstract method to generate an experience.
+
+        Args:
+            input_ids (torch.Tensor): The input tensor.
+            attention_mask (torch.Tensor): The attention mask tensor.
+            **generate_kwargs: Additional keyword arguments for generating the experience.
+
+        Returns:
+            Experience: The generated experience.
+        """
         pass

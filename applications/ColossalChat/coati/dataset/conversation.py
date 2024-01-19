@@ -80,7 +80,19 @@ class Conversation:
     def __str__(self):
         return json.dumps({k:self.__dict__[k] for k in self.__dict__ if k not in ['tokenizer', 'messages']}, ensure_ascii=False, indent=4)
 
-    def get_prompt(self, length: int = None, get_seps_info: bool=False):
+    def get_prompt(self, length: int = None, get_seps_info: bool=False, add_generation_prompt=False) -> Any:
+        """
+        Retrieves the prompt for the conversation.
+
+        Args:
+            length (int, optional): The number of messages to include in the prompt. Defaults to None.
+            get_seps_info (bool, optional): Whether to include separator information in the output. Defaults to False.
+            add_generation_prompt (bool, optional): Whether to add the assistant line start token in generation (for generation only). Defaults to False.
+
+        Returns:
+            str or tuple: The prompt string if get_seps_info is False, otherwise a tuple containing the prompt string and separator information.
+        """
+        
         if length is None:
             length = len(self.messages)
 
@@ -89,7 +101,7 @@ class Conversation:
             messages = [{'role':'system','content':self.system_message}]+self.messages[:length]
         else:
             messages = self.messages[:length]
-        prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+        prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_generation_prompt)
         if get_seps_info:
             seps_order = []
             for message in self.messages[:length]:
@@ -108,8 +120,18 @@ class Conversation:
         return self.get_prompt()
 
     def append_message(self, role: str, message: str):
+        """
+        Append a message to the conversation.
+
+        Args:
+            role (str): The role of the message sender. Must be either 'user' or 'assistant'.
+            message (str): The content of the message.
+
+        Raises:
+            AssertionError: If the role is not 'user' or 'assistant'.
+        """
         assert role in ['user', 'assistant']
-        self.messages.append({'role':role, 'content':message})
+        self.messages.append({'role': role, 'content': message})
 
     def copy(self):
         return Conversation(
@@ -121,13 +143,21 @@ class Conversation:
             assistant_line_end=self.assistant_line_end,
         )
 
+
 def automatically_set_conversation_config(tokenizer: PreTrainedTokenizer, chat_template_config: Dict=None) -> dict:
     """
-    Automatically set up the conversation config for the tokenizer, if the tokenizer doesn't have a default chat_template,
+    Automatically set up the conversation config for the tokenizer with a dummy conversation, if the tokenizer doesn't have a default chat_template,
     raise error to remind the user to set it manually.
+
+    Expect conversation format
+    - support chat format only
+        [system message]<human_line_start>[human line]<human_line_end><assistant_line_start>[assistant line]<assistant_line_end>...[assistant line]<assistant_line_end>
+    check huggingface's doc for more details regarding chat template:
+        https://huggingface.co/docs/transformers/main/chat_templating
 
     Args:
         tokenizer: The tokenizer to use
+        chat_template_config: the chat_template_config to use.
     """
     if not isinstance(tokenizer.chat_template, str) or len(tokenizer.chat_template)==0:
         if isinstance(tokenizer.default_chat_template, str) and len(tokenizer.default_chat_template)>0:
@@ -136,20 +166,25 @@ def automatically_set_conversation_config(tokenizer: PreTrainedTokenizer, chat_t
         tokenizer.chat_template = chat_template_config['chat_template']
     assert isinstance(tokenizer.chat_template, str) and len(tokenizer.chat_template)>0, \
         "Please set the chat_template of the tokenizer"
-    # Generate conversation template config for conversation with system messages
+
+    # Generate conversation template config for conversation with Dummy messages
     dummy_chat_messages = DUMMY_MSG_WITH_SYSTEM
     if chat_template_config['system_message'] is not None:
         dummy_chat_messages[0]['content']=chat_template_config['system_message']
     else:
-        logger.info("No system message is provided, if the chat template requires a system message, please provide it.")
+        logger.warning("No system message is provided, if the chat template requires a system message, please provide it.")
         dummy_chat_messages.pop(0)
     prompt = tokenizer.apply_chat_template(dummy_chat_messages, tokenize=False, add_generation_prompt=False)
+
+    # Locate user and assistant line
     occurances_of_user = find_all_occurrence_subsequence(prompt, DUMMY_USER_MSG)
     occurances_of_assistant = find_all_occurrence_subsequence(prompt, DUMMY_ASSISTANT_MSG)
     assert len(occurances_of_user) == len(occurances_of_assistant) == 3
     assert prompt[occurances_of_user[0]+len(DUMMY_USER_MSG):occurances_of_assistant[0]] == \
         prompt[occurances_of_user[1]+len(DUMMY_USER_MSG):occurances_of_assistant[1]] == \
         prompt[occurances_of_user[2]+len(DUMMY_USER_MSG):occurances_of_assistant[2]]
+    
+    # Calculate the seps with heuristics
     human_line_end_and_assistant_line_start = prompt[occurances_of_user[0]+len(DUMMY_USER_MSG):occurances_of_assistant[0]]
     assert prompt[occurances_of_assistant[0]+len(DUMMY_ASSISTANT_MSG):occurances_of_user[1]] == \
         prompt[occurances_of_assistant[1]+len(DUMMY_ASSISTANT_MSG):occurances_of_user[2]]
@@ -162,7 +197,7 @@ def automatically_set_conversation_config(tokenizer: PreTrainedTokenizer, chat_t
     human_line_start = assistant_line_end_and_human_line_start[len(assistant_line_end):].strip()
     assistant_line_end = assistant_line_end.strip()
     human_line_end = human_line_end_and_assistant_line_start.strip()
-    assistant_line_start = ""
+    assistant_line_start = "" # Note that usually assistant line start doesn't matter if human_line_end already include it
     end_of_system_line_position = len(tokenizer([prompt[:occurances_of_user[0]]], add_special_tokens=False)["input_ids"][0])-len(human_line_start)
     conversation_template_config = {
         "chat_template": tokenizer.chat_template,
@@ -173,6 +208,8 @@ def automatically_set_conversation_config(tokenizer: PreTrainedTokenizer, chat_t
         "assistant_line_end": [],
         "end_of_system_line_position": end_of_system_line_position
     }
+
+    # Find the seps tokens
     conversation_template_config['human_line_start'] = find_sep_tokens(prompt, tokenizer, "human_line_start", 
                                                                 human_line_start, conversation_template_config)
     conversation_template_config['human_line_end'] = find_sep_tokens(prompt, tokenizer, "human_line_end", 
@@ -182,6 +219,7 @@ def automatically_set_conversation_config(tokenizer: PreTrainedTokenizer, chat_t
     conversation_template_config['assistant_line_end'] = find_sep_tokens(prompt, tokenizer, "assistant_line_end", 
                                                                 assistant_line_end, conversation_template_config)
     return conversation_template_config
+
 
 def setup_conversation_template(tokenizer: PreTrainedTokenizer, chat_template_config: Dict=None, save_path: str=None) -> Conversation:
     """

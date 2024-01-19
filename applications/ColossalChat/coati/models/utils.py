@@ -44,6 +44,16 @@ def compute_reward(
 
 
 def _log_probs_from_logits(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    """
+    Compute the log probabilities from logits for the given labels.
+
+    Args:
+        logits (torch.Tensor): The input logits.
+        labels (torch.Tensor): The target labels.
+
+    Returns:
+        torch.Tensor: The log probabilities corresponding to the labels.
+    """
     log_probs = F.log_softmax(logits, dim=-1)
     log_probs_labels = log_probs.gather(dim=-1, index=labels.unsqueeze(-1))
     return log_probs_labels.squeeze(-1)
@@ -65,6 +75,18 @@ def calc_action_log_probs(logits: torch.Tensor, sequences: torch.LongTensor, num
 
 
 def masked_mean(tensor: torch.Tensor, mask: torch.Tensor, dim: int = 1) -> torch.Tensor:
+    """
+    Compute the masked mean of a tensor along a specified dimension.
+
+    Args:
+        tensor (torch.Tensor): The input tensor.
+        mask (torch.Tensor): The mask tensor with the same shape as the input tensor.
+        dim (int, optional): The dimension along which to compute the mean. Default is 1.
+
+    Returns:
+        torch.Tensor: The masked mean tensor.
+
+    """
     tensor = tensor * mask
     tensor = tensor.sum(dim=dim)
     mask_sum = mask.sum(dim=dim)
@@ -73,6 +95,18 @@ def masked_mean(tensor: torch.Tensor, mask: torch.Tensor, dim: int = 1) -> torch
 
 
 def calc_masked_log_probs(logits: torch.Tensor, sequences: torch.LongTensor, mask: torch.Tensor) -> torch.Tensor:
+    """
+    Calculate the masked log probabilities for a given sequence of logits.
+    
+    Args:
+        logits (torch.Tensor): The input logits tensor of shape (batch_size, sequence_length, vocab_size).
+        sequences (torch.LongTensor): The input sequence tensor of shape (batch_size, sequence_length).
+        mask (torch.Tensor): The mask tensor of shape (batch_size, sequence_length).
+        
+    Returns:
+        torch.Tensor: The masked log probabilities tensor of shape (batch_size, sequence_length - 1).
+    """
+    # logits are probabilities of the next token, so we shift them to the left by one
     log_probs = _log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
     return log_probs * mask
 
@@ -92,66 +126,16 @@ def save_json(data: Dict[str, Any], file_path: Union[str, os.PathLike]) -> None:
     with open(file=file_path, mode="w", encoding="utf-8") as fp:
         json.dump(data, fp=fp, ensure_ascii=False, indent=4)
 
-
-def save_checkpoint(
-    save_dir: Union[str, os.PathLike],
-    booster: Booster,
-    model: torch.nn.Module,
-    optimizer: Optimizer,
-    lr_scheduler: _LRScheduler,
-    epoch: int,
-    step: int,
-    batch_size: int,
-    coordinator: DistCoordinator,
-) -> None:
-    """
-    Save model checkpoint, optimizer, LR scheduler and intermedidate running states.
-    """
-
-    save_dir = os.path.join(save_dir, f"epoch-{epoch}_step-{step}")
-    os.makedirs(os.path.join(save_dir, "modeling"), exist_ok=True)
-    print("save model")
-    booster.save_model(model, os.path.join(save_dir, "modeling"), shard=True)
-    print("save optimizer")
-
-    booster.save_optimizer(optimizer, os.path.join(save_dir, "optimizer"), shard=True)
-    print("save lr scheduler")
-    booster.save_lr_scheduler(lr_scheduler, os.path.join(save_dir, "lr_scheduler"))
-    running_states = {
-        "epoch": epoch,
-        "step": step,
-        "sample_start_index": step * batch_size,
-    }
-    print("save lr running states")
-    if coordinator.is_master():
-        save_json(running_states, os.path.join(save_dir, "running_states.json"))
-
-
-def load_checkpoint(
-    load_dir: Union[str, os.PathLike],
-    booster: Booster,
-    model: torch.nn.Module,
-    optimizer: Optimizer,
-    lr_scheduler: _LRScheduler,
-) -> Tuple[int, int, int]:
-    """
-    Load model checkpoint, optimizer, LR scheduler and intermedidate running states.
-    """
-
-    # Update booster params states.
-    booster.load_model(model=model, checkpoint=os.path.join(load_dir, "modeling"))
-    booster.load_optimizer(optimizer=optimizer, checkpoint=os.path.join(load_dir, "optimizer"))
-    booster.load_lr_scheduler(lr_scheduler=lr_scheduler, checkpoint=os.path.join(load_dir, "lr_scheduler"))
-
-    running_states = load_json(file_path=os.path.join(load_dir, "running_states.json"))
-    return (
-        running_states["epoch"],
-        running_states["step"],
-        running_states["sample_start_index"],
-    )
-
-
 def disable_dropout(model: torch.nn.Module):
+    """
+    Disables dropout in a PyTorch model. This is used in PPO Training
+
+    Args:
+        model (torch.nn.Module): The PyTorch model.
+
+    Returns:
+        None
+    """
     for module in model.modules():
         if isinstance(module, torch.nn.Dropout):
             module.p = 0.0

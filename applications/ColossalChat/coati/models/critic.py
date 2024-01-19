@@ -4,7 +4,7 @@ Critic model
 
 from typing import Optional
 
-import torch
+import torch 
 import torch.nn as nn
 from coati.models import BaseModel
 from transformers import PretrainedConfig
@@ -18,10 +18,10 @@ class Critic(BaseModel):
         pretrained (str): path to pretrained model.
         config (PretrainedConfig): PretrainedConfig used to initiate the base model.
     """
-
+ 
     def __init__(self, pretrained: str = None, config: Optional[PretrainedConfig] = None) -> None:
         super().__init__(pretrained=pretrained, config=config)
-        # get last hidden state size with dummy input
+        # et last hidden state size with dummy input
         self.value_head = nn.Linear(self.last_hidden_state_size, 1)
 
     def forward(self, input_ids: torch.LongTensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:

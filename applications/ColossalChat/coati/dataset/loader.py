@@ -206,24 +206,31 @@ class DataCollatorForPreferenceDataset(object):
         )
 
         padding_side = self.tokenizer.padding_side
+        chosen_attention_mask = [torch.ones_like(seq).bool() for seq in chosen_input_ids]
+        reject_attention_mask = [torch.ones_like(seq).bool() for seq in reject_input_ids]
 
         (
             chosen_input_ids,
+            chosen_attention_mask,
             chosen_loss_mask,
             reject_input_ids,
+            reject_attention_mask,
             reject_loss_mask,
         ) = (
             pad_to_max_len(chosen_input_ids, self.max_length, self.tokenizer.pad_token_id, padding_side=padding_side),
+            pad_to_max_len(chosen_attention_mask, self.max_length, False, padding_side=padding_side),
             pad_to_max_len(chosen_loss_mask, self.max_length, False, padding_side=padding_side),
             pad_to_max_len(reject_input_ids, self.max_length, self.tokenizer.pad_token_id, padding_side=padding_side),
+            pad_to_max_len(reject_attention_mask, self.max_length, False, padding_side=padding_side),
             pad_to_max_len(reject_loss_mask, self.max_length, False, padding_side=padding_side),
         )
+
         return dict(
             chosen_input_ids=chosen_input_ids,
-            chosen_attention_mask=chosen_input_ids.ne(self.tokenizer.pad_token_id),
+            chosen_attention_mask=chosen_attention_mask,
             chosen_loss_mask=chosen_loss_mask,
             reject_input_ids=reject_input_ids,
-            reject_attention_mask=reject_input_ids.ne(self.tokenizer.pad_token_id),
+            reject_attention_mask=reject_attention_mask,
             reject_loss_mask=reject_loss_mask,
         )
 

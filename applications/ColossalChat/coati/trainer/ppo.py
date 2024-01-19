@@ -3,7 +3,7 @@ PPO trainer
 """
 
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 import torch
 import wandb
@@ -15,6 +15,7 @@ from coati.models.utils import calc_action_log_probs
 from coati.trainer.callbacks import Callback
 from coati.trainer.utils import all_reduce_mean
 from coati.utils import AccumulativeMeanMeter, save_checkpoint
+from coati.dataset import Conversation
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader, DistributedSampler
@@ -28,6 +29,26 @@ from colossalai.utils import get_current_device
 
 from .base import OLTrainer
 from .utils import CycledDataLoader, is_rank_0, to_device
+
+def _set_default_generate_kwargs(actor: PreTrainedModel) -> Dict:
+    """
+    Set default keyword arguments for generation based on the actor model.
+
+    Args:
+        actor (PreTrainedModel): The actor model.
+
+    Returns:
+        Dict: A dictionary containing the default keyword arguments for generation.
+    """
+    unwrapped_model = actor.unwrap()
+    new_kwargs = {}
+    # use huggingface models method directly
+    if hasattr(unwrapped_model, "prepare_inputs_for_generation"):
+        new_kwargs["prepare_inputs_fn"] = unwrapped_model.prepare_inputs_for_generation
+
+    if hasattr(unwrapped_model, "_update_model_kwargs_for_generation"):
+        new_kwargs["update_model_kwargs_fn"] = unwrapped_model._update_model_kwargs_for_generation
+    return new_kwargs
 
 
 class PPOTrainer(OLTrainer):
@@ -96,8 +117,9 @@ class PPOTrainer(OLTrainer):
         super().__init__(
             actor_booster, critic_booster, data_buffer, sample_buffer, dataloader_pin_memory, callbacks=callbacks
         )
-        self.generate_kwargs = generate_kwargs
-
+        self.generate_kwargs = _set_default_generate_kwargs(actor)
+        self.generate_kwargs.update(generate_kwargs)
+        
         self.actor = actor
         self.critic = critic
         self.actor_booster = actor_booster
@@ -127,7 +149,7 @@ class PPOTrainer(OLTrainer):
         self.accumulative_meter = AccumulativeMeanMeter()
         self.offload_inference_models = offload_inference_models
         self.device = get_current_device()
-        self.coordinator.print_on_master(f"generation kwargs:\n{generate_kwargs}")
+        self.coordinator.print_on_master(f"generation kwargs:\n{self.generate_kwargs}")
 
     def _before_fit(
         self,
@@ -176,6 +198,9 @@ class PPOTrainer(OLTrainer):
         )
 
     def _make_experience(self, collect_step: int) -> Experience:
+        """
+        Make experience
+        """
         prompts = self.prompt_dataloader.next()
         if self.offload_inference_models:
             # TODO(ver217): this may be controlled by strategy if they are prepared by strategy
@@ -215,8 +240,9 @@ class PPOTrainer(OLTrainer):
         if self.ptx_coef != 0:
             batch = self.pretrain_dataloader.next()
             batch = to_device(batch, self.device)
-            ptx_log_probs = self.actor(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])["logits"]
-            ptx_loss = self.ptx_coef * self.ptx_loss_fn(ptx_log_probs, batch["labels"])
+            outputs = self.actor(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
+            ptx_loss = outputs.loss
+            ptx_loss = self.ptx_coef * ptx_loss
             self.actor_booster.backward(loss=ptx_loss, optimizer=self.actor_optim)
 
         # value loss
@@ -246,7 +272,7 @@ class PPOTrainer(OLTrainer):
         self.accumulative_meter.add("reward", reward_mean.to(torch.float16).mean().item())
         self.accumulative_meter.add("value", value_mean.to(torch.float16).mean().item())
         self.accumulative_meter.add("advantages", advantages_mean.to(torch.float16).item())
-        self.accumulative_meter.add("skip_ratio", 0.0 if to_skip else 1.0)
+        self.accumulative_meter.add("skip_ratio", 1.0 if to_skip else 0.0)
         self.accumulative_meter.add("kl", kl_mean.to(torch.float16).item())
         if self.ptx_coef != 0:
             self.accumulative_meter.add("ptx_loss", ptx_loss_mean.to(torch.float16).mean().item())
@@ -266,6 +292,7 @@ class PPOTrainer(OLTrainer):
                 )
                 for i in range(len(response_text)):
                     response_text[i] = response_text[i] + f"\n\nReward: {experience.reward[i]}"
+                    self.coordinator.print_on_master(response_text[i])
                 if self.writer and is_rank_0() and "wandb_run" in self.__dict__:
                     # log output to wandb
                     my_table = wandb.Table(
@@ -300,6 +327,15 @@ class PPOTrainer(OLTrainer):
             self.accumulative_meter.reset()
 
     def _learn(self, update_step: int):
+        """
+        Perform the learning step of the PPO algorithm.
+
+        Args:
+            update_step (int): The current update step.
+
+        Returns:
+            None
+        """
         if self.offload_inference_models:
             self.experience_maker.initial_model.to("cpu")
             self.experience_maker.reward_model.to("cpu")
@@ -322,6 +358,16 @@ class PPOTrainer(OLTrainer):
                 self._on_learn_batch_end(experience)
 
     def _save_checkpoint(self, episode: int = 0):
+        """
+        Save the actor and critic checkpoints with running states.
+
+        Args:
+            episode (int): The current episode number.
+
+        Returns:
+            None
+        """
+        
         self.coordinator.print_on_master("\nStart saving actor checkpoint with running states")
         save_checkpoint(
             save_dir=self.actor_save_dir,

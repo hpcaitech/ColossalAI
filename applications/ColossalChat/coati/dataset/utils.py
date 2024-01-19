@@ -1,6 +1,6 @@
 import io
 import json
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -78,7 +78,8 @@ def chuncate_sequence(sequence: List[torch.Tensor], max_length: int, dtype: Any)
         for seq in sequence
     ]
 
-def find_first_occurrence_subsequence(seq: List[Any], subseq: List[Any], start_index: int=0) -> int:
+def find_first_occurrence_subsequence(seq: Union[torch.Tensor, List[Any]], 
+    subseq: Union[torch.Tensor, List[Any]], start_index: int=0) -> int:
     if not subseq:
         return 0
     for i in range(start_index, len(seq)-len(subseq)+1):
@@ -86,7 +87,8 @@ def find_first_occurrence_subsequence(seq: List[Any], subseq: List[Any], start_i
             return i
     return -1
 
-def find_all_occurrence_subsequence(seq: List[Any], subseq: List[Any]) -> List[int]:
+def find_all_occurrence_subsequence(seq: Union[torch.Tensor, List[Any]], 
+    subseq: Union[torch.Tensor, List[Any]]) -> List[int]:
     if not subseq:
         return list(range(len(seq)))
     result = []

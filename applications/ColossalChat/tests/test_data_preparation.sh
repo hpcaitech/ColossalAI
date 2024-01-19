@@ -43,6 +43,7 @@ BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
 BASE_TEMP_DIR=$BASE_DIR/temp
 EXAMPLES_DIR=$BASE_DIR/examples
 DATA_SAVE_PATH=$BASE_TEMP_DIR/rlhf_data
+CONFIG_DIR=$BASE_DIR/config
 # Skip those tests due to CI tests timeout
 # MODELS=('gpt2' 'bloom' 'opt' 'llama')
 MODELS=('llama')
@@ -79,6 +80,22 @@ get_data_input_dirs() {
         echo "$PREFERENCE_DATASET"
     else
         echo "Unknown data type $data_type"
+        exit 1
+    fi
+}
+
+get_conversation_template_config() {
+    local model=$1
+    if [[ $model == "gpt2" ]]; then
+        echo "Not configured yet"
+    elif [[ $model == "bloom" ]]; then
+        echo "Not configured yet"
+    elif [[ $model == "opt" ]]; then
+        echo "Not configured yet"
+    elif [[ $model == "llama" ]]; then
+        echo "$CONFIG_DIR/conversation_template/Sheared-LLaMA.json"
+    else
+        echo "Unknown model $model"
         exit 1
     fi
 }
@@ -128,10 +145,12 @@ for model in ${MODELS[@]}; do
     rm -rf $arrow_dir
     data_input_dirs=$(get_data_input_dirs $data_type)
     tokenizer_dir=$(get_tokenizer_dirs $model)
+    conversation_template=$(get_conversation_template_config $model)
     for i in $(seq $NUM_RETRY); do
         echo "[Test]: $model-$data_type, attempt $i"
         python $EXAMPLES_DIR/data_preparation_scripts/prepare_preference_dataset.py \
             --data_input_dirs $data_input_dirs \
+            --conversation_template_config $conversation_template \
             --tokenizer_dir $tokenizer_dir \
             --data_cache_dir $cache_dir \
             --data_jsonl_output_dir $jsonl_dir \
@@ -168,6 +187,7 @@ for model in ${MODELS[@]}; do
     arrow_dir=$DATA_SAVE_PATH/tokenized_${model}_${data_type}/arrow
     data_input_dirs=$(get_data_input_dirs $data_type)
     tokenizer_dir=$(get_tokenizer_dirs $model)
+    conversation_template=$(get_conversation_template_config $model)
     for i in $(seq $NUM_RETRY); do
         rm -rf $cache_dir
         rm -rf $jsonl_dir
@@ -175,6 +195,7 @@ for model in ${MODELS[@]}; do
         echo "[Test]: $model-$data_type, attempt $i"
         python $EXAMPLES_DIR/data_preparation_scripts/prepare_sft_dataset.py \
             --data_input_dirs $data_input_dirs \
+            --conversation_template_config $conversation_template \
             --tokenizer_dir $tokenizer_dir \
             --data_cache_dir $cache_dir \
             --data_jsonl_output_dir $jsonl_dir \
@@ -211,6 +232,7 @@ for model in ${MODELS[@]}; do
     arrow_dir=$DATA_SAVE_PATH/tokenized_${model}_${data_type}/arrow
     data_input_dirs=$(get_data_input_dirs $data_type)
     tokenizer_dir=$(get_tokenizer_dirs $model)
+    conversation_template=$(get_conversation_template_config $model)
     for i in $(seq $NUM_RETRY); do
         rm -rf $cache_dir
         rm -rf $jsonl_dir
@@ -218,49 +240,7 @@ for model in ${MODELS[@]}; do
         echo "[Test]: $model-$data_type, attempt $i"
         python $EXAMPLES_DIR/data_preparation_scripts/prepare_prompt_dataset.py \
             --data_input_dirs $data_input_dirs \
-            --tokenizer_dir $tokenizer_dir \
-            --data_cache_dir $cache_dir \
-            --data_jsonl_output_dir $jsonl_dir \
-            --data_arrow_output_dir $arrow_dir \
-            --max_length 400 \
-            --num_samples_per_datafile 100 \
-            --num_spliced_dataset_bins 1
-        passed=$?
-        if [ $passed -eq 0 ]; then
-            break
-        fi
-    done
-    if [ $passed -ne 0 ]; then
-        echo "[Test]: Failed $model-$data_type"
-        exit 1
-    fi
-done
-
-echo "[Test]: testing prepare_ptx_dataset.py ..."
-
-# FIXME: This is a hack to skip tests that are not working
-SKIPPED_TESTS=(
-)
-
-# test prepare_ptx_dataset
-for model in ${MODELS[@]}; do
-    data_type="ptx"
-    if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$data_type " ]]; then
-        echo "[Test]: Skipped $model-$data_type"
-        continue
-    fi
-    cache_dir=$DATA_SAVE_PATH/tokenized_${model}_${data_type}/cache
-    jsonl_dir=$DATA_SAVE_PATH/tokenized_${model}_${data_type}/jsonl
-    arrow_dir=$DATA_SAVE_PATH/tokenized_${model}_${data_type}/arrow
-    data_input_dirs=$(get_data_input_dirs $data_type)
-    tokenizer_dir=$(get_tokenizer_dirs $model)
-    for i in $(seq $NUM_RETRY); do
-        rm -rf $cache_dir
-        rm -rf $jsonl_dir
-        rm -rf $arrow_dir
-        echo "[Test]: $model-$data_type, attempt $i"
-        python $EXAMPLES_DIR/data_preparation_scripts/prepare_ptx_dataset.py \
-            --data_input_dirs $data_input_dirs \
+            --conversation_template_config $conversation_template \
             --tokenizer_dir $tokenizer_dir \
             --data_cache_dir $cache_dir \
             --data_jsonl_output_dir $jsonl_dir \

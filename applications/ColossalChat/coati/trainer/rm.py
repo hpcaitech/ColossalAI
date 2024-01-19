@@ -124,7 +124,7 @@ class RewardModelTrainer(SLTrainer):
             )
             batch_size = chosen_input_ids.size()[0]
 
-            # concatenate for better parrallelism
+            # Concatenate for better parrallelism
             reward = self.model(
                 torch.cat([chosen_input_ids, reject_input_ids], dim=0),
                 attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask], dim=0),
@@ -137,7 +137,7 @@ class RewardModelTrainer(SLTrainer):
 
             accuracy = (chosen_reward > reject_reward).float()
 
-            # sync
+            # Sync
             loss_mean = all_reduce_mean(tensor=loss)
             chosen_rewards_mean = all_reduce_mean(tensor=chosen_reward)
             rejected_rewards_mean = all_reduce_mean(tensor=reject_reward)
@@ -153,6 +153,7 @@ class RewardModelTrainer(SLTrainer):
                 self.actor_scheduler.step()
                 step_bar.update()
 
+                # Logging
                 if self.writer and is_rank_0():
                     self.num_train_step += 1
                     self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
@@ -171,7 +172,8 @@ class RewardModelTrainer(SLTrainer):
                     self.writer.add_scalar("train/acc", self.accumulative_meter.get("accuracy"), self.num_train_step)
 
                 self.accumulative_meter.reset()
-
+                
+                # Save checkpoint
                 if self.save_interval > 0 and (self.num_train_step + 1) % self.save_interval == 0 and is_rank_0():
                     self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
                     save_checkpoint(
@@ -217,7 +219,7 @@ class RewardModelTrainer(SLTrainer):
                 reject_reward = self.model(reject_input_ids, attention_mask=reject_attention_mask)
                 loss = self.loss_fn(chosen_reward, reject_reward).mean()
 
-                # sync
+                # Sync
                 loss_mean = all_reduce_mean(tensor=loss)
                 chosen_rewards_mean = all_reduce_mean(tensor=chosen_reward)
                 rejected_rewards_mean = all_reduce_mean(tensor=reject_reward)

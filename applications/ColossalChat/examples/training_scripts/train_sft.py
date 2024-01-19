@@ -12,9 +12,9 @@ from coati.dataset import (
     setup_conversation_template,
     setup_distributed_dataloader,
 )
-from coati.models import convert_to_lora_module, load_checkpoint
+from coati.models import convert_to_lora_module
 from coati.trainer import SFTTrainer
-from coati.utils import replace_with_flash_attention
+from coati.utils import replace_with_flash_attention, load_checkpoint
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai

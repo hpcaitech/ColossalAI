@@ -328,15 +328,43 @@ The first step in Stage 1 is to collect a dataset of human demonstrations of the
 ```
 
 #### Step 2: Preprocessing
-Once you have collected your SFT dataset, you will need to preprocess it. This involves four steps: data cleaning, data deduplication, formating and tokenization. In this code, we will focus on formating and tokenization. The formating step adopts our elaborately designed conversation template to convert the raw conversation to the following strutured input.
+Once you have collected your SFT dataset, you will need to preprocess it. This involves four steps: data cleaning, data deduplication, formating and tokenization. In this section, we will focus on formating and tokenization. 
 
+In this code we provide a flexible way for users to set the conversation template for formating chat data using Huggingface's newest feature--- chat template. Please follow the following steps to define your chat template and preprocess your data.
+
+- Step 1: (Optional). Define your conversation template. You need to provide a conversation template config file similar to the config files under the [config/conversation_template](./config/conversation_template/) directory. This config should include the following fields.
+  ```json
+  {
+      "chat_template": (Optional), A string of chat_template used for formating chat data. If not set (None), will use the default chat template of the provided tokenizer. To use a custom chat template, you need to mannually set this field. For more details on how to write a chat template in Jinja format, please read https://huggingface.co/docs/transformers/main/chat_templating,
+      "system_message": A string of system message to be added at the beggining of the prompt. If not set (None), no system message will be added,
+      "human_line_start": List of tokens that indicate the start of a line from human,
+      "human_line_end": List of tokens that indicate the end of a line from human,
+      "assistant_line_start": List of tokens that indicate the start of a line from assistant,
+      "assistant_line_end": List of tokens that indicate the end of a line from assistant,
+      "end_of_system_line_position": index where the pattern "<human_line_start>[human line]<human_line_end><assistant_line_start>[assistant line]<assistant_line_end>...[assistant line]<assistant_line_end>" starts.
+  }
+  ```
+  On your first run of the data preparation script, you only need to define the "chat_template" (if you want to use custom chat template) and the "system message" (if you want to use a custom system message), other fields will be generated automatically by the script. If the automated process fails, error message and auxiliary information will pop up for you to set them manually.
+
+- Step 2: Run the data preparation script--- [prepare_sft_dataset.sh](./examples/data_preparation_scripts/prepare_sft_dataset.sh). Note that whether or not you have skipped the first step, you need to provide the path to the conversation template config file (via the conversation_template_config arg). If you skipped the first step, an auto-generated conversation template will be stored at the designated file path if success. Sometimes, the data preparation script may fail, error message and auxiliary information will pop up for you to set the conversation template config manually.
+
+- Step 3: (Optional) Check the correctness of the processed data. We provided an easy way for you to do a manual checking on the processed data by checking the "$SAVE_DIR/jsonl/part-XXXX.jsonl" files.
+
+Finishing the above steps, you have converted the raw conversation to the designated chat format and tokenized the formatted conversation, calculate input_ids, labels, attention_masks and buffer those into binary dataset files under "$SAVE_DIR/arrow/part-XXXX" folders.
+
+For now, ColossalChat only support chat models whose chat template is in the form of,
+```json
+<some additional tokens>[system message]<human_line_start>[human line]<human_line_end><assistant_line_start>[assistant line]<assistant_line_end>...[assistant line]<assistant_line_end><some additional tokens>
+```
+
+For example, our Colossal-LLaMA-2 format looks like,
 ```
 <s> A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.
 
 Human: <s> what are some pranks with a pen i can do?</s> Assistant: <s> Are you looking for practical joke ideas?</s>
 ...
 ```
-The tokenization step tokenize the formatted conversation, calculate input_ids, labels, attention_masks and buffer those into dataset files. We provide scripts for data formatting and tokenization for SFT. Simply run the [prepare_sft_dataset.sh](./examples/data_preparation_scripts/prepare_sft_dataset.sh). Read the training configuration section for supported training strategies.
+This covers a wide range of popular LLMs, including but not limmited to ChatGLM, LLaMA2, Mistral, QWen, Yi, Vicuna, Zephyr.
 
 #### Step 3: Training
 Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
@@ -485,11 +513,6 @@ experience buffer size
 <img width="700" alt="image" src="https://raw.githubusercontent.com/YeAnbang/imagehostingrepo/main/reward.png">
 </p>
 
-#### Approximate KL Divergence
-<p align="center">
-<img width="700" alt="image" src="https://raw.githubusercontent.com/YeAnbang/imagehostingrepo/main/KL.png">
-</p>
-
 ### Note on PPO Training
 #### Q1: My reward is nagtive
 Answer: Check your reward model trained in stage 1. If the reward model only generate negative reward, we actually will expect a negative reward. However, even though the reward is negative, the reward should go up.
@@ -526,4 +549,4 @@ For details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/mai
 
 ## Attention
 
-The examples are demos for the whole training process.You need to change the hyper-parameters to reach great performance.
+The examples are demos for the whole training process. You need to change the hyper-parameters to reach great performance.

@@ -1,7 +1,7 @@
 """
 loss functions
 """
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -102,7 +102,7 @@ class DpoLoss(nn.Module):
         logprob_ref_reject: torch.Tensor,
         chosen_mask: torch.Tensor,
         reject_mask: torch.Tensor,
-    ):
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute the DPO loss for a batch of policy and reference model log probabilities.
 
         # adapted from https://github.com/huggingface/trl/blob/main/trl/trainer/dpo_trainer.py#L328
@@ -118,11 +118,6 @@ class DpoLoss(nn.Module):
             The losses tensor contains the DPO loss for each example in the batch.
             The chosen_rewards and rejected_rewards tensors contain the rewards for the chosen and rejected responses, respectively.
         """
-        # print(logprob_actor_chosen.shape, logprob_actor_reject.shape, logprob_ref_chosen.shape, logprob_ref_reject.shape, chosen_mask.shape, reject_mask.shape)
-        # temp = logprob_actor_chosen*chosen_mask
-        # print(temp[temp!=0])
-        # print(torch.exp(temp[temp!=0]))
-        # exit()
         logprob_actor_chosen = logprob_actor_chosen * chosen_mask
         logprob_actor_reject = logprob_actor_reject * reject_mask
         if logprob_ref_chosen is not None and logprob_ref_reject is not None:
@@ -133,11 +128,14 @@ class DpoLoss(nn.Module):
             else:
                 ref_logratios = logprob_ref_chosen.squeeze() - logprob_ref_reject.squeeze()
         else:
+            # If no reference model is provided
             ref_logratios = 0.0
 
         pi_logratios = logprob_actor_chosen.sum(-1) - logprob_actor_reject.sum(-1)
         logits = pi_logratios - ref_logratios
         losses = -torch.nn.functional.logsigmoid(self.beta * logits)
+        
+        # Calculate rewards for logging
         if logprob_ref_chosen is not None:
             chosen_rewards = self.beta * (logprob_actor_chosen.sum(-1) - logprob_ref_chosen.sum(-1)).detach()
         else:
@@ -155,7 +153,6 @@ class LogSigLoss(nn.Module):
     Pairwise Loss for Reward Model
     Details: https://arxiv.org/abs/2203.02155
     """
-
     def forward(self, chosen_reward: torch.Tensor, reject_reward: torch.Tensor) -> torch.Tensor:
         return -torch.nn.functional.logsigmoid(chosen_reward - reject_reward).mean()
 
@@ -165,7 +162,6 @@ class LogExpLoss(nn.Module):
     Pairwise Loss for Reward Model
     Details: https://arxiv.org/abs/2204.05862
     """
-
     def forward(self, chosen_reward: torch.Tensor, reject_reward: torch.Tensor) -> torch.Tensor:
         loss = torch.log(1 + torch.exp(reject_reward - chosen_reward)).mean()
         return loss

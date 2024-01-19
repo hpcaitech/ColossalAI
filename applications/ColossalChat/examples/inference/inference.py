@@ -1,19 +1,33 @@
 import argparse
 import os
+from typing import Dict
 from copy import deepcopy
 import json
 import torch
 from chatio import dummy_io, rich_io, simple_io
 from coati.dataset.conversation import setup_conversation_template
 from coati.models import generate_streaming
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
+from colossalai.logging import get_dist_logger
 
+logger = get_dist_logger()
 
 def get_gpu_memory(max_gpus=None):
+    """
+    Get the available memory for each GPU.
+
+    Args:
+        max_gpus (int, optional): The maximum number of GPUs to consider. Defaults to None.
+
+    Returns:
+        list: A list of available memory for each GPU.
+    """
     gpu_memory = []
     num_gpus = torch.cuda.device_count() if max_gpus is None else min(max_gpus, torch.cuda.device_count())
 
     for gpu_id in range(num_gpus):
+        # Code to get GPU memory goes here
+        pass
         with torch.cuda.device(gpu_id):
             device = torch.cuda.current_device()
             gpu_properties = torch.cuda.get_device_properties(device)
@@ -25,6 +39,19 @@ def get_gpu_memory(max_gpus=None):
 
 
 def load_model_and_tokenizer(model_path, tokenizer_path, device="cuda", **kwargs):
+    """
+    Load the model and tokenizer from the specified paths and move the model to the specified device.
+
+    Args:
+        model_path (str): The path to the pre-trained model.
+        tokenizer_path (str): The path to the pre-trained tokenizer.
+        device (str, optional): The device to move the model to. Defaults to "cuda".
+        **kwargs: Additional keyword arguments to be passed to the `AutoModelForCausalLM.from_pretrained` function.
+
+    Returns:
+        tuple: A tuple containing the loaded model and tokenizer.
+    """
+
     model = AutoModelForCausalLM.from_pretrained(model_path, **kwargs)
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
     tokenizer.pad_token = tokenizer.eos_token
@@ -32,6 +59,25 @@ def load_model_and_tokenizer(model_path, tokenizer_path, device="cuda", **kwargs
 
     return model, tokenizer
 
+def _set_default_generate_kwargs(model: PreTrainedModel) -> Dict:
+    """
+    Set default keyword arguments for generation based on the given model.
+    
+    Args:
+        model (PreTrainedModel): The model used for generation.
+
+    Returns:
+        Dict: A dictionary containing the default keyword arguments for generation.
+    """
+    unwrapped_model = model
+    new_kwargs = {}
+    # Use huggingface models method directly
+    if hasattr(unwrapped_model, "prepare_inputs_for_generation"):
+        new_kwargs["prepare_inputs_fn"] = unwrapped_model.prepare_inputs_for_generation
+
+    if hasattr(unwrapped_model, "_update_model_kwargs_for_generation"):
+        new_kwargs["update_model_kwargs_fn"] = unwrapped_model._update_model_kwargs_for_generation
+    return new_kwargs
 
 def generation_wrapper(*args, **kwargs):
     input_ids = args[1]
@@ -103,10 +149,12 @@ def main(args):
         chat_io.prompt_for_output('assistant')
 
         prompt = conv.get_prompt()
-        
+        print(prompt+'<end_of_prompt>')
         input_ids = tokenizer(prompt, return_tensors="pt", add_special_tokens=False)["input_ids"].to(
             torch.cuda.current_device()
         )
+        default_generate_kwargs = _set_default_generate_kwargs(model)
+        model_kwargs.update(default_generate_kwargs)
         output_stream = generation_wrapper(
             model,
             input_ids,

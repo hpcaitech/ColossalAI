@@ -13,10 +13,10 @@
   - [Install the environment](#install-the-environment)
   - [Install the Transformers](#install-the-transformers)
 - [How to use?](#how-to-use)
-  - [Supervised datasets collection](#supervised-datasets-collection)
-  - [RLHF Training Stage1 - Supervised instructs tuning](#RLHF-training-stage1---supervised-instructs-tuning)
-  - [RLHF Training Stage2 - Training reward model](#RLHF-training-stage2---training-reward-model)
-  - [RLHF Training Stage3 - Training model with reinforcement learning by human feedback](#RLHF-training-stage3---training-model-with-reinforcement-learning-by-human-feedback)
+  - [Supervised datasets collection](#step-1-data-collection)
+  - [RLHF Training Stage1 - Supervised instructs tuning](#rlhf-training-stage1---supervised-instructs-tuning)
+  - [RLHF Training Stage2 - Training reward model](#rlhf-training-stage2---training-reward-model)
+  - [RLHF Training Stage3 - Training model with reinforcement learning by human feedback](#rlhf-training-stage3---proximal-policy-optimization)
   - [Inference Quantization and Serving - After Training](#inference-quantization-and-serving---after-training)
 - [Coati7B examples](#coati7b-examples)
   - [Generation](#generation)
@@ -149,15 +149,9 @@ The first step in Stage 1 is to collect a dataset of human demonstrations of the
 ```
 
 #### Step 2: Preprocessing
-Once you have collected your SFT dataset, you will need to preprocess it. This involves four steps: data cleaning, data deduplication, formating and tokenization. In this code, we will focus on formating and tokenization. The formating step adopts our elaborately designed conversation template to convert the raw conversation the following format.
+Once you have collected your SFT dataset, you will need to preprocess it. This involves four steps: data cleaning, data deduplication, formating and tokenization. In this section, we will focus on formating and tokenization. 
 
-```
-<s> A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.
-
-Human: <s> what are some pranks with a pen i can do?</s> Assistant: <s> Are you looking for practical joke ideas?</s>
-...
-```
-The tokenization step tokenize the formatted conversation, calculate input_ids, labels, attention_masks and buffer those into dataset files. We provide scripts for data formatting and tokenization for SFT. Simply run the [prepare_sft_dataset.sh](./examples/data_preparation_scripts/prepare_sft_dataset.sh).
+In this code, we provide a flexible way for users to set the conversation template for formating chat data using Huggingface's newest feature--- chat template. Please follow the guide in [this document](./examples/README.md) on how to format and tokenize data.
 
 #### Step 3: Training
 Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning. More detais can be found in [./example/README.md](./examples/README.md).
@@ -540,6 +534,7 @@ Coati is developed by ColossalAI Team:
 - [Fazzie](https://fazzie-key.cool/about/index.html) Contributing to the algorithm and development for SFT.
 - [ofey404](https://github.com/ofey404) Contributing to both front-end and back-end development.
 - [Wenhao Chen](https://github.com/CWHer) Contributing to subsequent code enhancements and performance improvements.
+- [Anbang Ye](https://github.com/YeAnbang) Contributing to the refactored version with updated acceleration framework, LoRA, DPO and PPO.
 
 The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
 - [Zangwei Zheng](https://github.com/zhengzangw)

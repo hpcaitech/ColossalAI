@@ -66,7 +66,7 @@ for model in ${MODELS[@]}; do
 done
 
 
-# Test DPO data Preparation
+# Test DPO/PPO data Preparation
 for model in ${MODELS[@]}; do
     SAVE_DIR=$DATA_SAVE_PATH/dpo/$model
     rm -rf $SAVE_DIR/cache
@@ -93,9 +93,4 @@ for model in ${MODELS[@]}; do
         exit 1
     fi
 done
-
-    
-
-
-
 

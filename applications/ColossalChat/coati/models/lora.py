@@ -66,6 +66,9 @@ class LoraLinear(lora.LoRALayer, nn.Module):
             nn.init.zeros_(self.lora_B)
 
     def train(self, mode: bool = True):
+        '''
+        This function runs when model.train() is invoked. It is used to prepare the linear layer for training
+        '''
         def T(w):
             return w.T if self.fan_in_fan_out else w
 
@@ -109,6 +112,16 @@ class LoraLinear(lora.LoRALayer, nn.Module):
 
 
 def _lora_linear_wrapper(linear: nn.Linear, lora_rank: int) -> LoraLinear:
+    """
+    Wraps a linear layer with LoRA functionality.
+
+    Args:
+        linear (nn.Linear): The linear layer to be wrapped.
+        lora_rank (int): The rank of the LoRA decomposition.
+
+    Returns:
+        LoraLinear: The wrapped linear layer with LoRA functionality.
+    """
     assert (
         lora_rank <= linear.in_features
     ), f"LoRA rank ({lora_rank}) must be less than or equal to in features ({linear.in_features})"
@@ -117,6 +130,16 @@ def _lora_linear_wrapper(linear: nn.Linear, lora_rank: int) -> LoraLinear:
 
 
 def _convert_to_lora_recursively(module: nn.Module, lora_rank: int) -> None:
+    """
+    Recursively converts the given module and its children to LoRA (Low-Rank Approximation) form.
+
+    Args:
+        module (nn.Module): The module to convert to LoRA form.
+        lora_rank (int): The rank of the LoRA approximation.
+
+    Returns:
+        None
+    """
     for name, child in module.named_children():
         if isinstance(child, nn.Linear):
             setattr(module, name, _lora_linear_wrapper(child, lora_rank))

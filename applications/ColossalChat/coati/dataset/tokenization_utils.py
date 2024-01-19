@@ -23,49 +23,6 @@ IGNORE_INDEX = -100
 DSType = Union[Dataset, ConcatDataset, dataset_dict.Dataset]
 
 
-def supervised_tokenize_pretrain(
-    data_point: Dict[str, str], tokenizer: PreTrainedTokenizer, ignore_index: int = None, max_length: int = 4096
-) -> Dict[str, Union[int, str, List[int]]]:
-    """
-    A tokenization function to tokenize an original pretraining data point as following:
-        {"source": "", "target": "Beijing, the capital of the People's Republic of China, ...", "category": "geography"}
-    """
-    # assert tokenizer.add_bos_token is False and tokenizer.add_eos_token is False, (
-    #     "Initially set `tokenizer.add_bos_token` and `tokenizer.add_eos_token` to False, "
-    #     "add <bos> and <eos> manually later"
-    # )
-    if ignore_index is None:
-        ignore_index = IGNORE_INDEX
-
-    source_text = data_point["source"]  # `str`
-    target_text = data_point["target"]  # `str`
-    is_null_source = len(source_text) == 0
-
-    source_text = tokenizer.bos_token + source_text
-    target_text += " " + tokenizer.eos_token
-    sequence_text = source_text + target_text
-
-    tokenized = tokenizer([source_text, sequence_text], add_special_tokens=False)["input_ids"]
-    sequence_input_ids = tokenized[1]
-    sequence_labels = deepcopy(sequence_input_ids)
-
-    source_length = len(tokenized[0])
-    if not is_null_source:
-        sequence_labels[:source_length] = [ignore_index for _ in range(source_length)]
-
-    # sequence truncation.
-    if len(sequence_input_ids) > max_length:
-        sequence_input_ids = sequence_input_ids[:max_length]
-        sequence_labels = sequence_labels[:max_length]
-
-    return dict(
-        input_ids=sequence_input_ids,
-        labels=sequence_labels,
-        seq_length=len(sequence_input_ids),
-        seq_category=data_point["category"] if "category" in data_point else "None",
-    )
-
-
 def supervised_tokenize_sft(
     data_point: Dict[str, str],
     tokenizer: PreTrainedTokenizer,
@@ -138,11 +95,11 @@ def supervised_tokenize_sft(
 
     target_turn = turns[target_turn_index - 1]
     prompt, seps_info = template.get_prompt(2 * target_turn, get_seps_info=True)
+    
     seps_order = seps_info['seps_order']
     end_of_system_line_position = seps_info['end_of_system_line_position']
     tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0]
 
-    # Find start index and end index of each dialogue
     starts, ends = find_round_starts_and_ends(tokenizer, template, prompt, tokenized, seps_order, end_of_system_line_position)
 
     if len(starts) != target_turn*2 or len(ends) != target_turn*2:
@@ -174,11 +131,9 @@ def supervised_tokenize_sft(
     starts=[starts[i] for i in target_turns]
     ends=[ends[i] for i in target_turns]
 
-    if tokenizer.bos_token_id is not None:
-        tokenized = [tokenizer.bos_token_id] + tokenized
     labels = [ignore_index] * len(tokenized)
     for start, end in zip(starts, ends):
-        labels[start + 1 : end + 1] = tokenized[start + 1 : end + 1]
+        labels[start: end] = tokenized[start: end]
 
     labels_decode = deepcopy(labels)
     if tokenizer.eos_token_id is not None:
@@ -230,11 +185,6 @@ def tokenize_prompt_dataset(
         ignore_index: the ignore index when calculate loss during training
         max_length: the maximum context length
     """
-
-    assert (
-        tokenizer.bos_token == conversation_template.seps[0] and tokenizer.eos_token == conversation_template.seps[1]
-    ), "`bos_token` and `eos_token` should be the same with `conversation_template.seps`."
-
     if ignore_index is None:
         ignore_index = IGNORE_INDEX
 
@@ -254,59 +204,25 @@ def tokenize_prompt_dataset(
         template.append_message(from_str, mess["content"])
 
     # `target_turn_index` is the number of turns which exceeds `max_length - 1` for the first time.
-    turns = [i for i in range(0, len(messages)+1)]
-
-    lo, hi = 0, len(turns)-1
-    while lo < hi:
-        mid = (lo + hi) // 2
-        if max_length - 1 < len(
-            tokenizer([template.get_prompt(turns[mid])], add_special_tokens=False)["input_ids"][0]
-        ):
-            hi = mid
-        else:
-            lo = mid + 1
-    target_turn_index = lo
-
-    # The tokenized length for first turn already exceeds `max_length - 1`.
-    if target_turn_index == 0:
-        warnings.warn("The tokenized length for first turn already exceeds `max_length - 1`.")
-        return dict(
-            input_ids=None,
-            inputs_decode=None,
-            seq_length=None,
-            seq_category=None,
-        )
-
-    target_turn = turns[target_turn_index]
+    target_turn = len(template.messages)
     if target_turn % 2 != 1:
         # exclude the answer if provided. keep only the prompt
         target_turn = target_turn - 1
 
-    # Sanity check: if the conversation template is correct.
-    prompt, seps_info = template.get_prompt(target_turn, get_seps_info=True)
-    seps_order = seps_info['seps_order']
-    end_of_system_line_position = seps_info['end_of_system_line_position']
-    tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0]
-
-    # Find start index and end index of each dialogue
-    starts, ends = find_round_starts_and_ends(tokenizer, template, prompt, tokenized, seps_order, end_of_system_line_position)
-
-    if len(starts) != target_turn or len(ends) != target_turn:
-        tokens = tokenizer.convert_ids_to_tokens(tokenized, skip_special_tokens=False)
-        corresponding_str = [tokenizer.convert_tokens_to_string([token]) for token in tokens]
-        token_str_mapping = [(tokenized[i], s) for i, s in enumerate(corresponding_str)]
-        raise ValueError(f"Please check whether the sequence control seperators are configed correctly \"{tokenizer.decode(getattr(template, sep_name), skip_special_tokens=False)}\" \
-            in the prompt {prompt}. Please manually set sequence control tokens if this message continue to occur constantly.\nToken mapping:\n{token_str_mapping}\nCurrent Setting:\n{str(template)}")
+    # Prepare data
+    prompt = template.get_prompt(target_turn, add_generation_prompt=True)
+    tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0] 
+       
+    # Skip overlength data
+    if max_length - 1 < len(tokenized):
         return dict(
             input_ids=None,
-            labels=None,
             inputs_decode=None,
-            labels_decode=None,
             seq_length=None,
             seq_category=None,
         )
-    
-    # `inputs_decode` and `labels_decode` can be used to check whether the tokenization method is true.
+
+    # `inputs_decode` can be used to check whether the tokenization method is true.
     return dict(
         input_ids=tokenized,
         inputs_decode=tokenizer.decode(tokenized),
@@ -350,8 +266,6 @@ def apply_rlhf_data_format(template: Conversation, tokenizer: Any, context_len: 
     if mask_out_target_assistant_line_end:
         ends[-1] = ends[-1]-len(template.assistant_line_end)
 
-    if tokenizer.bos_token_id is not None:
-        tokenized = [tokenizer.bos_token_id] + tokenized
     loss_mask = [0] * len(tokenized)
     mask_token = tokenizer.eos_token_id or tokenizer.pad_token_id
     if mask_token is None:
@@ -359,7 +273,7 @@ def apply_rlhf_data_format(template: Conversation, tokenizer: Any, context_len: 
 
     label_decode = [mask_token] * len(tokenized)
     for start, end in zip(starts, ends):
-        for i in range(start + 1, end + 1):
+        for i in range(start, end):
             loss_mask[i] = 1
             label_decode[i] = tokenized[i]
     label_decode = tokenizer.decode(label_decode, skip_special_tokens=False)

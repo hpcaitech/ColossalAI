@@ -205,9 +205,6 @@ class OLTrainer(ABC):
                     for collect_step in tqdm.trange(num_collect_steps, desc="Collect steps", disable=not is_rank_0()):
                         self._collect_phase(collect_step)
                     if not self.sample_buffer:
-                        # HACK(cwher): according to the design of boost API, dataloader should also be boosted,
-                        #  but it is impractical to adapt this pattern in RL training. Thus, I left dataloader unboosted.
-                        #  I only call strategy.setup_dataloader() to setup dataloader.
                         self._setup_update_phrase_dataload()
                     for update_step in tqdm.trange(num_update_steps, desc="Update steps", disable=not is_rank_0()):
                         self._update_phase(update_step)

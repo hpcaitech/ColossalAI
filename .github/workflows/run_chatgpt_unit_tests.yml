@@ -34,14 +34,14 @@ jobs:
         run: |
           cd applications/ColossalChat
           pip install -v .
-          pip install -r requirements-test.txt
 
       - name: Execute Unit Testing
         run: |
           cd applications/ColossalChat
           rm -rf ~/.cache/colossalai
           # pytest tests/
-          # Disabled temporally because some unit tests are not implemented
+          cd ./tests
+          ./test_templating.sh
         env:
           NCCL_SHM_DISABLE: 1
           MAX_JOBS: 8

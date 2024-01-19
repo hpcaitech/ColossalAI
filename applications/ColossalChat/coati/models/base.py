@@ -41,4 +41,14 @@ class BaseModel(nn.Module):
         # print("self.last_hidden_state_size: ",self.last_hidden_state_size)
 
     def resize_token_embeddings(self, *args, **kwargs):
-        return self.model.resize_token_embeddings(*args, **kwargs)
+            """
+            Resize the token embeddings of the model.
+
+            Args:
+                *args: Variable length argument list.
+                **kwargs: Arbitrary keyword arguments.
+
+            Returns:
+                The resized token embeddings.
+            """
+            return self.model.resize_token_embeddings(*args, **kwargs)

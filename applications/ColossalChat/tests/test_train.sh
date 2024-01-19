@@ -70,6 +70,23 @@ get_tokenizer_dirs() {
     fi
 }
 
+
+get_conversation_template_config() {
+    local model=$1
+    if [[ $model == "gpt2" ]]; then
+        echo "Not configured yet"
+    elif [[ $model == "bloom" ]]; then
+        echo "Not configured yet"
+    elif [[ $model == "opt" ]]; then
+        echo "Not configured yet"
+    elif [[ $model == "llama" ]]; then
+        echo "$CONFIG_DIR/conversation_template/Sheared-LLaMA.json"
+    else
+        echo "Unknown model $model"
+        exit 1
+    fi
+}
+
 random_choice() {
     local arr=("$@")
     local len=${#arr[@]}
@@ -236,6 +253,7 @@ for lora_rank in ${LORA_RANK[@]}; do
             tp='1'
             bs='4'
             ebs='8'
+            conversation_template=$(get_conversation_template_config $model)
             if [[ $plugin == "3d" ]]; then
                 tp='4'
                 bs='16'
@@ -249,12 +267,13 @@ for lora_rank in ${LORA_RANK[@]}; do
                 done
                 declare -a ptx_dataset=()
                 for split in $(seq -f "%05g" 0 0); do
-                    ptx_dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_ptx/arrow/part-$split")
+                    ptx_dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_sft/arrow/part-$split")
                 done
                 colossalai run --nproc_per_node 4 --master_port 28537 $EXAMPLES_DIR/training_scripts/train_ppo.py \
                     --pretrain $pretrain \
                     --rm_pretrain $pretrain \
                     --tokenizer_dir $tokenizer_dir \
+                    --conversation_template_config $conversation_template \
                     --prompt_dataset ${prompt_dataset[@]} \
                     --pretrain_dataset ${ptx_dataset[@]} \
                     --ptx_batch_size 1 \

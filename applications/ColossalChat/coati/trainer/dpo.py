@@ -171,6 +171,7 @@ class DPOTrainer(SLTrainer):
             )
             reward_accuracies = (chosen_rewards > rejected_rewards).float().mean()
 
+            # DPO Loss
             loss = losses.mean()
 
             self.booster.backward(loss=loss, optimizer=self.optimizer)
@@ -205,6 +206,11 @@ class DPOTrainer(SLTrainer):
                         self.num_train_step,
                     )
                     self.writer.add_scalar(
+                        "train/margin", 
+                        self.accumulative_meter.get("chosen_rewards")-self.accumulative_meter.get("rejected_rewards"), 
+                        self.num_train_step
+                    )
+                    self.writer.add_scalar(
                         "train/accuracy",
                         self.accumulative_meter.get("accuracy"),
                         self.num_train_step,
@@ -212,6 +218,7 @@ class DPOTrainer(SLTrainer):
                 self.accumulative_meter.reset()
 
                 if (self.num_train_step + 1) % self.save_interval == 0 and is_rank_0():
+                    # save checkpoint
                     self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
                     save_checkpoint(
                         save_dir=self.save_dir,
@@ -316,18 +323,12 @@ class DPOTrainer(SLTrainer):
                 self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
                 self.accumulative_meter.add("accuracy", reward_accuracies_mean.to(torch.float16).item())
                 self.accumulative_meter.add(
-                    "dist", (chosen_rewards_mean - rejected_rewards_mean).to(torch.float16).mean().item()
+                    "margin", (chosen_rewards_mean - rejected_rewards_mean).to(torch.float16).mean().item()
                 )
                 step_bar.update()
 
         msg = "Evaluation Result:\n"
-        for tag in ["loss", "chosen_rewards", "rejected_rewards", "accuracy"]:
+        for tag in ["loss", "chosen_rewards", "rejected_rewards", "accuracy", "margin"]:
             msg = msg + f"{tag}: {self.accumulative_meter.get(tag)}\n"
-        msg = (
-            msg
-            + f"distance: {self.accumulative_meter.get('chosen_rewards')-self.accumulative_meter.get('rejected_rewards')}\n"
-        )
         self.coordinator.print_on_master(msg)
-        with open(os.path.join(self.save_dir, f"eval_result_epoch{epoch}.txt"), "w") as f:
-            f.write(msg)
         step_bar.close()
