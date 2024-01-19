@@ -203,6 +203,7 @@ def flash_decoding_attention(
         k_cache (torch.Tensor): [num_blocks, num_kv_heads, head_dim, block_size]
         v_cache (torch.Tensor): [num_blocks, num_kv_heads, head_dim, block_size]
         kv_seq_len (torch.Tensor): [batch_size]
+            records the (kv) sequence lengths incorporating past kv sequence lengths.
         block_tables (torch.Tensor): [batch_size, max_blocks_per_sequence]
         max_seq_len_in_batch (int): Maximum sequence length in the batch.
         mid_output (torch.Tensor): [ max_bsz , num_heads, kv_max_split_num, head_dim]
@@ -228,8 +229,6 @@ def flash_decoding_attention(
         f"  assigned block_size {block_size}, k_cache block_size {k_cache.size(-1)}, "
         f"v_cache block_size {v_cache.size(-1)}"
     )
-    # NOTE `kv_seq_len` records the (kv) sequence lengths incorporating past kv sequence lengths.
-    bsz = kv_seq_len.size(0)  # e.g. the number of seqs
 
     # NOTE BLOCK_KV could be considered as block splitting the sequence on k/v
     # For now, BLOCK_KV is supposed to be equivalent with the size of physical cache block (i.e.`block_size`)
