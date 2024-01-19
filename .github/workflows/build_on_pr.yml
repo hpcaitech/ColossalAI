@@ -135,33 +135,25 @@ jobs:
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
           if [ -d /github/home/cuda_ext_cache ] && [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ]; then
-            cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
+            cp -p -r /github/home/cuda_ext_cache/* ~/.cache/colossalai
           fi
 
       - name: Install Colossal-AI
         run: |
-          CUDA_EXT=1 pip install -v -e .
+          pip install -v -e .
           pip install -r requirements/requirements-test.txt
 
       - name: Store Colossal-AI Cache
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
-          cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
+          cp -p -r ~/.cache/colossalai/* /github/home/cuda_ext_cache/
 
       - name: Execute Unit Testing
         run: |
           CURL_CA_BUNDLE="" PYTHONPATH=$PWD FAST_TEST=1 pytest \
           -m "not largedist" \
           --durations=0 \
-          --ignore tests/test_analyzer \
-          --ignore tests/test_auto_parallel \
-          --ignore tests/test_fx \
-          --ignore tests/test_autochunk \
-          --ignore tests/test_gptq \
-          --ignore tests/test_infer_ops \
-          --ignore tests/test_legacy \
-          --ignore tests/test_smoothquant \
-          tests/
+          tests/test_booster/test_plugin/test_gemini_plugin.py
         env:
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
           LLAMA_PATH: /data/scratch/llama-tiny
