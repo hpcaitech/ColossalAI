@@ -198,7 +198,7 @@ def flash_decoding_attention(
     Flash decoding implemented with a blocked KV Cache (PagedAttention) during decoding stage.
 
     Args:
-        q (torch.Tensor):       [bsz, num_heads, q_len(1), head_dim]
+        q (torch.Tensor):       [bsz, num_heads, head_dim]
         k_cache (torch.Tensor): [num_blocks, num_kv_heads, head_dim, block_size]
         v_cache (torch.Tensor): [num_blocks, num_kv_heads, head_dim, block_size]
         kv_seq_len (torch.Tensor): [batch_size]
@@ -215,13 +215,10 @@ def flash_decoding_attention(
     Returns:
         Output tensor with shape [bsz, num_heads, q_len, head_dim]
     """
-    bsz, num_heads, _, head_dim = q.shape
-    if q.dim() == 4:
-        bsz, num_heads, _, head_dim = q.shape
-    elif q.dim() == 3:
+    if q.dim() == 3:
         bsz, num_heads, head_dim = q.shape
     else:
-        raise ValueError(f"The query dim should be 3 or 4, but got {q.dim()}.")
+        raise ValueError(f"The query dim should be 3, but got {q.dim()}.")
 
     assert head_dim in {32, 64, 128, 256}
     assert kv_seq_len.shape[0] == block_tables.shape[0] == bsz, (
