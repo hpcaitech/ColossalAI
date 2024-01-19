@@ -160,7 +160,7 @@ distributed training and inference in a few lines.
 |       FlagAlpha/Atom-7B         | Llama-2-7B |      0.1T       |        49.96         |     41.10     |        39.83     |       33.00     |         -       |
 | IDEA-CCNL/Ziya-LLaMA-13B-v1.1   | Llama-13B  |      0.11T      |        50.25         |     40.99     |        40.04     |       30.54     |         -       |
 |  **Colossal-LLaMA-2-7b-base**   | Llama-2-7B |   **0.0085T**   |        53.06         |     49.89     |        51.48     |       58.82     |        50.2     |
-|  **Colossal-LLaMA-2-13b-base**  | Llama-2-7B |   **0.025T**    |        56.42         |     61.80     |        54.69     |       69.53     |        60.3     |
+|  **Colossal-LLaMA-2-13b-base**  | Llama-2-13B |   **0.025T**    |        56.42         |     61.80     |        54.69     |       69.53     |        60.3     |
 
 
 ### ColossalChat
