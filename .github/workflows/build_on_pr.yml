@@ -134,7 +134,7 @@ jobs:
         if: needs.detect.outputs.anyExtensionFileChanged != 'true'
         run: |
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
-          if [ -d /github/home/cuda_ext_cache ] && [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ]; then
+          if [ -d /github/home/cuda_ext_cache/torch_extensions ] && [ ! -z "$(ls -A /github/home/cuda_ext_cache/torch_extensions/)" ]; then
             cp -p -r /github/home/cuda_ext_cache/torch_extensions ~/.cache/colossalai
           fi
 
