@@ -77,9 +77,10 @@ def llama_model_forward(
     attention_mask = batch.get_attn_mask(padding_id)
 
     if attention_mask is not None:
-        # TODO After the nopad version is implemented, we will use the following code to get sequence_lengths.
-        # sequence_lengths = batch.get_sequence_lengths()
-        sequence_lengths = attention_mask.sum(dim=-1, dtype=torch.int32)
+        if HAS_TRITON:
+            sequence_lengths = attention_mask.sum(dim=-1, dtype=torch.int32)
+        else:
+            sequence_lengths = batch.get_sequence_lengths()
     else:
         sequence_lengths = batch.get_sequence_lengths()
 
@@ -243,6 +244,15 @@ def llama_attn_forward(
 
 @torch.no_grad()
 def generate_padding_position_id(attention_mask: torch.Tensor) -> torch.Tensor:
+    """Generate padding position_id through attention mask.
+
+    Args:
+        attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`):
+            Mask to avoid performing attention on padding token indices. Mask values selected in `[0, 1]`:
+
+    Returns:
+        torch.Tensor: The padding position_id.
+    """
     position_ids = attention_mask.long().cumsum(-1) - 1
     position_ids.masked_fill_(attention_mask == 0, 1)
     return position_ids
@@ -250,6 +260,18 @@ def generate_padding_position_id(attention_mask: torch.Tensor) -> torch.Tensor:
 
 @torch.no_grad()
 def unpading_input(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attention_mask: torch.Tensor):
+    """Convert padding input to nopad input.
+
+    Args:
+        q (torch.Tensor): [batch_size, q_seq_len, head_num, head_dim]
+        k (torch.Tensor): [batch_size, q_seq_len, head_num, head_dim]
+        v (torch.Tensor): [batch_size, q_seq_len, head_num, head_dim]
+        attention_mask (torch.Tensor): [batch_size, sequence_length]
+
+    Returns:
+        Tuple[torch.Tensor]: The unpad q, k, v and The index of valid data in each batch.
+
+    """
     indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
     batch_size, kv_seq_len, num_key_value_heads, head_dim = q.shape
     q = index_first_axis(q.reshape(batch_size * kv_seq_len, num_key_value_heads, head_dim), indices)
