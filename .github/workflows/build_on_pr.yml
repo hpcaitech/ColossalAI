@@ -150,10 +150,7 @@ jobs:
 
       - name: Execute Unit Testing
         run: |
-          CURL_CA_BUNDLE="" PYTHONPATH=$PWD FAST_TEST=1 pytest \
-          -m "not largedist" \
-          --durations=0 \
-          tests/test_booster/test_plugin/test_gemini_plugin.py
+          python tests/test_booster/test_plugin/test_gemini_plugin.py
         env:
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
           LLAMA_PATH: /data/scratch/llama-tiny
