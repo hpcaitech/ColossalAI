@@ -86,8 +86,6 @@ lightning:
     max_epochs: 2
     precision: 16
     auto_select_gpus: False
-    strategy:
-      find_unused_parameters: False
     log_every_n_steps: 2
 #    max_steps: 6o
     logger: True
