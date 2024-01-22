@@ -47,7 +47,7 @@ jobs:
         env:
           NCCL_SHM_DISABLE: 1
           MAX_JOBS: 8
-          PRETRAINED_MODEL_PATH: /data/scratch/colossal-llama2/models
-          SFT_DATASET: /data/scratch/colossal-llama2/colossal_chat_test_data/sft
-          PROMPT_DATASET: /data/scratch/colossal-llama2/colossal_chat_test_data/prompt
-          PREFERENCE_DATASET: /data/scratch/colossal-llama2/colossal_chat_test_data/preference
+          PRETRAINED_MODEL_PATH: /home/yeanbang/ci_data/coati_v2/models
+          SFT_DATASET: /home/yeanbang/ci_data/coati_v2/sft_data
+          PROMPT_DATASET: /home/yeanbang/ci_data/coati_v2/prompt_data
+          PREFERENCE_DATASET: /home/yeanbang/ci_data/coati_v2/preference_data
