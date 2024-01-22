@@ -187,9 +187,12 @@ def context_attention_unpadded(
     v: torch.Tensor,  # [num_tokens, num_kv_heads, head_dim]
     k_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
     v_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
+    output: torch.Tensor, # [num_tokens, num_heads, head_dim]
     context_lengths: torch.Tensor,  # [num_seqs]
     block_tables: torch.Tensor,  # [num_seqs, max_blocks_per_sequence],
     block_size: int,
+    max_seq_len: int,
+    sm_scale: int = None,
 ):
     # q/k in context stage are supposed to be put into k_cache and v_cache.
     # This step can be optimized in future.
@@ -210,10 +213,7 @@ def context_attention_unpadded(
     num_kv_group = num_heads // num_kv_heads
 
     num_seqs, max_blocks_per_seq = block_tables.shape
-    max_seq_len = context_lengths.max().item()
-    sm_scale = 1.0 / (Lq**0.5)
-
-    output = torch.zeros_like(q)
+    sm_scale = 1.0 / (Lq**0.5) if sm_scale is None else sm_scale
 
     # NOTE For now, BLOCK_M and BLOCK_N are supposed to be equivalent with
     # the size of physical cache block (i.e. `block_size`)

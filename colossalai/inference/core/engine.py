@@ -51,6 +51,8 @@ class InferenceEngine:
         self.inference_config = inference_config
         self.model_config = model.config
         self.device = torch.device("cuda")
+        self.num_heads = self.model_config.num_attention_heads
+        self.head_dim = self.model_config.hidden_size // self.model_config.num_attention_heads
 
         model = model.eval()
 
@@ -217,6 +219,7 @@ class InferenceEngine:
                 None,
                 block_table,
                 self.tokenizer.eos_token_id,
+                self.tokenizer.pad_token_id,
                 self.inference_config.max_output_len,
             )
             self.request_handler.add_sequence(sequence)
@@ -241,7 +244,8 @@ class InferenceEngine:
             batch,
             self.k_cahce,
             self.v_cache,
-            padding_id=self.tokenizer.pad_token_id,
+            self.num_heads,
+            self.head_dim,
         )
 
         logits = logits[:, -1, :]

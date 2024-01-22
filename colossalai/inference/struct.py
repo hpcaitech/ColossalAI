@@ -61,6 +61,7 @@ class Sequence:
         sample_params (SampleParams): The sample_params of input sequence.
         block_table (torch.Tensor): The index of input sequence in block_table.
         eos_token_id (int): The eos token id for this inference process.
+        pad_token_id (int): The pad token id for this inference process.
         max_output_len (int): Maximum output length.
     """
 
@@ -71,6 +72,7 @@ class Sequence:
     sample_params: Any  # SampleParams needs to be imported later.
     block_table: torch.Tensor
     eos_token_id: int
+    pad_token_id: int
     max_output_len: int = 256
 
     def __post_init__(self):
@@ -200,13 +202,16 @@ class BatchInfo:
     def get_block_table_tensor(self) -> None:
         tesnor_list = []
         block_table = None
+        
+        assert len(self.sequences_set) > 0, "Batch has not been initialized yet. Please initialize batch first."
+        
         for seq in self.sequences_set:
             block_table = seq.block_table
             assert (
                 block_table is not None
             ), f"The sequence(request_id {seq.request_id}) has not initialized the block_table."
             tesnor_list.append(seq.block_table)
-        assert tesnor_list, "Batch has not been initialized yet. Please initialize batch first."
+        
         block_table = torch.stack(tesnor_list)
         return block_table
 
@@ -218,7 +223,6 @@ class BatchInfo:
         """
         if self.is_prompts:
             self.sequences_set.clear()
-
         else:
             for seq in self.sequences_set:
                 seq.mark_aborted()
@@ -312,14 +316,16 @@ class BatchInfo:
         """
         Get bacth inputs for forward inference computation.
         """
+        
+        assert len(self.sequences_set) > 0, "Sequences set has not been initialized."
+        
         input_list = []
 
+        assert len(self.sequences_set) > 0, "Batch has not been initialized yet. Please initialize batch first."
+        
         for seq in self.sequences_set:
             if self.is_prompts:
                 if seq.output_len > 0:
-                    print(seq.output_token_id)
-                    seq_data = seq.input_token_id + seq.output_token_id
-                    print(seq_data)
                     input_list.append(seq.input_token_id + seq.output_token_id)
                 else:
                     input_list.append(seq.input_token_id)
@@ -328,7 +334,7 @@ class BatchInfo:
 
         max_seq_len = max(len(sub_list) for sub_list in input_list)
 
-        return _make_tensor_with_pad(input_list, max_seq_len, 0, dtype=torch.int)
+        return _make_tensor_with_pad(input_list, max_seq_len, self.sequences_set[0].pad_token_id, dtype=torch.int)
 
     def get_1D_inputs(self) -> Tuple[torch.LongTensor, torch.Tensor]:
         """
@@ -336,6 +342,9 @@ class BatchInfo:
         """
         input_list = []
         input_len_list = []
+        
+        assert len(self.sequences_set) > 0, "Batch has not been initialized yet. Please initialize batch first."
+        
         for seq in self.sequences_set:
             if self.is_prompts:
                 input_list.extend(seq.input_token_id)
@@ -353,16 +362,22 @@ class BatchInfo:
         Get the input_len of each sentence in this batch.
         """
         len_list = []
+        
+        assert len(self.sequences_set) > 0, "Batch has not been initialized yet. Please initialize batch first."
+        
         for seq in self.sequences_set:
             len_list.append(seq.sentence_len)
 
         return torch.tensor(len_list, dtype=torch.int, device=self.device)
 
-    def get_attn_mask(self, padding_id: int) -> torch.Tensor:
+    def get_attn_mask(self) -> torch.Tensor:
         """
         Generate and return attention mask.
         """
+        assert len(self.sequences_set) > 0, "Batch has not been initialized yet. Please initialize batch first."
+        
         past_values = []
+        padding_id = self.sequences_set[0].pad_token_id
 
         for seq in self.sequences_set:
             past_values.append(seq.input_token_id + seq.output_token_id)
@@ -378,7 +393,7 @@ class BatchInfo:
 
 def _pad_to_max(x: List[int], max_len: int, pad: int) -> List[int]:
     assert len(x) <= max_len
-    return x + [pad] * (max_len - len(x))
+    return [pad] * (max_len - len(x)) + x
 
 
 def _make_tensor_with_pad(
