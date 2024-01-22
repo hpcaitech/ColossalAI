@@ -19,7 +19,7 @@
    [![slack badge](https://img.shields.io/badge/Slack-join-blueviolet?logo=slack&amp)](https://github.com/hpcaitech/public_assets/tree/main/colossalai/contact/slack)
    [![WeChat badge](https://img.shields.io/badge/微信-加入-green?logo=wechat&amp)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png)
 
-   | [English](README.md) | [中文](README-zh-Hans.md) |
+   | [English](README.md) | [中文](README-zh-Hans.md) | [日本語](README-ja-Jp.md)
 
 </div>
 
