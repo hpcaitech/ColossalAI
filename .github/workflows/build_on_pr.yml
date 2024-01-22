@@ -22,6 +22,7 @@ on:
   delete:
 
 jobs:
+  detect:
     name: Detect file change
     if: |
       github.event_name == 'pull_request' &&
