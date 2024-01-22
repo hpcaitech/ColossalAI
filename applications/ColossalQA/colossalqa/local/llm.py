@@ -136,6 +136,19 @@ class ColossalLLM(LLM):
         """Get the identifying parameters."""
         return {"n": self.n}
 
+    def get_token_ids(self, text: str) -> List[int]:
+        """Return the ordered ids of the tokens in a text.
+
+        Args:
+            text: The string input to tokenize.
+
+        Returns:
+            A list of ids corresponding to the tokens in the text, in order they occur
+                in the text.
+        """
+        # use the colossal llm's tokenizer instead of langchain's cached GPT2 tokenizer
+        return self.api.tokenizer.encode(text)
+
 
 class VllmLLM(LLM):
     """

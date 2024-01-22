@@ -155,7 +155,7 @@ def run_dist(
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("num_microbatch", [4, 12])
+@pytest.mark.parametrize("num_microbatch", [4, 6])
 @pytest.mark.parametrize("batch_size", [12])
 @pytest.mark.parametrize("world_size", [2, 4])
 @rerun_if_address_is_in_use()

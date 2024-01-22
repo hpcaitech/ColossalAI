@@ -18,7 +18,7 @@ from tests.kit.model_zoo import model_zoo
 
 
 @clear_cache_before_run()
-@parameterize("model_name", ["transformers_gpt"])
+@parameterize("model_name", ["transformers_llama_for_casual_lm"])
 @parameterize("plugin_type", ["ddp", "zero", "gemini"])
 def exam_from_pretrained(plugin_type: str, model_name: str, shard=True, size_per_shard=32):
     (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) = next(

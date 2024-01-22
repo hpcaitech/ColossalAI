@@ -12,10 +12,17 @@ from colossalai.fx import is_compatible_with_meta
 from colossalai.lazy.lazy_init import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.tensor.colo_parameter import ColoParameter
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from tests.kit.model_zoo import model_zoo
+from colossalai.testing import (
+    clear_cache_before_run,
+    parameterize,
+    rerun_if_address_is_in_use,
+    skip_if_not_enough_gpus,
+    spawn,
+)
+from tests.kit.model_zoo import COMMON_MODELS, IS_FAST_TEST, model_zoo
 
 
+@clear_cache_before_run()
 def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, zero_size, tp_size) -> Optional[str]:
     try:
         if init_method == "lazy":
@@ -66,7 +73,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, zero_size, t
 # @parameterize('init_method', ['lazy', 'none', 'colo'])
 
 
-@parameterize("subset", ["torchvision", "transformers", "diffusers"])
+@parameterize("subset", [COMMON_MODELS] if IS_FAST_TEST else ["torchvision", "transformers", "diffusers"])
 @parameterize("init_method", ["none"])
 @parameterize("zero_size", [2])
 @parameterize("tp_size", [2])
@@ -116,7 +123,7 @@ def check_gemini_plugin(
             "transformers_falcon_for_sequence_classification",
             "transformers_falcon_for_token_classification",
             "transformers_falcon_for_question_answering",
-            "transformers_gptj_lm", # lead to OOM when running in ci
+            "transformers_gptj_lm",  # lead to OOM when running in ci
             "transformers_gptj_for_question_answering",
             "transformers_gptj_for_sequence_classification",
         ]:
@@ -145,7 +152,6 @@ def check_gemini_plugin(
             tp_size = 1
 
         err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, zero_size, tp_size)
-        torch.cuda.empty_cache()
         if err is None:
             passed_models.append(name)
         else:
@@ -172,6 +178,7 @@ def test_gemini_plugin(early_stop: bool = True):
 
 
 @pytest.mark.largedist
+@skip_if_not_enough_gpus(8)
 @rerun_if_address_is_in_use()
 def test_gemini_plugin_3d(early_stop: bool = True):
     spawn(run_dist, 8, early_stop=early_stop)

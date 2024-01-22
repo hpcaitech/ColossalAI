@@ -72,6 +72,10 @@ class InterleavedSchedule(PipelineSchedule):
             assert self.last_batch_size is None or self.last_batch_size == self.batch_size
             assert self.batch_size == self.microbatch_size * self.num_microbatch
 
+            assert (
+                self.num_microbatch % self.stage_manager.num_stages == 0
+            ), "Number of microbatch should be an integer multiple of number of pipeline parallel devices"
+
         if self.forward_only:
             self.num_microbatch = (self.batch_size - 1) // self.microbatch_size + 1
             # NOTE: disable metadata cache when batch size changes (not valid anymore)
