@@ -4,17 +4,10 @@ from contextlib import nullcontext
 
 import torch
 from attn import SUPPORT_FLASH, replace_xformers
-from data_utils import RandomDataset
-from model_utils import format_numel_str, get_model_numel
-from performance_evaluator import PerformanceEvaluator
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
-
-# from colossalai.nn.optimizer import HybridAdam
-from torch.optim import Adam
 from tqdm import tqdm
-from transformers.models.gpt2.configuration_gpt2 import GPT2Config
-from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
 from transformers.models.llama.configuration_llama import LlamaConfig
+from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 import colossalai
 import colossalai.utils.device as device_utils
@@ -22,7 +15,11 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, TorchFSDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
+from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
+from examples.language.data_utils import RandomDataset
+from examples.language.model_utils import format_numel_str, get_model_numel
+from examples.language.performance_evaluator import PerformanceEvaluator
 
 # ==============================
 # Constants
@@ -62,8 +59,8 @@ def main():
         help="Choose which plugin to use",
     )
     parser.add_argument("-b", "--batch_size", type=int, default=2, help="Batch size")
-    parser.add_argument("-s", "--num_steps", type=int, default=200, help="Number of steps to run")
-    parser.add_argument("-i", "--ignore_steps", type=int, default=1, help="Number of steps to ignore")
+    parser.add_argument("-s", "--num_steps", type=int, default=5, help="Number of steps to run")
+    parser.add_argument("-i", "--ignore_steps", type=int, default=2, help="Number of steps to ignore")
     parser.add_argument("-g", "--grad_checkpoint", action="store_true", help="Use gradient checkpointing")
     parser.add_argument("-l", "--max_length", type=int, default=4096, help="Max sequence length")
     parser.add_argument(
@@ -77,8 +74,8 @@ def main():
     parser.add_argument("--tp", type=int, default=1, help="Tensor parallel size")
     parser.add_argument("--extra_dp", type=int, default=1, help="Extra data parallel size, used for Gemini")
     parser.add_argument("--pp", type=int, default=1, help="Pipeline parallel size")
-    parser.add_argument("--mbs", type=int, default=1)
-    parser.add_argument("--zero", type=int, default=0)
+    parser.add_argument("--mbs", type=int, default=1, help="Micro batch size of pipeline parallel")
+    parser.add_argument("--zero", type=int, default=0, help="Zero Stage when hybrid plugin is enabled")
     args = parser.parse_args()
 
     colossalai.launch_from_torch({})
@@ -142,13 +139,11 @@ def main():
         plugin = HybridParallelPlugin(
             tp_size=args.tp,
             pp_size=args.pp,
-            # pp_style="interleaved",
-            pp_style="1f1b",
+            pp_style="interleaved",
             zero_stage=args.zero,
-            num_model_chunks=1,
-            # enable_fused_normalization=torch.cuda.is_available(),
-            enable_all_optimization=True,
-            num_microbatches=args.mbs,
+            num_model_chunks=2,
+            enable_fused_normalization=torch.cuda.is_available(),
+            microbatch_size=args.mbs,
             precision="bf16",
         )
     elif args.plugin == "3d_cpu":
@@ -158,7 +153,7 @@ def main():
             zero_stage=args.zero,
             cpu_offload=True,
             enable_fused_normalization=torch.cuda.is_available(),
-            num_microbatches=args.mbs,
+            microbatch_size=args.mbs,
             initial_scale=2**8,
             precision="bf16",
         )
@@ -172,8 +167,7 @@ def main():
     # ==============================
     dp_size = plugin.dp_size if isinstance(plugin, HybridParallelPlugin) else coordinator.world_size
 
-    # config = MODEL_CONFIGS[args.config]
-    config = GPT2Config(n_layer=24, n_embd=1024, n_head=16, n_positions=1024)
+    config = MODEL_CONFIGS[args.config]
     dataset = RandomDataset(
         num_samples=args.batch_size * args.num_steps * dp_size, max_length=args.max_length, vocab_size=config.vocab_size
     )
@@ -188,10 +182,8 @@ def main():
         else nullcontext()
     )
 
-    # with init_ctx:
-    #     model = LlamaForCausalLM(config)
     with init_ctx:
-        model = GPT2LMHeadModel(config)
+        model = LlamaForCausalLM(config)
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
@@ -202,27 +194,17 @@ def main():
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")
-    # performance_evaluator = PerformanceEvaluator(
-    #     model_numel,
-    #     model.config.num_hidden_layers,
-    #     model.config.hidden_size,
-    #     model.config.vocab_size,
-    #     args.grad_checkpoint,
-    #     args.ignore_steps,
-    #     dp_world_size=dp_size,
-    # )
     performance_evaluator = PerformanceEvaluator(
         model_numel,
-        model.config.n_layer,
-        model.config.n_embd,
+        model.config.num_hidden_layers,
+        model.config.hidden_size,
         model.config.vocab_size,
         args.grad_checkpoint,
         args.ignore_steps,
         dp_world_size=dp_size,
     )
 
-    # optimizer = HybridAdam(model.parameters())
-    optimizer = Adam(model.parameters())
+    optimizer = HybridAdam(model.parameters())
     torch.set_default_dtype(torch.bfloat16)
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
     torch.set_default_dtype(torch.float)
@@ -244,29 +226,12 @@ def main():
     else:
         for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not coordinator.is_master())):
             performance_evaluator.on_step_start(step)
-            # from torch.autograd import profiler
-            # with torch.profiler.profile(
-            #     activities=[
-            #         torch.profiler.ProfilerActivity.CPU,
-            #         torch.profiler.ProfilerActivity.CUDA,
-            #     ],record_shapes=True, with_stack=True) as prof:
-            # with torch.profiler.profile(record_shapes=True) as prof:
-            #     with profiler.record_function("model_inference"):
-            #         outputs = model(**batch)
-            #         loss = outputs[0]
-            #         booster.backward(loss, optimizer)
-            #         optimizer.step()
-            #         optimizer.zero_grad()
-            # if coordinator.is_master():
-            #     prof.export_chrome_trace('./llama_profile.json')
-
             outputs = model(**batch)
             loss = outputs[0]
             booster.backward(loss, optimizer)
             optimizer.step()
             optimizer.zero_grad()
             performance_evaluator.on_step_end(**batch)
-            coordinator.print_on_master(f"Max CUDA memory usage: {device_utils.max_memory_allocated()/1024**2:.2f} MB")
 
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f"Max CUDA memory usage: {device_utils.max_memory_allocated()/1024**2:.2f} MB")
