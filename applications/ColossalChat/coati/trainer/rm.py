@@ -174,7 +174,7 @@ class RewardModelTrainer(SLTrainer):
                 self.accumulative_meter.reset()
                 
                 # Save checkpoint
-                if self.save_interval > 0 and (self.num_train_step + 1) % self.save_interval == 0 and is_rank_0():
+                if self.save_interval > 0 and (self.num_train_step + 1) % self.save_interval == 0:
                     self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
                     save_checkpoint(
                         save_dir=self.save_dir,

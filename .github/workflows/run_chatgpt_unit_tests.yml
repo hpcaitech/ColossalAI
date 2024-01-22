@@ -39,7 +39,7 @@ jobs:
         run: |
           cd applications/ColossalChat
           rm -rf ~/.cache/colossalai
-          # pytest tests/
+          pytest tests/
           cd ./tests
           ./test_templating.sh
         env:

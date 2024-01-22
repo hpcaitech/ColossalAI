@@ -17,11 +17,12 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 8
 # export CUDA_VISIBLE_DEVICES=6
 
 PROJECT_NAME="dpo"
-PARENT_SAVE_DIR=""
-PARENT_TENSORBOARD_DIR=""
-PARENT_CONFIG_FILE=""
-PRETRAINED_MODEL_PATH="PATH/to/modeling"
-PRETRAINED_TOKENIZER_PATH=""
+PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
+PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
+PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
+PRETRAINED_MODEL_PATH="" # huggingface or local model path
+PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
+
 declare -a dataset=(
     YOUR/DATA/DIR/arrow/part-00000
     YOUR/DATA/DIR/arrow/part-00001

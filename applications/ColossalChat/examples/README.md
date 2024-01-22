@@ -468,7 +468,7 @@ The second dataset--- pretrained dataset is optional, provide it if you want to 
 #### Step 2: Preprocessing
 To prepare the prompt dataset for PPO training, simply run [prepare_prompt_dataset.sh](./examples/data_preparation_scripts/prepare_prompt_dataset.sh)
 
-To prepare the pretrained dataset for PPO training, simply run [prepare_ptx_dataset.sh](./examples/data_preparation_scripts/prepare_ptx_dataset.sh)
+You can use the SFT dataset you prepared in the SFT stage or prepare a new one from different source for the ptx dataset. The ptx data is used to calculate ptx loss, which stablize the training according to the [InstructGPT paper](https://arxiv.org/pdf/2203.02155.pdf).
 
 #### Step 3: Training
 You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to start PPO training. Here are some unique arguments for PPO, please refer to the training configuration section for other training configuration. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
@@ -478,8 +478,9 @@ You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to star
 --rm_pretrain $PRETRAINED_MODEL_PATH \ # reward model architectural
 --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
 --rm_checkpoint_path $REWARD_MODEL_PATH \ # reward model checkpoint path
---prompt_dataset ${prompt_dataset[@]} \ # List of string
---pretrain_dataset ${ptx_dataset[@]} \ # List of string
+--prompt_dataset ${prompt_dataset[@]} \ # List of string, prompt dataset
+--conversation_template_config $CONVERSATION_TEMPLATE_CONFIG_PATH \ # path to the conversation template config file
+--pretrain_dataset ${ptx_dataset[@]} \ # List of string, the sft dataset
 --ptx_batch_size 1 \ # batch size for calculate ptx loss
 --ptx_coef 0.0 \ # none-zero if ptx loss is enable
 --num_episodes 2000 \ # number of episodes to train

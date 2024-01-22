@@ -149,7 +149,6 @@ class PPOTrainer(OLTrainer):
         self.accumulative_meter = AccumulativeMeanMeter()
         self.offload_inference_models = offload_inference_models
         self.device = get_current_device()
-        self.coordinator.print_on_master(f"generation kwargs:\n{self.generate_kwargs}")
 
     def _before_fit(
         self,
@@ -292,7 +291,7 @@ class PPOTrainer(OLTrainer):
                 )
                 for i in range(len(response_text)):
                     response_text[i] = response_text[i] + f"\n\nReward: {experience.reward[i]}"
-                    self.coordinator.print_on_master(response_text[i])
+                    
                 if self.writer and is_rank_0() and "wandb_run" in self.__dict__:
                     # log output to wandb
                     my_table = wandb.Table(
@@ -302,6 +301,9 @@ class PPOTrainer(OLTrainer):
                         self.wandb_run.log({"sample_response": my_table})
                     except OSError as e:
                         self.coordinator.print_on_master(e)
+                elif self.writer and is_rank_0():
+                    for line in response_text:
+                        self.coordinator.print_on_master(line)
 
             if self.writer and is_rank_0():
                 self.writer.add_scalar("train/max_ratio", self.accumulative_meter.get("max_ratio"), self.num_train_step)

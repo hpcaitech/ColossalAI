@@ -28,11 +28,6 @@ if [ -z "$PROMPT_DATASET" ]; then
     exit 1
 fi
 
-if [ -z "$PRETRAIN_DATASET" ]; then
-    echo "Please set \$PRETRAIN_DATASET to the path to pretrain data"
-    exit 1
-fi
-
 if [ -z "$PREFERENCE_DATASET" ]; then
     echo "Please set \$SFT_DATASET to the path to sft dataset."
     exit 1
@@ -44,8 +39,6 @@ BASE_TEMP_DIR=$BASE_DIR/temp
 EXAMPLES_DIR=$BASE_DIR/examples
 DATA_SAVE_PATH=$BASE_TEMP_DIR/rlhf_data
 CONFIG_DIR=$BASE_DIR/config
-# Skip those tests due to CI tests timeout
-# MODELS=('gpt2' 'bloom' 'opt' 'llama')
 MODELS=('llama')
 
 if [ ! -d "$BASE_TEMP_DIR" ]; then
@@ -72,8 +65,6 @@ get_data_input_dirs() {
     local data_type=$1
     if [[ $data_type == "sft" ]]; then
         echo "$SFT_DATASET"
-    elif [[ $data_type == "ptx" ]]; then
-        echo "$PRETRAIN_DATASET"
     elif [[ $data_type == "prompt" ]]; then
         echo "$PROMPT_DATASET"
     elif [[ $data_type == "preference" ]]; then
@@ -86,13 +77,7 @@ get_data_input_dirs() {
 
 get_conversation_template_config() {
     local model=$1
-    if [[ $model == "gpt2" ]]; then
-        echo "Not configured yet"
-    elif [[ $model == "bloom" ]]; then
-        echo "Not configured yet"
-    elif [[ $model == "opt" ]]; then
-        echo "Not configured yet"
-    elif [[ $model == "llama" ]]; then
+    if [[ $model == "llama" ]]; then
         echo "$CONFIG_DIR/conversation_template/Sheared-LLaMA.json"
     else
         echo "Unknown model $model"
@@ -102,14 +87,8 @@ get_conversation_template_config() {
 
 get_tokenizer_dirs() {
     local model=$1
-    if [[ $model == "gpt2" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/gpt2/"
-    elif [[ $model == "bloom" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/bloom-560m/"
-    elif [[ $model == "opt" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/opt-350m/"
-    elif [[ $model == "llama" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/llama-tokenizer/"
+    if [[ $model == "llama" ]]; then
+        echo "princeton-nlp/Sheared-LLaMA-1.3B"
     else
         echo "Unknown model $model"
         exit 1

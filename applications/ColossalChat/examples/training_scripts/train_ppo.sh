@@ -16,13 +16,15 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 set_n_least_used_CUDA_VISIBLE_DEVICES 8
 
 PROJECT_NAME="ppo"
-PARENT_SAVE_DIR=""
-PARENT_TENSORBOARD_DIR=""
-PARENT_CONFIG_FILE=""
-PRETRAINED_MODEL_PATH="/PATH/TO/modeling"
-REWARD_MODEL_PATH="/PATH/TO/modeling"
-PRETRAINED_TOKENIZER_PATH=""
-CONVERSATION_TEMPLATE_CONFIG_PATH="/PATH/TO/TEPLATE/CONFIG/model_name.json"
+
+PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
+PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
+PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
+PRETRAINED_MODEL_PATH="" # local pretrained model path (from RLHF step 1: SFT)
+PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
+REWARD_MODEL_PATH="" # local reward model path (from RLHF step 2: Train Reward Model)
+CONVERSATION_TEMPLATE_CONFIG_PATH="" # path to the conversation config file
+
 declare -a prompt_dataset=(
     YOUR/PROMPT/DATA/DIR/arrow/part-00000
     YOUR/PROMPT/DATA/DIR/arrow/part-00001

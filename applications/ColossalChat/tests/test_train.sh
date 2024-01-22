@@ -23,15 +23,15 @@ set -xu
 NUM_RETRY=3
 BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
 EXAMPLES_DIR=$BASE_DIR/examples
+CONFIG_DIR=$BASE_DIR/config
 TEMP_DIR=$BASE_DIR/temp
 MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
 # Skip those tests due to CI tests timeout
 MODELS=('llama')
-# PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d')
-PLUGINS=('zero2')
-# LORA_RANK=('0' '20')
-LORA_RANK=('0')
+# PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d') # gemini is currently buggy
+PLUGINS=('gemini_auto' 'zero2' 'zero2_cpu' '3d')
+LORA_RANK=('0')  # skip to reduce CI execution time, can pass all locally
 
 export OMP_NUM_THREADS=8
 
@@ -40,14 +40,8 @@ pip install -r $EXAMPLES_DIR/requirements.txt
 
 get_pretrain() {
     local model=$1
-    if [[ $model == "gpt2" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/gpt2/"
-    elif [[ $model == "bloom" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/bloom-560m/"
-    elif [[ $model == "opt" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/opt-350m/"
-    elif [[ $model == "llama" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/llama-tiny/"
+    if [[ $model == "llama" ]]; then
+        echo "$PRETRAINED_MODEL_PATH/sheared_llama"
     else
         echo "Unknown model $model"
         exit 1
@@ -56,14 +50,8 @@ get_pretrain() {
 
 get_tokenizer_dirs() {
     local model=$1
-    if [[ $model == "gpt2" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/gpt2/"
-    elif [[ $model == "bloom" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/bloom-560m/"
-    elif [[ $model == "opt" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/opt-350m/"
-    elif [[ $model == "llama" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/llama-tokenizer/"
+    if [[ $model == "llama" ]]; then
+        echo "princeton-nlp/Sheared-LLaMA-1.3B"
     else
         echo "Unknown model $model"
         exit 1
@@ -73,13 +61,7 @@ get_tokenizer_dirs() {
 
 get_conversation_template_config() {
     local model=$1
-    if [[ $model == "gpt2" ]]; then
-        echo "Not configured yet"
-    elif [[ $model == "bloom" ]]; then
-        echo "Not configured yet"
-    elif [[ $model == "opt" ]]; then
-        echo "Not configured yet"
-    elif [[ $model == "llama" ]]; then
+    if [[ $model == "llama" ]]; then
         echo "$CONFIG_DIR/conversation_template/Sheared-LLaMA.json"
     else
         echo "Unknown model $model"
@@ -98,8 +80,9 @@ random_choice() {
 echo "[Test]: testing sft ..."
 
 SKIPPED_TESTS=(
-    bloom-3d-20 # This test cannot pass, it is probably a bug for the 3d plugin
-    llama-3d-20 # This test cannot pass, it is probably a bug for the 3d plugin
+    llama-3d-20 # 3d plugin doesn't support lora
+    llama-gemini_auto-20  # gemini_auto plugin doesn't support lora
+    llama-gemini-20 # gemini doesn't support lora
 )
 
 GRAD_CKPTS=('--grad_checkpoint')
@@ -123,6 +106,12 @@ for lora_rank in ${LORA_RANK[@]}; do
                 tp='4'
                 bs='8'
             fi
+            grad_accu='2'
+            # Check if the plugin is either "gemini_auto" or "gemini" and set grad_accu to '1'
+            if [[ $plugin == "gemini_auto" ]] || [[ $plugin == "gemini" ]]; then
+                grad_accu='1'
+            fi
+
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$plugin-$lora_rank, attempt $i"
                 declare -a dataset=()
@@ -139,7 +128,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --plugin $plugin \
                     --batch_size $bs \
                     --max_epochs 1 \
-                    --accumulation_steps 2 \
+                    --accumulation_steps $grad_accu \
                     --tp $tp \
                     --lr 2e-5 \
                     $grad_ckpt \
@@ -162,8 +151,9 @@ done
 echo "[Test]: testing reward model ..."
 
 SKIPPED_TESTS=(
-    bloom-3d-20 # This test cannot pass, it is probably a bug for the 3d plugin
-    llama-3d-20 # This test cannot pass, it is probably a bug for the 3d plugin
+    llama-3d-20 # 3d plugin doesn't support lora
+    llama-gemini_auto-20  # gemini_auto plugin doesn't support lora
+    llama-gemini-20 # gemini doesn't support lora
 )
 
 GRAD_CKPTS=('--grad_checkpoint')
@@ -187,6 +177,11 @@ for lora_rank in ${LORA_RANK[@]}; do
                 tp='4'
                 bs='8'
             fi
+            grad_accu='2'
+            # gemini_auto and gemini doesn't support gradient accumulation
+            if [[ $plugin == "gemini_auto" ]] || [[ $plugin == "gemini" ]]; then
+                grad_accu='1'
+            fi
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$plugin-$lora_rank, attempt $i"
                 declare -a dataset=()
@@ -203,7 +198,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --plugin $plugin \
                     --batch_size $bs \
                     --max_epochs 1 \
-                    --accumulation_steps 2 \
+                    --accumulation_steps $grad_accu \
                     --tp $tp \
                     --lr 2e-5 \
                     $grad_ckpt \
@@ -226,13 +221,10 @@ done
 
 echo "[Test]: testing ppo ..."
 
+
 SKIPPED_TESTS=(
-    bloom-3d-20 # This test cannot pass, it is probably a bug for the 3d plugin
-    llama-3d-20 # This test cannot pass, it is probably a bug for the 3d plugin
-    gpt2-zero2 # This test can pass locally. Removed due to OOM
-    bloom-zero2 # This test can pass locally. Removed due to OOM
-    opt-zero2 # This test can pass locally. Removed due to OOM
-    bloom-zero2_cpu # This test can pass locally. Removed due to OOM
+    llama-3d-20 # 3d plugin doesn't support lora
+    llama-gemini-20 # gemini doesn't support lora
 )
 
 GRAD_CKPTS=('--grad_checkpoint')
@@ -240,6 +232,10 @@ for lora_rank in ${LORA_RANK[@]}; do
     for model in ${MODELS[@]}; do
         plugins=($(shuf -e "${PLUGINS[@]}"))
         for plugin in ${plugins[@]}; do
+            if [[ $plugin == "gemini_auto" ]]; then
+                echo "[Test]: Skipped $model-$plugin"
+                continue # gemini_auto plugin doesn't support generation
+            fi
             if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$plugin-$lora_rank " ]]; then
                 echo "[Test]: Skipped $model-$plugin-$lora_rank"
                 continue
@@ -259,6 +255,13 @@ for lora_rank in ${LORA_RANK[@]}; do
                 bs='16'
                 ebs='32'
             fi
+            grad_accu='2'
+            # gemini_auto and gemini doesn't support generation
+            if [[ $plugin == "gemini_auto" ]]; then
+                # gemini-auto doesn't support generation
+                echo "[Test]: Skipped $model-$plugin"
+                continue
+            fi
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$plugin-$lora_rank, attempt $i"
                 declare -a prompt_dataset=()
@@ -275,7 +278,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --tokenizer_dir $tokenizer_dir \
                     --conversation_template_config $conversation_template \
                     --prompt_dataset ${prompt_dataset[@]} \
-                    --pretrain_dataset ${ptx_dataset[@]} \
+                    --ptx_dataset ${ptx_dataset[@]} \
                     --ptx_batch_size 1 \
                     --ptx_coef 0.2 \
                     --save_path $MODEL_SAVE_PATH \
@@ -286,14 +289,15 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --num_update_steps 1 \
                     --experience_batch_size $ebs \
                     --train_batch_size $bs \
-                    --accumulation_steps 2 \
+                    --accumulation_steps $grad_accu \
                     --lr 9e-6 \
                     --mixed_precision "bf16" \
                     --grad_clip 1.0 \
                     --tp $tp \
                     --lr 2e-5 \
                     $grad_ckpt \
-                    --max_len 400
+                    --max_len 400 \
+                    --max_seq_len 10
                 passed=$?
                 if [ $passed -eq 0 ]; then
                     rm -rf $MODEL_SAVE_PATH/*
@@ -311,11 +315,11 @@ done
 
 echo "[Test]: testing DPO ..."
 
+
 SKIPPED_TESTS=(
-    bloom-3d # This test cannot pass, it is probably a bug for the 3d plugin
-    llama-3d # This test cannot pass, it is probably a bug for the 3d plugin
-    bloom-zero2 # This test can pass locally. Removed due to OOM
-    bloom-zero2_cpu # This test can pass locally. Removed due to OOM
+    llama-3d-20 # 3d plugin doesn't support lora
+    llama-gemini_auto-20  # gemini_auto plugin doesn't support lora
+    llama-gemini-20 # gemini doesn't support lora
 )
 
 GRAD_CKPTS=('--grad_checkpoint')
@@ -339,6 +343,13 @@ for lora_rank in ${LORA_RANK[@]}; do
                 tp='4'
                 bs='8'
             fi
+            grad_accu='2'
+            # gemini_auto doesn't support generation 
+            # (need to calculate ref_model logits through forwarding in inference mode)
+            if [[ $plugin == "gemini_auto" ]]; then
+                echo "[Test]: Skipped $model-$plugin"
+                continue
+            fi
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$plugin-$lora_rank, attempt $i"
                 declare -a dataset=()
@@ -355,7 +366,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --plugin $plugin \
                     --batch_size $bs \
                     --max_epochs 1 \
-                    --accumulation_steps 2 \
+                    --accumulation_steps $grad_accu \
                     --tp $tp \
                     --lr 2e-5 \
                     $grad_ckpt \

@@ -49,8 +49,12 @@ def train(args):
     # ======================================================
     # Initialize Model, Objective, Optimizer and LR Scheduler
     # ======================================================
-    init_ctx = LazyInitContext(default_device=get_current_device()) if "gemini" in args.plugin else nullcontext()
+    # Temp Fix: Disable lazy init due to version conflict
+    # init_ctx = (
+    #     LazyInitContext(default_device=get_current_device()) if isinstance(plugin, (GeminiPlugin,)) else nullcontext()
+    # )
 
+    init_ctx = nullcontext()
     booster_policy = None
     with init_ctx:
         actor = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True)
@@ -211,6 +215,7 @@ def train(args):
     elif args.plugin == "gemini":
         plugin = GeminiPlugin(
             precision=args.mixed_precision,
+            placement_policy="static",
             initial_scale=2**16,
             max_norm=args.grad_clip,
         )

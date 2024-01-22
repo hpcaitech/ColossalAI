@@ -217,7 +217,7 @@ class DPOTrainer(SLTrainer):
                     )
                 self.accumulative_meter.reset()
 
-                if (self.num_train_step + 1) % self.save_interval == 0 and is_rank_0():
+                if (self.num_train_step + 1) % self.save_interval == 0:
                     # save checkpoint
                     self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
                     save_checkpoint(

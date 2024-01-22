@@ -124,7 +124,6 @@ class SFTTrainer(SLTrainer):
                     self.save_dir is not None
                     and self.save_interval is not None
                     and (self.num_train_step + 1) % self.save_interval == 0
-                    and is_rank_0()
                 ):
                     save_checkpoint(
                         save_dir=self.save_dir,
