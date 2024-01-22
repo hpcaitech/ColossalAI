@@ -27,7 +27,8 @@ import torch.utils.checkpoint
 from torch import nn
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
-from transformers.models.llama.modeling_llama import LlamaConfig, LlamaRMSNorm
+from transformers.models.llama.configuration_llama import LlamaConfig
+
 from transformers.utils import (
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
@@ -40,6 +41,8 @@ from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.moe.layers import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_activation, set_moe_args
+
+
 
 if HAS_TRITON:
     from colossalai.kernel.triton.llama_act_combine_kernel import LlamaActCombine
@@ -75,7 +78,6 @@ def set_openmoe_args(
     """
     MoE related arguments.
     It inserts the MoE arguments into the Llama config.
-
     Args:
         config (LlamaConfig): Transformers Llama config.
         num_experts (int, optional): Number of experts.
@@ -157,37 +159,17 @@ def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] 
     return inverted_mask.masked_fill(inverted_mask.to(torch.bool), torch.finfo(dtype).min)
 
 
-def generate_fixed_pos_embedding(features, length, min_timescale=1.0, max_timescale=10000.0):
-    """Generate Sin/Cos for Rotary Embeddings.
-
-    Args:
-      features: an integer
-      length: an integer
-      min_timescale: an optional float
-      max_timescale: an optional float
-
-    Returns:
-      output_sin: a float32 Tensor with shape [length, features]
-      output_cos: a float32 Tensor with shape [length, features]
-    """
-    fraction = torch.arange(0, features, 2, dtype=torch.float32).cuda() / features
-    timescale = min_timescale * (max_timescale / min_timescale) ** fraction
-    rotational_frequency = 1.0 / timescale
-
-    sinusoid_inp = torch.einsum("i,j->ij", torch.arange(length, dtype=torch.float32).cuda(), rotational_frequency)
-
-    sinusoid_inp = torch.cat([sinusoid_inp, sinusoid_inp], dim=-1)
-
-    return torch.sin(sinusoid_inp), torch.cos(sinusoid_inp)
-
-
-def apply_rotary_embedding(q, k, cos, sin, decode=False, rotary_index=None):
+def apply_rotary_embedding(q, k, cos, sin, decode=False, rotary_index=None):  
+    # q:  (bs, q_len, num_heads, head_dim)
+    # k:  (bs, q_len [+past_kv_len], num_heads, head_dim)
+    # cos: (max_seq_len, head_dim)
+    # sin: (max_seq_len, head_dim)
+    # rotary_index: (bs, 1)  # only used during decoding, when one query token is input at a time
     """Helper function to apply Rotary Embeddings."""
     cos = cos.to(q.dtype)
     sin = sin.to(q.dtype)
 
-    if len(k.shape) == 3:
-        # for multi query attention
+    if len(k.shape) == 3: # for multi query attention
         k = k.unsqueeze(2)
         multiquery = True
     else:
@@ -198,19 +180,18 @@ def apply_rotary_embedding(q, k, cos, sin, decode=False, rotary_index=None):
     assert batch == kbatch, f"{batch} != {kbatch}"
     assert d == kd, f"{d} != {kd}"
     if decode and qlen == 1 and rotary_index is not None:
-        qcos = cos[rotary_index + 1, :]
-        qsin = sin[rotary_index + 1, :]
-        qcos = qcos.unsqueeze(2)
-        qsin = qsin.unsqueeze(2)
-        kcos, ksin = cos[:klen, :], sin[:klen, :]
-        kcos = kcos.unsqueeze(0).unsqueeze(2)
-        ksin = ksin.unsqueeze(0).unsqueeze(2)
+        qcos = cos[rotary_index, :]  # (bs, 1, head_dim)
+        qsin = sin[rotary_index, :]  # (bs, 1, head_dim)
+        qcos = qcos.unsqueeze(2)  # (bs, q_len=1, 1, head_dim)  # broadcast to all heads
+        qsin = qsin.unsqueeze(2)  # (bs, q_len=1, 1, head_dim)    
     else:
-        qcos, qsin = cos[:qlen, :], sin[:qlen, :]
-        qcos = qcos.unsqueeze(0).unsqueeze(2)
+        qcos, qsin = cos[:qlen, :], sin[:qlen, :]  # (q_len, head_dim)
+        qcos = qcos.unsqueeze(0).unsqueeze(2)  # (1, q_len, 1, head_dim)
         qsin = qsin.unsqueeze(0).unsqueeze(2)
-        kcos, ksin = qcos, qsin
-
+    
+    kcos, ksin = cos[:klen, :], sin[:klen, :]  # (k_len, head_dim)
+    kcos = kcos.unsqueeze(0).unsqueeze(2)  # (1, k_len, 1, head_dim)  # broadcast to the whole batch, broadcast to all heads
+    ksin = ksin.unsqueeze(0).unsqueeze(2)  # (1, k_len, 1, head_dim)
     out_q = (q * qcos) + (rotate_half(q) * qsin)
     out_k = (k * kcos) + (rotate_half(k) * ksin)
 
@@ -226,6 +207,21 @@ def rotate_half(x):
     x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1)
 
+class LlamaRMSNorm(nn.Module):
+    def __init__(self, hidden_size, eps=1e-6):
+        """
+        LlamaRMSNorm is equivalent to T5LayerNorm
+        """
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.variance_epsilon = eps
+
+    def forward(self, hidden_states):
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        return self.weight * hidden_states.to(input_dtype)
 
 def SwiGLU(x):
     """Gated linear unit activation function.
@@ -304,11 +300,37 @@ class OpenMoeAttention(nn.Module):
         self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
         self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
-        self.sin, self.cos = generate_fixed_pos_embedding(self.head_dim, self.max_position_embeddings, 1.0, 1e4)
+        self.generate_fixed_pos_embedding(self.head_dim, self.max_position_embeddings, 1.0, 1e4)
+        self.use_kernel = config.enable_kernel
+        
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
 
+    def generate_fixed_pos_embedding(self, features, length, min_timescale=1.0, max_timescale=10000.0):
+        """Generate Sin/Cos for Rotary Embeddings.
+    
+        Args:
+          features: an integer
+          length: an integer
+          min_timescale: an optional float
+          max_timescale: an optional float
+    
+        Returns:
+          output_sin: a float32 Tensor with shape [length, features]
+          output_cos: a float32 Tensor with shape [length, features]
+        """
+        fraction = torch.arange(0, features, 2, dtype=torch.float32) / features
+        timescale = min_timescale * (max_timescale / min_timescale) ** fraction
+        rotational_frequency = 1.0 / timescale
+    
+        sinusoid_inp = torch.einsum("i,j->ij", torch.arange(length, dtype=torch.float32), rotational_frequency)
+    
+        sinusoid_inp = torch.cat([sinusoid_inp, sinusoid_inp], dim=-1)
+
+        self.register_buffer('sin', torch.sin(sinusoid_inp), persistent=False)  # persistent=False --> buffer won't appear in the state_dict
+        self.register_buffer('cos', torch.cos(sinusoid_inp), persistent=False)
+    
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -317,7 +339,6 @@ class OpenMoeAttention(nn.Module):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
-        use_kernel: bool = True,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
 
@@ -373,8 +394,8 @@ class OpenMoeAttention(nn.Module):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        if HAS_FLASH_ATTN and use_kernel:
-            from flash_attn import flash_attn_func
+        if HAS_FLASH_ATTN and self.use_kernel:
+            from flash_attn import flash_attn_func  
 
             query_states = query_states.transpose(1, 2)
             key_states = key_states.transpose(1, 2)
@@ -431,7 +452,8 @@ class OpenMoeDecoderLayer(nn.Module):
         super().__init__()
         self.hidden_size = config.hidden_size
         self.moe = moe
-        self.self_attn = OpenMoeAttention(config=config)
+        self.self_attn = OpenMoeAttention(config=config)  
+#         self.self_attn = LlamaAttention(config=config)  # TODO: introduce LLaMA Positional Encoding
         self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         if self.moe:
@@ -524,11 +546,9 @@ LLAMA_START_DOCSTRING = r"""
     This model inherits from [`PreTrainedModel`]. Check the superclass documentation for the generic methods the
     library implements for all its model (such as downloading or saving, resizing the input embeddings, pruning heads
     etc.)
-
     This model is also a PyTorch [torch.nn.Module](https://pytorch.org/docs/stable/nn.html#torch.nn.Module) subclass.
     Use it as a regular PyTorch Module and refer to the PyTorch documentation for all matter related to general usage
     and behavior.
-
     Parameters:
         config ([`LlamaConfig`]):
             Model configuration class with all the parameters of the model. Initializing with a config file does not
@@ -545,7 +565,7 @@ class OpenMoePreTrainedModel(PreTrainedModel):
     config_class = LlamaConfig
     base_model_prefix = "model"
     supports_gradient_checkpointing = True
-    _no_split_modules = ["LlamaDecoderLayer"]
+    _no_split_modules = ["OpenMoeDecoderLayer"]
     _skip_keys_device_placement = "past_key_values"
 
     def _init_weights(self, module):
@@ -569,44 +589,33 @@ LLAMA_INPUTS_DOCSTRING = r"""
         input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
             Indices of input sequence tokens in the vocabulary. Padding will be ignored by default should you provide
             it.
-
             Indices can be obtained using [`AutoTokenizer`]. See [`PreTrainedTokenizer.encode`] and
             [`PreTrainedTokenizer.__call__`] for details.
-
             [What are input IDs?](../glossary#input-ids)
         attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
             Mask to avoid performing attention on padding token indices. Mask values selected in `[0, 1]`:
-
             - 1 for tokens that are **not masked**,
             - 0 for tokens that are **masked**.
-
             [What are attention masks?](../glossary#attention-mask)
-
             Indices can be obtained using [`AutoTokenizer`]. See [`PreTrainedTokenizer.encode`] and
             [`PreTrainedTokenizer.__call__`] for details.
-
             If `past_key_values` is used, optionally only the last `decoder_input_ids` have to be input (see
             `past_key_values`).
-
             If you want to change padding behavior, you should read [`modeling_opt._prepare_decoder_attention_mask`]
             and modify to your needs. See diagram 1 in [the paper](https://arxiv.org/abs/1910.13461) for more
             information on the default strategy.
-
             - 1 indicates the head is **not masked**,
             - 0 indicates the head is **masked**.
         position_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Indices of positions of each input sequence tokens in the position embeddings. Selected in the range `[0,
             config.n_positions - 1]`.
-
             [What are position IDs?](../glossary#position-ids)
         past_key_values (`tuple(tuple(torch.FloatTensor))`, *optional*, returned when `use_cache=True` is passed or when `config.use_cache=True`):
             Tuple of `tuple(torch.FloatTensor)` of length `config.n_layers`, with each tuple having 2 tensors of shape
             `(batch_size, num_heads, sequence_length, embed_size_per_head)`) and 2 additional tensors of shape
             `(batch_size, num_heads, encoder_sequence_length, embed_size_per_head)`.
-
             Contains pre-computed hidden-states (key and values in the self-attention blocks and in the cross-attention
             blocks) that can be used (see `past_key_values` input) to speed up sequential decoding.
-
             If `past_key_values` are used, the user can optionally input only the last `decoder_input_ids` (those that
             don't have their past key value states given to this model) of shape `(batch_size, 1)` instead of all
             `decoder_input_ids` of shape `(batch_size, sequence_length)`.
@@ -635,7 +644,6 @@ LLAMA_INPUTS_DOCSTRING = r"""
 class OpenMoeModel(OpenMoePreTrainedModel):
     """
     Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`LlamaDecoderLayer`]
-
     Args:
         config: LlamaConfig
     """
@@ -870,20 +878,14 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
                 Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
                 config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
                 (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
-
         Returns:
-
         Example:
-
         ```python
         >>> from transformers import AutoTokenizer, LlamaForCausalLM
-
         >>> model = LlamaForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
         >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
-
         >>> prompt = "Hey, are you conscious? Can you talk to me?"
         >>> inputs = tokenizer(prompt, return_tensors="pt")
-
         >>> # Generate
         >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
         >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
@@ -1022,11 +1024,9 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
 
     def _calculate_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """Compute cross entropy and entropy for log probs and targets.
-
         Args:
             logits: [batch, length, num_classes] float array.
             targets: categorical targets [batch, length] int array.
-
         Returns:
             Tuple of scalar loss.
         """
@@ -1059,23 +1059,19 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
 
 class ZLossCrossEntropy(torch.autograd.Function):
     """Computes cross entropy loss with stable custom gradient.
-
     Computes a stabilized-gradient version of:
         -jnp.sum(targets * nn.log_softmax(logits), axis=-1)
-
     If z_loss > 0, then an auxiliary loss equal to z_loss*log(z)^2
     will be added to the cross entropy loss (z = softmax normalization constant).
     The two uses of z_loss are:
     1. To keep the logits from drifting too far from zero, which can cause
         unacceptable roundoff errors in bfloat16.
     2. To encourage the logits to be normalized log-probabilities.
-
     Args:
         logits: [batch, length, num_classes] float array.
         targets: categorical one-hot targets [batch, length, num_classes] float
         array.
         z_loss: coefficient for auxilliary z-loss loss term.
-
     Returns:
         tuple with the total loss and the z_loss, both
         float arrays with shape [batch, length].

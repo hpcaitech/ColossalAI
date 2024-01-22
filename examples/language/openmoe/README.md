@@ -45,8 +45,37 @@ cd apex
 git checkout 741bdf50825a97664db08574981962d66436d16a
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./ --global-option="--cuda_ext"
 ```
+### 3. Inference
+You can inference by the following code to try OpenMoE-8B-Chat model:
+```
+from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
 
-### 3. Train
+model_path = "OrionZheng/openmoe-8b-chat"
+config = AutoConfig.from_pretrained(model_path)
+tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained(
+    model_path,
+    torch_dtype=torch.bfloat16,
+    trust_remote_code=True, 
+    device_map='auto'
+    )
+query = 'Question: How do I kill a process? Answer:'
+prompt = f'''<<SYS>>
+You are a helpful, respectful and honest assistant.
+<</SYS>>
+
+<s>[INST] {query} [/INST]'''
+
+inputs = tokenizer(prompt, return_tensors="pt").to('cuda')
+sample = model.generate(**inputs, max_new_tokens=32)
+print(tokenizer.decode(sample[0]))
+```
+
+We also provide a Colab [tutorial](https://colab.research.google.com/drive/1eIT1rtG7pORRQAYtQoMOAekUg7aZLDdn) demonstrating the jax checkpoint conversion and execution of PyTorch model inference. You can experiment with OpenMoE-8B-Chat on Colab directly by [this](https://colab.research.google.com/drive/1xIfIVafnlCP2XVICmRwkUFK3cwTJYjCY)(Note: both require Colab Pro).
+- Running OpenMoE-8B requires ~49GB of memory in float32 or ~23GB in bfloat16. It can be executed on a Colab `CPU High-RAM` runtime or an `A100-40GB` runtime, both of which require Colab Pro.The float16 precision is not recommended because sometimes it will lead to performance degradation.
+- Runing the OpenMoE-34B requries ~89GB of memory in bfloat16 or ~180GB in float32. To perform inference on multiple devices/offloading model weights to RAM, please refer to the script [here](inference_on_multi_devices.py).
+
+### 4. Train
 Yon can use colossalai run to launch single-node training:
 ```bash
 colossalai run --standalone --nproc_per_node YOUR_GPU_PER_NODE train.py --OTHER_CONFIGURATIONS
