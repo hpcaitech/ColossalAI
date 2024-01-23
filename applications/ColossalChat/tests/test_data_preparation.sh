@@ -39,6 +39,7 @@ BASE_TEMP_DIR=$BASE_DIR/temp
 EXAMPLES_DIR=$BASE_DIR/examples
 DATA_SAVE_PATH=$BASE_TEMP_DIR/rlhf_data
 CONFIG_DIR=$BASE_DIR/config
+# Skip those tests due to CI tests timeout
 MODELS=('llama')
 
 if [ ! -d "$BASE_TEMP_DIR" ]; then

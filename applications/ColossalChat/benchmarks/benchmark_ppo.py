@@ -6,7 +6,7 @@ import argparse
 import os
 import resource
 from contextlib import nullcontext
-
+import json
 import torch
 import torch.distributed as dist
 from coati.dataset import (
@@ -22,7 +22,7 @@ from coati.trainer import PPOTrainer
 from coati.trainer.callbacks import PerformanceEvaluator
 from coati.trainer.utils import is_rank_0
 from coati.utils import load_checkpoint, replace_with_flash_attention
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import OPTForCausalLM, AutoTokenizer
 from transformers.models.opt.configuration_opt import OPTConfig
 
 import colossalai
@@ -75,10 +75,10 @@ def benchmark_train(args):
 
     booster_policy = None
     with init_ctx:
-        actor = AutoModelForCausalLM.from_config(get_gpt_config(args.pretrain), trust_remote_code=True)
+        actor = OPTForCausalLM(config=get_gpt_config(args.pretrain))
         # Disable dropout
         disable_dropout(actor)
-        ref_model = AutoModelForCausalLM.from_config(get_gpt_config(args.pretrain), trust_remote_code=True)
+        ref_model = OPTForCausalLM(config=get_gpt_config(args.pretrain))
         reward_model = RewardModel(config=get_gpt_config("350m"))
         critic = Critic(config=get_gpt_config("350m"))
         disable_dropout(critic)
@@ -144,9 +144,25 @@ def benchmark_train(args):
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
-    _ = setup_conversation_template(tokenizer)
+    if os.path.exists(args.conversation_template_config):
+        conversation_template_config = json.load(open(args.conversation_template_config, "r", encoding='utf8'))
+        conversation_template = setup_conversation_template(tokenizer, 
+                                chat_template_config=conversation_template_config, 
+                                save_path=args.conversation_template_config)
+        stop_token_ids = conversation_template.assistant_line_end if len(conversation_template.assistant_line_end)>0 else None
+    else:
+        raise ValueError("Conversation template config is not provided or incorrect")
+    if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
+        try:
+            # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen
+           tokenizer.pad_token = tokenizer.eos_token
+        except AttributeError as e:
+            logger.warning(f"Unable to set pad token to eos token, {str(e)}")
+    if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+        logger.warning("The tokenizer does not have a pad token which is required. May lead to unintended behavior in training, Please consider manually set them.")
+    tokenizer.add_bos_token = False
+    tokenizer.add_eos_token = False
     tokenizer.padding_side = "left"  # left padding for generation (online learning)
-    tokenizer.pad_token = tokenizer.eos_token
 
     # configure generation config
     actor.generation_config.update(
@@ -176,6 +192,7 @@ def benchmark_train(args):
     coordinator.print_on_master(f"Load dataset: {args.prompt_dataset}")
     mode_map = {"train": "train", "valid": "validation", "test": "test"}
     train_prompt_dataset = load_tokenized_dataset(dataset_paths=args.prompt_dataset, mode="train", mode_map=mode_map)
+    coordinator.print_on_master(f"prompt dataset size: {len(train_prompt_dataset)}")
     data_collator = DataCollatorForPromptDataset(tokenizer=tokenizer, max_length=args.max_length - args.max_seq_len)
     train_prompt_dataloader = setup_distributed_dataloader(
         dataset=train_prompt_dataset,
@@ -390,6 +407,7 @@ def benchmark_train(args):
         actor_lr_scheduler,
         critic_lr_scheduler,
         tokenizer=tokenizer,
+        stop_token_ids=stop_token_ids,
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
         train_batch_size=args.train_batch_size,
@@ -456,6 +474,10 @@ if __name__ == "__main__":
         default="gemini",
         choices=["gemini", "gemini_auto", "zero2", "zero2_cpu", "3d"],
         help="Choose which plugin to use",
+    )
+    parser.add_argument(
+        "--conversation_template_config", type=str, default=None, help="Path \
+        to save conversation template config files."
     )
     parser.add_argument("--grad_clip", type=float, default=1.0, help="Gradient clipping value")
     parser.add_argument("--weight_decay", type=float, default=0.1, help="Weight decay")

@@ -27,7 +27,7 @@ MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
 # To benchmark different models, change the following line
 # MODELS=('125m' '350m' '700m' '1.3b' '2.7b' '3.5b' '5.5b' '6.7b' '10b' '13b')
-MODELS=('1.3b')
+MODELS=('125m')
 # To benchmark different strategies, change the following line
 # PLUGINS=('zero2', 'zero2_cpu', '3d')
 PLUGINS=('zero2')
@@ -76,21 +76,16 @@ for lora_rank in ${LORA_RANK[@]}; do
             for i in $(seq $NUM_RETRY); do
                 echo "[Test]: $model-$plugin-$lora_rank, attempt $i"
                 declare -a prompt_dataset=()
-                for split in $(seq -f "%05g" 0 0); do
-                    prompt_dataset+=("$TEMP_DIR/rlhf_data/tokenized_opt_prompt/arrow/part-$split")
-                done
-                declare -a ptx_dataset=()
-                for split in $(seq -f "%05g" 0 0); do
-                    ptx_dataset+=("$TEMP_DIR/rlhf_data/tokenized_opt_ptx/arrow/part-$split")
+                for split in $(seq -f "%05g" 0 9); do
+                    prompt_dataset+=("$TEMP_DIR/benchmark/arrow/part-$split")
                 done
                 colossalai run --nproc_per_node 8 --master_port 28547 $BASE_DIR/benchmarks/benchmark_ppo.py \
                     --pretrain $pretrain \
                     --tokenizer_dir $tokenizer_dir \
                     --prompt_dataset ${prompt_dataset[@]} \
-                    --pretrain_dataset ${ptx_dataset[@]} \
-                    --ptx_batch_size 1 \
                     --ptx_coef 0 \
                     --save_path $MODEL_SAVE_PATH \
+                    --conversation_template_config ./Opt.json \
                     --lora_rank $lora_rank \
                     --plugin $plugin \
                     --num_episodes 5 \
