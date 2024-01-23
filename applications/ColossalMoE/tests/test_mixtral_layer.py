@@ -19,7 +19,7 @@ top_k = 2
 
 def check_mixtral_moe_layer():
     torch.cuda.set_device(dist.get_rank())
-    MOE_MANAGER.setup(parallel="ep", max_ep_size=dist.get_world_size())
+    MOE_MANAGER.setup(parallel="EP", max_ep_size=dist.get_world_size())
     config = MixtralConfig(
         hidden_size=hidden_size,
         intermediate_size=hidden_size * 2,
