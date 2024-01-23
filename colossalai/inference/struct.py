@@ -5,6 +5,7 @@ from typing import Any, List, Tuple, Union
 import torch
 from ordered_set import OrderedSet
 
+from colossalai.kernel.triton.flash_decoding_utils import FDIntermTensors
 from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger(__name__)
@@ -169,15 +170,23 @@ class BatchInfo:
     Information to be passed and used for a batch of sequences.
     """
 
+    max_batch_size: int
+    kv_max_split_num: int
+    num_heads: int
+    head_dim: int
     sequences_set: OrderedSet[Sequence] = None
     is_prompts: bool = True
     device: torch.device = None
+    dtype: torch.dtype = None
+    fd_inter_tensor: FDIntermTensors = None
 
     def __post_init__(self):
         if self.device is None:
             self.device = torch.cuda.current_device()
         if self.sequences_set is None:
             self.sequences_set = OrderedSet()
+        if self.fd_inter_tensor is None:
+            self.fd_inter_tensor = FDIntermTensors()
 
     def init_batch(self, seqs: List["Sequence"] = None):
         """
@@ -199,19 +208,30 @@ class BatchInfo:
 
                 self.sequences_set.add(seq)
 
+    def init_fd_tensors(self):
+        if not self.fd_inter_tensor.is_initialized:
+            self.fd_inter_tensor.initialize(
+                max_batch_size=self.max_batch_size,
+                num_attn_heads=self.num_heads,
+                kv_max_split_num=self.kv_max_split_num,
+                head_dim=self.head_dim,
+                dtype=self.dtype,
+                device=self.device,
+            )
+
     def get_block_table_tensor(self) -> None:
         tesnor_list = []
         block_table = None
-        
+
         assert len(self.sequences_set) > 0, "Batch has not been initialized yet. Please initialize batch first."
-        
+
         for seq in self.sequences_set:
             block_table = seq.block_table
             assert (
                 block_table is not None
             ), f"The sequence(request_id {seq.request_id}) has not initialized the block_table."
             tesnor_list.append(seq.block_table)
-        
+
         block_table = torch.stack(tesnor_list)
         return block_table
 
@@ -316,13 +336,13 @@ class BatchInfo:
         """
         Get bacth inputs for forward inference computation.
         """
-        
+
         assert len(self.sequences_set) > 0, "Sequences set has not been initialized."
-        
+
         input_list = []
 
         assert len(self.sequences_set) > 0, "Batch has not been initialized yet. Please initialize batch first."
-        
+
         for seq in self.sequences_set:
             if self.is_prompts:
                 if seq.output_len > 0:
@@ -342,9 +362,9 @@ class BatchInfo:
         """
         input_list = []
         input_len_list = []
-        
+
         assert len(self.sequences_set) > 0, "Batch has not been initialized yet. Please initialize batch first."
-        
+
         for seq in self.sequences_set:
             if self.is_prompts:
                 input_list.extend(seq.input_token_id)
@@ -362,9 +382,9 @@ class BatchInfo:
         Get the input_len of each sentence in this batch.
         """
         len_list = []
-        
+
         assert len(self.sequences_set) > 0, "Batch has not been initialized yet. Please initialize batch first."
-        
+
         for seq in self.sequences_set:
             len_list.append(seq.sentence_len)
 
@@ -375,7 +395,7 @@ class BatchInfo:
         Generate and return attention mask.
         """
         assert len(self.sequences_set) > 0, "Batch has not been initialized yet. Please initialize batch first."
-        
+
         past_values = []
         padding_id = self.sequences_set[0].pad_token_id
 

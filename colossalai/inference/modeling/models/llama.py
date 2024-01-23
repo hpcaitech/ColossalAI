@@ -51,8 +51,6 @@ def llama_causal_lm_forward(
     batch: BatchInfo = None,
     k_caches: List[torch.Tensor] = None,
     v_caches: List[torch.Tensor] = None,
-    num_heads: int = 1,
-    head_dim: int = 1,
 ):
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     hidden_states = llama_model_forward(
@@ -60,8 +58,6 @@ def llama_causal_lm_forward(
         batch=batch,
         k_caches=k_caches,
         v_caches=v_caches,
-        num_heads=num_heads,
-        head_dim=head_dim,
     )
     logits = self.lm_head(hidden_states)
     return logits
@@ -73,8 +69,6 @@ def llama_model_forward(
     batch: BatchInfo = None,
     k_caches: List[torch.Tensor] = None,
     v_caches: List[torch.Tensor] = None,
-    num_heads: int = 1,
-    head_dim: int = 1,
 ):
     input_ids = batch.get_batch_inputs()
     block_tables = batch.get_block_table_tensor()
@@ -88,9 +82,8 @@ def llama_model_forward(
     else:
         sequence_lengths = batch.get_sequence_lengths()
 
-    batch_size, _ = sequence_lengths
+    batch_size, _ = input_ids.shape
     kv_seq_len = sequence_lengths.max().item()
-    _, _, _, block_size = k_caches[0].shape
 
     if attention_mask is not None:
         if batch.is_prompts:
@@ -108,23 +101,17 @@ def llama_model_forward(
 
     hidden_states = self.embed_tokens(input_ids)
 
-    cos_sin = get_cos_sin(sequence_lengths, self._cos_cached, self._sin_cached, batch.is_prompts, hidden_states.dtype)
-    
+    cos_sin = get_cos_sin(sequence_lengths, self._cos_cached, self._sin_cached, batch.is_prompts, batch.dtype)
+
     if batch.is_prompts:
-        fd_inter_tensor = None
-        output_tensor = torch.zeros((sequence_lengths.sum().item(), num_heads, head_dim), dtype=hidden_states.dtype, device=hidden_states.device)
-    else:
-        fd_inter_tensor = FDIntermTensors()
-        fd_inter_tensor.initialize(
-            max_batch_size=batch_size,
-            num_attn_heads=num_heads,
-            kv_max_split_num=(kv_seq_len + block_size - 1) // block_size,
-            head_dim=head_dim,
-            dtype=hidden_states.dtype,
-            device=hidden_states.device,   
+        output_tensor = torch.zeros(
+            (sequence_lengths.sum().item(), batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
         )
-        output_tensor = torch.zeros((batch_size, 1, num_heads, head_dim), dtype=hidden_states.dtype, device=hidden_states.device)
-    sm_scale = 1.0 / (head_dim**0.5)
+    else:
+        output_tensor = torch.zeros(
+            (batch_size, 1, batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
+        )
+    sm_scale = 1.0 / (batch.head_dim**0.5)
 
     for layer_id, decoder_layer in enumerate(self.layers):
         hidden_states = decoder_layer(
@@ -138,7 +125,7 @@ def llama_model_forward(
             attention_mask=attention_mask,
             kv_seq_len=kv_seq_len,
             cos_sin=cos_sin,
-            fd_inter_tensor=fd_inter_tensor,
+            fd_inter_tensor=batch.fd_inter_tensor,
             output_tensor=output_tensor,
             sm_scale=sm_scale,
         )
@@ -156,7 +143,7 @@ def llama_decoder_layer_forward(
     k_cache: torch.Tensor = None,
     v_cache: torch.Tensor = None,
     is_prompts: bool = True,
-    sequence_lengths: int = None,
+    sequence_lengths: torch.Tensor = None,
     attention_mask: torch.Tensor = None,
     kv_seq_len: int = 0,
     cos_sin: Tuple[torch.Tensor] = None,
@@ -259,7 +246,8 @@ def llama_attn_forward(
             copy_kv_to_blocked_cache(value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
             attn_output = flash_decoding_attention(
                 query_states,
-                k_cache, v_cache,
+                k_cache,
+                v_cache,
                 output_tensor,
                 sequence_lengths,
                 block_tables,

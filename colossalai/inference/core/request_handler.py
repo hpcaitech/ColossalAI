@@ -69,22 +69,53 @@ class RequestHandler:
     Args:
        inference_config: Configuration for initialize and manage kv cache.
        model_config: Configuration for model
+       dtype (torch.dtype): The data type for weights and activations.
     """
 
-    def __init__(self, inference_config: InferenceConfig, model_config: PretrainedConfig) -> None:
+    def __init__(
+        self, inference_config: InferenceConfig, model_config: PretrainedConfig, dtype: torch.dtype = None
+    ) -> None:
         self.inference_config = inference_config
-        self._init_cache(model_config)
-
         self.running_list: RunningList = RunningList(inference_config.prefill_ratio)
         self.waiting_list: List[List] = [[], [], []]
         self.done_list: List[Sequence] = []
-        device = torch.cuda.current_device()
-        self.running_batch = BatchInfo(is_prompts=False, device=device)
-        self.prefill_batch = BatchInfo(is_prompts=True, device=device)
+        self.dtype = dtype
         self.max_batch_size = inference_config.max_batch_size
 
+        # initialize cache
+        self._init_cache(model_config)
+
+        # initialize batch
+        device = torch.cuda.current_device()
+        kv_max_split_num = (
+            inference_config.max_input_len + inference_config.max_output_len + inference_config.block_size - 1
+        ) // inference_config.block_size
+        head_dim = model_config.hidden_size // model_config.num_attention_heads
+        # TODO In the continuous batching scenario, the batch size may be greater than max_batch_size,
+        # which may cause bugs and this issue should be fixed later.
+        self.running_batch = BatchInfo(
+            max_batch_size=self.max_batch_size,
+            kv_max_split_num=kv_max_split_num,
+            num_heads=model_config.num_attention_heads,
+            head_dim=head_dim,
+            is_prompts=False,
+            device=device,
+            dtype=dtype,
+        )
+        self.prefill_batch = BatchInfo(
+            max_batch_size=self.max_batch_size,
+            kv_max_split_num=kv_max_split_num,
+            num_heads=model_config.num_attention_heads,
+            head_dim=head_dim,
+            is_prompts=True,
+            device=device,
+            dtype=dtype,
+        )
+        self.running_batch.init_fd_tensors()
+        self.prefill_batch.init_fd_tensors()
+
     def _init_cache(self, model_config):
-        self.cache_manager = KVCacheManager(self.inference_config, model_config)
+        self.cache_manager = KVCacheManager(self.inference_config, model_config, dtype=self.dtype)
 
     def _has_waiting(self) -> bool:
         return any(lst for lst in self.waiting_list)

@@ -81,7 +81,7 @@ class InferenceEngine:
         if verbose:
             self.logger = get_dist_logger(__name__)
 
-        self.request_handler = RequestHandler(self.inference_config, self.model_config)
+        self.request_handler = RequestHandler(self.inference_config, self.model_config, self.dtype)
         self.k_cahce, self.v_cache = self.request_handler.get_kvcache()
         self.counter = count()
 
@@ -244,8 +244,6 @@ class InferenceEngine:
             batch,
             self.k_cahce,
             self.v_cache,
-            self.num_heads,
-            self.head_dim,
         )
 
         logits = logits[:, -1, :]
