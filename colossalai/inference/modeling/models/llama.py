@@ -39,25 +39,6 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     return q_embed, k_embed
 
 
-def get_cos_sin(lengths, cos_cache, sin_cache, type="prefill"):
-    """NOTE: sin_cache should be [ max_length, hidden_dim//2 ]
-    get 1D cos and sin for triton kernel.
-       Args: lengths (bsz,), sequence lengths
-             cos_cache/sin_cache: cached cos/sin shaped (2048, hidden_dim//2)
-    Usage: First,create cached cos/sin(Llama rotary)
-           Then use this function, like get_cos_sin(lengths,cos_cached[:,:hidden_dim//2],sin_cached[:,hidden_dim//2])
-           Last, call rotary_embedding triton kernel
-    """
-    if type == "prefill":
-        index_arrays = [torch.arange(length) for length in lengths]
-        indices = torch.cat(index_arrays)
-    elif type == "decoding":
-        index_arrays = lengths - 1
-    cos_output = cos_cache[indices]
-    sin_output = sin_cache[indices]
-    return cos_output, sin_output
-
-
 @torch.no_grad()
 def llama_causal_lm_forward(
     self: LlamaForCausalLM,
@@ -253,3 +234,16 @@ def unpading_input(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attention_
     k = index_first_axis(k.reshape(batch_size * kv_seq_len, num_key_value_heads, head_dim), indices)
     v = index_first_axis(v.reshape(batch_size * kv_seq_len, num_key_value_heads, head_dim), indices)
     return (q, k, v, indices)
+
+
+@torch.no_grad()
+def get_cos_sin(lengths, cos_cache, sin_cache, is_prompts, dtype):
+    if is_prompts:
+        index_arrays = [torch.arange(length) for length in lengths]
+    else:
+        index_arrays = [(length - 1).view(-1) for length in lengths]
+    indices = torch.cat(index_arrays, dim=-1)
+    cos_output = cos_cache[indices].to(dtype=dtype)
+    sin_output = sin_cache[indices].to(dtype=dtype)
+
+    return (cos_output, sin_output)
