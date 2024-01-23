@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.distributed as dist
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
@@ -22,7 +23,12 @@ from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import ColoAttention
-from colossalai.shardformer.layer._operation import gather_forward_split_backward, split_forward_gather_backward
+from colossalai.shardformer.layer._operation import (
+    _gather,
+    all_to_all_comm,
+    gather_forward_split_backward,
+    split_forward_gather_backward,
+)
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import cross_entropy_1d
@@ -96,6 +102,11 @@ def _get_attention_mask(
         attention_mask = attention_mask.to(dtype=self.dtype)  # fp16 compatibility
         attention_mask = (1.0 - attention_mask) * torch.finfo(self.dtype).min
     return attention_mask, encoder_attention_mask
+
+
+def print_rank(prompt, value, rank=0):
+    if dist.get_rank() == rank:
+        print(f"rank-{rank}, {prompt}: {value}")
 
 
 class GPT2PipelineForwards:
@@ -789,7 +800,7 @@ class GPT2PipelineForwards:
         )
 
 
-def get_gpt2_flash_attention_forward():
+def get_gpt2_flash_attention_forward(sp_mode, sp_size, sp_group):
     from transformers.models.gpt2.modeling_gpt2 import GPT2Attention
 
     def forward(
@@ -816,9 +827,15 @@ def get_gpt2_flash_attention_forward():
             attention_mask = encoder_attention_mask
         else:
             query, key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
-        query = self._split_heads(query, self.num_heads, self.head_dim)
-        key = self._split_heads(key, self.num_heads, self.head_dim)
-        value = self._split_heads(value, self.num_heads, self.head_dim)
+
+        if sp_mode == "3":
+            query = all_to_all_comm(query)
+            key = all_to_all_comm(key)
+            value = all_to_all_comm(value)
+
+        query = split_heads(query, self.num_heads, self.head_dim)
+        key = split_heads(key, self.num_heads, self.head_dim)
+        value = split_heads(value, self.num_heads, self.head_dim)
 
         if layer_past is not None:
             past_key, past_value = layer_past
@@ -838,6 +855,9 @@ def get_gpt2_flash_attention_forward():
         dropout_p = self.attn_dropout.p if self.training else 0.0
         attn_output = ColoAttention.attention(query, key, value, **attention_mask, dropout_p=dropout_p, scale=scale)
         attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
+        if sp_mode == "3":
+            attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)
+
         attn_output = self.c_proj(attn_output)
         attn_output = self.resid_dropout(attn_output)
         outputs = (attn_output, present, None)
@@ -847,7 +867,8 @@ def get_gpt2_flash_attention_forward():
     return forward
 
 
-def get_gpt_model_forward_for_flash_attn(shard_config: ShardConfig):
+# def get_gpt_model_forward_for_flash_attn(shard_config: ShardConfig):
+def gpt2_sequence_parallel_forward_fn(sp_mode, sp_size, sp_group):
     def forward(
         self: GPT2Model,
         input_ids: Optional[torch.LongTensor] = None,
@@ -886,16 +907,23 @@ def get_gpt_model_forward_for_flash_attn(shard_config: ShardConfig):
 
         device = input_ids.device if input_ids is not None else inputs_embeds.device
 
+        # use variable seq_len to replace input_shape[-1]
+        seq_len = input_shape[-1]
+        if sp_mode in ["2", "3"]:
+            seq_len *= sp_size
+
         if token_type_ids is not None:
-            token_type_ids = token_type_ids.view(-1, input_shape[-1])
+            token_type_ids = token_type_ids.view(-1, seq_len)
         if position_ids is not None:
-            position_ids = position_ids.view(-1, input_shape[-1])
+            position_ids = position_ids.view(-1, seq_len)
 
         if past_key_values is None:
             past_length = 0
             past_key_values = tuple([None] * len(self.h))
         else:
             past_length = past_key_values[0][0].size(-2)
+            if sp_mode in ["2", "3"]:
+                past_length *= sp_size
         if position_ids is None:
             position_ids = torch.arange(
                 past_length,
@@ -904,6 +932,13 @@ def get_gpt_model_forward_for_flash_attn(shard_config: ShardConfig):
                 device=device,
             )
             position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
+
+        # split position ids when using sequence parallel
+        if sp_mode in ["2", "3"]:
+            position_ids = torch.chunk(position_ids.clone(), sp_size, dim=1)[dist.get_rank(sp_group)]
+
+        if sp_mode in ["2", "3"]:
+            attention_mask = _gather(attention_mask, 1, sp_group)
 
         # Prepare head mask if needed
         # 1.0 in head_mask indicate we keep the head
@@ -1120,6 +1155,9 @@ def gpt2_sequence_parallel_forward_fn(shard_config: ShardConfig):
             encoder_hidden_states,
             encoder_attention_mask,
         )
+        # output_shape = input_shape + (hidden_states.size(-1),)
+        # output_shape = input_shape[:-1] + (seq_len, ) + (hidden_states.size(-1),)
+        output_shape = (-1,) + input_shape[1:-1] + (seq_len,) + (hidden_states.size(-1),)
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
@@ -1134,13 +1172,10 @@ def gpt2_sequence_parallel_forward_fn(shard_config: ShardConfig):
         all_cross_attentions = () if output_attentions and self.config.add_cross_attention else None
         all_hidden_states = () if output_hidden_states else None
 
-        # split the input tensor along sequence dimension
-        # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
-        hidden_states = split_forward_gather_backward(
-            hidden_states,
-            dim=1,
-            process_group=shard_config.tensor_parallel_process_group,
-        )
+        if sp_mode == "1":
+            # split the input tensor along sequence dimension
+            # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
+            hidden_states = split_forward_gather_backward(hidden_states, dim=1, process_group=sp_group)
 
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
             # Model parallel
@@ -1203,13 +1238,10 @@ def gpt2_sequence_parallel_forward_fn(shard_config: ShardConfig):
                         hidden_states = hidden_states.to("cuda:" + str(k + 1))
 
         # When sequence parallelism done, gather the output tensor in forward and split it in backward
-        hidden_states = gather_forward_split_backward(
-            hidden_states,
-            dim=1,
-            process_group=shard_config.tensor_parallel_process_group,
-        )
+        hidden_states = gather_forward_split_backward(hidden_states, dim=1, process_group=sp_group)
 
         hidden_states = self.ln_f(hidden_states)
+
         hidden_states = hidden_states.view(output_shape)
         # Add last hidden state
         if output_hidden_states:
