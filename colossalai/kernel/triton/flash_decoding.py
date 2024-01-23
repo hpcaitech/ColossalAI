@@ -215,10 +215,9 @@ def flash_decoding_attention(
     Returns:
         Output tensor with shape [bsz, num_heads, q_len, head_dim]
     """
-    if q.dim() == 3:
-        bsz, num_heads, head_dim = q.shape
-    else:
-        raise ValueError(f"The query dim should be 3, but got {q.dim()}.")
+    q = q.squeeze() if q.dim() == 4 else q
+    assert q.dim() == 3, f"Incompatible q dim: {q.dim()}"
+    bsz, num_heads, head_dim = q.shape
 
     assert head_dim in {32, 64, 128, 256}
     assert kv_seq_len.shape[0] == block_tables.shape[0] == bsz, (
