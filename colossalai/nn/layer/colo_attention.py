@@ -1,5 +1,6 @@
 import enum
 import math
+import warnings
 from dataclasses import dataclass
 from typing import Iterable, Optional, Tuple
 
@@ -141,7 +142,10 @@ class ColoAttention(torch.nn.Module):
         if self.attn.__name__ == "flash_attention" and (
             query.dtype not in [torch.float16, torch.bfloat16] or bias != None
         ):
-            raise ValueError(f"The input data type {query.dtype} is not allowed in flash attention.")
+            warnings.warn(
+                f"flash-attn expects fp16 or bf16 but got {query.dtype}, switching to xformers' implementation."
+            )
+            self.attn = FlashAttentionLoader().load(ext_name="flash_attention_xformers_cuda")
 
         padded = attn_mask_type is not None and attn_mask_type.value % 2 == 1
         causal = attn_mask_type is not None and attn_mask_type.value > 1

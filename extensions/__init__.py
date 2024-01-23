@@ -1,5 +1,9 @@
 from .cpu_adam import CpuAdamArmExtension, CpuAdamX86Extension
-from .flash_attention import FlashAttentionCudaExtension, FlashAttentionNpuExtension
+from .flash_attention import (
+    FlashAttentionDaoCudaExtension,
+    FlashAttentionNpuExtension,
+    FlashAttentionXformersCudaExtension,
+)
 from .layernorm import LayerNormCudaExtension
 from .moe import MoeCudaExtension
 from .optimizer import FusedOptimizerCudaExtension
@@ -13,7 +17,8 @@ ALL_EXTENSIONS = [
     FusedOptimizerCudaExtension,
     ScaledMaskedSoftmaxCudaExtension,
     ScaledUpperTriangleMaskedSoftmaxCudaExtension,
-    FlashAttentionCudaExtension,
+    FlashAttentionDaoCudaExtension,
+    FlashAttentionXformersCudaExtension,
     FlashAttentionNpuExtension,
 ]
 
@@ -25,6 +30,7 @@ __all__ = [
     "FusedOptimizerCudaExtension",
     "ScaledMaskedSoftmaxCudaExtension",
     "ScaledUpperTriangleMaskedSoftmaxCudaExtension",
-    "FlashAttentionCudaExtension",
+    "FlashAttentionDaoCudaExtension",
+    "FlashAttentionXformersCudaExtension",
     "FlashAttentionNpuExtension",
 ]

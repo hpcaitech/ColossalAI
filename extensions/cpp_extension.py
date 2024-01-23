@@ -11,8 +11,8 @@ __all__ = ["_CppExtension"]
 
 
 class _CppExtension(_Extension):
-    def __init__(self, name: str):
-        super().__init__(name, support_aot=True, support_jit=True)
+    def __init__(self, name: str, priority: int = 1):
+        super().__init__(name, support_aot=True, support_jit=True, priority=priority)
 
         # we store the op as an attribute to avoid repeated building and loading
         self.cached_op = None

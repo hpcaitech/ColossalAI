@@ -1,9 +1,9 @@
 from ..base_extension import _Extension
 
 
-class FlashAttentionCudaExtension(_Extension):
+class FlashAttentionDaoCudaExtension(_Extension):
     def __init__(self):
-        super().__init__(name="flash_attention_cuda", support_aot=False, support_jit=False)
+        super().__init__(name="flash_attention_dao_cuda", support_aot=False, support_jit=False, priority=10)
 
     def is_hardware_available(self) -> bool:
         # cuda extension can only be built if cuda is availabe
@@ -20,12 +20,12 @@ class FlashAttentionCudaExtension(_Extension):
 
     def build_aot(self) -> None:
         raise NotImplementedError(
-            "We rely on the third-party flash-attn library for flash attention. Please install flash-attn via 'pip install flash-attn --no-build-isolation'"
+            "We rely on the third-party flash-attn library for flash attention (https://github.com/Dao-AILab/flash-attention). Please install flash-attn via 'pip install flash-attn --no-build-isolation'."
         )
 
     def build_jit(self) -> None:
         raise NotImplementedError(
-            "We rely on the third-party flash-attn library for flash attention. Please install flash-attn via 'pip install flash-attn --no-build-isolation'"
+            "We rely on the third-party flash-attn library for flash attention (https://github.com/Dao-AILab/flash-attention). Please install flash-attn via 'pip install flash-attn --no-build-isolation'"
         )
 
     def load(self):
@@ -69,6 +69,7 @@ class FlashAttentionCudaExtension(_Extension):
             Return:
                 attn_out: (batch, q_seqlen, nheads, headdim).
             """
+            # check if the input is in allowed dtypes
             if padded:
                 if seq_len_info_kv == None:
                     seq_len_info_kv = seq_len_info_q

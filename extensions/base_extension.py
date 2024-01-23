@@ -7,10 +7,11 @@ __all__ = ["_Extension"]
 
 
 class _Extension(ABC):
-    def __init__(self, name: str, support_aot: bool, support_jit: bool):
+    def __init__(self, name: str, support_aot: bool, support_jit: bool, priority: int = 1):
         self._name = name
         self._support_aot = support_aot
         self._support_jit = support_jit
+        self.priority = priority
 
     @property
     def name(self):

@@ -1,10 +1,12 @@
+import warnings
 from typing import List
 
 from .extensions import (
     CpuAdamArmExtension,
     CpuAdamX86Extension,
-    FlashAttentionCudaExtension,
+    FlashAttentionDaoCudaExtension,
     FlashAttentionNpuExtension,
+    FlashAttentionXformersCudaExtension,
     FusedOptimizerCudaExtension,
     LayerNormCudaExtension,
     MoeCudaExtension,
@@ -57,21 +59,25 @@ class KernelLoader:
         exts = [ext_cls() for ext_cls in self.__class__.REGISTRY]
 
         # look for exts which can be built/loaded on the current machine
-        usable_exts = []
-        for ext in exts:
-            if ext.name == ext_name:
-                # if the user specified the extension name, we will only look for that extension
-                usable_exts.append(ext)
-                break
 
-            if ext.is_hardware_available():
-                # make sure the machine is compatible during kernel loading
-                ext.assert_hardware_compatible()
-                usable_exts.append(ext)
+        if ext_name:
+            usable_exts = list(filter(lambda ext: ext.name == ext_name, exts))
+        else:
+            usable_exts = []
+            for ext in exts:
+                if ext.is_hardware_available():
+                    # make sure the machine is compatible during kernel loading
+                    ext.assert_hardware_compatible()
+                    usable_exts.append(ext)
+
         assert len(usable_exts) != 0, f"No usable kernel found for {self.__class__.__name__} on the current machine."
-        assert (
-            len(usable_exts) == 1
-        ), f"More than one usable kernel found for {self.__class__.__name__} on the current machine."
+
+        if len(usable_exts) > 1:
+            # if more than one usable kernel is found, we will try to load the kernel with the highest priority
+            usable_exts = sorted(usable_exts, key=lambda ext: ext.priority, reverse=True)
+            warnings.warn(
+                f"More than one kernel is available, loading the kernel with the highest priority - {usable_exts[0].__class__.__name__}"
+            )
         return usable_exts[0].load()
 
 
@@ -100,4 +106,4 @@ class ScaledUpperTriangleMaskedSoftmaxLoader(KernelLoader):
 
 
 class FlashAttentionLoader(KernelLoader):
-    REGISTRY = [FlashAttentionNpuExtension, FlashAttentionCudaExtension]
+    REGISTRY = [FlashAttentionNpuExtension, FlashAttentionDaoCudaExtension, FlashAttentionXformersCudaExtension]
