@@ -124,7 +124,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
 
         Path(checkpoint_path).mkdir(parents=True, exist_ok=True)
 
-        state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=True)
+        state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=False)
         weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint_path)
 
@@ -455,7 +455,7 @@ class GeminiPlugin(DPPluginBase):
 
     def supported_devices(self) -> List[str]:
         return ["cuda", "npu"]
-    
+
     def prepare_dataloader(
         self, dataset, batch_size, shuffle=False, seed=1024, drop_last=False, pin_memory=False, num_workers=0, **kwargs
     ):
@@ -486,7 +486,10 @@ class GeminiPlugin(DPPluginBase):
         zero_rank = self.pg_mesh.coordinate(ZERO_AXIS)
         extra_dp_rank = self.pg_mesh.coordinate(DP_AXIS)
         sampler = DistributedSampler(
-            dataset, num_replicas=zero_world_size * extra_dp_world_size, rank=zero_rank * extra_dp_world_size + extra_dp_rank, shuffle=shuffle
+            dataset,
+            num_replicas=zero_world_size * extra_dp_world_size,
+            rank=zero_rank * extra_dp_world_size + extra_dp_rank,
+            shuffle=shuffle,
         )
 
         # Deterministic dataloader
