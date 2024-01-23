@@ -52,6 +52,10 @@ class ShardConfig:
         return self._sequence_parallel_size
 
     def __post_init__(self):
+        # turn on all optimization if all_optimization is set to True
+        if self.enable_all_optimization:
+            self._turn_on_all_optimization()
+
         if self.enable_sequence_parallelism:
             self.sequence_parallelism_mode = (
                 "1" if self.sequence_parallelism_mode is None else self.sequence_parallelism_mode
@@ -94,10 +98,6 @@ class ShardConfig:
         else:
             self._sequence_parallel_size = dist.get_world_size(self.sequence_parallel_process_group)
 
-        # turn on all optimization if all_optimization is set to True
-        if self.enable_all_optimization:
-            self._turn_on_all_optimization()
-
     def _turn_on_all_optimization(self):
         """
         Turn on all optimization.
@@ -106,10 +106,12 @@ class ShardConfig:
         self.enable_fused_normalization = True
         self.enable_flash_attention = True
         self.enable_jit_fused = True
-        self.enable_sequence_parallelism = True
-        self.enable_sequence_overlap = True
-        # todo modify default sequence parallelism mode
-        self.sequence_parallelism_mode = "1"
+        if self.enable_tensor_parallelism:
+            self.enable_sequence_parallelism = True
+            self.enable_sequence_overlap = True
+            # todo modify default sequence parallelism mode and process group
+            self.sequence_parallelism_mode = "1"
+            self.sequence_parallel_process_group = self.tensor_parallel_process_group
 
     def _infer(self):
         """
