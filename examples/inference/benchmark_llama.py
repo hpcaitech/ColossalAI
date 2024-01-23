@@ -98,8 +98,10 @@ def benchmark_inference(args):
         elif args.dtype == "bf16":
             model = model.to(torch.bfloat16)
 
-        # mbsz = args.mbsz
-        mbsz = args.batch_size
+        if args.continous_batching:
+            mbsz = args.mbsz
+        else:
+            mbsz = args.batch_size
         if args.mode == "caiinference":
             inference_config = InferenceConfig(
                 dtype=args.dtype,
@@ -205,6 +207,9 @@ if __name__ == "__main__":
         default="caiinference",
         choices=["caiinference", "transformers"],
         help="decide which inference framework to run",
+    )
+    parser.add_argument(
+        "-cb", "--continous_batching", default=False, action="store_true", help="enable continous batching"
     )
     args = parser.parse_args()
     benchmark(args)

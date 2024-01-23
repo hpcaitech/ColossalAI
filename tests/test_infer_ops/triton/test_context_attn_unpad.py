@@ -4,7 +4,7 @@ from packaging import version
 
 from colossalai.kernel.triton import context_attention_unpadded
 from colossalai.utils import get_current_device
-from tests.test_infer_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache, torch_attn_ref
+from tests.test_infer_ops.triton.kernel_utils import generate_caches_and_block_tables, torch_attn_ref
 
 try:
     import triton  # noqa
@@ -15,6 +15,8 @@ except ImportError:
     print("please install triton from https://github.com/openai/triton")
 
 TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
+
+HEAD_DIM = 32
 
 
 def torch_attn_unpad(
@@ -34,9 +36,9 @@ def torch_attn_unpad(
         mask[mask == 0.0] = float("-inf")
 
         torch_attn_ref_out = torch_attn_ref(
-            q[start_idx:end_idx].unsqueeze(0),
-            k[start_idx:end_idx].unsqueeze(0),
-            v[start_idx:end_idx].unsqueeze(0),
+            q[start_idx:end_idx].unsqueeze(0).transpose(1, 2),
+            k[start_idx:end_idx].unsqueeze(0).transpose(1, 2),
+            v[start_idx:end_idx].unsqueeze(0).transpose(1, 2),
             mask,
             1,  # set bsz as 1 as we're processing sequence one by one
             seq_len,
@@ -74,7 +76,6 @@ def test_context_attention(
 
     num_kv_heads = num_attn_heads // kv_group_num
     assert isinstance(num_kv_heads, int) and num_kv_heads > 0, "Invalid number of kv heads."
-    head_dim = 32
     max_seq_len = max_num_blocks_per_seq * block_size
     dtype = torch.float16
     device = get_current_device()
@@ -85,28 +86,28 @@ def test_context_attention(
         context_lengths = torch.randint(low=1, high=max_seq_len, size=(bsz,), dtype=torch.int32, device=device)
     num_tokens = torch.sum(context_lengths).item()
 
-    qkv_size = (num_tokens, num_attn_heads + 2 * num_kv_heads, head_dim)
-    qkv = torch.empty(size=qkv_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
-    q, k, v = torch.split(qkv, [num_attn_heads, num_kv_heads, num_kv_heads], dim=-2)
+    qkv_size = (num_tokens, num_attn_heads + 2 * num_kv_heads, HEAD_DIM)
+    qkv_unpad = torch.empty(size=qkv_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
+    q_unpad, k_unpad, v_unpad = torch.split(qkv_unpad, [num_attn_heads, num_kv_heads, num_kv_heads], dim=-2)
 
-    cache_shape = (bsz * max_num_blocks_per_seq, num_kv_heads, head_dim, block_size)
-    k_cache_torch = torch.zeros(size=cache_shape, dtype=dtype, device=device)
-    k_cache_triton = torch.zeros_like(k_cache_torch)
-    v_cache_torch = torch.zeros(size=cache_shape, dtype=dtype, device=device)
-    v_cache_triton = torch.zeros_like(v_cache_torch)
-
-    # Mock allocation on block tables
-    block_tables = mock_alloc_block_table_and_kvcache(
-        k, v, k_cache_torch, v_cache_torch, context_lengths, bsz, max_num_blocks_per_seq, block_size
+    k_cache_ref, v_cache_ref, block_tables = generate_caches_and_block_tables(
+        k_unpad, v_unpad, context_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
     )
     block_tables = block_tables.to(device=device)
+    k_cache_triton = torch.zeros_like(k_cache_ref)
+    v_cache_triton = torch.zeros_like(v_cache_ref)
+
     out_triton = context_attention_unpadded(
-        q, k, v, k_cache_triton, v_cache_triton, context_lengths, block_tables, block_size
+        q_unpad, k_unpad, v_unpad, k_cache_triton, v_cache_triton, context_lengths, block_tables, block_size
     )
 
-    out_torch = torch_attn_unpad(q, k, v, context_lengths, num_attn_heads, num_kv_heads)
+    out_torch = torch_attn_unpad(q_unpad, k_unpad, v_unpad, context_lengths, num_attn_heads, num_kv_heads)
 
     assert out_torch.shape == out_triton.shape
-    assert torch.allclose(out_torch, out_triton, atol=1e-3, rtol=1e-4)
-    assert torch.allclose(k_cache_torch, k_cache_triton)
-    assert torch.allclose(v_cache_torch, v_cache_triton)
+    assert torch.allclose(out_torch, out_triton, atol=1e-3)
+    assert torch.equal(k_cache_ref, k_cache_triton)
+    assert torch.equal(v_cache_ref, v_cache_triton)
+
+
+if __name__ == "__main__":
+    test_context_attention(4, 32, 8, 16, 1, True)
