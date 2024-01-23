@@ -14,6 +14,7 @@ from ..modeling.llama import (
     get_llama_model_forward_for_flash_attn,
     get_llama_seq_parallel_attention_forward,
     get_llama_seq_parallel_model_forward,
+    get_llama_decoder_seq_parallel_model_forward,
     get_lm_forward_with_dist_cross_entropy,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -54,10 +55,20 @@ class LlamaPolicy(Policy):
         # sp_partial_derived = sp_mode in ["1"]
         # todo: Support SP for LlaMa model
         if sp_mode == "1":
-            self.shard_config.enable_sequence_parallelism = False
-            self.shard_config.sequence_parallelism_mode = None
-            sp_mode = None
-            warnings.warn("Llama doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group),
+                },
+                policy=policy,
+                target_key=LlamaModel,
+            )
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group),
+                },
+                policy=policy,
+                target_key=LlamaAttention,
+            )
         elif sp_mode == "2":
             self.append_or_create_method_replacement(
                 description={
@@ -68,7 +79,7 @@ class LlamaPolicy(Policy):
             )
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_seq_parallel_model_forward(sp_mode, sp_size),
+                    "forward": get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
                 target_key=LlamaModel,
@@ -95,7 +106,7 @@ class LlamaPolicy(Policy):
             )
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_seq_parallel_model_forward(sp_mode, sp_size),
+                    "forward": get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
                 target_key=LlamaModel,
@@ -176,6 +187,17 @@ class LlamaPolicy(Policy):
             policy=policy,
             target_key=LlamaDecoderLayer,
         )
+
+        '''
+        if sp_mode == "1" and False:
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_llama_decoder_seq_parallel_model_forward(sp_mode, sp_size, sp_group),
+                },
+                policy=policy,
+                target_key=LlamaDecoderLayer,
+            )
+        '''
 
         self.append_or_create_submodule_replacement(
             description=SubModuleReplacementDescription(
@@ -319,7 +341,9 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
 
         policy = super().module_policy()
 
-        if self.shard_config.enable_tensor_parallelism:
+        setattr(self.shard_config, "causal_lm", True)
+
+        if self.shard_config.enable_tensor_parallelism and not self.shard_config.enable_sequence_parallelism:
             # add a new item for casual lm
             new_item = {
                 LlamaForCausalLM: ModulePolicyDescription(
