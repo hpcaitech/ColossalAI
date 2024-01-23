@@ -109,7 +109,7 @@ def train(args):
 
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, use_fast=False, trust_remote_code=True)
     if os.path.exists(args.conversation_template_config):
         conversation_template_config = json.load(open(args.conversation_template_config, "r", encoding='utf8'))
         conversation_template = setup_conversation_template(tokenizer, 

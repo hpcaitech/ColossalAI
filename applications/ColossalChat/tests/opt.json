@@ -1,0 +1,17 @@
+{
+    "chat_template": "{% for message in messages %}{% if message['role'] == 'user' %}{{'Human: ' + bos_token + message['content'].strip() + eos_token }}{% elif message['role'] == 'system' %}{{ message['content'].strip() + '\\n\\n' }}{% elif message['role'] == 'assistant' %}{{ 'Assistant: ' + bos_token + message['content'].strip() + eos_token }}{% endif %}{% endfor %}",
+    "system_message": "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.\n\n",
+    "human_line_start": [
+        2
+    ],
+    "human_line_end": [
+        2
+    ],
+    "assistant_line_start": [
+        2
+    ],
+    "assistant_line_end": [
+        2
+    ],
+    "end_of_system_line_position": 0
+}

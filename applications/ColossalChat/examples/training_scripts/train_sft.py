@@ -122,7 +122,7 @@ def train(args):
         coordinator.print_on_master(msg="Flash-attention enabled successfully")
 
     # configure tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir or args.pretrain)
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir or args.pretrain, use_fast=False, trust_remote_code=True)
     if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
         try:
             # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen

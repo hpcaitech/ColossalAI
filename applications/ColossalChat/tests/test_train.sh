@@ -25,12 +25,13 @@ BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
 EXAMPLES_DIR=$BASE_DIR/examples
 CONFIG_DIR=$BASE_DIR/config
 TEMP_DIR=$BASE_DIR/temp
+TEST_DIR=$BASE_DIR/tests
 MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
 # Skip those tests due to CI tests timeout
 MODELS=('llama')
-# PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d') # gemini is currently buggy
-PLUGINS=('gemini_auto' 'zero2' 'zero2_cpu' '3d')
+PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d')
+# PLUGINS=('gemini')
 LORA_RANK=('0')  # skip to reduce CI execution time, can pass all locally
 
 export OMP_NUM_THREADS=8
@@ -41,7 +42,9 @@ pip install -r $EXAMPLES_DIR/requirements.txt
 get_pretrain() {
     local model=$1
     if [[ $model == "llama" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/sheared_llama"
+        echo "nickypro/tinyllama-110M"
+    elif [[ $model == "opt" ]]; then
+        echo "facebook/opt-125m"
     else
         echo "Unknown model $model"
         exit 1
@@ -51,7 +54,9 @@ get_pretrain() {
 get_tokenizer_dirs() {
     local model=$1
     if [[ $model == "llama" ]]; then
-        echo "princeton-nlp/Sheared-LLaMA-1.3B"
+        echo "hf-internal-testing/llama-tokenizer"
+    elif [[ $model == "opt" ]]; then
+        echo "facebook/opt-125m"
     else
         echo "Unknown model $model"
         exit 1
@@ -62,7 +67,9 @@ get_tokenizer_dirs() {
 get_conversation_template_config() {
     local model=$1
     if [[ $model == "llama" ]]; then
-        echo "$CONFIG_DIR/conversation_template/Sheared-LLaMA.json"
+        echo "$TEST_DIR/llama.json"
+    elif [[ $model == "opt" ]]; then
+        echo "$TEST_DIR/opt.json"
     else
         echo "Unknown model $model"
         exit 1
@@ -118,7 +125,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                 for split in $(seq -f "%05g" 0 0); do
                     dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_sft/arrow/part-$split")
                 done
-                colossalai run --nproc_per_node 4 --master_port 28537 $EXAMPLES_DIR/training_scripts/train_sft.py \
+                colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_sft.py \
                     --pretrain $pretrain \
                     --tokenizer_dir $tokenizer_dir \
                     --dataset ${dataset[@]} \
@@ -188,7 +195,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                 for split in $(seq -f "%05g" 0 0); do
                     dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_preference/arrow/part-$split")
                 done
-                colossalai run --nproc_per_node 4 --master_port 28537 $EXAMPLES_DIR/training_scripts/train_rm.py \
+                colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_rm.py \
                     --pretrain $pretrain \
                     --tokenizer_dir $tokenizer_dir \
                     --dataset ${dataset[@]} \
@@ -272,7 +279,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                 for split in $(seq -f "%05g" 0 0); do
                     ptx_dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_sft/arrow/part-$split")
                 done
-                colossalai run --nproc_per_node 4 --master_port 28537 $EXAMPLES_DIR/training_scripts/train_ppo.py \
+                colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_ppo.py \
                     --pretrain $pretrain \
                     --rm_pretrain $pretrain \
                     --tokenizer_dir $tokenizer_dir \
@@ -356,7 +363,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                 for split in $(seq -f "%05g" 0 0); do
                     dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_preference/arrow/part-$split")
                 done
-                colossalai run --nproc_per_node 4 --master_port 28537 $EXAMPLES_DIR/training_scripts/train_dpo.py \
+                colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_dpo.py \
                     --pretrain $pretrain \
                     --tokenizer_dir $tokenizer_dir \
                     --dataset ${dataset[@]} \

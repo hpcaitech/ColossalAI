@@ -36,6 +36,7 @@ fi
 NUM_RETRY=3
 BASE_DIR=$(dirname $(dirname $(realpath $BASH_SOURCE)))
 BASE_TEMP_DIR=$BASE_DIR/temp
+TEST_DIR=$BASE_DIR/tests
 EXAMPLES_DIR=$BASE_DIR/examples
 DATA_SAVE_PATH=$BASE_TEMP_DIR/rlhf_data
 CONFIG_DIR=$BASE_DIR/config
@@ -79,7 +80,9 @@ get_data_input_dirs() {
 get_conversation_template_config() {
     local model=$1
     if [[ $model == "llama" ]]; then
-        echo "$CONFIG_DIR/conversation_template/Sheared-LLaMA.json"
+        echo "$TEST_DIR/llama.json"
+    elif [[ $model == "opt" ]]; then
+        echo "$TEST_DIR/opt.json"
     else
         echo "Unknown model $model"
         exit 1
@@ -89,7 +92,9 @@ get_conversation_template_config() {
 get_tokenizer_dirs() {
     local model=$1
     if [[ $model == "llama" ]]; then
-        echo "princeton-nlp/Sheared-LLaMA-1.3B"
+        echo "hf-internal-testing/llama-tokenizer"
+    elif [[ $model == "opt" ]]; then
+        echo "facebook/opt-125m"
     else
         echo "Unknown model $model"
         exit 1
