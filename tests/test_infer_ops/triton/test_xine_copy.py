@@ -30,7 +30,6 @@ def test_get_xine_cache(BATCH_SIZE, MAX_SEQ_LEN, HEAD_DIM, dtype):
     assert torch.allclose(cos, cos_ref)
     # decoding
     cos_ref, sin_ref = get_cos_sin(lengths, cos_cache, cos_cache, is_prompts=False, dtype=dtype)
-    lengths -= 1
     cos = get_xine_cache(lengths, cos_cache, is_prompts=False)
 
     assert torch.allclose(cos, cos_ref)

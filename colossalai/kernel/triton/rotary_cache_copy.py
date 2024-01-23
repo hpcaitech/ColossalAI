@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import torch
 import triton
 import triton.language as tl
@@ -94,9 +96,10 @@ def get_xine_cache(lengths: torch.Tensor, cache: torch.Tensor, is_prompts: bool 
         # BUG: get memory access error whe using a deepcopy lengths to replace lengths
         output = torch.empty((num_seqs, hidden_dim), dtype=cache.dtype, device=cache.device)
         grid = (triton.cdiv(num_seqs, BLOCK_SIZE),)
+        nlengths = deepcopy(lengths)
         decoding_cache_kernel[grid](
             cache,
-            lengths,
+            nlengths,
             output,
             cache_stride,
             hidden_stride,
