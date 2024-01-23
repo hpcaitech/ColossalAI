@@ -75,7 +75,7 @@ class LlamaPolicy(Policy):
         elif sp_mode == "3":
             decoder_attribute_replacement = {
                 "num_heads": self.model.config.num_attention_heads // sp_size,
-                "head_dim": self.model.config.hidden_size // self.model.config.num_attention_heads,
+                # "head_dim": self.model.config.hidden_size // self.model.config.num_attention_heads,
             }
             if getattr(self.model.config, "num_key_value_heads", False):
                 decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size

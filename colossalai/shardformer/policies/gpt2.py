@@ -46,8 +46,20 @@ class GPT2Policy(Policy):
             norm_cls = col_nn.LayerNorm
 
         sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        sp_size = self.shard_config.sequence_parallel_size
+        sp_group = self.shard_config.sequence_parallel_process_group
         overlap = self.shard_config.enable_sequence_overlap
         sp_partial_derived = sp_mode in ["1"]
+
+        if sp_mode == "2":
+            pass
+        elif sp_mode == "3":
+            decoder_attribute_replacement = {
+                "num_heads": self.model.config.num_attention_heads // sp_size,
+            }
+            policy[GPT2Attention] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+            )
 
         if self.shard_config.enable_tensor_parallelism:
             policy[GPT2Model] = ModulePolicyDescription(
@@ -145,14 +157,16 @@ class GPT2Policy(Policy):
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_gpt2_flash_attention_forward(),
+                    "forward": get_gpt2_flash_attention_forward(sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
                 target_key=GPT2Attention,
             )
 
-        if sp_mode == "1":
-            policy[GPT2Model].method_replacement = {"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)}
+        if sp_mode is not None:
+            policy[GPT2Model].method_replacement = {
+                "forward": gpt2_sequence_parallel_forward_fn(sp_mode, sp_size, sp_group)
+            }
 
         return policy
 

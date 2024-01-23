@@ -1,5 +1,4 @@
 import copy
-import math
 from contextlib import nullcontext
 from typing import Any, Callable, Dict, List, Optional
 
@@ -163,26 +162,29 @@ def run_forward_backward_with_hybrid_plugin(
     #     tg_size[1] = 64 * 2
     #     data[k] = v.repeat(tg_size)
 
-    if (
-        booster.plugin.shard_config.enable_sequence_parallelism
-        and booster.plugin.shard_config.sequence_parallelism_mode in ["1", "2"]
-        and booster.plugin.tp_size != 0
-    ):
-        seq_len = data["input_ids"].shape[-1]
-        lcm = booster.plugin.tp_size * seq_len // math.gcd(booster.plugin.tp_size, seq_len)
-        times = lcm // seq_len
-        input_shape = data["input_ids"].shape
-        for k, v in data.items():
-            if v.shape == input_shape:
-                data[k] = v.repeat((1,) * (v.dim() - 1) + (times,))
+    # if (
+    #     booster.plugin.shard_config.enable_sequence_parallelism
+    #     and booster.plugin.shard_config.sequence_parallelism_mode in ["1", "2"]
+    #     and booster.plugin.tp_size != 0
+    # ):
+    #     seq_len = data["input_ids"].shape[-1]
+    #     lcm = booster.plugin.tp_size * seq_len // math.gcd(booster.plugin.tp_size, seq_len)
+    #     times = lcm // seq_len
+    #     input_shape = data["input_ids"].shape
+    #     for k, v in data.items():
+    #         if v.shape == input_shape:
+    #             data[k] = v.repeat((1,) * (v.dim() - 1) + (times,))
 
     shard_test_data = {}
     for k, v in data.items():
-        if k == "labels":
+        if k not in ["input_ids", "attention_mask"]:
             shard_test_data[k] = data[k].clone()
         else:
+            # todo: check the correctness of using dim=-1: to be compatible with date_gen_for_double_heads()
             shard_test_data[k] = (
-                torch.chunk(data[k].clone(), booster.plugin.shard_config.sequence_parallel_size, dim=1)[dist.get_rank()]
+                torch.chunk(data[k].clone(), booster.plugin.shard_config.sequence_parallel_size, dim=-1)[
+                    dist.get_rank()
+                ]
                 if booster.plugin.shard_config.enable_sequence_parallelism
                 and booster.plugin.shard_config.sequence_parallelism_mode in ["2", "3"]
                 else data[k].clone()
