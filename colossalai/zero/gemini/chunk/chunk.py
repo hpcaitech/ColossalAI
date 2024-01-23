@@ -190,8 +190,10 @@ class Chunk:
     def device_type(self) -> str:
         if self.chunk_temp is not None:
             return self.chunk_temp.device.type
-        else:
+        elif self.is_gathered or self.cuda_shard is not None:
             return get_accelerator().name
+        else:
+            return "cpu"
 
     @property
     def payload(self) -> torch.Tensor:
