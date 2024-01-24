@@ -20,10 +20,10 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import (
     _gather,
     all_to_all_comm,
-    gather_forward_split_backward,
-    split_forward_gather_backward,
     gather_forward_reducescatter_backward,
+    gather_forward_split_backward,
     reducescatter_forward_gather_backward,
+    split_forward_gather_backward,
 )
 from colossalai.shardformer.shard import ShardConfig
 
@@ -443,6 +443,7 @@ class LlamaPipelineForwards:
             hidden_states = transformer_outputs.get("hidden_states")
             return {"hidden_states": hidden_states}
 
+
 def get_llama_flash_attention_forward(shard_config):
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
@@ -466,11 +467,11 @@ def get_llama_flash_attention_forward(shard_config):
         bsz, q_len, _ = hidden_states.size()
         sp_mode = shard_config.sequence_parallelism_mode
         sp_size = shard_config.sequence_parallel_size
-        
-        if sp_mode in["1", "2"]:
+
+        if sp_mode in ["1", "2"]:
             q_len *= shard_config.sequence_parallel_size
         assert q_len % 4 == 0, "Flash Attention Error: The sequence length should be a multiple of 4."
-        
+
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
         value_states = self.v_proj(hidden_states)
@@ -816,7 +817,7 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
         # sp: modify sp_len when sequence parallel mode is 2
-        if sp_mode in["1", "2"]:
+        if sp_mode in ["1", "2"]:
             q_len *= sp_size
         if self.config.pretraining_tp > 1:
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
@@ -882,9 +883,10 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
                 attention_mask_chunks = attention_mask.chunk(block_num, dim=2)
             attn_output_chunks = []
 
-
             for i in range(block_num):
-                attn_weights = torch.matmul(query_states_chunks[i], key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+                attn_weights = torch.matmul(query_states_chunks[i], key_states.transpose(2, 3)) / math.sqrt(
+                    self.head_dim
+                )
                 if attention_mask is not None:
                     attn_weights = attn_weights + attention_mask_chunks[i]
                 attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
@@ -942,19 +944,23 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
 
 import torch.distributed as dist
 
-def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
 
+def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
     logger = logging.get_logger(__name__)
 
     # Copied from transformers.models.bart.modeling_bart._make_causal_mask
     def _make_causal_mask_partial(
-        input_ids_shape: torch.Size, dtype: torch.dtype, device: torch.device, past_key_values_length: int = 0, sp_group = None
+        input_ids_shape: torch.Size,
+        dtype: torch.dtype,
+        device: torch.device,
+        past_key_values_length: int = 0,
+        sp_group=None,
     ):
         """
         Make causal mask used for bi-directional self-attention.
         """
         bsz, tgt_len = input_ids_shape
-        world_size = dist.get_world_size()
+        world_size = dist.get_world_size(sp_group)
         tgt_len *= world_size
 
         mask = torch.full((tgt_len, tgt_len // world_size), torch.finfo(dtype).min, device=device)
@@ -964,23 +970,24 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
         idx = dist.get_rank()
         off = idx * block_size
 
-        mask.masked_fill_(mask_cond[off:off+block_size] < (mask_cond + 1).view(mask.size(-1) * world_size, 1), 0)
+        mask.masked_fill_(mask_cond[off : off + block_size] < (mask_cond + 1).view(mask.size(-1) * world_size, 1), 0)
         mask = mask.to(dtype)
 
         if past_key_values_length > 0:
-            mask = torch.cat([torch.zeros(tgt_len // world_size, past_key_values_length, dtype=dtype, device=device), mask], dim=-1)
+            mask = torch.cat(
+                [torch.zeros(tgt_len // world_size, past_key_values_length, dtype=dtype, device=device), mask], dim=-1
+            )
         return mask[None, None, :, :].expand(bsz, 1, tgt_len, (tgt_len + past_key_values_length) // world_size)
 
-
     # Copied from transformers.models.bart.modeling_bart._expand_mask
-    def _expand_mask_partial(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None, sp_group = None):
+    def _expand_mask_partial(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None, sp_group=None):
         """
         Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`.
         """
         bsz, src_len = mask.size()
         tgt_len = tgt_len if tgt_len is not None else src_len
 
-        world_size = dist.get_world_size()
+        world_size = dist.get_world_size(sp_group)
 
         expanded_mask = mask[:, None, None, :].expand(bsz, 1, tgt_len * world_size, src_len).to(dtype)
 
@@ -988,9 +995,10 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
 
         return inverted_mask.masked_fill(inverted_mask.to(torch.bool), torch.finfo(dtype).min)
 
-
     # Copied from transformers.models.bart.modeling_bart.BartDecoder._prepare_decoder_attention_mask
-    def _prepare_decoder_attention_mask_partial(attention_mask, input_shape, inputs_embeds, past_key_values_length, sp_group = None):
+    def _prepare_decoder_attention_mask_partial(
+        attention_mask, input_shape, inputs_embeds, past_key_values_length, sp_group=None
+    ):
         # create causal mask
         # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
         combined_attention_mask = None
@@ -1000,20 +1008,19 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                 inputs_embeds.dtype,
                 device=inputs_embeds.device,
                 past_key_values_length=past_key_values_length,
-                sp_group=sp_group
+                sp_group=sp_group,
             )
 
         if attention_mask is not None:
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-            expanded_attn_mask = _expand_mask_partial(attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1], sp_group=sp_group).to(
-                inputs_embeds.device
-            )
+            expanded_attn_mask = _expand_mask_partial(
+                attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1], sp_group=sp_group
+            ).to(inputs_embeds.device)
             combined_attention_mask = (
                 expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask + combined_attention_mask
             )
 
         return combined_attention_mask
-
 
     def forward(
         self,
@@ -1126,6 +1133,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
 
             past_key_value = past_key_values[idx] if past_key_values is not None else None
             if (self.gradient_checkpointing or sp_mode in ["2", "3"]) and self.training:
+
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
                         # None for past_key_value
@@ -1140,7 +1148,6 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                     position_ids,
                 )
             else:
-                
                 layer_outputs = decoder_layer(
                     hidden_states,
                     attention_mask=attention_mask,
@@ -1287,7 +1294,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
 
 
 def get_llama_decoder_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -1353,4 +1359,5 @@ def get_llama_decoder_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
             outputs += (present_key_value,)
 
         return outputs
+
     return forward
