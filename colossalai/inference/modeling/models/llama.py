@@ -103,14 +103,15 @@ def llama_model_forward(
 
     cos_sin = get_cos_sin(sequence_lengths, self._cos_cached, self._sin_cached, batch.is_prompts, batch.dtype)
 
-    if batch.is_prompts:
-        output_tensor = torch.zeros(
-            (sequence_lengths.sum().item(), batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
-        )
-    else:
-        output_tensor = torch.zeros(
-            (batch_size, 1, batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
-        )
+    # if batch.is_prompts:
+    #     output_tensor = torch.zeros(
+    #         (sequence_lengths.sum().item(), batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
+    #     )
+    # else:
+    #     output_tensor = torch.zeros(
+    #         (batch_size, 1, batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
+    #     )
+    output_tensor = None
     sm_scale = 1.0 / (batch.head_dim**0.5)
 
     for layer_id, decoder_layer in enumerate(self.layers):
@@ -227,17 +228,17 @@ def llama_attn_forward(
 
         if is_prompts:
             attn_output = context_attention_unpadded(
-                query_states,
-                key_states,
-                value_states,
-                k_cache,
-                v_cache,
-                output_tensor,
-                sequence_lengths,
-                block_tables,
-                block_size,
-                kv_seq_len,
-                sm_scale,
+                q=query_states,
+                k=key_states,
+                v=value_states,
+                k_cache=k_cache,
+                v_cache=v_cache,
+                output=output_tensor,
+                context_lengths=sequence_lengths,
+                block_tables=block_tables,
+                block_size=block_size,
+                max_seq_len=kv_seq_len,
+                sm_scale=sm_scale,
             )
             if attention_mask is not None:
                 attn_output = pad_input(attn_output, indices, bsz, q_len)
@@ -245,17 +246,17 @@ def llama_attn_forward(
             copy_kv_to_blocked_cache(key_states, k_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
             copy_kv_to_blocked_cache(value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
             attn_output = flash_decoding_attention(
-                query_states,
-                k_cache,
-                v_cache,
-                output_tensor,
-                sequence_lengths,
-                block_tables,
-                block_size,
-                kv_seq_len,
-                fd_inter_tensor.mid_output,
-                fd_inter_tensor.mid_output_lse,
-                sm_scale,
+                q=query_states,
+                k_cache=k_cache,
+                v_cache=v_cache,
+                output=output_tensor,
+                kv_seq_len=sequence_lengths,
+                block_tables=block_tables,
+                block_size=block_size,
+                max_seq_len_in_batch=kv_seq_len,
+                mid_output=fd_inter_tensor.mid_output,
+                mid_output_lse=fd_inter_tensor.mid_output_lse,
+                sm_scale=sm_scale,
             )
             attn_output = attn_output.squeeze(1)
     else:

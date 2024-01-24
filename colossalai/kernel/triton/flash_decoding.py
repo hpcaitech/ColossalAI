@@ -252,6 +252,8 @@ def flash_decoding_attention(
         if mid_output_lse is None
         else mid_output_lse
     )
+    
+    output = torch.empty((bsz, 1, num_heads, head_dim), dtype=q.dtype, device=q.device) if output is None else output
 
     grid = (triton.next_power_of_2(bsz), num_heads, triton.cdiv(triton.next_power_of_2(max_seq_len_in_batch), BLOCK_KV))
     _flash_decoding_fwd_kernel[grid](
