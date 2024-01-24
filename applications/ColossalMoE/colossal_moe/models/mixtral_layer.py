@@ -22,6 +22,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         self.ep_size = dist.get_world_size(ep_group) if ep_group is not None else 1
         self.ep_rank = dist.get_rank(ep_group) if ep_group is not None else 0
         assert self.num_experts % self.ep_size == 0
+        self.ep_group = ep_group
         self.num_experts_per_ep = self.num_experts // self.ep_size
         self.expert_start_idx = self.ep_rank * self.num_experts_per_ep
         held_experts = self.experts[self.expert_start_idx : self.expert_start_idx + self.num_experts_per_ep]
@@ -53,11 +54,11 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         dispatch_states = hidden_states.repeat(self.top_k, 1)[selected_experts_idx]
         input_split_sizes = selected_experts.bincount()
         output_split_sizes = torch.zeros_like(input_split_sizes)
-        dist.all_to_all_single(output_split_sizes, input_split_sizes)
+        dist.all_to_all_single(output_split_sizes, input_split_sizes, group=self.ep_group)
 
         input_split_list = input_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
-        output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list)
+        output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list, self.ep_group)
         # compute expert output
         output_states = MoeInGradScaler.apply(output_states, self.ep_size)
         if self.num_experts_per_ep == 1:
@@ -78,7 +79,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
                 output_states_list.append(split_states)
             output_states = torch.cat(output_states_list)
         output_states = MoeOutGradScaler.apply(output_states, self.ep_size)
-        dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list)
+        dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list, self.ep_group)
         recover_experts_idx = torch.empty_like(selected_experts_idx)
         recover_experts_idx[selected_experts_idx] = torch.arange(
             selected_experts_idx.size(0), device=selected_experts_idx.device
