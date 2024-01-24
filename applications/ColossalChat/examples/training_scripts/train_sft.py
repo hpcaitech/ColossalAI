@@ -14,7 +14,7 @@ from coati.dataset import (
 )
 from coati.models import convert_to_lora_module
 from coati.trainer import SFTTrainer
-from coati.utils import replace_with_flash_attention, load_checkpoint
+from coati.utils import load_checkpoint
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai
@@ -106,7 +106,13 @@ def train(args):
 
     init_ctx = nullcontext()
     with init_ctx:
-        model = AutoModelForCausalLM.from_pretrained(args.pretrain)
+        if args.use_flash_attn:
+            model = AutoModelForCausalLM.from_pretrained(args.pretrain, 
+                        torch_dtype=torch.bfloat16 if args.mixed_precision=='bf16' else torch.float16, 
+                        use_flash_attention_2=True)
+            coordinator.print_on_master(msg="Flash-attention enabled successfully")
+        else:
+            model = AutoModelForCausalLM.from_pretrained(args.pretrain)
         if args.lora_rank > 0:
             model = convert_to_lora_module(model, args.lora_rank, lora_train_bias=args.lora_train_bias)
 
@@ -117,9 +123,6 @@ def train(args):
     elif args.lora_rank > 0:
         coordinator.print_on_master(msg="Gradient checkpointing will be disabled when LoRA is enabled")
 
-    if args.use_flash_attn:
-        replace_with_flash_attention(model=model)
-        coordinator.print_on_master(msg="Flash-attention enabled successfully")
 
     # configure tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir or args.pretrain, use_fast=False, trust_remote_code=True)

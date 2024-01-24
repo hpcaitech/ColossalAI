@@ -14,7 +14,7 @@ from coati.dataset import (
 )
 from coati.models import convert_to_lora_module, disable_dropout
 from coati.trainer import DPOTrainer
-from coati.utils import load_checkpoint, replace_with_flash_attention
+from coati.utils import load_checkpoint
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai
@@ -102,10 +102,21 @@ def train(args):
 
     init_ctx = nullcontext()
     with init_ctx:
-        model = AutoModelForCausalLM.from_pretrained(args.pretrain)
+        if args.use_flash_attn:
+            model = AutoModelForCausalLM.from_pretrained(args.pretrain, 
+                        torch_dtype=torch.bfloat16 if args.mixed_precision=='bf16' else torch.float16, 
+                        use_flash_attention_2=True)
+            coordinator.print_on_master(msg="Flash-attention enabled successfully")
+        else:
+            model = AutoModelForCausalLM.from_pretrained(args.pretrain)
         disable_dropout(model)
         if args.enable_reference_model:
-            ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain)
+            if args.use_flash_attn:
+                ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain, 
+                            torch_dtype=torch.bfloat16 if args.mixed_precision=='bf16' else torch.float16, 
+                            use_flash_attention_2=True)
+            else:
+                ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain)
             disable_dropout(ref_model)
         else:
             ref_model = None
@@ -118,10 +129,6 @@ def train(args):
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
     elif args.lora_rank > 0:
         coordinator.print_on_master(msg="Gradient checkpointing will be disabled when LoRA is enabled")
-
-    if args.use_flash_attn:
-        replace_with_flash_attention(model=model)
-        coordinator.print_on_master(msg="Flash-attention enabled successfully")
 
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
@@ -277,6 +284,7 @@ if __name__ == "__main__":
     parser.add_argument("--warmup_steps", type=int, default=None, help="Warmup steps")
     parser.add_argument("--tp", type=int, default=1)
     parser.add_argument("--pretrain", type=str, default=None)
+    parser.add_argument("--model_type", type=str, default=None)
     parser.add_argument("--tokenizer_dir", type=str, default=None)
     parser.add_argument("--dataset", nargs="+", default=[])
     parser.add_argument(

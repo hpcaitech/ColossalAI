@@ -115,7 +115,7 @@ class SFTTrainer(SLTrainer):
                 if self.writer:
                     self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
                     self.writer.add_scalar("train/lr", self.scheduler.get_last_lr()[0], self.num_train_step)
-                    self.num_train_step += 1
+                self.num_train_step += 1
                 self.accumulative_meter.reset()
                 step_bar.update()
 

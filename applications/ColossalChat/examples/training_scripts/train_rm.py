@@ -15,7 +15,7 @@ from coati.dataset import (
 )
 from coati.models import LogExpLoss, LogSigLoss, RewardModel, convert_to_lora_module
 from coati.trainer import RewardModelTrainer
-from coati.utils import load_checkpoint, replace_with_flash_attention
+from coati.utils import load_checkpoint
 from transformers import AutoTokenizer
 
 import colossalai
@@ -57,7 +57,13 @@ def train(args):
     init_ctx = nullcontext()
     booster_policy = None
     with init_ctx:
-        model = RewardModel(args.pretrain)
+        if args.use_flash_attn:
+            model = RewardModel(args.pretrain, 
+                        torch_dtype=torch.bfloat16 if args.mixed_precision=='bf16' else torch.float16, 
+                        use_flash_attention_2=True)
+            coordinator.print_on_master(msg="Flash-attention enabled successfully")
+        else:
+            model = RewardModel(args.pretrain)
 
         if args.tp > 1:
             if model.model.config.architectures[0] == "BloomForCausalLM":
@@ -142,10 +148,6 @@ def train(args):
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
     elif args.lora_rank > 0:
         coordinator.print_on_master(msg="Gradient checkpointing will be disabled when LoRA is enabled")
-
-    if args.use_flash_attn:
-        replace_with_flash_attention(model=model)
-        coordinator.print_on_master(msg="Flash-attention enabled successfully")
 
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain

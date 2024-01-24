@@ -18,7 +18,7 @@ from coati.models import (
     disable_dropout
 )
 from coati.trainer import PPOTrainer
-from coati.utils import load_checkpoint, replace_with_flash_attention
+from coati.utils import load_checkpoint
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai
@@ -57,12 +57,27 @@ def train(args):
     init_ctx = nullcontext()
     booster_policy = None
     with init_ctx:
-        actor = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True)
+        if args.use_flash_attn:
+            actor = AutoModelForCausalLM.from_pretrained(args.pretrain, 
+                        torch_dtype=torch.bfloat16 if args.mixed_precision=='bf16' else torch.float16, 
+                        use_flash_attention_2=True, local_files_only=True)
+            ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain, 
+                        torch_dtype=torch.bfloat16 if args.mixed_precision=='bf16' else torch.float16, 
+                        use_flash_attention_2=True, local_files_only=True)
+            reward_model = RewardModel(args.rm_pretrain, 
+                        torch_dtype=torch.bfloat16 if args.mixed_precision=='bf16' else torch.float16, 
+                        use_flash_attention_2=True)
+            critic = Critic(args.rm_pretrain, 
+                        torch_dtype=torch.bfloat16 if args.mixed_precision=='bf16' else torch.float16, 
+                        use_flash_attention_2=True)
+            coordinator.print_on_master(msg="Flash-attention enabled successfully")
+        else:
+            actor = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True)
+            ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True)
+            reward_model = RewardModel(args.rm_pretrain)
+            critic = Critic(args.rm_pretrain)
         # Disable dropout
         disable_dropout(actor)
-        ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True)
-        reward_model = RewardModel(args.rm_pretrain)
-        critic = Critic(args.rm_pretrain)
         disable_dropout(critic)
 
         if args.tp > 1:
@@ -101,11 +116,6 @@ def train(args):
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
     elif args.lora_rank > 0:
         coordinator.print_on_master(msg="Gradient checkpointing will be disabled when LoRA is enabled")
-
-    if args.use_flash_attn:
-        replace_with_flash_attention(model=actor)
-        replace_with_flash_attention(model=critic)
-        coordinator.print_on_master(msg="Flash-attention enabled successfully")
 
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain

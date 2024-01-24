@@ -152,10 +152,10 @@ class RewardModelTrainer(SLTrainer):
                 self.optimizer.zero_grad()
                 self.actor_scheduler.step()
                 step_bar.update()
+                self.num_train_step += 1
 
                 # Logging
                 if self.writer and is_rank_0():
-                    self.num_train_step += 1
                     self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
                     self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
                     self.writer.add_scalar(

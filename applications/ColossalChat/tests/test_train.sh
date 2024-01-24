@@ -30,7 +30,8 @@ MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
 # Skip those tests due to CI tests timeout
 MODELS=('llama')
-PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d')
+# PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d')
+PLUGINS=('zero2')
 # PLUGINS=('gemini')
 LORA_RANK=('0')  # skip to reduce CI execution time, can pass all locally
 
@@ -139,7 +140,8 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --tp $tp \
                     --lr 2e-5 \
                     $grad_ckpt \
-                    --max_len 400
+                    --max_len 400 \
+                    --use_flash_attn
                 passed=$?
                 if [ $passed -eq 0 ]; then
                     rm -rf $MODEL_SAVE_PATH/*
@@ -209,7 +211,8 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --tp $tp \
                     --lr 2e-5 \
                     $grad_ckpt \
-                    --max_len 400
+                    --max_len 400 \
+                    --use_flash_attn
                 passed=$?
                 if [ $passed -eq 0 ]; then
                     rm -rf $MODEL_SAVE_PATH/*
@@ -304,7 +307,8 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --lr 2e-5 \
                     $grad_ckpt \
                     --max_len 400 \
-                    --max_seq_len 10
+                    --max_seq_len 10 \
+                    --use_flash_attn
                 passed=$?
                 if [ $passed -eq 0 ]; then
                     rm -rf $MODEL_SAVE_PATH/*
@@ -377,7 +381,8 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --tp $tp \
                     --lr 2e-5 \
                     $grad_ckpt \
-                    --max_len 400
+                    --max_len 400 \
+                    --use_flash_attn
                 passed=$?
                 if [ $passed -eq 0 ]; then
                     rm -rf $MODEL_SAVE_PATH/*

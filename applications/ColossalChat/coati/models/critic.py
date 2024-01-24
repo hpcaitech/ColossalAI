@@ -19,8 +19,8 @@ class Critic(BaseModel):
         config (PretrainedConfig): PretrainedConfig used to initiate the base model.
     """
  
-    def __init__(self, pretrained: str = None, config: Optional[PretrainedConfig] = None) -> None:
-        super().__init__(pretrained=pretrained, config=config)
+    def __init__(self, pretrained: str = None, config: Optional[PretrainedConfig] = None, **kwargs) -> None:
+        super().__init__(pretrained=pretrained, config=config, **kwargs)
         # et last hidden state size with dummy input
         self.value_head = nn.Linear(self.last_hidden_state_size, 1)
 

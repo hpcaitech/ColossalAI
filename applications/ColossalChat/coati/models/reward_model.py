@@ -19,8 +19,8 @@ class RewardModel(BaseModel):
         lora_train_bias (str): LoRA bias training mode.
     """
 
-    def __init__(self, pretrained: str = None, config: Optional[PretrainedConfig] = None) -> None:
-        super().__init__(pretrained=pretrained, config=config)
+    def __init__(self, pretrained: str = None, config: Optional[PretrainedConfig] = None, **kwargs) -> None:
+        super().__init__(pretrained=pretrained, config=config, **kwargs)
         self.value_head = nn.Linear(self.last_hidden_state_size, 1)
         self.value_head.weight.data.normal_(mean=0.0, std=1 / (self.last_hidden_state_size + 1))
 
