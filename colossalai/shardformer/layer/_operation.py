@@ -232,7 +232,7 @@ class _GatherForwardReduceScatterBackward(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         dim = ctx.dim
-        process_group = ctx.process_group 
+        process_group = ctx.process_group
 
         # do reduce-scatter
         new_shape = list(grad_output.shape)
@@ -240,7 +240,9 @@ class _GatherForwardReduceScatterBackward(torch.autograd.Function):
             new_shape[dim] % dist.get_world_size(process_group) == 0
         ), f"The dimension to split ({new_shape[dim]}) is not a multiple of tensor parallel size ({dist.get_world_size(process_group)}). "
         new_shape[dim] = new_shape[dim] // dist.get_world_size(process_group)
-        grad_list = [item.contiguous() for item in torch.chunk(grad_output, dist.get_world_size(process_group), dim=dim)]
+        grad_list = [
+            item.contiguous() for item in torch.chunk(grad_output, dist.get_world_size(process_group), dim=dim)
+        ]
         output = torch.empty(new_shape, dtype=grad_output.dtype, device=grad_output.device)
         dist.reduce_scatter(output, grad_list, group=process_group)
 
@@ -720,7 +722,13 @@ class _AllToAll(torch.autograd.Function):
         ctx.scatter_dim = scatter_dim
         ctx.gather_dim = gather_dim
         world_size = dist.get_world_size(process_group)
-        return _all_to_all(input_, world_size, process_group, scatter_dim, gather_dim)
+        bsz, _, _ = input_.shape
+
+        # using all_to_all_single when batch size is 1
+        if bsz == 1:
+            return _all_to_all_single(input_, world_size, process_group, scatter_dim, gather_dim)
+        else:
+            return _all_to_all(input_, world_size, process_group, scatter_dim, gather_dim)
 
     @staticmethod
     def backward(ctx, *grad_output):
@@ -829,6 +837,35 @@ def _all_to_all(input_, world_size, group, scatter_dim, gather_dim):
     output_list = [torch.empty_like(input_list[0]) for _ in range(world_size)]
     dist.all_to_all(output_list, input_list, group=group)
     return torch.cat(output_list, dim=gather_dim).contiguous()
+
+
+def _all_to_all_single(input_, seq_world_size, group, scatter_dim, gather_dim):
+    inp_shape = list(input_.shape)
+    inp_shape[scatter_dim] = inp_shape[scatter_dim] // seq_world_size
+    if scatter_dim < 2:
+        input_t = input_.reshape([seq_world_size, inp_shape[scatter_dim]] + inp_shape[scatter_dim + 1 :]).contiguous()
+    else:
+        # transpose groups of heads with the seq-len parallel dimension, so that we can scatter them!
+        input_t = (
+            input_.reshape([-1, seq_world_size, inp_shape[scatter_dim]] + inp_shape[scatter_dim + 1 :])
+            .transpose(0, 1)
+            .contiguous()
+        )
+
+    output = torch.empty_like(input_t)
+    dist.all_to_all_single(output, input_t, group=group)
+
+    # if scattering the seq-dim, transpose the heads back to the original dimension
+    if scatter_dim < 2:
+        output = output.transpose(0, 1).contiguous()
+
+    return output.reshape(
+        inp_shape[:gather_dim]
+        + [
+            inp_shape[gather_dim] * seq_world_size,
+        ]
+        + inp_shape[gather_dim + 1 :]
+    ).contiguous()
 
 
 def matmul_with_async_comm(input_, weight, bias, process_group, async_grad_allreduce):

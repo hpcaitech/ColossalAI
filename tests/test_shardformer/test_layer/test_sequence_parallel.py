@@ -229,7 +229,7 @@ def seq_parallel_attn(seq_len, hidden_dim, head_num, batch_size):
 @parameterize("seq_len", [128])
 @parameterize("hidden_dim", [64])
 @parameterize("head_num", [4])
-@parameterize("batch_size", [4])
+@parameterize("batch_size", [1])
 def run_seq_parallel_attn(seq_len, hidden_dim, head_num, batch_size):
     seq_parallel_attn(seq_len, hidden_dim, head_num, batch_size)
 
