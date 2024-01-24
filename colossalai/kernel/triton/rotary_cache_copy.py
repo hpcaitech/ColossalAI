@@ -40,7 +40,7 @@ def decoding_cache_kernel(
     BLOCK_SIZE: tl.constexpr,
 ):
     idx = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    ori_seq_idx = tl.load(lengths + idx, mask=(idx <= NUM_SEQS))  # [BLOCK_SIZE,]
+    ori_seq_idx = tl.load(lengths + idx, mask=(idx < NUM_SEQS), other=None)  # [BLOCK_SIZE,]
     _cache = tl.load(CaChe + ori_seq_idx[:, None] * cache_stride + tl.arange(0, HIDDEN_DIM)[None, :] * hidden_stride)
     tl.store(
         output + (idx[:, None] * cache_stride + tl.arange(0, HIDDEN_DIM)[None, :] * hidden_stride),
@@ -94,9 +94,9 @@ def get_xine_cache(lengths: torch.Tensor, cache: torch.Tensor, is_prompts: bool 
         )
     else:
         # BUG: get memory access error whe using a deepcopy lengths to replace lengths
+        nlengths = deepcopy(lengths) - 1
         output = torch.empty((num_seqs, hidden_dim), dtype=cache.dtype, device=cache.device)
         grid = (triton.cdiv(num_seqs, BLOCK_SIZE),)
-        nlengths = deepcopy(lengths)
         decoding_cache_kernel[grid](
             cache,
             nlengths,
