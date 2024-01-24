@@ -97,7 +97,9 @@ def test_flash_decoding(
     mid_output_lse = torch.empty(size=(bsz, num_attn_heads, kv_max_split_num), dtype=torch.float32, device=q.device)
     sm_scale = 1.0 / (HEAD_DIM**0.5)
     out_triton = flash_decoding_attention(
-        q,
+        # Here we use q.squeeze(2) because we hide the q_len dimension (which is equivalent to 1),
+        # refer to attention forward in modeling.
+        q.squeeze(2),
         k_cache,
         v_cache,
         kv_seq_lengths,
@@ -188,7 +190,9 @@ def bench_kernel(
         mid_output_lse = torch.empty(size=(bsz, num_attn_heads, kv_max_split_num), dtype=torch.float32, device=q.device)
         sm_scale = 1.0 / (HEAD_DIM**0.5)
         fn = lambda: flash_decoding_attention(
-            q,
+            # Here we use q.squeeze(2) because we hide the q_len dimension (which is equivalent to 1),
+            # refer to attention forward in modeling.
+            q.squeeze(2),
             k_cache,
             v_cache,
             kv_lengths,

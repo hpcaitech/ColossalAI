@@ -87,7 +87,7 @@ class PagedAttention:
         Transform 1D no_pad tensor into 2D padded tensor with shape [bsz,seq_len,num_heads,head_size]
         """
         bsz = len(seq_lengths)
-        padded_tensor = torch.zeros(bsz, max_seq_len, num_heads, head_size)
+        padded_tensor = torch.zeros(bsz, max_seq_len, num_heads, head_size, dtype=tensor.dtype)
 
         token_idx = 0
         for i, seq_len in enumerate(seq_lengths):
