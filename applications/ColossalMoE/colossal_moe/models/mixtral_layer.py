@@ -31,7 +31,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
             set_moe_tensor_info(p, moe_info)
 
     @staticmethod
-    def from_native_module(module: MixtralSparseMoeBlock) -> "EPMixtralSparseMoeBlock":
+    def from_native_module(module: MixtralSparseMoeBlock, *args, **kwargs) -> "EPMixtralSparseMoeBlock":
         LazyInitContext.materialize(module)
         module.__class__ = EPMixtralSparseMoeBlock
         module.setup_ep()

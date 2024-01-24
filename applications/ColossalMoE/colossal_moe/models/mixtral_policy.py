@@ -20,6 +20,8 @@ from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 from colossalai.shardformer.shard import ShardConfig
 
+from .mixtral_layer import EPMixtralSparseMoeBlock
+
 __all__ = ["MixtralPolicy", "MixtralForCausalLMPolicy"]
 
 
@@ -50,6 +52,18 @@ class MixtralPolicy(Policy):
 
         if self.shard_config.enable_tensor_parallelism:
             raise NotImplementedError("Tensor parallelism is not supported for Mixtral model now.")
+
+        # expert parallel
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="block_sparse_moe",
+                    target_module=EPMixtralSparseMoeBlock,
+                )
+            ],
+            policy=policy,
+            target_key=MixtralDecoderLayer,
+        )
 
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
