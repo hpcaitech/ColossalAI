@@ -111,6 +111,8 @@ jobs:
           if [ -d /github/home/tensornvme_cache ] && [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ]; then
             cp -p -r /github/home/tensornvme_cache/* /__w/ColossalAI/ColossalAI/TensorNVMe
           fi
+          echo $http_proxy
+          echo $https_proxy
 
       - name: Install TensorNVMe
         run: |
