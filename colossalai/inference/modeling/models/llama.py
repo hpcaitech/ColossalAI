@@ -103,15 +103,14 @@ def llama_model_forward(
 
     cos_sin = get_cos_sin(sequence_lengths, self._cos_cached, self._sin_cached, batch.is_prompts, batch.dtype)
 
-    # if batch.is_prompts:
-    #     output_tensor = torch.zeros(
-    #         (sequence_lengths.sum().item(), batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
-    #     )
-    # else:
-    #     output_tensor = torch.zeros(
-    #         (batch_size, 1, batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
-    #     )
-    output_tensor = None
+    if batch.is_prompts:
+        output_tensor = torch.zeros(
+            (sequence_lengths.sum().item(), batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
+        )
+    else:
+        output_tensor = torch.zeros(
+            (batch_size, 1, batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
+        )
     sm_scale = 1.0 / (batch.head_dim**0.5)
 
     for layer_id, decoder_layer in enumerate(self.layers):

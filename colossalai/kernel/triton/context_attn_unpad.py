@@ -5,7 +5,6 @@
 #
 # Inspired and modified from Triton Tutorial - Fused Attention
 # https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
-from typing import Optional
 
 import torch
 import triton
@@ -189,7 +188,7 @@ def context_attention_unpadded(
     v: torch.Tensor,  # [num_tokens, num_kv_heads, head_dim]
     k_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
     v_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
-    output: torch.Tensor, # [num_tokens, num_heads, head_dim]
+    output: torch.Tensor,  # [num_tokens, num_heads, head_dim]
     context_lengths: torch.Tensor,  # [num_seqs]
     block_tables: torch.Tensor,  # [num_seqs, max_blocks_per_sequence],
     block_size: int,
@@ -211,6 +210,7 @@ def context_attention_unpadded(
     num_seqs, max_blocks_per_seq = block_tables.shape
     max_seq_len = context_lengths.max().item() if max_seq_len is None else max_seq_len
     sm_scale = 1.0 / (Lq**0.5) if sm_scale is None else sm_scale
+    output = torch.zeros_like(q) if output is None else output
 
     # NOTE For now, BLOCK_M and BLOCK_N are supposed to be equivalent with
     # the size of physical cache block (i.e. `block_size`)
