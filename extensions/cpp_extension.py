@@ -37,7 +37,6 @@ class _CppExtension(_Extension):
         current_file_path = Path(__file__)
         while True:
             if current_file_path.name == "extensions":
-                current_file_path.parent
                 break
             else:
                 current_file_path = current_file_path.parent
@@ -123,12 +122,6 @@ class _CppExtension(_Extension):
     def cxx_flags(self) -> List[str]:
         """
         This function should return a list of cxx compilation flags for extensions.
-        """
-
-    @abstractmethod
-    def nvcc_flags(self) -> List[str]:
-        """
-        This function should return a list of nvcc compilation flags for extensions.
         """
 
     def load(self):

@@ -8,8 +8,8 @@ class CpuAdamX86Extension(_CudaExtension):
     def __init__(self):
         super().__init__(name="cpu_adam_x86")
 
-    def is_hardware_compatible(self) -> bool:
-        return platform.machine() == "x86_64" and super().is_hardware_compatible()
+    def is_hardware_available(self) -> bool:
+        return platform.machine() == "x86_64" and super().is_hardware_available()
 
     def assert_hardware_compatible(self) -> None:
         arch = platform.machine()

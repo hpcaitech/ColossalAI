@@ -1,4 +1,6 @@
 import os
+from abc import abstractmethod
+from typing import List
 
 from .cpp_extension import _CppExtension
 from .utils import check_pytorch_version, check_system_pytorch_cuda_match, set_cuda_arch_list
@@ -11,6 +13,12 @@ MIN_PYTORCH_VERSION_MINOR = 10
 
 
 class _CudaExtension(_CppExtension):
+    @abstractmethod
+    def nvcc_flags(self) -> List[str]:
+        """
+        This function should return a list of nvcc compilation flags for extensions.
+        """
+
     def is_hardware_available(self) -> bool:
         # cuda extension can only be built if cuda is availabe
         try:
@@ -25,7 +33,7 @@ class _CudaExtension(_CppExtension):
         from torch.utils.cpp_extension import CUDA_HOME
 
         if not CUDA_HOME:
-            raise RuntimeError(
+            raise AssertionError(
                 "[extension] CUDA_HOME is not found. You need to export CUDA_HOME environment variable or install CUDA Toolkit first in order to build/load CUDA extensions"
             )
         check_system_pytorch_cuda_match(CUDA_HOME)
