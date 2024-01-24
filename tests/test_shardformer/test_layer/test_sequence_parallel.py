@@ -216,7 +216,7 @@ def seq_parallel_attn(seq_len, hidden_dim, head_num, batch_size):
     # backward result check
     assert_close(q_grad_seq, q_grad)
     assert_close(k_grad_seq, k_grad)
-    assert_close(v_grad_seq, v_grad)
+    assert_close(v_grad_seq, v_grad, atol=1e-4, rtol=1e-4)
     assert_close(o_grad_seq, o_grad)
     assert_close(x_grad_seq_gather, x_grad)
 

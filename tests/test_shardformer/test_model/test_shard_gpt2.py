@@ -197,15 +197,6 @@ def run_gpt2_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_gpt", exclude="transformers_gptj")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name in [
-            # 'transformers_gpt',
-            "transformers_gpt_lm",  # grad mismatch
-            "transformers_gpt_double_heads",  # grad mismatch
-            "transformers_gpt_for_question_answering",
-            "transformers_gpt_for_token_classification",
-            "transformers_gpt_for_sequence_classification",
-        ]:
-            continue
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
     clear_layout_converter()

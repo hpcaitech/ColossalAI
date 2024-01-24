@@ -177,7 +177,7 @@ def run_forward_backward_with_hybrid_plugin(
         else:
             # todo: check the correctness of using dim=-1: to be compatible with date_gen_for_double_heads()
             shard_test_data[k] = (
-                torch.chunk(data[k].clone(), booster.plugin.shard_config.sequence_parallel_size, dim=1)[
+                torch.chunk(data[k].clone(), booster.plugin.shard_config.sequence_parallel_size, dim=-1)[
                     dist.get_rank(booster.plugin.shard_config.sequence_parallel_process_group)
                 ]
                 if booster.plugin.shard_config.enable_sequence_parallelism
