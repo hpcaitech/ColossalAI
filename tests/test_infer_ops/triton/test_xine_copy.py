@@ -37,7 +37,7 @@ def test_get_xine_cache(BATCH_SIZE, MAX_SEQ_LEN, HEAD_DIM, dtype):
 configs = [
     triton.testing.Benchmark(
         x_names=["max_num_tokens"],
-        x_vals=[2**i for i in range(8, 12)],
+        x_vals=[2**i for i in range(6, 12)],
         line_arg="provider",
         line_vals=["torch_get_cos_sin_func", "triton_get_xine_func"],
         line_names=["torch_get_cos_sin_func", "triton_get_xine_func"],
@@ -57,7 +57,7 @@ def benchmark_get_xine_cache(
     head_dim: int,
 ):
     warmup = 10
-    rep = 100
+    rep = 1000
     max_token_per_seq = max_num_tokens // batch_size
     dtype = torch.float16
     cos_cache = torch.randn((max_num_tokens, head_dim), dtype=dtype, device="cuda")
