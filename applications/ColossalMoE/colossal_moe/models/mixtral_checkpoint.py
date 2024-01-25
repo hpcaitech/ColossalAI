@@ -610,9 +610,6 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
     def save_unsharded_model(self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
         raise NotImplementedError
 
-    def load_unsharded_model(self, model: ModelWrapper, checkpoint: str, strict: bool = False):
-        raise NotImplementedError
-
     def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
         raise NotImplementedError
 

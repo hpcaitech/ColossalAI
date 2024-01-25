@@ -1,8 +1,7 @@
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 import torch.nn.functional as F
-from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralSparseMoeBlock
+from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
 
 from colossalai.lazy import LazyInitContext
 from colossalai.moe import MOE_MANAGER
@@ -52,7 +51,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         selected_experts = selected_experts.t().reshape(-1)
         selected_experts_idx = selected_experts.argsort()
         dispatch_states = hidden_states.repeat(self.top_k, 1)[selected_experts_idx]
-        input_split_sizes = selected_experts.bincount()
+        input_split_sizes = selected_experts.bincount(minlength=self.num_experts)
         output_split_sizes = torch.zeros_like(input_split_sizes)
         dist.all_to_all_single(output_split_sizes, input_split_sizes, group=self.ep_group)
 
@@ -61,23 +60,23 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list, self.ep_group)
         # compute expert output
         output_states = MoeInGradScaler.apply(output_states, self.ep_size)
-        if self.num_experts_per_ep == 1:
-            # no need to split
-            if output_states.size(0) > 0:
+        if output_states.size(0) > 0:
+            if self.num_experts_per_ep == 1:
+                # no need to split
                 expert = self.experts[self.expert_start_idx]
                 output_states = expert.act_fn(expert.w1(output_states)) * expert.w3(output_states)
                 output_states = expert.w2(output_states)
-        else:
-            output_states_splits = output_states.split(output_split_sizes.tolist())
-            output_states_list = []
-            for i, split_states in enumerate(output_states_splits):
-                if split_states.size(0) == 0:
-                    continue
-                expert = self.experts[self.expert_start_idx + i % self.num_experts_per_ep]
-                split_states = expert.act_fn(expert.w1(split_states)) * expert.w3(split_states)
-                split_states = expert.w2(split_states)
-                output_states_list.append(split_states)
-            output_states = torch.cat(output_states_list)
+            else:
+                output_states_splits = output_states.split(output_split_sizes.tolist())
+                output_states_list = []
+                for i, split_states in enumerate(output_states_splits):
+                    if split_states.size(0) == 0:
+                        continue
+                    expert = self.experts[self.expert_start_idx + i % self.num_experts_per_ep]
+                    split_states = expert.act_fn(expert.w1(split_states)) * expert.w3(split_states)
+                    split_states = expert.w2(split_states)
+                    output_states_list.append(split_states)
+                output_states = torch.cat(output_states_list)
         output_states = MoeOutGradScaler.apply(output_states, self.ep_size)
         dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list, self.ep_group)
         recover_experts_idx = torch.empty_like(selected_experts_idx)
@@ -91,17 +90,3 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
             output_states += k_hidden_states[i] * routing_weights[:, i, None]
         output_states = output_states.reshape(batch_size, sequence_length, hidden_dim)
         return output_states, router_logits
-
-
-def replace_moe_layer(model: nn.Module) -> nn.Module:
-    """
-    Reverse the replace layer operation
-
-    Args:
-        module (torch.nn.Module): The object of layer to shard
-    """
-    if isinstance(model, MixtralDecoderLayer):
-        model.block_sparse_moe = EPMixtralSparseMoeBlock.from_native_module(model.block_sparse_moe)
-    else:
-        for _, child in model.named_children():
-            replace_moe_layer(child)
