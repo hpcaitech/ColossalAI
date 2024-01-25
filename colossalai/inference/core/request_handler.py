@@ -4,6 +4,7 @@ import torch
 from transformers.configuration_utils import PretrainedConfig
 
 from colossalai.inference.config import InferenceConfig
+from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.inference.kv_cache import KVCacheManager
 from colossalai.inference.logit_processors import logit_processor
 from colossalai.inference.sampler import *
@@ -91,6 +92,17 @@ class RequestHandler:
             inference_config.max_input_len + inference_config.max_output_len + inference_config.block_size - 1
         ) // inference_config.block_size
         head_dim = model_config.hidden_size // model_config.num_attention_heads
+
+        fd_inter_tensor = FDIntermTensors()
+        fd_inter_tensor.initialize(
+            max_batch_size=self.max_batch_size,
+            num_attn_heads=model_config.num_attention_heads,
+            kv_max_split_num=kv_max_split_num,
+            head_dim=head_dim,
+            dtype=dtype,
+            device=device,
+        )
+
         # TODO In the continuous batching scenario, the batch size may be greater than max_batch_size,
         # which may cause bugs and this issue should be fixed later.
         self.running_batch = BatchInfo(
@@ -101,6 +113,7 @@ class RequestHandler:
             is_prompts=False,
             device=device,
             dtype=dtype,
+            fd_inter_tensor=fd_inter_tensor,
         )
         self.prefill_batch = BatchInfo(
             max_batch_size=self.max_batch_size,
@@ -110,9 +123,8 @@ class RequestHandler:
             is_prompts=True,
             device=device,
             dtype=dtype,
+            fd_inter_tensor=fd_inter_tensor,
         )
-        self.running_batch.init_fd_tensors()
-        self.prefill_batch.init_fd_tensors()
 
     def _init_cache(self, model_config):
         self.cache_manager = KVCacheManager(self.inference_config, model_config, dtype=self.dtype)

@@ -10,7 +10,6 @@ except ImportError:
 if HAS_TRITON:
     from .context_attn_unpad import context_attention_unpadded
     from .flash_decoding import flash_decoding_attention
-    from .flash_decoding_utils import FDIntermTensors
     from .fused_rotary_embedding import fused_rotary_embedding
     from .gptq_triton import gptq_fused_linear_triton
     from .kvcache_copy import copy_kv_to_blocked_cache
@@ -27,7 +26,6 @@ if HAS_TRITON:
         "rms_layernorm",
         "gptq_fused_linear_triton",
         "rotary_embedding",
-        "FDIntermTensors",
         "fused_rotary_embedding",
         "get_xine_cache",
     ]

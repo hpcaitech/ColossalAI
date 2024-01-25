@@ -5,7 +5,7 @@ from typing import Any, List, Tuple, Union
 import torch
 from ordered_set import OrderedSet
 
-from colossalai.kernel.triton.flash_decoding_utils import FDIntermTensors
+from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger(__name__)
@@ -178,15 +178,13 @@ class BatchInfo:
     is_prompts: bool = True
     device: torch.device = None
     dtype: torch.dtype = None
-    fd_inter_tensor: FDIntermTensors = None
+    fd_inter_tensor: FDIntermTensors = FDIntermTensors()
 
     def __post_init__(self):
         if self.device is None:
             self.device = torch.cuda.current_device()
         if self.sequences_set is None:
             self.sequences_set = OrderedSet()
-        if self.fd_inter_tensor is None:
-            self.fd_inter_tensor = FDIntermTensors()
 
     def init_batch(self, seqs: List["Sequence"] = None):
         """
@@ -195,8 +193,6 @@ class BatchInfo:
         Args:
             seqs (List["Sequence"]): List of input sequence.
         """
-
-        assert len(self.sequences_set) == 0, "Sequences set has been initialized."
 
         if seqs is not None:
             if not isinstance(seqs, list):

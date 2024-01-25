@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 import torch
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaForCausalLM, LlamaModel
 
+from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.inference.modeling.layers.attention import PagedAttention
 from colossalai.inference.struct import BatchInfo
 from colossalai.kernel.triton import (
@@ -12,7 +13,6 @@ from colossalai.kernel.triton import (
     flash_decoding_attention,
     rotary_embedding,
 )
-from colossalai.kernel.triton.flash_decoding_utils import FDIntermTensors
 from colossalai.logging import get_dist_logger
 
 from flash_attn.bert_padding import index_first_axis, pad_input  # noqa
