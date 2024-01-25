@@ -413,7 +413,7 @@ class GeminiOptimizer(OptimizerWrapper):
             only_rank_0(bool): if True, states will be collected only on master rank, otherwise collected on every rank.
 
         Returns:
-            collected_states(dict): the gathered optimzier state of parameter with given id
+            collected_states(dict): the gathered optimizer state of parameter with given id
                                     if this method is called by master rank, otherwise an empty dict.
 
         This method can work only when called by all processes simultaneously.
@@ -461,7 +461,7 @@ class GeminiOptimizer(OptimizerWrapper):
         global_shape = self.optimizer_params_info["id2shape"][param_id]
 
         # If the chunk is kept gathered,
-        # the parameteres are treated the same as that of those in strict DDP during training.
+        # the parameters are treated the same as that of those in strict DDP during training.
         # So states can be directly fetched from current device.
         if chunk.keep_gathered:
             assert param_id in self.id_to_fake_params
@@ -644,7 +644,7 @@ class GeminiOptimizer(OptimizerWrapper):
         """
         Args:
             only_rank_0 (bool): a boolean value indicating whether the state_dict is collected
-            only on rank 0, dafault to True.
+            only on rank 0, default to True.
 
         Returns:
             The complete state of the optimizer as a :class:`dict`.
@@ -783,7 +783,7 @@ class GeminiOptimizer(OptimizerWrapper):
             prefix (str, optional): the prefix for states. Default to ''.
             max_shard_size (int, optional): max size of state dict shard (in MB). Defaults to 1024.
             only_rank_0 (bool, optional): a boolean value indicating whether the state_dict is collected
-                                          only on rank 0, dafault to True.
+                                          only on rank 0, default to True.
 
         Yields:
             Iterator[OrderedDict]: A generator of state dict shard of optimizer states.

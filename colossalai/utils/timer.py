@@ -123,7 +123,7 @@ class MultiTimer:
             return None
 
     def get_timer(self, name):
-        """Get timer by its name (from multitimer)
+        """Get timer by its name (from multimer)
 
         Args:
             name (str): Timer's key.

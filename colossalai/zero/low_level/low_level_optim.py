@@ -171,7 +171,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             # managed by this data parallel rank
             param_group["params"] = master_param_current_rank
 
-        # if there are moe params, store in addtional group in optim
+        # if there are moe params, store in additional group in optim
         if len(moe_params) > 0:
             param_group = dict()
             for key, value in self.optim.param_groups[0].items():
@@ -180,8 +180,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             param_group["params"] = moe_params
             self.optim.param_groups.append(param_group)
 
-        # intialize communication stream for
-        # communication-compuation overlapping
+        # initialize communication stream for
+        # communication-computation overlapping
         if self._overlap_communication:
             self._comm_stream = device_utils.Stream()
 
