@@ -24,6 +24,12 @@ class CpuAccelerator(BaseAccelerator):
     # =======================
     # device APIs
     # =======================
+    def get_version(self) -> str:
+        """
+        Return the version of the accelerator which torch is built against.
+        """
+        return ""
+
     def get_current_device(self) -> torch.device:
         """
         Return the current device.

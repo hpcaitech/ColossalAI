@@ -719,7 +719,7 @@ class GPT2PipelineForwards:
 def get_gpt2_flash_attention_forward():
     from transformers.models.gpt2.modeling_gpt2 import GPT2Attention
 
-    from colossalai.kernel import AttnMaskType, ColoAttention
+    from colossalai.nn.layer.colo_attention import AttnMaskType, ColoAttention
 
     def split_heads(tensor, num_heads, attn_head_size):
         """

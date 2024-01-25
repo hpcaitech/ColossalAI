@@ -10,6 +10,7 @@ from colossalai.accelerator import get_accelerator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.pipeline.p2p import PipelineP2PCommunication, create_send_metadata
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.utils import get_current_device
 
 from ._utils import (
     detach,

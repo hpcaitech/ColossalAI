@@ -49,6 +49,12 @@ class BaseAccelerator(ABC):
     # device APIs
     # =======================
     @abstractmethod
+    def get_version(self) -> str:
+        """
+        Return the version of the accelerator which torch is built against.
+        """
+
+    @abstractmethod
     def get_current_device(self) -> torch.device:
         """
         Return the current device.
@@ -66,6 +72,7 @@ class BaseAccelerator(ABC):
         Bind the current process to a device.
         """
 
+    @abstractmethod
     def get_device_name(self, device: Union[torch.device, int]) -> str:
         """
         Return the name of the device.

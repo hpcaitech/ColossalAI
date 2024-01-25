@@ -11,9 +11,9 @@ MOE_KERNEL = None
 
 def load_moe():
     global MOE_KERNEL
-    from colossalai.kernel.op_builder import MOEBuilder
+    from colossalai.kernel.kernel_loader import MoeLoader
 
-    MOE_KERNEL = MOEBuilder().load()
+    MOE_KERNEL = MoeLoader().load()
 
 
 class AllGather(torch.autograd.Function):
@@ -145,14 +145,8 @@ class AllToAll(torch.autograd.Function):
 
 
 class HierarchicalAllToAll(torch.autograd.Function):
-
     @staticmethod
-    def forward(
-        ctx: Any,
-        inputs: Tensor,
-        groups: Tuple[ProcessGroup, ProcessGroup],
-        src_rank: int
-    ) -> Tensor:
+    def forward(ctx: Any, inputs: Tensor, groups: Tuple[ProcessGroup, ProcessGroup], src_rank: int) -> Tensor:
         """
         Returns:
             outputs: Tensor
@@ -276,8 +270,9 @@ class MoeCombine(torch.autograd.Function):
         if tokens_grad.dtype != torch.float32:
             tokens_grad = tokens_grad.to(torch.float32)
 
-        d_expert, d_logits = MOE_KERNEL.combine_backward(ctx.s, ctx.e, ctx.c, ctx.h, tokens_grad, expert_tokens, logits,
-                                                         mask, dest_idx)
+        d_expert, d_logits = MOE_KERNEL.combine_backward(
+            ctx.s, ctx.e, ctx.c, ctx.h, tokens_grad, expert_tokens, logits, mask, dest_idx
+        )
         if d_expert.dtype != ctx.dtype:
             d_expert = d_expert.to(ctx.dtype)
 
