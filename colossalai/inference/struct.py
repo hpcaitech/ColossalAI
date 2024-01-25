@@ -333,8 +333,6 @@ class BatchInfo:
         Get bacth inputs for forward inference computation.
         """
 
-        assert len(self.sequences_set) > 0, "Sequences set has not been initialized."
-
         input_list = []
 
         assert len(self.sequences_set) > 0, "Batch has not been initialized yet. Please initialize batch first."
