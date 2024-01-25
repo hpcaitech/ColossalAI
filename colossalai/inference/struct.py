@@ -354,6 +354,7 @@ class BatchInfo:
 
         max_seq_len = max(len(sub_list) for sub_list in input_list)
 
+        # We assume that all the padding_id in seq are the same at present.
         return _make_tensor_with_pad(input_list, max_seq_len, self.sequences_set[0].pad_token_id, dtype=torch.int)
 
     def get_1D_inputs(self) -> Tuple[torch.LongTensor, torch.Tensor]:
@@ -397,6 +398,7 @@ class BatchInfo:
         assert len(self.sequences_set) > 0, "Batch has not been initialized yet. Please initialize batch first."
 
         past_values = []
+        # We assume that all the padding_id in seq are the same at present.
         padding_id = self.sequences_set[0].pad_token_id
 
         for seq in self.sequences_set:
