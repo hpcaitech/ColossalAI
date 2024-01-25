@@ -51,10 +51,45 @@ class _CudaExtension(_CppExtension):
         return cuda_include
 
     def build_jit(self) -> None:
-        from torch.utils.cpp_extension import CUDA_HOME
+        from torch.utils.cpp_extension import CUDA_HOME, load
 
         set_cuda_arch_list(CUDA_HOME)
-        return super().build_jit()
+
+        # get build dir
+        build_directory = _Extension.get_jit_extension_folder_path()
+        build_directory = Path(build_directory)
+        build_directory.mkdir(parents=True, exist_ok=True)
+
+        # check if the kernel has been built
+        compiled_before = False
+        kernel_file_path = build_directory.joinpath(f"{self.name}.o")
+        if kernel_file_path.exists():
+            compiled_before = True
+
+        # load the kernel
+        if compiled_before:
+            print(f"[extension] Loading the JIT-built {self.name} kernel during runtime now")
+        else:
+            print(f"[extension] Compiling the JIT {self.name} kernel during runtime now")
+
+        build_start = time.time()
+        op_kernel = load(
+            name=self.name,
+            sources=self.strip_empty_entries(self.sources_files()),
+            extra_include_paths=self.strip_empty_entries(self.include_dirs()),
+            extra_cflags=self.cxx_flags(),
+            extra_cuda_cflags=self.nvcc_flags(),
+            extra_ldflags=[],
+            build_directory=str(build_directory),
+        )
+        build_duration = time.time() - build_start
+
+        if compiled_before:
+            print(f"[extension] Time taken to load {self.name} op: {build_duration} seconds")
+        else:
+            print(f"[extension] Time taken to compile {self.name} op: {build_duration} seconds")
+
+        return op_kernel
 
     def build_aot(self) -> "CUDAExtension":
         from torch.utils.cpp_extension import CUDA_HOME, CUDAExtension
