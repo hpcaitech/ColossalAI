@@ -191,10 +191,10 @@ def context_attention_unpadded(
     v: torch.Tensor,  # [num_tokens, num_kv_heads, head_dim]
     k_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
     v_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim, block_size]
-    output: torch.Tensor,  # [num_tokens, num_heads, head_dim]
     context_lengths: torch.Tensor,  # [num_seqs]
     block_tables: torch.Tensor,  # [num_seqs, max_blocks_per_sequence],
     block_size: int,
+    output: torch.Tensor = None,  # [num_tokens, num_heads, head_dim]
     max_seq_len: int = None,
     sm_scale: int = None,
 ):

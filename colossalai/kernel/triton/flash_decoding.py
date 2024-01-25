@@ -191,11 +191,11 @@ def flash_decoding_attention(
     q: torch.Tensor,
     k_cache: torch.Tensor,
     v_cache: torch.Tensor,
-    output: torch.Tensor,
     kv_seq_len: torch.Tensor,
     block_tables: torch.Tensor,
     block_size: int,
     max_seq_len_in_batch: int = None,
+    output: torch.Tensor = None,
     mid_output: torch.Tensor = None,
     mid_output_lse: torch.Tensor = None,
     sm_scale: int = None,
@@ -208,11 +208,11 @@ def flash_decoding_attention(
         q (torch.Tensor):       [bsz, num_heads, head_dim]
         k_cache (torch.Tensor): [num_blocks, num_kv_heads, head_dim, block_size]
         v_cache (torch.Tensor): [num_blocks, num_kv_heads, head_dim, block_size]
-        output (torch.Tensor):  [bsz, 1, num_heads, head_dim]
         kv_seq_len (torch.Tensor): [batch_size]
             records the (kv) sequence lengths incorporating past kv sequence lengths.
         block_tables (torch.Tensor): [batch_size, max_blocks_per_sequence]
         max_seq_len_in_batch (int): Maximum sequence length in the batch.
+        output (torch.Tensor):  [bsz, 1, num_heads, head_dim]
         mid_output (torch.Tensor): [ max_bsz , num_heads, kv_max_split_num, head_dim]
             Intermediate output tensor. `max_bsz` should be greater than or equal to `bsz`.
         mid_output_lse (torch.Tensor): [ max_bsz , num_heads, kv_max_split_num]
