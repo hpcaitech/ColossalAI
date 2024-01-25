@@ -2,10 +2,8 @@ import argparse
 
 import torch
 import torch.distributed as dist
-from colossal_moe.models.mixtral_checkpoint import MixtralMoECheckpointIO
-from colossal_moe.models.mixtral_layer import replace_moe_layer
+from colossal_moe.models.mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
 from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
-from colossal_moe.utils import load_model
 from transformers import AutoTokenizer
 from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
 
@@ -13,9 +11,6 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
-from colossalai.moe import MOE_MANAGER
-from colossalai.moe.utils import skip_init
-from colossalai.utils import get_current_device
 
 
 def parse_args():
@@ -30,15 +25,9 @@ def parse_args():
     parser.add_argument(
         "--plugin",
         type=str,
-        default="hybrid",
+        default="ep",
         choices=["ep"],
         help="Parallel methos.",
-    )
-    parser.add_argument(
-        "--output_path",
-        type=str,
-        default="./outputs",
-        help="The path of your saved model after finetuning.",
     )
     parser.add_argument(
         "--precision",
@@ -71,60 +60,38 @@ def main():
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
 
+    config = MixtralConfig.from_pretrained(args.model_name)
+    ep_size = min(dist.get_world_size(), config.num_local_experts)
     # Set plugin
-    booster_kwargs = {}
-    hybrid_dict = {
-        "tp_size": 1,
-        "custom_policy": MixtralForCausalLMPolicy(),
-        "enable_fused_normalization": args.use_layernorm_kernel,
-        "enable_jit_fused": args.use_kernel,
-        "precision": args.precision,
-        "checkpoint_io": MixtralMoECheckpointIO,
-        "zero_stage": 1,
-    }
-    mgr_dict = {}
     if args.plugin == "ep":
-        dp_size = dist.get_world_size()
         plugin = MoeHybridParallelPlugin(
+            tp_size=1,
             pp_size=1,
-            **hybrid_dict,
-        )
-        MOE_MANAGER.setup(
-            parallel="EP",
-            max_ep_size=dp_size,
-            **mgr_dict,
+            ep_size=ep_size,
+            zero_stage=1,
+            precision=args.precision,
+            custom_policy=MixtralForCausalLMPolicy(),
+            checkpoint_io=MixtralMoEHybridParallelCheckpointIO,
+            enable_fused_normalization=args.use_layernorm_kernel,
+            enable_jit_fused=args.use_kernel,
         )
     else:
         raise ValueError(f"Invalid plugin {args.plugin}")
     coordinator.print_on_master(f"Set plugin as {plugin.__class__.__name__}")
 
     # Build mixtral model
-    config = MixtralConfig.from_pretrained(args.model_name)
-    config.num_local_experts = 1  # dont change this. it will not affect model
-    with skip_init():
-        model = MixtralForCausalLM(config)
-    model.num_experts = 8
-    model = model.to(torch.bfloat16) if args.precision == "bf16" else model.to(torch.float16)
-    model = model.to(get_current_device())
-    coordinator.print_on_master(f"Finish init model with config:\n{config}")
-
-    # Replace moe
-    with skip_init():
-        replace_moe_layer(model)
-    model.eval()
-    coordinator.print_on_master(f"Finish replace moe module")
+    model = MixtralForCausalLM.from_pretrained(args.model_name)
+    coordinator.print_on_master(f"Finish load model")
 
     # Prepare tokenizer and dataloader
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
     # Set booster
-    booster = Booster(plugin=plugin, **booster_kwargs)
+    booster = Booster(plugin=plugin)
     model, _, _, _, _ = booster.boost(model=model)
     coordinator.print_on_master(f"Finish init booster")
 
-    # load ckpt
-    load_model(args.model_name, model, booster)
-    coordinator.print_on_master(f"Finish load ckpt")
+    model.eval()
 
     if coordinator.rank == 0:
         text = ["Hello my name is"]
@@ -132,9 +99,12 @@ def main():
         text = ["What's the largest country in the world?", "How many people live in China?", "帮我续写这首诗：离离原上草"]
     tokenizer.pad_token = tokenizer.unk_token
     inputs = tokenizer(text, return_tensors="pt", padding=True).to(torch.cuda.current_device())
-    outputs = model.module.generate(**inputs, max_new_tokens=20)
-    outputs = tokenizer.batch_decode(outputs)
+
+    with torch.no_grad():
+        outputs = model.module.generate(**inputs, max_new_tokens=20)
+    outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
     print(f"[{coordinator.rank}] {outputs}")
+
 
 
 if __name__ == "__main__":
