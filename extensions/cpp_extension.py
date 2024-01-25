@@ -92,7 +92,6 @@ class _CppExtension(_Extension):
             sources=self.strip_empty_entries(self.sources_files()),
             extra_include_paths=self.strip_empty_entries(self.include_dirs()),
             extra_cflags=self.cxx_flags(),
-            extra_cuda_cflags=self.nvcc_flags(),
             extra_ldflags=[],
             build_directory=str(build_directory),
         )
