@@ -178,13 +178,15 @@ class BatchInfo:
     is_prompts: bool = True
     device: torch.device = None
     dtype: torch.dtype = None
-    fd_inter_tensor: FDIntermTensors = FDIntermTensors()
+    fd_inter_tensor: FDIntermTensors = None
 
     def __post_init__(self):
         if self.device is None:
             self.device = torch.cuda.current_device()
         if self.sequences_set is None:
             self.sequences_set = OrderedSet()
+        if self.fd_inter_tensor is None:
+            self.fd_inter_tensor = FDIntermTensors()
 
     def init_batch(self, seqs: List["Sequence"] = None):
         """

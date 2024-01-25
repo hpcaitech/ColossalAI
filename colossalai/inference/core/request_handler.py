@@ -73,14 +73,12 @@ class RequestHandler:
        dtype (torch.dtype): The data type for weights and activations.
     """
 
-    def __init__(
-        self, inference_config: InferenceConfig, model_config: PretrainedConfig, dtype: torch.dtype = None
-    ) -> None:
+    def __init__(self, inference_config: InferenceConfig, model_config: PretrainedConfig) -> None:
         self.inference_config = inference_config
         self.running_list: RunningList = RunningList(inference_config.prefill_ratio)
         self.waiting_list: List[List] = [[], [], []]
         self.done_list: List[Sequence] = []
-        self.dtype = dtype
+        self.dtype = inference_config.dtype
         self.max_batch_size = inference_config.max_batch_size
 
         # initialize cache
@@ -99,7 +97,7 @@ class RequestHandler:
             num_attn_heads=model_config.num_attention_heads,
             kv_max_split_num=kv_max_split_num,
             head_dim=head_dim,
-            dtype=dtype,
+            dtype=self.dtype,
             device=device,
         )
 
@@ -112,7 +110,7 @@ class RequestHandler:
             head_dim=head_dim,
             is_prompts=False,
             device=device,
-            dtype=dtype,
+            dtype=self.dtype,
             fd_inter_tensor=fd_inter_tensor,
         )
         self.prefill_batch = BatchInfo(
@@ -122,12 +120,12 @@ class RequestHandler:
             head_dim=head_dim,
             is_prompts=True,
             device=device,
-            dtype=dtype,
+            dtype=self.dtype,
             fd_inter_tensor=fd_inter_tensor,
         )
 
     def _init_cache(self, model_config):
-        self.cache_manager = KVCacheManager(self.inference_config, model_config, dtype=self.dtype)
+        self.cache_manager = KVCacheManager(self.inference_config, model_config)
 
     def _has_waiting(self) -> bool:
         return any(lst for lst in self.waiting_list)

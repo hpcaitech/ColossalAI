@@ -86,7 +86,7 @@ def check_cache_manager(test_config):
         num_hidden_layers=num_layers,
         num_attention_heads=num_attention_heads,
     )
-    cache_manager = KVCacheManager(inference_config, model_config, dtype=test_config["dtype"])
+    cache_manager = KVCacheManager(inference_config, model_config)
 
     num_blocks = cache_manager.total_num_blocks
     assert num_blocks > 0

@@ -55,6 +55,12 @@ class InferenceConfig:
     def __post_init__(self):
         self._init_batch_size()
         self._verify_config()
+        if self.dtype == "fp32" or self.dtype == torch.float32:
+            self.dtype = torch.float32
+        elif self.dtype == "fp16" or self.dtype == torch.float16:
+            self.dtype = torch.float16
+        else:
+            self.dtype = torch.bfloat16
 
     def _init_batch_size(self):
         """

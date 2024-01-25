@@ -51,19 +51,10 @@ class InferenceEngine:
         self.inference_config = inference_config
         self.model_config = model.config
         self.device = torch.device("cuda")
-        self.num_heads = self.model_config.num_attention_heads
-        self.head_dim = self.model_config.hidden_size // self.model_config.num_attention_heads
+        self.dtype = inference_config.dtype
 
         model = model.eval()
-
-        if inference_config.dtype == "fp32" or inference_config.dtype == torch.float32:
-            self.dtype = torch.float32
-        elif inference_config.dtype == "fp16" or inference_config.dtype == torch.float16:
-            self.dtype = torch.float16
-            model.half()
-        else:
-            self.dtype = torch.bfloat16
-            model.to(torch.bfloat16)
+        model.to(self.dtype)
 
         if model_policy is None:
             model_policy = model_policy_map[self.model_config.model_type]()
@@ -81,7 +72,7 @@ class InferenceEngine:
         if verbose:
             self.logger = get_dist_logger(__name__)
 
-        self.request_handler = RequestHandler(self.inference_config, self.model_config, self.dtype)
+        self.request_handler = RequestHandler(self.inference_config, self.model_config)
         self.k_cahce, self.v_cache = self.request_handler.get_kvcache()
         self.counter = count()
 

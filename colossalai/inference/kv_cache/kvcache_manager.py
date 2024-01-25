@@ -51,16 +51,14 @@ class KVCacheManager:
         And it's possible to have a batch of sequences with different lengths of block tables.
     """
 
-    def __init__(
-        self, config: InferenceConfig, model_config: PretrainedConfig, verbose: bool = False, dtype: torch.dtype = None
-    ) -> None:
+    def __init__(self, config: InferenceConfig, model_config: PretrainedConfig, verbose: bool = False) -> None:
         self.logger = get_dist_logger(__name__)
         self.device = get_current_device()
 
         # Parallel settings
         self.tp_size = config.tp_size
         # Model settings
-        self.dtype = dtype
+        self.dtype = config.dtype
         self.elem_size_in_bytes = torch.tensor([], dtype=self.dtype).element_size()
         self.num_layers = get_model_config_attr(model_config, "num_hidden_layers")
         # For now we focus on MHA only, TODO add handling for MQA and GQA
