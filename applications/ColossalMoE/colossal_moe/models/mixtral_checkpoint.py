@@ -3,7 +3,7 @@ import logging
 import os
 from pathlib import Path
 from shutil import rmtree
-from typing import Iterator, Optional, OrderedDict, Tuple
+from typing import Dict, Iterator, Optional, OrderedDict, Tuple
 
 import torch
 import torch.distributed as dist
@@ -18,10 +18,13 @@ from colossalai.checkpoint_io.utils import (
     gather_distributed_param,
     get_model_base_filenames,
     get_optimizer_base_filenames,
+    load_shard_state_dict,
+    load_states_into_optimizer,
     save_config_file,
     save_param_groups,
     save_state_dict_shards,
     search_tp_partition_dim,
+    sharded_optimizer_loading_epilogue,
 )
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.moe import MOE_MANAGER
@@ -223,9 +226,6 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
                         f"You can find where each parameters has been saved in the "
                         f"index located at {final_index_file_path}."
                     )
-
-    def save_unsharded_model(self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
-        raise NotImplementedError
 
     @staticmethod
     def gather_from_sharded_optimizer_state(
@@ -458,3 +458,163 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
                         f"You can find where each parameters has been saved in the "
                         f"index located at {final_index_file_path}."
                     )
+
+    def load_sharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint_index_file: str, prefix: str = ""):
+        """
+        Load sharded optimizer with the given path to index file of checkpoint folder.
+
+        Args:
+            optimizer (OptimizerWrapper): The optimizer to be loaded.
+            checkpoint_index_file (str): Path to the index file of checkpointing folder.
+            prefix (str): Not used.
+        """
+        assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
+
+        def _get_param_id_from_optimizer_param(
+            param: torch.Tensor, master_to_working_map: Optional[Dict[int, torch.Tensor]] = None
+        ):
+            if master_to_working_map is not None:
+                working_param = master_to_working_map[id(param)]
+            else:
+                working_param = param
+            return optimizer.param_info["param2id"][id(working_param)]
+
+        # id_map is a mapping from param ids kept by current pipeline, to their corresponding parameter objects.
+        # When Zero is used, the mapped parameter objects should be fp32 master parameters.
+        # IDs should be obtained through saved param2id mapping earlier saved in optimizer.param_info.
+        id_map = {}
+        master_to_working_map = optimizer.get_master_to_working_map()
+        for pg in optimizer.optim.param_groups:
+            for param in pg["params"]:
+                param_id = _get_param_id_from_optimizer_param(param, master_to_working_map)
+                id_map[param_id] = param
+
+        # Read checkpoint index file.
+        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
+        ckpt_root_path = ckpt_index_file.root_path
+        weight_map = ckpt_index_file.weight_map
+        weight_map = {int(k): v for k, v in weight_map.items()}  # convert saved id from str to int
+
+        # Load param_groups
+        param_group_path = ckpt_index_file.get_param_group_filename()
+        if param_group_path is None:
+            raise RuntimeError(
+                f"Invalid index file path {checkpoint_index_file} for an optimizer. \
+                               Lacking param group file under current directory."
+            )
+        saved_groups = torch.load(param_group_path)
+
+        updated_groups = []
+        for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
+            # obtain updated param group
+            new_pg = copy.deepcopy(saved_pg)
+            new_pg["params"] = old_pg["params"]  # The parameters in the same group shouln't change.
+            updated_groups.append(new_pg)
+        # ep param groups
+        if len(optimizer.optim.param_groups) == len(saved_groups) + 1:
+            new_pg = copy.deepcopy(saved_pg)
+            new_pg["params"] = optimizer.optim.param_groups[-1]["params"]
+            updated_groups.append(new_pg)
+        optimizer.optim.__dict__.update({"param_groups": updated_groups})
+
+        # Load saved states to optimizer.
+        # Keep a record of loaded files so that file will not be repeatedly loaded.
+        loaded_file = set()
+        for pg in optimizer.optim.param_groups:
+            for param in pg["params"]:
+                if param is None:
+                    continue
+                param_id = _get_param_id_from_optimizer_param(param, master_to_working_map)
+                if param_id not in weight_map:
+                    continue
+                filename = weight_map[param_id]
+
+                # If this param's states has been loaded before, directly return.
+                if filename in loaded_file:
+                    continue
+
+                file_path = os.path.join(ckpt_root_path, filename)
+                state_dict = load_shard_state_dict(Path(file_path), use_safetensors=False)
+                load_states_into_optimizer(optimizer.optim, state_dict, id_map, strict=True)
+                loaded_file.add(filename)
+
+        # Then shard the loaded optimizer states if using tp/zero.
+        for param, state in optimizer.optim.state.items():
+            device = param.device
+            if master_to_working_map is not None:
+                working_param = master_to_working_map[id(param)]
+            else:
+                working_param = param
+            original_shape = optimizer.param_info["param2shape"][id(working_param)]
+            sharded_state = self.shard_from_complete_optimizer_state(
+                state,
+                current_shape=working_param.shape,
+                original_shape=original_shape,
+                device=device,
+                inplace=True,
+                is_moe_param=is_moe_tensor(working_param),
+            )
+            optimizer.optim.state[param] = sharded_state
+
+        sharded_optimizer_loading_epilogue(optimizer.optim)
+        if self.verbose and self.coordinator.is_master():
+            logging.info(f"The optimizer has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
+
+    def shard_from_complete_optimizer_state(
+        self,
+        state: OrderedDict,
+        current_shape: torch.Size,
+        original_shape: torch.Size,
+        device: torch.device,
+        inplace: bool,
+        is_moe_param: bool,
+    ) -> OrderedDict:
+        """
+        With complete optimizer states of a specific parameter loaded from checkpoint,
+        slice out the sharded optimizer states kept by current device.
+
+        Args:
+            state (OrderedDict): Complete optimizer states of a given parameter, loaded from checkpoint.
+            current_shape (torch.Size): The size of parameter after sharding.
+            original_shape (torch.Size): The size of parameter before sharding.
+            device (torch.device): The destination device of loaded optimizer states.
+            inplace (bool): If set to True, will update the values of argument 'state' in place. Else will make a copy of state.
+
+        Returns:
+            OrderedDict: The sharded optimizer state of the given parameter.
+        """
+        state_ = state if inplace else copy.deepcopy(state)
+
+        for k, v in state_.items():
+            if isinstance(v, torch.Tensor) and k != "step":
+                # Shard state along tensor parallel group.
+                partition_dim = search_tp_partition_dim(current_shape, original_shape, self.tp_size)
+                if partition_dim is not None:
+                    slice_size = current_shape[partition_dim]
+                    v = v.split(slice_size, dim=partition_dim)[self.tp_rank]
+
+                # Shard state along data parallel group when using Zero.
+                if self.use_zero and not is_moe_param:
+                    padding_size = (self.dp_size - v.numel() % self.dp_size) % self.dp_size
+                    with torch.no_grad():
+                        v = v.flatten()
+                        if padding_size > 0:
+                            v = torch.nn.functional.pad(v, [0, padding_size])
+                        slice_size = v.numel() // self.dp_size
+                        v = v.split(slice_size, dim=0)[self.dp_rank]
+
+                state_[k] = v.detach().clone().to(device)
+
+        return state_
+
+    def save_unsharded_model(self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+        raise NotImplementedError
+
+    def load_unsharded_model(self, model: ModelWrapper, checkpoint: str, strict: bool = False):
+        raise NotImplementedError
+
+    def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
+        raise NotImplementedError
+
+    def load_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, strict: bool = False):
+        raise NotImplementedError
