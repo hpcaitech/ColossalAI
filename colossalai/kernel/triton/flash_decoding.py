@@ -259,8 +259,6 @@ def flash_decoding_attention(
         else mid_output_lse
     )
 
-    output = torch.empty((bsz, 1, num_heads, head_dim), dtype=q.dtype, device=q.device) if output is None else output
-
     # NOTE use `triton.next_power_of_2` here to utilize the cache mechanism of triton
     # To optimize, revise batching/scheduling to batch 2^n sequences in a batch (preferred)
     grid = (triton.next_power_of_2(bsz), num_heads, triton.cdiv(triton.next_power_of_2(max_seq_len_in_batch), BLOCK_KV))
