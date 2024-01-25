@@ -16,6 +16,7 @@ def _flash_decoding_fwd_kernel(
     mid_o,  # [batch_size, head_num, kv_split_num, head_dim]
     mid_o_lse,  # [batch_size, head_num, kv_split_num]
     kv_seq_len,  # [batch_size]
+    batch_size,
     stride_qt,
     stride_qh,
     stride_qd,
@@ -39,6 +40,8 @@ def _flash_decoding_fwd_kernel(
     HEAD_DIM: tl.constexpr,
 ):
     cur_seq_idx = tl.program_id(0)
+    if cur_seq_idx >= batch_size:
+        return
     cur_head_idx = tl.program_id(1)
     block_start_kv = tl.program_id(2)  # for splitting k/v
 
@@ -132,6 +135,7 @@ def _flash_decoding_fwd_reduce_kernel(
     mid_o_lse,  # [batch_size, head_num, kv_split_num]
     O,  # [batch_size, num_heads, head_dim] or [batch_size, 1, num_heads, head_dim]
     kv_seq_len,
+    batch_size,
     stride_mid_ot,
     stride_mid_oh,
     stride_mid_ob,
@@ -147,6 +151,8 @@ def _flash_decoding_fwd_reduce_kernel(
     HEAD_DIM: tl.constexpr,
 ):
     cur_seq_idx = tl.program_id(0)
+    if cur_seq_idx >= batch_size:
+        return
     cur_head_idx = tl.program_id(1)
 
     cur_kv_seq_len = tl.load(kv_seq_len + cur_seq_idx)
@@ -252,9 +258,11 @@ def flash_decoding_attention(
         if mid_output_lse is None
         else mid_output_lse
     )
-    
+
     output = torch.empty((bsz, 1, num_heads, head_dim), dtype=q.dtype, device=q.device) if output is None else output
 
+    # NOTE use `triton.next_power_of_2` here to utilize the cache mechanism of triton
+    # To optimize, revise batching/scheduling to batch 2^n sequences in a batch (preferred)
     grid = (triton.next_power_of_2(bsz), num_heads, triton.cdiv(triton.next_power_of_2(max_seq_len_in_batch), BLOCK_KV))
     _flash_decoding_fwd_kernel[grid](
         q,
@@ -264,6 +272,7 @@ def flash_decoding_attention(
         mid_output,
         mid_output_lse,
         kv_seq_len,
+        bsz,
         q.stride(0),
         q.stride(1),
         q.stride(2),
@@ -287,12 +296,16 @@ def flash_decoding_attention(
         HEAD_DIM=head_dim,
     )
 
-    grid = (bsz, num_heads)
+    output = torch.empty((bsz, 1, num_heads, head_dim), dtype=q.dtype, device=q.device) if output is None else output
+
+    grid = (triton.next_power_of_2(bsz), num_heads)
+
     _flash_decoding_fwd_reduce_kernel[grid](
         mid_output,
         mid_output_lse,
         output,
         kv_seq_len,
+        bsz,
         mid_output.stride(0),
         mid_output.stride(1),
         mid_output.stride(2),
