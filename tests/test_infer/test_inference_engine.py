@@ -3,7 +3,7 @@ import random
 import numpy as np
 import pytest
 import torch
-from transformers import AutoTokenizer, GenerationConfig, LlamaForCausalLM
+from transformers import AutoTokenizer, GenerationConfig, LlamaConfig, LlamaForCausalLM
 
 import colossalai
 from colossalai.inference.config import InferenceConfig
@@ -20,15 +20,12 @@ def setup_seed(seed):
 
 def check_inference_engine(test_cai=False):
     setup_seed(20)
-    # tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
-    # model = transformers.LlamaForCausalLM(
-    #     transformers.LlamaConfig(
-    #         vocab_size=50000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=16
-    #     )
-    # ).cuda()
-
-    tokenizer = AutoTokenizer.from_pretrained("/home/caidi/llama_model/")
-    model = LlamaForCausalLM.from_pretrained("/home/caidi/llama_model/", pad_token_id=tokenizer.eos_token_id).cuda()
+    tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+    model = LlamaForCausalLM(
+        LlamaConfig(
+            vocab_size=50000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=16
+        )
+    ).cuda()
 
     model = model.eval()
 
@@ -37,7 +34,7 @@ def check_inference_engine(test_cai=False):
         "介绍一下武汉,",
     ]
 
-    output_len = 38
+    output_len = 128
     do_sample = True
     top_p = 0.5
     top_k = 50
@@ -63,8 +60,6 @@ def check_inference_engine(test_cai=False):
         )
         outputs = model.generate(inputs, generation_config=generation_config)
         outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-
-    print("outputs: ", outputs)
 
     return outputs
 
