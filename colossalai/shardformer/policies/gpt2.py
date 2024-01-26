@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List
 
@@ -56,10 +57,16 @@ class GPT2Policy(Policy):
         sp_group = self.shard_config.sequence_parallel_process_group
         overlap = self.shard_config.enable_sequence_overlap
         sp_partial_derived = sp_mode in ["1", "2"]
+        use_flash_attention = self.shard_config.enable_flash_attention
+        # todo: currently sp mode 2 and 3 need to be used with flashattention
+        if sp_mode in ["2", "3"]:
+            if not use_flash_attention:
+                warnings.warn(
+                    f"Sequence parallelism mode {sp_mode} need to be used with FlashAttention, will enable FlashAttention automatically."
+                )
+                use_flash_attention = True
 
-        if sp_mode == "2":
-            pass
-        elif sp_mode == "3":
+        if sp_mode == "3":
             decoder_attribute_replacement = {
                 "num_heads": self.model.config.num_attention_heads // sp_size,
             }
@@ -160,7 +167,7 @@ class GPT2Policy(Policy):
             target_key=GPT2Block,
         )
 
-        if self.shard_config.enable_flash_attention:
+        if use_flash_attention:
             self.append_or_create_method_replacement(
                 description={
                     "forward": get_gpt2_flash_attention_forward(sp_mode, sp_size, sp_group),

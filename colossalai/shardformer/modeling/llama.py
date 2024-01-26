@@ -24,8 +24,6 @@ from colossalai.shardformer.layer._operation import (
     gather_forward_split_backward,
     reducescatter_forward_gather_backward,
     split_forward_gather_backward,
-    gather_forward_reducescatter_backward,
-    reducescatter_forward_gather_backward,
 )
 from colossalai.shardformer.shard import ShardConfig
 
@@ -38,11 +36,6 @@ try:
     LATEST_VERSION = True
 except ImportError:
     LATEST_VERSION = False
-
-
-def print_rank(prompt, value, rank=0):
-    if dist.get_rank() == rank:
-        print(f"rank-{rank}, {prompt}: {value}")
 
 
 class LlamaPipelineForwards:
@@ -445,7 +438,8 @@ class LlamaPipelineForwards:
             hidden_states = transformer_outputs.get("hidden_states")
             return {"hidden_states": hidden_states}
 
-def get_llama_flash_attention_forward(shard_config):
+
+def get_llama_flash_attention_forward(shard_config, sp_mode, sp_size):
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
     llama_version = 2
@@ -466,11 +460,9 @@ def get_llama_flash_attention_forward(shard_config):
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
-        sp_mode = shard_config.sequence_parallelism_mode
-        sp_size = shard_config.sequence_parallel_size
 
         if sp_mode in ["1", "2"]:
-            q_len *= shard_config.sequence_parallel_size
+            q_len *= sp_size
         assert q_len % 4 == 0, "Flash Attention Error: The sequence length should be a multiple of 4."
 
         query_states = self.q_proj(hidden_states)
@@ -484,8 +476,6 @@ def get_llama_flash_attention_forward(shard_config):
             value_states = all_to_all_comm(value_states)
             bsz, q_len, _ = query_states.size()
 
-        if shard_config.sequence_parallel_size < 4:
-            print(query_states.shape)
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
@@ -943,9 +933,6 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
     return forward
 
 
-import torch.distributed as dist
-
-
 def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
     logger = logging.get_logger(__name__)
 
@@ -1022,7 +1009,6 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
             )
 
         return combined_attention_mask
-
 
     def forward(
         self,
@@ -1150,7 +1136,6 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                     position_ids,
                 )
             else:
-                
                 layer_outputs = decoder_layer(
                     hidden_states,
                     attention_mask=attention_mask,

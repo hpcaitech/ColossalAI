@@ -14,7 +14,6 @@ from ..modeling.llama import (
     get_llama_model_forward_for_flash_attn,
     get_llama_seq_parallel_attention_forward,
     get_llama_seq_parallel_model_forward,
-    get_llama_decoder_seq_parallel_model_forward,
     get_lm_forward_with_dist_cross_entropy,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -51,9 +50,16 @@ class LlamaPolicy(Policy):
         sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
         sp_size = self.shard_config.sequence_parallel_size
         sp_group = self.shard_config.sequence_parallel_process_group
-        # overlap = self.shard_config.enable_sequence_overlap
-        # sp_partial_derived = sp_mode in ["1"]
-        # todo: Support SP for LlaMa model
+        if self.pipeline_stage_manager is not None:
+            if sp_mode is not None:
+                warnings.warn(
+                    "Sequence parallelism is not supported under pipeline parallelism setting. "
+                    "Sequence parallelism will be disabled."
+                )
+            sp_mode = None
+            sp_size = None
+            sp_group = None
+
         if sp_mode == "1":
             self.append_or_create_method_replacement(
                 description={
@@ -188,17 +194,6 @@ class LlamaPolicy(Policy):
             target_key=LlamaDecoderLayer,
         )
 
-        '''
-        if sp_mode == "1" and False:
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_llama_decoder_seq_parallel_model_forward(sp_mode, sp_size, sp_group),
-                },
-                policy=policy,
-                target_key=LlamaDecoderLayer,
-            )
-        '''
-
         self.append_or_create_submodule_replacement(
             description=SubModuleReplacementDescription(
                 suffix="norm",
@@ -212,7 +207,7 @@ class LlamaPolicy(Policy):
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_flash_attention_forward(shard_config=self.shard_config),
+                    "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_size),
                 },
                 policy=policy,
                 target_key=LlamaAttention,

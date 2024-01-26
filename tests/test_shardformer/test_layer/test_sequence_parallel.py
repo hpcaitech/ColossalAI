@@ -220,11 +220,6 @@ def seq_parallel_attn(seq_len, hidden_dim, head_num, batch_size):
     assert_close(o_grad_seq, o_grad)
     assert_close(x_grad_seq_gather, x_grad)
 
-    # print_rank('x_grad', x_grad_seq, 0)
-    # print_rank('x_grad', x_grad_seq, 1)
-    # print_rank('x_grad', x_grad_seq, 2)
-    # print_rank('x_grad', x_grad_seq, 3)
-
 
 @parameterize("seq_len", [128])
 @parameterize("hidden_dim", [64])
