@@ -31,11 +31,6 @@ from colossalai.shardformer.layer._operation import (
 from colossalai.shardformer.shard import ShardConfig
 
 
-def print_rank(prompt, value, rank=0):
-    if dist.get_rank() == rank:
-        print(f"rank-{rank}, {prompt}: {value}")
-
-
 class GPT2PipelineForwards:
     """
     This class serves as a micro library for forward function substitution of GPT2 models

@@ -2,7 +2,6 @@ import os
 
 import pytest
 import torch
-import torch.distributed as dist
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
@@ -20,12 +19,6 @@ from tests.test_shardformer.test_model._utils import (
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
-
-
-def print_rank(prompt, value, rank=0):
-    if dist.get_rank() == rank:
-        print(f"rank-{rank}, {prompt}: {value}")
-
 
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 
