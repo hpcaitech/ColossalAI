@@ -24,6 +24,8 @@ from colossalai.shardformer.layer._operation import (
     gather_forward_split_backward,
     reducescatter_forward_gather_backward,
     split_forward_gather_backward,
+    gather_forward_reducescatter_backward,
+    reducescatter_forward_gather_backward,
 )
 from colossalai.shardformer.shard import ShardConfig
 
@@ -442,7 +444,6 @@ class LlamaPipelineForwards:
         else:
             hidden_states = transformer_outputs.get("hidden_states")
             return {"hidden_states": hidden_states}
-
 
 def get_llama_flash_attention_forward(shard_config):
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
@@ -872,7 +873,7 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
         # TODO (linshengjie) Block attention with ring
         ####
         block_wise = False
-        seq_len = query_states[2]
+        seq_len = query_states.shape[2]
         seq_block = 1024
         if block_wise and seq_len > seq_block:
             assert query_states.shape[2] % seq_block == 0
@@ -1022,6 +1023,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
 
         return combined_attention_mask
 
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -1148,6 +1150,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                     position_ids,
                 )
             else:
+                
                 layer_outputs = decoder_layer(
                     hidden_states,
                     attention_mask=attention_mask,

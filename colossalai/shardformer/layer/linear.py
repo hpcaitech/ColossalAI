@@ -207,7 +207,7 @@ class Linear1D_Col(ParallelModule):
             output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, False)
         elif self.seq_parallel_mode == "2":
             output_parallel = linear_gather_forward_reducescatter_backward(
-                input_parallel, self.weight, bias, self.process_group, True, self.seq_parallel_dim, self.overlap
+                input_parallel, self.weight, bias, self.process_group, True, self.seq_parallel_dim, self.overlap, True
             )
 
         if self.gather_output:
@@ -429,7 +429,9 @@ class Linear1D_Row(ParallelModule):
                 output = linear_reducescatter_forward_gather_backward(
                     input_,
                     self.weight,
+                    process_group=self.process_group,
                     dim=self.seq_parallel_dim,
+                    ring=True,
                 )
 
         if not self.skip_bias_add:
