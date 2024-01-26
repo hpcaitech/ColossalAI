@@ -91,7 +91,7 @@ def benchmark_inference(args):
         config.pad_token_id = config.eos_token_id
         model = transformers.LlamaForCausalLM(config).cuda()
         model = model.eval()
-        tokenizer = AutoTokenizer.from_pretrained("/home/caidi/llama_model/")
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
 
         if args.dtype == "fp16":
             model = model.half()
