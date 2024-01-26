@@ -124,7 +124,7 @@ pip install .
 
 ### RLHF Training Stage1 - Supervised Instructs Tuning
 
-Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. Here's a detailed guide on how to SFT your LLM with ColossalChat. More details can be found in [./example/README.md](./examples/README.md)
+Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. Here's a detailed guide on how to SFT your LLM with ColossalChat. More details can be found in [./examples/README.md](./examples/README.md)
 
 #### Step 1: Data Collection
 The first step in Stage 1 is to collect a dataset of human demonstrations of the following format.

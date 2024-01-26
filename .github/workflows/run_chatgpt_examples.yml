@@ -20,7 +20,7 @@ jobs:
     container:
       image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
       options: --gpus all --rm -v /data/scratch/colossal-llama2:/data/scratch/colossal-llama2 --shm-size=10.24gb
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash

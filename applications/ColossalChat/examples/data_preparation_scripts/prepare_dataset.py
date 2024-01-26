@@ -1,7 +1,35 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Prepare sft dataset for finetuning
+Prepare dataset scripts
+
+Usage:
+- For SFT dataset preparation (SFT)
+python prepare_dataset.py --type sft \
+    --data_input_dirs /PATH/TO/SFT/DATASET \
+    --conversation_template_config /PATH/TO/CHAT/TEMPLATE/CONFIG.json \
+    --tokenizer_dir  "" \
+    --data_cache_dir $SAVE_DIR/cache \
+    --data_jsonl_output_dir $SAVE_DIR/jsonl \
+    --data_arrow_output_dir $SAVE_DIR/arrow \
+
+- For prompt dataset preparation (PPO)
+python prepare_dataset.py --type prompt \
+    --data_input_dirs /PATH/TO/SFT/DATASET \
+    --conversation_template_config /PATH/TO/CHAT/TEMPLATE/CONFIG.json \
+    --tokenizer_dir  "" \
+    --data_cache_dir $SAVE_DIR/cache \
+    --data_jsonl_output_dir $SAVE_DIR/jsonl \
+    --data_arrow_output_dir $SAVE_DIR/arrow \
+
+- For Preference dataset preparation (DPO and Reward model training)
+python prepare_dataset.py --type preference \
+    --data_input_dirs /PATH/TO/SFT/DATASET \
+    --conversation_template_config /PATH/TO/CHAT/TEMPLATE/CONFIG.json \
+    --tokenizer_dir  "" \
+    --data_cache_dir $SAVE_DIR/cache \
+    --data_jsonl_output_dir $SAVE_DIR/jsonl \
+    --data_arrow_output_dir $SAVE_DIR/arrow \
 """
 
 import argparse
@@ -9,9 +37,15 @@ import json
 import math
 import os
 import random
+import time
 from multiprocessing import cpu_count
 
-from coati.dataset import setup_conversation_template, supervised_tokenize_sft
+from coati.dataset import (
+    setup_conversation_template,
+    supervised_tokenize_sft,
+    tokenize_prompt_dataset,
+    tokenize_rlhf
+)
 from datasets import dataset_dict, load_dataset
 from transformers import AutoTokenizer
 
@@ -23,6 +57,14 @@ logger = get_dist_logger()
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--type",
+        type=str,
+        required=True,
+        default=None,
+        choices=['sft','prompt','preference'],
+        help="Type of dataset, chose from 'sft', 'prompt', 'preference'.",
+    )
+    parser.add_argument(
         "--data_input_dirs",
         type=str,
         required=True,
@@ -32,7 +74,6 @@ def main():
     parser.add_argument(
         "--tokenizer_dir", type=str, required=True, default=None, help="A directory containing the tokenizer"
     )
-
     parser.add_argument(
         "--conversation_template_config", type=str, default="conversation_template_config", help="Path \
         to save conversation template config files."
@@ -122,9 +163,20 @@ def main():
         split=train_splits,
         num_proc=cpu_count(),
     )
+
+    if args.type=='sft':
+        preparation_function = supervised_tokenize_sft
+    elif args.type=='prompt':
+        preparation_function = tokenize_prompt_dataset
+    elif args.type=='preference':
+        preparation_function = tokenize_rlhf
+    else:
+        raise ValueError("Unknow dataset type. Please choose one from ['sft', 'prompt', 'preference']")
+    
     for index, dataset in enumerate(list_dataset):
         assert isinstance(dataset, dataset_dict.Dataset)
         if len(dataset)==0:
+            # Hack: Skip empty dataset. If dataset contains less than num_of_rank samples, some rank may have empty dataset and leads to error
             continue
         if args.num_samples_per_datafile > 0:
             # limit the number of samples in each dataset
@@ -133,7 +185,7 @@ def main():
             )
         logger.info(f"Start to process part-{index}/{len(list_dataset)} of all original datasets.")
         dataset = dataset.map(
-            function=supervised_tokenize_sft,
+            function=preparation_function,
             fn_kwargs={
                 "tokenizer": tokenizer,
                 "conversation_template": conversation_template,
@@ -143,37 +195,37 @@ def main():
             num_proc=min(len(dataset), cpu_count()),
         )
 
-        dataset = dataset.filter(lambda data: data["labels"] is not None)
-        dataset = dataset.sort(column_names=("seq_category", "seq_length"), reverse=False, keep_in_memory=False)
+        dataset = dataset.filter(lambda data: data["chosen_input_ids" if args.type=='preference' else "input_ids"] is not None)
 
-        # We don't concatenate data samples here.
-        spliced_dataset = dataset
         # Save each jsonl spliced dataset.
         output_index = "0" * (5 - len(str(index))) + str(index)
         output_name = f"part-{output_index}"
         output_jsonl_path = os.path.join(args.data_jsonl_output_dir, output_name + ".jsonl")
-        # st = time.time()
+        st = time.time()
         with open(file=output_jsonl_path, mode="w", encoding="utf-8") as fp_writer:
-            spliced_count = 0
-            for spliced_data_point in spliced_dataset:
-                if spliced_count % 500 == 0:
-                    logger.info(f"processing {spliced_count} spliced data points for {fp_writer.name}")
-                spliced_count += 1
-                fp_writer.write(json.dumps(spliced_data_point, ensure_ascii=False) + "\n")
-
+            count = 0
+            for data_point in dataset:
+                if count % 500 == 0:
+                    logger.info(f"processing {count} spliced data points for {fp_writer.name}")
+                count += 1
+                fp_writer.write(json.dumps(data_point, ensure_ascii=False) + "\n")
+        logger.info(
+            f"Current file {fp_writer.name}; "
+            f"Data size: {len(dataset)}; "
+            f"Time cost: {round((time.time() - st) / 60, 6)} minutes."
+        )
         # Save each arrow spliced dataset
         output_arrow_path = os.path.join(args.data_arrow_output_dir, output_name)
         logger.info(f"Start to save {output_arrow_path}")
-        spliced_dataset = load_dataset(
+        dataset = load_dataset(
             path="json",
             data_files=[output_jsonl_path],
-            cache_dir=os.path.join(args.data_cache_dir, "spliced_and_tokenized"),
+            cache_dir=os.path.join(args.data_cache_dir, "tokenized"),
             keep_in_memory=False,
             num_proc=cpu_count(),
             split="train",
         )
-        spliced_dataset.save_to_disk(dataset_path=output_arrow_path, num_proc=min(len(spliced_dataset), cpu_count()))
-
+        dataset.save_to_disk(dataset_path=output_arrow_path, num_proc=min(len(dataset), cpu_count()))
 
 if __name__ == "__main__":
     main()

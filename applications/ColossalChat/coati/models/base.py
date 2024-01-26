@@ -16,8 +16,8 @@ class BaseModel(nn.Module):
     Args:
         pretrained (str): path to pretrained model.
         config (PretrainedConfig): PretrainedConfig used to initiate the base model.
+        **kwargs: all other kwargs as in AutoModel.from_pretrained
     """
-
     def __init__(self, pretrained: str = None, config: Optional[PretrainedConfig] = None, **kwargs) -> None:
         super().__init__()
         if pretrained is not None:

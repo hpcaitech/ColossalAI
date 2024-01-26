@@ -14,9 +14,9 @@ class RewardModel(BaseModel):
     Reward model class.
 
     Args:
-        model (nn.Module): Critic Model.
-        lora_rank (int): LoRA rank.
-        lora_train_bias (str): LoRA bias training mode.
+        pretrained str: huggingface or local model path
+        config: PretrainedConfig object
+        **kwargs: all other kwargs as in AutoModel.from_pretrained
     """
 
     def __init__(self, pretrained: str = None, config: Optional[PretrainedConfig] = None, **kwargs) -> None:

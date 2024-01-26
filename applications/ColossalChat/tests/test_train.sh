@@ -30,9 +30,8 @@ MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
 # Skip those tests due to CI tests timeout
 MODELS=('llama')
-# PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d')
-PLUGINS=('zero2')
-# PLUGINS=('gemini')
+PLUGINS=('gemini_auto' 'zero2' 'zero2_cpu' '3d')  # 'gemini' is currently buggy
+# PLUGINS=('zero2')
 LORA_RANK=('0')  # skip to reduce CI execution time, can pass all locally
 
 export OMP_NUM_THREADS=8
@@ -43,7 +42,7 @@ pip install -r $EXAMPLES_DIR/requirements.txt
 get_pretrain() {
     local model=$1
     if [[ $model == "llama" ]]; then
-        echo "nickypro/tinyllama-110M"
+        echo "$PRETRAINED_MODEL_PATH/tinyllama-110M"
     elif [[ $model == "opt" ]]; then
         echo "facebook/opt-125m"
     else
@@ -266,6 +265,10 @@ for lora_rank in ${LORA_RANK[@]}; do
                 ebs='32'
             fi
             grad_accu='2'
+            # gemini_auto and gemini doesn't support gradient accumulation
+            if [[ $plugin == "gemini_auto" ]] || [[ $plugin == "gemini" ]]; then
+                grad_accu='1'
+            fi
             # gemini_auto and gemini doesn't support generation
             if [[ $plugin == "gemini_auto" ]]; then
                 # gemini-auto doesn't support generation
@@ -355,6 +358,10 @@ for lora_rank in ${LORA_RANK[@]}; do
                 bs='8'
             fi
             grad_accu='2'
+            # gemini_auto and gemini doesn't support gradient accumulation
+            if [[ $plugin == "gemini_auto" ]] || [[ $plugin == "gemini" ]]; then
+                grad_accu='1'
+            fi
             # gemini_auto doesn't support generation 
             # (need to calculate ref_model logits through forwarding in inference mode)
             if [[ $plugin == "gemini_auto" ]]; then

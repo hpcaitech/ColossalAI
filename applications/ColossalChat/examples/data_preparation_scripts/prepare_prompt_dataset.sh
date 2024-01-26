@@ -4,7 +4,8 @@ rm -rf $SAVE_DIR/cache
 rm -rf $SAVE_DIR/jsonl
 rm -rf $SAVE_DIR/arrow
 
-python prepare_prompt_dataset.py --data_input_dirs /PATH/TO/PROMPT/DATASET \
+python prepare_dataset.py --type prompt \
+    --data_input_dirs /PATH/TO/PROMPT/DATASET \
     --conversation_template_config /PATH/TO/CHAT/TEMPLATE/CONFIG.json \
     --tokenizer_dir  "" \
     --data_cache_dir $SAVE_DIR/cache \

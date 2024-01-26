@@ -133,7 +133,8 @@ for model in ${MODELS[@]}; do
     conversation_template=$(get_conversation_template_config $model)
     for i in $(seq $NUM_RETRY); do
         echo "[Test]: $model-$data_type, attempt $i"
-        python $EXAMPLES_DIR/data_preparation_scripts/prepare_preference_dataset.py \
+        python $EXAMPLES_DIR/data_preparation_scripts/prepare_dataset.py \
+            --type preference \
             --data_input_dirs $data_input_dirs \
             --conversation_template_config $conversation_template \
             --tokenizer_dir $tokenizer_dir \
@@ -178,7 +179,8 @@ for model in ${MODELS[@]}; do
         rm -rf $jsonl_dir
         rm -rf $arrow_dir
         echo "[Test]: $model-$data_type, attempt $i"
-        python $EXAMPLES_DIR/data_preparation_scripts/prepare_sft_dataset.py \
+        python $EXAMPLES_DIR/data_preparation_scripts/prepare_dataset.py \
+            --type sft \
             --data_input_dirs $data_input_dirs \
             --conversation_template_config $conversation_template \
             --tokenizer_dir $tokenizer_dir \
@@ -223,7 +225,8 @@ for model in ${MODELS[@]}; do
         rm -rf $jsonl_dir
         rm -rf $arrow_dir
         echo "[Test]: $model-$data_type, attempt $i"
-        python $EXAMPLES_DIR/data_preparation_scripts/prepare_prompt_dataset.py \
+        python $EXAMPLES_DIR/data_preparation_scripts/prepare_dataset.py \
+            --type prompt \
             --data_input_dirs $data_input_dirs \
             --conversation_template_config $conversation_template \
             --tokenizer_dir $tokenizer_dir \

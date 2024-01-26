@@ -332,7 +332,7 @@ Once you have collected your SFT dataset, you will need to preprocess it. This i
 
 In this code we provide a flexible way for users to set the conversation template for formatting chat data using Huggingface's newest feature--- chat template. Please follow the following steps to define your chat template and preprocess your data.
 
-- Step 1: (Optional). Define your conversation template. You need to provide a conversation template config file similar to the config files under the [config/conversation_template](./config/conversation_template/) directory. This config should include the following fields.
+- Step 1: (Optional). Define your conversation template. You need to provide a conversation template config file similar to the config files under the ./config/conversation_template directory. This config should include the following fields.
   ```json
   {
       "chat_template": (Optional), A string of chat_template used for formatting chat data. If not set (None), will use the default chat template of the provided tokenizer. To use a custom chat template, you need to manually set this field. For more details on how to write a chat template in Jinja format, please read https://huggingface.co/docs/transformers/main/chat_templating,

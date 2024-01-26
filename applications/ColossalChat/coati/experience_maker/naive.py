@@ -46,7 +46,7 @@ class NaiveExperienceMaker(ExperienceMaker):
             Calculates the advantage values for each action based on the value and reward tensors.
 
             Args:
-                value (torch.Tensor): Tensor containing the predicted values forom critic.
+                value (torch.Tensor): Tensor containing the predicted values from critic.
                 reward (torch.Tensor): reward of the shape [B, len].
                 num_actions (int): Number of actions.
 
