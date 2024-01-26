@@ -49,7 +49,7 @@ class GPT2Policy(Policy):
         sp_size = self.shard_config.sequence_parallel_size
         sp_group = self.shard_config.sequence_parallel_process_group
         overlap = self.shard_config.enable_sequence_overlap
-        sp_partial_derived = sp_mode in ["1"]
+        sp_partial_derived = sp_mode in ["1", "2"]
 
         if sp_mode == "2":
             pass

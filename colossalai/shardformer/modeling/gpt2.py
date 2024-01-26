@@ -922,7 +922,12 @@ def gpt2_sequence_parallel_forward_fn(sp_mode, sp_size, sp_group):
         head_mask = self.get_head_mask(head_mask, self.config.n_layer)
 
         if inputs_embeds is None:
-            inputs_embeds = self.wte(input_ids)
+            if sp_mode in ["2"]:
+                input_ids = _gather(input_ids, 1, sp_group)
+                inputs_embeds = self.wte(input_ids)
+                inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
+            else:
+                inputs_embeds = self.wte(input_ids)
         position_embeds = self.wpe(position_ids)
         hidden_states = inputs_embeds + position_embeds
 

@@ -323,6 +323,11 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
             output_parallel = matmul_gather_forward_reducescatter_backward(
                 input_parallel, self.weight, bias, self.process_group, True, 1, self.overlap
             )
+        elif self.seq_parallel_mode == "2":
+            input_parallel = input_
+            output_parallel = matmul_gather_forward_reducescatter_backward(
+                input_parallel, self.weight, bias, self.process_group, True, 1, self.overlap, True
+            )
 
         if self.gather_output:
             # All-gather across the partitions.
@@ -528,10 +533,14 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
                     handle.wait()
                 output = torch.cat(output_parallel_list, dim=-1)
         else:
-            output_parallel = torch.matmul(input_, self.weight)
             if self.seq_parallel_mode is None:
+                output_parallel = torch.matmul(input_, self.weight)
                 output = reduce_forward(output_parallel, self.process_group)
             elif self.seq_parallel_mode == "1":
+                output_parallel = torch.matmul(input_, self.weight)
+                output = reducescatter_forward_gather_backward(output_parallel, self.process_group, 1)
+            elif self.seq_parallel_mode == "2":
+                output_parallel = torch.matmul(input_, self.weight)
                 output = reducescatter_forward_gather_backward(output_parallel, self.process_group, 1)
 
         if not self.skip_bias_add:
@@ -702,7 +711,6 @@ class FusedLinear1D_Col(ParallelModule):
         #                                                      process_group=process_group,
         #                                                      is_transposed=False)
         #         linear_1d.bias.data.copy_(sharded_bias.data)
-        print(linear_1d.weight.shape)
         return linear_1d
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
