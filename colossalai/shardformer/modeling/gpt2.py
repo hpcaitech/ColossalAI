@@ -1065,11 +1065,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         )
         hidden_states = transformer_outputs[0]
 
-        # Set device for model parallelism
-        if self.model_parallel:
-            torch.cuda.set_device(self.transformer.first_device)
-            hidden_states = hidden_states.to(self.lm_head.weight.device)
-
         lm_logits = self.lm_head(hidden_states)
 
         loss = None

@@ -24,12 +24,19 @@ from examples.language.performance_evaluator import PerformanceEvaluator
 # Constants
 # ==============================
 
+MODEL_CONFIGS = {
+    "small": GPT2Config(),
+    "medium": GPT2Config(n_head=16, n_layer=24, activation_function="gelu"),
+    "large": GPT2Config(n_embd=1280, n_head=20, n_layer=36),
+}
+
 
 def main():
     # ==============================
     # Parse Arguments
     # ==============================
     parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--config", type=str, default="medium", help="Model configuration")
     parser.add_argument(
         "-p",
         "--plugin",
@@ -117,9 +124,9 @@ def main():
         plugin = HybridParallelPlugin(
             tp_size=args.tp,
             pp_size=args.pp,
-            pp_style="1f1b",
+            pp_style="interleaved",
             zero_stage=args.zero,
-            num_model_chunks=1,
+            num_model_chunks=2,
             enable_all_optimization=True,
             num_microbatches=args.mbs,
             precision="bf16",
@@ -145,7 +152,7 @@ def main():
     # ==============================
     dp_size = plugin.dp_size if isinstance(plugin, HybridParallelPlugin) else coordinator.world_size
 
-    config = GPT2Config(n_layer=24, n_embd=1024, n_head=16, n_positions=1024, activation_function="gelu")
+    config = MODEL_CONFIGS[args.config]
     dataset = RandomDataset(
         num_samples=args.batch_size * args.num_steps * dp_size, max_length=args.max_length, vocab_size=config.vocab_size
     )
