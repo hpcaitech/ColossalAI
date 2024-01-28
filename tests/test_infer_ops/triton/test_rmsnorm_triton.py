@@ -84,5 +84,5 @@ def benchmark_rms_layernorm(
 
 
 if __name__ == "__main__":
-    # test_layer_norm()
-    benchmark_rms_layernorm.run(save_path=".", print_data=True)
+    test_layer_norm()
+    # benchmark_rms_layernorm.run(save_path=".", print_data=True)
