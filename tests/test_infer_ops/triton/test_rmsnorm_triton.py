@@ -34,9 +34,7 @@ def test_layer_norm(M, N):
     x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device="cuda")
 
     y_triton = rms_layernorm(x, weight, eps=eps)
-    # print(y_triton)
     y_llama = rms_norm.forward(x).to(dtype)
-    # print(y_llama)
 
     assert torch.allclose(y_triton, y_llama, atol=1e-5, rtol=1e-5)
 
