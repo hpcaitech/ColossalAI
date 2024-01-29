@@ -2,111 +2,86 @@ import pytest
 import torch
 from packaging import version
 from torch.optim import SGD
-from torchvision.models import resnet18
-from utils import shared_tempdir
 
 import colossalai
 from colossalai.booster import Booster
 
 if version.parse(torch.__version__) >= version.parse("1.12.0"):
+    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
     from colossalai.booster.plugin import TorchFSDPPlugin
 
-from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.interface import OptimizerWrapper
+from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
+from tests.kit.model_zoo import COMMON_MODELS, IS_FAST_TEST, model_zoo
 
 
-def compare_nested_dict(dict1, dict2):
-    for key in dict1:
-        if key in dict2:
-            if type(dict1[key]) is dict:
-                assert type(dict2[key]) is dict
-                diff = compare_nested_dict(dict1[key], dict2[key])
-                if not diff:
-                    return diff
-            elif type(dict1[key]) is list:
-                assert type(dict2[key]) is list
-                for i, val in enumerate(dict1[key]):
-                    if isinstance(val, torch.Tensor):
-                        if not torch.equal(dict1[key][i], dict2[key][i]):
-                            return False
-                    elif val != dict2[key][i]:
-                        return False
-            elif type(dict1[key]) is torch.Tensor:
-                assert type(dict2[key]) is torch.Tensor
-                if not torch.equal(dict1[key], dict2[key]):
-                    return False
-            else:
-                if dict1[key] != dict2[key]:
-                    return False
-        else:
-            return False
-    return True
-
-
-def check_torch_fsdp_ckpt():
-    model = resnet18()
+# test basic fsdp function
+@clear_cache_before_run()
+def run_fn(model_fn, data_gen_fn, output_transform_fn):
     plugin = TorchFSDPPlugin()
     booster = Booster(plugin=plugin)
-    optimizer = SGD(model.parameters(), lr=0.001, momentum=0.9)
+    model = model_fn()
+    optimizer = SGD(model.parameters(), lr=1e-3)
     criterion = lambda x: x.mean()
-    fsdp_model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
+    data = data_gen_fn()
 
-    inputs = torch.randn(4, 3, 224, 224)
-    outputs = None
+    data = {k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
 
-    def run_model():
-        nonlocal outputs
-        outputs = fsdp_model(inputs)
-        optimizer.zero_grad()
-        criterion(outputs).backward()
-        optimizer.step()
+    model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
-    with shared_tempdir() as tempdir:
-        model_ckpt_path = f"{tempdir}/model"
-        optim_ckpt_path = f"{tempdir}/optimizer"
+    assert isinstance(model.module, FSDP)
+    assert isinstance(optimizer, OptimizerWrapper)
 
-        run_model()
+    output = model(**data)
+    output = output_transform_fn(output)
+    output_key = list(output.keys())[0]
+    loss = criterion(output[output_key])
 
-        booster.save_model(fsdp_model, model_ckpt_path, shard=False)
-        booster.save_optimizer(optimizer, optim_ckpt_path, shard=False)
+    booster.backward(loss, optimizer)
+    optimizer.clip_grad_by_norm(1.0)
+    optimizer.step()
 
-        full_msd = fsdp_model.state_dict()
-        # full_osd = FSDP.full_optim_state_dict(fsdp_model, optimizer)
-        sharded_osd = optimizer.state_dict()
-        import copy
+    del model
+    del optimizer
+    del criterion
+    del booster
+    del plugin
 
-        sharded_osd = copy.deepcopy(sharded_osd)
 
-        run_model()
+def check_torch_fsdp_plugin():
+    if IS_FAST_TEST:
+        registry = model_zoo.get_sub_registry(COMMON_MODELS)
+    else:
+        registry = model_zoo.get_sub_registry("transformers_gptj")
 
-        full_msd_updated = fsdp_model.state_dict()
-        # full_osd_updated = FSDP.full_optim_state_dict(fsdp_model, optimizer, rank0_only=True)
-        sharded_osd_updated = optimizer.state_dict()
-
-        assert not compare_nested_dict(sharded_osd, sharded_osd_updated)
-        assert not compare_nested_dict(full_msd_updated, full_msd)
-        outputs_first = fsdp_model(inputs)
-        assert criterion(outputs_first) != criterion(outputs)
-
-        booster.load_model(fsdp_model, model_ckpt_path)
-        booster.load_optimizer(optimizer, optim_ckpt_path)
-
-        full_msd_restore = fsdp_model.state_dict()
-        # full_osd_restore = FSDP.full_optim_state_dict(fsdp_model, optimizer, rank0_only=True)
-        sharded_osd_restore = optimizer.state_dict()
-
-        assert compare_nested_dict(sharded_osd, sharded_osd_restore)
-        assert compare_nested_dict(full_msd_restore, full_msd)
-        outputs_sec = fsdp_model(inputs)
-        assert criterion(outputs_sec) == criterion(outputs)
+    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in registry.items():
+        if any(
+            element in name
+            for element in [
+                "diffusers",
+                "deepfm_sparsearch",
+                "dlrm_interactionarch",
+                "torchvision_googlenet",
+                "torchvision_inception_v3",
+            ]
+        ):
+            continue
+        print(name)
+        run_fn(model_fn, data_gen_fn, output_transform_fn)
+        torch.cuda.empty_cache()
 
 
 def run_dist(rank, world_size, port):
     # init dist env
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
-    check_torch_fsdp_ckpt()
+    check_torch_fsdp_plugin()
 
 
 @pytest.mark.skipif(version.parse(torch.__version__) < version.parse("1.12.0"), reason="requires torch1.12 or higher")
 @rerun_if_address_is_in_use()
-def test_torch_fsdp_ckpt():
+def test_torch_fsdp_plugin():
     spawn(run_dist, 2)
+
+
+if __name__ == "__main__":
+    test_torch_fsdp_plugin()
