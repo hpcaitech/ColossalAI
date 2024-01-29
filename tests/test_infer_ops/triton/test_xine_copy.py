@@ -2,7 +2,6 @@ import pytest
 import torch
 from packaging import version
 
-from colossalai.inference.modeling.models.llama import get_cos_sin
 from colossalai.kernel.triton import get_xine_cache
 
 try:
@@ -14,6 +13,29 @@ except ImportError:
     print("please install triton from https://github.com/openai/triton")
 
 TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
+
+
+@torch.no_grad()
+def get_cos_sin(lengths, cos_cache, sin_cache, is_prompts, dtype):
+    """
+    Get cos and sin for the cache, and return nopad format.
+    Args:
+        lengths: shape(num_seqs,), stores lenghth of each sequence.
+        cos_cache: shape(max_rotary_position(e.g.2048), head_dim), cos cache constrcuted in model.
+        sin_cache: shape(max_rotary_position(e.g.2048), head_dim), sin cache constrcuted in model.
+        is_prompts: bool, mark if in prefill mode.
+        dtype: The data type of this inference process.
+    """
+
+    if is_prompts:
+        index_arrays = [torch.arange(length) for length in lengths]
+    else:
+        index_arrays = [(length - 1).view(-1) for length in lengths]
+    indices = torch.cat(index_arrays, dim=-1)
+    cos_output = cos_cache[indices].to(dtype=dtype)
+    sin_output = sin_cache[indices].to(dtype=dtype)
+
+    return (cos_output, sin_output)
 
 
 @pytest.mark.parametrize("BATCH_SIZE", [4])
