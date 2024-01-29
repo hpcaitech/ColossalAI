@@ -2,7 +2,7 @@ import pytest
 
 import colossalai
 from colossalai.inference.config import InferenceConfig
-from colossalai.inference.struct import BatchInfo, Sequence
+from colossalai.inference.struct import BatchInfo, RequestStatus, Sequence
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
@@ -17,6 +17,7 @@ def check_config_and_inference():
         sample_params=None,
         block_table=None,
         eos_token_id=2,
+        pad_token_id=2,
         max_output_len=256,
     )
 
@@ -28,6 +29,7 @@ def check_config_and_inference():
         sample_params=None,
         block_table=None,
         eos_token_id=2,
+        pad_token_id=2,
         max_output_len=256,
     )
 
@@ -39,15 +41,25 @@ def check_config_and_inference():
         sample_params=None,
         block_table=None,
         eos_token_id=2,
+        pad_token_id=2,
         max_output_len=256,
     )
+    sequence.mark_running()
+    assert sequence.status == RequestStatus.RUNNING
+    sequence.recycle()
+    assert sequence.status == RequestStatus.RECYCLED
 
     assert sequence.sentence_len == 3
     assert sequence.input_len == 3
     assert sequence.output_len == 0
     assert sequence.check_finish() == False
 
-    batch = BatchInfo(is_prompts=False)
+    batch = BatchInfo(
+        max_batch_size=8,
+        kv_max_split_num=16,
+        num_heads=2,
+        head_dim=128,
+    )
     batch.init_batch([sequence])
     batch.add_seqs([sequence2, sequence3])
     batch.add_seqs([sequence])

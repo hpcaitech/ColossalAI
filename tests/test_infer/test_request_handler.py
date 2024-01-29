@@ -20,6 +20,7 @@ def check_running_list():
         input_token_id=[1, 2, 3],
         block_size=16,
         eos_token_id=0,
+        pad_token_id=0,
         sample_params=None,
         block_table=1,
     )
@@ -56,6 +57,7 @@ def check_request_handler():
         input_token_id=[1, 2, 3, 4, 5],
         block_size=16,
         eos_token_id=0,
+        pad_token_id=0,
         sample_params=None,
         block_table=torch.tensor([-1, -1]),
     )

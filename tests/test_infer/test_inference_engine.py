@@ -3,8 +3,7 @@ import random
 import numpy as np
 import pytest
 import torch
-import transformers
-from transformers import AutoTokenizer, GenerationConfig
+from transformers import AutoTokenizer, GenerationConfig, LlamaConfig, LlamaForCausalLM
 
 import colossalai
 from colossalai.inference.config import InferenceConfig
@@ -22,8 +21,8 @@ def setup_seed(seed):
 def check_inference_engine(test_cai=False):
     setup_seed(20)
     tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
-    model = transformers.LlamaForCausalLM(
-        transformers.LlamaConfig(
+    model = LlamaForCausalLM(
+        LlamaConfig(
             vocab_size=50000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=16
         )
     ).cuda()

@@ -5,6 +5,7 @@
 #
 # Inspired and modified from Triton Tutorial - Fused Attention
 # https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
+
 import torch
 import triton
 import triton.language as tl
@@ -20,6 +21,7 @@ def _fwd_context_paged_attention_kernel(
     KCache,
     VCache,
     BLOCK_TABLES,  # [num_seqs, max_blocks_per_sequence]
+    batch_size,
     stride_qt,
     stride_qh,
     stride_qd,
@@ -47,6 +49,8 @@ def _fwd_context_paged_attention_kernel(
     BLOCK_N: tl.constexpr,
 ):
     cur_seq_idx = tl.program_id(0)
+    if cur_seq_idx >= batch_size:
+        return
     cur_head_idx = tl.program_id(1)
     block_start_m = tl.program_id(2)  # Br, max_input_len // Block_M
     cur_kv_head_idx = cur_head_idx // KV_GROUPS
@@ -190,13 +194,10 @@ def context_attention_unpadded(
     context_lengths: torch.Tensor,  # [num_seqs]
     block_tables: torch.Tensor,  # [num_seqs, max_blocks_per_sequence],
     block_size: int,
+    output: torch.Tensor = None,  # [num_tokens, num_heads, head_dim]
+    max_seq_len: int = None,
+    sm_scale: int = None,
 ):
-    # q/k in context stage are supposed to be put into k_cache and v_cache.
-    # This step can be optimized in future.
-    q = q.contiguous()
-    k = k.contiguous()
-    v = v.contiguous()
-
     Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
     assert Lq == Lk == Lv
     assert Lk in {32, 64, 128, 256}
@@ -210,17 +211,18 @@ def context_attention_unpadded(
     num_kv_group = num_heads // num_kv_heads
 
     num_seqs, max_blocks_per_seq = block_tables.shape
-    max_seq_len = context_lengths.max().item()
-    sm_scale = 1.0 / (Lq**0.5)
-
-    output = torch.zeros_like(q)
+    max_seq_len = context_lengths.max().item() if max_seq_len is None else max_seq_len
+    sm_scale = 1.0 / (Lq**0.5) if sm_scale is None else sm_scale
+    output = torch.zeros_like(q) if output is None else output
 
     # NOTE For now, BLOCK_M and BLOCK_N are supposed to be equivalent with
     # the size of physical cache block (i.e. `block_size`)
     assert block_size in {16, 32, 64, 128}
     BLOCK_M = BLOCK_N = block_size
 
-    grid = (num_seqs, num_heads, triton.cdiv(max_seq_len, BLOCK_M))
+    # NOTE use `triton.next_power_of_2` here to utilize the cache mechanism of triton
+    # To optimize, revise batching/scheduling to batch 2^n sequences in a batch (preferred)
+    grid = (triton.next_power_of_2(num_seqs), num_heads, triton.cdiv(max_seq_len, BLOCK_M))
 
     _fwd_context_paged_attention_kernel[grid](
         q,
@@ -230,6 +232,7 @@ def context_attention_unpadded(
         k_cache,
         v_cache,
         block_tables,
+        num_seqs,
         q.stride(0),
         q.stride(1),
         q.stride(2),

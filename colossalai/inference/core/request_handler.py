@@ -4,6 +4,7 @@ import torch
 from transformers.configuration_utils import PretrainedConfig
 
 from colossalai.inference.config import InferenceConfig
+from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.inference.kv_cache import KVCacheManager
 from colossalai.inference.logit_processors import logit_processor
 from colossalai.inference.sampler import *
@@ -69,18 +70,59 @@ class RequestHandler:
     Args:
        inference_config: Configuration for initialize and manage kv cache.
        model_config: Configuration for model
+       dtype (torch.dtype): The data type for weights and activations.
     """
 
     def __init__(self, inference_config: InferenceConfig, model_config: PretrainedConfig) -> None:
         self.inference_config = inference_config
-        self._init_cache(model_config)
-
         self.running_list: RunningList = RunningList(inference_config.prefill_ratio)
         self.waiting_list: List[List] = [[], [], []]
         self.done_list: List[Sequence] = []
+        self.dtype = inference_config.dtype
+        self.max_batch_size = inference_config.max_batch_size
+
+        # initialize cache
+        self._init_cache(model_config)
+
+        # initialize batch
         device = torch.cuda.current_device()
-        self.running_batch = BatchInfo(is_prompts=False, device=device)
-        self.prefill_batch = BatchInfo(is_prompts=True, device=device)
+        kv_max_split_num = (
+            inference_config.max_input_len + inference_config.max_output_len + inference_config.block_size - 1
+        ) // inference_config.block_size
+        head_dim = model_config.hidden_size // model_config.num_attention_heads
+
+        fd_inter_tensor = FDIntermTensors()
+        fd_inter_tensor.initialize(
+            max_batch_size=self.max_batch_size,
+            num_attn_heads=model_config.num_attention_heads,
+            kv_max_split_num=kv_max_split_num,
+            head_dim=head_dim,
+            dtype=self.dtype,
+            device=device,
+        )
+
+        # TODO In the continuous batching scenario, the batch size may be greater than max_batch_size,
+        # which may cause bugs and this issue should be fixed later.
+        self.running_batch = BatchInfo(
+            max_batch_size=self.max_batch_size,
+            kv_max_split_num=kv_max_split_num,
+            num_heads=model_config.num_attention_heads,
+            head_dim=head_dim,
+            is_prompts=False,
+            device=device,
+            dtype=self.dtype,
+            fd_inter_tensor=fd_inter_tensor,
+        )
+        self.prefill_batch = BatchInfo(
+            max_batch_size=self.max_batch_size,
+            kv_max_split_num=kv_max_split_num,
+            num_heads=model_config.num_attention_heads,
+            head_dim=head_dim,
+            is_prompts=True,
+            device=device,
+            dtype=self.dtype,
+            fd_inter_tensor=fd_inter_tensor,
+        )
 
     def _init_cache(self, model_config):
         self.cache_manager = KVCacheManager(self.inference_config, model_config)
@@ -107,21 +149,25 @@ class RequestHandler:
                                 f"the prompt(Request id = {seq.request_id}) length is longer than max_input_len, abort this sequence."
                             )
                             self.abort_sequence(seq.request_id)
+                            remove_list.append(seq)
                             break
 
                         # stop feeding new sequence into running list to assure
-                        if self.cache_manager.num_available_blocks <= self.running_list.total_seq_num:
+                        if self.cache_manager.num_available_blocks <= self.running_list.total_seq_num():
                             break
 
                         # Try to allocate cache blocks for the sequence.
-                        if self.cache_manager.check_allocation(seq):
+                        if (
+                            self.cache_manager.check_allocation(seq)
+                            and (len(self.running_list.prefill) + len(self.running_list.decoding))
+                            < self.max_batch_size  # There some bugs in continous batching, so we disable it here.
+                        ):
                             # If succeed, add the sequence to running list.
                             remove_list.append(seq)
                             self.running_list.append(seq)
-                            self.cache_manager.allocate_context_from_block_table(seq.block_table, seq.input_len)
+                            self.cache_manager.allocate_context_from_block_table(seq.block_table, seq.sentence_len)
                     for seq in remove_list:
                         lst.remove(seq)
-
         if self.running_list.ready_for_prefill():
             for seq in self.running_list.prefill:
                 seq.mark_running()
@@ -133,7 +179,8 @@ class RequestHandler:
                 recycle = self.cache_manager.allocate_token_from_block_table(seq.block_table, seq.sentence_len)
                 if recycle:
                     seq.recycle()
-                    self.running_batch.remove(seq)
+                    self.running_batch.del_seq(seq)
+                    self.running_list.remove(seq)
                     self.waiting_list[-1].append(seq)
                     # the recycled sequences are handled with highest priority.
 
