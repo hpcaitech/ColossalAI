@@ -21,13 +21,13 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 disable_existing_loggers()
 logger = get_dist_logger()
@@ -385,7 +385,7 @@ def main(args):
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            torch_dtype = torch.float16 if get_current_device() == "cuda" else torch.float32
+            torch_dtype = torch.float16 if get_accelerator().get_current_device() == "cuda" else torch.float32
             pipeline = DiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
@@ -400,7 +400,7 @@ def main(args):
             sample_dataset = PromptDataset(args.class_prompt, num_new_images)
             sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
 
-            pipeline.to(get_current_device())
+            pipeline.to(get_accelerator().get_current_device())
 
             for example in tqdm(
                 sample_dataloader,
@@ -598,8 +598,8 @@ def main(args):
     # Move text_encode and vae to gpu.
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
-    vae.to(get_current_device(), dtype=weight_dtype)
-    text_encoder.to(get_current_device(), dtype=weight_dtype)
+    vae.to(get_accelerator().get_current_device(), dtype=weight_dtype)
+    text_encoder.to(get_accelerator().get_current_device(), dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader))
@@ -633,7 +633,7 @@ def main(args):
             torch.cuda.reset_peak_memory_stats()
             # Move batch to gpu
             for key, value in batch.items():
-                batch[key] = value.to(get_current_device(), non_blocking=True)
+                batch[key] = value.to(get_accelerator().get_current_device(), non_blocking=True)
 
             # Convert images to latent space
             optimizer.zero_grad()

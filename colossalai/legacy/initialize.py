@@ -15,6 +15,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 
+from colossalai.accelerator import get_accelerator
 from colossalai.context import Config, ConfigException
 from colossalai.interface import OptimizerWrapper
 from colossalai.legacy.amp import AMP_TYPE, convert_to_amp
@@ -34,7 +35,6 @@ from colossalai.legacy.utils import is_using_ddp, is_using_pp, is_using_sequence
 from colossalai.legacy.zero import ShardedOptimizerV2, convert_to_zero_v2
 from colossalai.legacy.zero.gemini.ophooks import BaseOpHook
 from colossalai.logging import get_dist_logger
-from colossalai.utils import get_current_device
 
 
 def get_default_parser():
@@ -309,9 +309,9 @@ def initialize(
     else:
         if isinstance(model, nn.Module):
             # first sync model across dp ranks
-            model.to(get_current_device())
+            model.to(get_accelerator().get_current_device())
         elif isinstance(model, Callable):
-            model = model().to(get_current_device())
+            model = model().to(get_accelerator().get_current_device())
 
         # optimizer maybe a optimizer_cls
         if isinstance(optimizer, Callable):

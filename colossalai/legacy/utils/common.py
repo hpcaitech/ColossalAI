@@ -96,9 +96,9 @@ def _calc_l2_norm(grads):
     global fused_optim
 
     if fused_optim is None:
-        from colossalai.kernel.op_builder import FusedOptimBuilder
+        from colossalai.kernel.kernel_loader import FusedOptimizerLoader
 
-        fused_optim = FusedOptimBuilder().load()
+        fused_optim = FusedOptimizerLoader().load()
 
     norm = 0.0
     if len(grads) > 0:

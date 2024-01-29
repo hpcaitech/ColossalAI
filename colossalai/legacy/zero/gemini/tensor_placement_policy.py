@@ -5,8 +5,8 @@ from typing import List, Optional, Type
 
 import torch
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.utils.memory import colo_device_memory_capacity
-from colossalai.utils import get_current_device
 from colossalai.zero.gemini.memory_tracer import MemStatsCollector
 
 from .stateful_tensor import StatefulTensor
@@ -38,7 +38,7 @@ class CPUTensorPlacementPolicy(TensorPlacementPolicy):
 class CUDATensorPlacementPolicy(TensorPlacementPolicy):
     def __init__(self, mem_stats_collector: Optional[MemStatsCollector] = None) -> None:
         assert torch.cuda.is_available(), "Cannot use CUDATensorPlacementPolicy when CUDA is not available"
-        super().__init__(get_current_device(), mem_stats_collector=mem_stats_collector)
+        super().__init__(get_accelerator().get_current_device(), mem_stats_collector=mem_stats_collector)
 
     def evict_tensors(self, hold_cuda_tensor_list: List[StatefulTensor], **kwargs) -> int:
         return 0, 0
@@ -78,7 +78,7 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
             int: the volume of memory that is evicted
         """
         start = time()
-        cuda_capacity = colo_device_memory_capacity(get_current_device())
+        cuda_capacity = colo_device_memory_capacity(get_accelerator().get_current_device())
         used_cuda_model_data = StatefulTensor.GST_MGR.total_mem["cuda"]
         if warmup:
             # We designate a part of CUDA memory for model data in warmup iterations.

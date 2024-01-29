@@ -1,106 +1,85 @@
-from typing import Optional
-
 import torch
 import torch.distributed as dist
-from torch.optim import Adam
+from torchvision.models import resnet18
+from utils import shared_tempdir
 
 import colossalai
-import colossalai.utils.device as device_utils
 from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
-
-# from colossalai.nn.optimizer import HybridAdam
-from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
-from tests.kit.model_zoo import COMMON_MODELS, IS_FAST_TEST, model_zoo
-
-# These models are not compatible with AMP
-_AMP_ERR_MODELS = ["timm_convit", "deepfm_interactionarch"]
-# These models have no parameters
-_LOW_LEVEL_ZERO_ERR_MODELS = ["dlrm_interactionarch"]
-# These models will cause stuck, to be fixed
-_STUCK_MODELS = ["transformers_albert_for_multiple_choice"]
+from colossalai.nn.optimizer import HybridAdam
+from colossalai.testing import (
+    check_state_dict_equal,
+    clear_cache_before_run,
+    parameterize,
+    rerun_if_address_is_in_use,
+    spawn,
+)
+from colossalai.zero import LowLevelZeroOptimizer
 
 
+# stage 1 and 2 process the optimizer/mode the same way
+# only test 2 is fine
 @clear_cache_before_run()
-def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
-    device = device_utils.get_current_device()
-    try:
-        plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=2**5)
-        booster = Booster(plugin=plugin)
-        model = model_fn()
-        optimizer = Adam(model.parameters(), lr=1e-3)
-        criterion = lambda x: x.mean()
-        data = data_gen_fn()
-
-        data = {
-            k: v.to(device) if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
-        }
-
-        model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
-
-        output = model(**data)
-        output = output_transform_fn(output)
-        output_key = list(output.keys())[0]
-        loss = criterion(output[output_key])
-
-        booster.backward(loss, optimizer)
-        optimizer.step()
-
-    except Exception as e:
-        return repr(e)
-
-
 @parameterize("stage", [2])
-def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
-    """check low level zero plugin over model zoo
+@parameterize("shard", [True, False])
+@parameterize("offload", [False, True])
+def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
+    plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=32, cpu_offload=offload)
+    booster = Booster(plugin=plugin)
+    model = resnet18()
+    criterion = lambda x: x.mean()
+    optimizer = HybridAdam((model.parameters()), lr=0.001)
+    model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
-    Args:
-        stage (int), stage of low level zero plugin
-        early_stop (bool, optional): Whether to stop when getting the first error. Defaults to True.
-    """
-    passed_models = []
-    failed_info = {}  # (model_name, error) pair
-    ignore_models = _AMP_ERR_MODELS + _LOW_LEVEL_ZERO_ERR_MODELS + _STUCK_MODELS
-    skipped_models = []
+    x = torch.randn(1, 3, 224, 224, device="cuda")
+    output = model(x)
+    loss = criterion(output)
+    booster.backward(loss, optimizer)
+    optimizer.step()
+    with shared_tempdir() as tempdir:
+        model_ckpt_path = f"{tempdir}/model"
+        optimizer_ckpt_path = f"{tempdir}/optimizer"
+        # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
+        booster.save_model(model, model_ckpt_path, shard=shard)
+        booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard)
 
-    if IS_FAST_TEST:
-        registry = model_zoo.get_sub_registry(COMMON_MODELS)
-    else:
-        registry = model_zoo
+        dist.barrier()
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in registry.items():
-        # FIXME(ver217): fix these models
-        if name in ignore_models:
-            skipped_models.append(name)
-            continue
-        err = run_fn(stage, model_fn, data_gen_fn, output_transform_fn)
+        new_model = resnet18()
+        new_optimizer = HybridAdam((new_model.parameters()), lr=0.001)
+        new_model, new_optimizer, _, _, _ = booster.boost(new_model, new_optimizer)
 
-        device_utils.empty_cache()
+        booster.load_model(new_model, model_ckpt_path)
+        check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
+        # check master weight
+        assert isinstance(new_optimizer, LowLevelZeroOptimizer)
+        working_param_id_set = set(id(p) for p in new_model.parameters())
+        for p_id, master_param in new_optimizer._param_store.working_to_master_param.items():
+            assert p_id in working_param_id_set
+            working_param = new_optimizer._param_store.master_to_working_param[id(master_param)]
+            padding = new_optimizer._param_store.get_param_padding_size(working_param)
+            padded_param = torch.nn.functional.pad(working_param.data.view(-1), (0, padding))
+            working_shard = padded_param.chunk(dist.get_world_size())[dist.get_rank()]
+            assert torch.equal(
+                working_shard, master_param.data.view(-1).to(dtype=padded_param.dtype, device=padded_param.device)
+            )
 
-        if err is None:
-            passed_models.append(name)
-        else:
-            failed_info[name] = err
-            if early_stop:
-                break
-
-    if dist.get_rank() == 0:
-        print(f"Passed models({len(passed_models)}): {passed_models}\n\n")
-        print(f"Failed models({len(failed_info)}): {list(failed_info.keys())}\n\n")
-        print(f"Skipped models({len(skipped_models)}): {skipped_models}\n\n")
-    assert len(failed_info) == 0, "\n".join([f"{k}: {v}" for k, v in failed_info.items()])
+        booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
+        check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict(), False)
+    torch.cuda.empty_cache()
 
 
-def run_dist(rank, world_size, port, early_stop: bool = True):
-    # init dist env
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
-    check_low_level_zero_plugin(early_stop=early_stop)
+def run_dist(rank, world_size, port):
+    colossalai.launch(config=(dict()), rank=rank, world_size=world_size, port=port, host="localhost")
+    check_low_level_zero_checkpointIO()
+    torch.cuda.empty_cache()
 
 
 @rerun_if_address_is_in_use()
-def test_low_level_zero_plugin(early_stop: bool = True):
-    spawn(run_dist, 2, early_stop=early_stop)
+@clear_cache_before_run()
+def test_low_level_zero_checkpointIO():
+    spawn(run_dist, 2)
 
 
 if __name__ == "__main__":
-    test_low_level_zero_plugin(early_stop=False)
+    test_low_level_zero_checkpointIO()

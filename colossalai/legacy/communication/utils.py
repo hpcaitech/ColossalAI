@@ -3,9 +3,9 @@ from typing import List, Tuple, Union
 import torch
 import torch.distributed as dist
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
-from colossalai.utils import get_current_device
 
 TensorShape = Union[torch.Size, List[int], Tuple[int]]
 
@@ -35,7 +35,7 @@ def send_obj_meta(obj, need_meta=True, next_rank=None) -> bool:
         if next_rank is None:
             next_rank = gpc.get_next_global_rank(ParallelMode.PIPELINE)
 
-        tensor_kwargs = {"dtype": torch.long, "device": get_current_device()}
+        tensor_kwargs = {"dtype": torch.long, "device": get_accelerator().get_current_device()}
         if isinstance(obj, torch.Tensor):
             send_obj_nums = torch.tensor(1, **tensor_kwargs)
             dist.send(send_obj_nums, next_rank)
@@ -74,7 +74,7 @@ def recv_obj_meta(obj_shape, prev_rank=None) -> torch.Size:
         if prev_rank is None:
             prev_rank = gpc.get_prev_global_rank(ParallelMode.PIPELINE)
 
-        tensor_kwargs = {"dtype": torch.long, "device": get_current_device()}
+        tensor_kwargs = {"dtype": torch.long, "device": get_accelerator().get_current_device()}
         recv_obj_nums = torch.empty((), **tensor_kwargs)
         dist.recv(recv_obj_nums, prev_rank)
         if recv_obj_nums.item() == 1:

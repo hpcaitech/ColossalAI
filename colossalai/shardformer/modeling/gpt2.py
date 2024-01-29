@@ -729,7 +729,7 @@ class GPT2PipelineForwards:
 def get_gpt2_flash_attention_forward(shard_config: ShardConfig):
     from transformers.models.gpt2.modeling_gpt2 import GPT2Attention
 
-    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
+    from colossalai.nn.layer.colo_attention import AttnMaskType, ColoAttention
 
     def split_heads(tensor, num_heads, attn_head_size):
         """
@@ -1064,6 +1064,11 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             return_dict=return_dict,
         )
         hidden_states = transformer_outputs[0]
+
+        # Set device for model parallelism
+        if self.model_parallel:
+            torch.cuda.set_device(self.transformer.first_device)
+            hidden_states = hidden_states.to(self.lm_head.weight.device)
 
         lm_logits = self.lm_head(hidden_states)
 

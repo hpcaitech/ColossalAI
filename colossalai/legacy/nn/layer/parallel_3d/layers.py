@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Parameter
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.communication import all_reduce, broadcast
 from colossalai.legacy.constants import (
     INPUT_GROUP_3D,
@@ -27,7 +28,6 @@ from colossalai.legacy.utils.checkpointing import (
     partition_tensor_parallel_state_dict,
 )
 from colossalai.nn import init as init
-from colossalai.utils.device import get_current_device
 
 from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
 from ._operation import (
@@ -69,11 +69,13 @@ class LayerNorm3D(ParallelLayer):
         self.normalized_shape_per_partition = divide(normalized_shape, self.depth)
 
         self.weight = Parameter(
-            torch.ones(self.normalized_shape_per_partition, device=get_current_device(), dtype=dtype)
+            torch.ones(self.normalized_shape_per_partition, device=get_accelerator().get_current_device(), dtype=dtype)
         )
         if bias:
             self.bias = Parameter(
-                torch.zeros(self.normalized_shape_per_partition, device=get_current_device(), dtype=dtype)
+                torch.zeros(
+                    self.normalized_shape_per_partition, device=get_accelerator().get_current_device(), dtype=dtype
+                )
             )
         else:
             self.bias = None
@@ -202,13 +204,15 @@ class Linear3D(ParallelLayer):
             torch.empty(
                 self.in_features_per_partition,
                 self.out_features_per_partition,
-                device=get_current_device(),
+                device=get_accelerator().get_current_device(),
                 dtype=dtype,
             )
         )
         if bias:
             self.bias = Parameter(
-                torch.zeros(self.bias_features_per_partition, device=get_current_device(), dtype=dtype)
+                torch.zeros(
+                    self.bias_features_per_partition, device=get_accelerator().get_current_device(), dtype=dtype
+                )
             )
         else:
             self.bias = None
@@ -380,11 +384,18 @@ class Classifier3D(ParallelLayer):
             self.has_weight = False
         else:
             self.weight = Parameter(
-                torch.empty(self.num_classes, self.in_features_per_partition, device=get_current_device(), dtype=dtype)
+                torch.empty(
+                    self.num_classes,
+                    self.in_features_per_partition,
+                    device=get_accelerator().get_current_device(),
+                    dtype=dtype,
+                )
             )
             self.has_weight = True
         if bias:
-            self.bias = Parameter(torch.zeros(self.num_classes, device=get_current_device(), dtype=dtype))
+            self.bias = Parameter(
+                torch.zeros(self.num_classes, device=get_accelerator().get_current_device(), dtype=dtype)
+            )
         else:
             self.bias = None
 
@@ -523,14 +534,16 @@ class VocabParallelClassifier3D(ParallelLayer):
                 torch.empty(
                     self.out_features_per_partition,
                     self.in_features_per_partition,
-                    device=get_current_device(),
+                    device=get_accelerator().get_current_device(),
                     dtype=dtype,
                 )
             )
             self.has_weight = True
         if bias:
             self.bias = Parameter(
-                torch.zeros(self.bias_features_per_partition, device=get_current_device(), dtype=dtype)
+                torch.zeros(
+                    self.bias_features_per_partition, device=get_accelerator().get_current_device(), dtype=dtype
+                )
             )
         else:
             self.bias = None
@@ -705,16 +718,24 @@ class PatchEmbedding3D(ParallelLayer):
 
         self.weight = nn.Parameter(
             torch.empty(
-                (embed_size_per_partition, in_chans, *self.patch_size), device=get_current_device(), dtype=dtype
+                (embed_size_per_partition, in_chans, *self.patch_size),
+                device=get_accelerator().get_current_device(),
+                dtype=dtype,
             )
         )
-        self.bias = nn.Parameter(torch.empty(embed_size_per_partition, device=get_current_device(), dtype=dtype))
+        self.bias = nn.Parameter(
+            torch.empty(embed_size_per_partition, device=get_accelerator().get_current_device(), dtype=dtype)
+        )
 
         self.cls_token = nn.Parameter(
-            torch.zeros((1, 1, embed_size_per_partition), device=get_current_device(), dtype=dtype)
+            torch.zeros((1, 1, embed_size_per_partition), device=get_accelerator().get_current_device(), dtype=dtype)
         )
         self.pos_embed = nn.Parameter(
-            torch.zeros((1, self.num_patches + 1, embed_size_per_partition), device=get_current_device(), dtype=dtype)
+            torch.zeros(
+                (1, self.num_patches + 1, embed_size_per_partition),
+                device=get_accelerator().get_current_device(),
+                dtype=dtype,
+            )
         )
 
         self.reset_parameters(weight_initializer, bias_initializer, position_embed_initializer)
@@ -880,7 +901,9 @@ class Embedding3D(ParallelLayer):
         self.embed_kwargs = kwargs
 
         self.weight = nn.Parameter(
-            torch.empty((num_embeddings, embed_dim_per_partition), device=get_current_device(), dtype=dtype)
+            torch.empty(
+                (num_embeddings, embed_dim_per_partition), device=get_accelerator().get_current_device(), dtype=dtype
+            )
         )
 
         self.reset_parameters(weight_initializer)
@@ -1019,7 +1042,7 @@ class VocabParallelEmbedding3D(ParallelLayer):
         self.weight = Parameter(
             torch.empty(
                 (self.num_embeddings_per_partition, self.embed_dim_per_partition),
-                device=get_current_device(),
+                device=get_accelerator().get_current_device(),
                 dtype=dtype,
             )
         )

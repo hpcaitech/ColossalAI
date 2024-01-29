@@ -40,7 +40,7 @@ def get_moe_info(ep_size: int, dp_size: int, pp_size: int, ep_inside: bool) -> M
         ep_size (int): The expert parallel size.
         dp_size (int): The data parallel size.
         pp_size (int): The pipeline parallel size.
-        ep_inside (bool, optional): Use ep inside dp if True, dp inside ep if Fasle.
+        ep_inside (bool, optional): Use ep inside dp if True, dp inside ep if False.
 
     Returns:
         dict: The moe info of the given tensor.

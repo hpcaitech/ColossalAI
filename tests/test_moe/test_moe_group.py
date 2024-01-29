@@ -3,11 +3,11 @@ import torch.distributed as dist
 import torch.nn as nn
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.moe.experts import MLPExperts
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import sync_moe_model_param
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
-from colossalai.utils import get_current_device
 
 HIDDEN_SIZE = 4
 INTERMEDIATE_SIZE = 8
@@ -46,7 +46,7 @@ def run_moe_init(expert_parallel):
     assert dist.get_rank(parallel_info_dict[1].dp_group) == rank
 
     model = nn.ModuleList([exp0, exp1, exp2])
-    model = model.to(get_current_device())
+    model = model.to(get_accelerator().get_current_device())
     sync_moe_model_param(model)
 
     # MOE experts layout success when ep_size = 1

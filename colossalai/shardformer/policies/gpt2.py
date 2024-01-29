@@ -266,6 +266,8 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
 
         module_policy = super().module_policy()
 
+        setattr(self.shard_config, "causal_lm", True)
+
         if self.shard_config.enable_tensor_parallelism:
             addon_module = {
                 GPT2LMHeadModel: ModulePolicyDescription(
