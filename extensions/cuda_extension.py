@@ -20,7 +20,7 @@ class _CudaExtension(_CppExtension):
         """
 
     def is_hardware_available(self) -> bool:
-        # cuda extension can only be built if cuda is availabe
+        # cuda extension can only be built if cuda is available
         try:
             import torch
 
