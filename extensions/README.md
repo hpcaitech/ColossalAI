@@ -111,13 +111,14 @@ class MyExtension(_Extension):
         """
         Check if the hardware required by the kernel is compatible.
         """
+        ...
 
     def build_aot(self) -> Union["CppExtension", "CUDAExtension"]:
         """
         If this kernel can be built AOT, it should return an extension object
         to Python setuptools for compilation.
         """
-        pass
+        ...
 
     def build_jit(self) -> Callable:
         """
