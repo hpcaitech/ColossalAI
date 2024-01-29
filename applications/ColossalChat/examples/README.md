@@ -27,6 +27,7 @@
   - [Alternative Option For RLHF: Direct Preference Optimization](#alternative-option-for-rlhf-direct-preference-optimization)
     - [DPO Stage 1: Supervised Instruction Tuning](#dpo-training-stage1---supervised-instructs-tuning)
     - [DPO Stage 2: DPO Training](#dpo-training-stage2---dpo-training)
+  - [Hardware Requirements](#hardware-requirements)
   - [Inference example](#inference-example)
   - [Attention](#attention)
 
@@ -547,6 +548,22 @@ You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to star
 <img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/DPO.png">
 </p>
 
+## Hardware Requirements
+For PPO, we suggest using Tensor Parallelism. The following table shows the VRAM consumption of training a 7B model on a dummy dataset with 2048 sequence length and 512 layout length with different tp_size (equal to the number of GPUs). In this experiment, we use H800 GPU with 80GB VRAM.
+| PPO   | tp=8          | tp=4          |
+|-------|---------------|---------------|
+| bs=1  | 18485.19 MB   | 42934.45 MB   |
+| bs=4  | 25585.65 MB   | 42941.93 MB   |
+| bs=16 | 41408.28 MB   | 56778.97 MB   |
+| bs=30 | 64047.42 MB   | failed        |
+
+For DPO, we recommend using zero2 or zero2-cpu. We tested the VRAM consumption on a dummy dataset with 2048 sequence length.
+
+- 1 H800 GPU
+  - zero2-cpu, batch size=2, VRAM Usage=49873.90 MB
+  - zero2-cpu, batch size=4, VRAM Usage=60998.22 MB
+- 4 H800 GPUs
+  - zero2, batch size=4, VRAM Usage=67544.47 MB
 
 ## Inference example
 

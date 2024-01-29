@@ -1,4 +1,5 @@
-transformers>=4.34.1
+transformers==4.34.1
+huggingface_hub==0.17.3
 tqdm
 datasets
 loralib
