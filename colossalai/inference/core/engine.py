@@ -242,6 +242,7 @@ class InferenceEngine:
         finished_sequences = self.request_handler.update()
 
         # Decode completed sentences.
+        # TODO : update decoding step
         for seq in finished_sequences:
             output_str = self.tokenizer.decode(seq.input_token_id + seq.output_token_id, skip_special_tokens=True)
             output_list.append(output_str)
