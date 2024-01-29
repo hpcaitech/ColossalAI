@@ -11,6 +11,7 @@ from colossalai.kernel.triton import (
     context_attention_unpadded,
     copy_kv_to_blocked_cache,
     flash_decoding_attention,
+    get_xine_cache,
     rotary_embedding,
 )
 from colossalai.logging import get_dist_logger
@@ -102,11 +103,9 @@ def llama_model_forward(
     hidden_states = self.embed_tokens(input_ids)
 
     # When testing, the performance of get_xine_cache is lower than that of get_cos_sin.
-    # cos = get_xine_cache(sequence_lengths, self._cos_cached, batch.is_prompts)
-    # sin = get_xine_cache(sequence_lengths, self._sin_cached, batch.is_prompts)
-    # cos_sin = (cos, sin)
+    cos_sin = get_xine_cache(sequence_lengths, self._cos_cached, self._sin_cached, batch.is_prompts)
 
-    cos_sin = get_cos_sin(sequence_lengths, self._cos_cached, self._sin_cached, batch.is_prompts, batch.dtype)
+    # cos_sin = get_cos_sin(sequence_lengths, self._cos_cached, self._sin_cached, batch.is_prompts, batch.dtype)
 
     if batch.is_prompts:
         output_tensor = torch.zeros(
@@ -135,7 +134,9 @@ def llama_model_forward(
             sm_scale=sm_scale,
         )
 
+    hidden_states = hidden_states[:, -1, :].unsqueeze(dim=1).contiguous()
     hidden_states = self.norm(hidden_states)
+
     return hidden_states
 
 
