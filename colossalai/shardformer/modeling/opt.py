@@ -123,7 +123,7 @@ class OPTPipelineForwards:
 
         else:
             if hidden_states is None:
-                raise ValueError("hidden_states shouln't be None for intermediate stages.")
+                raise ValueError("hidden_states shouldn't be None for intermediate stages.")
             input_shape = hidden_states.size()[:-1]
             batch_size, seq_length = input_shape[0], input_shape[1]
             device = hidden_states.device
