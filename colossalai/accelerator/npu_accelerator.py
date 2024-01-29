@@ -31,7 +31,7 @@ class NpuAccelerator(BaseAccelerator):
         """
         Return the version of the accelerator which torch is built against.
         """
-        return torch.version.npu
+        return torch.version.cann
 
     def get_current_device(self) -> torch.device:
         """
