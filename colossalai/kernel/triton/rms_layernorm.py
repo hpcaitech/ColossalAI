@@ -23,7 +23,6 @@ if HAS_TRITON:
         eps,  # epsilon to avoid division by zero
         BLOCK_SIZE: tl.constexpr,
     ):
-
         # This triton kernel implements Root Mean Square Layer Norm (RMSNorm).
 
         # Map the program id to the row of X and Y it should compute.
@@ -54,18 +53,19 @@ if HAS_TRITON:
     def rms_layernorm(x, weight, eps):
         # allocate output
         y = torch.empty_like(x)
-        # reshape input data into 2D tensor
+        # reshape input data into 2D tensor, (total token, hidden_size)
         x_arg = x.reshape(-1, x.shape[-1])
         M, N = x_arg.shape
         # Less than 64KB per feature: enqueue fused kernel
         MAX_FUSED_SIZE = 65536 // x.element_size()
+
         BLOCK_SIZE = min(MAX_FUSED_SIZE, triton.next_power_of_2(N))
-        if N > BLOCK_SIZE:
+        if N > MAX_FUSED_SIZE:
             raise RuntimeError("This layer norm doesn't support feature dim >= 64KB.")
+
         # heuristics for number of warps
-        num_warps = min(max(BLOCK_SIZE // 256, 1), 8)
+        num_warps = min(max(triton.next_power_of_2(N) // 256, 8), 32)
+
         # enqueue kernel
-        _rmsnorm_kernel[(M,)](
-            x_arg, y, weight, x_arg.stride(0), N, eps, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
-        )
+        _rmsnorm_kernel[(M,)](x_arg, y, weight, x_arg.stride(0), N, eps, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
         return y
