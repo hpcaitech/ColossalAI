@@ -5,6 +5,7 @@ import pytest
 import torch
 import torch.distributed as dist
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.communication import (
     recv_backward,
     recv_forward,
@@ -18,7 +19,6 @@ from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.initialize import launch
 from colossalai.logging import get_dist_logger
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from colossalai.utils import get_current_device
 
 BATCH_SIZE = 4
 SEQ_LENGTH = 2
@@ -73,7 +73,7 @@ def check_forward_backward(output_tensor, output_grad, rank, logger):
 
 def check_comm(size, rank, prev_rank, next_rank, logger):
     dtype = torch.float32
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     tensor_shape = (BATCH_SIZE, SEQ_LENGTH, HIDDEN_SIZE)
     grad_shape = (BATCH_SIZE, SEQ_LENGTH, HIDDEN_SIZE)
     tensor = torch.randn(tensor_shape, dtype=dtype, device=device)

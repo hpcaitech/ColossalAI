@@ -7,11 +7,11 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import DummyDataloader, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
-from colossalai.utils.device import get_current_device
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.kit.model_zoo import model_zoo, run_fwd, run_fwd_bwd
@@ -47,7 +47,9 @@ def multi_chunk_init(model: torch.nn.Module, placement_config: dict):
 
 
 def single_chunk_init(model: torch.nn.Module, placement_config: dict):
-    model = GeminiDDP(model, chunk_init_device=get_current_device(), pin_memory=True, **placement_config)
+    model = GeminiDDP(
+        model, chunk_init_device=get_accelerator().get_current_device(), pin_memory=True, **placement_config
+    )
     return model
 
 
@@ -63,7 +65,7 @@ def exam_inference(placement_config: dict, model_name: str, model_init_func: Cal
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
-    init_dev = get_current_device()
+    init_dev = get_accelerator().get_current_device()
     model = model_builder().to(init_dev)
 
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):

@@ -14,6 +14,7 @@ from transformers.models.llama import LlamaConfig
 from utils import PerformanceEvaluator, get_model_numel
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
@@ -21,7 +22,6 @@ from colossalai.moe.layers import apply_load_balance
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import skip_init
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 
 def move_to_cuda(batch, device):
@@ -64,13 +64,15 @@ class RandomDataset(Dataset):
                 )
                 self.input_ids.append(encode["input_ids"])
                 self.attention_mask.append(encode["attention_mask"])
-            self.input_ids = torch.cat(self.input_ids, dim=0).to(get_current_device())
-            self.attention_mask = torch.cat(self.attention_mask, dim=0).to(get_current_device())
+            self.input_ids = torch.cat(self.input_ids, dim=0).to(get_accelerator().get_current_device())
+            self.attention_mask = torch.cat(self.attention_mask, dim=0).to(get_accelerator().get_current_device())
             repeat_times = num_samples // self.input_ids.shape[0] + 1
             self.input_ids = self.input_ids.repeat(repeat_times, 1)[:num_samples]
             self.attention_mask = self.attention_mask.repeat(repeat_times, 1)[:num_samples]
         else:
-            self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device())
+            self.input_ids = torch.randint(
+                0, vocab_size, (num_samples, max_length), device=get_accelerator().get_current_device()
+            )
             self.attention_mask = torch.ones_like(self.input_ids)
 
     def __len__(self):
