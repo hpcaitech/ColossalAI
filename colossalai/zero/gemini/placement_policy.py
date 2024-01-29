@@ -6,8 +6,8 @@ from typing import Dict, List, Optional, Tuple, Type
 
 import torch
 
-from colossalai.utils import get_current_device
-from colossalai.utils.memory import colo_device_memory_capacity
+from colossalai.accelerator import get_accelerator
+from colossalai.legacy.utils.memory import colo_device_memory_capacity
 from colossalai.zero.gemini.chunk import Chunk
 
 from .chunk import Chunk, ChunkManager
@@ -85,7 +85,7 @@ class StaticPlacementPolicy(PlacementPolicy):
             # init offload optim settings
             # keep gathered chunks are in CUDA
             if chunk.keep_gathered or offloaded_optim_chunk_mem >= offload_optim_chunk_mem:
-                device = get_current_device()
+                device = get_accelerator().get_current_device()
             else:
                 device = torch.device("cpu")
                 # real offloaded mem is chunk.shard_mem, for simplicity we use chunk mem here
@@ -140,7 +140,7 @@ class AutoPlacementPolicy(PlacementPolicy):
             int: the volume of memory that is evicted
         """
         start = time()
-        cuda_capacity = colo_device_memory_capacity(get_current_device())
+        cuda_capacity = colo_device_memory_capacity(get_accelerator().get_current_device())
         used_cuda_model_data = self.chunk_manager.total_mem["cuda"]
         if warmup:
             # We designate a part of CUDA memory for model data in warmup iterations.
@@ -194,7 +194,7 @@ class AutoPlacementPolicy(PlacementPolicy):
             # init offload optim settings
             # keep gathered chunks are in CUDA
             if chunk.keep_gathered:
-                grads_device_map[p] = get_current_device()
+                grads_device_map[p] = get_accelerator().get_current_device()
             else:
                 grads_device_map[p] = torch.device("cpu")
 

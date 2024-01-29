@@ -72,9 +72,9 @@ class FusedSGD(Optimizer):
         self.wd_after_momentum = wd_after_momentum
 
         if multi_tensor_applier.available:
-            from colossalai.kernel.op_builder import FusedOptimBuilder
+            from colossalai.kernel.kernel_loader import FusedOptimizerLoader
 
-            fused_optim = FusedOptimBuilder().load()
+            fused_optim = FusedOptimizerLoader().load()
 
             # Skip buffer
             self._dummy_overflow_buf = torch.tensor(

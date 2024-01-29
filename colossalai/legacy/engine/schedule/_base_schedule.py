@@ -6,8 +6,8 @@ from typing import Callable, Iterable
 
 import torch
 
+from colossalai.accelerator import get_accelerator
 from colossalai.logging import get_dist_logger
-from colossalai.utils import get_current_device
 
 
 class BaseSchedule(ABC):
@@ -29,12 +29,12 @@ class BaseSchedule(ABC):
     def _move_tensor(element):
         if torch.is_tensor(element):
             if not element.is_cuda:
-                return element.to(get_current_device()).detach()
+                return element.to(get_accelerator().get_current_device()).detach()
         return element
 
     def _move_to_device(self, data):
         if isinstance(data, torch.Tensor):
-            data = data.to(get_current_device())
+            data = data.to(get_accelerator().get_current_device())
         elif isinstance(data, (list, tuple)):
             data_to_return = []
             for element in data:

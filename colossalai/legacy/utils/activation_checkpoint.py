@@ -6,8 +6,8 @@ import weakref
 import torch
 from torch.utils.checkpoint import check_backward_validity, detach_variable
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.context.random import get_current_mode, get_states, set_mode, set_seed_states, sync_states
-from colossalai.utils.device import autocast, get_current_device
 
 
 def copy_to_device(obj, device):
@@ -33,7 +33,7 @@ class CheckpointFunction(torch.autograd.Function):
         check_backward_validity(args)
         ctx.run_function = run_function
         ctx.activation_offload = activation_offload
-        ctx.device = get_current_device()
+        ctx.device = get_accelerator().get_current_device()
 
         # preserve rng states
         ctx.fwd_cpu_rng_state = torch.get_rng_state()
@@ -110,7 +110,7 @@ class CheckpointFunction(torch.autograd.Function):
             inputs[idx] = tensors[i]
         detached_inputs = detach_variable(tuple(inputs))
         if ctx.had_autocast_in_fwd:
-            with torch.enable_grad(), autocast():
+            with torch.enable_grad(), get_accelerator().autocast()():
                 outputs = ctx.run_function(*detached_inputs)
         else:
             with torch.enable_grad():
@@ -226,7 +226,7 @@ def _checkpoint_without_reentrant(function, activation_offload=False, *args):
 
             # rerun forward, the inner_pack will store all the activations in storage
             if has_autocast_in_fwd:
-                with torch.enable_grad(), autocast(), torch.autograd.graph.saved_tensors_hooks(
+                with torch.enable_grad(), get_accelerator().autocast()(), torch.autograd.graph.saved_tensors_hooks(
                     inner_pack, inner_unpack
                 ):
                     _unused = function(*args)
@@ -245,7 +245,7 @@ def _checkpoint_without_reentrant(function, activation_offload=False, *args):
 
     # get device if we need to offload the activation
     if activation_offload:
-        device = get_current_device()
+        device = get_accelerator().get_current_device()
 
     # run function with pack and unpack as saved_tensors_hooks
     with torch.autograd.graph.saved_tensors_hooks(pack, unpack):

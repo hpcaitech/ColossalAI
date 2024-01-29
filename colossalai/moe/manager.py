@@ -69,7 +69,7 @@ class MoEManager(metaclass=SingletonMeta):
             fixed_dp_size (int, optional): Fixed dp size in fixed mode. Defaults to 0.
             fixed_ep_size (int, optional): Fixed ep size in fixed mode. Defaults to 0.
             fixed_pp_size (int, optional): Fixed pp size in fixed mode. Defaults to 0.
-            use_ep_inside (bool, optional): Use ep inside dp if True, dp inside ep if Fasle. Defaults to True.
+            use_ep_inside (bool, optional): Use ep inside dp if True, dp inside ep if False. Defaults to True.
         """
         assert not self.is_initialized, "MoE distributed context shouldn't be set up again"
         assert torch.cuda.is_available(), "MoE requires to enable CUDA first"

@@ -12,12 +12,12 @@ from commons.utils import get_data, get_profile_context, get_tflops, get_time_st
 from packaging import version
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.lazy import LazyInitContext
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 CAI_VERSION = colossalai.__version__
 
@@ -141,7 +141,11 @@ def main():
     criterion = GPTLMLoss()
     torch.manual_seed(123)
     if args.distplan.startswith("CAI"):
-        ctx = LazyInitContext(default_device=get_current_device()) if args.distplan == "CAI_Gemini" else nullcontext()
+        ctx = (
+            LazyInitContext(default_device=get_accelerator().get_current_device())
+            if args.distplan == "CAI_Gemini"
+            else nullcontext()
+        )
         # build GPT model
         with ctx:
             model = model_builder(args.model_type)(checkpoint=True)

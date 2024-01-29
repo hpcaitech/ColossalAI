@@ -5,8 +5,8 @@ import torch.nn as nn
 from torch import Tensor
 from torch.optim import Optimizer
 
+from colossalai.accelerator import get_accelerator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.utils.device import autocast
 
 from .mixed_precision_base import MixedPrecision
 
@@ -89,7 +89,7 @@ class TorchAMPModule(ModelWrapper):
         super().__init__(module)
 
     def forward(self, *args, **kwargs):
-        with autocast():
+        with get_accelerator().autocast():
             return self.module(*args, **kwargs)
 
 

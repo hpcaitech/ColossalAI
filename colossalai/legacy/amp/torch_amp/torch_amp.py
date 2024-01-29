@@ -1,17 +1,18 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from colossalai.utils.device import autocast
-
 import torch.nn as nn
 from torch import Tensor
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
 
+from colossalai.accelerator import get_accelerator
 from colossalai.interface import OptimizerWrapper
 from colossalai.legacy.utils import clip_grad_norm_fp32
 
 from ._grad_scaler import GradScaler
+
+autocast = get_accelerator().autocast
 
 
 class TorchAMPOptimizer(OptimizerWrapper):

@@ -2,8 +2,8 @@ import pytest
 import torch
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from colossalai.utils import get_current_device
 from colossalai.zero.gemini.chunk import init_chunk_manager, search_chunk_configuration
 from tests.kit.model_zoo import model_zoo
 
@@ -34,7 +34,7 @@ def exam_chunk_manager():
     sharded_ddp_model = model_builder()
     chunk_manager = init_chunk_manager(
         sharded_ddp_model,
-        get_current_device(),
+        get_accelerator().get_current_device(),
         hidden_dim=128,
         search_range_m=1,
         min_chunk_size_m=0,

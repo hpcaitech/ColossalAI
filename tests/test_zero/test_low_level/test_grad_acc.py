@@ -7,9 +7,10 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.testing import spawn
 from colossalai.testing.random import seed_all
-from colossalai.utils import conditional_context, get_current_device
+from colossalai.utils import conditional_context
 from colossalai.zero import LowLevelZeroOptimizer
 
 
@@ -28,7 +29,7 @@ class MlpModel(nn.Module):
 def exam_zero_1_2_grad_acc():
     local_rank = torch.distributed.get_rank()
     seed_all(2009)
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     # create model
     zero1_model = MlpModel().to(device)
     zero2_model = copy.deepcopy(zero1_model)
@@ -71,7 +72,7 @@ def exam_zero_1_2_grad_acc():
 def exam_zero_1_grad_acc(sync):
     local_rank = torch.distributed.get_rank()
     seed_all(2008)
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
 
     # create models
     zero_model = MlpModel()

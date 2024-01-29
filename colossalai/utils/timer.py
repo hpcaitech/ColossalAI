@@ -3,7 +3,7 @@
 import time
 from typing import Tuple
 
-from .device import synchronize
+from colossalai.accelerator import get_accelerator
 
 
 class Timer:
@@ -21,13 +21,13 @@ class Timer:
 
     @property
     def current_time(self) -> float:
-        synchronize()
+        get_accelerator().synchronize()
         return time.time()
 
     def start(self):
         """Firstly synchronize cuda, reset the clock and then start the timer."""
         self._elapsed = 0
-        synchronize()
+        get_accelerator().synchronize()
         self._start_time = time.time()
         self._started = True
 
@@ -44,7 +44,7 @@ class Timer:
         Returns:
             int: Start-stop interval.
         """
-        synchronize()
+        get_accelerator().synchronize()
         end_time = time.time()
         elapsed = end_time - self._start_time
         if keep_in_history:
@@ -123,7 +123,7 @@ class MultiTimer:
             return None
 
     def get_timer(self, name):
-        """Get timer by its name (from multitimer)
+        """Get timer by its name (from multimer)
 
         Args:
             name (str): Timer's key.
