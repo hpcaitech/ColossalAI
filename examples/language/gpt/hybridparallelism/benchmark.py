@@ -26,7 +26,7 @@ from examples.language.performance_evaluator import PerformanceEvaluator
 
 MODEL_CONFIGS = {
     "small": GPT2Config(),
-    "medium": GPT2Config(n_head=16, n_layer=24, activation_function="gelu"),
+    "medium": GPT2Config(n_embd=1024, n_head=16, n_layer=24, activation_function="gelu"),
     "large": GPT2Config(n_embd=1280, n_head=20, n_layer=36),
 }
 
