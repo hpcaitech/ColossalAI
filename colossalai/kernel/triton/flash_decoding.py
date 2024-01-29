@@ -10,8 +10,8 @@ import triton.language as tl
 @triton.jit
 def _flash_decoding_fwd_kernel(
     Q,  # [batch_size, head_num, q_len(1), head_dim]
-    KCache,  # [num_blocks, num_kv_heads, head_dim, block_size]
-    VCache,  # [num_blocks, num_kv_heads, head_dim, block_size]
+    KCache,  # [num_blocks, num_kv_heads, block_size, head_dim]
+    VCache,  # [num_blocks, num_kv_heads, block_size, head_dim]
     block_tables,  # [batch_size, max_blocks_per_sequence]
     mid_o,  # [batch_size, head_num, kv_split_num, head_dim]
     mid_o_lse,  # [batch_size, head_num, kv_split_num]
@@ -22,8 +22,8 @@ def _flash_decoding_fwd_kernel(
     stride_qd,
     stride_cacheb,
     stride_cacheh,
-    stride_cached,
     stride_cachebs,
+    stride_cached,
     stride_bts,
     stride_btb,
     stride_mid_ot,
@@ -79,18 +79,18 @@ def _flash_decoding_fwd_kernel(
 
     K_block_ptr = tl.make_block_ptr(
         base=KCache + offset_kvcache,
-        shape=(HEAD_DIM, cur_occupied_size),
-        strides=(stride_cached, stride_cachebs),
+        shape=(cur_occupied_size, HEAD_DIM),
+        strides=(stride_cachebs, stride_cached),
         offsets=(0, 0),
-        block_shape=(HEAD_DIM, BLOCK_SIZE),
+        block_shape=(BLOCK_SIZE, HEAD_DIM),
         order=(0, 1),
     )
     V_block_ptr = tl.make_block_ptr(
         base=VCache + offset_kvcache,
-        shape=(HEAD_DIM, cur_occupied_size),
-        strides=(stride_cached, stride_cachebs),
+        shape=(cur_occupied_size, HEAD_DIM),
+        strides=(stride_cachebs, stride_cached),
         offsets=(0, 0),
-        block_shape=(HEAD_DIM, BLOCK_SIZE),
+        block_shape=(BLOCK_SIZE, HEAD_DIM),
         order=(0, 1),
     )
     k_cur_block = tl.load(K_block_ptr)
@@ -102,7 +102,7 @@ def _flash_decoding_fwd_kernel(
     # NOTE a trick to come across triton's requirement that values in both first and second input shapes must be >= 16,
     # Multiplying two tensors with shapes [1, d] * [d, block_size] will fail.
     # Refer to https://github.com/openai/triton/discussions/895
-    S_ij += tl.sum(q[:, None] * k_cur_block, 0)
+    S_ij += tl.sum(q[None, :] * k_cur_block, 1)
     S_ij *= sm_scale
     S_ij += tl.where(block_start_kv * BLOCK_KV + tl.arange(0, BLOCK_SIZE) < cur_kv_seq_len, 0, float("-inf"))
 
@@ -111,7 +111,7 @@ def _flash_decoding_fwd_kernel(
     p_ij_hat = tl.exp(S_ij)
     l = tl.sum(p_ij_hat, 0)
     p_ij_hat = p_ij_hat.to(v_cur_block.type.element_ty)
-    acc += tl.sum(v_cur_block * p_ij_hat[None, :], 1)
+    acc += tl.sum(v_cur_block * p_ij_hat[:, None], 0)
     acc = acc / l
 
     offsets_mid_o = (
@@ -206,8 +206,8 @@ def flash_decoding_attention(
 
     Args:
         q (torch.Tensor):       [bsz, num_heads, head_dim]
-        k_cache (torch.Tensor): [num_blocks, num_kv_heads, head_dim, block_size]
-        v_cache (torch.Tensor): [num_blocks, num_kv_heads, head_dim, block_size]
+        k_cache (torch.Tensor): [num_blocks, num_kv_heads, block_size, head_dim]
+        v_cache (torch.Tensor): [num_blocks, num_kv_heads, block_size, head_dim]
         kv_seq_len (torch.Tensor): [batch_size]
             records the (kv) sequence lengths incorporating past kv sequence lengths.
         block_tables (torch.Tensor): [batch_size, max_blocks_per_sequence]
@@ -230,13 +230,13 @@ def flash_decoding_attention(
     assert head_dim in {32, 64, 128, 256}
     assert kv_seq_len.shape[0] == block_tables.shape[0] == bsz, (
         f"Got incompatible batch size (number of seqs):\n"
-        f"  KV seq lengths bsz {kv_seq_len.shape[0]}, Block tables bsz {block_tables.shape[0]}, "
+        f"  KV seq lengths bsz {kv_seq_len.size(0)}, Block tables bsz {block_tables.size(0)}, "
         f"batch size {bsz}"
     )
-    assert k_cache.size(-1) == v_cache.size(-1) == block_size, (
+    assert k_cache.size(-2) == v_cache.size(-2) == block_size, (
         f"Got incompatible block size on kv caches:\n"
-        f"  assigned block_size {block_size}, k_cache block_size {k_cache.size(-1)}, "
-        f"v_cache block_size {v_cache.size(-1)}"
+        f"  assigned block_size {block_size}, k_cache block_size {k_cache.size(-2)}, "
+        f"v_cache block_size {v_cache.size(-2)}"
     )
 
     # NOTE BLOCK_KV could be considered as block splitting the sequence on k/v
