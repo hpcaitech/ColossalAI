@@ -4,12 +4,12 @@ from torch.nn.parameter import Parameter
 from torch.nn.utils import clip_grad_norm_
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.tensor import ColoTensorSpec, ProcessGroup, distspec
 from colossalai.legacy.utils.common import clip_grad_norm
 from colossalai.logging import disable_existing_loggers
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.utils import get_current_device
 
 
 def close(num: float, other: float, rtol: float = 1e-5, atol: float = 1e-8):
@@ -36,7 +36,7 @@ def check_grad_equal(p: Parameter, colo_p: ColoParameter) -> None:
 @parameterize("norm_type", [2.0, 3.0, float("inf")])
 def run_grad_clip_norm(world_size: int, dtype: torch.dtype, device: str, norm_type: float):
     print(f"{world_size}, {dtype}, {device}, {norm_type}")
-    cuda_device = get_current_device()
+    cuda_device = get_accelerator().get_current_device()
     devices = [cuda_device] * 4
     if device == "cpu":
         devices = [torch.device("cpu")] * 4

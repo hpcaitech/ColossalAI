@@ -3,13 +3,13 @@ from typing import Optional
 import torch
 import torch.distributed as dist
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.registry import OPHOOKS
 from colossalai.legacy.zero.gemini.ophooks import BaseOpHook
 from colossalai.legacy.zero.gemini.stateful_tensor import TensorState
 from colossalai.legacy.zero.gemini.stateful_tensor_mgr import StatefulTensorMgr
 from colossalai.legacy.zero.shard_utils import BaseShardStrategy
 from colossalai.logging import get_dist_logger
-from colossalai.utils import get_current_device
 from colossalai.zero.gemini.memory_tracer import MemStatsCollector
 
 
@@ -33,7 +33,7 @@ class ZeroHook(BaseOpHook):
         self.process_group = process_group
 
         # NOTE(jiaruifang) Now the computing device of FWD and BWD is always on GPU
-        self.computing_device = get_current_device()
+        self.computing_device = get_accelerator().get_current_device()
 
         self._memstarts_collector = memstarts_collector
         self._stateful_tensor_mgr = stateful_tensor_mgr

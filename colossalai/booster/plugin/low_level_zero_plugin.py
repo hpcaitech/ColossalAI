@@ -12,6 +12,7 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 
+from colossalai.accelerator import get_accelerator
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO
 from colossalai.checkpoint_io.utils import (
     get_optimizer_base_filenames,
@@ -24,7 +25,6 @@ from colossalai.checkpoint_io.utils import (
     sharded_optimizer_loading_epilogue,
 )
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
-from colossalai.utils import get_current_device
 from colossalai.zero import LowLevelZeroOptimizer
 
 from .dp_plugin_base import DPPluginBase
@@ -52,7 +52,7 @@ class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
             self.dtype = torch.bfloat16
         if self.dtype is not None:
             module = module.to(self.dtype)
-        module = module.to(get_current_device())
+        module = module.to(get_accelerator().get_current_device())
         self.module = module
         self.convert_fn = None
         if self.dtype is not None:

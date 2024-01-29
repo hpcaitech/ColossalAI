@@ -3,9 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from loss_func.cross_entropy import vocab_cross_entropy
 
-from colossalai.kernel import LayerNorm
 from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.core import global_context as gpc
+from colossalai.nn.layer.layernorm import MixedFusedLayerNorm as LayerNorm
 
 from .linear import Linear
 from .pooler import Pooler

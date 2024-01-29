@@ -7,10 +7,10 @@ import torch.cuda
 from torch.nn import Module
 from torch.utils._pytree import tree_map
 
+from colossalai.accelerator import get_accelerator
 from colossalai.inference.engine.microbatch_manager import MicroBatchManager, Status
 from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.utils.device import get_current_device
 
 from ._utils import get_batch_size, get_micro_batch, model_forward, to_device
 from .base import PipelineSchedule
@@ -86,7 +86,7 @@ class GenerateSchedule(PipelineSchedule):
         """
         micro_batch = get_micro_batch(self.batch, self.microbatch_offset, self.microbatch_size)
         self.microbatch_offset += self.microbatch_size
-        return tree_map(partial(to_device, device=get_current_device()), micro_batch)
+        return tree_map(partial(to_device, device=get_accelerator().get_current_device()), micro_batch)
 
     def _prepare_inputs_for_interval_stage(self):
         """

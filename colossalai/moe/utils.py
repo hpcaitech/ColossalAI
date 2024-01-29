@@ -7,13 +7,12 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
+from colossalai.accelerator import get_accelerator
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.tensor.moe_tensor.api import get_dp_group, get_dp_group_ranks, get_ep_size, is_moe_tensor
-from colossalai.utils import get_current_device
 
 
 class ForceFP32Parameter(torch.nn.Parameter):
-
     def half(self, memory_format=None):
         return self.data.clone()
 
@@ -30,8 +29,8 @@ class NormalNoiseGenerator:
 
     def __init__(self, num_experts: int):
         self.normal = torch.distributions.normal.Normal(
-            loc=torch.tensor(0.0, device=get_current_device()),
-            scale=torch.tensor(1.0 / num_experts**2, device=get_current_device()),
+            loc=torch.tensor(0.0, device=get_accelerator().get_current_device()),
+            scale=torch.tensor(1.0 / num_experts**2, device=get_accelerator().get_current_device()),
         ).rsample
 
     def __call__(self, inputs: torch.Tensor):
@@ -52,8 +51,8 @@ class UniformNoiseGenerator:
 
     def __init__(self, eps: float = 1e-2):
         self.uniform = torch.distributions.uniform.Uniform(
-            low=torch.tensor(1.0 - eps, device=get_current_device()),
-            high=torch.tensor(1.0 + eps, device=get_current_device()),
+            low=torch.tensor(1.0 - eps, device=get_accelerator().get_current_device()),
+            high=torch.tensor(1.0 + eps, device=get_accelerator().get_current_device()),
         ).rsample
 
     def __call__(self, inputs: torch.Tensor):
@@ -142,7 +141,7 @@ def get_moe_epsize_param_dict(model: nn.Module) -> Dict[int, List[nn.Parameter]]
     epsize_param_dict = dict()
     for param in model.parameters():
         if not is_moe_tensor(param):
-            ep_size = 1    # set ep_size to 1 for dp parameters
+            ep_size = 1  # set ep_size to 1 for dp parameters
         else:
             ep_size = get_ep_size(param)
         if ep_size not in epsize_param_dict:
@@ -193,18 +192,13 @@ def create_ep_hierarchical_group(
         assert nproc_per_node is not None, "Please use torchrun to launch the job, or specify nproc_per_node manually."
         nproc_per_node = int(nproc_per_node)
     else:
-        assert dist.get_world_size() % nproc_per_node == 0, \
-            "nproc_per_node should be a divisor of world_size."
+        assert dist.get_world_size() % nproc_per_node == 0, "nproc_per_node should be a divisor of world_size."
     num_node = dist.get_world_size() // nproc_per_node
 
     intra_src_rank = None
     ep_intra_node_group = None
     for i in range(num_node):
-        ep_intra_ranks = [
-            i * nproc_per_node + j
-            for j in range(nproc_per_node)
-            if j in ep_group_ranks
-        ]
+        ep_intra_ranks = [i * nproc_per_node + j for j in range(nproc_per_node) if j in ep_group_ranks]
         group = dist.new_group(ep_intra_ranks)
         if rank in ep_intra_ranks:
             assert ep_intra_node_group is None
@@ -212,10 +206,7 @@ def create_ep_hierarchical_group(
             intra_src_rank = ep_intra_ranks[0]
 
     ep_inter_node_group = None
-    ep_inter_ranks = [
-        ep_group_ranks[0] + i * nproc_per_node
-        for i in range(num_node)
-    ]
+    ep_inter_ranks = [ep_group_ranks[0] + i * nproc_per_node for i in range(num_node)]
     if len(ep_inter_ranks) > 1:
         group = dist.new_group(ep_inter_ranks)
         if rank in ep_inter_ranks:

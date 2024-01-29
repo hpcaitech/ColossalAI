@@ -6,10 +6,11 @@ import torch.cuda
 from torch.nn import Module, ModuleList
 from torch.utils._pytree import tree_map
 
+from colossalai.accelerator import get_accelerator
 from colossalai.interface import OptimizerWrapper
 from colossalai.pipeline.p2p import PipelineP2PCommunication, create_send_metadata
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.utils.device import get_current_device
+from colossalai.utils import get_current_device
 
 from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, model_forward, retain_grad, to_device
 from .base import PipelineSchedule
@@ -100,7 +101,7 @@ class InterleavedSchedule(PipelineSchedule):
         assert self.microbatch_offset[model_chunk_id] <= self.batch_size, "Microbatches exhausted"
         micro_batch = get_micro_batch(self.batch, self.microbatch_offset[model_chunk_id], self.microbatch_size)
         self.microbatch_offset[model_chunk_id] += self.microbatch_size
-        return tree_map(partial(to_device, device=get_current_device()), micro_batch)
+        return tree_map(partial(to_device, device=get_accelerator().get_current_device()), micro_batch)
 
     def get_model_chunk_id(self, microbatch_id: int, is_forward: bool) -> int:
         """Helper method to get the model chunk ID given the iteration number.
