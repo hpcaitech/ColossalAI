@@ -35,7 +35,7 @@ kernel = CPUAdamLoader().load()
 
 To make the `colossalai.kernel` easy to use, we expose some simple APIs and you can use them based on your scenario.
 
-1. Case 1: Simply load a kernel
+- Case 1: Simply load a kernel
 
 ```python
 from colossalai.kernel.kernel_loader import CPUAdamLoader
@@ -44,7 +44,7 @@ from colossalai.kernel.kernel_loader import CPUAdamLoader
 kernel = CPUAdamLoader().load()
 ```
 
-2. Case 2: Load a specific kernel
+- Case 2: Load a specific kernel
 
 This case applies if you are familar with the extensions available.
 
@@ -55,7 +55,7 @@ from colossalai.kernel.kernel_loader import CPUAdamLoader
 kernel = CPUAdamLoader().load(ext_name="cpu_adam_arm")
 ```
 
-3. Case 3: Register your own extension
+- Case 3: Register your own extension
 
 This case applies if you know how to write an extension. If you do not know how, you can refer to the section below.
 
