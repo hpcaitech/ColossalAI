@@ -11,7 +11,7 @@ from transformers.models.llama.modeling_llama import (
     LlamaSdpaAttention,
 )
 
-from colossalai.inference.modeling.models.llama import (
+from colossalai.inference.modeling.models.padding_llama import (
     llama_attn_forward,
     llama_causal_lm_forward,
     llama_decoder_layer_forward,
@@ -43,7 +43,7 @@ def get_triton_rmsnorm_forward():
         return None
 
 
-class LlamaModelInferPolicy(LlamaForCausalLMPolicy):
+class PaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy):
     def __init__(self) -> None:
         super().__init__()
 

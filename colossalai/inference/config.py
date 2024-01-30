@@ -32,6 +32,7 @@ class InferenceConfig:
             During generation, the beam width provided as sampling parameter should be less than or equivalent to this value.
         prefill_ratio (Optional[float]): A controling ratio for prefill and decoding in running list, we will do a step of prefill
             when the actual value exceeds this ratio.
+        pad_input: Whether to pad all inputs to the max length.
         quant_mode (Optional[str]): Quantization mode.
         revision (Optional[str]): The specific version(a branch, name, a commit id, or a tag name) of model to use.
     """
@@ -49,6 +50,7 @@ class InferenceConfig:
     beam_width: int = 1
     # the ratio of prefill sequences to decoding sequences, we do prefill step once the actual value exceeds ratio
     prefill_ratio: Optional[float] = 1.2
+    pad_input: bool = False
     quant_mode: Optional[str] = None
     revision: Optional[str] = None
 

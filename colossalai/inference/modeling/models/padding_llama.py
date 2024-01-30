@@ -11,6 +11,7 @@ from colossalai.kernel.triton import (
     context_attention_unpadded,
     copy_kv_to_blocked_cache,
     flash_decoding_attention,
+    get_xine_cache,
     rotary_embedding,
 )
 from colossalai.logging import get_dist_logger
@@ -101,12 +102,7 @@ def llama_model_forward(
 
     hidden_states = self.embed_tokens(input_ids)
 
-    # When testing, the performance of get_xine_cache is lower than that of get_cos_sin.
-    # cos = get_xine_cache(sequence_lengths, self._cos_cached, batch.is_prompts)
-    # sin = get_xine_cache(sequence_lengths, self._sin_cached, batch.is_prompts)
-    # cos_sin = (cos, sin)
-
-    cos_sin = get_cos_sin(sequence_lengths, self._cos_cached, self._sin_cached, batch.is_prompts, batch.dtype)
+    cos_sin = get_xine_cache(sequence_lengths, self._cos_cached, self._sin_cached, batch.is_prompts)
 
     if batch.is_prompts:
         output_tensor = torch.zeros(
@@ -135,7 +131,9 @@ def llama_model_forward(
             sm_scale=sm_scale,
         )
 
+    hidden_states = hidden_states[:, -1, :].unsqueeze(dim=1).contiguous()
     hidden_states = self.norm(hidden_states)
+
     return hidden_states
 
 
@@ -327,26 +325,3 @@ def unpading_input(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attention_
     k = index_first_axis(k.reshape(batch_size * kv_seq_len, num_key_value_heads, head_dim), indices)
     v = index_first_axis(v.reshape(batch_size * kv_seq_len, num_key_value_heads, head_dim), indices)
     return (q, k, v, indices)
-
-
-@torch.no_grad()
-def get_cos_sin(lengths, cos_cache, sin_cache, is_prompts, dtype):
-    """
-    Get cos and sin for the cache, and return nopad format.
-    Args:
-        lengths: shape(num_seqs,), stores lenghth of each sequence.
-        cos_cache: shape(max_rotary_position(e.g.2048), head_dim), cos cache constrcuted in model.
-        sin_cache: shape(max_rotary_position(e.g.2048), head_dim), sin cache constrcuted in model.
-        is_prompts: bool, mark if in prefill mode.
-        dtype: The data type of this inference process.
-    """
-
-    if is_prompts:
-        index_arrays = [torch.arange(length) for length in lengths]
-    else:
-        index_arrays = [(length - 1).view(-1) for length in lengths]
-    indices = torch.cat(index_arrays, dim=-1)
-    cos_output = cos_cache[indices].to(dtype=dtype)
-    sin_output = sin_cache[indices].to(dtype=dtype)
-
-    return (cos_output, sin_output)
