@@ -131,7 +131,8 @@ def llama_model_forward(
             sm_scale=sm_scale,
         )
 
-    hidden_states = hidden_states[:, -1, :].unsqueeze(dim=1).contiguous()
+    if batch.is_prompts:
+        hidden_states = hidden_states[:, -1, :].unsqueeze(dim=1).contiguous()
     hidden_states = self.norm(hidden_states)
 
     return hidden_states

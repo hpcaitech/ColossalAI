@@ -40,7 +40,7 @@ def check_inference_engine(test_cai=False):
     top_k = 50
 
     if test_cai:
-        inference_config = InferenceConfig(max_output_len=output_len)
+        inference_config = InferenceConfig(max_output_len=output_len, pad_input=False)
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
