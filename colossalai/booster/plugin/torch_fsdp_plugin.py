@@ -1,3 +1,5 @@
+import logging
+import os
 import warnings
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, List, Optional, Tuple
@@ -25,7 +27,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 
-from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO, utils
+from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO, utils, CheckpointIndexFile
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 
@@ -74,17 +76,56 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
 
     def save_sharded_model(
         self,
-        model: nn.Module,
-        checkpoint: str,
-        gather_dtensor: bool,
-        prefix: Optional[str],
-        size_per_shard: int,
-        use_safetensors: bool,
+        model: ModelWrapper,
+        checkpoint_path: str,
+        gather_dtensor: bool = True,
+        prefix: Optional[str] = None,
+        size_per_shard: int = 1024,
+        use_safetensors: bool = False,
     ):
         """
         Save model to checkpoint but only on master process.
         """
-        raise NotImplementedError("Sharded model checkpoint is not supported yet.")
+        assert isinstance(model, TorchFSDPModel), "Please boost the model before saving!"
+        if os.path.isfile(checkpoint_path):
+            logging.error(f"Provided path ({checkpoint_path}) should be a directory, not a file")
+            return
+
+        Path(checkpoint_path).mkdir(parents=True, exist_ok=True)
+
+        with FSDP.state_dict_type(
+            model.unwrap(),
+            StateDictType.FULL_STATE_DICT,
+            FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+        ):
+            state_dict = model.unwrap().state_dict()
+
+        state_dict_shard = utils.shard_model_checkpoint(state_dict, max_shard_size=size_per_shard)
+
+        weights_name, save_index_file = utils.get_model_base_filenames(prefix, use_safetensors)
+        index_file = CheckpointIndexFile(checkpoint_path)
+
+        # In general cases, is_master is set to True to get the right behavior.
+        is_master = self.coordinator.is_master()
+        total_size = utils.save_state_dict_shards(
+            sharded_state_dict=state_dict_shard,
+            checkpoint=checkpoint_path,
+            index_file=index_file,
+            base_filename=weights_name,
+            is_master=is_master,
+            use_safetensors=use_safetensors,
+        )
+
+        # only save the index file on the master rank
+        if self.coordinator.is_master():
+            index_file.append_meta_data("total_size", total_size)
+            index_file.write_index_file(save_index_file)
+            utils.save_config_file(model.unwrap(), checkpoint_path)
+            logging.info(
+                f"The model is split into checkpoint shards. "
+                f"You can find where each parameters has been saved in the "
+                f"index located at {save_index_file}."
+            )
 
     def load_sharded_model(
         self,
@@ -97,21 +138,35 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         """
         Load model to checkpoint but only on master process.
         """
-        raise NotImplementedError("Sharded model checkpoint is not supported yet.")
+        assert isinstance(model, TorchFSDPModel), "Please boost the model before loading!"
+
+        with FSDP.state_dict_type(
+            model.unwrap(),
+            StateDictType.FULL_STATE_DICT,
+            FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+        ):
+            super().load_sharded_model(
+                model.unwrap(), checkpoint_index_file, strict, use_safetensors, load_sub_module=False
+            )
 
     def save_sharded_optimizer(
-        self, optimizer: Optimizer, checkpoint: str, gather_dtensor: bool, prefix: str, size_per_shard: int
+        self, optimizer: Optimizer, checkpoint_path: str, gather_dtensor: bool, prefix: str, size_per_shard: int
     ):
         """
         Save optimizer to checkpoint but only on master process.
         """
-        raise NotImplementedError("Sharded optimizer checkpoint is not supported yet.")
+        assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
+        if self.coordinator.is_master():
+            super().save_sharded_optimizer(optimizer.unwrap(), checkpoint_path, gather_dtensor, prefix, size_per_shard)
+
 
     def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, size_per_shard: int):
         """
         Load optimizer to checkpoint but only on master process.
         """
-        raise NotImplementedError("Sharded optimizer checkpoint is not supported yet.")
+        assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
+        if self.coordinator.is_master():
+            super().load_sharded_optimizer(optimizer.unwrap(), index_file_path, size_per_shard)
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
         """
@@ -190,7 +245,7 @@ class TorchFSDPPlugin(DPPluginBase):
         raise RuntimeError("FSDP is not supported while torch version under 1.12.0.")
 
     def support_no_sync(self) -> bool:
-        False
+        return False
 
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         raise NotImplementedError("Torch fsdp no_sync func not supported yet.")
