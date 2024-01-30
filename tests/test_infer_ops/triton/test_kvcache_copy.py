@@ -5,7 +5,7 @@ from packaging import version
 from colossalai.inference.modeling.layers.attention import copy_to_cache
 from colossalai.kernel.triton import copy_kv_to_blocked_cache
 from colossalai.utils import get_current_device
-from tests.test_infer_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache, mock_alloc_single_token
+from tests.test_infer_ops.triton.kernel_utils import generate_caches_and_block_tables_v2, mock_alloc_single_token
 
 try:
     import triton  # noqa
@@ -16,6 +16,8 @@ except ImportError:
     print("please install triton from https://github.com/openai/triton")
 
 TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
+
+HEAD_DIM = 128
 
 
 def prepare_data(
@@ -29,31 +31,27 @@ def prepare_data(
     device,
     dtype=torch.float16,
 ):
-    if same_context_len:
-        # past_kv_seq_lengths in this test records the previous kv seq len
-        # (not incorporating the current input whose seq len is 1)
-        past_kv_seq_lengths = torch.tensor([max_seq_len - 1 for _ in range(bsz)], dtype=torch.int32, device=device)
-    else:
-        past_kv_seq_lengths = torch.randint(low=1, high=max_seq_len - 1, size=(bsz,), dtype=torch.int32, device=device)
+    # past_kv_seq_lengths in this test records the previous kv seq len
+    # (not incorporating the current input whose seq len is 1)
+    past_kv_seq_lengths = (
+        torch.tensor([max_seq_len - 1 for _ in range(bsz)], dtype=torch.int32, device=device)
+        if same_context_len
+        else torch.randint(low=1, high=max_seq_len - 1, size=(bsz,), dtype=torch.int32, device=device)
+    )
     num_tokens = torch.sum(past_kv_seq_lengths).item()
 
     kv_size = (num_tokens, 2 * num_kv_heads, head_dim)
-    kv = torch.empty(size=kv_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
-    k, v = torch.split(kv, [num_kv_heads, num_kv_heads], dim=-2)
+    kv_unpad = torch.empty(size=kv_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
+    k_unpad, v_unpad = torch.split(kv_unpad, [num_kv_heads, num_kv_heads], dim=-2)
 
-    cache_shape = (bsz * max_num_blocks_per_seq, num_kv_heads, head_dim, block_size)
-    k_cache = torch.zeros(size=cache_shape, dtype=dtype, device=device)
-    v_cache = torch.zeros(size=cache_shape, dtype=dtype, device=device)
-    # Mock allocation on block tables as well as blocked kv caches
-    block_tables = mock_alloc_block_table_and_kvcache(
-        k, v, k_cache, v_cache, past_kv_seq_lengths, bsz, max_num_blocks_per_seq, block_size
+    k_cache, _, block_tables = generate_caches_and_block_tables_v2(
+        k_unpad, v_unpad, past_kv_seq_lengths, bsz, max_num_blocks_per_seq, block_size, dtype=dtype, device=device
     )
     block_tables = block_tables.to(device=device)
 
     new_k = torch.randn((bsz, 1, num_kv_heads, head_dim), dtype=dtype, device=device)
     # mock allocating blocks for the new k/v and update block tables
     mock_alloc_single_token(block_tables, past_kv_seq_lengths, block_size)
-
     # kv seq len = past kv seq len + seq len (1 during decoding stage)
     kv_seq_lengths = past_kv_seq_lengths + 1
 
@@ -78,7 +76,6 @@ def test_copy_kv_to_caches(
     torch.cuda.synchronize()
     torch.cuda.reset_peak_memory_stats()
 
-    head_dim = 128
     max_seq_len = block_size * max_num_blocks_per_seq
     dtype = torch.float16
     device = get_current_device()
@@ -86,7 +83,7 @@ def test_copy_kv_to_caches(
     new_k, k_cache, kv_seq_lengths, block_tables = prepare_data(
         bsz,
         num_kv_heads,
-        head_dim,
+        HEAD_DIM,
         block_size,
         max_num_blocks_per_seq,
         same_context_len,
@@ -94,20 +91,28 @@ def test_copy_kv_to_caches(
         device=device,
         dtype=dtype,
     )
+    # k_cache_torch = k_cache.clone().detach()
+    # copy_to_cache(new_k, k_cache_torch, lengths=kv_seq_lengths, block_tables=block_tables, type="decoding")
     copy_kv_to_blocked_cache(new_k, k_cache, kv_seq_lengths, block_tables)
 
-    for seq_i in range(bsz):
-        ki = new_k[seq_i]
-        ki = ki.squeeze()
-        past_kv_seq_len = kv_seq_lengths[seq_i] - 1
-        target_block_id = block_tables[seq_i, past_kv_seq_len // block_size]
-        offsets_in_block = past_kv_seq_len % block_size
-        target = k_cache[target_block_id, :, :, offsets_in_block]
-        orig = new_k[seq_i].squeeze(dim=0)
-        assert torch.equal(orig, target)
+    past_kv_seq_len = kv_seq_lengths - 1
+    target_block_ids = block_tables[range(0, block_tables.size(0)), past_kv_seq_len // block_size]
+    offsets_in_block = past_kv_seq_len % block_size
+    target = k_cache[target_block_ids, :, offsets_in_block, :]
+    source = new_k.squeeze()
+
+    assert target.shape == source.shape
+    assert torch.equal(target, source)
+    # target_torch = k_cache_copy[target_block_ids, :, offsets_in_block, :]
+    # assert target_torch.shape == source.shape
+    # assert torch.equal(target_torch, source)
 
 
 BATCH = 16
+BLOCK_SIZE = 32
+SAME_LEN = True
+WARM_UPS = 10
+REPS = 100
 configs = [
     triton.testing.Benchmark(
         x_names=["KV_SEQ_LEN"],
@@ -133,10 +138,6 @@ def benchmark_kvcache_copy(
     num_kv_heads: int,
     same_context_len: bool,
 ):
-    warmup = 10
-    rep = 100
-
-    head_dim = 128
     dtype = torch.float16
     device = get_current_device()
 
@@ -145,7 +146,7 @@ def benchmark_kvcache_copy(
     new_k, k_cache, context_lengths, block_tables = prepare_data(
         bsz,
         num_kv_heads,
-        head_dim,
+        HEAD_DIM,
         block_size,
         max_seq_len // block_size,
         same_context_len,
@@ -154,15 +155,14 @@ def benchmark_kvcache_copy(
         dtype=dtype,
     )
 
+    quantiles = [0.5, 0.2, 0.8]
     if provider == "torch_copy_func":
         fn = lambda: copy_to_cache(new_k, k_cache, lengths=context_lengths, block_tables=block_tables, type="decoding")
-    elif provider == "triton_copy_func":
+    if provider == "triton_copy_func":
         fn = lambda: copy_kv_to_blocked_cache(new_k, k_cache, context_lengths, block_tables)
-    else:
-        raise ValueError("Undefined provider.")
 
-    ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-    return ms
+    ms, min_ms, max_ms = triton.testing.do_bench(fn, warmup=WARM_UPS, rep=REPS, quantiles=quantiles)
+    return ms, min_ms, max_ms
 
 
 if __name__ == "__main__":
