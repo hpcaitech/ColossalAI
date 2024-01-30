@@ -20,6 +20,7 @@ from colossalai.inference.modeling.models.nopadding_llama import (
     nopad_mlp,
 )
 from colossalai.inference.utils import init_to_get_rotary
+from colossalai.shardformer.policies.base_policy import ModulePolicyDescription
 
 # import colossalai
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
@@ -50,6 +51,12 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy):
 
     def module_policy(self):
         policy = super().module_policy()
+        decoder_attribute_replacement = {
+            "weight": self.weight.transpose(0, 1),
+        }
+        policy[LlamaDecoderLayer] = ModulePolicyDescription(
+            attribute_replacement=decoder_attribute_replacement,
+        )
         self.shard_config._infer()
 
         infer_forward = llama_causal_lm_forward

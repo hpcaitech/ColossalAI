@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 import torch
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
+    LlamaConfig,
     LlamaDecoderLayer,
     LlamaForCausalLM,
     LlamaMLP,
@@ -145,71 +146,92 @@ def llama_decoder_layer_forward(
     return hidden_states
 
 
-# Replace transformers.models.llama.modeling_llama.LlamaAttention.forward
-@torch.no_grad()
-def llama_attn_forward(
-    self: LlamaAttention,
-    hidden_states: torch.Tensor,
-    block_tables: torch.Tensor = None,
-    k_cache: torch.Tensor = None,
-    v_cache: torch.Tensor = None,
-    is_prompts: bool = True,
-    sequence_lengths: torch.Tensor = None,
-    kv_seq_len: int = 0,
-    cos_sin: Tuple[torch.Tensor] = None,
-    fd_inter_tensor: FDIntermTensors = None,
-    output_tensor: torch.Tensor = None,
-    sm_scale: int = None,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-    query_states = torch.mm(hidden_states, self.q_proj.weight.transpose(0, 1)).view(-1, self.num_heads, self.head_dim)
-    key_states = torch.mm(hidden_states, self.k_proj.weight.transpose(0, 1)).view(
-        -1, self.num_key_value_heads, self.head_dim
-    )
-    value_states = torch.mm(hidden_states, self.v_proj.weight.transpose(0, 1)).view(
-        -1, self.num_key_value_heads, self.head_dim
-    )
+class ShardFormerLlamaAttention(LlamaAttention):
+    def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
+        super().__init__(config, layer_idx)
+        self.q_proj.weight = self.q_proj.weight.transpose(0, 1)
+        self.k_proj.weight = self.k_proj.weight.transpose(0, 1)
+        self.v_proj.weight = self.v_proj.weight.transpose(0, 1)
+        self.o_proj.weight = self.o_proj.weight.transpose(0, 1)
+        if self.num_heads == self.num_key_value_heads:
+            qkv_weight_list = [self.q_proj.weight, self.k_proj.weight, self.v_proj.weight]
+            self.qkv_weight = torch.stack(qkv_weight_list, dim=0)
+            self.q_proj = None
+            self.k_proj = None
+            self.v_proj = None
 
-    rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
+    # Replace transformers.models.llama.modeling_llama.LlamaAttention.forward
+    @torch.no_grad()
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        block_tables: torch.Tensor = None,
+        k_cache: torch.Tensor = None,
+        v_cache: torch.Tensor = None,
+        is_prompts: bool = True,
+        sequence_lengths: torch.Tensor = None,
+        kv_seq_len: int = 0,
+        cos_sin: Tuple[torch.Tensor] = None,
+        fd_inter_tensor: FDIntermTensors = None,
+        output_tensor: torch.Tensor = None,
+        sm_scale: int = None,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        if self.num_heads == self.num_key_value_heads:
+            query_states = torch.mm(hidden_states, self.q_proj.weight.transpose(0, 1)).view(
+                -1, self.num_heads, self.head_dim
+            )
+            key_states = torch.mm(hidden_states, self.k_proj.weight.transpose(0, 1)).view(
+                -1, self.num_key_value_heads, self.head_dim
+            )
+            value_states = torch.mm(hidden_states, self.v_proj.weight.transpose(0, 1)).view(
+                -1, self.num_key_value_heads, self.head_dim
+            )
+        else:
+            token_nums = hidden_states.size(0)
+            qkv = torch.matmul(hidden_states, self.qkv_weight).view(3, token_nums, self.num_heads, self.head_dim)
+            query_states, key_states, value_states = qkv
 
-    _, _, _, block_size = k_cache.shape
+        rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
 
-    if is_prompts:
-        attn_output = context_attention_unpadded(
-            q=query_states,
-            k=key_states,
-            v=value_states,
-            k_cache=k_cache,
-            v_cache=v_cache,
-            context_lengths=sequence_lengths,
-            block_tables=block_tables,
-            block_size=block_size,
-            output=output_tensor,
-            max_seq_len=kv_seq_len,
-            sm_scale=sm_scale,
-        )
-    else:
-        copy_kv_to_blocked_cache(key_states, k_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
-        copy_kv_to_blocked_cache(value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
-        attn_output = flash_decoding_attention(
-            q=query_states,
-            k_cache=k_cache,
-            v_cache=v_cache,
-            kv_seq_len=sequence_lengths,
-            block_tables=block_tables,
-            block_size=block_size,
-            max_seq_len_in_batch=kv_seq_len,
-            output=output_tensor,
-            mid_output=fd_inter_tensor.mid_output,
-            mid_output_lse=fd_inter_tensor.mid_output_lse,
-            sm_scale=sm_scale,
-        )
-        attn_output = attn_output.squeeze(1)
+        _, _, _, block_size = k_cache.shape
 
-    attn_output = attn_output.view(-1, self.num_heads, self.head_dim)
-    attn_output = attn_output.reshape(-1, self.hidden_size)
-    attn_output = torch.mm(attn_output, self.o_proj.weight.transpose(0, 1))
+        if is_prompts:
+            attn_output = context_attention_unpadded(
+                q=query_states,
+                k=key_states,
+                v=value_states,
+                k_cache=k_cache,
+                v_cache=v_cache,
+                context_lengths=sequence_lengths,
+                block_tables=block_tables,
+                block_size=block_size,
+                output=output_tensor,
+                max_seq_len=kv_seq_len,
+                sm_scale=sm_scale,
+            )
+        else:
+            copy_kv_to_blocked_cache(key_states, k_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
+            copy_kv_to_blocked_cache(value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
+            attn_output = flash_decoding_attention(
+                q=query_states,
+                k_cache=k_cache,
+                v_cache=v_cache,
+                kv_seq_len=sequence_lengths,
+                block_tables=block_tables,
+                block_size=block_size,
+                max_seq_len_in_batch=kv_seq_len,
+                output=output_tensor,
+                mid_output=fd_inter_tensor.mid_output,
+                mid_output_lse=fd_inter_tensor.mid_output_lse,
+                sm_scale=sm_scale,
+            )
+            attn_output = attn_output.squeeze(1)
 
-    return attn_output
+        attn_output = attn_output.view(-1, self.num_heads, self.head_dim)
+        attn_output = attn_output.reshape(-1, self.hidden_size)
+        attn_output = torch.mm(attn_output, self.o_proj.weight.transpose(0, 1))
+
+        return attn_output
 
 
 @torch.no_grad()
