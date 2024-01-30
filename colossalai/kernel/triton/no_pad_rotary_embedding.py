@@ -318,7 +318,6 @@ def rotary_embedding(
 
     cos_token_stride = cos.stride(0)
     cos_stride = cos.stride(1)
-    print(k_cache.stride(0), k_cache.stride(1), k_cache.stride(2), k_cache.stride(3))
     if k_cache == None:
         rotary_embedding_kernel[grid](
             q,
