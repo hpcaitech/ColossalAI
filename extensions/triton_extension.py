@@ -8,7 +8,7 @@ class _TritonExtension(_Extension):
         super().__init__(name, support_aot=False, support_jit=True, priority=priority)
 
     def is_hardware_compatible(self) -> bool:
-        # cuda extension can only be built if cuda is availabe
+        # cuda extension can only be built if cuda is available
         try:
             import torch
 

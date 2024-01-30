@@ -3,12 +3,12 @@
 ## 📌 Table of Contents
 
 - [🔌 Extensions](#-extensions)
-    - [📌 Table of Contents](#-table-of-contents)
-    - [📚 Introduction](#-introduction)
-    - [🪅 Design](#-design)
-    - [🛠 API Usage](#-api-usage)
-    - [🏗 Write a customized extension](#-write-a-customized-extension)
-    - [✏️ Acknowledgement](#️-acknowledgement)
+  - [📌 Table of Contents](#-table-of-contents)
+  - [📚 Introduction](#-introduction)
+  - [🪅 Design](#-design)
+  - [🛠 API Usage](#-api-usage)
+  - [🏗 Write a customized extension](#-write-a-customized-extension)
+  - [✏️ Acknowledgement](#️-acknowledgement)
 
 ## 📚 Introduction
 
@@ -46,12 +46,12 @@ kernel = CPUAdamLoader().load()
 
 - Case 2: Load a specific kernel
 
-This case applies if you are familar with the extensions available.
+This case applies if you are familiar with the extensions available.
 
 ```python
 from colossalai.kernel.kernel_loader import CPUAdamLoader
 
-# load the kernel by giving the kernal name
+# load the kernel by giving the kernel name
 kernel = CPUAdamLoader().load(ext_name="cpu_adam_arm")
 ```
 
