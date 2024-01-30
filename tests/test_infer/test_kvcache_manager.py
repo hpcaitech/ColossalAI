@@ -93,7 +93,7 @@ def check_cache_manager(test_config):
     assert len(cache_manager._cache_blocks) == num_blocks
     key_caches = cache_manager._kv_caches[0]  # key caches for all the blocks in all the layers
     assert len(key_caches) == num_layers
-    expected_kv_shape = (num_blocks, num_attention_heads, head_size, block_size)
+    expected_kv_shape = (num_blocks, num_attention_heads, block_size, head_size)
     assert key_caches[0].shape == expected_kv_shape
     k_cache_block0, v_cache_block0 = cache_manager.get_physical_cache(0, 0)
     expected_kv_block_shape = expected_kv_shape[1:]
