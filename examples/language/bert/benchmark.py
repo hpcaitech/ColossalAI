@@ -21,7 +21,7 @@ from colossalai.nn.optimizer import HybridAdam
 # Prepare Hyperparameters
 # ==============================
 NUM_EPOCHS = 3
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 LEARNING_RATE = 2.4e-5
 WEIGHT_DECAY = 0.01
 WARMUP_FRACTION = 0.1
@@ -84,7 +84,6 @@ def main():
     colossalai.launch_from_torch(config={}, seed=42)
     coordinator = DistCoordinator()
 
-    # local_batch_size = BATCH_SIZE // coordinator.world_size
     lr = LEARNING_RATE * coordinator.world_size
 
     # ==============================
