@@ -146,8 +146,8 @@ def fused_rotary_embedding_kernel(
     cos_stride,
     cacheb_stride,
     cacheh_stride,
-    cached_stride,
     cachebs_stride,
+    cached_stride,
     bts_stride,
     btb_stride,
     block_size,
@@ -220,7 +220,7 @@ def fused_rotary_embedding_kernel(
     out_q1 = loaded_q0 * loaded_sin[:, None, :] + loaded_q1 * loaded_cos[:, None, :]
 
     out_k0 = loaded_k0 * loaded_cos[:, None, :] - loaded_k1 * loaded_sin[:, None, :]
-    out_k1 = loaded_k0 * loaded_sin[:, None, :] + loaded_k1 * loaded_cos[:, None, :]
+    out_k1 = loaded_k0 * loaded_sin[:, None, :] + loaded_k1 * loaded_cos[:, None, :]  # total_tokens, head_num, head_dim
 
     past_kv_seq_len = tl.load(context_lengths + tokens_range) - 1
 
@@ -230,25 +230,25 @@ def fused_rotary_embedding_kernel(
     offsets_in_last_block = (past_kv_seq_len % block_size) * cachebs_stride
 
     kv_range0 = (
-        block_ids[:, None, None] * cacheb_stride
-        + head_range[None, :, None] * cacheh_stride
-        + dim_range0[None, None, :] * cached_stride
-        + offsets_in_last_block[:, None, None]
+        block_ids[:, None, None, None] * cacheb_stride
+        + head_range[None, :, None, None] * cacheh_stride
+        + offsets_in_last_block[:, None, None, None]
+        + dim_range0[None, None, None, :] * cached_stride
     )
     kv_range1 = (
-        block_ids[:, None, None] * cacheb_stride
-        + head_range[None, :, None] * cacheh_stride
-        + dim_range1[None, None, :] * cached_stride
-        + offsets_in_last_block[:, None, None]
+        block_ids[:, None, None, None] * cacheb_stride
+        + head_range[None, :, None, None] * cacheh_stride
+        + offsets_in_last_block[:, None, None, None]
+        + dim_range1[None, None, None, :] * cached_stride
     )
 
     tl.store(
         kv_cache + kv_range0,
-        out_k0,
+        out_k0[:, :, None, :],
     )
     tl.store(
         kv_cache + kv_range1,
-        out_k1,
+        out_k1[:, :, None, :],
     )
 
     # concat
@@ -290,7 +290,7 @@ def rotary_embedding(
         k: key tensor, [total_tokens, head_num, head_dim]
         cos: cosine for rotary embedding, [max_position_len, head_dim]
         sin: sine for rotary embedding, [max_position_len, head_dim]
-        k_cache (torch.Tensor):  Blocked key cache. [num_blocks, num_kv_heads, head_dim, block_size]
+        k_cache (torch.Tensor):  Blocked key cache. [num_blocks, num_kv_heads, block_size, head_dim]
         kv_lengths, Past key/value sequence lengths plus current sequence length for each sequence. [bsz]
         block_tables: Block tables for each sequence. [bsz, max_blocks_per_sequence]
     """
@@ -361,7 +361,7 @@ def rotary_embedding(
             k_cache.stride(3),
             block_tables.stride(0),
             block_tables.stride(1),
-            k_cache.size(-1),
+            k_cache.size(-2),
             q_total_tokens,
             Q_HEAD_NUM=q_head_num,
             K_HEAD_NUM=k_head_num,

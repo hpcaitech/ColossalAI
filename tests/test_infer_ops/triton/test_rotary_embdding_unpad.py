@@ -4,7 +4,7 @@ from packaging import version
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
 from colossalai.kernel.triton import rotary_embedding
-from tests.test_infer_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache
+from tests.test_infer_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache_v2
 
 try:
     import triton  # noqa
@@ -57,12 +57,12 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
     cos_shape = (TOTAL_TOKENS, D // 2)
     cos = -1.2 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
     sin = -2.0 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
-    cache_shape = (BATCH_SIZE * max_num_blocks_per_seq, H, D, block_size)
+    cache_shape = (BATCH_SIZE * max_num_blocks_per_seq, H, block_size, D)
     k_cache = torch.zeros(size=cache_shape, dtype=dtype, device="cuda")
     v = torch.randn_like(k)
     v_cache = torch.zeros_like(k_cache)
     past_kv_seq_lengths = torch.tensor([SEQ_LEN - 1 for _ in range(BATCH_SIZE)], dtype=torch.int32, device="cuda")
-    block_tables = mock_alloc_block_table_and_kvcache(
+    block_tables = mock_alloc_block_table_and_kvcache_v2(
         k, v, k_cache, v_cache, past_kv_seq_lengths, BATCH_SIZE, max_num_blocks_per_seq, block_size
     )
     new_k = torch.randn((BATCH_SIZE, H, D), dtype=dtype, device="cuda")
@@ -75,13 +75,15 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
     rotary_embedding(new_q, new_k, cos, sin, k_cache, block_tables, kv_seq_lengths)
     assert torch.allclose(new_q, q_ref, atol=1e-4, rtol=1e-4)
     assert torch.allclose(new_k, k_ref, atol=1e-4, rtol=1e-4)
+
+    # check one by one
     for seq_i in range(BATCH_SIZE):
         ki = new_k[seq_i]
         ki = ki.squeeze()
         past_kv_seq_len = kv_seq_lengths[seq_i] - 1
         target_block_id = block_tables[seq_i, past_kv_seq_len // block_size]
         offsets_in_block = past_kv_seq_len % block_size
-        target = k_cache[target_block_id, :, :, offsets_in_block]
+        target = k_cache[target_block_id, :, offsets_in_block, :]
         orig = new_k[seq_i].squeeze(dim=0)
         assert torch.equal(orig, target)
 
