@@ -2,6 +2,7 @@ from typing import List
 
 import torch
 from transformers.configuration_utils import PretrainedConfig
+from transformers.generation import GenerationConfig
 
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
@@ -227,7 +228,7 @@ class RequestHandler:
 
         return None
 
-    def _sample(self, probs: torch.Tensor, logprobs: torch.Tensor, generation_config):
+    def _sample(self, probs: torch.Tensor, logprobs: torch.Tensor, generation_config: GenerationConfig):
         if generation_config.num_beams == 1:
             if generation_config.do_sample:
                 sample_tokens = multinomial_sample(generation_config, probs)
@@ -238,7 +239,7 @@ class RequestHandler:
 
         return sample_tokens
 
-    def mark_finished(self, sequence: Sequence, generation_config):
+    def mark_finished(self, sequence: Sequence, generation_config: GenerationConfig):
         if (
             sequence.output_token_id[-1] == generation_config.eos_id
             or sequence.output_len >= generation_config.max_output_len
@@ -248,7 +249,7 @@ class RequestHandler:
     def check_unfinished_seqs(self) -> bool:
         return self._has_waiting() or not self.running_list.is_empty()
 
-    def search_tokens(self, generation_config, logits):
+    def search_tokens(self, generation_config: GenerationConfig, logits):
         """
         Sample tokens for finished requests.
         """

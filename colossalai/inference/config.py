@@ -8,6 +8,7 @@ from typing import Optional, Union
 
 import torch
 import torch.distributed as dist
+from transformers.generation import GenerationConfig
 
 GibiByte = 1024**3
 
@@ -47,12 +48,14 @@ class InferenceConfig:
     tp_size: int = 1
     pp_size: int = 1
     # TODO: beam search is not support for now
+    do_sample: bool = False
     beam_width: int = 1
     # the ratio of prefill sequences to decoding sequences, we do prefill step once the actual value exceeds ratio
     prefill_ratio: Optional[float] = 1.2
     pad_input: bool = False
     quant_mode: Optional[str] = None
     revision: Optional[str] = None
+    early_stopping: Optional[bool] = False
 
     def __post_init__(self):
         self._init_batch_size()
@@ -109,3 +112,16 @@ class InferenceConfig:
             self.dtype = torch.float16
         else:
             self.dtype = torch.bfloat16
+
+    def _to_generation_config(self) -> GenerationConfig:
+        meta_config = {
+            "max_length": self.max_input_len + self.max_output_len,
+            "max_new_tokens": self.max_output_len,
+            "early_stopping": self.early_stopping,
+            "do_sample": self.do_sample,
+            "num_beams": self.beam_width,
+        }
+        for type in ["top_k", "top_p", "min_p"]:
+            if hasattr(self, type):
+                meta_config[type] = getattr(self, type)
+        return GenerationConfig.from_dict(meta_config)

@@ -65,16 +65,19 @@ Modeling contains models and layers, which are hand-crafted for better performan
 You can enjoy your fast generation journey within three step
 ```python
 # First, create a model in "transformers" way, you can provide a model config or use the default one.
-model = transformers.LlamaForCausalLM(config).cuda()
+model = transformers.LlamaForCausalLM(model_config).cuda()
+
+# if you uses your local model, you can get tokenizer like below
+# tokenizer = transformers.AutoTokenizer.from_pretrained(model_config.tokenizer_name)
+
 # Second, create an inference_config
 inference_config = InferenceConfig(
-                dtype=args.dtype,
                 max_batch_size=args.max_batch_size,
                 max_input_len=args.seq_len,
                 max_output_len=args.output_len,
             )
-# Third, create an engine with model and config
-engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
+# Third, create an engine with model and inference config
+engine = InferenceEngine(model, inference_config, verbose=True)
 
 # Try fast infrence now!
 prompts = {'Nice to meet you, Colossal-Inference!'}
@@ -117,13 +120,16 @@ Notations:
 - [x] Paged Attention
 - [x] High-Performance Kernels
 - [x] Llama Modelling
+- [x] User Documentation
+- [ ] Speculative Decoding
 - [ ] Tensor Parallelism
 - [ ] Beam Search
-- [ ] Speculative Decoding
+- [ ] Early stopping
+- [ ] Logger system
+- [ ] SplitFuse
 - [ ] Continuous Batching
 - [ ] Online Inference
 - [ ] Benchmarking
-- [ ] User Documentation
 
 ## 🌟 Acknowledgement
 

@@ -10,6 +10,7 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.struct import Sequence
+from colossalai.inference.tokenizer import get_tokenizer
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
@@ -31,7 +32,7 @@ class InferenceEngine:
 
     Args:
         model (nn.Module): Path or nn.Module of this model.
-        tokenizer (Union[PreTrainedTokenizer, PreTrainedTokenizerFast]): Path of the tokenizer to use.
+        tokenizer Optional[(Union[PreTrainedTokenizer, PreTrainedTokenizerFast])]: Path of the tokenizer to use.
         inference_config (Optional[InferenceConfig], optional): Store the configuration information related to inference.
         verbose (bool): Determine whether or not to log the generation process.
         model_policy ("Policy"): the policy to shardformer model. It will be determined by the model type if not provided.
@@ -40,19 +41,27 @@ class InferenceEngine:
     def __init__(
         self,
         model: nn.Module,
-        tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
+        tokenizer: Optional[Union[PreTrainedTokenizer, PreTrainedTokenizerFast]],
         inference_config: Optional["InferenceConfig"] = None,
         verbose: bool = False,
         model_policy: Policy = None,
     ) -> None:
         assert inference_config, "Please provide inference_config."
-        self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.inference_config = inference_config
         self.model_config = model.config
         self.device = torch.device("cuda")
         self.dtype = inference_config.dtype
-
+        if tokenizer is None:
+            tokenizer = get_tokenizer(
+                self.model_config.tokenizer,
+                tokenizer_mode=self.model_config.tokenizer_mode,
+                trust_remote_code=self.model_config.trust_remote_code,
+                tokenizer_revision=self.model_config.tokenizer_revision,
+                revision=self.model_config.revision,
+            )
+        self.tokenizer = tokenizer
+        self.generation_config = inference_config._to_generation_config()
         model = model.eval()
         model.to(self.dtype)
 
@@ -78,6 +87,8 @@ class InferenceEngine:
 
         self.request_handler = RequestHandler(self.inference_config, self.model_config)
         self.k_cahce, self.v_cache = self.request_handler.get_kvcache()
+        # DISCUSS maybe move this into batch info?
+
         self.counter = count()
 
     def _verify_config(self) -> None:
@@ -132,7 +143,7 @@ class InferenceEngine:
 
     def generate(
         self,
-        generation_config: GenerationConfig = None,
+        generation_config: Optional[GenerationConfig] = None,
     ) -> List[str]:
         """
         Executing the inference step.
@@ -143,8 +154,8 @@ class InferenceEngine:
         Returns:
             List[str]: Inference result returned by one generation.
         """
-
-        self.generation_config = generation_config
+        if generation_config is None:
+            generation_config = self.generation_config
 
         output_list = []
 
