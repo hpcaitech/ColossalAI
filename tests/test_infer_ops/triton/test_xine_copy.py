@@ -23,15 +23,18 @@ TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 def test_get_xine_cache(BATCH_SIZE, MAX_SEQ_LEN, HEAD_DIM, dtype):
     MAX_TOTAL_TOKENS = BATCH_SIZE * MAX_SEQ_LEN
     cos_cache = torch.randn((MAX_TOTAL_TOKENS, HEAD_DIM), dtype=dtype, device="cuda")
+    sin_cache = torch.randn((MAX_TOTAL_TOKENS, HEAD_DIM), dtype=dtype, device="cuda")
     lengths = torch.randint(2, MAX_SEQ_LEN, (BATCH_SIZE,), device="cuda")
     # prefill
-    cos_ref, sin_ref = get_cos_sin(lengths, cos_cache, cos_cache, is_prompts=True, dtype=dtype)
-    cos = get_xine_cache(lengths, cos_cache, is_prompts=True)
+    cos_ref, sin_ref = get_cos_sin(lengths, cos_cache, sin_cache, is_prompts=True, dtype=dtype)
+    cos, sin = get_xine_cache(lengths, cos_cache, sin_cache, is_prompts=True)
     assert torch.allclose(cos, cos_ref)
+    assert torch.allclose(sin, sin_ref)
     # decoding
-    ncos_ref, sin_ref = get_cos_sin(lengths, cos_cache, cos_cache, is_prompts=False, dtype=dtype)
-    cos = get_xine_cache(lengths, cos_cache, is_prompts=False)
+    ncos_ref, nsin_ref = get_cos_sin(lengths, cos_cache, sin_cache, is_prompts=False, dtype=dtype)
+    cos, sin = get_xine_cache(lengths, cos_cache, sin_cache, is_prompts=False)
     assert torch.allclose(cos, ncos_ref)
+    assert torch.allclose(sin, nsin_ref)
 
 
 configs = [
