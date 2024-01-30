@@ -428,12 +428,12 @@ def train(args):
         critic.eval()
     # save model checkpoint after fitting on only rank0
     coordinator.print_on_master("Start saving final actor model checkpoint")
-    actor_booster.save_model(actor, os.path.join(trainer.actor_save_dir, "modeling"), shard=True)
+    actor_booster.save_model(actor.unwrap(), os.path.join(trainer.actor_save_dir, "modeling"), shard=True)
     coordinator.print_on_master(
         f"Saved final actor model checkpoint at episodes {args.num_episodes} at folder {args.save_path}"
     )
     coordinator.print_on_master("Start saving final critic model checkpoint")
-    critic_booster.save_model(critic, os.path.join(trainer.critic_save_dir, "modeling"), shard=True)
+    critic_booster.save_model(critic.unwrap(), os.path.join(trainer.critic_save_dir, "modeling"), shard=True)
     coordinator.print_on_master(
         f"Saved final critic model checkpoint at episodes {args.num_episodes} at folder {args.save_path}"
     )
