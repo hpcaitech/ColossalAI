@@ -2,6 +2,7 @@
 from typing import List, Optional, Tuple
 
 import torch
+from torch.nn import Parameter
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
     LlamaConfig,
@@ -47,7 +48,7 @@ def llama_causal_lm_forward(
         k_caches=k_caches,
         v_caches=v_caches,
     )
-    logits = torch.mm(hidden_states, self.lm_head.weight.transpose(0, 1))
+    logits = torch.mm(hidden_states, self.lm_head.weight)
     return logits
 
 
@@ -147,18 +148,47 @@ def llama_decoder_layer_forward(
 
 
 class ShardFormerLlamaAttention(LlamaAttention):
-    def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
+    def __init__(
+        self,
+        config: LlamaConfig,
+        layer_idx: Optional[int] = None,
+        attn_qproj_w: torch.Tensor = None,
+        attn_kproj_w: torch.Tensor = None,
+        attn_vproj_w: torch.Tensor = None,
+        attn_oproj_w: torch.Tensor = None,
+    ):
         super().__init__(config, layer_idx)
-        self.q_proj.weight = self.q_proj.weight.transpose(0, 1)
-        self.k_proj.weight = self.k_proj.weight.transpose(0, 1)
-        self.v_proj.weight = self.v_proj.weight.transpose(0, 1)
-        self.o_proj.weight = self.o_proj.weight.transpose(0, 1)
+        self.q_proj.weight = Parameter(attn_qproj_w, requires_grad=False)
+        self.k_proj.weight = Parameter(attn_kproj_w, requires_grad=False)
+        self.v_proj.weight = Parameter(attn_vproj_w, requires_grad=False)
+        self.o_proj.weight = Parameter(attn_oproj_w, requires_grad=False)
         if self.num_heads == self.num_key_value_heads:
             qkv_weight_list = [self.q_proj.weight, self.k_proj.weight, self.v_proj.weight]
             self.qkv_weight = torch.stack(qkv_weight_list, dim=0)
             self.q_proj = None
             self.k_proj = None
             self.v_proj = None
+
+    @staticmethod
+    def from_native_module(module: LlamaDecoderLayer, *args, **kwargs) -> LlamaDecoderLayer:
+        config = module.config
+        layer_idx = module.layer_idx
+
+        attn_qproj_w = module.q_proj.weight.transpose(0, 1)
+        attn_kproj_w = module.k_proj.weight.transpose(0, 1)
+        attn_vproj_w = module.v_proj.weight.transpose(0, 1)
+        attn_oproj_w = module.o_proj.weight.transpose(0, 1)
+
+        attn_layer = ShardFormerLlamaAttention(
+            config=config,
+            layer_idx=layer_idx,
+            attn_qproj_w=attn_qproj_w,
+            attn_kproj_w=attn_kproj_w,
+            attn_vproj_w=attn_vproj_w,
+            attn_oproj_w=attn_oproj_w,
+        )
+
+        return attn_layer
 
     # Replace transformers.models.llama.modeling_llama.LlamaAttention.forward
     @torch.no_grad()
@@ -176,20 +206,16 @@ class ShardFormerLlamaAttention(LlamaAttention):
         output_tensor: torch.Tensor = None,
         sm_scale: int = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        if self.num_heads == self.num_key_value_heads:
-            query_states = torch.mm(hidden_states, self.q_proj.weight.transpose(0, 1)).view(
-                -1, self.num_heads, self.head_dim
-            )
-            key_states = torch.mm(hidden_states, self.k_proj.weight.transpose(0, 1)).view(
-                -1, self.num_key_value_heads, self.head_dim
-            )
-            value_states = torch.mm(hidden_states, self.v_proj.weight.transpose(0, 1)).view(
-                -1, self.num_key_value_heads, self.head_dim
-            )
+        if self.num_heads != self.num_key_value_heads:
+            query_states = torch.mm(hidden_states, self.q_proj.weight).view(-1, self.num_heads, self.head_dim)
+            key_states = torch.mm(hidden_states, self.k_proj.weight).view(-1, self.num_key_value_heads, self.head_dim)
+            value_states = torch.mm(hidden_states, self.v_proj.weight).view(-1, self.num_key_value_heads, self.head_dim)
         else:
+            # fused qkv
             token_nums = hidden_states.size(0)
-            qkv = torch.matmul(hidden_states, self.qkv_weight).view(3, token_nums, self.num_heads, self.head_dim)
-            query_states, key_states, value_states = qkv
+            query_states, key_states, value_states = torch.matmul(hidden_states, self.qkv_weight).view(
+                3, token_nums, self.num_heads, self.head_dim
+            )
 
         rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
 
@@ -229,15 +255,45 @@ class ShardFormerLlamaAttention(LlamaAttention):
 
         attn_output = attn_output.view(-1, self.num_heads, self.head_dim)
         attn_output = attn_output.reshape(-1, self.hidden_size)
-        attn_output = torch.mm(attn_output, self.o_proj.weight.transpose(0, 1))
+        attn_output = torch.mm(attn_output, self.o_proj.weight)
 
         return attn_output
 
 
-@torch.no_grad()
-def nopad_mlp(self: LlamaMLP, hidden_states: torch.Tensor):
-    gate_proj_out = torch.mm(hidden_states, self.gate_proj.weight.transpose(0, 1))
-    act_out = torch.nn.functional.silu(gate_proj_out, inplace=True)
-    up_proj_out = torch.mm(hidden_states, self.up_proj.weight.transpose(0, 1))
-    tmp_out = act_out * up_proj_out
-    return torch.mm(tmp_out, self.down_proj.weight.transpose(0, 1))
+class ShardFormerLlamaMLP(LlamaMLP):
+    def __init__(
+        self,
+        config: LlamaConfig,
+        mlp_gproj_w: torch.Tensor = None,
+        mlp_uproj_w: torch.Tensor = None,
+        mlp_dproj_w: torch.Tensor = None,
+    ):
+        super().__init__(config)
+        self.gate_proj.weight = Parameter(mlp_gproj_w, requires_grad=False)
+        self.up_proj.weight = Parameter(mlp_uproj_w, requires_grad=False)
+        self.down_proj.weight = Parameter(mlp_dproj_w, requires_grad=False)
+
+    @staticmethod
+    def from_native_module(module: LlamaDecoderLayer, *args, **kwargs) -> LlamaDecoderLayer:
+        config = module.config
+
+        mlp_gproj_w = module.gate_proj.weight.transpose(0, 1)
+        mlp_uproj_w = module.up_proj.weight.transpose(0, 1)
+        mlp_dproj_w = module.down_proj.weight.transpose(0, 1)
+
+        mlp_layer = ShardFormerLlamaMLP(
+            config=config,
+            mlp_gproj_w=mlp_gproj_w,
+            mlp_uproj_w=mlp_uproj_w,
+            mlp_dproj_w=mlp_dproj_w,
+        )
+
+        return mlp_layer
+
+    @torch.no_grad()
+    def nopad_mlp(self: LlamaMLP, hidden_states: torch.Tensor):
+        gate_proj_out = torch.mm(hidden_states, self.gate_proj.weight)
+        act_out = torch.nn.functional.silu(gate_proj_out, inplace=True)
+        up_proj_out = torch.mm(hidden_states, self.up_proj.weight)
+        tmp_out = act_out * up_proj_out
+        return torch.mm(tmp_out, self.down_proj.weight)
