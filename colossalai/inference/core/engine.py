@@ -172,10 +172,9 @@ class InferenceEngine:
 
         if prompts_token_ids is None:
             assert prompts, "When the prompts_token_ids is none, the input prompt list must be provided."
-            if self.inference_config.pad_input:
-                prompts_token_ids = self.tokenizer.batch_encode_plus(prompts, padding=True)["input_ids"]
-            else:
-                prompts_token_ids = self.tokenizer.batch_encode_plus(prompts)["input_ids"]
+            prompts_token_ids = self.tokenizer.batch_encode_plus(prompts, padding=self.inference_config.pad_input)[
+                "input_ids"
+            ]
 
         if isinstance(prompts_token_ids, list):
             pass
