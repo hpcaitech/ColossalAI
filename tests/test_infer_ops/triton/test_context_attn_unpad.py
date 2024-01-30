@@ -6,7 +6,7 @@ from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from colossalai.inference.modeling.layers.attention import PagedAttention
 from colossalai.kernel.triton import context_attention_unpadded
 from colossalai.utils import get_current_device
-from tests.test_infer_ops.triton.kernel_utils import generate_caches_and_block_tables, torch_attn_ref
+from tests.test_infer_ops.triton.kernel_utils import generate_caches_and_block_tables_v2, torch_attn_ref
 
 try:
     import triton  # noqa
@@ -93,7 +93,7 @@ def test_context_attention(
     q_unpad, k_unpad, v_unpad = torch.split(qkv_unpad, [num_attn_heads, num_kv_heads, num_kv_heads], dim=-2)
     q_unpad = q_unpad.contiguous()
 
-    k_cache_ref, v_cache_ref, block_tables = generate_caches_and_block_tables(
+    k_cache_ref, v_cache_ref, block_tables = generate_caches_and_block_tables_v2(
         k_unpad, v_unpad, context_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
     )
     block_tables = block_tables.to(device=device)
@@ -148,7 +148,6 @@ def bench_kernel(
 
     num_kv_heads = num_attn_heads // kv_group_num
     assert isinstance(num_kv_heads, int) and num_kv_heads > 0, "Invalid number of kv heads."
-    block_size * max_num_blocks_per_seq
     dtype = torch.float16
     device = get_current_device()
 
@@ -162,7 +161,7 @@ def bench_kernel(
     qkv_unpad = torch.empty(size=qkv_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
     q_unpad, k_unpad, v_unpad = torch.split(qkv_unpad, [num_attn_heads, num_kv_heads, num_kv_heads], dim=-2)
     q_unpad = q_unpad.contiguous()
-    k_cache_ref, v_cache_ref, block_tables = generate_caches_and_block_tables(
+    k_cache_ref, v_cache_ref, block_tables = generate_caches_and_block_tables_v2(
         k_unpad, v_unpad, context_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
     )
     block_tables = block_tables.to(device=device)

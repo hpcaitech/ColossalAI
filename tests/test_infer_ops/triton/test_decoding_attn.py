@@ -6,7 +6,7 @@ from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
 from tests.test_infer_ops.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
-    generate_caches_and_block_tables,
+    generate_caches_and_block_tables_v2,
     prepare_padding_mask,
     torch_attn_ref,
 )
@@ -38,6 +38,9 @@ def prepare_data(
 ):
     # Use the provided maximum sequence length for each sequence when testing with teh same context length,
     # otherwise generate random context lengths.
+    # returns
+    #   q [bsz, num_attn_heads, q_len, head_dim]
+    #   k_unpad/v_unpad [num_tokens, num_kv_heads, head_dim]
     kv_lengths = (
         torch.tensor([max_kv_seq_len for _ in range(bsz)], dtype=torch.int32, device=device)
         if same_context_len
@@ -83,7 +86,7 @@ def test_flash_decoding(
     q, k_unpad, v_unpad, kv_seq_lengths = prepare_data(
         bsz, num_attn_heads, num_kv_heads, HEAD_DIM, same_context_len, Q_LEN, max_seq_len, dtype, device
     )
-    k_cache, v_cache, block_tables = generate_caches_and_block_tables(
+    k_cache, v_cache, block_tables = generate_caches_and_block_tables_v2(
         k_unpad, v_unpad, kv_seq_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
     )
     block_tables = block_tables.to(device=device)
@@ -180,7 +183,7 @@ def bench_kernel(
         )
         ms, min_ms, max_ms = triton.testing.do_bench(fn, warmup=WARM_UPS, rep=REPS, quantiles=quantiles)
     if provider == "triton":
-        k_cache, v_cache, block_tables = generate_caches_and_block_tables(
+        k_cache, v_cache, block_tables = generate_caches_and_block_tables_v2(
             k_unpad, v_unpad, kv_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
         )
         block_tables = block_tables.to(device=device)

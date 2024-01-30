@@ -131,7 +131,8 @@ def llama_model_forward(
             sm_scale=sm_scale,
         )
 
-    hidden_states = hidden_states[:, -1, :].unsqueeze(dim=1).contiguous()
+    if batch.is_prompts:
+        hidden_states = hidden_states[:, -1, :].unsqueeze(dim=1).contiguous()
     hidden_states = self.norm(hidden_states)
 
     return hidden_states
@@ -226,7 +227,7 @@ def llama_attn_forward(
 
         rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
 
-        _, _, _, block_size = k_cache.shape
+        block_size = k_cache.size(-2)
 
         if is_prompts:
             attn_output = context_attention_unpadded(

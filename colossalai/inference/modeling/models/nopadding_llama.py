@@ -219,7 +219,7 @@ class ShardFormerLlamaAttention(LlamaAttention):
 
         rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
 
-        _, _, _, block_size = k_cache.shape
+        block_size = k_cache.size(-2)
 
         if is_prompts:
             attn_output = context_attention_unpadded(
