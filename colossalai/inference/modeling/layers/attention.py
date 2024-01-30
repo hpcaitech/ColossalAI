@@ -207,7 +207,7 @@ class PagedAttention:
         num_kv_heads = k.shape[-2]
         assert num_heads % num_kv_heads == 0, "num_kv_heads should be divisible by num_heads"
         num_kv_groups = num_heads // num_kv_heads
-        block_size = k_cache.shape[-1]
+        block_size = k_cache.size(-2)
         assert q.shape[0] == k.shape[0] == v.shape[0] == block_tables.shape[0]
         block_tables.shape[-1] * block_size
 
