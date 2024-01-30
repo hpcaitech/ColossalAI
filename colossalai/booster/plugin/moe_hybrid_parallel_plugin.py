@@ -22,7 +22,7 @@ from colossalai.booster.plugin.hybrid_parallel_plugin import (
 )
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.moe import MoECheckpintIO
+from colossalai.moe import MoECheckpointIO
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
@@ -322,8 +322,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             **_kwargs,
         )
 
-    def get_checkpoint_io(self) -> MoECheckpintIO:
-        self.checkpoint_io = MoECheckpintIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
+    def get_checkpoint_io(self) -> MoECheckpointIO:
+        self.checkpoint_io = MoECheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
         return self.checkpoint_io
 
     def configure(

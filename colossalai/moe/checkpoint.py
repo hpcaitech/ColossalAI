@@ -40,7 +40,7 @@ from colossalai.tensor.moe_tensor.api import (
 )
 
 
-class MoECheckpintIO(HybridParallelCheckpointIO):
+class MoECheckpointIO(HybridParallelCheckpointIO):
     def __init__(
         self,
         dp_group: ProcessGroup,
@@ -369,7 +369,7 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
         for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
             # obtain updated param group
             new_pg = copy.deepcopy(saved_pg)
-            new_pg["params"] = old_pg["params"]  # The parameters in the same group shouln't change.
+            new_pg["params"] = old_pg["params"]  # The parameters in the same group shouldn't change.
             updated_groups.append(new_pg)
         # ep extra group
         if MOE_MANAGER.parallel == "EP":
