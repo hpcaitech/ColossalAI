@@ -10,6 +10,15 @@ from typing import Callable
 import numpy as np
 import torch
 
+from colossalai.accelerator import get_accelerator
+
+
+def get_current_device():
+    """
+    A wrapper function for accelerator's API for backward compatibility.
+    """
+    return get_accelerator().get_current_device()
+
 
 def ensure_path_exists(filename: str):
     # ensure the path exists

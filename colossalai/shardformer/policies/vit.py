@@ -33,7 +33,7 @@ class ViTPolicy(Policy):
 
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
-            warnings.warn("Vit dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
+            warnings.warn("Vit doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             policy[ViTEmbeddings] = ModulePolicyDescription(

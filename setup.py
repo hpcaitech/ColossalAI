@@ -5,53 +5,21 @@ from typing import List
 
 from setuptools import find_packages, setup
 
-from op_builder.utils import (
-    check_cuda_availability,
-    check_pytorch_version,
-    check_system_pytorch_cuda_match,
-    get_cuda_bare_metal_version,
-    get_pytorch_version,
-    set_cuda_arch_list,
-)
-
 try:
-    from torch.utils.cpp_extension import CUDA_HOME, BuildExtension
+    import torch  # noqa
+    from torch.utils.cpp_extension import BuildExtension
 
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
-    CUDA_HOME = None
 
-# Some constants for installation checks
-MIN_PYTORCH_VERSION_MAJOR = 1
-MIN_PYTORCH_VERSION_MINOR = 10
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-BUILD_CUDA_EXT = int(os.environ.get("CUDA_EXT", "0")) == 1
+BUILD_EXT = int(os.environ.get("BUILD_EXT", "0")) == 1
 IS_NIGHTLY = int(os.environ.get("NIGHTLY", "0")) == 1
-
-# a variable to store the op builder
-ext_modules = []
 
 # we do not support windows currently
 if sys.platform == "win32":
     raise RuntimeError("Windows is not supported yet. Please try again within the Windows Subsystem for Linux (WSL).")
-
-
-# check for CUDA extension dependencies
-def environment_check_for_cuda_extension_build():
-    if not TORCH_AVAILABLE:
-        raise ModuleNotFoundError(
-            "[extension] PyTorch is not found while CUDA_EXT=1. You need to install PyTorch first in order to build CUDA extensions"
-        )
-
-    if not CUDA_HOME:
-        raise RuntimeError(
-            "[extension] CUDA_HOME is not found while CUDA_EXT=1. You need to export CUDA_HOME environment variable or install CUDA Toolkit first in order to build CUDA extensions"
-        )
-
-    check_system_pytorch_cuda_match(CUDA_HOME)
-    check_pytorch_version(MIN_PYTORCH_VERSION_MAJOR, MIN_PYTORCH_VERSION_MINOR)
-    check_cuda_availability()
 
 
 def fetch_requirements(path) -> List[str]:
@@ -98,46 +66,35 @@ def get_version() -> str:
     # write version into version.py
     with open(version_py_path, "w") as f:
         f.write(f"__version__ = '{version}'\n")
-
-        # look for pytorch and cuda version
-        if BUILD_CUDA_EXT:
-            torch_major, torch_minor, _ = get_pytorch_version()
-            torch_version = f"{torch_major}.{torch_minor}"
-            cuda_version = ".".join(get_cuda_bare_metal_version(CUDA_HOME))
-        else:
-            torch_version = None
-            cuda_version = None
-
-        # write the version into the python file
-        if torch_version:
-            f.write(f'torch = "{torch_version}"\n')
-        else:
-            f.write("torch = None\n")
-
-        if cuda_version:
-            f.write(f'cuda = "{cuda_version}"\n')
-        else:
-            f.write("cuda = None\n")
-
     return version
 
 
-if BUILD_CUDA_EXT:
-    environment_check_for_cuda_extension_build()
-    set_cuda_arch_list(CUDA_HOME)
+if BUILD_EXT:
+    if not TORCH_AVAILABLE:
+        raise ModuleNotFoundError(
+            "[extension] PyTorch is not found while CUDA_EXT=1. You need to install PyTorch first in order to build CUDA extensions"
+        )
 
-    from op_builder import ALL_OPS
+    from extensions import ALL_EXTENSIONS
 
     op_names = []
+    ext_modules = []
 
-    # load all builders
-    for name, builder_cls in ALL_OPS.items():
-        op_names.append(name)
-        ext_modules.append(builder_cls().builder())
+    for ext_cls in ALL_EXTENSIONS:
+        ext = ext_cls()
+        if ext.support_aot and ext.is_hardware_available():
+            ext.assert_hardware_compatible()
+            op_names.append(ext.name)
+            ext_modules.append(ext.build_aot())
 
     # show log
-    op_name_list = ", ".join(op_names)
-    print(f"[extension]  loaded builders for {op_name_list}")
+    if len(ext_modules) == 0:
+        raise RuntimeError("[extension] Could not find any kernel compatible with the current environment.")
+    else:
+        op_name_list = ", ".join(op_names)
+        print(f"[extension] Building extensions{op_name_list}")
+else:
+    ext_modules = []
 
 # always put not nightly branch as the if branch
 # otherwise github will treat colossalai-nightly as the project name

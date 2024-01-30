@@ -49,7 +49,7 @@ class FalconPolicy(Policy):
 
         if not self.model.config.new_decoder_architecture and self.model.config.multi_query:
             warnings.warn(
-                "Falcon dosen't support tensor parallelism when (not new_decoder_architecture and multi_query) is True, will ignore the tensor parallelism flag."
+                "Falcon doesn't support tensor parallelism when (not new_decoder_architecture and multi_query) is True, will ignore the tensor parallelism flag."
             )
             self.shard_config.enable_tensor_parallelism = False
 

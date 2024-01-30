@@ -451,7 +451,7 @@ class CommSpec:
         elif self.comm_pattern == CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD:
             res_list.append(f"comm_pattern:MIXGATHER_FWD_SPLIT_BWD, ")
             res_list.append(f"gather_dim:{self.gather_dim}, ")
-            res_list.append(f"logical_process_asex:{self.logical_process_axes})")
+            res_list.append(f"logical_process_axes:{self.logical_process_axes})")
 
         return "".join(res_list)
 

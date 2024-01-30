@@ -16,6 +16,7 @@ from colossalai.testing import (
     clear_cache_before_run,
     parameterize,
     rerun_if_address_is_in_use,
+    skip_if_not_enough_gpus,
     spawn,
 )
 from tests.kit.model_zoo import model_zoo
@@ -51,7 +52,12 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
         bert_model.config.save_pretrained(save_directory=pretrained_path)
 
         extra_dp_size = dist.get_world_size() // (zero_size * tp_size)
-        plugin = GeminiPlugin(**placement_config, tp_size=tp_size, enable_all_optimization=enable_all_optimization, extra_dp_size=extra_dp_size)
+        plugin = GeminiPlugin(
+            **placement_config,
+            tp_size=tp_size,
+            enable_all_optimization=enable_all_optimization,
+            extra_dp_size=extra_dp_size,
+        )
         booster = Booster(plugin=plugin)
         bert_model, _, _, _, _ = booster.boost(bert_model)
         model_size = sum(p.numel() * p.element_size() for p in bert_model.parameters()) / 1024**2
@@ -68,7 +74,7 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
 @clear_cache_before_run()
 @parameterize("placement_config", OPTIM_PLACEMENT_CONFIGS)
 @parameterize("shard", [True, False])
-@parameterize("model_name", ["transformers_gpt"])
+@parameterize("model_name", ["transformers_llama_for_casual_lm"])
 @parameterize("size_per_shard", [32])
 @parameterize("tp_size", [1, 2])
 @parameterize("zero_size", [2])
@@ -77,7 +83,14 @@ def exam_state_dict(placement_config, shard: bool, model_name: str, size_per_sha
     criterion = lambda x: x.mean()
     enable_all_optimization = True if tp_size > 1 else False
     extra_dp_size = dist.get_world_size() // (zero_size * tp_size)
-    plugin = GeminiPlugin(**placement_config, precision="fp16", initial_scale=(2**14), tp_size=tp_size, extra_dp_size=extra_dp_size, enable_all_optimization=enable_all_optimization)
+    plugin = GeminiPlugin(
+        **placement_config,
+        precision="fp16",
+        initial_scale=(2**14),
+        tp_size=tp_size,
+        extra_dp_size=extra_dp_size,
+        enable_all_optimization=enable_all_optimization,
+    )
     booster = Booster(plugin=plugin)
 
     model = model_fn()
@@ -156,13 +169,17 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
-def test_gemini_ckpIO(world_size):
-    spawn(run_dist, world_size)
+def test_gemini_ckpIO():
+    spawn(run_dist, 4)
+
 
 @pytest.mark.largedist
-@pytest.mark.parametrize("world_size", [8])
+@skip_if_not_enough_gpus(min_gpus=8)
 @rerun_if_address_is_in_use()
-def test_gemini_ckpIO_3d(world_size):
-    spawn(run_dist, world_size)
+def test_gemini_ckpIO_3d():
+    spawn(run_dist, 8)
+
+
+if __name__ == "__main__":
+    test_gemini_ckpIO()

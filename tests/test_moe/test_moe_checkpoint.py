@@ -9,11 +9,11 @@ import torch.distributed as dist
 from transformers.models.llama import LlamaConfig
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.testing import DummyDataloader, check_state_dict_equal, rerun_if_address_is_in_use, spawn
-from colossalai.utils import get_current_device
 
 sys.path.append(
     os.path.join(
@@ -28,7 +28,7 @@ OpenMoeForCausalLMPolicy = importlib.import_module("model.openmoe_policy").OpenM
 
 
 def data_gen_fn(batch_size: int = 2, max_length: int = 4, vocab_size: int = 20):
-    input_ids = torch.randint(0, vocab_size, (batch_size, max_length), device=get_current_device())
+    input_ids = torch.randint(0, vocab_size, (batch_size, max_length), device=get_accelerator().get_current_device())
     attention_mask = torch.ones_like(input_ids)
     return {
         "input_ids": input_ids,

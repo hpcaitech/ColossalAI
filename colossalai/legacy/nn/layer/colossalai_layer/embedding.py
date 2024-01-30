@@ -3,8 +3,8 @@ from typing import Callable
 
 from torch import dtype, nn
 
+from colossalai.accelerator import get_accelerator
 from colossalai.nn import init
-from colossalai.utils import get_current_device
 
 from ..parallel_1d import Embedding1D, PatchEmbedding1D, VocabParallelEmbedding1D
 from ..parallel_2d import Embedding2D, PatchEmbedding2D, VocabParallelEmbedding2D
@@ -83,7 +83,7 @@ class Embedding(ColossalaiModule):
             embed = (
                 nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx, *args, **kwargs)
                 .to(dtype)
-                .to(get_current_device())
+                .to(get_accelerator().get_current_device())
             )
             weight_initializer(embed.weight, fan_in=num_embeddings, fan_out=embedding_dim)
         elif num_embeddings <= vocab_parallel_limit:
