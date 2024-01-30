@@ -46,7 +46,7 @@ class LlamaPolicy(Policy):
 
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
-            warnings.warn("Llama dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
+            warnings.warn("Llama doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             decoder_attribute_replacement = {

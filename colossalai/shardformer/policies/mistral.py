@@ -35,7 +35,7 @@ class MistralPolicy(Policy):
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn(
-                "Mistral dosen't support sequence parallelism now, will ignore the sequence parallelism flag."
+                "Mistral doesn't support sequence parallelism now, will ignore the sequence parallelism flag."
             )
 
         if self.shard_config.enable_tensor_parallelism:
@@ -136,7 +136,7 @@ class MistralModelPolicy(MistralPolicy):
 
     def module_policy(self):
         if self.pipeline_stage_manager:
-            warnings.warn("Mistral dosen't support pipeline parallelism now.")
+            warnings.warn("Mistral doesn't support pipeline parallelism now.")
 
         return super().module_policy()
 
@@ -160,7 +160,7 @@ class MistralForCausalLMPolicy(MistralPolicy):
             }
 
             if self.pipeline_stage_manager:
-                warnings.warn("Mistral dosen't support pipeline parallelism now.")
+                warnings.warn("Mistral doesn't support pipeline parallelism now.")
 
             policy.update(new_item)
 
@@ -186,7 +186,7 @@ class MistralForSequenceClassificationPolicy(MistralPolicy):
             }
 
             if self.pipeline_stage_manager:
-                warnings.warn("Mistral dosen't support pipeline parallelism now.")
+                warnings.warn("Mistral doesn't support pipeline parallelism now.")
 
             policy.update(new_item)
         return policy

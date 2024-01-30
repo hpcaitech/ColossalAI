@@ -43,7 +43,7 @@ class OpenMoePolicy(Policy):
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             raise NotImplementedError(
-                "openmoe dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
+                "openmoe doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             raise NotImplementedError("Tensor parallelism is not supported for openmoe model now.")
