@@ -1,0 +1,3 @@
+transformers==4.36.2
+ordered_set
+gpustat
