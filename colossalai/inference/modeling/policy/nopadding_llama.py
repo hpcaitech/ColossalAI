@@ -82,28 +82,6 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy):
             description=method_replacement, policy=policy, target_key=LlamaDecoderLayer
         )
 
-        # infer_forward = nopad_mlp
-        # method_replacement = {"forward": partial(infer_forward)}
-        # self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=LlamaMLP)
-
-        # infer_forward = llama_attn_forward
-        # method_replacement = {"forward": partial(infer_forward)}
-        # self.append_or_create_method_replacement(
-        #     description=method_replacement, policy=policy, target_key=LlamaAttention
-        # )
-
-        # infer_forward = llama_attn_forward
-        # method_replacement = {"forward": partial(infer_forward)}
-        # self.append_or_create_method_replacement(
-        #     description=method_replacement, policy=policy, target_key=LlamaFlashAttention2
-        # )
-
-        # infer_forward = llama_attn_forward
-        # method_replacement = {"forward": partial(infer_forward)}
-        # self.append_or_create_method_replacement(
-        #     description=method_replacement, policy=policy, target_key=LlamaSdpaAttention
-        # )
-
         infer_forward = None
         if HAS_TRITON_RMSNORM:
             infer_forward = get_triton_rmsnorm_forward()

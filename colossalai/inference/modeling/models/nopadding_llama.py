@@ -41,6 +41,14 @@ def llama_causal_lm_forward(
     k_caches: List[torch.Tensor] = None,
     v_caches: List[torch.Tensor] = None,
 ):
+    """This function will replace the forward function of LlamaForCausalLM.
+
+    Args:
+        batch (BatchInfo, optional): It stores the necessary input information for this inference. Defaults to None.
+        k_caches (List[torch.Tensor], optional): It holds the GPU memory for the key cache. Defaults to None.
+        v_caches (List[torch.Tensor], optional): It holds the GPU memory for the value cache. Defaults to None.
+    """
+
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     hidden_states = llama_model_forward(
         self.model,
@@ -59,6 +67,13 @@ def llama_model_forward(
     k_caches: List[torch.Tensor] = None,
     v_caches: List[torch.Tensor] = None,
 ):
+    """This function will replace the forward function of LlamaModel.
+
+    Args:
+        batch (BatchInfo, optional): It stores the necessary input information for this inference.. Defaults to None.
+        k_caches (List[torch.Tensor], optional): It holds the GPU memory for the key cache. Defaults to None.
+        v_caches (List[torch.Tensor], optional): It holds the GPU memory for the value cache. Defaults to None.
+    """
     input_ids = batch.get_1D_inputs()
     block_tables = batch.get_block_table_tensor()
 
@@ -118,6 +133,24 @@ def llama_decoder_layer_forward(
     output_tensor: torch.Tensor = None,
     sm_scale: int = None,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+    """This function will replace the forward function of LlamaDecoderLayer.
+
+    Args:
+        hidden_states (torch.Tensor): _description_
+        block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence], storing mapping of token_position_id -> block_id. Defaults to None.
+        k_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
+        v_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
+        is_prompts (bool, optional): Whether the current inference process is in the context input phase. Defaults to True.
+        sequence_lengths (torch.Tensor, optional): Holding the sequence length of each sequence. Defaults to None.
+        kv_seq_len (int, optional): The max sequence length of input sequences. Defaults to 0.
+        cos_sin (Tuple[torch.Tensor], optional): Holding cos and sin. Defaults to None.
+        fd_inter_tensor (FDIntermTensors, optional): Holding tensors used for storing intermediate values in flash-decoding. Defaults to None.
+        output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
+        sm_scale (int, optional): Used for flash attention. Defaults to None.
+
+    Returns:
+        Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]: _description_
+    """
     residual = hidden_states
 
     hidden_states = self.input_layernorm(hidden_states)
@@ -157,6 +190,16 @@ class ShardFormerLlamaAttention(LlamaAttention):
         attn_vproj_w: torch.Tensor = None,
         attn_oproj_w: torch.Tensor = None,
     ):
+        """This layer will replace the LlamaAttention.
+
+        Args:
+            config (LlamaConfig): Holding the Llama model config.
+            layer_idx (Optional[int], optional): The decode layer id of this attention layer. Defaults to None.
+            attn_qproj_w (torch.Tensor, optional): The transposed q_proj weight. Defaults to None.
+            attn_kproj_w (torch.Tensor, optional): The transposed k_proj weight. Defaults to None.
+            attn_vproj_w (torch.Tensor, optional): The transposed v_proj weight. Defaults to None.
+            attn_oproj_w (torch.Tensor, optional): The transposed o_proj weight. Defaults to None.
+        """
         super().__init__(config, layer_idx)
         self.q_proj.weight = Parameter(attn_qproj_w, requires_grad=False)
         self.k_proj.weight = Parameter(attn_kproj_w, requires_grad=False)
@@ -170,7 +213,12 @@ class ShardFormerLlamaAttention(LlamaAttention):
             self.v_proj = None
 
     @staticmethod
-    def from_native_module(module: LlamaDecoderLayer, *args, **kwargs) -> LlamaDecoderLayer:
+    def from_native_module(module: LlamaAttention, *args, **kwargs) -> LlamaAttention:
+        """Used for initialize the weight of ShardFormerLlamaAttention by origin LlamaAttention
+
+        Args:
+            module (LlamaAttention): The origin LlamaAttention layer.
+        """
         config = module.config
         layer_idx = module.layer_idx
 
@@ -206,6 +254,20 @@ class ShardFormerLlamaAttention(LlamaAttention):
         output_tensor: torch.Tensor = None,
         sm_scale: int = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        """
+        Args:
+            hidden_states (torch.Tensor): input to the layer of shape `(token_num, embed_dim)`
+            block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence], storing mapping of token_position_id -> block_id. Defaults to None.
+            k_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
+            v_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
+            is_prompts (bool, optional): Whether the current inference process is in the context input phase. Defaults to True.
+            sequence_lengths (torch.Tensor, optional): Holding the sequence length of each sequence. Defaults to None.
+            kv_seq_len (int, optional): The max sequence length of input sequences. Defaults to 0.
+            cos_sin (Tuple[torch.Tensor], optional): Holding cos and sin. Defaults to None.
+            fd_inter_tensor (FDIntermTensors, optional): Holding tensors used for storing intermediate values in flash-decoding. Defaults to None.
+            output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
+            sm_scale (int, optional): Used for flash attention. Defaults to None.
+        """
         if self.num_heads != self.num_key_value_heads:
             query_states = torch.mm(hidden_states, self.q_proj.weight).view(-1, self.num_heads, self.head_dim)
             key_states = torch.mm(hidden_states, self.k_proj.weight).view(-1, self.num_key_value_heads, self.head_dim)
@@ -213,7 +275,8 @@ class ShardFormerLlamaAttention(LlamaAttention):
         else:
             # fused qkv
             token_nums = hidden_states.size(0)
-            query_states, key_states, value_states = torch.matmul(hidden_states, self.qkv_weight).view(
+            hidden_states = hidden_states.expand(3, -1, -1)
+            query_states, key_states, value_states = torch.bmm(hidden_states, self.qkv_weight).view(
                 3, token_nums, self.num_heads, self.head_dim
             )
 
@@ -260,6 +323,7 @@ class ShardFormerLlamaAttention(LlamaAttention):
         return attn_output
 
 
+# NOTE This will cause the result to be different from the transformer in some cases.
 class ShardFormerLlamaMLP(LlamaMLP):
     def __init__(
         self,
@@ -268,13 +332,26 @@ class ShardFormerLlamaMLP(LlamaMLP):
         mlp_uproj_w: torch.Tensor = None,
         mlp_dproj_w: torch.Tensor = None,
     ):
+        """This layer will replace the LlamaAttention.
+
+        Args:
+            config (LlamaConfig): Holding the Llama model config.
+            mlp_gproj_w (torch.Tensor, optional): The transposed gate_proj weight. Defaults to None.
+            mlp_uproj_w (torch.Tensor, optional): The transposed up_proj weight. Defaults to None.
+            mlp_dproj_w (torch.Tensor, optional): The transposed down_proj weight. Defaults to None.
+        """
         super().__init__(config)
         self.gate_proj.weight = Parameter(mlp_gproj_w, requires_grad=False)
         self.up_proj.weight = Parameter(mlp_uproj_w, requires_grad=False)
         self.down_proj.weight = Parameter(mlp_dproj_w, requires_grad=False)
 
     @staticmethod
-    def from_native_module(module: LlamaDecoderLayer, *args, **kwargs) -> LlamaDecoderLayer:
+    def from_native_module(module: LlamaMLP, *args, **kwargs) -> LlamaMLP:
+        """Used for initialize the weight of ShardFormerLlamaMLP by origin LlamaMLP.
+
+        Args:
+            module (LlamaMLP): The origin LlamaMLP layer.
+        """
         config = module.config
 
         mlp_gproj_w = module.gate_proj.weight.transpose(0, 1)
@@ -291,7 +368,11 @@ class ShardFormerLlamaMLP(LlamaMLP):
         return mlp_layer
 
     @torch.no_grad()
-    def forward(self: LlamaMLP, hidden_states: torch.Tensor):
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            hidden_states (torch.Tensor): input to the layer of shape `(token_num, embed_dim)`
+        """
         gate_proj_out = torch.mm(hidden_states, self.gate_proj.weight)
         act_out = torch.nn.functional.silu(gate_proj_out, inplace=True)
         up_proj_out = torch.mm(hidden_states, self.up_proj.weight)
