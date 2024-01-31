@@ -5,13 +5,13 @@ import torch
 from torch.utils._pytree import tree_map
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.auto_parallel.offload.amp_optimizer import AMPOptimizer
 from colossalai.auto_parallel.offload.mem_optimize import memory_optimize
 from colossalai.auto_parallel.offload.solver import NOT_NVML
 from colossalai.fx.profiler import parameter_size
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.utils import get_current_device
 from colossalai.zero import ColoInitContext, zero_model_wrapper, zero_optim_wrapper
 from tests.test_auto_parallel.test_offload.model_utils import *
 from tests.test_tensor.common_utils import set_seed
@@ -31,7 +31,7 @@ def exam_fwd_bwd(model_name: str, memory_budget: float, solver_name: str):
             64,
             8,
         ),
-        device=get_current_device(),
+        device=get_accelerator().get_current_device(),
     )
     criterion = LMLoss()
 

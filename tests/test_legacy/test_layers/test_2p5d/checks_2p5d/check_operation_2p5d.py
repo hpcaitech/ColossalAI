@@ -1,10 +1,10 @@
 import torch
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn.layer.parallel_2p5d._operation import Matmul_AB_2p5D, Matmul_ABT_2p5D, Matmul_ATB_2p5D
 from colossalai.legacy.utils import print_rank_0
-from colossalai.utils import get_current_device
 
 from .common import *
 
@@ -25,7 +25,7 @@ def check_AB():
     k = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH, HIDDEN_SIZE)
-    A_master = torch.randn(A_shape, dtype=dtype, device=get_current_device())
+    A_master = torch.randn(A_shape, dtype=dtype, device=get_accelerator().get_current_device())
     torch.distributed.broadcast(A_master, src=0)
     A = torch.chunk(A_master, TESSERACT_DIM, dim=0)[i]
     A = torch.chunk(A, TESSERACT_DIM, dim=-1)[j]
@@ -33,7 +33,7 @@ def check_AB():
     A.requires_grad = True
 
     B_shape = (HIDDEN_SIZE, 4 * HIDDEN_SIZE)
-    B_master = torch.randn(B_shape, dtype=dtype, device=get_current_device())
+    B_master = torch.randn(B_shape, dtype=dtype, device=get_accelerator().get_current_device())
     torch.distributed.broadcast(B_master, src=0)
     B = torch.chunk(B_master, TESSERACT_DIM, dim=0)[i]
     B = torch.chunk(B, TESSERACT_DIM, dim=-1)[j]
@@ -70,7 +70,7 @@ def check_AB():
     print_rank_0("AB forward: pass")
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_accelerator().get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, TESSERACT_DIM, dim=0)[i]
     grad = torch.chunk(grad, TESSERACT_DIM, dim=-1)[j]
@@ -103,7 +103,7 @@ def check_ABT():
     tensor_parallel_size = gpc.get_world_size(ParallelMode.TENSOR)
 
     dtype = torch.float
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
@@ -184,7 +184,7 @@ def check_ATB():
     )
     tensor_parallel_size = gpc.get_world_size(ParallelMode.TENSOR)
 
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)

@@ -4,12 +4,12 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.nn.functional import cross_entropy
 from torch.nn.modules.loss import _Loss
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.constants import INPUT_GROUP_3D, OUTPUT_GROUP_3D, WEIGHT_GROUP_3D
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn.layer.parallel_3d import reduce_by_batch_3d, split_tensor_3d
 from colossalai.legacy.nn.layer.parallel_3d._utils import get_parallel_mode_from_env
 from colossalai.legacy.registry import LOSSES
-from colossalai.utils import get_current_device
 
 
 @LOSSES.register_module
@@ -80,7 +80,7 @@ class _VocabParallelCrossEntropy3D(torch.autograd.Function):
         target_mask = (targets < vocab_start) | (targets > vocab_end)
         masked_target = targets.clone() - vocab_start
         masked_target[target_mask] = 0
-        arange_1d = torch.arange(start=0, end=logits.size()[0], device=get_current_device())
+        arange_1d = torch.arange(start=0, end=logits.size()[0], device=get_accelerator().get_current_device())
         predicted_logits = logits[arange_1d, masked_target]
         predicted_logits = predicted_logits.clone().contiguous().view_as(targets)
         predicted_logits[target_mask] = 0.0
@@ -110,7 +110,7 @@ class _VocabParallelCrossEntropy3D(torch.autograd.Function):
         grad_2d = input_grad.view(-1, partition_vocab_size)
 
         # Add the gradient from matching classes.
-        arange_1d = torch.arange(start=0, end=grad_2d.size()[0], device=get_current_device())
+        arange_1d = torch.arange(start=0, end=grad_2d.size()[0], device=get_accelerator().get_current_device())
         grad_2d[arange_1d, masked_target] -= 1.0 - target_mask.view(-1).float()
         input_grad.mul_(output_grad.unsqueeze(dim=-1))
 

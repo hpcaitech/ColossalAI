@@ -43,7 +43,6 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 ```
 ### 定义plugin
 定义一个[`HybridParallelPlugin`](../basics/booster_plugins.md)对象，指定所需要使用的并行策略，在该例子中，同时使用了流水线并行和zero1.

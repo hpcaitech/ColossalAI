@@ -51,13 +51,13 @@ from transformers import (
 from transformers.utils.versions import require_version
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.tensor import ProcessGroup
 from colossalai.legacy.utils import get_dataloader
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 from colossalai.zero import GeminiOptimizer
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
@@ -249,9 +249,9 @@ def parse_args():
 
 
 def colo_memory_cap(size_in_GB):
-    from colossalai.utils import colo_device_memory_capacity, colo_set_process_memory_fraction, get_current_device
+    from colossalai.utils import colo_device_memory_capacity, colo_set_process_memory_fraction
 
-    cuda_capacity = colo_device_memory_capacity(get_current_device())
+    cuda_capacity = colo_device_memory_capacity(get_accelerator().get_current_device())
     if size_in_GB * (1024**3) < cuda_capacity:
         colo_set_process_memory_fraction(size_in_GB * (1024**3) / cuda_capacity)
         print("Using {} GB of GPU memory".format(size_in_GB))
@@ -265,7 +265,9 @@ class DummyDataloader:
         self.vocab_size = vocab_size
 
     def generate(self):
-        input_ids = torch.randint(0, self.vocab_size, (self.batch_size, self.seq_len), device=get_current_device())
+        input_ids = torch.randint(
+            0, self.vocab_size, (self.batch_size, self.seq_len), device=get_accelerator().get_current_device()
+        )
         attention_mask = torch.ones_like(input_ids)
         return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": input_ids}
 
@@ -390,7 +392,7 @@ def main():
     if args.init_in_cpu:
         init_dev = torch.device("cpu")
     else:
-        init_dev = get_current_device()
+        init_dev = get_accelerator().get_current_device()
 
     cai_version = colossalai.__version__
     logger.info(f"using Colossal-AI version {cai_version}")
@@ -439,7 +441,9 @@ def main():
         except ImportError:
             # this works for unreleased main branch, and this may be released on 0.2.9
             from colossalai.zero import GeminiDDP
-        model = GeminiDDP(model, device=get_current_device(), placement_policy=PLACEMENT_POLICY, pin_memory=True)
+        model = GeminiDDP(
+            model, device=get_accelerator().get_current_device(), placement_policy=PLACEMENT_POLICY, pin_memory=True
+        )
     elif version.parse(cai_version) <= version.parse("0.1.10") and version.parse(cai_version) >= version.parse("0.1.9"):
         from colossalai.gemini import ChunkManager, GeminiManager
 

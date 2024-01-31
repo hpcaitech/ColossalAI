@@ -6,9 +6,9 @@ import torch
 import torch.distributed as dist
 from packaging import version
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.core import global_context as gpc
 from colossalai.logging import get_dist_logger
-from colossalai.utils import get_current_device
 
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
 _GLOBAL_CPU_MEM_CAPACITY = -1
@@ -112,7 +112,10 @@ def colo_device_memory_capacity(device: torch.device) -> int:
         # In the context of 1-CPU-N-GPU, the memory capacity of the current process is 1/N overall CPU memory.
         return colo_get_cpu_memory_capacity() / gpc.num_processes_on_current_node
     if device.type == "cuda":
-        return torch.cuda.get_device_properties(get_current_device()).total_memory * _GLOBAL_CUDA_MEM_FRACTION
+        return (
+            torch.cuda.get_device_properties(get_accelerator().get_current_device()).total_memory
+            * _GLOBAL_CUDA_MEM_FRACTION
+        )
 
 
 def colo_device_memory_used(device: torch.device) -> int:
@@ -153,7 +156,7 @@ def colo_set_process_memory_fraction(ratio: float) -> None:
         return
     global _GLOBAL_CUDA_MEM_FRACTION
     _GLOBAL_CUDA_MEM_FRACTION = ratio
-    torch.cuda.set_per_process_memory_fraction(_GLOBAL_CUDA_MEM_FRACTION, get_current_device())
+    torch.cuda.set_per_process_memory_fraction(_GLOBAL_CUDA_MEM_FRACTION, get_accelerator().get_current_device())
 
 
 def colo_set_cpu_memory_capacity(size: int) -> None:

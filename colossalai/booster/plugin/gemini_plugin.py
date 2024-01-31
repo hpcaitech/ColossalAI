@@ -15,6 +15,7 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
+from colossalai.accelerator import get_accelerator
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO
 from colossalai.checkpoint_io.utils import (
     get_model_base_filenames,
@@ -27,8 +28,6 @@ from colossalai.checkpoint_io.utils import (
 from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.utils import get_current_device
-from colossalai.utils.device import IS_NPU_AVAILABLE
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.memory_tracer import MemStats
 
@@ -366,11 +365,11 @@ class GeminiPlugin(DPPluginBase):
     ) -> None:
         super().__init__()
         assert precision in SUPPORTED_PRECISION, f"precision {precision} is not supported"
-        if IS_NPU_AVAILABLE:
+        if get_accelerator().name == "npu":
             assert placement_policy == "static", "NPU only supports static placement policy"
         self.gemini_config = dict(
             chunk_config_dict=chunk_config_dict,
-            chunk_init_device=(chunk_init_device or get_current_device()),
+            chunk_init_device=(chunk_init_device or get_accelerator().get_current_device()),
             placement_policy=placement_policy,
             enable_gradient_accumulation=enable_gradient_accumulation,
             shard_param_frac=shard_param_frac,
@@ -455,7 +454,7 @@ class GeminiPlugin(DPPluginBase):
 
     def supported_devices(self) -> List[str]:
         return ["cuda", "npu"]
-    
+
     def prepare_dataloader(
         self, dataset, batch_size, shuffle=False, seed=1024, drop_last=False, pin_memory=False, num_workers=0, **kwargs
     ):
@@ -486,7 +485,10 @@ class GeminiPlugin(DPPluginBase):
         zero_rank = self.pg_mesh.coordinate(ZERO_AXIS)
         extra_dp_rank = self.pg_mesh.coordinate(DP_AXIS)
         sampler = DistributedSampler(
-            dataset, num_replicas=zero_world_size * extra_dp_world_size, rank=zero_rank * extra_dp_world_size + extra_dp_rank, shuffle=shuffle
+            dataset,
+            num_replicas=zero_world_size * extra_dp_world_size,
+            rank=zero_rank * extra_dp_world_size + extra_dp_rank,
+            shuffle=shuffle,
         )
 
         # Deterministic dataloader

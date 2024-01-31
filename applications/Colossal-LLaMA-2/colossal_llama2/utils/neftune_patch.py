@@ -16,7 +16,10 @@ import torch
 
 
 def unwrap(model):
-    return model.unwrap().module
+    if hasattr(model, "module"):
+        return unwrap_model(model.module)
+    else:
+        return model
 
 
 def neftune_post_forward_hook(module, input, output):
