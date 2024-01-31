@@ -169,11 +169,10 @@ def llama_attn_forward(
         -1, self.num_key_value_heads, self.head_dim
     )
 
-    rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
-
     block_size = k_cache.size(-2)
 
     if is_prompts:
+        rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
         attn_output = context_attention_unpadded(
             q=query_states,
             k=key_states,
@@ -188,6 +187,9 @@ def llama_attn_forward(
             sm_scale=sm_scale,
         )
     else:
+        rotary_embedding(
+            query_states, key_states, cos_sin[0], cos_sin[1], k_cache, block_tables, kv_lengths=sequence_lengths
+        )
         copy_kv_to_blocked_cache(key_states, k_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
         copy_kv_to_blocked_cache(value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
         attn_output = flash_decoding_attention(
