@@ -53,10 +53,10 @@ def test_get_xine_cache(BATCH_SIZE, MAX_SEQ_LEN, HEAD_DIM, dtype):
     assert torch.allclose(cos, cos_ref)
     assert torch.allclose(sin, sin_ref)
     # decoding
-    ncos_ref, sin_ref = get_cos_sin(lengths, cos_cache, sin_cache, is_prompts=False, dtype=dtype)
+    ncos_ref, nsin_ref = get_cos_sin(lengths, cos_cache, sin_cache, is_prompts=False, dtype=dtype)
     cos, sin = get_xine_cache(lengths, cos_cache, sin_cache, is_prompts=False)
     assert torch.allclose(cos, ncos_ref)
-    assert torch.allclose(sin, sin_ref)
+    assert torch.allclose(sin, nsin_ref)
 
 
 configs = [
