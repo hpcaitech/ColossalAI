@@ -62,7 +62,7 @@ def forward_fn():
 def get_blip2_flash_attention_forward():
     from transformers.models.blip_2.modeling_blip_2 import Blip2Attention
 
-    from colossalai.kernel.cuda_native import ColoAttention
+    from colossalai.nn.layer.colo_attention import ColoAttention
 
     def forward(
         self: Blip2Attention,

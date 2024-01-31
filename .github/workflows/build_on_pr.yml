@@ -140,7 +140,7 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
-          CUDA_EXT=1 pip install -v -e .
+          BUILD_EXT=1 pip install -v -e .
           pip install -r requirements/requirements-test.txt
 
       - name: Store Colossal-AI Cache
@@ -160,9 +160,7 @@ jobs:
           --ignore tests/test_gptq \
           --ignore tests/test_infer_ops \
           --ignore tests/test_legacy \
-          --ignore tests/test_moe \
           --ignore tests/test_smoothquant \
-          --ignore tests/test_checkpoint_io \
           tests/
         env:
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64

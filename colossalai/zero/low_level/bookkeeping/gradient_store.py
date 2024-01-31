@@ -9,7 +9,7 @@ class GradientStore(BaseStore):
     def __init__(self, *args, partition_grad: bool = False):
         super().__init__(*args)
         """
-        self._grads_of_params mapping the paramater and its gradient slices
+        self._grads_of_params mapping the parameter and its gradient slices
         data structure:
         {
          group_id:{

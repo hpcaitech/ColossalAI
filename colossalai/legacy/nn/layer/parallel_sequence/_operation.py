@@ -5,11 +5,11 @@ import torch
 from torch import distributed as dist
 from torch.cuda.amp import custom_bwd, custom_fwd
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.communication import ring_forward
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn.layer.parallel_sequence._utils import _calc_current_device_range, _calc_incoming_device_range
-from colossalai.utils import get_current_device
 
 
 class RingQK(torch.autograd.Function):
@@ -30,7 +30,7 @@ class RingQK(torch.autograd.Function):
             sub_seq_length,
             sub_seq_length * gpc.get_world_size(ParallelMode.SEQUENCE),
             dtype=sub_q.dtype,
-            device=get_current_device(),
+            device=get_accelerator().get_current_device(),
         )
 
         # compute local QK^T
@@ -71,7 +71,7 @@ class RingQK(torch.autograd.Function):
         grad_q = torch.zeros_like(
             sub_q,
             dtype=sub_q.dtype,
-            device=get_current_device(),
+            device=get_accelerator().get_current_device(),
         )
 
         # compute with local sub_k
@@ -105,7 +105,7 @@ class RingAV(torch.autograd.Function):
             batch_size * num_attention_heads,
             sub_seq_length,
             attention_head_size,
-            device=get_current_device(),
+            device=get_accelerator().get_current_device(),
             dtype=attention_score.dtype,
         )
 
@@ -142,7 +142,9 @@ class RingAV(torch.autograd.Function):
         grad_v /= local_world_size
 
         # calculate gradient for attention score
-        grad_attention_score = torch.zeros_like(attention_scores, dtype=grad_output.dtype, device=get_current_device())
+        grad_attention_score = torch.zeros_like(
+            attention_scores, dtype=grad_output.dtype, device=get_accelerator().get_current_device()
+        )
 
         # compute with local sub_k
         grad_attention_score[:, :, local_start_idx:local_end_idx] += torch.matmul(grad_output, sub_v.transpose(2, 1))

@@ -18,6 +18,7 @@ from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
+from colossalai.accelerator import get_accelerator
 from colossalai.amp.naive_amp.mixed_precision_optimizer import MixedPrecisionOptimizer
 from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
@@ -28,7 +29,6 @@ from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.layer.utils import SeqParallelUtils
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.tensor.d_tensor.api import is_distributed_tensor
-from colossalai.utils.device import get_current_device
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 from .pp_plugin_base import PipelinePluginBase
@@ -82,7 +82,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
             self.mixed_precision = torch.bfloat16
         if self.mixed_precision is not None:
             module = module.to(self.mixed_precision)
-        module = module.to(get_current_device())
+        module = module.to(get_accelerator().get_current_device())
 
         # setting input type cast when using mixed precision
         self.convert_fn = None
@@ -165,7 +165,6 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         Returns:
             None
         """
-
         if self.tp_group.size() > 1 and self.shard_config.enable_sequence_parallelism:
             if grads is not None:
                 # Synchronize provided gradient tensors across the tensor parallelism group.
@@ -346,7 +345,9 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
 
         if norm_type == inf:
             total_norm = max(grad.data.abs().max() for grad in gradients)
-            total_norm_cuda = torch.tensor([float(total_norm)], device=get_current_device(), dtype=torch.float32)
+            total_norm_cuda = torch.tensor(
+                [float(total_norm)], device=get_accelerator().get_current_device(), dtype=torch.float32
+            )
             if self.tp_size > 1:
                 dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.tp_pg)
             if self.pp_size > 1:
@@ -386,7 +387,7 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
                 total_norm_exponentiated += grad_norm_exponentiated
 
             total_norm_exponentiated_cuda = torch.tensor(
-                [float(total_norm_exponentiated)], device=get_current_device(), dtype=torch.float32
+                [float(total_norm_exponentiated)], device=get_accelerator().get_current_device(), dtype=torch.float32
             )
             if self.tp_size > 1:
                 # compute norm in tp process group
@@ -487,7 +488,6 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
         Returns:
             None
         """
-
         # Call the superclass backward method to compute gradients.
         super().backward(loss, *args, **kwargs)
 
@@ -513,7 +513,6 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
         Returns:
             None
         """
-
         # Call the superclass backward method to compute gradients.
         super().backward_by_grad(tensor, grad)
 
@@ -545,7 +544,9 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
             # so we need to calculate the norm of 'tp' and 'pp' gradients.
             total_norm = super()._compute_grad_norm(param_gradient_pairs, norm_type)
 
-            total_norm_cuda = torch.tensor([float(total_norm)], device=get_current_device(), dtype=torch.float32)
+            total_norm_cuda = torch.tensor(
+                [float(total_norm)], device=get_accelerator().get_current_device(), dtype=torch.float32
+            )
 
             if self.tp_size > 1:
                 dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.tp_pg)
@@ -589,7 +590,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
                 total_norm_exponentiated += grad_norm_exponentiated
 
             total_norm_exponentiated_cuda = torch.tensor(
-                [float(total_norm_exponentiated)], device=get_current_device(), dtype=torch.float32
+                [float(total_norm_exponentiated)], device=get_accelerator().get_current_device(), dtype=torch.float32
             )
             if self.tp_size > 1:
                 # compute norm in tp process group
@@ -674,7 +675,6 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         Returns:
             None
         """
-
         # Call the superclass `_sync_grad` method to synchronize gradients.
         super()._sync_grad()
 
@@ -802,7 +802,9 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             # so we only need to calculate the norm 'tp' of 'pp' gradients.
             total_norm = super()._compute_grad_norm(gradients, norm_type)
 
-            total_norm_cuda = torch.tensor([float(total_norm)], device=get_current_device(), dtype=torch.float32)
+            total_norm_cuda = torch.tensor(
+                [float(total_norm)], device=get_accelerator().get_current_device(), dtype=torch.float32
+            )
 
             if tp_size > 1:
                 dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.tp_pg)
@@ -842,7 +844,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
                 total_norm_exponentiated += grad_norm_exponentiated
 
             total_norm_exponentiated_cuda = torch.tensor(
-                [float(total_norm_exponentiated)], device=get_current_device(), dtype=torch.float32
+                [float(total_norm_exponentiated)], device=get_accelerator().get_current_device(), dtype=torch.float32
             )
             if dp_size > 1:
                 # compute norm in dp process group
@@ -1081,7 +1083,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         return True
 
     def support_no_sync(self) -> bool:
-        return False
+        return True
 
     def control_checkpoint_io(self) -> bool:
         return True
@@ -1175,9 +1177,14 @@ class HybridParallelPlugin(PipelinePluginBase):
                 model, data_iter, criterion, optimizer, return_loss, return_outputs
             )
 
+        # run with gradients accumulation
+        if model.require_grad_sync == False or (
+            isinstance(optimizer, HybridParallelZeroOptimizer) and optimizer.require_grad_sync == False
+        ):
+            return outputs
+
         # Synchronize the grads of shared parameters of the model.
         model.sync_shared_params()
-
         # Synchronize sequence parallelism gradients of the model.
         model.sync_sp_grads()
 
@@ -1241,5 +1248,8 @@ class HybridParallelPlugin(PipelinePluginBase):
     def get_checkpoint_io(self) -> CheckpointIO:
         return HybridParallelCheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
 
-    def no_sync(self, model: Module) -> Iterator[None]:
-        raise NotImplementedError
+    def no_sync(self, model: Module, optimizer: OptimizerWrapper) -> Iterator[None]:
+        assert (
+            self.zero_stage != 2
+        ), "ZERO2 is not compatible with no_sync function, please run gradient accumulation with gradient synchronization allowed."
+        return optimizer.no_sync() if isinstance(optimizer, HybridParallelZeroOptimizer) else model.no_sync()

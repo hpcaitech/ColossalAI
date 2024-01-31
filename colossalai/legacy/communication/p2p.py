@@ -8,9 +8,9 @@ from typing import List, Tuple, Union
 import torch
 import torch.distributed as dist
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
-from colossalai.utils import get_current_device
 
 from .utils import gather_split_1d_tensor, split_tensor_into_1d_equal_chunks
 
@@ -43,12 +43,16 @@ def _get_tensor_shape(tensor_shape: TensorShape, chunk_tensor: bool = False) -> 
 def create_recv_buffer_with_shapes(recv_shapes, dtype, scatter_gather_tensors):
     if isinstance(recv_shapes, torch.Size):
         recv_chunk_shape, recv_split = _get_tensor_shape(recv_shapes, scatter_gather_tensors)
-        buffer_recv = torch.empty(recv_chunk_shape, requires_grad=True, device=get_current_device(), dtype=dtype)
+        buffer_recv = torch.empty(
+            recv_chunk_shape, requires_grad=True, device=get_accelerator().get_current_device(), dtype=dtype
+        )
         return buffer_recv, recv_split
     buffer_recv = []
     for recv_shape in recv_shapes:
         recv_chunk_shape, recv_split = _get_tensor_shape(recv_shape, scatter_gather_tensors)
-        tensor_recv = torch.empty(recv_chunk_shape, requires_grad=True, device=get_current_device(), dtype=dtype)
+        tensor_recv = torch.empty(
+            recv_chunk_shape, requires_grad=True, device=get_accelerator().get_current_device(), dtype=dtype
+        )
         buffer_recv.append(tensor_recv)
     return buffer_recv, recv_split
 

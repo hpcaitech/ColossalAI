@@ -6,10 +6,10 @@ from typing import Iterable, Tuple
 import torch.cuda
 
 import colossalai.legacy.communication.p2p_v2 as comm
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.engine import Engine
-from colossalai.utils.device import get_current_device
 
 from ._pipeline_schedule import PipelineSchedule
 
@@ -99,7 +99,7 @@ class PipelineScheduleV2(PipelineSchedule):
             output_objs = []
         return_tensors = []
         if return_loss and gpc.is_pipeline_last_stage(ignore_virtual=True):
-            accum_loss = torch.zeros(1, device=get_current_device())
+            accum_loss = torch.zeros(1, device=get_accelerator().get_current_device())
         else:
             accum_loss = None
 

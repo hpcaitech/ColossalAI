@@ -4,8 +4,8 @@ import torch
 import torch.distributed as dist
 from torch._utils import _flatten_dense_tensors as flatten
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.zero.sharded_param.sharded_tensor import ShardedTensor
-from colossalai.utils import get_current_device
 
 from .tensor_shard_strategy import TensorShardStrategy
 
@@ -30,9 +30,11 @@ class BucketTensorShardStrategy(TensorShardStrategy):
         rank = dist.get_rank(process_group)
         for i in range(world_size):
             if i == rank:
-                buffer_list.append(flatten([t.payload for t in tensor_list]).cuda(get_current_device()))
+                buffer_list.append(
+                    flatten([t.payload for t in tensor_list]).cuda(get_accelerator().get_current_device())
+                )
             else:
-                buffer_list.append(torch.zeros(buffer_size, dtype=dtype, device=get_current_device()))
+                buffer_list.append(torch.zeros(buffer_size, dtype=dtype, device=get_accelerator().get_current_device()))
         dist.all_gather(buffer_list, buffer_list[rank], group=process_group)
         # Move to target device before splitting buffer
         # Ensure we utilize maximum PCIE bandwidth

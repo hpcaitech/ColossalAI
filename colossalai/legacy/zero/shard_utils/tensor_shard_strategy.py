@@ -3,11 +3,11 @@ from typing import List, Optional
 import torch
 import torch.distributed as dist
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.zero.gemini.tensor_utils import colo_model_data_tensor_move_inline
 from colossalai.legacy.zero.shard_utils import BaseShardStrategy
 from colossalai.legacy.zero.shard_utils.commons import get_shard
 from colossalai.legacy.zero.sharded_param.sharded_tensor import ShardedTensor
-from colossalai.utils import get_current_device
 
 
 class TensorShardStrategy(BaseShardStrategy):
@@ -34,9 +34,9 @@ class TensorShardStrategy(BaseShardStrategy):
         if t.is_sharded:
             return
         if t.payload.device.type == "cuda":
-            assert t.payload.device == get_current_device(), (
+            assert t.payload.device == get_accelerator().get_current_device(), (
                 f"shard tensor on cuda device index {t.payload.device.index},"
-                f" but current cuda device is {get_current_device()}"
+                f" but current cuda device is {get_accelerator().get_current_device()}"
             )
         sharded_payload, _ = get_shard(t.payload, dist.get_rank(process_group), dist.get_world_size(process_group))
         t.payload_reset(sharded_payload)
@@ -50,7 +50,9 @@ class TensorShardStrategy(BaseShardStrategy):
         world_size = dist.get_world_size(process_group)
         rank = dist.get_rank(process_group)
 
-        buffer = torch.empty(payload_numel * world_size, dtype=t.payload.dtype, device=get_current_device())
+        buffer = torch.empty(
+            payload_numel * world_size, dtype=t.payload.dtype, device=get_accelerator().get_current_device()
+        )
         buffer_list = list(torch.chunk(buffer, chunks=world_size, dim=0))
         buffer_list[rank].copy_(t.payload)
 
