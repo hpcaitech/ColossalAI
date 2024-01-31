@@ -61,7 +61,9 @@ class ModelZooRegistry(dict):
         """
         self[name] = (model_fn, data_gen_fn, output_transform_fn, loss_fn, model_attribute)
 
-    def get_sub_registry(self, keyword: Union[str, List[str]], exclude: Union[str, List[str]] = None):
+    def get_sub_registry(
+        self, keyword: Union[str, List[str]], exclude: Union[str, List[str]] = None, allow_empty: bool = False
+    ):
         """
         Get a sub registry with models that contain the keyword.
 
@@ -95,7 +97,8 @@ class ModelZooRegistry(dict):
                     if not should_exclude:
                         new_dict[k] = v
 
-        assert len(new_dict) > 0, f"No model found with keyword {keyword}"
+        if not allow_empty:
+            assert len(new_dict) > 0, f"No model found with keyword {keyword}"
         return new_dict
 
 

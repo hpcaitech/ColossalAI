@@ -7,10 +7,10 @@ from torch import Tensor
 from torch import nn as nn
 from torch.nn.parameter import Parameter
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.context import seed
 from colossalai.legacy.registry import LAYERS
 from colossalai.nn import init as init
-from colossalai.utils.device import get_current_device
 
 from ..utils import to_2tuple
 
@@ -173,12 +173,18 @@ class VanillaPatchEmbedding(nn.Module):
         self.flatten = flatten
 
         self.weight = nn.Parameter(
-            torch.empty((embed_size, in_chans, *self.patch_size), device=get_current_device(), dtype=dtype)
+            torch.empty(
+                (embed_size, in_chans, *self.patch_size), device=get_accelerator().get_current_device(), dtype=dtype
+            )
         )
-        self.bias = nn.Parameter(torch.empty(embed_size, device=get_current_device(), dtype=dtype))
-        self.cls_token = nn.Parameter(torch.zeros((1, 1, embed_size), device=get_current_device(), dtype=dtype))
+        self.bias = nn.Parameter(torch.empty(embed_size, device=get_accelerator().get_current_device(), dtype=dtype))
+        self.cls_token = nn.Parameter(
+            torch.zeros((1, 1, embed_size), device=get_accelerator().get_current_device(), dtype=dtype)
+        )
         self.pos_embed = nn.Parameter(
-            torch.zeros((1, self.num_patches + 1, embed_size), device=get_current_device(), dtype=dtype)
+            torch.zeros(
+                (1, self.num_patches + 1, embed_size), device=get_accelerator().get_current_device(), dtype=dtype
+            )
         )
 
         self.reset_parameters(weight_initializer, bias_initializer, position_embed_initializer)
@@ -242,11 +248,15 @@ class VanillaClassifier(nn.Module):
             self.has_weight = False
         else:
             self.weight = nn.Parameter(
-                torch.empty(self.num_classes, self.in_features, device=get_current_device(), dtype=dtype)
+                torch.empty(
+                    self.num_classes, self.in_features, device=get_accelerator().get_current_device(), dtype=dtype
+                )
             )
             self.has_weight = True
         if bias:
-            self.bias = nn.Parameter(torch.zeros(self.num_classes, device=get_current_device(), dtype=dtype))
+            self.bias = nn.Parameter(
+                torch.zeros(self.num_classes, device=get_accelerator().get_current_device(), dtype=dtype)
+            )
         else:
             self.bias = None
 
@@ -287,7 +297,7 @@ class VanillaLayerNorm(nn.Module):
         self.normalized_shape = (normalized_shape,)
         self.variance_epsilon = eps
 
-        factory_kwargs = {"device": get_current_device(), "dtype": dtype}
+        factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
 
         self.weight = nn.Parameter(torch.ones(normalized_shape, **factory_kwargs))
         if bias:
@@ -333,7 +343,7 @@ class VanillaLinear(nn.Module):
         self.in_features = in_features
         self.out_features = out_features
         self.skip_bias_add = skip_bias_add
-        factory_kwargs = {"device": get_current_device(), "dtype": dtype}
+        factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
         self.weight = Parameter(torch.empty(self.out_features, self.in_features, **factory_kwargs))
         if bias:
             self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))

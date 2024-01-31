@@ -9,7 +9,8 @@ from typing import Any, Callable, List
 import torch
 import torch.multiprocessing as mp
 from packaging import version
-from colossalai.utils.device import empty_cache, reset_max_memory_allocated, reset_peak_memory_stats, synchronize, reset_max_memory_cached, device_count
+
+from colossalai.accelerator import get_accelerator
 
 
 def parameterize(argument: str, values: List[Any]) -> Callable:
@@ -199,7 +200,7 @@ def skip_if_not_enough_gpus(min_gpus: int):
 
     def _wrap_func(f):
         def _execute_by_gpu_num(*args, **kwargs):
-            num_avail_gpu = device_count()
+            num_avail_gpu = get_accelerator().device_count()
             if num_avail_gpu >= min_gpus:
                 f(*args, **kwargs)
 
@@ -263,11 +264,11 @@ def clear_cache_before_run():
 
     def _wrap_func(f):
         def _clear_cache(*args, **kwargs):
-            empty_cache()
-            reset_peak_memory_stats()
-            reset_max_memory_allocated()
-            reset_max_memory_cached()
-            synchronize()
+            get_accelerator().empty_cache()
+            get_accelerator().reset_peak_memory_stats()
+            get_accelerator().reset_max_memory_allocated()
+            get_accelerator().reset_max_memory_cached()
+            get_accelerator().synchronize()
             gc.collect()
             f(*args, **kwargs)
 

@@ -5,13 +5,13 @@ import torch.distributed as dist
 from torch.optim import Adam
 
 import colossalai
-import colossalai.utils.device as device_utils
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 
 # from colossalai.nn.optimizer import HybridAdam
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from tests.kit.model_zoo import model_zoo, IS_FAST_TEST, COMMON_MODELS
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
+from tests.kit.model_zoo import COMMON_MODELS, IS_FAST_TEST, model_zoo
 
 # These models are not compatible with AMP
 _AMP_ERR_MODELS = ["timm_convit", "deepfm_interactionarch"]
@@ -21,8 +21,9 @@ _LOW_LEVEL_ZERO_ERR_MODELS = ["dlrm_interactionarch"]
 _STUCK_MODELS = ["transformers_albert_for_multiple_choice"]
 
 
+@clear_cache_before_run()
 def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
-    device = device_utils.get_current_device()
+    device = get_accelerator().get_current_device()
     try:
         plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=2**5)
         booster = Booster(plugin=plugin)
@@ -74,7 +75,7 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
             continue
         err = run_fn(stage, model_fn, data_gen_fn, output_transform_fn)
 
-        device_utils.empty_cache()
+        get_accelerator().empty_cache()
 
         if err is None:
             passed_models.append(name)

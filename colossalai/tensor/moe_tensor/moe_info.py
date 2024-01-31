@@ -12,7 +12,7 @@ class MoeParallelInfo:
             ep_size (int): expert parallel size
             dp_size (int): data parallel (zero) size
             pp_size (int, optional): pipeline parallel size. Defaults to 1.
-            ep_inside (bool, optional): Use ep inside dp if True, dp inside ep if Fasle. Defaults to True.
+            ep_inside (bool, optional): Use ep inside dp if True, dp inside ep if False. Defaults to True.
         """
         self.pp_size, self.dp_size, self.ep_size = pp_size, dp_size, ep_size
         if ep_inside:

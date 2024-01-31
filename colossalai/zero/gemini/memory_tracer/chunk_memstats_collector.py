@@ -1,6 +1,6 @@
 from typing import Optional
 
-from colossalai.utils import get_current_device
+from colossalai.accelerator import get_accelerator
 from colossalai.zero.gemini.chunk import ChunkManager
 
 from .memory_stats import MemStats
@@ -33,4 +33,4 @@ class ChunkMemStatsCollector(MemStatsCollector):
     def cuda_margin_mem(self) -> float:
         from colossalai.legacy.utils.memory import colo_device_memory_capacity
 
-        return colo_device_memory_capacity(get_current_device()) - self._memstats.max_overall_cuda
+        return colo_device_memory_capacity(get_accelerator().get_current_device()) - self._memstats.max_overall_cuda

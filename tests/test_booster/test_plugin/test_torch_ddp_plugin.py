@@ -10,10 +10,11 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
 from colossalai.interface import OptimizerWrapper
-from colossalai.testing import rerun_if_address_is_in_use, spawn
-from tests.kit.model_zoo import model_zoo, IS_FAST_TEST, COMMON_MODELS
+from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
+from tests.kit.model_zoo import COMMON_MODELS, IS_FAST_TEST, model_zoo
 
 
+@clear_cache_before_run()
 def run_fn(model_fn, data_gen_fn, output_transform_fn):
     plugin = TorchDDPPlugin()
     booster = Booster(plugin=plugin)

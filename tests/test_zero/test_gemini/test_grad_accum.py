@@ -6,10 +6,10 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import DummyDataloader, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
-from colossalai.utils.device import get_current_device
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.kit.model_zoo import model_zoo, run_fwd
@@ -53,7 +53,7 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 def exam_gemini_grad_acc(
     placement_config, keep_gathered: bool, model_name: str, master_weights: bool, use_grad_checkpoint: bool
 ):
-    init_device = get_current_device()
+    init_device = get_accelerator().get_current_device()
     model_builder, data_gen_fn, output_transform_fn, loss_fn, *_ = next(
         iter(model_zoo.get_sub_registry(model_name).values())
     )
