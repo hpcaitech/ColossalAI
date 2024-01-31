@@ -41,27 +41,26 @@ class InferenceEngine:
     def __init__(
         self,
         model: nn.Module,
-        tokenizer: Optional[Union[PreTrainedTokenizer, PreTrainedTokenizerFast]],
-        inference_config: Optional["InferenceConfig"] = None,
+        inference_config: InferenceConfig,
+        tokenizer: Optional[Union[PreTrainedTokenizer, PreTrainedTokenizerFast]] = None,
         verbose: bool = False,
         model_policy: Policy = None,
     ) -> None:
         assert inference_config, "Please provide inference_config."
-        self.tokenizer.pad_token = self.tokenizer.eos_token
         self.inference_config = inference_config
         self.model_config = model.config
         self.device = torch.device("cuda")
         self.dtype = inference_config.dtype
         if tokenizer is None:
             tokenizer = get_tokenizer(
-                self.model_config.tokenizer,
-                tokenizer_mode=self.model_config.tokenizer_mode,
-                trust_remote_code=self.model_config.trust_remote_code,
-                tokenizer_revision=self.model_config.tokenizer_revision,
-                revision=self.model_config.revision,
+                inference_config.tokenizer,
+                trust_remote_code=inference_config.trust_remote_code,
+                tokenizer_revision=inference_config.tokenizer_revision,
+                revision=inference_config.revision,
             )
         self.tokenizer = tokenizer
-        self.generation_config = inference_config._to_generation_config()
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.generation_config = inference_config._to_generation_config(self.model_config)
         model = model.eval()
         model.to(self.dtype)
 

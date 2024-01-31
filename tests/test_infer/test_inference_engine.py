@@ -1,4 +1,5 @@
 import random
+from copy import deepcopy
 
 import numpy as np
 import pytest
@@ -18,6 +19,14 @@ def setup_seed(seed):
     random.seed(seed)
 
 
+def test_config_tokenizer(model, output_len):
+    drat_config = InferenceConfig(model.__class__.__name__, max_output_len=output_len)
+    draf_engine = InferenceEngine(model, inference_config=drat_config)
+
+    assert "transformers.models.llama" in str(draf_engine.tokenizer.__class__)
+    assert draf_engine.generation_config.max_new_tokens == output_len
+
+
 def check_inference_engine(test_cai=False):
     setup_seed(20)
     tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
@@ -28,6 +37,7 @@ def check_inference_engine(test_cai=False):
     ).cuda()
 
     model = model.eval()
+    n_model = deepcopy(model)
 
     inputs = [
         "介绍一下今天的北京,比如故宫，天安门，长城或者其他的一些景点,",
@@ -39,9 +49,11 @@ def check_inference_engine(test_cai=False):
     top_p = 0.5
     top_k = 50
 
+    test_config_tokenizer(n_model, output_len)
+
     if test_cai:
         inference_config = InferenceConfig(max_output_len=output_len)
-        inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
+        inference_engine = InferenceEngine(model, inference_config, tokenizer, verbose=True)
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
         generation_config = GenerationConfig(do_sample=do_sample, top_p=top_p, top_k=top_k)

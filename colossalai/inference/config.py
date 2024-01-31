@@ -38,6 +38,8 @@ class InferenceConfig:
         revision (Optional[str]): The specific version(a branch, name, a commit id, or a tag name) of model to use.
     """
 
+    model: str = "Llama"
+    tokenizer: str = None
     micro_batch_size: int = 1
     micro_batch_buffer_size: int = None
     max_batch_size: int = 8
@@ -56,11 +58,15 @@ class InferenceConfig:
     quant_mode: Optional[str] = None
     revision: Optional[str] = None
     early_stopping: Optional[bool] = False
+    trust_remote_code = False
+    tokenizer_revision = False
+    tokenizer_mode = "auto"
 
     def __post_init__(self):
         self._init_batch_size()
         self._verify_config()
         self._get_dtype()
+        self._get_tokenizer()
 
     def _init_batch_size(self):
         """
@@ -113,7 +119,14 @@ class InferenceConfig:
         else:
             self.dtype = torch.bfloat16
 
-    def _to_generation_config(self) -> GenerationConfig:
+    def _get_tokenizer(self) -> None:
+        if self.tokenizer is not None:
+            return
+        model_name = self.model.lower()
+        if "llama" in model_name:
+            self.tokenizer = "hf-internal-testing/llama-tokenizer"
+
+    def _to_generation_config(self, model_config) -> GenerationConfig:
         meta_config = {
             "max_length": self.max_input_len + self.max_output_len,
             "max_new_tokens": self.max_output_len,
@@ -124,4 +137,8 @@ class InferenceConfig:
         for type in ["top_k", "top_p", "min_p"]:
             if hasattr(self, type):
                 meta_config[type] = getattr(self, type)
+        for type in ["pad_token_id", "bos_token_id", "eos_token_id"]:
+            if hasattr(self, type):
+                meta_config[type] = getattr(self, type)
+
         return GenerationConfig.from_dict(meta_config)
