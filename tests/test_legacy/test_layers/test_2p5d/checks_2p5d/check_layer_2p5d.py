@@ -1,6 +1,7 @@
 import torch
 from torch.nn import Parameter
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn import (
@@ -17,13 +18,12 @@ from colossalai.legacy.nn import (
     VocabParallelEmbedding2p5D,
 )
 from colossalai.legacy.utils import print_rank_0
-from colossalai.utils import get_current_device
 
 from .common import *
 
 
 def check_linear():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
     OUTPUT_SIZE = 2 * HIDDEN_SIZE
@@ -76,7 +76,7 @@ def check_linear():
     print_rank_0("linear forward: pass")
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_accelerator().get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, TESSERACT_DIM, dim=0)[i]
     grad = torch.chunk(grad, TESSERACT_DIM, dim=-1)[j]
@@ -104,7 +104,7 @@ def check_linear():
 
 
 def check_layernorm():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
     EPS = 1e-12
@@ -141,7 +141,7 @@ def check_layernorm():
     print_rank_0("layer norm forward: pass")
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_accelerator().get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, TESSERACT_DIM, dim=0)[i]
     grad = torch.chunk(grad, TESSERACT_DIM, dim=-1)[j]
@@ -156,7 +156,7 @@ def check_layernorm():
 
 
 def check_embed():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
@@ -204,7 +204,7 @@ def check_embed():
 
 
 def check_patch_embed():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
@@ -278,7 +278,7 @@ def check_patch_embed():
 
 
 def check_vocab_parallel_embed():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
@@ -326,7 +326,7 @@ def check_vocab_parallel_embed():
 
 
 def check_classifier_no_given_weight():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
     OUTPUT_SIZE = NUM_CLASSES
@@ -377,7 +377,7 @@ def check_classifier_no_given_weight():
     print_rank_0("classifier (no given weight) forward: pass")
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_accelerator().get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, TESSERACT_DIM, dim=0)[i]
     # grad = torch.chunk(grad, TESSERACT_DIM, dim=-1)[j]
@@ -405,7 +405,7 @@ def check_classifier_no_given_weight():
 
 
 def check_vocab_parallel_classifier_no_given_weight():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
@@ -472,7 +472,7 @@ def check_vocab_parallel_classifier_no_given_weight():
 
 
 def check_classifier_given_embed_weight():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
@@ -524,7 +524,7 @@ def check_classifier_given_embed_weight():
 
 
 def check_vocab_parallel_classifier_given_embed_weight():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
@@ -578,7 +578,7 @@ def check_vocab_parallel_classifier_given_embed_weight():
 
 
 def check_loss():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
@@ -613,7 +613,7 @@ def check_loss():
 
 
 def check_vocab_parallel_loss():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
@@ -650,7 +650,7 @@ def check_vocab_parallel_loss():
 
 
 # def check_attention():
-#     device = get_current_device()
+#     device = get_accelerator().get_current_device()
 #     dtype = torch.float32
 #     INPUT_SIZE = HIDDEN_SIZE
 #     NUM_ATTENTION_HEADS = 2
@@ -689,7 +689,7 @@ def check_vocab_parallel_loss():
 #     print_rank_0('self attention backward: pass')
 
 # def check_mlp():
-#     device = get_current_device()
+#     device = get_accelerator().get_current_device()
 #     dtype = torch.float32
 #     INPUT_SIZE = HIDDEN_SIZE
 
@@ -725,7 +725,7 @@ def check_vocab_parallel_loss():
 #     print_rank_0('mlp backward: pass')
 
 # def check_transformerlayer():
-#     device = get_current_device()
+#     device = get_accelerator().get_current_device()
 #     dtype = torch.float32
 #     INPUT_SIZE = HIDDEN_SIZE
 #     NUM_ATTENTION_HEADS = 2

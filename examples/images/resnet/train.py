@@ -13,12 +13,12 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.booster.plugin.dp_plugin_base import DPPluginBase
 from colossalai.cluster import DistCoordinator
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 # ==============================
 # Prepare Hyperparameters
@@ -53,8 +53,8 @@ def build_dataloader(batch_size: int, coordinator: DistCoordinator, plugin: DPPl
 @torch.no_grad()
 def evaluate(model: nn.Module, test_dataloader: DataLoader, coordinator: DistCoordinator) -> float:
     model.eval()
-    correct = torch.zeros(1, dtype=torch.int64, device=get_current_device())
-    total = torch.zeros(1, dtype=torch.int64, device=get_current_device())
+    correct = torch.zeros(1, dtype=torch.int64, device=get_accelerator().get_current_device())
+    total = torch.zeros(1, dtype=torch.int64, device=get_accelerator().get_current_device())
     for images, labels in test_dataloader:
         images = images.cuda()
         labels = labels.cuda()

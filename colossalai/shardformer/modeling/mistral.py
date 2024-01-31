@@ -6,7 +6,7 @@ import torch
 def get_mistral_flash_attention_forward():
     from transformers.models.mistral.modeling_mistral import MistralAttention, apply_rotary_pos_emb, repeat_kv
 
-    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
+    from colossalai.nn.layer.colo_attention import AttnMaskType, ColoAttention
 
     def forward(
         self: MistralAttention,

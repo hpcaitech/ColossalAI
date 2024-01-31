@@ -66,7 +66,7 @@ class T5BasePolicy(Policy):
 
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
-            warnings.warn("T5 dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
+            warnings.warn("T5 doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             policy[T5Stack] = ModulePolicyDescription(
@@ -263,7 +263,7 @@ class T5BasePolicy(Policy):
         if num_decoder_layers == 0:
             return Policy.distribute_layers(num_encoder_layers, num_stages), num_stages
 
-        # the number of stages distributed between encoder and decoder is optmized in this way:
+        # the number of stages distributed between encoder and decoder is optimized in this way:
         # num_encoder_stages = argmin(abs(num_encoder_layers / encoder_stages - num_decoder_layers / decoder_stages))
         #                   s.t. num_encoder_stages + num_decoder_stages = num_stages, num_encoder_stages >= 1, num_decoder_stages >= 1
         def objective(num_encoder_stages):

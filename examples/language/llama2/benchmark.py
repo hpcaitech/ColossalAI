@@ -13,13 +13,12 @@ from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 import colossalai
-import colossalai.utils.device as device_utils
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, TorchFSDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 # ==============================
 # Constants
@@ -74,8 +73,8 @@ def main():
     parser.add_argument("--tp", type=int, default=1, help="Tensor parallel size")
     parser.add_argument("--extra_dp", type=int, default=1, help="Extra data parallel size, used for Gemini")
     parser.add_argument("--pp", type=int, default=1, help="Pipeline parallel size")
-    parser.add_argument("--mbs", type=int, default=1)
-    parser.add_argument("--zero", type=int, default=0)
+    parser.add_argument("--mbs", type=int, default=1, help="Micro batch size of pipeline parallel")
+    parser.add_argument("--zero", type=int, default=0, help="Zero Stage when hybrid plugin is enabled")
     args = parser.parse_args()
 
     colossalai.launch_from_torch({})
@@ -98,7 +97,13 @@ def main():
             extra_dp_size=args.extra_dp,
         )
     elif args.plugin == "gemini_auto":
-        plugin = GeminiPlugin(placement_policy="auto", precision="bf16", warmup_non_model_data_ratio=args.warmup_ratio, tp_size=args.tp, extra_dp_size=args.extra_dp)
+        plugin = GeminiPlugin(
+            placement_policy="auto",
+            precision="bf16",
+            warmup_non_model_data_ratio=args.warmup_ratio,
+            tp_size=args.tp,
+            extra_dp_size=args.extra_dp,
+        )
     elif args.plugin == "fsdp":
         if use_empty_init:
             plugin = TorchFSDPPlugin(
@@ -137,7 +142,7 @@ def main():
             zero_stage=args.zero,
             num_model_chunks=2,
             enable_fused_normalization=torch.cuda.is_available(),
-            num_microbatches=args.mbs,
+            microbatch_size=args.mbs,
             precision="bf16",
         )
     elif args.plugin == "3d_cpu":
@@ -147,7 +152,7 @@ def main():
             zero_stage=args.zero,
             cpu_offload=True,
             enable_fused_normalization=torch.cuda.is_available(),
-            num_microbatches=args.mbs,
+            microbatch_size=args.mbs,
             initial_scale=2**8,
             precision="bf16",
         )
@@ -171,7 +176,7 @@ def main():
     # Initialize Model and Optimizer
     # ==============================
     init_ctx = (
-        LazyInitContext(default_device=get_current_device())
+        LazyInitContext(default_device=get_accelerator().get_current_device())
         if isinstance(plugin, (GeminiPlugin, HybridParallelPlugin))
         else nullcontext()
     )
@@ -202,7 +207,9 @@ def main():
     torch.set_default_dtype(torch.bfloat16)
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
     torch.set_default_dtype(torch.float)
-    coordinator.print_on_master(f"Booster init max CUDA memory: {device_utils.max_memory_allocated()/1024**2:.2f} MB")
+    coordinator.print_on_master(
+        f"Booster init max CUDA memory: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB"
+    )
     coordinator.print_on_master(
         f"Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB"
     )
@@ -228,7 +235,7 @@ def main():
             performance_evaluator.on_step_end(**batch)
 
     performance_evaluator.on_fit_end()
-    coordinator.print_on_master(f"Max CUDA memory usage: {device_utils.max_memory_allocated()/1024**2:.2f} MB")
+    coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
 
 
 if __name__ == "__main__":

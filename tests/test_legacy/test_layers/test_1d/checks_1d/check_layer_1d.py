@@ -2,6 +2,7 @@ import torch
 import torch.distributed as dist
 from torch.nn import Parameter
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.global_variables import tensor_parallel_env as env
@@ -16,13 +17,12 @@ from colossalai.legacy.nn import (
     VocabParallelEmbedding1D,
 )
 from colossalai.legacy.utils import print_rank_0
-from colossalai.utils import get_current_device
 
 from .common import BATCH_SIZE, DEPTH, HIDDEN_SIZE, NUM_CLASSES, SEQ_LENGTH, VOCAB_SIZE, check_equal
 
 
 def check_linear_col():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
     OUTPUT_SIZE = 2 * HIDDEN_SIZE
@@ -68,7 +68,7 @@ def check_linear_col():
     print_rank_0("linear_col forward: pass")
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_accelerator().get_current_device())
     dist.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=-1)[i]
     grad = grad.clone()
@@ -91,7 +91,7 @@ def check_linear_col():
 
 
 def check_linear_row():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
     OUTPUT_SIZE = 2 * HIDDEN_SIZE
@@ -137,7 +137,7 @@ def check_linear_row():
     print_rank_0("linear_row forward: pass")
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_accelerator().get_current_device())
     dist.broadcast(grad_master, src=0)
     grad = grad_master.clone()
     out.backward(grad)
@@ -159,7 +159,7 @@ def check_linear_row():
 
 
 def check_embed():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
@@ -201,7 +201,7 @@ def check_embed():
 
 
 def check_vocab_parallel_embed():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
@@ -243,7 +243,7 @@ def check_vocab_parallel_embed():
 
 
 def check_classifier_no_given_weight():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
@@ -309,7 +309,7 @@ def check_classifier_no_given_weight():
 
 
 def check_vocab_parallel_classifier_no_given_weight():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
@@ -369,7 +369,7 @@ def check_vocab_parallel_classifier_no_given_weight():
 
 
 def check_classifier_given_embed_weight():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
@@ -420,7 +420,7 @@ def check_classifier_given_embed_weight():
 
 
 def check_vocab_parallel_classifier_given_embed_weight():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
@@ -472,7 +472,7 @@ def check_vocab_parallel_classifier_given_embed_weight():
 
 
 def check_vocab_parallel_loss():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
@@ -508,7 +508,7 @@ def check_vocab_parallel_loss():
 
 @torch.no_grad()
 def check_linear_row_stream_inference():
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
     OUTPUT_SIZE = 2 * HIDDEN_SIZE

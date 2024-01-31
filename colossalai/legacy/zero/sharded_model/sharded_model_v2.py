@@ -10,6 +10,7 @@ import torch.nn as nn
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.utils.memory import colo_device_memory_capacity
@@ -22,7 +23,7 @@ from colossalai.legacy.zero.gemini.tensor_utils import colo_model_data_move_to_c
 from colossalai.legacy.zero.shard_utils import BaseShardStrategy
 from colossalai.legacy.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from colossalai.logging import get_dist_logger
-from colossalai.utils import disposable, get_current_device
+from colossalai.utils import disposable
 from colossalai.zero.gemini.memory_tracer import MemStatsCollector
 
 from ._utils import (
@@ -212,8 +213,12 @@ class ShardedModelV2(nn.Module):
             self.logger.error(f"dump memory tracer collected information to a {filename}", ranks=[0])
             if gpc.get_global_rank() == 0:
                 with open(filename, "w+") as f:
-                    f.write(f"cuda reserved {torch.cuda.memory_reserved(get_current_device()) / 1e9} GB\n")
-                    f.write(f"cuda max allocated {torch.cuda.max_memory_allocated(get_current_device()) / 1e9} GB\n")
+                    f.write(
+                        f"cuda reserved {torch.cuda.memory_reserved(get_accelerator().get_current_device()) / 1e9} GB\n"
+                    )
+                    f.write(
+                        f"cuda max allocated {torch.cuda.max_memory_allocated(get_accelerator().get_current_device()) / 1e9} GB\n"
+                    )
                     f.write("CUDA model data (GB)\n")
                     f.write("\n")
                     f.write("CUDA non model data (GB)\n")
@@ -266,7 +271,8 @@ class ShardedModelV2(nn.Module):
             # model data is fixed in cuda during training.
             # cuda margin space can be used to store OS.
             self._cuda_margin_space = (
-                colo_device_memory_capacity(get_current_device()) - self._memstats_collector._memstats.max_overall_cuda
+                colo_device_memory_capacity(get_accelerator().get_current_device())
+                - self._memstats_collector._memstats.max_overall_cuda
             )
 
     @torch.no_grad()

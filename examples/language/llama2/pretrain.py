@@ -20,13 +20,13 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 MODEL_CONFIGS = {
     "7b": LlamaConfig(max_position_embeddings=4096),
@@ -227,7 +227,9 @@ def main():
     config = MODEL_CONFIGS[args.config]
     # use lazy init when using GeminiPlugin
     init_ctx = (
-        LazyInitContext(default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
+        LazyInitContext(default_device=get_accelerator().get_current_device())
+        if isinstance(plugin, GeminiPlugin)
+        else nullcontext()
     )
 
     with init_ctx:
@@ -273,11 +275,10 @@ def main():
     dataloader.sampler.set_start_index(sampler_start_idx)
     for epoch in range(start_epoch, args.num_epochs):
         dataloader.sampler.set_epoch(epoch)
-        step_nums = num_steps_per_epoch - start_step
         dataloader_iter = iter(dataloader)
 
         with tqdm(
-            range(step_nums),
+            range(start_step, num_steps_per_epoch),
             desc=f"Epoch {epoch}",
             disable=not print_flag,
             total=num_steps_per_epoch,

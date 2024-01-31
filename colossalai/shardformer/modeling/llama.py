@@ -3,7 +3,6 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-import torch.distributed as dist
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
@@ -15,13 +14,16 @@ from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
+
 from ..layer import cross_entropy_1d
 
 try:
     from transformers.models.llama.modeling_llama import _prepare_4d_causal_attention_mask
+
     LATEST_VERSION = True
 except ImportError:
     LATEST_VERSION = False
+
 
 class LlamaPipelineForwards:
     """
@@ -203,7 +205,7 @@ class LlamaPipelineForwards:
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
-        shard_config: ShardConfig = None
+        shard_config: ShardConfig = None,
     ):
         r"""
         Args:
@@ -279,11 +281,12 @@ class LlamaPipelineForwards:
                 if shard_config.enable_tensor_parallelism:
                     new_vocab_size = logits.shape[-1]
                     shift_logits = shift_logits.view(-1, new_vocab_size)
-                    loss = cross_entropy_1d(shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group)
+                    loss = cross_entropy_1d(
+                        shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
+                    )
                 else:
                     shift_logits = shift_logits.view(-1, self.config.vocab_size)
                     loss = loss_fct(shift_logits, shift_labels)
-
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
@@ -417,7 +420,7 @@ class LlamaPipelineForwards:
 def get_llama_flash_attention_forward(shard_config: ShardConfig):
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
-    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
+    from colossalai.nn.layer.colo_attention import AttnMaskType, ColoAttention
 
     llama_version = 2
     try:
@@ -480,7 +483,12 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig):
 
         attention = ColoAttention(embed_dim=self.hidden_size, num_heads=self.num_heads)
         attn_output = attention(
-            query_states, key_states, value_states, attn_mask=flash_attention_mask, attn_mask_type=attn_mask_type
+            query_states,
+            key_states,
+            value_states,
+            attn_mask=flash_attention_mask,
+            attn_mask_type=attn_mask_type,
+            origin_attn_mask=attention_mask,
         )
 
         attn_output = self.o_proj(attn_output)
@@ -492,7 +500,7 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig):
 
 def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
     from transformers import LlamaForCausalLM
-        
+
     def forward(
         self: LlamaForCausalLM,
         input_ids: torch.LongTensor = None,
@@ -573,11 +581,12 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             if shard_config.enable_tensor_parallelism:
                 new_vocab_size = logits.shape[-1]
                 shift_logits = shift_logits.view(-1, new_vocab_size)
-                loss = cross_entropy_1d(shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group)
+                loss = cross_entropy_1d(
+                    shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
+                )
             else:
                 shift_logits = shift_logits.view(-1, self.config.vocab_size)
                 loss = loss_fct(shift_logits, shift_labels)
-
 
         if not return_dict:
             output = (logits,) + outputs[1:]
@@ -590,4 +599,5 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
+
     return forward

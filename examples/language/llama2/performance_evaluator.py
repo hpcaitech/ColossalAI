@@ -5,9 +5,8 @@ import torch
 import torch.distributed as dist
 from torch import Tensor
 
-import colossalai.utils.device as device_utils
+from colossalai.accelerator import get_accelerator
 from colossalai.cluster import DistCoordinator
-from colossalai.utils.device import get_current_device
 
 
 def divide(x: float, y: float) -> float:
@@ -22,7 +21,7 @@ def divide(x: float, y: float) -> float:
 def all_reduce_mean(x: float, world_size: int) -> float:
     if world_size == 1:
         return x
-    tensor = torch.tensor([x], device=get_current_device())
+    tensor = torch.tensor([x], device=get_accelerator().get_current_device())
     dist.all_reduce(tensor)
     tensor = tensor / world_size
     return tensor.item()
@@ -86,13 +85,13 @@ class PerformanceEvaluator:
         self.disable = self.ignore_steps > 0 and step < self.ignore_steps
         if self.disable:
             return
-        device_utils.synchronize()
+        get_accelerator().synchronize()
         self.timer.start()
 
     def on_step_end(self, input_ids: Tensor, **kwargs) -> None:
         if self.disable:
             return
-        device_utils.synchronize()
+        get_accelerator().synchronize()
         self.timer.end()
 
         batch_size, seq_len = input_ids.shape

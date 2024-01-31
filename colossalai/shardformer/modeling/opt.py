@@ -514,7 +514,7 @@ class OPTPipelineForwards:
 def get_opt_flash_attention_forward():
     from transformers.models.opt.modeling_opt import OPTAttention
 
-    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
+    from colossalai.nn.layer.colo_attention import AttnMaskType, ColoAttention
 
     def forward(
         self: OPTAttention,

@@ -7,7 +7,7 @@ from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
 from colossalai.amp.naive_amp.grad_scaler import BaseGradScaler
-from colossalai.kernel.op_builder import FusedOptimBuilder
+from colossalai.kernel.kernel_loader import FusedOptimizerLoader
 from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.utils import clip_grad_norm_fp32, copy_tensor_parallel_attributes
@@ -28,7 +28,7 @@ def load_fused_optim():
     global fused_optim
 
     if fused_optim is None:
-        fused_optim = FusedOptimBuilder().load()
+        fused_optim = FusedOptimizerLoader().load()
 
 
 def _multi_tensor_copy_this_to_that(this, that, overflow_buf=None):
