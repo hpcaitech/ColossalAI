@@ -276,8 +276,8 @@ class ShardFormerLlamaAttention(LlamaAttention):
             # fused qkv
             token_nums = hidden_states.size(0)
             hidden_states = hidden_states.expand(3, -1, -1)
-            query_states, key_states, value_states = torch.bmm(hidden_states, self.qkv_weight).view(
-                3, token_nums, self.num_heads, self.head_dim
+            query_states, key_states, value_states = (
+                torch.bmm(hidden_states, self.qkv_weight).view(3, token_nums, self.num_heads, self.head_dim).unbind(0)
             )
 
         rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
