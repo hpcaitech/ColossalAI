@@ -57,11 +57,6 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy):
                     suffix="mlp",
                     target_module=ShardFormerLlamaMLP,
                 ),
-            ]
-        )
-
-        policy[LlamaDecoderLayer] = ModulePolicyDescription(
-            sub_module_replacement=[
                 SubModuleReplacementDescription(
                     suffix="self_attn",
                     target_module=ShardFormerLlamaAttention,

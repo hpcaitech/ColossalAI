@@ -291,7 +291,7 @@ class ShardFormerLlamaMLP(LlamaMLP):
         return mlp_layer
 
     @torch.no_grad()
-    def nopad_mlp(self: LlamaMLP, hidden_states: torch.Tensor):
+    def forward(self: LlamaMLP, hidden_states: torch.Tensor):
         gate_proj_out = torch.mm(hidden_states, self.gate_proj.weight)
         act_out = torch.nn.functional.silu(gate_proj_out, inplace=True)
         up_proj_out = torch.mm(hidden_states, self.up_proj.weight)
