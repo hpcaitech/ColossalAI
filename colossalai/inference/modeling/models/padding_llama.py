@@ -110,7 +110,7 @@ def llama_model_forward(
         )
     else:
         output_tensor = torch.zeros(
-            (batch_size, 1, batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
+            (batch_size, batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
         )
     sm_scale = 1.0 / (batch.head_dim**0.5)
 
