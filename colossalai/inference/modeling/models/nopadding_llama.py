@@ -136,20 +136,19 @@ def llama_decoder_layer_forward(
     """This function will replace the forward function of LlamaDecoderLayer.
 
     Args:
-        hidden_states (torch.Tensor): _description_
-        block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence], storing mapping of token_position_id -> block_id. Defaults to None.
+        hidden_states (torch.Tensor): input to the layer of shape `(token_num, embed_dim)`.
+        block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
+            storing mapping of token_position_id -> block_id. Defaults to None.
         k_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
         v_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
         is_prompts (bool, optional): Whether the current inference process is in the context input phase. Defaults to True.
         sequence_lengths (torch.Tensor, optional): Holding the sequence length of each sequence. Defaults to None.
         kv_seq_len (int, optional): The max sequence length of input sequences. Defaults to 0.
         cos_sin (Tuple[torch.Tensor], optional): Holding cos and sin. Defaults to None.
-        fd_inter_tensor (FDIntermTensors, optional): Holding tensors used for storing intermediate values in flash-decoding. Defaults to None.
+        fd_inter_tensor (FDIntermTensors, optional): Holding tensors used for
+            storing intermediate values in flash-decoding. Defaults to None.
         output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
         sm_scale (int, optional): Used for flash attention. Defaults to None.
-
-    Returns:
-        Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]: _description_
     """
     residual = hidden_states
 
@@ -212,7 +211,7 @@ class NopadLlamaAttention(LlamaAttention):
 
     @staticmethod
     def from_native_module(module: LlamaAttention, *args, **kwargs) -> LlamaAttention:
-        """Used for initialize the weight of NopadLlamaAttention by origin LlamaAttention
+        """Used for initialize the weight of NopadLlamaAttention by origin LlamaAttention.
 
         Args:
             module (LlamaAttention): The origin LlamaAttention layer.
@@ -257,14 +256,16 @@ class NopadLlamaAttention(LlamaAttention):
         Args:
             hidden_states (torch.Tensor): input to the layer of shape `(token_num, embed_dim)`
             residual (torch.Tensor): shape `(token_num, embed_dim)`, used to be added to hidden_states in out_proj.
-            block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence], storing mapping of token_position_id -> block_id. Defaults to None.
+            block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
+                storing mapping of token_position_id -> block_id. Defaults to None.
             k_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
             v_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
             is_prompts (bool, optional): Whether the current inference process is in the context input phase. Defaults to True.
             sequence_lengths (torch.Tensor, optional): Holding the sequence length of each sequence. Defaults to None.
             kv_seq_len (int, optional): The max sequence length of input sequences. Defaults to 0.
             cos_sin (Tuple[torch.Tensor], optional): Holding cos and sin. Defaults to None.
-            fd_inter_tensor (FDIntermTensors, optional): Holding tensors used for storing intermediate values in flash-decoding. Defaults to None.
+            fd_inter_tensor (FDIntermTensors, optional): Holding tensors used for
+                storing intermediate values in flash-decoding. Defaults to None.
             output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
             sm_scale (int, optional): Used for flash attention. Defaults to None.
         """
@@ -370,8 +371,8 @@ class NopadLlamaMLP(LlamaMLP):
     def forward(self, hidden_states: torch.Tensor, residual: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            hidden_states (torch.Tensor): input to the layer of shape `(token_num, embed_dim)`
-            residual (torch.Tensor): shape `(token_num, embed_dim)`, used to be added to hidden_states in down_proj
+            hidden_states (torch.Tensor): input to the layer of shape `(token_num, embed_dim)`.
+            residual (torch.Tensor): shape `(token_num, embed_dim)`, used to be added to hidden_states in down_proj.
         """
         gate_proj_out = torch.mm(hidden_states, self.gate_proj.weight)
         act_out = torch.nn.functional.silu(gate_proj_out, inplace=True)
