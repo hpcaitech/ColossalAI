@@ -77,9 +77,9 @@ class FusedLAMB(torch.optim.Optimizer):
         )
         super(FusedLAMB, self).__init__(params, defaults)
         if multi_tensor_applier.available:
-            from colossalai.kernel.op_builder import FusedOptimBuilder
+            from colossalai.kernel.kernel_loader import FusedOptimizerLoader
 
-            fused_optim = FusedOptimBuilder().load()
+            fused_optim = FusedOptimizerLoader().load()
 
             self.multi_tensor_l2norm = fused_optim.multi_tensor_l2norm
             # Skip buffer

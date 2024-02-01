@@ -11,7 +11,7 @@ except:
 import torch
 from torch.fx.node import Node
 
-from colossalai.utils.device import get_current_device
+from colossalai.accelerator import get_accelerator
 
 from .region import Region
 from .training_simulator import AsynTrainingSimulator, SynTrainingSimulator, TrainingSimulator
@@ -57,7 +57,10 @@ class Solver(ABC):
         if memory_budget > 0:
             self.memory_budget = memory_budget * self.error_factor
         else:
-            self.memory_budget = torch.cuda.get_device_properties(get_current_device()).total_memory * self.error_factor
+            self.memory_budget = (
+                torch.cuda.get_device_properties(get_accelerator().get_current_device()).total_memory
+                * self.error_factor
+            )
 
         self.link_to_bandwidth: Dict[str, Dict[float, float]] = self._profile_bandwidth()
         self.comp_power: float = self._extract_computing_power()

@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn.parameter import Parameter
 
-from colossalai.kernel import LayerNorm
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.communication import broadcast
 from colossalai.legacy.context import ParallelMode, seed
 from colossalai.legacy.context.parallel_context import global_context as gpc
@@ -22,7 +22,7 @@ from colossalai.legacy.utils.checkpointing import (
     partition_tensor_parallel_state_dict,
 )
 from colossalai.nn import init as init
-from colossalai.utils.device import get_current_device
+from colossalai.nn.layer.layernorm import MixedFusedLayerNorm as LayerNorm
 
 from ..base_layer import ParallelLayer
 from ..colossalai_layer._utils import ColossalaiModule
@@ -221,7 +221,7 @@ class Classifier1D(ParallelLayer):
 
         # Parameters.
         # Initialize weight.
-        factory_kwargs = {"device": get_current_device(), "dtype": dtype}
+        factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
         if weight is not None:
             self.weight = weight
             self.has_weight = False
@@ -357,7 +357,7 @@ class VocabParallelClassifier1D(ParallelLayer):
 
         # Parameters.
         # Initialize weight.
-        factory_kwargs = {"device": get_current_device(), "dtype": dtype}
+        factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
         if weight is not None:
             self.weight = weight
             self.has_weight = False
@@ -499,7 +499,7 @@ class Linear1D_Col(ParallelLayer):
 
         # Parameters.
         # Initialize weight.
-        factory_kwargs = {"device": get_current_device(), "dtype": dtype}
+        factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
         self.weight = Parameter(torch.empty(self.out_features_per_partition, self.in_features, **factory_kwargs))
 
         if bias:
@@ -638,7 +638,7 @@ class Linear1D_Row(ParallelLayer):
 
         # Parameters.
         # Initialize weight.
-        factory_kwargs = {"device": get_current_device(), "dtype": dtype}
+        factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
         self.weight = Parameter(torch.empty(self.out_features, self.input_size_per_partition, **factory_kwargs))
 
         if self.stream_chunk_num > 1:
@@ -802,7 +802,9 @@ class Embedding1D(ParallelLayer):
         self.embed_kwargs = kwargs
 
         self.weight = Parameter(
-            torch.empty((num_embeddings, embed_dim_per_partition), device=get_current_device(), dtype=dtype)
+            torch.empty(
+                (num_embeddings, embed_dim_per_partition), device=get_accelerator().get_current_device(), dtype=dtype
+            )
         )
 
         self.reset_parameters(weight_initializer)
@@ -912,7 +914,11 @@ class VocabParallelEmbedding1D(ParallelLayer):
         self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
 
         self.weight = Parameter(
-            torch.empty((self.num_embeddings_per_partition, self.embed_dim), device=get_current_device(), dtype=dtype)
+            torch.empty(
+                (self.num_embeddings_per_partition, self.embed_dim),
+                device=get_accelerator().get_current_device(),
+                dtype=dtype,
+            )
         )
 
         self.reset_parameters(weight_initializer)

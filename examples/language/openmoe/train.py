@@ -15,6 +15,7 @@ from transformers import T5Tokenizer
 from transformers.models.llama import LlamaConfig
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
@@ -22,7 +23,6 @@ from colossalai.moe.layers import apply_load_balance
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import skip_init
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 
 def move_to_cuda(batch, device):
@@ -61,7 +61,9 @@ class RandomDataset(Dataset):
     def __init__(self, num_samples: int = 1000, max_length: int = 2048, vocab_size: int = 32000, tokenizer=None):
         self.num_samples = num_samples
         self.max_length = max_length
-        self.input_ids = torch.randint(0, vocab_size, (num_samples, max_length), device=get_current_device())
+        self.input_ids = torch.randint(
+            0, vocab_size, (num_samples, max_length), device=get_accelerator().get_current_device()
+        )
         self.attention_mask = torch.ones_like(self.input_ids)
 
     def __len__(self):

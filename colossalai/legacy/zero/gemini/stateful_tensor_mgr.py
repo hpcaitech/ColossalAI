@@ -3,7 +3,7 @@ import types
 from time import time
 from typing import List
 
-from colossalai.utils.device import get_current_device
+from colossalai.accelerator import get_accelerator
 
 from .stateful_tensor import StatefulTensor, TensorState
 from .tensor_placement_policy import TensorPlacementPolicy
@@ -69,7 +69,7 @@ class StatefulTensorMgr(object):
         # move COMPUTE tensors to CUDA
         self._cpu_gpu_move_volume += cuda_demand
         for t in move_to_cuda_tensor_list:
-            colo_model_data_tensor_move_inline(t, get_current_device())
+            colo_model_data_tensor_move_inline(t, get_accelerator().get_current_device())
 
     @property
     def cpu_gpu_move_volume(self):

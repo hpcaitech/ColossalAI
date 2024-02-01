@@ -15,7 +15,7 @@ class BucketStore(BaseStore):
         # init
         self.current_group_id = 0
         self._num_elements_in_bucket = 0
-        # mapping gardient slices and parameter
+        # mapping gradient slices and parameter
         self.grad_to_param_mapping = dict()
 
         self._grad_in_bucket = dict()
@@ -59,7 +59,7 @@ class BucketStore(BaseStore):
         self.offset_list[-1] += 1
 
     def build_grad_in_bucket(self):
-        """Orgnize parameters' gradient(padding and split), follows the paramters' splitting method
+        """Organize parameters' gradient(padding and split), follows the parameters' splitting method
 
         Data structure of self._grad_in_bucket:
         {
@@ -91,7 +91,7 @@ class BucketStore(BaseStore):
         return self._grad_in_bucket
 
     def get_flatten_grad(self) -> Tensor:
-        """Return the flattened gradients slices in the bucket, the data orginization of the flattened tensor:
+        """Return the flattened gradients slices in the bucket, the data organization of the flattened tensor:
         [grad0_rank0, grad1_rank0, ..., grad_0_rank1, grad1_rank1, ....]
 
         Returns:
