@@ -28,18 +28,18 @@ class InferenceConfig:
     """The inference configuration.
 
     Args:
-        micro_batch_size (int): the micro batch size, default to 1. Only useful when `pp_size` > 1.
+        micro_batch_size (int): the micro batch size, defaults to 1. Only useful when `pp_size` > 1.
         micro_batch_buffer_size (int): the buffer size for micro batch. Normally, it should be the same as the number of pipeline stages.
-        max_batch_size (int): Maximum batch size, default to 8.
-        max_output_len (int): Maximum output length, default to 256.
-        max_input_len (int): Maximum input length, default to 256.
-        block_size (int): The number of blocks in a logical block, default to 16.
+        max_batch_size (int): Maximum batch size, defaults to 8.
+        max_output_len (int): Maximum output length, defaults to 256.
+        max_input_len (int): Maximum input length, defaults to 256.
+        block_size (int): The number of blocks in a logical block, defaults to 16.
         dtype (Union[str, torch.dtype]): The data type for weights and activations.
-        tp_size (int): Tensor parallel size, default to 1.
-        pp_size (int): Pipeline parallel size, default to 1.
-        beam_width (int): The maximum beam width used to initialize KV Cache, default to 1.
+        tp_size (int): Tensor parallel size, defaults to 1.
+        pp_size (int): Pipeline parallel size, defaults to 1.
+        beam_width (int): The maximum beam width used to initialize KV Cache, defaults to 1.
             During generation, the beam width provided as sampling parameter should be less than or equivalent to this value.
-        prefill_ratio (Optional[float]): A controling ratio for prefill and decoding in running list, default to 1.2. We will do a step of prefill
+        prefill_ratio (Optional[float]): A controling ratio for prefill and decoding in running list, defaults to 1.2. We will do a step of prefill
             when the actual value exceeds this ratio.
         pad_input: Whether to pad all inputs to the max length.
         quant_mode (Optional[str]): Quantization mode.
