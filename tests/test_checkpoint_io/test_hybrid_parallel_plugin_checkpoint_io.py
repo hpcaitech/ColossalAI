@@ -83,7 +83,8 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
         optimizer.backward(loss)
 
     optimizer.step()
-
+    for group in optimizer.param_groups:
+        group["lr"] = 0.1
     with shared_tempdir() as tempdir:
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
