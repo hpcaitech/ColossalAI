@@ -5,8 +5,8 @@ from torch.nn import Parameter
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaForCausalLM, LlamaModel, LlamaRMSNorm
 
 from colossalai.inference.modeling.models.nopadding_llama import (
-    ShardFormerLlamaAttention,
-    ShardFormerLlamaMLP,
+    NopadLlamaAttention,
+    NopadLlamaMLP,
     llama_causal_lm_forward,
     llama_decoder_layer_forward,
     llama_model_forward,
@@ -55,11 +55,11 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy):
             sub_module_replacement=[
                 SubModuleReplacementDescription(
                     suffix="mlp",
-                    target_module=ShardFormerLlamaMLP,
+                    target_module=NopadLlamaMLP,
                 ),
                 SubModuleReplacementDescription(
                     suffix="self_attn",
-                    target_module=ShardFormerLlamaAttention,
+                    target_module=NopadLlamaAttention,
                 ),
             ]
         )

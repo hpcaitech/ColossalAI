@@ -178,7 +178,7 @@ def llama_decoder_layer_forward(
     return hidden_states
 
 
-class ShardFormerLlamaAttention(LlamaAttention):
+class NopadLlamaAttention(LlamaAttention):
     def __init__(
         self,
         config: LlamaConfig,
@@ -212,7 +212,7 @@ class ShardFormerLlamaAttention(LlamaAttention):
 
     @staticmethod
     def from_native_module(module: LlamaAttention, *args, **kwargs) -> LlamaAttention:
-        """Used for initialize the weight of ShardFormerLlamaAttention by origin LlamaAttention
+        """Used for initialize the weight of NopadLlamaAttention by origin LlamaAttention
 
         Args:
             module (LlamaAttention): The origin LlamaAttention layer.
@@ -225,7 +225,7 @@ class ShardFormerLlamaAttention(LlamaAttention):
         attn_vproj_w = module.v_proj.weight.transpose(0, 1)
         attn_oproj_w = module.o_proj.weight.transpose(0, 1)
 
-        attn_layer = ShardFormerLlamaAttention(
+        attn_layer = NopadLlamaAttention(
             config=config,
             layer_idx=layer_idx,
             attn_qproj_w=attn_qproj_w,
@@ -323,7 +323,7 @@ class ShardFormerLlamaAttention(LlamaAttention):
 
 
 # NOTE This will cause the result to be different from the transformer in some cases.
-class ShardFormerLlamaMLP(LlamaMLP):
+class NopadLlamaMLP(LlamaMLP):
     def __init__(
         self,
         config: LlamaConfig,
@@ -346,7 +346,7 @@ class ShardFormerLlamaMLP(LlamaMLP):
 
     @staticmethod
     def from_native_module(module: LlamaMLP, *args, **kwargs) -> LlamaMLP:
-        """Used for initialize the weight of ShardFormerLlamaMLP by origin LlamaMLP.
+        """Used for initialize the weight of NopadLlamaMLP by origin LlamaMLP.
 
         Args:
             module (LlamaMLP): The origin LlamaMLP layer.
@@ -357,7 +357,7 @@ class ShardFormerLlamaMLP(LlamaMLP):
         mlp_uproj_w = module.up_proj.weight.transpose(0, 1)
         mlp_dproj_w = module.down_proj.weight.transpose(0, 1)
 
-        mlp_layer = ShardFormerLlamaMLP(
+        mlp_layer = NopadLlamaMLP(
             config=config,
             mlp_gproj_w=mlp_gproj_w,
             mlp_uproj_w=mlp_uproj_w,
