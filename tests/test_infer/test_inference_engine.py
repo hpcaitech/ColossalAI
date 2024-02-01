@@ -40,7 +40,6 @@ def check_inference_engine(test_cai=False):
         .cuda()
         .half()
     )
-
     model = model.eval()
     n_model = deepcopy(model)
 
@@ -54,10 +53,9 @@ def check_inference_engine(test_cai=False):
     top_p = 0.5
     top_k = 50
 
-    test_config_tokenizer(n_model, output_len)
-
     if test_cai:
-        inference_config = InferenceConfig(max_output_len=output_len, dtype=torch.float32)
+        test_config_tokenizer(n_model, output_len)
+        inference_config = InferenceConfig(max_output_len=output_len)
         inference_engine = InferenceEngine(model, inference_config, tokenizer, verbose=True)
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
@@ -94,3 +92,7 @@ def run_dist(rank, world_size, port):
 @rerun_if_address_is_in_use()
 def test_inference_engine():
     spawn(run_dist, 1)
+
+
+if __name__ == "__main__":
+    test_inference_engine()
