@@ -16,7 +16,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 
 set_n_least_used_CUDA_VISIBLE_DEVICES 4
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-MODEL_DIR="/home/zhongyuting/model/Colossal-Llama-2-7b-base"
+MODEL_DIR="/home/zhongyuting/model/Colossal-LLaMA-2-7b-base"
 DATASET_DIR="/home/jiangmingyan/workspace/chat-data"
 OUTPUT_DIR="./output"
 
@@ -33,8 +33,8 @@ echo ${PRETRAIN_MODEL_DIR}
 export CUDA_LAUNCH_BLOCKING=1
 
 torchrun --nnodes 1 --nproc_per_node 4 --master_port 31312 train_sft.py \
-    --strategy "zero2" \
-    --model "llama2" \
+    --strategy "colossalai_zero2" \
+    --model "llama" \
     --tokenizer ${PRETRAIN_MODEL_DIR} \
     --pretrain ${PRETRAIN_MODEL_DIR} \
     --dataset ${TRAINING_DATASET_DIR} \
@@ -44,7 +44,6 @@ torchrun --nnodes 1 --nproc_per_node 4 --master_port 31312 train_sft.py \
     --batch_size 1 \
     --max_len 512 \
     --lora_rank 0 \
-    --log_interval 10 \
     --lr 2e-5 \
     --accumulation_steps 8 \
     --log_dir ${TENSORBOARD_OUTPUT_DIR} \
