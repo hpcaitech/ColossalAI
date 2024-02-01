@@ -1071,8 +1071,8 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
             else:
                 inputs_embeds = self.embed_tokens(input_ids)
 
-        # TODO Internal function
-        use_distributed_mask = False
+        # TODO use_distributed_mask
+        use_distributed_mask = True if sp_mode in ["2", "3"] else False
 
         # embed positions
         if sp_mode is None or use_distributed_mask is False:
@@ -1120,6 +1120,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                 all_hidden_states += (hidden_states,)
 
             past_key_value = past_key_values[idx] if past_key_values is not None else None
+
             if (self.gradient_checkpointing or sp_mode in ["2", "3"]) and self.training:
 
                 def create_custom_forward(module):
@@ -1135,6 +1136,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                     attention_mask,
                     position_ids,
                 )
+
             else:
                 layer_outputs = decoder_layer(
                     hidden_states,
