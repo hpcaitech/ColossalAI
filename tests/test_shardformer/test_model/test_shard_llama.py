@@ -192,8 +192,6 @@ def run_llama_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_llama")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if name != "transformers_llama":
-            continue
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
     clear_layout_converter()
