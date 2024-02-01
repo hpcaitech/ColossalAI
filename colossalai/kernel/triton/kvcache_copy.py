@@ -75,7 +75,6 @@ def copy_kv_to_blocked_cache(
     block_size = k_cache.size(-2)
 
     num_warps = 8 if head_dim > 128 else 4
-
     grid = (bsz, num_kv_heads)
     _copy_to_kvcache_seqlen1_kernel[grid](
         k,

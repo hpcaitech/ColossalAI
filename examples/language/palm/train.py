@@ -14,12 +14,12 @@ from palm_pytorch.autoregressive_wrapper import AutoregressiveWrapper
 from torch.utils.data import DataLoader, Dataset
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.lazy import LazyInitContext
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn import HybridAdam
-from colossalai.utils import get_current_device
 
 # constants
 
@@ -159,7 +159,11 @@ if args.distplan == "colossalai":
     logger.info(f"plugin: {plugin}")
     booster = Booster(plugin=plugin, **booster_kwargs)
 
-    ctx = LazyInitContext(default_device=get_current_device()) if args.plugin == "gemini" else nullcontext()
+    ctx = (
+        LazyInitContext(default_device=get_accelerator().get_current_device())
+        if args.plugin == "gemini"
+        else nullcontext()
+    )
 
     with ctx:
         model = PaLM(num_tokens=50304, dim=4096, depth=64)

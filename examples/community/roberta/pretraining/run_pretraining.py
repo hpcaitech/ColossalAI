@@ -16,10 +16,10 @@ from utils.global_vars import get_tensorboard_writer, get_timers, set_global_var
 from utils.logger import Logger
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.context import ParallelMode
 from colossalai.nn.parallel import zero_model_wrapper, zero_optim_wrapper
 from colossalai.tensor import ProcessGroup, ShardSpec
-from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 
 
@@ -53,7 +53,7 @@ def main():
     set_global_variables(launch_time, args.tensorboard_path)
 
     world_size = torch.distributed.get_world_size()
-    get_current_device()
+    get_accelerator().get_current_device()
 
     # build model, optimizer and criterion
     if args.distplan.startswith("CAI"):
@@ -67,7 +67,10 @@ def main():
 
         # build GPT model
         with ColoInitContext(
-            device=get_current_device(), dtype=torch.half, default_dist_spec=default_dist_spec, default_pg=shard_pg
+            device=get_accelerator().get_current_device(),
+            dtype=torch.half,
+            default_dist_spec=default_dist_spec,
+            default_pg=shard_pg,
         ):
             config, model, numel = get_model(args, logger)
 
@@ -78,7 +81,7 @@ def main():
         elif args.distplan == "CAI_Gemini":
             gemini_config = dict(
                 strict_ddp_mode=args.tp_degree == 1,
-                device=get_current_device(),
+                device=get_accelerator().get_current_device(),
                 placement_policy=args.placement,
                 pin_memory=True,
                 hidden_dim=model.config.hidden_size,

@@ -5,10 +5,10 @@ import torch.distributed as dist
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.communication.collective import all_gather, all_reduce, reduce_scatter
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
-from colossalai.utils import get_current_device
 
 
 def matmul_2d(
@@ -250,7 +250,7 @@ class Matmul_AB_2D(torch.autograd.Function):
         B_shape = B.shape
         B = B.reshape((-1, B_shape[-1]))
         C_shape = (A.shape[0], B.shape[-1])
-        C = torch.zeros(C_shape, dtype=A.dtype, device=get_current_device())
+        C = torch.zeros(C_shape, dtype=A.dtype, device=get_accelerator().get_current_device())
 
         # use circular buffer to store the communication tensor
         # 2 is enough for all cases
@@ -399,7 +399,7 @@ class Matmul_ABT_2D(torch.autograd.Function):
         B_shape = B.shape
         B = B.reshape((-1, B_shape[-1]))
         C_shape = (A.shape[0], B.shape[0])
-        C = torch.empty(C_shape, dtype=A.dtype, device=get_current_device())
+        C = torch.empty(C_shape, dtype=A.dtype, device=get_accelerator().get_current_device())
 
         # use circular buffer to store the communication tensor
         # 2 is enough for all cases
@@ -556,7 +556,7 @@ class Matmul_ATB_2D(torch.autograd.Function):
         B_shape = B.shape
         B = B.reshape((-1, B_shape[-1]))
         C_shape = (A.shape[-1], B.shape[-1])
-        C = torch.empty(C_shape, dtype=A.dtype, device=get_current_device())
+        C = torch.empty(C_shape, dtype=A.dtype, device=get_accelerator().get_current_device())
 
         # use circular buffer to store the communication tensor
         # 2 is enough for all cases

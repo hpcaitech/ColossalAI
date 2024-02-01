@@ -96,9 +96,9 @@ def _apply_layout(tensor, layout):
     """
     Apply the layout to the local tensor during initializing process.
     """
-    # layout converter requires a source and target laytout
+    # layout converter requires a source and target layout
     # we construct the source layer for an unsharded tensor
-    # and use self.dist_layer as the targer layout for the sharded tensor
+    # and use self.dist_layer as the target layout for the sharded tensor
     source_spec = _construct_default_sharding_spec(tensor)
     source_layout = Layout(device_mesh=layout.device_mesh, sharding_spec=source_spec, global_shape=tensor.shape)
     sharded_tensor = layout_converter.apply(tensor=tensor, source_layout=source_layout, target_layout=layout)

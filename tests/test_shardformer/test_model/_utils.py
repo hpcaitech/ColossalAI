@@ -154,7 +154,7 @@ def run_forward_backward_with_hybrid_plugin(
 
     data = data_gen_fn()
 
-    if booster.plugin.enable_sequence_parallelism and booster.plugin.tp_size != 0:
+    if booster.plugin.shard_config.enable_sequence_parallelism and booster.plugin.tp_size != 0:
         seq_len = data["input_ids"].shape[-1]
         lcm = booster.plugin.tp_size * seq_len // math.gcd(booster.plugin.tp_size, seq_len)
         times = lcm // seq_len

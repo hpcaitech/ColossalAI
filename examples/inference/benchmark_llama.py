@@ -8,11 +8,9 @@ import transformers
 from transformers import AutoTokenizer, GenerationConfig
 
 import colossalai
-import colossalai.utils.device as device_utils
-from colossalai.inference.config import InferenceConfig
-from colossalai.inference.core.engine import InferenceEngine
+from colossalai.accelerator import get_accelerator
+from colossalai.inference import InferenceEngine
 from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
-from colossalai.utils.device import get_current_device
 
 GIGABYTE = 1024**3
 MEGABYTE = 1024 * 1024
@@ -55,7 +53,7 @@ CONFIG_MAP = {
 
 
 def data_gen(batch_size: int = 4, seq_len: int = 512):
-    input_ids = torch.randint(10, 30000, (batch_size, seq_len), device=get_current_device())
+    input_ids = torch.randint(10, 30000, (batch_size, seq_len), device=get_accelerator().get_current_device())
     return input_ids
 
 
@@ -78,9 +76,9 @@ def print_details_info(model_config, args, whole_end2end):
         msg += f"Flops: {num_parameters * num_bytes / whole_avg_latency / 1e12:.2f} TFLOPS\n"
 
     if torch.cuda.is_available():
-        msg += f"-------Memory Summary Device:{device_utils.current_device()}-------\n"
-        msg += f"Max memory allocated: {device_utils.max_memory_allocated() / GIGABYTE:.2f} GB\n"
-        msg += f"Max memory reserved: {device_utils.max_memory_reserved() / GIGABYTE:.2f} GB\n"
+        msg += f"-------Memory Summary Device:{get_accelerator().current_device()}-------\n"
+        msg += f"Max memory allocated: {get_accelerator().max_memory_allocated() / GIGABYTE:.2f} GB\n"
+        msg += f"Max memory reserved: {get_accelerator().max_memory_reserved() / GIGABYTE:.2f} GB\n"
 
     print(msg)
 

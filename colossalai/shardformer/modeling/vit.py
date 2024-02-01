@@ -336,7 +336,7 @@ def ViTForMaskedImageModeling_pipeline_forward(stage_manager: PipelineStageManag
 def get_vit_flash_self_attention_forward():
     from transformers.models.vit.modeling_vit import ViTSelfAttention
 
-    from colossalai.kernel.cuda_native import ColoAttention
+    from colossalai.nn.layer.colo_attention import ColoAttention
 
     def transpose_for_scores(x: torch.Tensor, num_attention_heads, attention_head_size) -> torch.Tensor:
         new_x_shape = x.size()[:-1] + (num_attention_heads, attention_head_size)

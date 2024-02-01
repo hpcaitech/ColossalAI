@@ -5,9 +5,9 @@ import torch.distributed as dist
 from transformers import LlamaForCausalLM, LlamaTokenizer
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.inference import InferenceEngine
 from colossalai.testing import spawn
-from colossalai.utils.device import get_current_device
 
 INPUT_TEXTS = [
     "What is the longest river in the world?",
@@ -57,7 +57,7 @@ def run_inference(args):
     )
 
     inputs = tokenizer(INPUT_TEXTS, return_tensors="pt", padding="longest", max_length=max_input_len, truncation=True)
-    inputs = {k: v.to(get_current_device()) for k, v in inputs.items()}
+    inputs = {k: v.to(get_accelerator().get_current_device()) for k, v in inputs.items()}
     outputs = engine.generate(inputs)
 
     if rank == 0:

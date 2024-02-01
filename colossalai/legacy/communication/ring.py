@@ -3,9 +3,9 @@
 
 import torch
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
-from colossalai.utils import get_current_device, synchronize
 
 
 def ring_forward(tensor_send_next: torch.Tensor, parallel_mode: ParallelMode) -> torch.Tensor:
@@ -29,7 +29,7 @@ def ring_forward(tensor_send_next: torch.Tensor, parallel_mode: ParallelMode) ->
     current_rank = gpc.get_global_rank()
 
     tensor_recv_prev = torch.empty(
-        buffer_shape, requires_grad=True, device=get_current_device(), dtype=tensor_send_next.dtype
+        buffer_shape, requires_grad=True, device=get_accelerator().get_current_device(), dtype=tensor_send_next.dtype
     )
 
     # send to next rank
@@ -52,6 +52,6 @@ def ring_forward(tensor_send_next: torch.Tensor, parallel_mode: ParallelMode) ->
         req.wait()
 
     # To protect against race condition when using batch_isend_irecv().
-    synchronize()
+    get_accelerator().synchronize()
 
     return tensor_recv_prev

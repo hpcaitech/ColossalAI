@@ -222,11 +222,11 @@ def fused_rotary_embedding_kernel(
     out_k0 = loaded_k0 * loaded_cos[:, None, :] - loaded_k1 * loaded_sin[:, None, :]
     out_k1 = loaded_k0 * loaded_sin[:, None, :] + loaded_k1 * loaded_cos[:, None, :]  # total_tokens, head_num, head_dim
 
-    past_kv_seq_len = tl.load(context_lengths + tokens_range) - 1
+    past_kv_seq_len = tl.load(context_lengths + tokens_range, mask=(tokens_range < q_total_tokens)) - 1
 
     last_block_idx = past_kv_seq_len // block_size
     block_table_ptr = BLOCK_TABLES + tokens_range * bts_stride
-    block_ids = tl.load(block_table_ptr + last_block_idx * btb_stride)
+    block_ids = tl.load(block_table_ptr + last_block_idx * btb_stride, mask=(tokens_range < q_total_tokens))
     offsets_in_last_block = (past_kv_seq_len % block_size) * cachebs_stride
 
     kv_range0 = (
@@ -299,7 +299,6 @@ def rotary_embedding(
     BLOCK_HEAD = 4
     BLOCK_TOKENS = 4
     grid = lambda META: (triton.cdiv(q_head_num, META["BLOCK_HEAD"]), triton.cdiv(q_total_tokens, META["BLOCK_TOKENS"]))
-
     if head_dim >= 256:
         num_warps = 32
     elif head_dim >= 128:

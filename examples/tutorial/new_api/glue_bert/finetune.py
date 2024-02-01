@@ -12,11 +12,11 @@ from tqdm import tqdm
 from transformers import AutoConfig, BertForSequenceClassification, get_linear_schedule_with_warmup
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 # ==============================
 # Prepare Hyperparameters
@@ -45,7 +45,7 @@ def evaluate(
     model.eval()
 
     def evaluate_subset(dataloader: DataLoader):
-        accum_loss = torch.zeros(1, device=get_current_device())
+        accum_loss = torch.zeros(1, device=get_accelerator().get_current_device())
         for batch in dataloader:
             batch = move_to_cuda(batch)
             outputs = model(**batch)

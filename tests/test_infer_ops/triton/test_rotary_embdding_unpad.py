@@ -152,5 +152,5 @@ def benchmark_rotary_emb(
 
 
 if __name__ == "__main__":
-    # test_rotary_emb(4, 64, 32, 64, torch.float32)
-    benchmark_rotary_emb.run(save_path=".", print_data=True)
+    test_rotary_emb(4, 64, 32, 64, torch.float32)
+    # benchmark_rotary_emb.run(save_path=".", print_data=True)
