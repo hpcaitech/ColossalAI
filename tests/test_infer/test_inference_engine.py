@@ -31,15 +31,16 @@ def test_config_tokenizer(model, output_len):
 def check_inference_engine(test_cai=False):
     setup_seed(20)
     tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
-    model = LlamaForCausalLM(
-        LlamaConfig(
-            vocab_size=50000,
-            hidden_size=512,
-            intermediate_size=1536,
-            num_attention_heads=4,
-            num_hidden_layers=16,
+    model = (
+        LlamaForCausalLM(
+            LlamaConfig(
+                vocab_size=50000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=16
+            )
         )
-    ).cuda()
+        .cuda()
+        .half()
+    )
+
     model = model.eval()
     n_model = deepcopy(model)
 
@@ -86,14 +87,10 @@ def run_dist(rank, world_size, port):
     transformer_outputs = check_inference_engine(False)
 
     for s1, s2 in zip(cai_outputs, transformer_outputs):
-        assert s1 == s2, f"\n our output is{s1},\n the transformers' is:{s2}"
+        assert s1 == s2, f"\nColossalAI Output: {s1}\nTransformers Output: {s2}"
 
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_inference_engine():
     spawn(run_dist, 1)
-
-
-if __name__ == "__main__":
-    test_inference_engine()
