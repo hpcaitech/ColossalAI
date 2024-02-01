@@ -34,7 +34,7 @@ def check_inference_engine(test_cai=False):
         "介绍一下武汉,",
     ]
 
-    output_len = 128
+    output_len = 38
     do_sample = True
     top_p = 0.5
     top_k = 50

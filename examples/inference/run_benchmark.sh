@@ -22,8 +22,6 @@ CUDA_VISIBLE_DEVICES_set_n_least_memory_usage() {
 
 CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 1
 
-export CUDA_VISIBLE_DEVICES=7
-
 # benchmark llama2-7b one single GPU
 
 for bsz in 16 32 64; do
