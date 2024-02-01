@@ -315,7 +315,6 @@ class ShardFormerLlamaAttention(LlamaAttention):
                 mid_output_lse=fd_inter_tensor.mid_output_lse,
                 sm_scale=sm_scale,
             )
-            attn_output = attn_output.squeeze(1)
 
         attn_output = attn_output.reshape(-1, self.hidden_size)
         attn_output = torch.addmm(residual, attn_output, self.o_proj.weight)
