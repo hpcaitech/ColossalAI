@@ -91,7 +91,7 @@ def llama_model_forward(
         )
     else:
         output_tensor = torch.zeros(
-            (batch_size, 1, batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
+            (batch_size, batch.num_heads, batch.head_dim), dtype=batch.dtype, device=batch.device
         )
     sm_scale = 1.0 / (batch.head_dim**0.5)
 
@@ -157,6 +157,7 @@ def llama_decoder_layer_forward(
     # Self Attention
     hidden_states = self.self_attn(
         hidden_states=hidden_states,
+        residual=residual,
         block_tables=block_tables,
         k_cache=k_cache,
         v_cache=v_cache,
@@ -169,13 +170,10 @@ def llama_decoder_layer_forward(
         sm_scale=sm_scale,
     )
 
-    hidden_states = residual + hidden_states
-
     # Fully Connected
     residual = hidden_states
     hidden_states = self.post_attention_layernorm(hidden_states)
-    hidden_states = self.mlp(hidden_states)
-    hidden_states = residual + hidden_states
+    hidden_states = self.mlp(hidden_states, residual)
 
     return hidden_states
 
@@ -243,6 +241,7 @@ class ShardFormerLlamaAttention(LlamaAttention):
     def forward(
         self,
         hidden_states: torch.Tensor,
+        residual: torch.Tensor,
         block_tables: torch.Tensor = None,
         k_cache: torch.Tensor = None,
         v_cache: torch.Tensor = None,
@@ -257,6 +256,7 @@ class ShardFormerLlamaAttention(LlamaAttention):
         """
         Args:
             hidden_states (torch.Tensor): input to the layer of shape `(token_num, embed_dim)`
+            residual (torch.Tensor): shape `(token_num, embed_dim)`, used to be added to hidden_states in out_proj.
             block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence], storing mapping of token_position_id -> block_id. Defaults to None.
             k_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
             v_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
@@ -268,6 +268,7 @@ class ShardFormerLlamaAttention(LlamaAttention):
             output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
             sm_scale (int, optional): Used for flash attention. Defaults to None.
         """
+
         if self.num_heads != self.num_key_value_heads:
             query_states = torch.mm(hidden_states, self.q_proj.weight).view(-1, self.num_heads, self.head_dim)
             key_states = torch.mm(hidden_states, self.k_proj.weight).view(-1, self.num_key_value_heads, self.head_dim)
@@ -316,9 +317,8 @@ class ShardFormerLlamaAttention(LlamaAttention):
             )
             attn_output = attn_output.squeeze(1)
 
-        attn_output = attn_output.view(-1, self.num_heads, self.head_dim)
         attn_output = attn_output.reshape(-1, self.hidden_size)
-        attn_output = torch.mm(attn_output, self.o_proj.weight)
+        attn_output = torch.addmm(residual, attn_output, self.o_proj.weight)
 
         return attn_output
 
@@ -368,13 +368,14 @@ class ShardFormerLlamaMLP(LlamaMLP):
         return mlp_layer
 
     @torch.no_grad()
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, residual: torch.Tensor) -> torch.Tensor:
         """
         Args:
             hidden_states (torch.Tensor): input to the layer of shape `(token_num, embed_dim)`
+            residual (torch.Tensor): shape `(token_num, embed_dim)`, used to be added to hidden_states in down_proj
         """
         gate_proj_out = torch.mm(hidden_states, self.gate_proj.weight)
         act_out = torch.nn.functional.silu(gate_proj_out, inplace=True)
         up_proj_out = torch.mm(hidden_states, self.up_proj.weight)
         tmp_out = act_out * up_proj_out
-        return torch.mm(tmp_out, self.down_proj.weight)
+        return torch.addmm(residual, tmp_out, self.down_proj.weight)

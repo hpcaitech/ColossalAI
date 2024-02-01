@@ -20,7 +20,7 @@ CUDA_VISIBLE_DEVICES_set_n_least_memory_usage() {
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
 
-CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 1
+export CUDA_VISIBLE_DEVICES=7
 
 # benchmark llama2-7b one single GPU
 
