@@ -20,11 +20,12 @@ def setup_seed(seed):
 
 
 def test_config_tokenizer(model, output_len):
-    drat_config = InferenceConfig(model.__class__.__name__, max_output_len=output_len)
+    drat_config = InferenceConfig(model.__class__.__name__, max_output_len=output_len, dtype=torch.float32)
     draf_engine = InferenceEngine(model, inference_config=drat_config)
 
     assert "transformers.models.llama" in str(draf_engine.tokenizer.__class__)
     assert draf_engine.generation_config.max_new_tokens == output_len
+    del draf_engine
 
 
 def check_inference_engine(test_cai=False):
@@ -32,10 +33,13 @@ def check_inference_engine(test_cai=False):
     tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
     model = LlamaForCausalLM(
         LlamaConfig(
-            vocab_size=50000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=16
+            vocab_size=50000,
+            hidden_size=512,
+            intermediate_size=1536,
+            num_attention_heads=4,
+            num_hidden_layers=16,
         )
     ).cuda()
-
     model = model.eval()
     n_model = deepcopy(model)
 
@@ -52,7 +56,7 @@ def check_inference_engine(test_cai=False):
     test_config_tokenizer(n_model, output_len)
 
     if test_cai:
-        inference_config = InferenceConfig(max_output_len=output_len)
+        inference_config = InferenceConfig(max_output_len=output_len, dtype=torch.float32)
         inference_engine = InferenceEngine(model, inference_config, tokenizer, verbose=True)
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
@@ -82,7 +86,7 @@ def run_dist(rank, world_size, port):
     transformer_outputs = check_inference_engine(False)
 
     for s1, s2 in zip(cai_outputs, transformer_outputs):
-        assert s1 == s2
+        assert s1 == s2, f"\n our output is{s1},\n the transformers' is:{s2}"
 
 
 @pytest.mark.dist

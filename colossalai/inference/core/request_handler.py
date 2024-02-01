@@ -93,6 +93,10 @@ class RequestHandler:
         head_dim = model_config.hidden_size // model_config.num_attention_heads
 
         fd_inter_tensor = FDIntermTensors()
+
+        if fd_inter_tensor._tensors_initialized:
+            fd_inter_tensor._re_initialize()
+
         fd_inter_tensor.initialize(
             max_batch_size=self.max_batch_size,
             num_attn_heads=model_config.num_attention_heads,
