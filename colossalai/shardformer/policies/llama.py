@@ -60,6 +60,15 @@ class LlamaPolicy(Policy):
             sp_size = None
             sp_group = None
 
+        use_flash_attention = self.shard_config.enable_flash_attention
+        # todo: currently sp mode 2 and 3 need to be used with flashattention
+        if sp_mode in ["2", "3"]:
+            if not use_flash_attention:
+                warnings.warn(
+                    f"Sequence parallelism mode {sp_mode} need to be used with FlashAttention, will enable FlashAttention automatically."
+                )
+                use_flash_attention = True
+
         if sp_mode == "1":
             self.append_or_create_method_replacement(
                 description={
@@ -204,7 +213,7 @@ class LlamaPolicy(Policy):
         )
 
         # use flash attention
-        if self.shard_config.enable_flash_attention:
+        if use_flash_attention:
             self.append_or_create_method_replacement(
                 description={
                     "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_size),
