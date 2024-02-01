@@ -979,9 +979,10 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
 
         expanded_mask = mask[:, None, None, :].expand(bsz, 1, tgt_len * world_size, src_len).to(dtype)
 
-        inverted_mask = 1.0 - expanded_mask
+        # inverted_mask = 1.0 - expanded_mask
+        inverted_mask = expanded_mask.mul_(-1).add_(1.0)
 
-        return inverted_mask.masked_fill(inverted_mask.to(torch.bool), torch.finfo(dtype).min)
+        return inverted_mask.masked_fill_(inverted_mask.to(torch.bool), torch.finfo(dtype).min)
 
     # Copied from transformers.models.bart.modeling_bart.BartDecoder._prepare_decoder_attention_mask
     def _prepare_decoder_attention_mask_partial(
@@ -1005,7 +1006,9 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                 attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1], sp_group=sp_group
             ).to(inputs_embeds.device)
             combined_attention_mask = (
-                expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask + combined_attention_mask
+                expanded_attn_mask
+                if combined_attention_mask is None
+                else expanded_attn_mask.add_(combined_attention_mask)
             )
 
         return combined_attention_mask
