@@ -1134,7 +1134,6 @@ class HybridParallelPlugin(PipelinePluginBase):
                         tp_process_group=self.tp_group,
                     )
             else:
-                assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
                 assert self.precision != "fp32", "Please set precision to 'fp16' or 'bf16' when using ZeRO."
                 optimizer = HybridParallelZeroOptimizer(
                     optimizer,
