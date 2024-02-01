@@ -10,6 +10,8 @@ from colossalai.utils import get_current_device
 
 from .block_cache import CacheBlock
 
+__all__ = ["KVCacheManager"]
+
 GIGABYTE = 1024**3
 
 
