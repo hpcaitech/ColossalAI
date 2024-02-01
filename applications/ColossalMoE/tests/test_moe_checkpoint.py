@@ -117,6 +117,8 @@ def check_mixtral_moe_layer():
 
     # check save optimizer
     optimizer.step()
+    for group in optimizer.param_groups:
+        group["lr"] = 0.1
     snapshot = get_optimizer_snapshot(optimizer.unwrap())
     booster.save_optimizer(optimizer, "mixtral_optim", shard=True)
     dist.barrier()
