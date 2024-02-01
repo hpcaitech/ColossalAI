@@ -40,7 +40,7 @@ def check_inference_engine(test_cai=False):
     top_k = 50
 
     if test_cai:
-        inference_config = InferenceConfig(max_output_len=output_len)
+        inference_config = InferenceConfig(max_output_len=output_len, dtype="fp32")
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
@@ -70,7 +70,7 @@ def run_dist(rank, world_size, port):
     transformer_outputs = check_inference_engine(False)
 
     for s1, s2 in zip(cai_outputs, transformer_outputs):
-        assert s1 == s2
+        assert s1 == s2, f"\n{s1}\n{s2}"
 
 
 @pytest.mark.dist
