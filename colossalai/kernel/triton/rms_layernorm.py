@@ -53,10 +53,6 @@ if HAS_TRITON:
     def rms_layernorm(x, weight, eps, norm_output=None):
         # allocate output
         y = torch.empty_like(x) if norm_output is None else norm_output
-        x_dim = x.dim()
-        assert x_dim in [2, 3], f" x.dim() must be 2 or 3, but got {x_dim}"
-        if x_dim == 3:
-            x = x.reshape(-1, x.shape[-1])
         M, N = x.shape
         # Less than 64KB per feature: enqueue fused kernel
         MAX_FUSED_SIZE = 65536 // x.element_size()
