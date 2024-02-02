@@ -159,8 +159,10 @@ class InferenceEngine:
         Returns:
             List[str]: Inference result returned by one generation.
         """
-        if generation_config is None:
-            generation_config = self.generation_config
+
+        # intuition: If user provide a generation config, we should replace the existing one.
+        if generation_config is not None:
+            self.generation_config = generation_config
 
         if prompts is not None or prompts_token_ids is not None:
             self.add_request(prompts=prompts, prompts_token_ids=prompts_token_ids)
@@ -271,8 +273,8 @@ class InferenceEngine:
 
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
-
         self.request_handler.search_tokens(self.generation_config, logits)
+
         finished_sequences = self.request_handler.update()
 
         return finished_sequences
