@@ -23,22 +23,10 @@ CUDA_VISIBLE_DEVICES_set_n_least_memory_usage() {
 CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 1
 
 # benchmark llama2-7b one single GPU
-
-for bsz in 16 32 64; do
-    python3 ${PY_SCRIPT} -m llama2-7b --tp_size 1 --pp_size 1 -b $bsz -s 512 --output_len 256 --mode ${mode} | tee logs/${mode}_${GPU}_${bsz}_512_256.txt
-done
-
-
-for bsz in 16 32 64; do
-    python3 ${PY_SCRIPT} -m llama2-7b --tp_size 1 --pp_size 1 -b $bsz -s 1024 --output_len 256 --mode ${mode} | tee logs/${mode}_${GPU}_${bsz}_1024_256.txt
-done
-
-
-for bsz in 16 32 64; do
-    python3 ${PY_SCRIPT} -m llama2-7b --tp_size 1 --pp_size 1 -b $bsz -s 256 --output_len 128 --mode ${mode} | tee logs/${mode}_${GPU}_${bsz}_256_128.txt
-done
-
-
-for bsz in 16 32 64; do
-    python3 ${PY_SCRIPT} -m llama2-7b --tp_size 1 --pp_size 1 -b $bsz -s 1024 --output_len 128 --mode ${mode} | tee logs/${mode}_${GPU}_${bsz}_1024_128.txt
+for input_len in 128 512 1024; do
+    for output_len in 128 256; do
+        for bsz in 16 32 64; do
+            python3 ${PY_SCRIPT} -m llama2-7b --tp_size 1 --pp_size 1 -b ${bsz} -s ${input_len} --output_len ${output_len} --mode ${mode} | tee logs/${input_len}_${output_len}_${mode}_${GPU}_${bsz}.txt
+        done
+    done
 done
