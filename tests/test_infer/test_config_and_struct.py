@@ -63,6 +63,9 @@ def check_config_and_inference():
     batch.add_seqs([sequence])
     batch.add_seqs([sequence2, sequence3])
 
+    # add duplicated sequence to test that it will not be counted twice
+    batch.add_seqs([sequence])
+
     assert batch.is_empty == False
     assert batch.get_batch_size() == 3
     batch.update_batch_tokens([1, 2, 3])

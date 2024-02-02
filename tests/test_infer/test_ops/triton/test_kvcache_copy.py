@@ -5,7 +5,7 @@ from packaging import version
 from colossalai.inference.modeling.layers.attention import copy_to_cache
 from colossalai.kernel.triton import copy_kv_to_blocked_cache
 from colossalai.utils import get_current_device
-from tests.test_infer_ops.triton.kernel_utils import generate_caches_and_block_tables_v2, mock_alloc_single_token
+from tests.test_infer.test_ops.triton.kernel_utils import generate_caches_and_block_tables_v2, mock_alloc_single_token
 
 try:
     import triton  # noqa
