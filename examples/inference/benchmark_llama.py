@@ -9,7 +9,8 @@ from transformers import AutoTokenizer, GenerationConfig
 
 import colossalai
 from colossalai.accelerator import get_accelerator
-from colossalai.inference import InferenceEngine
+from colossalai.inference.config import InferenceConfig
+from colossalai.inference.core.engine import InferenceEngine
 from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 
 GIGABYTE = 1024**3
@@ -140,8 +141,7 @@ def benchmark_inference(args):
         with ctx:
             for _ in range(N_WARMUP_STEPS):
                 if args.mode == "caiinference":
-                    engine.add_request(prompts_token_ids=data)
-                    engine.generate(generation_config)
+                    engine.generate(prompts_token_ids=data, generation_config=generation_config)
                 else:
                     engine.generate(data, generation_config=generation_config)
                 if args.profile:
@@ -155,8 +155,7 @@ def benchmark_inference(args):
             whole_end2end = time.perf_counter()
             if args.mode == "caiinference":
                 for _ in range(args.batch_size // mbsz):
-                    engine.add_request(prompts_token_ids=data)
-                engine.generate(generation_config)
+                    engine.generate(prompts_token_ids=data, generation_config=generation_config)
             else:
                 for _ in range(args.batch_size // mbsz):
                     engine.generate(data, generation_config=generation_config)

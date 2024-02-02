@@ -69,6 +69,7 @@ def torch_attn_ref(
             f"`attn_output` should be of size {(bsz, num_heads, seq_len, head_dim)}, but is" f" {out.size()}"
         )
     out = out.transpose(1, 2).contiguous()
+    out = out.squeeze(1)
     return out
 
 

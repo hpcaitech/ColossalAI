@@ -60,8 +60,10 @@ def check_config_and_inference():
         num_heads=2,
         head_dim=128,
     )
-    batch.init_batch([sequence])
+    batch.add_seqs([sequence])
     batch.add_seqs([sequence2, sequence3])
+
+    # add duplicated sequence to test that it will not be counted twice
     batch.add_seqs([sequence])
 
     assert batch.is_empty == False

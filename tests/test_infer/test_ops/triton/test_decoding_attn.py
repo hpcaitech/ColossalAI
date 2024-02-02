@@ -4,7 +4,7 @@ from packaging import version
 
 from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
-from tests.test_infer_ops.triton.kernel_utils import (
+from tests.test_infer.test_ops.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
     generate_caches_and_block_tables_v2,
     prepare_padding_mask,
@@ -94,7 +94,7 @@ def test_flash_decoding(
     max_seq_len_in_b = kv_seq_lengths.max().item()
     # The maximum block length splitted on kv should be the kv cache block size
     kv_max_split_num = (max_seq_len_in_b + block_size - 1) // block_size
-    output = torch.empty((bsz, 1, num_attn_heads, HEAD_DIM), dtype=q.dtype, device=q.device)
+    output = torch.empty((bsz, num_attn_heads, HEAD_DIM), dtype=q.dtype, device=q.device)
     mid_output = torch.empty(
         size=(bsz, num_attn_heads, kv_max_split_num, HEAD_DIM), dtype=torch.float32, device=q.device
     )
@@ -189,7 +189,7 @@ def bench_kernel(
         block_tables = block_tables.to(device=device)
         # the maximum block length splitted on kv should be the kv cache block size
         kv_max_split_num = (max_seq_len_in_b + block_size - 1) // block_size
-        output = torch.empty((bsz, 1, num_attn_heads, HEAD_DIM), dtype=dtype, device=device)
+        output = torch.empty((bsz, num_attn_heads, HEAD_DIM), dtype=dtype, device=device)
         mid_output = torch.empty(
             size=(bsz, num_attn_heads, kv_max_split_num, HEAD_DIM), dtype=torch.float32, device=q.device
         )
