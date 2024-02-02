@@ -1,5 +1,7 @@
 from typing import Any
 
+__all__ = ["CacheBlock"]
+
 
 class CacheBlock:
     """A simplified version of logical cache block used for Paged Attention."""
