@@ -6,7 +6,7 @@ class FlashAttentionDaoCudaExtension(_Extension):
         super().__init__(name="flash_attention_dao_cuda", support_aot=False, support_jit=False, priority=10)
 
     def is_hardware_available(self) -> bool:
-        # cuda extension can only be built if cuda is availabe
+        # cuda extension can only be built if cuda is available
         try:
             import torch
 

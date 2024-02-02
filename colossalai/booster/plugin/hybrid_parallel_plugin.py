@@ -1,5 +1,6 @@
 import ctypes
 import random
+import warnings
 from contextlib import contextmanager
 from functools import partial
 from types import MethodType
@@ -1134,7 +1135,12 @@ class HybridParallelPlugin(PipelinePluginBase):
                         tp_process_group=self.tp_group,
                     )
             else:
-                assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
+                if self.dp_size == 1:
+                    warnings.warn(
+                        "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "
+                        "If you are not intended to use cpu_offload, please consider set zero_stage=0."
+                    )
+
                 assert self.precision != "fp32", "Please set precision to 'fp16' or 'bf16' when using ZeRO."
                 optimizer = HybridParallelZeroOptimizer(
                     optimizer,
