@@ -146,6 +146,12 @@ def supervised_tokenize_sft(
             if z == ignore_index:
                 labels_decode[i] = 1  # Label decode is for debugging only, it is not used in training
  
+    
+    if tokenizer.bos_token_id is not None:
+        tokenized = [tokenizer.bos_token_id] + tokenized
+        labels = [ignore_index] + labels
+        label_decode = [tokenizer.eos_token_id or 1] + labels_decode
+
     # For some model without bos/eos may raise the following errors
     try:
         inputs_decode = tokenizer.decode(tokenized)
@@ -156,6 +162,8 @@ def supervised_tokenize_sft(
         labels_decode = tokenizer.decode(labels_decode)
     except TypeError as e:
         raise TypeError(str(e)+f'\nUnable to decode labels: {labels_decode}')
+
+
     
     return dict(
         input_ids=tokenized,
@@ -212,6 +220,8 @@ def tokenize_prompt_dataset(
     # Prepare data
     prompt = template.get_prompt(target_turn, add_generation_prompt=True)
     tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0] 
+    if tokenizer.bos_token_id is not None:
+        tokenized = [tokenizer.bos_token_id] + tokenized
        
     # Skip overlength data
     if max_length - 1 < len(tokenized):
@@ -277,6 +287,10 @@ def apply_rlhf_data_format(template: Conversation, tokenizer: Any, context_len: 
             loss_mask[i] = 1
             label_decode[i] = tokenized[i]
     label_decode = tokenizer.decode(label_decode, skip_special_tokens=False)
+    if tokenizer.bos_token_id is not None:
+        tokenized = [tokenizer.bos_token_id] + tokenized
+        loss_mask = [0] + loss_mask
+        label_decode = [mask_token] + label_decode
     
     return {"input_ids": tokenized, "loss_mask": loss_mask, "label_decode": label_decode}
 
