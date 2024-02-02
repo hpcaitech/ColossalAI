@@ -1,3 +1,7 @@
+"""
+    For default tokenizer creation
+    Adapted from vllm/transformers_utils/tokenizer.py
+"""
 from typing import Optional, Union
 
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
