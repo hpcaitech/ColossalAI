@@ -151,7 +151,8 @@ class InferenceEngine:
         """
 
         self.generation_config = generation_config
-        self.add_request(prompts=prompts, prompts_token_ids=prompts_token_ids)
+        if prompts is not None or prompts_token_ids is not None:
+            self.add_request(prompts=prompts, prompts_token_ids=prompts_token_ids)
 
         output_seqs_list = []
         output_tokens_list = []
