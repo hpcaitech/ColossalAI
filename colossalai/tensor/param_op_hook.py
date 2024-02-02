@@ -92,7 +92,10 @@ class ColoParamOpHookManager:
     @staticmethod
     def post_op(params: List[torch.Tensor], arg: Any) -> Any:
         ColoParamOpHookManager._trigger_post_forward(params)
-        return PostFwdPreBwd.apply(params, arg)
+        # incase the output is a tuple, we have to flatten it
+        grad_args, other_args, grad_flags, spec = _flatten_grad_args(arg)
+        new_grad_args = PostFwdPreBwd.apply(params, *grad_args)
+        return _merge_args(new_grad_args, other_args, grad_flags, spec)
 
     @staticmethod
     def has_hook() -> bool:
