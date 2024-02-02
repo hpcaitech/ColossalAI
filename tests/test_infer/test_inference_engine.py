@@ -19,9 +19,9 @@ def setup_seed(seed):
     random.seed(seed)
 
 
-def test_config_tokenizer(model, output_len):
-    drat_config = InferenceConfig(model.__class__.__name__, max_output_len=output_len, dtype=torch.float32)
-    draf_engine = InferenceEngine(model, inference_config=drat_config)
+def check_config_tokenizer(n_model, output_len):
+    drat_config = InferenceConfig(n_model.__class__.__name__, max_output_len=output_len, dtype=torch.float32)
+    draf_engine = InferenceEngine(n_model, inference_config=drat_config)
 
     assert "transformers.models.llama" in str(draf_engine.tokenizer.__class__)
     assert draf_engine.generation_config.max_new_tokens == output_len
@@ -41,7 +41,6 @@ def check_inference_engine(test_cai=False):
         .half()
     )
     model = model.eval()
-    n_model = deepcopy(model)
 
     inputs = [
         "介绍一下今天的北京,比如故宫，天安门，长城或者其他的一些景点,",
@@ -54,7 +53,8 @@ def check_inference_engine(test_cai=False):
     top_k = 50
 
     if test_cai:
-        test_config_tokenizer(n_model, output_len)
+        n_model = deepcopy(model)
+        check_config_tokenizer(n_model, output_len)
         inference_config = InferenceConfig(max_output_len=output_len)
         inference_engine = InferenceEngine(model, inference_config, tokenizer, verbose=True)
         inference_engine.add_request(prompts=inputs)
