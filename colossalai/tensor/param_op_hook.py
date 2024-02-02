@@ -116,7 +116,7 @@ class PreFwdPostBwd(torch.autograd.Function):
 
 class PostFwdPreBwd(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, params, args):
+    def forward(ctx, params, *args):
         ctx.params = params
         return args
 
@@ -145,7 +145,6 @@ def _flatten_grad_args(args) -> Tuple[list, list, List[bool], TreeSpec]:
             grad_args.append(arg)
         else:
             other_args.append(arg)
-    assert len(grad_args) > 0
     return grad_args, other_args, grad_flags, spec
 
 
