@@ -30,8 +30,8 @@ MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
 # Skip those tests due to CI tests timeout
 MODELS=('llama')
-PLUGINS=('gemini_auto' 'zero2' 'zero2_cpu' '3d')  # 'gemini' is currently buggy
-# PLUGINS=('zero2')
+PLUGINS=('gemini_auto' 'zero2' 'zero2_cpu' '3d' 'gemini')
+# PLUGINS=('gemini')
 LORA_RANK=('0')  # skip to reduce CI execution time, can pass all locally
 
 export OMP_NUM_THREADS=8
@@ -115,7 +115,7 @@ for lora_rank in ${LORA_RANK[@]}; do
             fi
             grad_accu='2'
             # Check if the plugin is either "gemini_auto" or "gemini" and set grad_accu to '1'
-            if [[ $plugin == "gemini_auto" ]] || [[ $plugin == "gemini" ]]; then
+            if [[ $plugin == "gemini_auto" ]]; then
                 grad_accu='1'
             fi
 
@@ -187,7 +187,7 @@ for lora_rank in ${LORA_RANK[@]}; do
             fi
             grad_accu='2'
             # gemini_auto and gemini doesn't support gradient accumulation
-            if [[ $plugin == "gemini_auto" ]] || [[ $plugin == "gemini" ]]; then
+            if [[ $plugin == "gemini_auto" ]]; then
                 grad_accu='1'
             fi
             for i in $(seq $NUM_RETRY); do
@@ -266,7 +266,7 @@ for lora_rank in ${LORA_RANK[@]}; do
             fi
             grad_accu='2'
             # gemini_auto and gemini doesn't support gradient accumulation
-            if [[ $plugin == "gemini_auto" ]] || [[ $plugin == "gemini" ]]; then
+            if [[ $plugin == "gemini_auto" ]]; then
                 grad_accu='1'
             fi
             # gemini_auto and gemini doesn't support generation
@@ -327,15 +327,14 @@ for lora_rank in ${LORA_RANK[@]}; do
     done
 done
 
-echo "[Test]: testing DPO ..."
 
+echo "[Test]: testing DPO ..."
 
 SKIPPED_TESTS=(
     llama-3d-20 # 3d plugin doesn't support lora
     llama-gemini_auto-20  # gemini_auto plugin doesn't support lora
     llama-gemini-20 # gemini doesn't support lora
 )
-
 GRAD_CKPTS=('--grad_checkpoint')
 for lora_rank in ${LORA_RANK[@]}; do
     for model in ${MODELS[@]}; do
@@ -359,7 +358,7 @@ for lora_rank in ${LORA_RANK[@]}; do
             fi
             grad_accu='2'
             # gemini_auto and gemini doesn't support gradient accumulation
-            if [[ $plugin == "gemini_auto" ]] || [[ $plugin == "gemini" ]]; then
+            if [[ $plugin == "gemini_auto" ]]; then
                 grad_accu='1'
             fi
             # gemini_auto doesn't support generation 

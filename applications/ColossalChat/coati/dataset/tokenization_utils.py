@@ -290,7 +290,7 @@ def apply_rlhf_data_format(template: Conversation, tokenizer: Any, context_len: 
     if tokenizer.bos_token_id is not None:
         tokenized = [tokenizer.bos_token_id] + tokenized
         loss_mask = [0] + loss_mask
-        label_decode = [mask_token] + label_decode
+        label_decode = (tokenizer.eos_token or tokenizer.pad_token or '<s>') + label_decode
     
     return {"input_ids": tokenized, "loss_mask": loss_mask, "label_decode": label_decode}
 

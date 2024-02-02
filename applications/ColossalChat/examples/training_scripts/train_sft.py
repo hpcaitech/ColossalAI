@@ -34,10 +34,9 @@ from colossalai.utils import get_current_device
 
 def train(args):
     # check lora compatibility
-    if "gemini" in args.plugin:
-        if args.lora_rank > 0:
+    if 'gemini' in args.plugin and args.lora_rank > 0:
             raise ValueError("LoRA is not supported in GeminiPlugin. Please use other plugin")
-        if args.accumulation_steps > 1:
+    if args.plugin=='gemini_auto' and args.accumulation_steps > 1:
             raise ValueError("Gradient accumulation is not supported in GeminiPlugin. Please use other plugin")
     # ==============================
     # Initialize Distributed Training
@@ -60,6 +59,7 @@ def train(args):
             placement_policy="static",
             initial_scale=2**16,
             max_norm=args.grad_clip,
+            enable_gradient_accumulation=True
         )
     elif args.plugin == "gemini_auto":
         plugin = GeminiPlugin(
@@ -261,7 +261,7 @@ def train(args):
     # save model checkpoint after fitting on only rank0
     coordinator.print_on_master("Start saving final model checkpoint")
 
-    booster.save_model(model.unwrap(), os.path.join(args.save_path, "modeling"), shard=True)
+    booster.save_model(model, os.path.join(args.save_path, "modeling"), shard=True)
     coordinator.print_on_master(f"Saved final model checkpoint at epoch {args.max_epochs} at folder {args.save_path}")
 
     coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")

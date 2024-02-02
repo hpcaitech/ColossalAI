@@ -35,10 +35,9 @@ logger = get_dist_logger()
 
 def train(args):
     # check lora compatibility
-    if "gemini" in args.plugin:
-        if args.lora_rank > 0:
+    if 'gemini' in args.plugin and args.lora_rank > 0:
             raise ValueError("LoRA is not supported in GeminiPlugin. Please use other plugin")
-        if args.accumulation_steps > 1:
+    if args.plugin=='gemini_auto' and args.accumulation_steps > 1:
             raise ValueError("Gradient accumulation is not supported in GeminiPlugin. Please use other plugin")
     # ==============================
     # Initialize Distributed Training
@@ -228,6 +227,7 @@ def train(args):
             placement_policy="static",
             initial_scale=2**16,
             max_norm=args.grad_clip,
+            enable_gradient_accumulation=True
         )
     elif args.plugin == "gemini_auto":
         plugin = GeminiPlugin(
@@ -428,12 +428,12 @@ def train(args):
         critic.eval()
     # save model checkpoint after fitting on only rank0
     coordinator.print_on_master("Start saving final actor model checkpoint")
-    actor_booster.save_model(actor.unwrap(), os.path.join(trainer.actor_save_dir, "modeling"), shard=True)
+    actor_booster.save_model(actor, os.path.join(trainer.actor_save_dir, "modeling"), shard=True)
     coordinator.print_on_master(
         f"Saved final actor model checkpoint at episodes {args.num_episodes} at folder {args.save_path}"
     )
     coordinator.print_on_master("Start saving final critic model checkpoint")
-    critic_booster.save_model(critic.unwrap(), os.path.join(trainer.critic_save_dir, "modeling"), shard=True)
+    critic_booster.save_model(critic, os.path.join(trainer.critic_save_dir, "modeling"), shard=True)
     coordinator.print_on_master(
         f"Saved final critic model checkpoint at episodes {args.num_episodes} at folder {args.save_path}"
     )

@@ -45,7 +45,7 @@ for model in ${MODELS[@]}; do
     rm -rf $SAVE_DIR/arrow
     pretrain=$(get_pretrain $model)
     conversation_template_config=$(get_conversation_template_config $model)
-    python $EXAMPLES_DIR/data_preparation_scripts/prepare_sft_dataset.py --data_input_dirs $TEST_DATA_DIR/sft \
+    python $EXAMPLES_DIR/data_preparation_scripts/prepare_dataset.py --type sft --data_input_dirs $TEST_DATA_DIR/sft \
         --tokenizer_dir $pretrain \
         --conversation_template_config $conversation_template_config \
         --data_cache_dir $SAVE_DIR/cache \
@@ -74,7 +74,7 @@ for model in ${MODELS[@]}; do
     rm -rf $SAVE_DIR/arrow
     pretrain=$(get_pretrain $model)
     conversation_template_config=$(get_conversation_template_config $model)
-    python $EXAMPLES_DIR/data_preparation_scripts/prepare_preference_dataset.py --data_input_dirs $TEST_DATA_DIR/dpo \
+    python $EXAMPLES_DIR/data_preparation_scripts/prepare_dataset.py --type preference --data_input_dirs $TEST_DATA_DIR/dpo \
         --tokenizer_dir  $pretrain \
         --conversation_template_config $conversation_template_config \
         --data_cache_dir $SAVE_DIR/cache \
