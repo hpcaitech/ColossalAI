@@ -3,7 +3,7 @@ import torch
 from packaging import version
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
-from colossalai.kernel.triton import rotary_embedding
+from colossalai.kernel.triton import copy_kv_to_blocked_cache, rotary_embedding
 from tests.test_infer_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache_v2
 
 try:
@@ -140,9 +140,12 @@ def benchmark_rotary_emb(
     kv_seq_lengths = past_kv_seq_lengths + 1
     block_tables = block_tables.to(device="cuda")
 
-    if provider == "torch_rotary_emb_func":
-        fn = lambda: torch_rotary_emb(new_k, cos[:BATCH_SIZE], sin[:BATCH_SIZE])
-    elif provider == "triton_rotary_emb_func":
+    if provider == "no_fused_rotary_emb_func":
+        fn = lambda: [
+            rotary_embedding(new_q, new_k, cos, sin),
+            copy_kv_to_blocked_cache(new_k, k_cache, kv_lengths=kv_seq_lengths, block_tables=block_tables),
+        ]
+    elif provider == "fused_triton_rotary_emb_func":
         fn = lambda: rotary_embedding(new_q, new_k, cos, sin, k_cache, block_tables, kv_seq_lengths)
     else:
         raise ValueError("Undefined provider")
@@ -152,5 +155,5 @@ def benchmark_rotary_emb(
 
 
 if __name__ == "__main__":
-    test_rotary_emb(4, 64, 32, 64, torch.float32)
-    # benchmark_rotary_emb.run(save_path=".", print_data=True)
+    # test_rotary_emb(4, 64, 32, 64, torch.float32)
+    benchmark_rotary_emb.run(save_path=".", print_data=True)

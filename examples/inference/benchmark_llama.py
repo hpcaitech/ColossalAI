@@ -9,7 +9,8 @@ from transformers import AutoTokenizer, GenerationConfig
 
 import colossalai
 from colossalai.accelerator import get_accelerator
-from colossalai.inference import InferenceEngine
+from colossalai.inference.config import InferenceConfig
+from colossalai.inference.core.engine import InferenceEngine
 from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 
 GIGABYTE = 1024**3
