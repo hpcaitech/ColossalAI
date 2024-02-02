@@ -86,7 +86,8 @@ colossalai.launch_from_torch(config={})
 # Step 1: create a model in "transformers" way
 model_path = "lmsys/vicuna-7b-v1.3"
 model = transformers.LlamaForCausalLM.from_pretrained(model_path).cuda()
-tokenizer = transformers.LlamaTokenizer.from_pretrained(model_path)
+# tokenizer = transformers.LlamaTokenizer.from_pretrained(model_path)
+# You can pre-define a tokenizer or use our default one
 
 # Step 2: create an inference_config
 inference_config = InferenceConfig(
@@ -100,14 +101,9 @@ inference_config = InferenceConfig(
 engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
 
 # Step 4: try inference
-generation_config = transformers.GenerationConfig(
-            pad_token_id=tokenizer.pad_token_id,
-            max_new_tokens=512,
-        )
 prompts = ['Who is the best player in the history of NBA?']
-engine.add_request(prompts=prompts)
-response = engine.generate(generation_config)
-pprint(response)
+response = engine.generate(prompts)
+print(response)
 ```
 
 ### :bookmark: Customize your inference engine
