@@ -46,10 +46,8 @@ def check_inference_engine(test_cai=False):
     if test_cai:
         inference_config = InferenceConfig(max_output_len=output_len)
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
-        inference_engine.add_request(prompts=inputs)
-        assert inference_engine.request_handler._has_waiting()
         generation_config = GenerationConfig(do_sample=do_sample, top_p=top_p, top_k=top_k)
-        outputs = inference_engine.generate(generation_config)
+        outputs = inference_engine.generate(prompts=inputs, generation_config=generation_config)
     else:
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
