@@ -60,9 +60,8 @@ def check_config_and_inference():
         num_heads=2,
         head_dim=128,
     )
-    batch.init_batch([sequence])
-    batch.add_seqs([sequence2, sequence3])
     batch.add_seqs([sequence])
+    batch.add_seqs([sequence2, sequence3])
 
     assert batch.is_empty == False
     assert batch.get_batch_size() == 3
