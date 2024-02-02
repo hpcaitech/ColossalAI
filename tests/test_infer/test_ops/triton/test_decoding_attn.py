@@ -4,7 +4,7 @@ from packaging import version
 
 from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
-from tests.test_infer_ops.triton.kernel_utils import (
+from tests.test_infer.test_ops.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
     generate_caches_and_block_tables_v2,
     prepare_padding_mask,

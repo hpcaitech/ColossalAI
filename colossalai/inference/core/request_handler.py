@@ -11,6 +11,8 @@ from colossalai.inference.sampler import *
 from colossalai.inference.struct import BatchInfo, RequestStatus, Sequence
 from colossalai.logging import get_dist_logger
 
+__all__ = ["RunningList", "RequestHandler"]
+
 logger = get_dist_logger(__name__)
 
 

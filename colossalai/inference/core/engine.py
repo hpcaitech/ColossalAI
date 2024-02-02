@@ -17,6 +17,8 @@ from colossalai.shardformer.policies.base_policy import Policy
 
 from .request_handler import RequestHandler
 
+__all__ = ["InferenceEngine"]
+
 PP_AXIS, TP_AXIS = 0, 1
 
 _supported_models = [

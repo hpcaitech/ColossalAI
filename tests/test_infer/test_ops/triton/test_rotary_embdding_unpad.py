@@ -4,7 +4,7 @@ from packaging import version
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
 from colossalai.kernel.triton import rotary_embedding
-from tests.test_infer_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache_v2
+from tests.test_infer.test_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache_v2
 
 try:
     import triton  # noqa
