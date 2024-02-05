@@ -141,7 +141,7 @@ def llama_decoder_layer_forward(
     """This function will replace the forward function of LlamaDecoderLayer.
 
     Args:
-        hidden_states (torch.Tensor): input to the layer of shape `(token_num, embed_dim)`.
+        hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
         block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
             storing mapping of token_position_id -> block_id. Defaults to None.
         k_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
@@ -260,8 +260,8 @@ class NopadLlamaAttention(LlamaAttention):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Args:
-            hidden_states (torch.Tensor): input to the layer of shape `(token_num, embed_dim)`
-            residual (torch.Tensor): shape `(token_num, embed_dim)`, used to be added to hidden_states in out_proj.
+            hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
+            residual (torch.Tensor): shape [token_num, embed_dim], used to be added to hidden_states in out_proj.
             block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
                 storing mapping of token_position_id -> block_id. Defaults to None.
             k_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
@@ -347,9 +347,10 @@ class NopadLlamaMLP(LlamaMLP):
             mlp_dproj_w (torch.Tensor, optional): The transposed down_proj weight. Defaults to None.
         """
         super().__init__(config)
-        self.gate_proj.weight = Parameter(mlp_gproj_w, requires_grad=False)
-        self.up_proj.weight = Parameter(mlp_uproj_w, requires_grad=False)
+        self.gate_up_weight = Parameter(torch.stack([mlp_gproj_w, mlp_uproj_w], dim=0), requires_grad=False)
         self.down_proj.weight = Parameter(mlp_dproj_w, requires_grad=False)
+        self.gate_proj = None
+        self.up_proj = None
 
     @staticmethod
     def from_native_module(module: LlamaMLP, *args, **kwargs) -> LlamaMLP:
@@ -377,11 +378,10 @@ class NopadLlamaMLP(LlamaMLP):
     def forward(self, hidden_states: torch.Tensor, residual: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            hidden_states (torch.Tensor): input to the layer of shape `(token_num, embed_dim)`.
-            residual (torch.Tensor): shape `(token_num, embed_dim)`, used to be added to hidden_states in down_proj.
+            hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
+            residual (torch.Tensor): shape [token_num, embed_dim], used to be added to hidden_states in down_proj.
         """
-        gate_proj_out = torch.mm(hidden_states, self.gate_proj.weight)
-        act_out = torch.nn.functional.silu(gate_proj_out, inplace=True)
-        up_proj_out = torch.mm(hidden_states, self.up_proj.weight)
-        tmp_out = act_out * up_proj_out
+        gate_up_proj_out = torch.matmul(hidden_states, self.gate_up_weight)
+        act_out = torch.nn.functional.silu(gate_up_proj_out[0], inplace=True)
+        tmp_out = act_out * gate_up_proj_out[1]
         return torch.addmm(residual, tmp_out, self.down_proj.weight)

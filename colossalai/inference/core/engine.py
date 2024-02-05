@@ -113,9 +113,6 @@ class InferenceEngine:
             model_policy (Policy): The policy to shardformer model which is determined by the model type.
             stage_manager (PipelineStageManager, optional): Used to manage pipeline stages. Defaults to None.
             tp_group (ProcessGroupMesh, optional): Used to manage the process TP group mesh. Defaults to None.
-
-        Returns:
-            nn.Module: _description_
         """
         shardconfig = ShardConfig(
             tensor_parallel_process_group=tp_group,
