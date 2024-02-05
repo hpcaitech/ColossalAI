@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import numpy as np
 import os
-import random
 from dataclasses import dataclass
-from typing import Dict, List, Union, Sequence, Optional, Iterator, Callable
+from typing import Dict, Iterator, List, Optional, Sequence, Union
 
 import torch
-from datasets import dataset_dict, load_from_disk
-from datasets import Dataset as HFDataset
-from torch.distributed import ProcessGroup
-from torch.distributed.distributed_c10d import _get_default_group
-from torch.utils.data import ConcatDataset, Dataset, DataLoader, DistributedSampler
-from transformers.tokenization_utils import PreTrainedTokenizer
 import torch.nn.functional as F
+from datasets import Dataset as HFDataset
+from datasets import dataset_dict, load_from_disk
+from torch.utils.data import ConcatDataset, Dataset, DistributedSampler
+from transformers.tokenization_utils import PreTrainedTokenizer
 
 DatasetType = Union[Dataset, ConcatDataset, dataset_dict.Dataset]
 PathType = Union[str, os.PathLike]
@@ -171,49 +167,3 @@ class StatefulDistributedSampler(DistributedSampler):
 
     def set_start_index(self, start_index: int) -> None:
         self.start_index = start_index
-
-
-def setup_distributed_dataloader(
-    dataset: DatasetType,
-    batch_size: int = 1,
-    shuffle: bool = False,
-    seed: int = 1024,
-    drop_last: bool = False,
-    pin_memory: bool = False,
-    num_workers: int = 0,
-    collate_fn: Callable[[Sequence[Dict[str, Union[str, List[int]]]]], Dict[str, torch.Tensor]] = None,
-    process_group: Optional[ProcessGroup] = None,
-    **kwargs,
-) -> DataLoader:
-    """
-    Setup dataloader for distributed training.
-    """
-    _kwargs = kwargs.copy()
-    process_group = process_group or _get_default_group()
-    sampler = StatefulDistributedSampler(
-        dataset=dataset,
-        num_replicas=process_group.size(),
-        rank=process_group.rank(),
-        shuffle=shuffle,
-        seed=seed,
-        drop_last=drop_last,
-    )
-
-    # Deterministic dataloader
-    def seed_worker(worker_id: int) -> None:
-        worker_seed = seed
-        np.random.seed(worker_seed)
-        torch.manual_seed(worker_seed)
-        random.seed(worker_seed)
-
-    return DataLoader(
-        dataset=dataset,
-        batch_size=batch_size,
-        sampler=sampler,
-        num_workers=num_workers,
-        collate_fn=collate_fn,
-        pin_memory=pin_memory,
-        drop_last=drop_last,
-        worker_init_fn=seed_worker,
-        **_kwargs,
-    )

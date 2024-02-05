@@ -16,7 +16,6 @@ from colossal_llama2.dataset.loader import (
     DataCollatorForSupervisedDataset,
     StatefulDistributedSampler,
     load_tokenized_dataset,
-    setup_distributed_dataloader,
 )
 from colossal_llama2.utils.ckpt_io import load_checkpoint, save_checkpoint
 from colossal_llama2.utils.flash_attention_patch import replace_with_flash_attention
@@ -194,12 +193,13 @@ def main() -> None:
 
     dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train")
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer, max_length=args.max_length)
-    dataloader = setup_distributed_dataloader(
+    dataloader = plugin.prepare_dataloader(
         dataset=dataset,
         batch_size=args.micro_batch_size,
         shuffle=True,
         drop_last=True,
         collate_fn=data_collator,
+        distributed_sampler_cls=StatefulDistributedSampler,
     )
     coordinator.print_on_master(
         f"Max CUDA memory after data loader: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB"
