@@ -236,12 +236,6 @@ class KVCacheManager:
                     start_idx, start_idx + curr_required, device=block_tables.device
                 )
                 start_idx += curr_required
-            print("======== kvcache_manager.py:allcate_context_from_block_tables =======")
-            print(block_tables)
-            print("=====================================================================")
-            # print(blocks_required)
-            # print(alloc_block_ids)
-            # print(alloc_block_ids[:, :blocks_required])
         else:
             # non-contiguous cache
             available_block_ids = torch.nonzero(self._block_states > 0).view(-1)
