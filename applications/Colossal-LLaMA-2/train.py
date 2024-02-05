@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Supervised fine-tuning of Colossal-LLaMA-2-base developed by Colossal-AI Team
+Continual Pre-training/Supervised fine-tuning of Colossal-LLaMA-2 developed by Colossal-AI Team
 """
 
 import argparse
