@@ -236,6 +236,7 @@ def main() -> None:
         # Freeze part of parameters.
         if args.freeze_non_embeds_params:
             freeze_non_embeds_parameters(model=model)
+    # this is essential, otherwise the grad checkpoint will not work.
     model.train()
 
     if args.use_grad_checkpoint:
