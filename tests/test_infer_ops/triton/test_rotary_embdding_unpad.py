@@ -94,8 +94,8 @@ configs = [
         x_names=["num_tokens"],
         x_vals=[2**i for i in range(4, 11)],
         line_arg="provider",
-        line_vals=["torch_rotary_emb_func", "triton_rotary_emb_func"],
-        line_names=["torch_rotary_emb_func", "triton_rotary_emb_func"],
+        line_vals=["no_fused_rotary_emb_func", "fused_triton_rotary_emb_func"],
+        line_names=["no_fused_rotary_emb_func", "fused_triton_rotary_emb_func"],
         styles=[("red", "-"), ("blue", "-")],
         ylabel="ms",
         plot_name=f"rotary_emb-batch-{BATCH}",
@@ -117,7 +117,7 @@ def benchmark_rotary_emb(
     warmup = 10
     rep = 100
 
-    head_dim = 128
+    head_dim = 1024
     dtype = torch.float16
 
     q_shape = (num_tokens, num_kv_heads, head_dim)
@@ -155,5 +155,5 @@ def benchmark_rotary_emb(
 
 
 if __name__ == "__main__":
-    # test_rotary_emb(4, 64, 32, 64, torch.float32)
-    benchmark_rotary_emb.run(save_path=".", print_data=True)
+    test_rotary_emb(4, 64, 32, 64, torch.float32)
+    # benchmark_rotary_emb.run(save_path=".", print_data=True)

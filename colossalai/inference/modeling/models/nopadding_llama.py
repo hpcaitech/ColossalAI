@@ -300,8 +300,9 @@ class NopadLlamaAttention(LlamaAttention):
                 sm_scale=sm_scale,
             )
         else:
-            rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1], k_cache, block_tables, sequence_lengths)
-            # copy_kv_to_blocked_cache(key_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
+            rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
+            # rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1], k_cache, block_tables, sequence_lengths)
+            copy_kv_to_blocked_cache(key_states, k_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
             copy_kv_to_blocked_cache(value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
             attn_output = flash_decoding_attention(
                 q=query_states,
