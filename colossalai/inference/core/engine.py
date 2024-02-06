@@ -150,7 +150,7 @@ class InferenceEngine:
         Returns:
             List[str]: Inference result returned by one generation.
         """
-        with torch.no_grad():
+        with torch.inference_mode():
             self.generation_config = generation_config
             if prompts is not None or prompts_token_ids is not None:
                 self.add_request(prompts=prompts, prompts_token_ids=prompts_token_ids)
