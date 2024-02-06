@@ -52,7 +52,6 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     return q_embed, k_embed
 
 
-@torch.no_grad()
 def llama_causal_lm_forward(
     self: LlamaForCausalLM,
     batch: BatchInfo = None,
@@ -78,7 +77,6 @@ def llama_causal_lm_forward(
     return logits
 
 
-@torch.no_grad()
 def llama_model_forward(
     self: LlamaModel,
     batch: BatchInfo = None,
@@ -135,6 +133,8 @@ def llama_model_forward(
         )
     sm_scale = 1.0 / (batch.head_dim**0.5)
 
+    norm_output = torch.empty_like(hidden_states)
+
     for layer_id, decoder_layer in enumerate(self.layers):
         hidden_states = decoder_layer(
             hidden_states,
@@ -149,17 +149,18 @@ def llama_model_forward(
             cos_sin=cos_sin,
             fd_inter_tensor=batch.fd_inter_tensor,
             output_tensor=output_tensor,
+            norm_output=norm_output,
             sm_scale=sm_scale,
         )
 
     if batch.is_prompts:
         hidden_states = hidden_states[:, -1, :].unsqueeze(dim=1).contiguous()
-    hidden_states = self.norm(hidden_states)
+        norm_output = torch.empty_like(hidden_states)
+    hidden_states = self.norm(hidden_states.reshape(-1, hidden_states.shape[-1]), norm_output)
 
     return hidden_states
 
 
-@torch.no_grad()
 def llama_decoder_layer_forward(
     self: LlamaDecoderLayer,
     hidden_states: torch.Tensor,
@@ -174,12 +175,13 @@ def llama_decoder_layer_forward(
     cos_sin: Tuple[torch.Tensor] = None,
     fd_inter_tensor: FDIntermTensors = None,
     output_tensor: torch.Tensor = None,
+    norm_output: torch.Tensor = None,
     sm_scale: int = None,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     """This function will replace the forward function of LlamaDecoderLayer.
 
     Args:
-        hidden_states (torch.Tensor): _description_
+        hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
         position_ids (torch.LongTensor), The position ids of input sequences.
         block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
             storing mapping of token_position_id -> block_id. Defaults to None.
@@ -191,11 +193,12 @@ def llama_decoder_layer_forward(
         cos_sin (Tuple[torch.Tensor], optional): Holding cos and sin. Defaults to None.
         fd_inter_tensor (FDIntermTensors, optional): Holding tensors used for storing intermediate values in flash-decoding. Defaults to None.
         output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
+        norm_output (torch.Tensor, optional): The mid tensor holds the output of layernorm. Defaults to None.
         sm_scale (int, optional): Used for flash attention. Defaults to None.
     """
     residual = hidden_states
 
-    hidden_states = self.input_layernorm(hidden_states)
+    hidden_states = self.input_layernorm(hidden_states.reshape(-1, hidden_states.shape[-1]), norm_output)
     # Self Attention
     hidden_states = self.self_attn(
         hidden_states=hidden_states,
@@ -217,7 +220,7 @@ def llama_decoder_layer_forward(
 
     # Fully Connected
     residual = hidden_states
-    hidden_states = self.post_attention_layernorm(hidden_states)
+    hidden_states = self.post_attention_layernorm(hidden_states.reshape(-1, hidden_states.shape[-1]), norm_output)
     hidden_states = self.mlp(hidden_states)
     hidden_states = residual + hidden_states
 
@@ -276,7 +279,6 @@ class PadLlamaAttention(LlamaAttention):
 
         return attn_layer
 
-    @torch.no_grad()
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -295,7 +297,7 @@ class PadLlamaAttention(LlamaAttention):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Args:
-            hidden_states (torch.Tensor): input to the layer of shape `(token_num, embed_dim)`
+            hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim]
             position_ids (torch.LongTensor), The position ids of input sequences.
             block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
                 storing mapping of token_position_id -> block_id. Defaults to None.
@@ -303,7 +305,7 @@ class PadLlamaAttention(LlamaAttention):
             v_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
             is_prompts (bool, optional): Whether the current inference process is in the context input phase. Defaults to True.
             sequence_lengths (torch.Tensor, optional): Holding the sequence length of each sequence. Defaults to None.
-            attention_mask (torch.Tensor, optional): The padding mask - corresponds to a tensor of size `(batch_size, seq_len)`
+            attention_mask (torch.Tensor, optional): The padding mask - corresponds to a tensor of size [batch_size, seq_len]
                 where 0 stands for the position of padding tokens and 1 for the position of non-padding tokens.
             kv_seq_len (int, optional): The max sequence length of input sequences. Defaults to 0.
             cos_sin (Tuple[torch.Tensor], optional): Holding cos and sin. Defaults to None.
@@ -412,12 +414,11 @@ class PadLlamaAttention(LlamaAttention):
         return attn_output
 
 
-@torch.no_grad()
 def generate_padding_position_id(attention_mask: torch.Tensor) -> torch.Tensor:
     """Generate padding position_id through attention mask.
 
     Args:
-        attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`):
+        attention_mask (`torch.Tensor` of shape [batch_size, sequence_length]:
             Mask to avoid performing attention on padding token indices. Mask values selected in `[0, 1]`:
 
     Returns:
@@ -428,7 +429,6 @@ def generate_padding_position_id(attention_mask: torch.Tensor) -> torch.Tensor:
     return position_ids
 
 
-@torch.no_grad()
 def unpading_input(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attention_mask: torch.Tensor):
     """Convert padding input to nopad input.
 

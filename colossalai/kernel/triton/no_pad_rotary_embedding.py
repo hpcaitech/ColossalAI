@@ -275,7 +275,7 @@ def fused_rotary_embedding_kernel(
 
 
 @triton.jit
-def fused_rotary_embedding_kernel1(
+def fused_rotary_embedding_kernel_v2(
     q,
     k,
     cos,
@@ -458,7 +458,7 @@ def rotary_embedding(
         )
     else:
         grid = (triton.next_power_of_2(q_head_num), q_total_tokens)
-        fused_rotary_embedding_kernel1[grid](
+        fused_rotary_embedding_kernel_v2[grid](
             q,
             k,
             cos,

@@ -77,7 +77,6 @@ def decoding_cache_kernel(
     )
 
 
-@torch.no_grad()
 def get_xine_cache(lengths: torch.Tensor, cos_cache: torch.Tensor, sin_cache: torch.Tensor, is_prompts: bool = False):
     """
     Transform cos/sin cache into no pad sequence, with two different modes.

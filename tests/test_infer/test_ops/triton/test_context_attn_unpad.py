@@ -6,7 +6,7 @@ from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from colossalai.inference.modeling.layers.attention import PagedAttention
 from colossalai.kernel.triton import context_attention_unpadded
 from colossalai.utils import get_current_device
-from tests.test_infer_ops.triton.kernel_utils import generate_caches_and_block_tables_v2, torch_attn_ref
+from tests.test_infer.test_ops.triton.kernel_utils import generate_caches_and_block_tables_v2, torch_attn_ref
 
 try:
     import triton  # noqa

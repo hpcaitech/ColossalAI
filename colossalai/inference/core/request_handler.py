@@ -11,6 +11,8 @@ from colossalai.inference.sampler import *
 from colossalai.inference.struct import BatchInfo, RequestStatus, Sequence
 from colossalai.logging import get_dist_logger
 
+__all__ = ["RunningList", "RequestHandler"]
+
 logger = get_dist_logger(__name__)
 
 
@@ -171,7 +173,7 @@ class RequestHandler:
         if self.running_list.ready_for_prefill():
             for seq in self.running_list.prefill:
                 seq.mark_running()
-            self.prefill_batch.init_batch(self.running_list.prefill)
+            self.prefill_batch.add_seqs(self.running_list.prefill)
             return self.prefill_batch
 
         if not self.running_batch.is_empty:

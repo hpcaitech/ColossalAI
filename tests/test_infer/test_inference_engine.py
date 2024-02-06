@@ -49,7 +49,7 @@ def check_inference_engine(test_cai=False):
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
         generation_config = GenerationConfig(do_sample=do_sample, top_p=top_p, top_k=top_k)
-        outputs = inference_engine.generate(generation_config)
+        outputs = inference_engine.generate(generation_config=generation_config)
     else:
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
