@@ -1,4 +1,5 @@
-from typing import List
+from collections import OrderedDict
+from typing import List, Union
 
 import torch
 from transformers.configuration_utils import PretrainedConfig
@@ -24,45 +25,62 @@ class RunningList:
 
     Args:
         prefill_ratio: (float) A ratio for determing whether to perform prefill or not.
-        prefill: (List) List that contains default inputs, defaults to [].
+        _prefill (OrderedDict[Sequence]): Mapping of sequence uid -> Sequence.
+        _decoding (OrderedDict[Sequence]): Mapping of sequence uid -> Sequence.
     """
 
-    def __init__(self, prefill_ratio: str, prefill: List[Sequence] = None):
+    def __init__(self, prefill_ratio: int, prefill: List[Sequence] = None) -> None:
         self.prefill_ratio = prefill_ratio
-        self.decoding: List[Sequence] = []
-        self.prefill: List[Sequence] = prefill if prefill is not None else []
+        self._decoding: OrderedDict[Sequence] = OrderedDict()
+        self._prefill: OrderedDict[Sequence] = (
+            OrderedDict({seq.request_id: seq for seq in self._prefill}) if prefill is not None else OrderedDict()
+        )
+
+    @property
+    def decoding(self):
+        return list(self._decoding.values())
+
+    @property
+    def prefill(self):
+        return list(self._prefill.values())
 
     def append(self, seq: Sequence):
-        # add seq to prefilling list first.
-        self.prefill.append(seq)
+        self._prefill[seq.request_id] = seq
 
-    def find_seq(self, request_id):
-        for seq in self.decoding:
-            if request_id == seq.request_id:
-                return seq
-        for seq in self.prefill:
-            if request_id == seq.request_id:
-                return seq
+    def find_seq(self, request_id) -> Union[Sequence, None]:
+        if request_id in self._decoding:
+            return self._decoding[request_id]
+        if request_id in self._prefill:
+            return self._prefill[request_id]
         return None
 
-    def remove(self, seq: Sequence):
-        if seq in self.decoding:
-            self.decoding.remove(seq)
-        elif seq in self.prefill:
-            self.prefill.remove(seq)
+    def remove(self, seq: Sequence) -> None:
+        if seq.request_id in self._decoding:
+            self._decoding.pop(seq.request_id)
+        elif seq.request_id in self._prefill:
+            self._prefill.pop(seq.request_id)
         else:
-            raise ValueError(f"sequence {seq.request_id} is not in running list")
+            raise ValueError(f"Sequence {seq.request_id} is not in running list")
 
     def ready_for_prefill(self):
-        if not self.decoding:
-            return len(self.prefill) > 0
-        return len(self.prefill) / len(self.decoding) >= self.prefill_ratio
+        if not self._decoding:
+            return len(self._prefill) > 0
+        return len(self._prefill) / len(self._decoding) >= self.prefill_ratio
 
     def is_empty(self):
-        return not self.decoding and not self.prefill
+        return not self._decoding and not self._prefill
 
     def total_seq_num(self):
-        return len(self.decoding) + len(self.prefill)
+        return len(self._decoding) + len(self._prefill)
+
+    def mark_prefill_running(self) -> None:
+        for seq_id in self._prefill:
+            self._prefill[seq_id].mark_running()
+
+    def prefill_to_decoding(self) -> None:
+        # Just copy elements in prefill to decoding
+        self._decoding.update(self._prefill)
+        # self._prefill.clear()
 
 
 class RequestHandler:
@@ -164,11 +182,9 @@ class RequestHandler:
                             break
 
                         # Try to allocate cache blocks for the sequence.
-                        if (
-                            self.cache_manager.check_allocation(seq)
-                            and (len(self.running_list.prefill) + len(self.running_list.decoding))
-                            < self.max_batch_size  # There some bugs in continous batching, so we disable it here.
-                        ):
+                        if self.cache_manager.check_allocation(seq) and (
+                            self.running_list.total_seq_num() < self.max_batch_size
+                        ):  # FIXME Bugs reported in continuous batching; temporarily disabled.
                             # If succeed, add the sequence to running list.
                             remove_list.append(seq)
                             self.running_list.append(seq)
@@ -177,8 +193,7 @@ class RequestHandler:
                         lst.remove(seq)
 
         if self.running_list.ready_for_prefill():
-            for seq in self.running_list.prefill:
-                seq.mark_running()
+            self.running_list.mark_prefill_running()
             self.prefill_batch.add_seqs(self.running_list.prefill)
             return self.prefill_batch
 
@@ -283,9 +298,9 @@ class RequestHandler:
         Update current running list and done list
         """
         if not self.prefill_batch.is_empty:
-            self.running_list.decoding.extend(self.running_list.prefill)
+            self.running_list.prefill_to_decoding()
             self.running_batch.add_seqs(self.running_list.prefill)
-            self.running_list.prefill.clear()
+            self.running_list._prefill.clear()
             self.prefill_batch.clear_batch()
 
         finish_seqs = self.running_batch.fliter_batch()
