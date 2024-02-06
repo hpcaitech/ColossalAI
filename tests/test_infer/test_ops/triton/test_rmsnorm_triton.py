@@ -32,7 +32,7 @@ def test_layer_norm(M, N):
     rms_norm = LlamaRMSNorm(hidden_size=N, eps=eps).cuda()
     x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device="cuda")
 
-    y_triton, _ = rms_layernorm(x, weight, eps=eps)
+    y_triton = rms_layernorm(x, weight, eps=eps)
     y_llama = rms_norm.forward(x).to(dtype)
 
     assert y_triton.shape == y_llama.shape
