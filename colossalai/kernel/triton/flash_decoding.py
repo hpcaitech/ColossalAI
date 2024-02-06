@@ -297,7 +297,7 @@ def flash_decoding_attention(
     
     grid = (triton.next_power_of_2(bsz), num_heads)
 
-    _flash_decoding_fwd_reduce_kernel[grid_1](
+    _flash_decoding_fwd_reduce_kernel[grid](
         mid_output,
         mid_output_lse,
         output,
