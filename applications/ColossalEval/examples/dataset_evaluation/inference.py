@@ -8,6 +8,7 @@ import torch.distributed as dist
 from colossal_eval import dataset, models, utils
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.logging import get_dist_logger
 from colossalai.shardformer import ShardConfig
@@ -82,6 +83,7 @@ def rm_and_merge(
 
 def main(args):
     colossalai.launch_from_torch(config={}, seed=42)
+    accelerator = get_accelerator()
     world_size = dist.get_world_size()
 
     rank = dist.get_rank()
@@ -235,10 +237,10 @@ def main(args):
                         ),
                     )
 
-        logger.info(f"Rank {rank} peak CUDA mem: {torch.cuda.max_memory_allocated()/1024**3:.3f} GB")
+        logger.info(f"Rank {rank} peak device mem: {accelerator.max_memory_allocated()/1024**3:.3f} GB")
 
         del model_
-        torch.cuda.empty_cache()
+        accelerator.empty_cache()
 
     dist.barrier()
     if rank == 0:
