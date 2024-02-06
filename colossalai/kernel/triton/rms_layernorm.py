@@ -65,4 +65,4 @@ if HAS_TRITON:
 
         # enqueue kernel
         _rmsnorm_kernel[(M,)](x, y, weight, x.stride(0), N, eps, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
-        return y, x
+        return y

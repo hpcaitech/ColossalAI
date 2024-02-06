@@ -115,7 +115,7 @@ def llama_model_forward(
         last_token_indexs = sequence_lengths.cumsum(dim=-1)
         hidden_states = hidden_states[last_token_indexs - 1].contiguous()
         norm_output = torch.empty_like(hidden_states)
-    hidden_states, _ = self.norm(hidden_states, norm_output)
+    hidden_states = self.norm(hidden_states, norm_output)
 
     return hidden_states
 
@@ -154,7 +154,8 @@ def llama_decoder_layer_forward(
         sm_scale (int, optional): Used for flash attention. Defaults to None.
     """
 
-    hidden_states, residual = self.input_layernorm(hidden_states, norm_output)
+    residual = hidden_states
+    hidden_states = self.input_layernorm(hidden_states, norm_output)
     # Self Attention
     hidden_states = self.self_attn(
         hidden_states=hidden_states,
@@ -172,7 +173,8 @@ def llama_decoder_layer_forward(
     )
 
     # Fully Connected
-    hidden_states, residual = self.post_attention_layernorm(hidden_states, norm_output)
+    residual = hidden_states
+    hidden_states = self.post_attention_layernorm(hidden_states, norm_output)
     hidden_states = self.mlp(hidden_states, residual)
 
     return hidden_states
@@ -317,7 +319,7 @@ class NopadLlamaAttention(LlamaAttention):
                 sm_scale=sm_scale,
             )
 
-        attn_output = attn_output.reshape(-1, self.hidden_size)
+        attn_output = attn_output.view(-1, self.hidden_size)
         attn_output = torch.addmm(residual, attn_output, self.o_proj.weight)
 
         return attn_output

@@ -220,7 +220,7 @@ def flash_decoding_attention(
         num_kv_group (int, optional): Number of key/value groups. Defaults to 1.
 
     Returns:
-        Output tensor with shape [bsz, num_heads, q_len, head_dim]
+        Output tensor with shape [bsz, num_heads, head_dim]
     """
     q = q.squeeze() if q.dim() == 4 else q
     assert q.dim() == 3, f"Incompatible q dim: {q.dim()}"
