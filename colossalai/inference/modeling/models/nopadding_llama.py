@@ -23,8 +23,6 @@ from colossalai.kernel.triton import (
 )
 from colossalai.logging import get_dist_logger
 
-from flash_attn.bert_padding import index_first_axis, pad_input  # noqa
-
 logger = get_dist_logger(__name__)
 
 try:
