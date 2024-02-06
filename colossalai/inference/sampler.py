@@ -10,7 +10,7 @@ def greedy_sample(
     """
     Sample tokens greedyly.
     """
-    results = torch.argmax(logprobs, dim=-1).cpu()
+    results = torch.argmax(logprobs, dim=-1)
     return results
 
 

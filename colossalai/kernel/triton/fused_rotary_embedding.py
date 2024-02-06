@@ -117,7 +117,6 @@ def fused_rotary_emb(
     )
 
 
-@torch.no_grad()
 def fused_rotary_embedding(
     q: torch.Tensor,
     k: torch.Tensor,
