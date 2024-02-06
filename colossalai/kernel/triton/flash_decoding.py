@@ -261,6 +261,9 @@ def flash_decoding_attention(
     # NOTE use `triton.next_power_of_2` here to utilize the cache mechanism of triton
     # To optimize, revise batching/scheduling to batch 2^n sequences in a batch (preferred)
     grid = (triton.next_power_of_2(bsz), num_heads, triton.cdiv(triton.next_power_of_2(max_seq_len_in_batch), BLOCK_KV))
+    output = torch.empty((bsz, num_heads, head_dim), dtype=q.dtype, device=q.device) if output is None else output
+    grid_1 = (triton.next_power_of_2(bsz), num_heads)
+
     _flash_decoding_fwd_kernel[grid](
         q,
         k_cache,
@@ -293,11 +296,7 @@ def flash_decoding_attention(
         HEAD_DIM=head_dim,
     )
 
-    output = torch.empty((bsz, num_heads, head_dim), dtype=q.dtype, device=q.device) if output is None else output
-
-    grid = (triton.next_power_of_2(bsz), num_heads)
-
-    _flash_decoding_fwd_reduce_kernel[grid](
+    _flash_decoding_fwd_reduce_kernel[grid_1](
         mid_output,
         mid_output_lse,
         output,

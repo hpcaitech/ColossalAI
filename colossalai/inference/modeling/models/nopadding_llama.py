@@ -34,7 +34,6 @@ except ImportError:
     logger.warning(f"triton has not been installed yet, we will use torch to complete the attention calculation.")
 
 
-@torch.no_grad()
 def llama_causal_lm_forward(
     self: LlamaForCausalLM,
     batch: BatchInfo = None,
@@ -60,7 +59,6 @@ def llama_causal_lm_forward(
     return logits
 
 
-@torch.no_grad()
 def llama_model_forward(
     self: LlamaModel,
     batch: BatchInfo = None,
@@ -117,12 +115,11 @@ def llama_model_forward(
         last_token_indexs = sequence_lengths.cumsum(dim=-1)
         hidden_states = hidden_states[last_token_indexs - 1].contiguous()
         norm_output = torch.empty_like(hidden_states)
-    hidden_states = self.norm(hidden_states, norm_output)
+    hidden_states, _ = self.norm(hidden_states, norm_output)
 
     return hidden_states
 
 
-@torch.no_grad()
 def llama_decoder_layer_forward(
     self: LlamaDecoderLayer,
     hidden_states: torch.Tensor,
@@ -156,9 +153,8 @@ def llama_decoder_layer_forward(
         norm_output (torch.Tensor, optional): The mid tensor holds the output of layernorm. Defaults to None.
         sm_scale (int, optional): Used for flash attention. Defaults to None.
     """
-    residual = hidden_states
 
-    hidden_states = self.input_layernorm(hidden_states, norm_output)
+    hidden_states, residual = self.input_layernorm(hidden_states, norm_output)
     # Self Attention
     hidden_states = self.self_attn(
         hidden_states=hidden_states,
@@ -176,8 +172,7 @@ def llama_decoder_layer_forward(
     )
 
     # Fully Connected
-    residual = hidden_states
-    hidden_states = self.post_attention_layernorm(hidden_states, norm_output)
+    hidden_states, residual = self.post_attention_layernorm(hidden_states, norm_output)
     hidden_states = self.mlp(hidden_states, residual)
 
     return hidden_states
@@ -242,7 +237,6 @@ class NopadLlamaAttention(LlamaAttention):
         return attn_layer
 
     # Replace transformers.models.llama.modeling_llama.LlamaAttention.forward
-    @torch.no_grad()
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -374,14 +368,14 @@ class NopadLlamaMLP(LlamaMLP):
 
         return mlp_layer
 
-    @torch.no_grad()
     def forward(self, hidden_states: torch.Tensor, residual: torch.Tensor) -> torch.Tensor:
         """
         Args:
             hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
             residual (torch.Tensor): shape [token_num, embed_dim], used to be added to hidden_states in down_proj.
         """
-        gate_up_proj_out = torch.matmul(hidden_states, self.gate_up_weight)
+        hidden_states = hidden_states.expand(2, -1, -1)
+        gate_up_proj_out = torch.bmm(hidden_states, self.gate_up_weight)
         act_out = torch.nn.functional.silu(gate_up_proj_out[0], inplace=True)
         tmp_out = act_out * gate_up_proj_out[1]
         return torch.addmm(residual, tmp_out, self.down_proj.weight)

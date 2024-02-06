@@ -49,7 +49,6 @@ if HAS_TRITON:
             # Write output
             tl.store(Y + cols, y.to(tl.float16), mask=mask)
 
-    @torch.no_grad()
     def rms_layernorm(x, weight, eps, norm_output=None):
         # allocate output
         y = torch.empty_like(x) if norm_output is None else norm_output
@@ -66,4 +65,4 @@ if HAS_TRITON:
 
         # enqueue kernel
         _rmsnorm_kernel[(M,)](x, y, weight, x.stride(0), N, eps, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
-        return y
+        return y, x

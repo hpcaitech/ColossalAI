@@ -52,7 +52,6 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     return q_embed, k_embed
 
 
-@torch.no_grad()
 def llama_causal_lm_forward(
     self: LlamaForCausalLM,
     batch: BatchInfo = None,
@@ -78,7 +77,6 @@ def llama_causal_lm_forward(
     return logits
 
 
-@torch.no_grad()
 def llama_model_forward(
     self: LlamaModel,
     batch: BatchInfo = None,
@@ -163,7 +161,6 @@ def llama_model_forward(
     return hidden_states
 
 
-@torch.no_grad()
 def llama_decoder_layer_forward(
     self: LlamaDecoderLayer,
     hidden_states: torch.Tensor,
@@ -282,7 +279,6 @@ class PadLlamaAttention(LlamaAttention):
 
         return attn_layer
 
-    @torch.no_grad()
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -418,7 +414,6 @@ class PadLlamaAttention(LlamaAttention):
         return attn_output
 
 
-@torch.no_grad()
 def generate_padding_position_id(attention_mask: torch.Tensor) -> torch.Tensor:
     """Generate padding position_id through attention mask.
 
@@ -434,7 +429,6 @@ def generate_padding_position_id(attention_mask: torch.Tensor) -> torch.Tensor:
     return position_ids
 
 
-@torch.no_grad()
 def unpading_input(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attention_mask: torch.Tensor):
     """Convert padding input to nopad input.
 
