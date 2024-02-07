@@ -170,6 +170,26 @@ class InferenceEngine:
 
             return output_str
 
+    @property
+    def has_prompt_template(self) -> bool:
+        """ """
+        return self.inference_config.prompt_template is not None
+
+    def format_prompt(self, prompts: Union[List[str], str]) -> Union[List[str], str]:
+        """
+        This method will format the input prompt according to the prompt template given to the InferenceConfig.
+        """
+        assert (
+            self.has_prompt_template
+        ), "Found the prompt_template is None. Please provide a valid prompt_template in InferenceConfig."
+
+        if isinstance(prompts, (list, tuple)):
+            return [self.inference_config.prompt_template.format(input_text=prompt) for prompt in prompts]
+        elif isinstance(prompts, str):
+            return self.inference_config.rompt_template.format(input_text=prompts)
+        else:
+            raise TypeError(f"Expected the input prompt to be one of list, tuple, or str, but got {type(prompts)}.")
+
     def add_request(
         self,
         requests_id: List[int] = None,
@@ -184,6 +204,10 @@ class InferenceEngine:
             prompts (Union[List[str], optional): Input prompts. Defaults to None.
             prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
         """
+
+        # apply the prompt template to the input prompts
+        if self.has_prompt_template and prompts is not None:
+            prompts = self.format_prompt(prompts)
 
         block_size = self.inference_config.block_size
 
