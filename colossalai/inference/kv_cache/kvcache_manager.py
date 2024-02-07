@@ -310,8 +310,7 @@ class KVCacheManager:
 
         bsz = block_tables.size(0) if bsz is None else bsz
 
-        # TODO add the reason why we - 1 here
-        alloc_local_block_indexes = (context_lens[:bsz] - 1) // self.block_size
+        alloc_local_block_indexes = (context_lens[:bsz]) // self.block_size
         block_global_ids = block_tables[torch.arange(0, bsz), alloc_local_block_indexes]
         seqs_to_recycle = []
         new_blocks_required = torch.sum(block_global_ids < 0).item()
@@ -382,7 +381,7 @@ class KVCacheManager:
     def free_block_table(self, block_table: torch.Tensor) -> None:
         """Free the logical cache blocks for **a single sequence**."""
         assert block_table.dim() == 1
-        for i in range(block_table.numel()):
+        for i in range(block_table.size(0)):
             global_block_id = block_table[i].item()
             if global_block_id < 0:
                 return
