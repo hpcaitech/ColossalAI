@@ -6,9 +6,10 @@ import torch
 from transformers import AutoTokenizer, GenerationConfig, LlamaConfig, LlamaForCausalLM
 
 import colossalai
-from colossalai.inference.config import InferenceConfig
+from colossalai.inference.config import _DEFAULT_PROMPT_TEMPLATES, InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
-from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.inference.flash_decoding_utils import FDIntermTensors
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 
 def setup_seed(seed):
@@ -18,7 +19,7 @@ def setup_seed(seed):
     random.seed(seed)
 
 
-def check_inference_engine(test_cai=False):
+def check_inference_engine(use_engine=False, prompt_template=None):
     setup_seed(20)
     tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
     model = (
@@ -43,14 +44,17 @@ def check_inference_engine(test_cai=False):
     top_p = 0.5
     top_k = 50
 
-    if test_cai:
-        inference_config = InferenceConfig(max_output_len=output_len)
+    if use_engine:
+        inference_config = InferenceConfig(max_output_len=output_len, prompt_template=prompt_template)
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
         generation_config = GenerationConfig(do_sample=do_sample, top_p=top_p, top_k=top_k)
         outputs = inference_engine.generate(generation_config=generation_config)
     else:
+        if prompt_template:
+            # apply prompt template
+            inputs = [_DEFAULT_PROMPT_TEMPLATES[prompt_template].format(input_text=input_text) for input_text in inputs]
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
         inputs = tokenizer.batch_encode_plus(inputs, padding=True, return_tensors="pt")["input_ids"]
@@ -68,13 +72,21 @@ def check_inference_engine(test_cai=False):
     return outputs
 
 
-def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, port=port, host="localhost")
-    cai_outputs = check_inference_engine(True)
-    transformer_outputs = check_inference_engine(False)
+@parameterize("prompt_template", [None, "llama"])
+def check_output_consistency(prompt_template):
+    cai_outputs = check_inference_engine(use_engine=True, prompt_template=prompt_template)
+    transformer_outputs = check_inference_engine(use_engine=False, prompt_template=prompt_template)
 
     for s1, s2 in zip(cai_outputs, transformer_outputs):
         assert s1 == s2, f"\nColossalAI Output: {s1}\nTransformers Output: {s2}"
+
+    # clear singleton flash decoding tensors
+    FDIntermTensors._instances = {}
+
+
+def run_dist(rank, world_size, port):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, port=port, host="localhost")
+    check_output_consistency()
 
 
 @pytest.mark.dist
