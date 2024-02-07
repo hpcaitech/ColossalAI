@@ -31,7 +31,6 @@ def check_inference_engine(use_engine=False, prompt_template=None):
         .cuda()
         .half()
     )
-
     model = model.eval()
 
     inputs = [
@@ -47,6 +46,7 @@ def check_inference_engine(use_engine=False, prompt_template=None):
     if use_engine:
         inference_config = InferenceConfig(max_output_len=output_len, prompt_template=prompt_template)
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
+        assert inference_engine.generation_config.max_new_tokens == output_len
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
         generation_config = GenerationConfig(do_sample=do_sample, top_p=top_p, top_k=top_k)
