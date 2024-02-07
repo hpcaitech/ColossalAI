@@ -86,6 +86,7 @@ colossalai.launch_from_torch(config={})
 # Step 1: create a model in "transformers" way
 model_path = "lmsys/vicuna-7b-v1.3"
 model = transformers.LlamaForCausalLM.from_pretrained(model_path).cuda()
+tokenizer = transformers.AutoTokenizer.from_pretrained(model_path)
 
 # Step 2: create an inference_config
 inference_config = InferenceConfig(
