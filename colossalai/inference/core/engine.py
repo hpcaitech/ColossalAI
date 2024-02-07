@@ -126,8 +126,9 @@ class InferenceEngine:
             tp_group (ProcessGroupMesh, optional): Used to manage the process TP group mesh. Defaults to None.
 
         Returns:
-            nn.Module: _description_
+            nn.Module: The model optimized by Shardformer.
         """
+
         shardconfig = ShardConfig(
             tensor_parallel_process_group=tp_group,
             pipeline_stage_manager=stage_manager,
@@ -160,28 +161,49 @@ class InferenceEngine:
         Returns:
             List[str]: Inference result returned by one generation.
         """
-
-        # intuition: If user provide a generation config, we should replace the existing one.
-        if generation_config is not None:
+        with torch.inference_mode():
             self.generation_config = generation_config
+            if prompts is not None or prompts_token_ids is not None:
+                self.add_request(prompts=prompts, prompts_token_ids=prompts_token_ids)
 
-        if prompts is not None or prompts_token_ids is not None:
-            self.add_request(prompts=prompts, prompts_token_ids=prompts_token_ids)
+            output_seqs_list = []
+            output_tokens_list = []
 
-        output_seqs_list = []
-        output_tokens_list = []
+            # intuition: If user provide a generation config, we should replace the existing one.
+            if generation_config is not None:
+                self.generation_config = generation_config
 
-        while self.request_handler.check_unfinished_seqs():
-            output_seqs_list += self.step()
+            while self.request_handler.check_unfinished_seqs():
+                output_seqs_list += self.step()
 
-        output_seqs_list = sorted(output_seqs_list, key=lambda x: int(x.request_id))
+            output_seqs_list = sorted(output_seqs_list, key=lambda x: int(x.request_id))
 
-        for seq in output_seqs_list:
-            output_tokens_list.append(seq.input_token_id + seq.output_token_id)
+            for seq in output_seqs_list:
+                output_tokens_list.append(seq.input_token_id + seq.output_token_id)
 
-        output_str = self.tokenizer.batch_decode(output_tokens_list, skip_special_tokens=True)
+            output_str = self.tokenizer.batch_decode(output_tokens_list, skip_special_tokens=True)
 
-        return output_str
+            return output_str
+
+    @property
+    def has_prompt_template(self) -> bool:
+        """ """
+        return self.inference_config.prompt_template is not None
+
+    def format_prompt(self, prompts: Union[List[str], str]) -> Union[List[str], str]:
+        """
+        This method will format the input prompt according to the prompt template given to the InferenceConfig.
+        """
+        assert (
+            self.has_prompt_template
+        ), "Found the prompt_template is None. Please provide a valid prompt_template in InferenceConfig."
+
+        if isinstance(prompts, (list, tuple)):
+            return [self.inference_config.prompt_template.format(input_text=prompt) for prompt in prompts]
+        elif isinstance(prompts, str):
+            return self.inference_config.rompt_template.format(input_text=prompts)
+        else:
+            raise TypeError(f"Expected the input prompt to be one of list, tuple, or str, but got {type(prompts)}.")
 
     def add_request(
         self,
@@ -197,6 +219,10 @@ class InferenceEngine:
             prompts (Union[List[str], optional): Input prompts. Defaults to None.
             prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
         """
+
+        # apply the prompt template to the input prompts
+        if self.has_prompt_template and prompts is not None:
+            prompts = self.format_prompt(prompts)
 
         block_size = self.inference_config.block_size
 

@@ -52,7 +52,6 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     return q_embed, k_embed
 
 
-@torch.no_grad()
 def llama_causal_lm_forward(
     self: LlamaForCausalLM,
     batch: BatchInfo = None,
@@ -78,7 +77,6 @@ def llama_causal_lm_forward(
     return logits
 
 
-@torch.no_grad()
 def llama_model_forward(
     self: LlamaModel,
     batch: BatchInfo = None,
@@ -163,7 +161,6 @@ def llama_model_forward(
     return hidden_states
 
 
-@torch.no_grad()
 def llama_decoder_layer_forward(
     self: LlamaDecoderLayer,
     hidden_states: torch.Tensor,
@@ -184,7 +181,7 @@ def llama_decoder_layer_forward(
     """This function will replace the forward function of LlamaDecoderLayer.
 
     Args:
-        hidden_states (torch.Tensor): _description_
+        hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
         position_ids (torch.LongTensor), The position ids of input sequences.
         block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
             storing mapping of token_position_id -> block_id. Defaults to None.
@@ -282,7 +279,6 @@ class PadLlamaAttention(LlamaAttention):
 
         return attn_layer
 
-    @torch.no_grad()
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -301,7 +297,7 @@ class PadLlamaAttention(LlamaAttention):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Args:
-            hidden_states (torch.Tensor): input to the layer of shape `(token_num, embed_dim)`
+            hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim]
             position_ids (torch.LongTensor), The position ids of input sequences.
             block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
                 storing mapping of token_position_id -> block_id. Defaults to None.
@@ -309,7 +305,7 @@ class PadLlamaAttention(LlamaAttention):
             v_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
             is_prompts (bool, optional): Whether the current inference process is in the context input phase. Defaults to True.
             sequence_lengths (torch.Tensor, optional): Holding the sequence length of each sequence. Defaults to None.
-            attention_mask (torch.Tensor, optional): The padding mask - corresponds to a tensor of size `(batch_size, seq_len)`
+            attention_mask (torch.Tensor, optional): The padding mask - corresponds to a tensor of size [batch_size, seq_len]
                 where 0 stands for the position of padding tokens and 1 for the position of non-padding tokens.
             kv_seq_len (int, optional): The max sequence length of input sequences. Defaults to 0.
             cos_sin (Tuple[torch.Tensor], optional): Holding cos and sin. Defaults to None.
@@ -360,8 +356,9 @@ class PadLlamaAttention(LlamaAttention):
                 if attention_mask is not None:
                     attn_output = pad_input(attn_output, indices, bsz, q_len)
             else:
-                copy_kv_to_blocked_cache(key_states, k_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
-                copy_kv_to_blocked_cache(value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
+                copy_kv_to_blocked_cache(
+                    key_states, value_states, k_cache, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables
+                )
                 attn_output = flash_decoding_attention(
                     q=query_states,
                     k_cache=k_cache,
@@ -418,12 +415,11 @@ class PadLlamaAttention(LlamaAttention):
         return attn_output
 
 
-@torch.no_grad()
 def generate_padding_position_id(attention_mask: torch.Tensor) -> torch.Tensor:
     """Generate padding position_id through attention mask.
 
     Args:
-        attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`):
+        attention_mask (`torch.Tensor` of shape [batch_size, sequence_length]:
             Mask to avoid performing attention on padding token indices. Mask values selected in `[0, 1]`:
 
     Returns:
@@ -434,7 +430,6 @@ def generate_padding_position_id(attention_mask: torch.Tensor) -> torch.Tensor:
     return position_ids
 
 
-@torch.no_grad()
 def unpading_input(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attention_mask: torch.Tensor):
     """Convert padding input to nopad input.
 
