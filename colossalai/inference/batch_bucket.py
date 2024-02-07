@@ -207,20 +207,19 @@ class BatchBucket:
 
             if self.current_batch_size > 1:
                 # replace seq length of the target seq with that of the neighbour seq in the batch
-                nbr_seq_id = list(self._sequences_indexes)[seq_b_idx - 1 if seq_b_idx > 0 else seq_b_idx + 1]
-                nbr_seq_b_idx = self._sequences_indexes[nbr_seq_id]
-                # last_seq_id = list(self._sequences_indexes)[-1]
-                self._sequences_indexes[nbr_seq_id] = seq_b_idx
-                self._sequence_lengths[seq_b_idx] = self._sequence_lengths[nbr_seq_b_idx]
-                self._sequence_lengths[nbr_seq_b_idx].fill_(0)
-                # free the block table of the seq
+                last_seq_id = list(self._sequences_indexes)[-1]
+                last_seq_b_idx = self._sequences_indexes[last_seq_id]
+                self._sequences_indexes[last_seq_id] = seq_b_idx
+                self._sequence_lengths[seq_b_idx] = self._sequence_lengths[last_seq_b_idx]
+                self._sequence_lengths[last_seq_b_idx].fill_(0)
+                # free the block table of the seq, or return a copy of the block table (to be processed outside)
                 if free_block_table_fn:
                     free_block_table_fn(self._block_tables[seq_b_idx])
                 else:
                     block_table = self._block_tables[seq_b_idx].detach().clone()
                 # replace block table of the target seq with that of the last seq in the batch
-                self._block_tables[seq_b_idx] = self._block_tables[nbr_seq_b_idx]
-                self._block_tables[nbr_seq_b_idx].fill_(-1)
+                self._block_tables[seq_b_idx] = self._block_tables[last_seq_b_idx]
+                self._block_tables[last_seq_b_idx].fill_(-1)
             else:
                 self._sequence_lengths[0].fill_(0)
                 self._block_tables[0].fill_(-1)
@@ -295,6 +294,7 @@ class BatchBucket:
         self.block_tables[:] = self._block_tables_helper[:]
         self._sequence_lengths_helper.fill_(0)
         self._block_tables_helper.fill_(-1)
+        self._current_batch_size = valid_num
 
     def pop_finished(
         self, free_block_table_fn: Callable[[torch.Tensor], None] = None
@@ -313,6 +313,15 @@ class BatchBucket:
                 if block_table is not None:
                     finished_block_tables.append(block_table)
         else:
+            for seq in finished_seqs:
+                seq_id = seq.request_id
+                block_table = self.block_tables[self._sequences_indexes[seq_id]]
+                self._sequences_dict.pop(seq_id)
+                self._sequences_indexes.pop(seq_id)
+                if free_block_table_fn:
+                    free_block_table_fn(block_table)
+                else:
+                    finished_block_tables.append(block_table.detach().clone())
             self.make_compact()
         return finished_seqs, finished_block_tables
 
