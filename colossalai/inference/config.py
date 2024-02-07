@@ -47,8 +47,6 @@ class InferenceConfig:
         revision (Optional[str]): The specific version(a branch, name, a commit id, or a tag name) of model to use.
     """
 
-    model: str = "Llama"
-    tokenizer: str = None
     micro_batch_size: int = 1
     micro_batch_buffer_size: int = None
     max_batch_size: int = 8
@@ -56,6 +54,7 @@ class InferenceConfig:
     max_input_len: int = 256
     block_size: int = 16
     dtype: Union[str, torch.dtype] = torch.float16  # use fp16 by default
+
     tp_size: int = 1
     pp_size: int = 1
     # TODO: beam search is not support for now
@@ -110,6 +109,6 @@ class InferenceConfig:
                 meta_config[type] = getattr(self, type)
         for type in ["pad_token_id", "bos_token_id", "eos_token_id"]:
             if hasattr(model_config, type):
-                meta_config[type] = getattr(self, type)
+                meta_config[type] = getattr(model_config, type)
 
         return GenerationConfig.from_dict(meta_config)

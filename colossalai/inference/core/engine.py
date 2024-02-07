@@ -43,19 +43,20 @@ class InferenceEngine:
     def __init__(
         self,
         model: nn.Module,
+        tokenizer: [Union[PreTrainedTokenizer, PreTrainedTokenizerFast, str]],
         inference_config: InferenceConfig,
-        tokenizer: Optional[Union[PreTrainedTokenizer, PreTrainedTokenizerFast]] = None,
         verbose: bool = False,
         model_policy: Policy = None,
     ) -> None:
         assert inference_config, "Please provide inference_config."
+        assert tokenizer, "Please provide a tokenizer, either a defined one or str"
         self.inference_config = inference_config
         self.model_config = model.config
         self.device = torch.device("cuda")
         self.dtype = inference_config.dtype
-        if tokenizer is None:
+        if isinstance(tokenizer, str):
             tokenizer = get_tokenizer(
-                inference_config.tokenizer,
+                tokenizer,
                 trust_remote_code=inference_config.trust_remote_code,
                 tokenizer_revision=inference_config.tokenizer_revision,
                 revision=inference_config.revision,

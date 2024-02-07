@@ -110,7 +110,7 @@ def benchmark_inference(args):
                 max_output_len=args.output_len,
                 prefill_ratio=1.2,
             )
-            engine = InferenceEngine(model, inference_config, tokenizer, verbose=True)
+            engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         else:
             engine = model
 
