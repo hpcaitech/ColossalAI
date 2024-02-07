@@ -73,7 +73,7 @@ def llama_model_forward(
     input_ids = batch.get_1D_inputs()
     block_tables = batch.get_block_table_tensor()
     sequence_lengths = batch.get_sequence_lengths()
-    batch_size = len(sequence_lengths)
+    batch_size = batch.current_batch_size
     kv_seq_len = sequence_lengths.max().item()
 
     hidden_states = self.embed_tokens(input_ids)
