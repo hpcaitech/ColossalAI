@@ -413,10 +413,13 @@ def rotary_embedding(
     assert q.size(0) == k.size(0)
     BLOCK_HEAD = 4
     BLOCK_TOKENS = 4
-    if head_dim >= 256:
+
+    if head_dim >= 1024:
         num_warps = 32
-    elif head_dim >= 128:
+    elif head_dim >= 512:
         num_warps = 16
+    elif head_dim >= 256:
+        num_warps = 8
     else:
         num_warps = 4
 

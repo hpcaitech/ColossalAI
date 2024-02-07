@@ -3,7 +3,7 @@ import torch
 from packaging import version
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
-from colossalai.kernel.triton import rotary_embedding
+from colossalai.kernel.triton import copy_kv_to_blocked_cache, rotary_embedding
 from tests.test_infer.test_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache_v2
 
 try:
@@ -117,7 +117,7 @@ def benchmark_rotary_emb(
     warmup = 10
     rep = 100
 
-    head_dim = 1024
+    head_dim = 256
     dtype = torch.float16
 
     q_shape = (num_tokens, num_kv_heads, head_dim)
@@ -155,5 +155,5 @@ def benchmark_rotary_emb(
 
 
 if __name__ == "__main__":
-    test_rotary_emb(4, 64, 32, 64, torch.float32)
-    # benchmark_rotary_emb.run(save_path=".", print_data=True)
+    # test_rotary_emb(4, 64, 32, 64, torch.float32)
+    benchmark_rotary_emb.run(save_path=".", print_data=True)
