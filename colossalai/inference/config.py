@@ -73,8 +73,6 @@ class InferenceConfig:
     quant_mode: Optional[str] = None
     revision: Optional[str] = None
     early_stopping: Optional[bool] = False
-    trust_remote_code = False
-    tokenizer_revision = False
 
     top_k: Optional[int] = None
     top_p: Optional[float] = None
