@@ -97,7 +97,7 @@ class RequestHandler:
         fd_inter_tensor = FDIntermTensors()
 
         if fd_inter_tensor._tensors_initialized:
-            fd_inter_tensor._re_initialize()
+            fd_inter_tensor._pre_initialize()
 
         fd_inter_tensor.initialize(
             max_batch_size=self.max_batch_size,
@@ -175,6 +175,7 @@ class RequestHandler:
                             self.cache_manager.allocate_context_from_block_table(seq.block_table, seq.sentence_len)
                     for seq in remove_list:
                         lst.remove(seq)
+
         if self.running_list.ready_for_prefill():
             for seq in self.running_list.prefill:
                 seq.mark_running()

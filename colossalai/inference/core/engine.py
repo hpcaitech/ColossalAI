@@ -62,7 +62,7 @@ class InferenceEngine:
             )
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.generation_config = inference_config._to_generation_config(self.model_config)
+        self.generation_config = inference_config.to_generation_config(self.model_config)
         model = model.eval()
         model.to(self.dtype)
 

@@ -69,11 +69,13 @@ class InferenceConfig:
     early_stopping: Optional[bool] = False
     trust_remote_code = False
     tokenizer_revision = False
-    tokenizer_mode = "auto"
+
+    top_k: Optional[int] = None
+    top_p: Optional[float] = None
+    min_p: Optional[float] = None
 
     def __post_init__(self):
         self._verify_config()
-        self._get_tokenizer()
 
     def _verify_config(self) -> None:
         """
@@ -95,14 +97,7 @@ class InferenceConfig:
             self.tp_size * self.pp_size == dist.get_world_size()
         ), f"TP size({self.tp_size}) * PP size({self.pp_size}) should be equal to the global world size ({dist.get_world_size()})"
 
-    def _get_tokenizer(self) -> None:
-        if self.tokenizer is not None:
-            return
-        model_name = self.model.lower()
-        if "llama" in model_name:
-            self.tokenizer = "hf-internal-testing/llama-tokenizer"
-
-    def _to_generation_config(self, model_config) -> GenerationConfig:
+    def to_generation_config(self, model_config) -> GenerationConfig:
         meta_config = {
             "max_length": self.max_input_len + self.max_output_len,
             "max_new_tokens": self.max_output_len,
@@ -114,7 +109,7 @@ class InferenceConfig:
             if hasattr(self, type):
                 meta_config[type] = getattr(self, type)
         for type in ["pad_token_id", "bos_token_id", "eos_token_id"]:
-            if hasattr(self, type):
+            if hasattr(model_config, type):
                 meta_config[type] = getattr(self, type)
 
         return GenerationConfig.from_dict(meta_config)

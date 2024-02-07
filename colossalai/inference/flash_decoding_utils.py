@@ -12,7 +12,7 @@ class FDIntermTensors(metaclass=SingletonMeta):
     def __init__(self):
         self._tensors_initialized = False
 
-    def _re_initialize(self):
+    def _pre_initialize(self):
         self._tensors_initialized = False
         del self._mid_output
         del self._mid_output_lse
