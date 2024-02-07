@@ -97,7 +97,7 @@ class RequestHandler:
         fd_inter_tensor = FDIntermTensors()
 
         if fd_inter_tensor._tensors_initialized:
-            fd_inter_tensor._pre_initialize()
+            fd_inter_tensor._reset()
 
         fd_inter_tensor.initialize(
             max_batch_size=self.max_batch_size,

@@ -1,5 +1,4 @@
 import random
-from copy import deepcopy
 
 import numpy as np
 import pytest
@@ -18,15 +17,6 @@ def setup_seed(seed):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
-
-
-def check_config_tokenizer(n_model, output_len):
-    drat_config = InferenceConfig(n_model.__class__.__name__, max_output_len=output_len, dtype=torch.float32)
-    draf_engine = InferenceEngine(n_model, "hf-internal-testing/llama-tokenizer", inference_config=drat_config)
-
-    assert "transformers.models.llama" in str(draf_engine.tokenizer.__class__)
-    assert draf_engine.generation_config.max_new_tokens == output_len
-    del draf_engine
 
 
 def check_inference_engine(use_engine=False, prompt_template=None):
@@ -54,10 +44,9 @@ def check_inference_engine(use_engine=False, prompt_template=None):
     top_k = 50
 
     if use_engine:
-        n_model = deepcopy(model)
-        check_config_tokenizer(n_model, output_len)
         inference_config = InferenceConfig(max_output_len=output_len, prompt_template=prompt_template)
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
+        assert inference_engine.generation_config.max_new_tokens == output_len
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
         generation_config = GenerationConfig(do_sample=do_sample, top_p=top_p, top_k=top_k)

@@ -10,7 +10,6 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.struct import Sequence
-from colossalai.inference.tokenizer import get_tokenizer
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
@@ -43,7 +42,7 @@ class InferenceEngine:
     def __init__(
         self,
         model: nn.Module,
-        tokenizer: [Union[PreTrainedTokenizer, PreTrainedTokenizerFast, str]],
+        tokenizer: [Union[PreTrainedTokenizer, PreTrainedTokenizerFast]],
         inference_config: InferenceConfig,
         verbose: bool = False,
         model_policy: Policy = None,
@@ -54,13 +53,6 @@ class InferenceEngine:
         self.model_config = model.config
         self.device = torch.device("cuda")
         self.dtype = inference_config.dtype
-        if isinstance(tokenizer, str):
-            tokenizer = get_tokenizer(
-                tokenizer,
-                trust_remote_code=inference_config.trust_remote_code,
-                tokenizer_revision=inference_config.tokenizer_revision,
-                revision=inference_config.revision,
-            )
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.generation_config = inference_config.to_generation_config(self.model_config)
