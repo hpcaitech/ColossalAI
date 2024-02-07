@@ -161,6 +161,7 @@ def benchmark_kvcache_copy(
     )
 
     quantiles = [0.5, 0.2, 0.8]
+    # TODO copy_to_cache needs to support copying both k and v at the same time in the future.
     if provider == "torch_copy_func":
         fn = lambda: copy_to_cache(new_k, k_cache, lengths=context_lengths, block_tables=block_tables, type="decoding")
     if provider == "triton_copy_func":
