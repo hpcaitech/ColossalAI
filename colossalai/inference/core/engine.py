@@ -139,6 +139,7 @@ class InferenceEngine:
         self,
         prompts: List[str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
+        return_token_ids: bool = False,
         generation_config: Optional[GenerationConfig] = None,
     ) -> List[str]:
         """
@@ -147,6 +148,7 @@ class InferenceEngine:
         Args:
             prompts (Union[List[str], optional): Input prompts. Defaults to None.
             prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
+            return_token_ids (bool): Whether to return output token ids. Defaults to False.
             generation_config (GenerationConfig, optional): Huggingface GenerationConfig used for inference. Defaults to None.
 
         Returns:
@@ -158,7 +160,7 @@ class InferenceEngine:
                 self.add_request(prompts=prompts, prompts_token_ids=prompts_token_ids)
 
             output_seqs_list = []
-            output_tokens_list = []
+            total_tokens_list = []
 
             # intuition: If user provide a generation config, we should replace the existing one.
             if generation_config is not None:
@@ -170,11 +172,15 @@ class InferenceEngine:
             output_seqs_list = sorted(output_seqs_list, key=lambda x: int(x.request_id))
 
             for seq in output_seqs_list:
-                output_tokens_list.append(seq.input_token_id + seq.output_token_id)
+                total_tokens_list.append(seq.input_token_id + seq.output_token_id)
 
-            output_str = self.tokenizer.batch_decode(output_tokens_list, skip_special_tokens=True)
+            output_str = self.tokenizer.batch_decode(total_tokens_list, skip_special_tokens=True)
 
-            return output_str
+            if return_token_ids:
+                output_tokens_list = [seq.output_token_id for seq in output_seqs_list]
+                return output_str, output_tokens_list
+            else:
+                return output_str
 
     @property
     def has_prompt_template(self) -> bool:
