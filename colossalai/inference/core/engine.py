@@ -260,14 +260,12 @@ class InferenceEngine:
                 + self.inference_config.block_size
                 - 1
             ) // self.inference_config.block_size
-            block_table = torch.full([max_blocks_per_sequence], -1, device=self.device)
             sequence = Sequence(
                 request_id,
                 prompt,
                 prompts_token_ids[i],
                 block_size,
                 None,
-                block_table,
                 self.tokenizer.eos_token_id,
                 self.tokenizer.pad_token_id,
                 self.inference_config.max_output_len,

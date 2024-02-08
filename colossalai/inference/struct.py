@@ -71,7 +71,6 @@ class Sequence:
     input_token_id: List[int]
     block_size: int
     sample_params: Any  # SampleParams needs to be imported later.
-    block_table: torch.Tensor
     eos_token_id: int
     pad_token_id: int
     max_output_len: int = 256
@@ -158,7 +157,6 @@ class Sequence:
             f"prompt={self.prompt}, "
             f"status={self.status.name}, "
             f"sample_params={self.sample_params}, "
-            f"logical_block_number={self.block_table.shape[0]},"
             f"input_len={self.input_len}),"
             f"output_len={self.output_len})"
         )
