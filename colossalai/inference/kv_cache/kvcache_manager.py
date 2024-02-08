@@ -259,7 +259,7 @@ class KVCacheManager:
                 block,
                 block.block_size
                 if context_lengths[i] % block.block_size == 0
-                else context_lengths[i] % block.block_size,
+                else context_lengths[i].item() % block.block_size,
             )
         for block_id in alloc_block_ids:
             if block_id in alloc_block_ids[last_block_locs]:
@@ -288,13 +288,15 @@ class KVCacheManager:
         """Allocate logical cache blocks for a batch of sequences during decoding stage.
 
         Usage:
-            allocate_context_from_block_table (to be revised to a block tables version)
+            allocate_context_from_block_tables
             model forward (block tables & context lengths passed)
-            context_lengths += 1
+            update context lengths
             allocate_tokens_from_block_tables
             model forward
-            context_lengths += 1
+            update context lengths
             allocate_tokens_from_block_tables
+            model forward
+            update context lengths
             ...
 
         Args:
@@ -393,11 +395,12 @@ class KVCacheManager:
                 # reset the block id in the block table (if we maintain a 2D tensors as block tables in Engine)
                 block_table[i] = -1
 
-    def free_block_tables(self, block_tables: torch.Tensor, first_n: int = 0) -> None:
+    def free_block_tables(self, block_tables: torch.Tensor, first_n: int = None) -> None:
         """Release the logical cache blocks for a batch of sequences.
         If `first_n` is provided, only the blocks for the first several sequences will be released.
         """
-        # TODO for loop opt
+        assert block_tables.dim() == 2
+        first_n = block_tables.size(0) if first_n is None else first_n
         for block_table in block_tables[:first_n]:
             self.free_block_table(block_table)
 
