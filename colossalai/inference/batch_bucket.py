@@ -49,12 +49,10 @@ class BatchBucket:
         self._current_batch_size = 0
         self._sequences_dict = OrderedDict()
         self._sequences_indexes = OrderedDict()  # deque(maxlen=self.max_batch_size)
-        self._sequence_lengths = torch.zeros((self.max_batch_size,), dtype=torch.int32, device=self.device)
+        self._sequence_lengths = torch.zeros((self.max_batch_size,), dtype=torch.int32)
         self._sequence_lengths_helper = torch.zeros_like(self._sequence_lengths)
         max_blocks_per_seq = (self.max_length + block_size - 1) // block_size
-        self._block_tables = torch.full(
-            (self.max_batch_size, max_blocks_per_seq), -1, dtype=torch.int32, device=self.device
-        )
+        self._block_tables = torch.full((self.max_batch_size, max_blocks_per_seq), -1, dtype=torch.int32)
         self._block_tables_helper = torch.full_like(self._block_tables, -1)
 
     @property
@@ -162,9 +160,7 @@ class BatchBucket:
             # TODO external (rename): modify Sequence.sentence_len to seq_len
             self._sequence_lengths[
                 self._current_batch_size : self._current_batch_size + num_seqs_to_add
-            ] = torch.tensor(
-                [seq.sentence_len for seq in seqs[:num_seqs_to_add]], dtype=torch.int32, device=self.device
-            )
+            ] = torch.tensor([seq.sentence_len for seq in seqs[:num_seqs_to_add]], dtype=torch.int32)
             # NOTE block tables to be updated by kvcache manager
             block_tables = self._block_tables[self._current_batch_size : self._current_batch_size + num_seqs_to_add]
             if alloc_block_tables is not None:
@@ -416,12 +412,14 @@ class BatchBucket:
     # For compatibility
     def get_block_table_tensor(self) -> torch.Tensor:
         assert self.is_compact  # Debug usage
-        return self.block_tables[: self.current_batch_size]
+        block_table = self.block_tables[: self.current_batch_size]
+        return block_table.to(device=self.device)
 
     # For compatibility
     def get_sequence_lengths(self) -> torch.Tensor:
         assert self.is_compact  # Debug usage
-        return self.seq_lengths[: self.current_batch_size]
+        sequence_lengths = self.seq_lengths[: self.current_batch_size]
+        return sequence_lengths.to(device=self.device)
 
     # FOR compatibility
     @property
