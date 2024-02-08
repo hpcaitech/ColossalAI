@@ -12,8 +12,8 @@ from transformers.models.llama.modeling_llama import (
     LlamaModel,
 )
 
+from colossalai.inference.batch_bucket import BatchBucket
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
-from colossalai.inference.struct import BatchInfo
 from colossalai.kernel.triton import (
     context_attention_unpadded,
     copy_kv_to_blocked_cache,
@@ -34,7 +34,7 @@ except ImportError:
 
 def llama_causal_lm_forward(
     self: LlamaForCausalLM,
-    batch: BatchInfo = None,
+    batch: BatchBucket = None,
     k_caches: List[torch.Tensor] = None,
     v_caches: List[torch.Tensor] = None,
 ):
@@ -59,7 +59,7 @@ def llama_causal_lm_forward(
 
 def llama_model_forward(
     self: LlamaModel,
-    batch: BatchInfo = None,
+    batch: BatchBucket = None,
     k_caches: List[torch.Tensor] = None,
     v_caches: List[torch.Tensor] = None,
 ):

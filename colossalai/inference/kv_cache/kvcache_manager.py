@@ -382,8 +382,7 @@ class KVCacheManager:
     def free_block_table(self, block_table: torch.Tensor) -> None:
         """Free the logical cache blocks for **a single sequence**."""
         assert block_table.dim() == 1
-        for i in range(block_table.size(0)):
-            global_block_id = block_table[i].item()
+        for i, global_block_id in enumerate(block_table.tolist()):
             if global_block_id < 0:
                 return
             block: CacheBlock = self._cache_blocks[global_block_id]

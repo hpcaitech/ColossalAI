@@ -202,8 +202,12 @@ class BatchBucket:
             seq_b_idx = self._sequences_indexes.get(request_id)
 
             if self.current_batch_size > 1:
-                # replace seq length of the target seq with that of the neighbour seq in the batch
-                last_seq_id = list(self._sequences_indexes)[-1]
+                # replace seq length of the target seq with that of the last seq in the batch
+                last_seq_id = next(
+                    (uid for uid, index in self._sequences_indexes.items() if index == self.current_batch_size - 1),
+                    None,
+                )
+                assert last_seq_id is not None
                 last_seq_b_idx = self._sequences_indexes[last_seq_id]
                 self._sequences_indexes[last_seq_id] = seq_b_idx
                 self._sequence_lengths[seq_b_idx] = self._sequence_lengths[last_seq_b_idx]
@@ -217,6 +221,10 @@ class BatchBucket:
                 self._block_tables[seq_b_idx] = self._block_tables[last_seq_b_idx]
                 self._block_tables[last_seq_b_idx].fill_(-1)
             else:
+                if free_block_table_fn:
+                    free_block_table_fn(self._block_tables[0])
+                else:
+                    block_table = self._block_tables[0].detach().clone()
                 self._sequence_lengths[0].fill_(0)
                 self._block_tables[0].fill_(-1)
             self._sequences_indexes.pop(request_id)
