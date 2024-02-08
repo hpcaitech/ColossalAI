@@ -232,7 +232,7 @@ class RequestHandler:
             seq.mark_aborted()
             self.waiting_list[priority].remove(seq)
         elif seq.status.is_running():
-            self.cache_manager.free_block_table(seq.block_table)
+            self.running_bb.pop_seq_update_batch(seq.request_id, self.cache_manager.free_block_table)
             self.running_list.remove(seq)
         else:
             try:
