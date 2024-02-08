@@ -49,6 +49,7 @@ class InferenceConfig:
         prefill_ratio (Optional[float]): A controling ratio for prefill and decoding in running list, defaults to 1.2. We will do a step of prefill
             when the actual value exceeds this ratio.
         pad_input: Whether to pad all inputs to the max length.
+        return_token_ids: Whether to return output token ids.
         quant_mode (Optional[str]): Quantization mode.
         revision (Optional[str]): The specific version(a branch, name, a commit id, or a tag name) of model to use.
         prompt_template (Optional[str]): The prompt template for formatting the input text. Some built-in templates include 'llama' and 'vicuna'. Otherwise, the template should contain '{input_text}' for formatting the input text.
@@ -70,6 +71,7 @@ class InferenceConfig:
     # the ratio of prefill sequences to decoding sequences, we do prefill step once the actual value exceeds ratio
     prefill_ratio: Optional[float] = 1.2
     pad_input: bool = False
+    return_token_ids: bool = False
     quant_mode: Optional[str] = None
     revision: Optional[str] = None
     early_stopping: Optional[bool] = False

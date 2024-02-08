@@ -159,7 +159,7 @@ class InferenceEngine:
                 self.add_request(prompts=prompts, prompts_token_ids=prompts_token_ids)
 
             output_seqs_list = []
-            output_tokens_list = []
+            total_tokens_list = []
 
             # intuition: If user provide a generation config, we should replace the existing one.
             if generation_config is not None:
@@ -171,11 +171,15 @@ class InferenceEngine:
             output_seqs_list = sorted(output_seqs_list, key=lambda x: int(x.request_id))
 
             for seq in output_seqs_list:
-                output_tokens_list.append(seq.input_token_id + seq.output_token_id)
+                total_tokens_list.append(seq.input_token_id + seq.output_token_id)
 
-            output_str = self.tokenizer.batch_decode(output_tokens_list, skip_special_tokens=True)
+            output_str = self.tokenizer.batch_decode(total_tokens_list, skip_special_tokens=True)
 
-            return output_str
+            if self.inference_config.return_token_ids:
+                output_tokens_list = [seq.output_token_id for seq in output_seqs_list]
+                return output_str, output_tokens_list
+            else:
+                return output_str
 
     @property
     def has_prompt_template(self) -> bool:

@@ -6,6 +6,7 @@ import torch
 import torch.distributed as dist
 import transformers
 from transformers import AutoTokenizer, GenerationConfig
+from vllm import LLM, SamplingParams
 
 import colossalai
 from colossalai.accelerator import get_accelerator
@@ -58,12 +59,12 @@ def data_gen(batch_size: int = 4, seq_len: int = 512):
     return input_ids
 
 
-def print_details_info(model_config, args, whole_end2end):
+def print_details_info(model_config, args, whole_end2end, total_tokens_num):
     msg: str = ""
 
     if dist.get_rank() == 0:
         msg += "-------Perf Summary-------\n"
-        whole_avg_latency = whole_end2end / (args.output_len * args.batch_size)
+        whole_avg_latency = whole_end2end / (total_tokens_num)
         num_layers = getattr(model_config, "num_layers", model_config.num_hidden_layers)
         num_parameters = num_layers * model_config.hidden_size * model_config.hidden_size * 12 / args.pp_size
         if args.dtype in ["fp16", "bf16"]:
@@ -73,7 +74,7 @@ def print_details_info(model_config, args, whole_end2end):
 
         msg += f"Whole batch end2end time: {whole_end2end * 1000:.2f} ms\n"
         msg += f"Whole batch per token latency: {whole_avg_latency * 1000:.2f} ms\n"
-        msg += f"Throughput: {args.output_len * args.batch_size / whole_end2end:.2f} tokens/s\n"
+        msg += f"Throughput: {total_tokens_num / whole_end2end:.2f} tokens/s\n"
         msg += f"Flops: {num_parameters * num_bytes / whole_avg_latency / 1e12:.2f} TFLOPS\n"
 
     if torch.cuda.is_available():
@@ -88,9 +89,10 @@ def benchmark_inference(args):
     with torch.no_grad():
         config = CONFIG_MAP[args.model]
         config.pad_token_id = config.eos_token_id
-        model = transformers.LlamaForCausalLM(config).cuda()
+        # model = transformers.LlamaForCausalLM(config).cuda()
+        model = transformers.LlamaForCausalLM.from_pretrained("/home/caidi/llama_model/").cuda()
         model = model.eval()
-        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+        tokenizer = AutoTokenizer.from_pretrained("/home/caidi/llama_model/")
 
         if args.dtype == "fp16":
             model = model.half()
@@ -109,12 +111,27 @@ def benchmark_inference(args):
                 max_input_len=args.seq_len,
                 max_output_len=args.output_len,
                 prefill_ratio=1.2,
+                block_size=32,
             )
             engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
+        elif args.mode == "vllm":
+            engine = LLM(
+                model="/home/caidi/llama_model/",
+                max_num_seqs=mbsz,
+                dtype="float16",
+                enforce_eager=True,
+            )
+
+            sampling_params = SamplingParams(
+                max_tokens=args.output_len,
+            )
         else:
             engine = model
 
         data = data_gen(mbsz, args.seq_len)
+
+        data = data.tolist()
+
         generation_config = GenerationConfig(
             pad_token_id=tokenizer.pad_token_id,
             max_new_tokens=args.output_len,
@@ -132,7 +149,7 @@ def benchmark_inference(args):
                     torch.profiler.ProfilerActivity.CUDA,
                 ],
                 schedule=torch.profiler.schedule(wait=0, warmup=N_WARMUP_STEPS, active=1),
-                on_trace_ready=torch.profiler.tensorboard_trace_handler("./tb_log_" + args.mode),
+                on_trace_ready=torch.profiler.tensorboard_trace_handler(f"./tb_log_{args.batch_size}_" + args.mode),
             )
             if args.profile
             else nullcontext()
@@ -142,6 +159,8 @@ def benchmark_inference(args):
             for _ in range(N_WARMUP_STEPS):
                 if args.mode == "caiinference":
                     engine.generate(prompts_token_ids=data, generation_config=generation_config)
+                elif args.mode == "vllm":
+                    engine.generate(prompt_token_ids=data, sampling_params=sampling_params)
                 else:
                     engine.generate(data, generation_config=generation_config)
                 if args.profile:
@@ -153,19 +172,35 @@ def benchmark_inference(args):
             torch.cuda.synchronize()
 
             whole_end2end = time.perf_counter()
+
             if args.mode == "caiinference":
                 for _ in range(args.batch_size // mbsz):
-                    engine.generate(prompts_token_ids=data, generation_config=generation_config)
+                    output, output_tokens_list = engine.generate(
+                        prompts_token_ids=data, generation_config=generation_config
+                    )
+            elif args.mode == "vllm":
+                for _ in range(args.batch_size // mbsz):
+                    output = engine.generate(prompt_token_ids=data, sampling_params=sampling_params)
             else:
                 for _ in range(args.batch_size // mbsz):
-                    engine.generate(data, generation_config=generation_config)
+                    output = engine.generate(data, generation_config=generation_config)
+
             whole_end2end = time.perf_counter() - whole_end2end
+
+            if args.mode == "caiinference":
+                total_tokens_num = sum([len(output_tokens) for output_tokens in output_tokens_list])
+            elif args.mode == "vllm":
+                total_tokens_num = sum([len(out.outputs[0].token_ids) for out in output])
+            else:
+                total_tokens_num = sum([len(out) for out in output])
+
+            print("total_tokens_num: ", total_tokens_num)
             if args.nsys:
                 torch.cuda.cudart().cudaProfilerStop()
             if args.profile:
                 ctx.step()
 
-    print_details_info(model.config, args, whole_end2end)
+    print_details_info(model.config, args, whole_end2end, total_tokens_num)
 
 
 def hybrid_inference(rank, world_size, port, args):
@@ -202,7 +237,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mode",
         default="caiinference",
-        choices=["caiinference", "transformers"],
+        choices=["caiinference", "transformers", "vllm"],
         help="decide which inference framework to run",
     )
     parser.add_argument(
