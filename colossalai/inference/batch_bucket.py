@@ -203,12 +203,12 @@ class BatchBucket:
 
             if self.current_batch_size > 1:
                 # replace seq length of the target seq with that of the last seq in the batch
+                last_seq_b_idx = self.current_batch_size - 1
                 last_seq_id = next(
-                    (uid for uid, index in self._sequences_indexes.items() if index == self.current_batch_size - 1),
+                    (uid for uid, index in self._sequences_indexes.items() if index == last_seq_b_idx),
                     None,
                 )
                 assert last_seq_id is not None
-                last_seq_b_idx = self._sequences_indexes[last_seq_id]
                 self._sequences_indexes[last_seq_id] = seq_b_idx
                 self._sequence_lengths[seq_b_idx] = self._sequence_lengths[last_seq_b_idx]
                 self._sequence_lengths[last_seq_b_idx].fill_(0)
@@ -305,8 +305,7 @@ class BatchBucket:
     ) -> Tuple[List[Sequence], List[torch.Tensor]]:
         finished_seqs = []
         finished_block_tables = []
-        for request_id in self._sequences_indexes:
-            seq: Sequence = self._sequences_dict.get(request_id)
+        for seq in self._sequences_dict.values():
             if seq.check_finish():
                 finished_seqs.append(seq)
 

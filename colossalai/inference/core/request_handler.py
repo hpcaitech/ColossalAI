@@ -302,10 +302,8 @@ class RequestHandler:
         Update current running list and done list
         """
         if not self.prefill_bb.is_empty:
-            # NOTE This is a hack to clear the prefill batch, while reuse the block tables allocated
-            # self.prefill_bb.clear()
-            self.prefill_bb.clear(self.cache_manager.free_block_tables)
             self.running_list.prefill_to_decoding()
+            self.prefill_bb.clear(self.cache_manager.free_block_tables)
             self.running_bb.add_seqs(
                 self.running_list.prefill,
                 alloc_block_tables_fn=self.cache_manager.allocate_context_from_block_tables,
