@@ -911,11 +911,14 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     master_param.copy_(working_param.chunk(self.extra_dp_pg_size)[self.extra_dp_pg_rank])
                 else:
                     master_param.copy_(working_param.chunk(self._world_size)[self._local_rank])
-        for master_moe_param, working_moe_param in zip(self.master_moe_params, self.working_moe_params):
-            master_moe_param.copy_(working_moe_param)
+        if hasattr(self, "master_moe_params"):
+            for master_moe_param, working_moe_param in zip(self.master_moe_params, self.working_moe_params):
+                master_moe_param.copy_(working_moe_param)
 
     def get_working_to_master_map(self) -> Dict[int, torch.Tensor]:
         return self._param_store.working_to_master_param
 
     def get_master_to_working_map(self) -> Dict[int, torch.Tensor]:
-        return {**self._param_store.master_to_working_param, **self.moe_master_to_working_map}
+        if hasattr(self, "moe_master_to_working_map"):
+            return {**self._param_store.master_to_working_param, **self.moe_master_to_working_map}
+        return self._param_store.master_to_working_param
