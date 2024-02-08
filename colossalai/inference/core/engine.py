@@ -139,6 +139,7 @@ class InferenceEngine:
         self,
         prompts: List[str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
+        return_token_ids: bool = False,
         generation_config: Optional[GenerationConfig] = None,
     ) -> List[str]:
         """
@@ -147,6 +148,7 @@ class InferenceEngine:
         Args:
             prompts (Union[List[str], optional): Input prompts. Defaults to None.
             prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
+            return_token_ids: Whether to return output token ids. Defaults to False.
             generation_config (GenerationConfig, optional): Huggingface GenerationConfig used for inference. Defaults to None.
 
         Returns:
@@ -174,7 +176,7 @@ class InferenceEngine:
 
             output_str = self.tokenizer.batch_decode(total_tokens_list, skip_special_tokens=True)
 
-            if self.inference_config.return_token_ids:
+            if return_token_ids:
                 output_tokens_list = [seq.output_token_id for seq in output_seqs_list]
                 return output_str, output_tokens_list
             else:

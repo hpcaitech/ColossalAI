@@ -59,12 +59,12 @@ def data_gen(batch_size: int = 4, seq_len: int = 512):
     return input_ids
 
 
-def print_details_info(model_config, args, whole_end2end, total_tokens_num):
+def print_details_info(model_config, args, whole_end2end, total_token_num):
     msg: str = ""
 
     if dist.get_rank() == 0:
         msg += "-------Perf Summary-------\n"
-        whole_avg_latency = whole_end2end / (total_tokens_num)
+        whole_avg_latency = whole_end2end / (total_token_num)
         num_layers = getattr(model_config, "num_layers", model_config.num_hidden_layers)
         num_parameters = num_layers * model_config.hidden_size * model_config.hidden_size * 12 / args.pp_size
         if args.dtype in ["fp16", "bf16"]:
@@ -74,7 +74,7 @@ def print_details_info(model_config, args, whole_end2end, total_tokens_num):
 
         msg += f"Whole batch end2end time: {whole_end2end * 1000:.2f} ms\n"
         msg += f"Whole batch per token latency: {whole_avg_latency * 1000:.2f} ms\n"
-        msg += f"Throughput: {total_tokens_num / whole_end2end:.2f} tokens/s\n"
+        msg += f"Throughput: {total_token_num / whole_end2end:.2f} tokens/s\n"
         msg += f"Flops: {num_parameters * num_bytes / whole_avg_latency / 1e12:.2f} TFLOPS\n"
 
     if torch.cuda.is_available():
@@ -89,10 +89,15 @@ def benchmark_inference(args):
     with torch.no_grad():
         config = CONFIG_MAP[args.model]
         config.pad_token_id = config.eos_token_id
-        # model = transformers.LlamaForCausalLM(config).cuda()
-        model = transformers.LlamaForCausalLM.from_pretrained("/home/caidi/llama_model/").cuda()
+        if args.test_random_weight:
+            model = transformers.LlamaForCausalLM(config).cuda()
+            tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+        else:
+            assert args.model_path, "When testing true weight, the model path must be provided.'"
+            model = transformers.LlamaForCausalLM.from_pretrained(args.model_path).cuda()
+            tokenizer = AutoTokenizer.from_pretrained(args.model_path)
+
         model = model.eval()
-        tokenizer = AutoTokenizer.from_pretrained("/home/caidi/llama_model/")
 
         if args.dtype == "fp16":
             model = model.half()
@@ -176,7 +181,7 @@ def benchmark_inference(args):
             if args.mode == "caiinference":
                 for _ in range(args.batch_size // mbsz):
                     output, output_tokens_list = engine.generate(
-                        prompts_token_ids=data, generation_config=generation_config
+                        prompts_token_ids=data, generation_config=generation_config, return_token_ids=True
                     )
             elif args.mode == "vllm":
                 for _ in range(args.batch_size // mbsz):
@@ -188,19 +193,19 @@ def benchmark_inference(args):
             whole_end2end = time.perf_counter() - whole_end2end
 
             if args.mode == "caiinference":
-                total_tokens_num = sum([len(output_tokens) for output_tokens in output_tokens_list])
+                total_token_num = sum([len(output_tokens) for output_tokens in output_tokens_list])
             elif args.mode == "vllm":
-                total_tokens_num = sum([len(out.outputs[0].token_ids) for out in output])
+                total_token_num = sum([len(out.outputs[0].token_ids) for out in output])
             else:
-                total_tokens_num = sum([len(out) for out in output])
+                total_token_num = sum([len(out) for out in output])
 
-            print("total_tokens_num: ", total_tokens_num)
+            print("total_token_num: ", total_token_num)
             if args.nsys:
                 torch.cuda.cudart().cudaProfilerStop()
             if args.profile:
                 ctx.step()
 
-    print_details_info(model.config, args, whole_end2end, total_tokens_num)
+    print_details_info(model.config, args, whole_end2end, total_token_num)
 
 
 def hybrid_inference(rank, world_size, port, args):
@@ -223,6 +228,7 @@ if __name__ == "__main__":
         help="the size of model",
         choices=["toy", "llama-7b", "llama-13b", "llama2-7b", "llama2-13b"],
     )
+    parser.add_argument("--model_path", type=str, default=None, help="The true weight path")
     parser.add_argument("-b", "--batch_size", type=int, default=8, help="batch size")
     parser.add_argument("--mbsz", type=int, default=8, help="batch size for one step")
     parser.add_argument("-s", "--seq_len", type=int, default=8, help="input sequence length")
@@ -232,6 +238,9 @@ if __name__ == "__main__":
     parser.add_argument("--output_len", type=int, default=128, help="Output length")
     parser.add_argument("--dtype", type=str, default="fp16", help="data type", choices=["fp16", "fp32", "bf16"])
     parser.add_argument("-v", "--verbose", default=False, action="store_true")
+    parser.add_argument(
+        "--test_random_weight", default=False, action="store_true", help="whether to test random weight"
+    )
     parser.add_argument("--profile", default=False, action="store_true", help="enable torch profiler")
     parser.add_argument("--nsys", default=False, action="store_true", help="enable nsys profiler")
     parser.add_argument(

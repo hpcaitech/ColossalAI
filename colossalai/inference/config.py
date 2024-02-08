@@ -46,7 +46,6 @@ class InferenceConfig:
         prefill_ratio (Optional[float]): A controling ratio for prefill and decoding in running list, defaults to 1.2. We will do a step of prefill
             when the actual value exceeds this ratio.
         pad_input: Whether to pad all inputs to the max length.
-        return_token_ids: Whether to return output token ids.
         early_stopping (Optional[bool]): Whether to stop the generation when all beam hypotheses have finished or not, defaults to False.
         top_k (Optional[int]): The number of highest probability vocabulary tokens to keep for top-k-filtering, defaults to None.
         top_p (Optional[float]): The cumulative probability threshold for retaining tokens with a total probability above it, defaults to None.
@@ -77,7 +76,6 @@ class InferenceConfig:
         float
     ] = 1.2  # the ratio of prefill sequences to decoding sequences, we do prefill step once the actual value exceeds ratio
     pad_input: bool = False
-    return_token_ids: bool = False
     early_stopping: Optional[bool] = False
     top_k: Optional[int] = None
     top_p: Optional[float] = None
