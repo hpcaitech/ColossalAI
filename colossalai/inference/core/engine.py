@@ -254,12 +254,6 @@ class InferenceEngine:
             else:
                 prompt = prompts[i]
 
-            max_blocks_per_sequence = (
-                self.inference_config.max_input_len
-                + self.inference_config.max_output_len
-                + self.inference_config.block_size
-                - 1
-            ) // self.inference_config.block_size
             sequence = Sequence(
                 request_id,
                 prompt,
