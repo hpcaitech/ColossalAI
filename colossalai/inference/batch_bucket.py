@@ -301,7 +301,6 @@ class BatchBucket:
     ) -> Tuple[List[Sequence], List[torch.Tensor]]:
         finished_seqs = []
         finished_block_tables = []
-        # TODO external: revise Sequence
         for request_id in self._sequences_indexes:
             seq: Sequence = self._sequences_dict.get(request_id)
             if seq.check_finish():
@@ -347,12 +346,9 @@ class BatchBucket:
         self._sequences_dict.clear()
         self._sequences_indexes.clear()
         free_block_tables_fn(self.block_tables, self._current_batch_size)
-        # else:
-        #     logger.warning(f"{self._current_batch_size} sequences cleared but block tables are not freed")
         self.block_tables.fill_(-1)
         self._sequence_lengths.fill_(0)
         self._current_batch_size = 0
-        # TODO consider returning List[Sequence] or List[int] (seq uid)
         return seqs
 
     def merge(self, other: "BatchBucket") -> List[int]:
@@ -387,7 +383,7 @@ class BatchBucket:
     ########## The following methods are expected to be used in modeling ###########
 
     # For compatibility.
-    # NOTE Consider this as an assumption way to determine the stage of the batch
+    # NOTE: Treat this as an assumed method for determining the stage of the batch.
     @property
     def is_prompts(self) -> bool:
         assert len(self._sequences_dict) > 0, "No sequence in the batch"
@@ -398,7 +394,6 @@ class BatchBucket:
 
     def get_1D_inputs(self) -> torch.Tensor:
         assert len(self._sequences_dict) > 0, "No sequence in the batch"
-
         tokens_li = []
         first_seq = list(self._sequences_dict.values())[0]
         if first_seq.output_len == 0:
@@ -416,7 +411,6 @@ class BatchBucket:
             for seq in self._sequences_dict.values():
                 tokens_li.append(seq.output_token_id[-1])
 
-        # FIXME why we assign dtype here?
         return torch.tensor(tokens_li, dtype=torch.long, device=self.device)
 
     # For compatibility

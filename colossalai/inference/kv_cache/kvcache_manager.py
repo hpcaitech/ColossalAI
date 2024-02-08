@@ -63,7 +63,6 @@ class KVCacheManager:
         self.dtype = config.dtype
         self.elem_size_in_bytes = torch.tensor([], dtype=self.dtype).element_size()
         self.num_layers = get_model_config_attr(model_config, "num_hidden_layers")
-        # For now we focus on MHA only, TODO add handling for MQA and GQA
         self.head_num = get_model_config_attr(model_config, "num_attention_heads")
         self.head_size = get_model_config_attr(model_config, "hidden_size") // self.head_num
         assert self.head_num % self.tp_size == 0, f"Cannot shard {self.head_num} heads with tp size {self.tp_size}"
