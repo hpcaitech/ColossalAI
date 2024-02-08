@@ -130,7 +130,6 @@ class InferenceEngine:
             enable_flash_attention=False,
             enable_jit_fused=False,
             enable_sequence_parallelism=False,
-            extra_kwargs={"quant": self.inference_config.quant_mode},
         )
         shardformer = ShardFormer(shard_config=shardconfig)
         shard_model, _ = shardformer.optimize(model, model_policy)
