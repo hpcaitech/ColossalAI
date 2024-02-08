@@ -148,7 +148,7 @@ class InferenceEngine:
         Args:
             prompts (Union[List[str], optional): Input prompts. Defaults to None.
             prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
-            return_token_ids: Whether to return output token ids. Defaults to False.
+            return_token_ids (bool): Whether to return output token ids. Defaults to False.
             generation_config (GenerationConfig, optional): Huggingface GenerationConfig used for inference. Defaults to None.
 
         Returns:

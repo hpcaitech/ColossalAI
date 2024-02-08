@@ -93,7 +93,7 @@ def benchmark_inference(args):
             model = transformers.LlamaForCausalLM(config).cuda()
             tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
         else:
-            assert args.model_path, "When testing true weight, the model path must be provided.'"
+            assert args.model_path, "When testing pretrained weights, the model path must be provided.'"
             model = transformers.LlamaForCausalLM.from_pretrained(args.model_path).cuda()
             tokenizer = AutoTokenizer.from_pretrained(args.model_path)
 
@@ -108,7 +108,7 @@ def benchmark_inference(args):
             mbsz = args.mbsz
         else:
             mbsz = args.batch_size
-        if args.mode == "caiinference":
+        if args.mode == "colossalai":
             inference_config = InferenceConfig(
                 dtype=args.dtype,
                 micro_batch_size=args.mb_size,
@@ -121,7 +121,7 @@ def benchmark_inference(args):
             engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         elif args.mode == "vllm":
             engine = LLM(
-                model="/home/caidi/llama_model/",
+                model=args.model_path,
                 max_num_seqs=mbsz,
                 dtype="float16",
                 enforce_eager=True,
@@ -162,7 +162,7 @@ def benchmark_inference(args):
 
         with ctx:
             for _ in range(N_WARMUP_STEPS):
-                if args.mode == "caiinference":
+                if args.mode == "colossalai":
                     engine.generate(prompts_token_ids=data, generation_config=generation_config)
                 elif args.mode == "vllm":
                     engine.generate(prompt_token_ids=data, sampling_params=sampling_params)
@@ -178,7 +178,7 @@ def benchmark_inference(args):
 
             whole_end2end = time.perf_counter()
 
-            if args.mode == "caiinference":
+            if args.mode == "colossalai":
                 for _ in range(args.batch_size // mbsz):
                     output, output_tokens_list = engine.generate(
                         prompts_token_ids=data, generation_config=generation_config, return_token_ids=True
@@ -192,7 +192,7 @@ def benchmark_inference(args):
 
             whole_end2end = time.perf_counter() - whole_end2end
 
-            if args.mode == "caiinference":
+            if args.mode == "colossalai":
                 total_token_num = sum([len(output_tokens) for output_tokens in output_tokens_list])
             elif args.mode == "vllm":
                 total_token_num = sum([len(out.outputs[0].token_ids) for out in output])
@@ -228,7 +228,7 @@ if __name__ == "__main__":
         help="the size of model",
         choices=["toy", "llama-7b", "llama-13b", "llama2-7b", "llama2-13b"],
     )
-    parser.add_argument("--model_path", type=str, default=None, help="The true weight path")
+    parser.add_argument("--model_path", type=str, default=None, help="The pretrained weights path")
     parser.add_argument("-b", "--batch_size", type=int, default=8, help="batch size")
     parser.add_argument("--mbsz", type=int, default=8, help="batch size for one step")
     parser.add_argument("-s", "--seq_len", type=int, default=8, help="input sequence length")
@@ -245,8 +245,8 @@ if __name__ == "__main__":
     parser.add_argument("--nsys", default=False, action="store_true", help="enable nsys profiler")
     parser.add_argument(
         "--mode",
-        default="caiinference",
-        choices=["caiinference", "transformers", "vllm"],
+        default="colossalai",
+        choices=["colossalai", "transformers", "vllm"],
         help="decide which inference framework to run",
     )
     parser.add_argument(
