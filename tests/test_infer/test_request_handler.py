@@ -1,5 +1,4 @@
 import pytest
-import torch
 from transformers.models.llama import LlamaConfig
 
 import colossalai
@@ -22,7 +21,6 @@ def check_running_list():
         eos_token_id=0,
         pad_token_id=0,
         sample_params=None,
-        block_table=1,
     )
 
     running_list.append(seq1)
@@ -59,7 +57,6 @@ def check_request_handler():
         eos_token_id=0,
         pad_token_id=0,
         sample_params=None,
-        block_table=torch.tensor([-1, -1]),
     )
     request_handler.add_sequence(seq1)
     # the priority should be 1
