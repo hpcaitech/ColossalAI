@@ -303,11 +303,10 @@ class RequestHandler:
         """
         if not self.prefill_bb.is_empty:
             self.running_list.prefill_to_decoding()
-            self.prefill_bb.clear(self.cache_manager.free_block_tables)
-            self.running_bb.add_seqs(
-                self.running_list.prefill,
-                alloc_block_tables_fn=self.cache_manager.allocate_context_from_block_tables,
-            )
+            self.running_bb.merge(self.prefill_bb)
+            # clear the prefill batch without assigning a free_block_tables_fn
+            # since we want to reuse the memory recorded on the block tables
+            self.prefill_bb.clear()
             self.running_list._prefill.clear()
 
         finished_seqs, _ = self.running_bb.pop_finished(self.cache_manager.free_block_table)

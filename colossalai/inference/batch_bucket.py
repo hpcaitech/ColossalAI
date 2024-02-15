@@ -334,13 +334,16 @@ class BatchBucket:
 
         if self.current_batch_size > 0:
             tokens = tokens.tolist()
-            for i, seq in enumerate(self._sequences_dict.values()):
-                curr_tokens = tokens[i] if isinstance(tokens[i], list) else [tokens[i]]
+            for seq_id, seq in self._sequences_dict.items():
+                index_in_b = self._sequences_indexes[seq_id]
+                curr_tokens = tokens[index_in_b]
+                if not isinstance(curr_tokens, list):
+                    curr_tokens = [curr_tokens]
                 seq.output_token_id += curr_tokens
                 seq.check_finish()
             self._sequence_lengths[: self.current_batch_size] += 1
 
-    def clear(self, free_block_tables_fn: Callable[[torch.Tensor], None]) -> List[int]:
+    def clear(self, free_block_tables_fn: Callable[[torch.Tensor], None] = None) -> List[int]:
         """Clear all the sequences in the batch.
 
         free_block_tables_fn (Callable): The function to free the block tables of all the sequences in the batch,
@@ -348,8 +351,9 @@ class BatchBucket:
         seqs = list(self._sequences_dict.values())
         self._sequences_dict.clear()
         self._sequences_indexes.clear()
-        free_block_tables_fn(self.block_tables, self._current_batch_size)
-        self.block_tables.fill_(-1)
+        if free_block_tables_fn:
+            free_block_tables_fn(self.block_tables, self._current_batch_size)
+        self._block_tables.fill_(-1)
         self._sequence_lengths.fill_(0)
         self._current_batch_size = 0
         return seqs
@@ -386,35 +390,42 @@ class BatchBucket:
     ########## The following methods are expected to be used in modeling ###########
 
     # For compatibility.
-    # NOTE: Treat this as an assumed method for determining the stage of the batch.
+    # NOTE: This is an assumption way to determine the stage of the batch.
     @property
     def is_prompts(self) -> bool:
         assert len(self._sequences_dict) > 0, "No sequence in the batch"
-        first_seq = list(self._sequences_dict.values())[0]
+        first_seq = next(iter(self._sequences_dict.values()))
         if first_seq.output_len == 0:
             return True
         return False
 
     def get_1D_inputs(self) -> torch.Tensor:
         assert len(self._sequences_dict) > 0, "No sequence in the batch"
-        tokens_li = []
-        first_seq = list(self._sequences_dict.values())[0]
+        first_seq = next(iter(self._sequences_dict.values()))  # not exactly the first sequence
         if first_seq.output_len == 0:
             # Assume prefill stage
             assert all(
                 seq.output_len == 0 for seq in self._sequences_dict.values()
             ), "Sequence stage (Prefill/Decoding) must be the same in the batch"
-            for seq in self._sequences_dict.values():
-                tokens_li.extend(seq.input_token_id)
+            out_li = []
+            num_tokens = torch.sum(self._sequence_lengths).item()
+            out = torch.empty([num_tokens], dtype=torch.long)
+            seq_ids = sorted(self._sequences_indexes.keys(), key=lambda x: self._sequences_indexes[x])
+            for seq_id in seq_ids:
+                seq: Sequence = self._sequences_dict[seq_id]
+                out_li.extend(seq.input_token_id)
+            return torch.tensor(out_li, dtype=torch.long, device=self.device)
         else:
             # Assume decoding stage
             assert all(
                 seq.output_len > 0 for seq in self._sequences_dict.values()
             ), "Sequence stage (Prefill/Decoding) must be the same in the batch"
-            for seq in self._sequences_dict.values():
-                tokens_li.append(seq.output_token_id[-1])
-
-        return torch.tensor(tokens_li, dtype=torch.long, device=self.device)
+            assert self.is_compact, "BatchBucket is not compact"
+            out = torch.empty([self.current_batch_size], dtype=torch.long)
+            for seq_id, index_in_b in self._sequences_indexes.items():
+                seq: Sequence = self._sequences_dict[seq_id]
+                out[index_in_b] = seq.output_token_id[-1]
+            return out.to(device=self.device)
 
     # For compatibility
     def get_block_table_tensor(self) -> torch.Tensor:
@@ -428,7 +439,7 @@ class BatchBucket:
         sequence_lengths = self.seq_lengths[: self.current_batch_size]
         return sequence_lengths.to(device=self.device)
 
-    # FOR compatibility
+    # For compatibility
     @property
     def fd_inter_tensor(self) -> None:
         assert self.fd_interm_tensor is not None, "fd_interm_tensor is not provided"
