@@ -1,26 +1,22 @@
-from collections import OrderedDict
 from typing import Callable, List, Tuple, Union
 
 import torch
 
 from colossalai.inference.struct import Sequence
-from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
-
-logger = get_dist_logger(__name__)
 
 
 class BatchBucket:
     """Container for a batch of Sequences, which is used to manage the batch of sequences.
 
     Attrs:
-        sequences_dict (OrderedDict[int, Sequence]): Map sequence uid to sequence struct
+        _sequences_dict (Dict[int, Sequence]): Map sequence uid to sequence struct
             seq_uid -> Sequence
-        sequences_indexes (OrderedDict[int, int]): Map sequence uid to index in the batch
+        _sequences_indexes (Dict[int, int]): Map sequence uid to index in the batch
             seq_uid -> index in the batch (indexing used in sequence_lengths and block_tables)
-        sequence_lengths (torch.Tensor): Length of each sequence in the batch.
+        _sequence_lengths (torch.Tensor): Length of each sequence in the batch.
             The size of the tensor is (max_batch_size,)
-        block_tables (torch.Tensor): Block table of each sequence in the batch
+        _block_tables (torch.Tensor): Block table of each sequence in the batch
             The size of the tensor is (max_batch_size, max_blocks_per_seq)
     """
 
@@ -47,8 +43,8 @@ class BatchBucket:
         self.dtype = dtype
 
         self._current_batch_size = 0
-        self._sequences_dict = OrderedDict()
-        self._sequences_indexes = OrderedDict()  # deque(maxlen=self.max_batch_size)
+        self._sequences_dict = dict()
+        self._sequences_indexes = dict()  # deque(maxlen=self.max_batch_size)
         self._sequence_lengths = torch.zeros((self.max_batch_size,), dtype=torch.int32)
         self._sequence_lengths_helper = torch.zeros_like(self._sequence_lengths)
         max_blocks_per_seq = (self.max_length + block_size - 1) // block_size
@@ -271,7 +267,7 @@ class BatchBucket:
         block_tables = []
         n = min(n, self.current_batch_size)
         for _ in range(n):
-            _, seq = self._sequences_dict.popitem(last=False)
+            _, seq = self._sequences_dict.popitem()
             seq_b_idx = self._sequences_indexes.pop(seq.request_id)
             if free_block_table_fn:
                 free_block_table_fn(self.block_tables[seq_b_idx])

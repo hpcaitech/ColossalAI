@@ -1,5 +1,4 @@
-from collections import OrderedDict
-from typing import List, Union
+from typing import Dict, List, Union
 
 import torch
 from transformers.configuration_utils import PretrainedConfig
@@ -32,9 +31,9 @@ class RunningList:
 
     def __init__(self, prefill_ratio: int, prefill: List[Sequence] = None) -> None:
         self.prefill_ratio = prefill_ratio
-        self._decoding: OrderedDict[Sequence] = OrderedDict()
-        self._prefill: OrderedDict[Sequence] = (
-            OrderedDict({seq.request_id: seq for seq in self._prefill}) if prefill is not None else OrderedDict()
+        self._decoding: Dict[int, Sequence] = dict()
+        self._prefill: Dict[int, Sequence] = (
+            dict({seq.request_id: seq for seq in self._prefill}) if prefill is not None else dict()
         )
 
     @property
@@ -53,11 +52,12 @@ class RunningList:
             self._prefill[seq.request_id] = seq
 
     def find_seq(self, request_id) -> Union[Sequence, None]:
+        seq = None
         if request_id in self._decoding:
-            return self._decoding[request_id]
-        if request_id in self._prefill:
-            return self._prefill[request_id]
-        return None
+            seq = self._decoding[request_id]
+        elif request_id in self._prefill:
+            seq = self._prefill[request_id]
+        return seq
 
     def remove(self, seq: Sequence) -> None:
         if seq.request_id in self._decoding:
@@ -82,10 +82,10 @@ class RunningList:
         for seq_id in self._prefill:
             self._prefill[seq_id].mark_running()
 
-    def prefill_to_decoding(self) -> None:
+    def move_prefill_to_decoding(self) -> None:
         # Just copy elements in prefill to decoding
         self._decoding.update(self._prefill)
-        # self._prefill.clear()
+        self._prefill.clear()
 
 
 class RequestHandler:
@@ -302,12 +302,11 @@ class RequestHandler:
         Update current running list and done list
         """
         if not self.prefill_bb.is_empty:
-            self.running_list.prefill_to_decoding()
+            self.running_list.move_prefill_to_decoding()
             self.running_bb.merge(self.prefill_bb)
             # clear the prefill batch without assigning a free_block_tables_fn
             # since we want to reuse the memory recorded on the block tables
             self.prefill_bb.clear()
-            self.running_list._prefill.clear()
 
         finished_seqs, _ = self.running_bb.pop_finished(self.cache_manager.free_block_table)
         for seq in finished_seqs:
