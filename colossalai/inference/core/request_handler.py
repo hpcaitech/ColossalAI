@@ -306,7 +306,7 @@ class RequestHandler:
             self.running_bb.merge(self.prefill_bb)
             # clear the prefill batch without assigning a free_block_tables_fn
             # since we want to reuse the memory recorded on the block tables
-            self.prefill_bb.clear()
+            self.prefill_bb.clear(free_block_tables_fn=None)
 
         finished_seqs, _ = self.running_bb.pop_finished(self.cache_manager.free_block_table)
         for seq in finished_seqs:

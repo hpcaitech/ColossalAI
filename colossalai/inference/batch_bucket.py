@@ -1,4 +1,4 @@
-from typing import Callable, List, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 
@@ -262,7 +262,6 @@ class BatchBucket:
             and block_tables (List[torch.Tensor]): block tables of the target sequences indicating corresponding blocks
         """
         # NOTE Prevent calling this method multiple times in a single step
-        # NOTE might consider: return a list of tensors or a 2D tensor
         seqs = []
         block_tables = []
         n = min(n, self.current_batch_size)
@@ -339,10 +338,10 @@ class BatchBucket:
                 seq.check_finish()
             self._sequence_lengths[: self.current_batch_size] += 1
 
-    def clear(self, free_block_tables_fn: Callable[[torch.Tensor], None] = None) -> List[int]:
+    def clear(self, free_block_tables_fn: Optional[Callable[[torch.Tensor], None]]) -> List[int]:
         """Clear all the sequences in the batch.
 
-        free_block_tables_fn (Callable): The function to free the block tables of all the sequences in the batch,
+        free_block_tables_fn (Optional[Callable]): The function to free the block tables of all the sequences in a batch
         """
         seqs = list(self._sequences_dict.values())
         self._sequences_dict.clear()
