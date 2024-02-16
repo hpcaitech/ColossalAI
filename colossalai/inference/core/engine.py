@@ -42,7 +42,7 @@ class InferenceEngine:
     def __init__(
         self,
         model: nn.Module,
-        tokenizer: [Union[PreTrainedTokenizer, PreTrainedTokenizerFast]],
+        tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
         inference_config: InferenceConfig,
         verbose: bool = False,
         model_policy: Policy = None,
