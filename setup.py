@@ -112,7 +112,7 @@ setup(
     version=version,
     packages=find_packages(
         exclude=(
-            "op_builder",
+            "extensions",
             "benchmark",
             "docker",
             "tests",
@@ -150,13 +150,5 @@ setup(
         "Environment :: GPU :: NVIDIA CUDA",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
         "Topic :: System :: Distributed Computing",
-    ],
-    package_data={
-        "colossalai": [
-            "_C/*.pyi",
-            "kernel/cuda_native/csrc/*",
-            "kernel/cuda_native/csrc/kernel/*",
-            "kernel/cuda_native/csrc/kernels/include/*",
-        ]
-    },
+    ]
 )
