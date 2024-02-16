@@ -276,7 +276,7 @@ class BatchBucket:
     def pop_n_seqs(
         self, n: int, free_block_table_fn: Callable[[torch.Tensor], None] = None
     ) -> Tuple[List[Sequence], List[torch.Tensor]]:
-        """Pop the first n sequences in the batch (LIFO).
+        """Pop the first n sequences in the batch (FIFO).
         If n is greater than the current batch szie, pop all the sequences in the batch.
 
         Args:
@@ -290,9 +290,10 @@ class BatchBucket:
         seqs = []
         block_tables = []
         n = min(n, self.current_batch_size)
-        for _ in range(n):
-            _, seq = self._sequences_dict.popitem()
-            seq_b_idx = self._sequences_indexes.pop(seq.request_id)
+        seq_ids = list(self._sequences_dict.keys())[:n]
+        for seq_id in seq_ids:
+            seq = self._sequences_dict.pop(seq_id)
+            seq_b_idx = self._sequences_indexes.pop(seq_id)
             if free_block_table_fn:
                 free_block_table_fn(self.block_tables[seq_b_idx])
             else:
