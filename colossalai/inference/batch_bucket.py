@@ -274,10 +274,10 @@ class BatchBucket:
                 block_tables.append(self.block_tables[seq_b_idx].detach().clone())
             seqs.append(seq)
         if not self.is_compact:
-            self.make_compact()
+            self._make_compact()
         return seqs, block_tables
 
-    def make_compact(self) -> None:
+    def _make_compact(self) -> None:
         # Clean and Compress the batch based on its sequences dict.
         # Namely,compress sequences to the front and clean the seq lengths and block tables tensors.
         # NOTE Prevent calling this method multiple times in a single step
@@ -291,6 +291,10 @@ class BatchBucket:
         self._sequence_lengths[:] = self._sequence_lengths_helper[:]
         self._block_tables_helper[:valid_num, :] = self.block_tables[valid_indexes]
         self.block_tables[:] = self._block_tables_helper[:]
+        new_idx = 0
+        for seq_id in valid_seq_ids:
+            self._sequences_indexes[seq_id] = new_idx
+            new_idx += 1
         self._sequence_lengths_helper.fill_(0)
         self._block_tables_helper.fill_(-1)
         self._current_batch_size = valid_num
@@ -304,7 +308,9 @@ class BatchBucket:
             if seq.check_finish():
                 finished_seqs.append(seq)
 
-        if len(finished_seqs) < self.max_batch_size // 4:
+        # Use `pop_seq_update_batch`` to update the batch status for just a few of finished seqs,
+        # otherwise, pop seqs directly and then call `_make_compact` to compress the batch
+        if len(finished_seqs) < 5:
             for seq in finished_seqs:
                 _, block_table = self.pop_seq_update_batch(seq.request_id, free_block_table_fn)
                 if block_table is not None:
@@ -319,7 +325,7 @@ class BatchBucket:
                     free_block_table_fn(block_table)
                 else:
                     finished_block_tables.append(block_table.detach().clone())
-            self.make_compact()
+            self._make_compact()
         return finished_seqs, finished_block_tables
 
     # TODO arg type not support beam search sampling yet
