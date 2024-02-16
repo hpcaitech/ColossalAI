@@ -88,6 +88,28 @@ class BatchBucket:
             == torch.nonzero(self._block_tables[:, 0] >= 0).numel()
         )
 
+    def _make_compact(self) -> None:
+        # Clean and Compress the batch based on its sequences dict.
+        # Namely,compress sequences to the front and clean the seq lengths and block tables tensors.
+        # NOTE Prevent calling this method multiple times in a single step
+        if self.is_compact:
+            return
+        valid_seq_ids = self._sequences_dict.keys()
+        valid_num = len(valid_seq_ids)
+        valid_indexes = [self._sequences_indexes[seq_id] for seq_id in valid_seq_ids]
+        assert valid_num == len(self._sequences_indexes), "BatchBucket indexing is not consistent"
+        self._sequence_lengths_helper[:valid_num] = self._sequence_lengths[valid_indexes]
+        self._sequence_lengths[:] = self._sequence_lengths_helper[:]
+        self._block_tables_helper[:valid_num, :] = self.block_tables[valid_indexes]
+        self.block_tables[:] = self._block_tables_helper[:]
+        new_idx = 0
+        for seq_id in valid_seq_ids:
+            self._sequences_indexes[seq_id] = new_idx
+            new_idx += 1
+        self._sequence_lengths_helper.fill_(0)
+        self._block_tables_helper.fill_(-1)
+        self._current_batch_size = valid_num
+
     def add_seq(
         self,
         seq: Sequence,
@@ -254,11 +276,14 @@ class BatchBucket:
     def pop_n_seqs(
         self, n: int, free_block_table_fn: Callable[[torch.Tensor], None] = None
     ) -> Tuple[List[Sequence], List[torch.Tensor]]:
-        """Pop the first n sequences in the batch (FIFO).
+        """Pop the first n sequences in the batch (LIFO).
         If n is greater than the current batch szie, pop all the sequences in the batch.
 
+        Args:
+            n (int): The number of sequences to pop out
+            free_block_table_fn (Callable): The function to free the block table of a single sequence
         Returns:
-            A tuple of: seqs (List[Sequence]): The target sequences
+            A tuple of: seqs (List[Sequence]): The target sequences,
             and block_tables (List[torch.Tensor]): block tables of the target sequences indicating corresponding blocks
         """
         # NOTE Prevent calling this method multiple times in a single step
@@ -277,31 +302,18 @@ class BatchBucket:
             self._make_compact()
         return seqs, block_tables
 
-    def _make_compact(self) -> None:
-        # Clean and Compress the batch based on its sequences dict.
-        # Namely,compress sequences to the front and clean the seq lengths and block tables tensors.
-        # NOTE Prevent calling this method multiple times in a single step
-        if self.is_compact:
-            return
-        valid_seq_ids = self._sequences_dict.keys()
-        valid_num = len(valid_seq_ids)
-        valid_indexes = [self._sequences_indexes[seq_id] for seq_id in valid_seq_ids]
-        assert valid_num == len(self._sequences_indexes), "BatchBucket indexing is not consistent"
-        self._sequence_lengths_helper[:valid_num] = self._sequence_lengths[valid_indexes]
-        self._sequence_lengths[:] = self._sequence_lengths_helper[:]
-        self._block_tables_helper[:valid_num, :] = self.block_tables[valid_indexes]
-        self.block_tables[:] = self._block_tables_helper[:]
-        new_idx = 0
-        for seq_id in valid_seq_ids:
-            self._sequences_indexes[seq_id] = new_idx
-            new_idx += 1
-        self._sequence_lengths_helper.fill_(0)
-        self._block_tables_helper.fill_(-1)
-        self._current_batch_size = valid_num
-
     def pop_finished(
         self, free_block_table_fn: Callable[[torch.Tensor], None] = None
     ) -> Tuple[List[Sequence], List[torch.Tensor]]:
+        """Pop finished sequences in the batch and a list of block tables of the finished sequences,
+        if free_block_table_fn is not provided.
+
+        Args:
+            free_block_table_fn (Callable): The function to free the block table of a single sequence
+        Returns:
+            A tuple of: finished_seqs (List[Sequence]): The finished sequences,
+            and finished_block_tables (List[torch.Tensor]): block tables of the finished sequences.
+        """
         finished_seqs = []
         finished_block_tables = []
         for seq in self._sequences_dict.values():
@@ -365,16 +377,14 @@ class BatchBucket:
         holding all the sequences in the other batch
 
         Usage:
-            New incoming sequence added to prefil batch
+            > New incoming sequence added to prefil batch
                 prefill bb curr batch size < prefil_ratio * prefill bb max batch size
-            New incoming sequence added to prefil batch
-                prefill bb curr batch size < prefil_ratio * prefill bb max batch size
-            New incoming sequence added to prefil batch
+            > New incoming sequence added to prefil batch
                 prefill bb curr batch size == prefil_ratio * prefill bb max batch size
-            Pause Decoding
-            Prefill
-            Move sequences in prefill bb => decoding bb
-            Put back the out-of-volume sequences into the running pool
+            > Pause Decoding
+            > Prefill
+            > Move sequences in prefill bb => decoding bb
+            > Put back the out-of-volume sequences into the running pool
 
         Returns:
             unmerged_ids (List[int]): a list of sequence uids that are not merged into the current batch
@@ -400,6 +410,7 @@ class BatchBucket:
             return True
         return False
 
+    # For compatibility
     def get_1D_inputs(self) -> torch.Tensor:
         assert len(self._sequences_dict) > 0, "No sequence in the batch"
         first_seq = next(iter(self._sequences_dict.values()))  # not exactly the first sequence
