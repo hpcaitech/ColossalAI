@@ -310,10 +310,6 @@ class NopadLlamaAttention(LlamaAttention):
                 block_tables,
                 sequence_lengths,
             )
-            # copy_kv_to_blocked_cache(
-            #     key_states, value_states, k_cache, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables
-            # )
-
             attn_output = flash_decoding_attention(
                 q=query_states,
                 k_cache=k_cache,

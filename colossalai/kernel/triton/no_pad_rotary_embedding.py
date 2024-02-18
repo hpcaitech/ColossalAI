@@ -378,14 +378,6 @@ def fused_rotary_embedding_kernel_v2(
         q + off_q1,
         out_q1,
     )
-    tl.store(
-        k + off_k0,
-        out_k0,
-    )
-    tl.store(
-        k + off_k1,
-        out_k1,
-    )
 
 
 @triton.jit
@@ -406,35 +398,36 @@ def decoding_fused_rotary_embedding_kernel(
     head_dim_stride,
     cos_token_stride,
     cos_stride,
-    cachek_b_stride,
-    cachek_h_stride,
-    cachek_bs_stride,
-    cachek_d_stride,
-    cachev_b_stride,
-    cachev_h_stride,
-    cachev_bs_stride,
-    cachev_d_stride,
+    cache_b_stride,
+    cache_h_stride,
+    cache_bs_stride,
+    cache_d_stride,
     bts_stride,
     btb_stride,
     block_size,
-    q_total_tokens,
     Q_HEAD_NUM: tl.constexpr,
     HEAD_DIM: tl.constexpr,
 ):
     block_head_index = tl.program_id(0)
     if block_head_index >= Q_HEAD_NUM:
         return
+
     block_token_index = tl.program_id(1)
 
     dim_range0 = tl.arange(0, HEAD_DIM // 2)
     dim_range1 = tl.arange(HEAD_DIM // 2, HEAD_DIM)
     total_dim_range = tl.arange(0, HEAD_DIM)
 
-    off_q0 = block_token_index * q_token_stride + block_head_index * q_head_stride + dim_range0 * head_dim_stride
-    off_q1 = block_token_index * q_token_stride + block_head_index * q_head_stride + dim_range1 * head_dim_stride
-    off_k0 = block_token_index * k_token_stride + block_head_index * k_head_stride + dim_range0 * head_dim_stride
-    off_k1 = block_token_index * k_token_stride + block_head_index * k_head_stride + dim_range1 * head_dim_stride
-    off_v = block_token_index * k_token_stride + block_head_index * k_head_stride + total_dim_range * head_dim_stride
+    q_off_base = block_token_index * q_token_stride + block_head_index * q_head_stride
+    off_q0 = q_off_base + dim_range0 * head_dim_stride
+    off_q1 = q_off_base + dim_range1 * head_dim_stride
+
+    off_base = block_token_index * k_token_stride + block_head_index * k_head_stride
+    off_k0 = off_base + dim_range0 * head_dim_stride
+    off_k1 = off_base + dim_range1 * head_dim_stride
+
+    off_v = off_base + total_dim_range * head_dim_stride
+
     loaded_q0 = tl.load(
         q + off_q0,
     )
@@ -456,8 +449,8 @@ def decoding_fused_rotary_embedding_kernel(
 
     off_cos_sin = block_token_index * cos_token_stride + dim_range0 * cos_stride
 
-    loaded_cos = tl.load(cos + off_cos_sin, mask=(block_token_index < q_total_tokens), other=0.0)
-    loaded_sin = tl.load(sin + off_cos_sin, mask=(block_token_index < q_total_tokens), other=0.0)
+    loaded_cos = tl.load(cos + off_cos_sin)
+    loaded_sin = tl.load(sin + off_cos_sin)
 
     out_q0 = loaded_q0 * loaded_cos - loaded_q1 * loaded_sin
     out_q1 = loaded_q0 * loaded_sin + loaded_q1 * loaded_cos
@@ -468,27 +461,26 @@ def decoding_fused_rotary_embedding_kernel(
     past_kv_seq_len = tl.load(context_lengths + block_token_index) - 1
 
     last_block_idx = past_kv_seq_len // block_size
-    block_table_ptr = BLOCK_TABLES + block_token_index * bts_stride
-    block_ids = tl.load(block_table_ptr + last_block_idx * btb_stride, mask=(block_token_index < q_total_tokens))
+    block_ids = tl.load(BLOCK_TABLES + block_token_index * bts_stride + last_block_idx * btb_stride)
     offsets_in_last_block = past_kv_seq_len % block_size
 
     k_range0 = (
-        block_ids * cachek_b_stride
-        + block_head_index * cachek_h_stride
-        + offsets_in_last_block * cachek_bs_stride
-        + dim_range0 * cachek_d_stride
+        block_ids * cache_b_stride
+        + block_head_index * cache_h_stride
+        + offsets_in_last_block * cache_bs_stride
+        + dim_range0 * cache_d_stride
     )
     k_range1 = (
-        block_ids * cachek_b_stride
-        + block_head_index * cachek_h_stride
-        + offsets_in_last_block * cachek_bs_stride
-        + dim_range1 * cachek_d_stride
+        block_ids * cache_b_stride
+        + block_head_index * cache_h_stride
+        + offsets_in_last_block * cache_bs_stride
+        + dim_range1 * cache_d_stride
     )
     v_range = (
-        block_ids * cachev_b_stride
-        + block_head_index * cachev_h_stride
-        + offsets_in_last_block * cachev_bs_stride
-        + total_dim_range * cachev_d_stride
+        block_ids * cache_b_stride
+        + block_head_index * cache_h_stride
+        + offsets_in_last_block * cache_bs_stride
+        + total_dim_range * cache_d_stride
     )
 
     tl.store(
@@ -514,14 +506,6 @@ def decoding_fused_rotary_embedding_kernel(
     tl.store(
         q + off_q1,
         out_q1,
-    )
-    tl.store(
-        k + off_k0,
-        out_k0,
-    )
-    tl.store(
-        k + off_k1,
-        out_k1,
     )
 
 
@@ -694,14 +678,9 @@ def decoding_fused_rotary_embedding(
         k_cache.stride(1),
         k_cache.stride(2),
         k_cache.stride(3),
-        v_cache.stride(0),
-        v_cache.stride(1),
-        v_cache.stride(2),
-        v_cache.stride(3),
         block_tables.stride(0),
         block_tables.stride(1),
         k_cache.size(-2),
-        q_total_tokens,
         Q_HEAD_NUM=q_head_num,
         HEAD_DIM=head_dim,
         num_warps=num_warps,

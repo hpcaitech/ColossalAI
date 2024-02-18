@@ -204,7 +204,7 @@ def benchmark_inference(args):
                 torch.cuda.cudart().cudaProfilerStop()
             if args.profile:
                 ctx.step()
-
+    print(f"config:batch_size {args.batch_size}, input_len{ args.seq_len}, output_len {args.output_len}")
     print_details_info(model.config, args, whole_end2end, total_token_num)
 
 

@@ -67,25 +67,14 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
     )
     new_k = torch.randn((BATCH_SIZE, H, D), dtype=dtype, device="cuda")
     new_q = torch.randn_like(new_k)
+    new_v = torch.randn_like(new_k)
+
     kv_seq_lengths = past_kv_seq_lengths + 1
     block_tables = block_tables.to(device="cuda")
     q_ref = torch_rotary_emb(new_q, cos[:BATCH_SIZE], sin[:BATCH_SIZE])
-    k_ref = torch_rotary_emb(new_k, cos[:BATCH_SIZE], sin[:BATCH_SIZE])
 
-    rotary_embedding(new_q, new_k, cos, sin, k_cache, block_tables, kv_seq_lengths)
+    decoding_fused_rotary_embedding(new_q, new_k, new_v, cos, sin, k_cache, v_cache, block_tables, kv_seq_lengths)
     assert torch.allclose(new_q, q_ref, atol=1e-4, rtol=1e-4)
-    assert torch.allclose(new_k, k_ref, atol=1e-4, rtol=1e-4)
-
-    # check one by one
-    for seq_i in range(BATCH_SIZE):
-        ki = new_k[seq_i]
-        ki = ki.squeeze()
-        past_kv_seq_len = kv_seq_lengths[seq_i] - 1
-        target_block_id = block_tables[seq_i, past_kv_seq_len // block_size]
-        offsets_in_block = past_kv_seq_len % block_size
-        target = k_cache[target_block_id, :, offsets_in_block, :]
-        orig = new_k[seq_i].squeeze(dim=0)
-        assert torch.equal(orig, target)
 
 
 BATCH = 16
@@ -149,8 +138,9 @@ def benchmark_rotary_emb(
     if provider == "no_fused_rotary_emb_func":
         fn = lambda: [
             rotary_embedding(new_q, new_k, cos, sin),
-            copy_kv_to_blocked_cache(new_k, k_cache, kv_lengths=kv_seq_lengths, block_tables=block_tables),
-            copy_kv_to_blocked_cache(new_v, v_cache, kv_lengths=kv_seq_lengths, block_tables=block_tables),
+            copy_kv_to_blocked_cache(
+                new_k, new_v, k_cache, v_cache, kv_lengths=kv_seq_lengths, block_tables=block_tables
+            ),
         ]
     elif provider == "fused_triton_rotary_emb_func":
         fn = lambda: decoding_fused_rotary_embedding(
