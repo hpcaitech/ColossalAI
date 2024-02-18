@@ -154,6 +154,7 @@ def main() -> None:
             precision=args.mixed_precision,
             initial_scale=2**16,
             max_norm=args.grad_clip,
+            enable_gradient_accumulation=(args.accumulation_steps > 1),
         )
     elif args.plugin == "gemini_auto":
         plugin = GeminiPlugin(
@@ -161,6 +162,7 @@ def main() -> None:
             placement_policy="auto",
             initial_scale=2**16,
             max_norm=args.grad_clip,
+            enable_gradient_accumulation=(args.accumulation_steps > 1),
         )
     elif args.plugin == "zero2":
         plugin = LowLevelZeroPlugin(
