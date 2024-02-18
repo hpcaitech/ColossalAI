@@ -3,8 +3,8 @@ import torch
 from packaging import version
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
-from colossalai.kernel.triton import copy_kv_to_blocked_cache, rotary_embedding
-from tests.test_infer.test_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache_v2
+from colossalai.kernel.triton import copy_kv_to_blocked_cache, decoding_fused_rotary_embedding, rotary_embedding
+from tests.test_infer.test_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache_v2, mock_alloc_single_token
 
 try:
     import triton  # noqa
@@ -117,26 +117,32 @@ def benchmark_rotary_emb(
     warmup = 10
     rep = 100
 
-    head_dim = 256
+    head_dim = 4096
     dtype = torch.float16
 
     q_shape = (num_tokens, num_kv_heads, head_dim)
     q = -2.3 + 0.5 * torch.randn(q_shape, dtype=dtype, device="cuda")
     k_shape = (num_tokens, num_kv_heads, head_dim)
     k = -2.3 + 0.5 * torch.randn(k_shape, dtype=dtype, device="cuda")
+    v = -2.3 + 0.5 * torch.randn(k_shape, dtype=dtype, device="cuda")
+
     cos_shape = (num_tokens, head_dim // 2)
+
     cos = -1.2 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
     sin = -2.0 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
     cache_shape = (BATCH_SIZE * max_num_blocks_per_seq, num_kv_heads, block_size, head_dim)
     k_cache = torch.zeros(size=cache_shape, dtype=dtype, device="cuda")
-    v = torch.randn_like(k)
-    v_cache = torch.zeros_like(k_cache)
+    v_cache = torch.zeros(size=cache_shape, dtype=dtype, device="cuda")
+
     past_kv_seq_lengths = torch.tensor([SEQ_LEN - 1 for _ in range(BATCH_SIZE)], dtype=torch.int32, device="cuda")
     block_tables = mock_alloc_block_table_and_kvcache_v2(
         k, v, k_cache, v_cache, past_kv_seq_lengths, BATCH_SIZE, max_num_blocks_per_seq, block_size
     )
     new_k = torch.randn((BATCH_SIZE, num_kv_heads, head_dim), dtype=dtype, device="cuda")
     new_q = torch.randn_like(new_k)
+    new_v = torch.randn_like(new_k)
+
+    mock_alloc_single_token(block_tables, past_kv_seq_lengths, block_size)
     kv_seq_lengths = past_kv_seq_lengths + 1
     block_tables = block_tables.to(device="cuda")
 
@@ -144,9 +150,12 @@ def benchmark_rotary_emb(
         fn = lambda: [
             rotary_embedding(new_q, new_k, cos, sin),
             copy_kv_to_blocked_cache(new_k, k_cache, kv_lengths=kv_seq_lengths, block_tables=block_tables),
+            copy_kv_to_blocked_cache(new_v, v_cache, kv_lengths=kv_seq_lengths, block_tables=block_tables),
         ]
     elif provider == "fused_triton_rotary_emb_func":
-        fn = lambda: rotary_embedding(new_q, new_k, cos, sin, k_cache, block_tables, kv_seq_lengths)
+        fn = lambda: decoding_fused_rotary_embedding(
+            new_q, new_k, new_k, cos, sin, k_cache, k_cache, block_tables, kv_seq_lengths
+        )
     else:
         raise ValueError("Undefined provider")
 
@@ -155,5 +164,5 @@ def benchmark_rotary_emb(
 
 
 if __name__ == "__main__":
-    # test_rotary_emb(4, 64, 32, 64, torch.float32)
-    benchmark_rotary_emb.run(save_path=".", print_data=True)
+    test_rotary_emb(4, 64, 32, 64, torch.float32)
+    # benchmark_rotary_emb.run(save_path=".", print_data=True)

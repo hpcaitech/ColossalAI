@@ -16,7 +16,7 @@ from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.inference.struct import BatchInfo
 from colossalai.kernel.triton import (
     context_attention_unpadded,
-    copy_kv_to_blocked_cache,
+    decoding_fused_rotary_embedding,
     flash_decoding_attention,
     get_xine_cache,
     rotary_embedding,
@@ -300,8 +300,17 @@ class NopadLlamaAttention(LlamaAttention):
                 sm_scale=sm_scale,
             )
         else:
-            rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1], k_cache, block_tables, sequence_lengths)
-            copy_kv_to_blocked_cache(value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
+            decoding_fused_rotary_embedding(
+                query_states,
+                key_states,
+                value_states,
+                cos_sin[0],
+                cos_sin[1],
+                k_cache,
+                v_cache,
+                block_tables,
+                sequence_lengths,
+            )
             attn_output = flash_decoding_attention(
                 q=query_states,
                 k_cache=k_cache,
