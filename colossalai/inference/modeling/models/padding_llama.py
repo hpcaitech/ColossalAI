@@ -356,8 +356,9 @@ class PadLlamaAttention(LlamaAttention):
                 if attention_mask is not None:
                     attn_output = pad_input(attn_output, indices, bsz, q_len)
             else:
-                copy_kv_to_blocked_cache(key_states, k_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
-                copy_kv_to_blocked_cache(value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables)
+                copy_kv_to_blocked_cache(
+                    key_states, value_states, k_cache, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables
+                )
                 attn_output = flash_decoding_attention(
                     q=query_states,
                     k_cache=k_cache,

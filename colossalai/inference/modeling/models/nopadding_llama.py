@@ -72,7 +72,6 @@ def llama_model_forward(
     """
     input_ids = batch.get_1D_inputs()
     block_tables = batch.get_block_table_tensor()
-
     sequence_lengths = batch.get_sequence_lengths()
     batch_size = len(sequence_lengths)
     kv_seq_len = sequence_lengths.max().item()
@@ -311,6 +310,10 @@ class NopadLlamaAttention(LlamaAttention):
                 block_tables,
                 sequence_lengths,
             )
+            # copy_kv_to_blocked_cache(
+            #     key_states, value_states, k_cache, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables
+            # )
+
             attn_output = flash_decoding_attention(
                 q=query_states,
                 k_cache=k_cache,

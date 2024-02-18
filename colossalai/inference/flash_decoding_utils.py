@@ -12,6 +12,11 @@ class FDIntermTensors(metaclass=SingletonMeta):
     def __init__(self):
         self._tensors_initialized = False
 
+    def _reset(self):
+        self._tensors_initialized = False
+        del self._mid_output
+        del self._mid_output_lse
+
     @property
     def is_initialized(self):
         return self._tensors_initialized
