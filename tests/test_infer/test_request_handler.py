@@ -22,15 +22,34 @@ def check_running_list():
         pad_token_id=0,
         sample_params=None,
     )
-
+    seq2 = Sequence(
+        request_id=2,
+        prompt="abc",
+        input_token_id=[1, 2, 3],
+        block_size=16,
+        eos_token_id=0,
+        pad_token_id=0,
+        sample_params=None,
+    )
     running_list.append(seq1)
+    running_list.append(seq2)
     assert running_list.ready_for_prefill()
-    assert running_list.decoding == [] and running_list.prefill[0] == seq1
+    assert len(running_list.decoding) == 0
+    assert len(running_list.prefill) > 0 and running_list.prefill[0] == seq1
 
     seq = running_list.find_seq(seq1.request_id)
     assert seq == seq1
 
+    running_list.mark_prefill_running()
+    for seq in running_list.prefill:
+        assert seq.status == RequestStatus.RUNNING
+
+    running_list.move_prefill_to_decoding()
+    assert len(running_list.prefill) == 0
+    assert len(running_list.decoding) > 0 and running_list.decoding[0] == seq1
+
     running_list.remove(seq1)
+    running_list.remove(seq2)
     assert running_list.is_empty()
 
 
