@@ -21,9 +21,8 @@ jobs:
         python-version: '3.8.14'
 
     - run: |
-        pip install wheel
-        NIGHTLY=1 python setup.py sdist bdist_wheel
-        rm dist/*.gz
+        python .github/workflows/scripts/update_setup_for_nightly.py
+        python setup.py sdist build
 
     # publish to PyPI if executed on the main branch
     - name: Publish package to PyPI
