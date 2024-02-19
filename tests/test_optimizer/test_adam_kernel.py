@@ -8,7 +8,8 @@ import pytest
 import torch
 from torch import Tensor
 
-from colossalai.utils import get_current_device, multi_tensor_applier
+from colossalai.accelerator import get_accelerator
+from colossalai.utils import multi_tensor_applier
 
 _FUSED_ALLOWED_P_G_TYPES = [
     (torch.float, torch.half),
@@ -64,9 +65,9 @@ class TorchAdamKernel(AdamKernel):
 class FusedAdamKernel(AdamKernel):
     def __init__(self, lr: float, beta1: float, beta2: float, eps: float, weight_decay: float, use_adamw: bool) -> None:
         super().__init__(lr, beta1, beta2, eps, weight_decay, use_adamw)
-        from colossalai.kernel.op_builder import FusedOptimBuilder
+        from colossalai.kernel.kernel_loader import FusedOptimizerLoader
 
-        fused_optim = FusedOptimBuilder().load()
+        fused_optim = FusedOptimizerLoader().load()
         self.fused_adam = fused_optim.multi_tensor_adam
         self.dummy_overflow_buf = torch.cuda.IntTensor([0])
 
@@ -90,9 +91,9 @@ class FusedAdamKernel(AdamKernel):
 class CPUAdamKernel(AdamKernel):
     def __init__(self, lr: float, beta1: float, beta2: float, eps: float, weight_decay: float, use_adamw: bool) -> None:
         super().__init__(lr, beta1, beta2, eps, weight_decay, use_adamw)
-        from colossalai.kernel.op_builder import CPUAdamBuilder
+        from colossalai.kernel.kernel_loader import CPUAdamLoader
 
-        cpu_optim = CPUAdamBuilder().load()
+        cpu_optim = CPUAdamLoader().load()
 
         self.cpu_adam_op = cpu_optim.CPUAdamOptimizer(lr, beta1, beta2, eps, weight_decay, use_adamw)
 
@@ -155,7 +156,9 @@ def test_fused_adam_kernel(adamw, weight_decay, p_dtype, g_dtype):
         rtol, atol = 1e-3, 1e-3
     if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
         rtol, atol = 4e-3, 4e-3
-    check_adam_kernel(FusedAdamKernel, adamw, weight_decay, p_dtype, g_dtype, get_current_device(), 3, rtol, atol)
+    check_adam_kernel(
+        FusedAdamKernel, adamw, weight_decay, p_dtype, g_dtype, get_accelerator().get_current_device(), 3, rtol, atol
+    )
 
 
 @pytest.mark.parametrize("adamw", [False, True])

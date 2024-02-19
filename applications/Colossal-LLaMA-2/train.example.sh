@@ -42,3 +42,4 @@ colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 30013 train.
     --warmup_steps 100 \
     --use_grad_checkpoint \
     --use_flash_attn \
+    --pad_token "unk"

@@ -59,7 +59,7 @@ class OPTPolicy(Policy):
 
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
-            warnings.warn("OPT dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
+            warnings.warn("OPT doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             policy[OPTDecoder] = ModulePolicyDescription(

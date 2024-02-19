@@ -5,6 +5,7 @@ import time
 
 import torch
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.constants import INPUT_GROUP_3D, OUTPUT_GROUP_3D, WEIGHT_GROUP_3D
 from colossalai.legacy.core import global_context
 from colossalai.legacy.nn import (
@@ -23,7 +24,6 @@ from colossalai.legacy.nn import (
 from colossalai.legacy.nn.layer.parallel_3d._utils import get_parallel_mode_from_env
 from colossalai.legacy.utils import print_rank_0
 from colossalai.logging import get_dist_logger
-from colossalai.utils import get_current_device
 
 from .common import BATCH_SIZE, DEPTH, HIDDEN_SIZE, IMG_SIZE, NUM_CLASSES, SEQ_LENGTH, VOCAB_SIZE, check_equal
 
@@ -31,7 +31,7 @@ from .common import BATCH_SIZE, DEPTH, HIDDEN_SIZE, IMG_SIZE, NUM_CLASSES, SEQ_L
 def check_linear():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     INPUT_SIZE = HIDDEN_SIZE
     OUTPUT_SIZE = 2 * HIDDEN_SIZE
 
@@ -84,7 +84,7 @@ def check_linear():
     logger.info("Rank {} linear forward: {}".format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, device=get_current_device())
+    grad_master = torch.randn(grad_shape, device=get_accelerator().get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=-1)[j]
@@ -119,7 +119,7 @@ def check_linear():
 def check_layernorm():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     INPUT_SIZE = HIDDEN_SIZE
 
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
@@ -206,7 +206,7 @@ def check_layernorm():
 def check_classifier_no_given_weight():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     INPUT_SIZE = HIDDEN_SIZE
 
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
@@ -258,7 +258,7 @@ def check_classifier_no_given_weight():
     logger.info("Rank {} classifier (no given weight) forward: {}".format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, device=get_current_device())
+    grad_master = torch.randn(grad_shape, device=get_accelerator().get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=0)[j]
@@ -306,7 +306,7 @@ def check_classifier_no_given_weight():
 def check_vocab_parallel_classifier_no_given_weight():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     INPUT_SIZE = HIDDEN_SIZE
 
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
@@ -413,7 +413,7 @@ def check_vocab_parallel_classifier_no_given_weight():
 def check_classifier_given_embed_weight():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     dtype = torch.float32
 
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
@@ -463,7 +463,7 @@ def check_classifier_given_embed_weight():
     logger.info("Rank {} classifier (given embed weight) forward: {}".format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_accelerator().get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=0)[j]
@@ -497,7 +497,7 @@ def check_classifier_given_embed_weight():
 def check_vocab_parallel_classifier_given_embed_weight():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
 
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
     weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
@@ -580,7 +580,7 @@ def check_vocab_parallel_classifier_given_embed_weight():
 
 def check_patch_embed():
     rank = torch.distributed.get_rank()
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     logger = get_dist_logger()
     torch.float32
 
@@ -678,7 +678,7 @@ def check_patch_embed():
 
 def check_embed():
     rank = torch.distributed.get_rank()
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     logger = get_dist_logger()
     torch.float32
 
@@ -746,7 +746,7 @@ def check_embed():
 
 def check_vocab_parallel_embed():
     rank = torch.distributed.get_rank()
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     logger = get_dist_logger()
     torch.float32
 
@@ -823,7 +823,7 @@ def check_vocab_parallel_embed():
 def check_loss():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
 
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
     weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
@@ -876,7 +876,7 @@ def check_loss():
 def check_vocab_parallel_loss():
     rank = torch.distributed.get_rank()
     logger = get_dist_logger()
-    device = get_current_device()
+    device = get_accelerator().get_current_device()
     torch.float32
 
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)

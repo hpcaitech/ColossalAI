@@ -21,13 +21,13 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 
 def get_model_numel(model: nn.Module) -> int:
@@ -191,7 +191,9 @@ def main():
     config = LlamaConfig.from_pretrained(args.model_path)
     # use lazy init when using GeminiPlugin
     init_ctx = (
-        LazyInitContext(default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
+        LazyInitContext(default_device=get_accelerator().get_current_device())
+        if isinstance(plugin, GeminiPlugin)
+        else nullcontext()
     )
 
     with init_ctx:

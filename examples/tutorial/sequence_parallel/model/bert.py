@@ -3,13 +3,13 @@ import inspect
 import torch
 import torch.nn as nn
 
-from colossalai.kernel import LayerNorm
 from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn.layer.wrapper import PipelineSharedModuleWrapper
 from colossalai.legacy.pipeline.utils import partition_uniform
 from colossalai.logging import get_dist_logger
+from colossalai.nn.layer.layernorm import MixedFusedLayerNorm as LayerNorm
 
 from .layers import BertDualHead, BertLayer, Embedding, PreProcessor, VocabEmbedding
 from .layers.init_method import init_normal, output_init_normal

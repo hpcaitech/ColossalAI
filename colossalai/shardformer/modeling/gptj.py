@@ -530,7 +530,7 @@ class GPTJPipelineForwards:
 def get_gptj_flash_attention_forward():
     from transformers.models.gptj.modeling_gptj import GPTJAttention
 
-    from colossalai.kernel.cuda_native import AttnMaskType, ColoAttention
+    from colossalai.nn.layer.colo_attention import AttnMaskType, ColoAttention
 
     def split_heads(tensor, num_attention_heads, attn_head_size, rotary):
         """

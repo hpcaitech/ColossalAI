@@ -10,6 +10,7 @@ import torch.nn as nn
 from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import _get_default_group
 
+from colossalai.accelerator import get_accelerator
 from colossalai.checkpoint_io.utils import StateDictSharder, gather_distributed_param
 from colossalai.interface import ModelWrapper
 from colossalai.lazy import LazyTensor
@@ -27,7 +28,7 @@ from colossalai.tensor.d_tensor import (
     is_distributed_tensor,
 )
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
-from colossalai.utils import _cast_float, free_storage, get_current_device, is_ddp_ignored
+from colossalai.utils import _cast_float, free_storage, is_ddp_ignored
 
 from .chunk import Chunk, ChunkManager, TensorState, init_chunk_manager
 from .gemini_hook import GeminiZeROHook
@@ -725,11 +726,13 @@ class GeminiDDP(ModelWrapper):
                 chunk.cpu_shard.copy_(temp_chunk[chunk.shard_begin : chunk.shard_end])
 
             del temp_chunk
-        if self.reuse_fp16_chunk:
-            for chunk_32 in chunk_list:
-                chunk_16 = chunk_32.paired_chunk
-                assert chunk_16 is not None
-                chunk_16.payload.copy_(chunk_32.payload)
+
+        # sync running weights and master weights
+        if self.master_weights:
+            for loaded_chunk in chunk_list:
+                paired_chunk = loaded_chunk.paired_chunk
+                assert paired_chunk is not None
+                paired_chunk.payload.copy_(loaded_chunk.payload)
 
         for name, buf in persistent_buffers.items():
             if buf is not None:
@@ -766,7 +769,7 @@ class GeminiDDP(ModelWrapper):
 
             # move ignored parameters to CUDA
             if is_ddp_ignored(p):
-                p.data = p.data.to(device=get_current_device(), dtype=self.mixed_precision)
+                p.data = p.data.to(device=get_accelerator().get_current_device(), dtype=self.mixed_precision)
                 continue
 
             # create a fp16 parameter
@@ -815,7 +818,7 @@ class GeminiDDP(ModelWrapper):
         for buffer in self.module.buffers():
             if isinstance(buffer, LazyTensor):
                 buffer.materialize()
-            buffer.data = buffer.to(get_current_device())
+            buffer.data = buffer.to(get_accelerator().get_current_device())
             if torch.is_floating_point(buffer):
                 buffer.data = buffer.to(self.mixed_precision)
 

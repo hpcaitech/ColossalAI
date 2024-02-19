@@ -398,10 +398,10 @@ pip install colossalai
 
 **Note: only Linux is supported for now.**
 
-However, if you want to build the PyTorch extensions during installation, you can set `CUDA_EXT=1`.
+However, if you want to build the PyTorch extensions during installation, you can set `BUILD_EXT=1`.
 
 ```bash
-CUDA_EXT=1 pip install colossalai
+BUILD_EXT=1 pip install colossalai
 ```
 
 **Otherwise, CUDA kernels will be built during runtime when you actually need them.**
@@ -429,7 +429,7 @@ By default, we do not compile CUDA/C++ kernels. ColossalAI will build them durin
 If you want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer):
 
 ```shell
-CUDA_EXT=1 pip install .
+BUILD_EXT=1 pip install .
 ```
 
 For Users with CUDA 10.2, you can still build ColossalAI from source. However, you need to manually download the cub library and copy it to the corresponding directory.
@@ -445,7 +445,7 @@ unzip 1.8.0.zip
 cp -r cub-1.8.0/cub/ colossalai/kernel/cuda_native/csrc/kernels/include/
 
 # install
-CUDA_EXT=1 pip install .
+BUILD_EXT=1 pip install .
 ```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
