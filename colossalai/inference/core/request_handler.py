@@ -44,6 +44,18 @@ class RunningList:
     def prefill(self):
         return list(self._prefill.values())
 
+    @property
+    def prefill_seq_num(self):
+        return len(self._prefill)
+
+    @property
+    def decoding_seq_num(self):
+        return len(self._decoding)
+
+    @property
+    def total_seq_num(self):
+        return self.prefill_seq_num + self.decoding_seq_num
+
     def append(self, seq: Sequence):
         assert (seq.request_id not in self._prefill) and (
             seq.request_id not in self._decoding
@@ -78,17 +90,14 @@ class RunningList:
     def is_empty(self):
         return not self._decoding and not self._prefill
 
-    def total_seq_num(self):
-        return len(self._decoding) + len(self._prefill)
-
     def mark_prefill_running(self) -> None:
         for seq_id in self._prefill:
             self._prefill[seq_id].mark_running()
 
-    def move_prefill_to_decoding(self) -> None:
-        # Just copy elements in prefill to decoding
-        self._decoding.update(self._prefill)
-        self._prefill.clear()
+    def move_prefill_to_decoding(self, seq_ids: List[int]) -> None:
+        for seq_id in seq_ids:
+            assert seq_id in self._prefill, f"Sequence {seq_id} is not in prefill list"
+            self._decoding[seq_id] = self._prefill.pop(seq_id)
 
 
 class RequestHandler:
@@ -187,7 +196,7 @@ class RequestHandler:
                             remove_list.append(seq)
                             break
 
-                    num_seqs_to_add = min(len(lst), self.max_batch_size - self.running_list.total_seq_num())
+                    num_seqs_to_add = min(len(lst), self.max_batch_size - self.running_list.total_seq_num)
                     remove_list.extend(lst[:num_seqs_to_add])
                     self.running_list.extend(lst[:num_seqs_to_add])
 
@@ -195,11 +204,16 @@ class RequestHandler:
                         lst.remove(seq)
 
         if self.running_list.ready_for_prefill():
-            self.running_list.mark_prefill_running()
+            num_seqs_to_add = min(self.running_list.prefill_seq_num, self.running_bb.available_batch_size)
+
+            for seq in self.running_list.prefill[:num_seqs_to_add]:
+                seq.mark_running()
             # allocate blocks for the prefill batch
             self.prefill_bb.add_seqs(
-                self.running_list.prefill, alloc_block_tables_fn=self.cache_manager.allocate_context_from_block_tables
+                self.running_list.prefill[:num_seqs_to_add],
+                alloc_block_tables_fn=self.cache_manager.allocate_context_from_block_tables,
             )
+
             return self.prefill_bb
 
         if not self.running_bb.is_empty:
@@ -305,7 +319,7 @@ class RequestHandler:
         Update current running list and done list
         """
         if not self.prefill_bb.is_empty:
-            self.running_list.move_prefill_to_decoding()
+            self.running_list.move_prefill_to_decoding(self.prefill_bb.seqs_ids)
             self.running_bb.merge(self.prefill_bb)
             # clear the prefill batch without assigning a free_block_tables_fn
             # since we want to reuse the memory recorded on the block tables

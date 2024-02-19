@@ -44,7 +44,7 @@ def check_running_list():
     for seq in running_list.prefill:
         assert seq.status == RequestStatus.RUNNING
 
-    running_list.move_prefill_to_decoding()
+    running_list.move_prefill_to_decoding([seq1.request_id, seq2.request_id])
     assert len(running_list.prefill) == 0
     assert len(running_list.decoding) > 0 and running_list.decoding[0] == seq1
 
