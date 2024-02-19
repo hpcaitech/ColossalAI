@@ -3,7 +3,7 @@ huggingface_hub==0.17.3
 tqdm
 datasets
 loralib
-colossalai==0.3.4
+colossalai==0.3.5
 torch>=1.12.1
 langchain
 tokenizers
