@@ -102,10 +102,11 @@ class SFTTrainer(SLTrainer):
             batch_size = batch["input_ids"].size(0)
             outputs = self.model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
             loss = outputs.loss
-            loss_mean = all_reduce_mean(tensor=loss)
-            self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
             self.booster.backward(loss=loss, optimizer=self.optimizer)
 
+            loss_mean = all_reduce_mean(tensor=loss)
+            self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
+            
             # Gradient accumulation
             if (i + 1) % self.accumulation_steps == 0:
                 self.optimizer.step()

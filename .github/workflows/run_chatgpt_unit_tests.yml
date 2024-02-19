@@ -34,6 +34,7 @@ jobs:
         run: |
           cd applications/ColossalChat
           pip install -v .
+          pip install pytest
 
       - name: Execute Unit Testing
         run: |

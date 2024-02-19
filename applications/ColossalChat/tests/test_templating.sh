@@ -13,7 +13,7 @@ get_pretrain() {
     if [[ $model == "colossal-llama2" ]]; then
         echo "hpcai-tech/Colossal-LLaMA-2-7b-base"
     elif [[ $model == "llama2" ]]; then
-        echo "/home/zhongyuting/model/Llama-2-7b-chat-hf"
+        echo "hf-internal-testing/llama-tokenizer"
     elif [[ $model == "zephyr" ]]; then
         echo "HuggingFaceH4/zephyr-7b-beta"
     elif [[ $model == "mistral" ]]; then

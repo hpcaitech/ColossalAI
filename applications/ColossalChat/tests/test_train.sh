@@ -30,7 +30,7 @@ MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
 # Skip those tests due to CI tests timeout
 MODELS=('llama')
-PLUGINS=('gemini_auto' 'zero2' 'zero2_cpu' '3d' 'gemini')
+PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d')
 # PLUGINS=('gemini')
 LORA_RANK=('0')  # skip to reduce CI execution time, can pass all locally
 
@@ -95,8 +95,7 @@ SKIPPED_TESTS=(
 GRAD_CKPTS=('--grad_checkpoint')
 for lora_rank in ${LORA_RANK[@]}; do
     for model in ${MODELS[@]}; do
-        plugins=($(shuf -e "${PLUGINS[@]}"))
-        for plugin in ${plugins[@]}; do
+        for plugin in ${PLUGINS[@]}; do
             if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$plugin-$lora_rank " ]]; then
                 echo "[Test]: Skipped $model-$plugin-$lora_rank"
                 continue
@@ -167,8 +166,7 @@ SKIPPED_TESTS=(
 GRAD_CKPTS=('--grad_checkpoint')
 for lora_rank in ${LORA_RANK[@]}; do
     for model in ${MODELS[@]}; do
-        plugins=($(shuf -e "${PLUGINS[@]}"))
-        for plugin in ${plugins[@]}; do
+        for plugin in ${PLUGINS[@]}; do
             if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$plugin-$lora_rank " ]]; then
                 echo "[Test]: Skipped $model-$plugin-$lora_rank"
                 continue
@@ -239,8 +237,7 @@ SKIPPED_TESTS=(
 GRAD_CKPTS=('--grad_checkpoint')
 for lora_rank in ${LORA_RANK[@]}; do
     for model in ${MODELS[@]}; do
-        plugins=($(shuf -e "${PLUGINS[@]}"))
-        for plugin in ${plugins[@]}; do
+        for plugin in ${PLUGINS[@]}; do
             if [[ $plugin == "gemini_auto" ]]; then
                 echo "[Test]: Skipped $model-$plugin"
                 continue # gemini_auto plugin doesn't support generation
@@ -338,8 +335,7 @@ SKIPPED_TESTS=(
 GRAD_CKPTS=('--grad_checkpoint')
 for lora_rank in ${LORA_RANK[@]}; do
     for model in ${MODELS[@]}; do
-        plugins=($(shuf -e "${PLUGINS[@]}"))
-        for plugin in ${plugins[@]}; do
+        for plugin in ${PLUGINS[@]}; do
             if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$plugin-$lora_rank " ]]; then
                 echo "[Test]: Skipped $model-$plugin-$lora_rank"
                 continue
