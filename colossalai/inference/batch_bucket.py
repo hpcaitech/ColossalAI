@@ -421,7 +421,7 @@ class BatchBucket:
                 seq.output_len == 0 for seq in self._sequences_dict.values()
             ), "Sequence stage (Prefill/Decoding) must be the same in the batch"
             out_li = []
-            num_tokens = torch.sum(self._sequence_lengths).item()
+            num_tokens = torch.sum(self._sequence_lengths)
             out = torch.empty([num_tokens], dtype=torch.long)
             seq_ids = sorted(self._sequences_indexes.keys(), key=lambda x: self._sequences_indexes[x])
             for seq_id in seq_ids:
