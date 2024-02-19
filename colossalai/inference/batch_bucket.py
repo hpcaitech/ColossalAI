@@ -320,25 +320,15 @@ class BatchBucket:
         for seq in self._sequences_dict.values():
             if seq.check_finish():
                 finished_seqs.append(seq)
-
         # Use `pop_seq_update_batch`` to update the batch status for just a few of finished seqs,
-        # otherwise, pop seqs directly and then call `_make_compact` to compress the batch
-        if len(finished_seqs) < 5:
-            for seq in finished_seqs:
-                _, block_table = self.pop_seq_update_batch(seq.request_id, free_block_table_fn)
-                if block_table is not None:
-                    finished_block_tables.append(block_table)
-        else:
-            for seq in finished_seqs:
-                seq_id = seq.request_id
-                block_table = self.block_tables[self._sequences_indexes[seq_id]]
-                self._sequences_dict.pop(seq_id)
-                self._sequences_indexes.pop(seq_id)
-                if free_block_table_fn:
-                    free_block_table_fn(block_table)
-                else:
-                    finished_block_tables.append(block_table.detach().clone())
-            self._make_compact()
+        # otherwise, pop seqs directly and then call `_make_compact` to compress the batch.
+        # For now, the performance difference is not significant, so we use the frist method to pop seqs.
+        # Precise evaluations to be done.
+        for seq in finished_seqs:
+            _, block_table = self.pop_seq_update_batch(seq.request_id, free_block_table_fn)
+            if block_table is not None:
+                finished_block_tables.append(block_table)
+
         return finished_seqs, finished_block_tables
 
     # TODO arg type not support beam search sampling yet
