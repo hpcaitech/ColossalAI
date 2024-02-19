@@ -741,7 +741,6 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         # Get all working gradients and gradients to be synchronized.
         all_working_grads = _get_all_working_grads()
         grads_to_sync = _get_grads_to_sync(all_working_grads)
-
         if self.require_grad_sync and grads_to_sync is not None:
             # Synchronize sequence parallelism gradients if required.
             SeqParallelUtils.allreduce_partial_data_grad(process_group=self.tp_pg, grads=grads_to_sync)
@@ -1189,7 +1188,13 @@ class HybridParallelPlugin(PipelinePluginBase):
                         tp_process_group=self.tp_group,
                     )
             else:
-                if self.dp_size == 1:
+                if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "3":
+                    self.zero_dp_size = self.sp_size
+                    self.zero_dp_group = self.sp_group
+                else:
+                    self.zero_dp_size = self.dp_size
+                    self.zero_dp_group = self.dp_group
+                if self.zero_dp_size == 1:
                     warnings.warn(
                         "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "
                         "If you are not intended to use cpu_offload, please consider set zero_stage=0."
@@ -1201,7 +1206,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     model,
                     use_pipeline=self.enable_pipeline_parallelism,
                     param_info=param_info,
-                    dp_process_group=self.dp_group,
+                    dp_process_group=self.zero_dp_group,
                     tp_process_group=self.tp_group,
                     pp_process_group=self.pp_group,
                     verbose=True,
