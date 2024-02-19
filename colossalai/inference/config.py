@@ -109,7 +109,7 @@ class InferenceConfig:
         ), f"Expected dtype to be in {_ALLOWED_DTYPES} but found an unknown dtype: {self.dtype}"
 
         # check distributed
-        assert (
+        assert (not torch.distributed.is_initialized() and self.tp_size * self.pp_size == 1) or (
             self.tp_size * self.pp_size == dist.get_world_size()
         ), f"TP size({self.tp_size}) * PP size({self.pp_size}) should be equal to the global world size ({dist.get_world_size()})"
         # check prompt template

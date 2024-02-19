@@ -42,7 +42,7 @@ class InferenceEngine:
     def __init__(
         self,
         model: nn.Module,
-        tokenizer: [Union[PreTrainedTokenizer, PreTrainedTokenizerFast]],
+        tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
         inference_config: InferenceConfig,
         verbose: bool = False,
         model_policy: Policy = None,
@@ -254,20 +254,12 @@ class InferenceEngine:
             else:
                 prompt = prompts[i]
 
-            max_blocks_per_sequence = (
-                self.inference_config.max_input_len
-                + self.inference_config.max_output_len
-                + self.inference_config.block_size
-                - 1
-            ) // self.inference_config.block_size
-            block_table = torch.full([max_blocks_per_sequence], -1, device=self.device)
             sequence = Sequence(
                 request_id,
                 prompt,
                 prompts_token_ids[i],
                 block_size,
                 None,
-                block_table,
                 self.tokenizer.eos_token_id,
                 self.tokenizer.pad_token_id,
                 self.inference_config.max_output_len,
