@@ -45,6 +45,9 @@ class RunningList:
         return list(self._prefill.values())
 
     def append(self, seq: Sequence):
+        assert (seq.request_id not in self._prefill) and (
+            seq.request_id not in self._decoding
+        ), f"Sequence uid {seq.request_id} already exists."
         self._prefill[seq.request_id] = seq
 
     def extend(self, seqs: List[Sequence]):
