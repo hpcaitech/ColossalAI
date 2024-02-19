@@ -35,6 +35,7 @@ def generate(args):
         input_txt = f"{args.input_txt}{BASE_INFERENCE_SUFFIX}"
 
     inputs = tokenizer(input_txt, return_tensors="pt").to(args.device)
+    num_input_tokens = inputs["input_ids"].shape[-1]
     output = model.generate(
         **inputs,
         max_new_tokens=args.max_new_tokens,
@@ -44,7 +45,7 @@ def generate(args):
         top_p=args.top_p,
         num_return_sequences=1,
     )
-    response = tokenizer.decode(output.cpu()[0], skip_special_tokens=False)
+    response = tokenizer.decode(output.cpu()[0, num_input_tokens:], skip_special_tokens=True)
     logger.info(f"Question: {input_txt} \n\n Answer: \n{response}")
     return response
 
