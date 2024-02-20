@@ -19,10 +19,8 @@
 当第二个线性层 $Z=YB$ 跟随上述列并行层的时候, 我们把 $B$ 划分为
 $$
 \left[\begin{matrix} B_1 \\ B_2 \end{matrix} \right]
-```
-这就是所谓的行并行方式.
 $$
-
+这就是所谓的行并行方式.
 为了计算
 $$
 Z = [Y_1 ~ Y_2] \left[\begin{matrix} B_1 \\ B_2 \end{matrix} \right]
