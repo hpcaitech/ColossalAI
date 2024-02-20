@@ -108,6 +108,18 @@ random_choice() {
     echo ${arr[$idx]}
 }
 
+echo "Prepare dummy data for testing..."
+python $TEST_DIR/generate_dummy_datasets_for_testing.py \
+    --data_dir $(get_data_input_dirs sft) \
+    --data_type "sft"
+
+python $TEST_DIR/generate_dummy_datasets_for_testing.py \
+    --data_dir $(get_data_input_dirs preference) \
+    --data_type "preference"
+
+python $TEST_DIR/generate_dummy_datasets_for_testing.py \
+    --data_dir $(get_data_input_dirs prompt) \
+    --data_type "prompt"
 
 echo "[Test]: testing prepare_preference_dataset.py ..."
 
