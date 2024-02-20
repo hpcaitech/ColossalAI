@@ -106,16 +106,9 @@ def supervised_tokenize_sft(
         tokens = tokenizer.convert_ids_to_tokens(tokenized, skip_special_tokens=False)
         corresponding_str = [tokenizer.convert_tokens_to_string([token]) for token in tokens]
         token_str_mapping = [(tokenized[i], s) for i, s in enumerate(corresponding_str)]
-        raise ValueError(f"Please check whether the sequence control seperators are configed correctly \"{tokenizer.decode(getattr(template, sep_name), skip_special_tokens=False)}\" \
+        raise ValueError(f"Please check whether the sequence control seperators are configed correctly \
             in the prompt {prompt}. Please manually set sequence control tokens if this message continue to occur constantly.\nToken mapping:\n{token_str_mapping}\nCurrent Setting:\n{str(template)}")
-        return dict(
-            input_ids=None,
-            labels=None,
-            inputs_decode=None,
-            labels_decode=None,
-            seq_length=None,
-            seq_category=None,
-        )
+        
     target_turns = []
     last_sep = None
     cnt = 0
@@ -163,7 +156,16 @@ def supervised_tokenize_sft(
     except TypeError as e:
         raise TypeError(str(e)+f'\nUnable to decode labels: {labels_decode}')
 
-
+    # Check if all labels are ignored, this may happen when the tokenized length is too long
+    if labels.count(ignore_index) == len(labels):
+        return dict(
+            input_ids=None,
+            labels=None,
+            inputs_decode=None,
+            labels_decode=None,
+            seq_length=None,
+            seq_category=None,
+        )
     
     return dict(
         input_ids=tokenized,
@@ -255,9 +257,8 @@ def apply_rlhf_data_format(template: Conversation, tokenizer: Any, context_len: 
         tokens = tokenizer.convert_ids_to_tokens(tokenized, skip_special_tokens=False)
         corresponding_str = [tokenizer.convert_tokens_to_string([token]) for token in tokens]
         token_str_mapping = [(tokenized[i], s) for i, s in enumerate(corresponding_str)]
-        raise ValueError(f"Please check whether the sequence control seperators are configed correctly \"{tokenizer.decode(getattr(template, sep_name), skip_special_tokens=False)}\" \
+        raise ValueError(f"Please check whether the sequence control seperators are configed correctly \
             in the prompt {prompt}. Please manually set sequence control tokens if this message continue to occur constantly.\nToken mapping:\n{token_str_mapping}\nCurrent Setting:\n{str(template)}")
-        return dict(input_ids=None, loss_mask=None, label_decode=None)
 
     target_turns = []
     last_sep = None
@@ -395,6 +396,17 @@ def tokenize_rlhf(
             rejected_data_packed["loss_mask"],
             rejected_data_packed["label_decode"]
         )
+
+        # Check if loss mask is all 0s (no loss), this may happen when the tokenized length is too long
+        if chosen_loss_mask.count(0) == len(chosen_loss_mask) or rejected_loss_mask.count(0) == len(rejected_loss_mask):
+            return dict(
+                chosen_input_ids=None,
+                chosen_loss_mask=None,
+                chosen_label_decode=None,
+                rejected_input_ids=None,
+                rejected_loss_mask=None,
+                rejected_label_decode=None
+            )
 
         return {
             "chosen_input_ids": chosen_input_ids,
