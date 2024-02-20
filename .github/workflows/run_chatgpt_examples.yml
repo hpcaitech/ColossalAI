@@ -42,12 +42,16 @@ jobs:
         run: |
           cd applications/ColossalChat
           rm -rf ~/.cache/colossalai
+          mkdir models
+          mkdir sft_data
+          mkdir prompt_data
+          mkdir preference_data
           ./tests/test_data_preparation.sh
           ./tests/test_train.sh
         env:
           NCCL_SHM_DISABLE: 1
           MAX_JOBS: 8
-          PRETRAINED_MODEL_PATH: /data/scratch/examples-data/chat/coati_v2/models
-          SFT_DATASET: /data/scratch/examples-data/chat/coati_v2/sft_data
-          PROMPT_DATASET: /data/scratch/examples-data/chat/coati_v2/prompt_data
-          PREFERENCE_DATASET: /data/scratch/examples-data/chat/coati_v2/preference_data
+          PRETRAINED_MODEL_PATH: ./models
+          SFT_DATASET: ./sft_data
+          PROMPT_DATASET: ./prompt_data
+          PREFERENCE_DATASET: ./preference_data
