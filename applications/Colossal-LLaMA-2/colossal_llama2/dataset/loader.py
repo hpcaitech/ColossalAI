@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import numpy as np
 import os
-import random
 from dataclasses import dataclass
-from typing import Dict, List, Union, Sequence, Optional, Iterator, Callable
+from typing import Dict, Iterator, List, Optional, Sequence, Union
 
 import torch
-from datasets import dataset_dict, load_from_disk
-from datasets import Dataset as HFDataset
-from torch.distributed import ProcessGroup
-from torch.distributed.distributed_c10d import _get_default_group
-from torch.utils.data import ConcatDataset, Dataset, DataLoader, DistributedSampler
-from transformers.tokenization_utils import PreTrainedTokenizer
 import torch.nn.functional as F
+from datasets import Dataset as HFDataset
+from datasets import dataset_dict, load_from_disk
+from torch.utils.data import ConcatDataset, Dataset, DistributedSampler
+from transformers.tokenization_utils import PreTrainedTokenizer
 
 DatasetType = Union[Dataset, ConcatDataset, dataset_dict.Dataset]
 PathType = Union[str, os.PathLike]
@@ -62,6 +58,7 @@ class DataCollatorForSupervisedDataset(object):
     tokenizer: PreTrainedTokenizer
     max_length: int = 4096
     ignore_index: int = -100
+    padding: str = "max_length"
 
     def __call__(self, instances: Sequence[Dict[str, List[int]]]) -> Dict[str, torch.Tensor]:
         """
@@ -106,10 +103,11 @@ class DataCollatorForSupervisedDataset(object):
                 batch_first=True,
                 padding_value=self.ignore_index,
             )  # (bsz, max_len)
-            # pad to max
-            to_pad = self.max_length - input_ids.size(1)
-            input_ids = F.pad(input_ids, (0, to_pad), value=self.tokenizer.pad_token_id)
-            labels = F.pad(labels, (0, to_pad), value=self.ignore_index)
+            if self.padding == "max_length":
+                # pad to max
+                to_pad = self.max_length - input_ids.size(1)
+                input_ids = F.pad(input_ids, (0, to_pad), value=self.tokenizer.pad_token_id)
+                labels = F.pad(labels, (0, to_pad), value=self.ignore_index)
         elif self.tokenizer.padding_side == "left":
             reversed_input_ids = [seq.flip(dims=(0,)) for seq in batch_input_ids]
             reversed_input_ids = torch.nn.utils.rnn.pad_sequence(
@@ -171,49 +169,3 @@ class StatefulDistributedSampler(DistributedSampler):
 
     def set_start_index(self, start_index: int) -> None:
         self.start_index = start_index
-
-
-def setup_distributed_dataloader(
-    dataset: DatasetType,
-    batch_size: int = 1,
-    shuffle: bool = False,
-    seed: int = 1024,
-    drop_last: bool = False,
-    pin_memory: bool = False,
-    num_workers: int = 0,
-    collate_fn: Callable[[Sequence[Dict[str, Union[str, List[int]]]]], Dict[str, torch.Tensor]] = None,
-    process_group: Optional[ProcessGroup] = None,
-    **kwargs,
-) -> DataLoader:
-    """
-    Setup dataloader for distributed training.
-    """
-    _kwargs = kwargs.copy()
-    process_group = process_group or _get_default_group()
-    sampler = StatefulDistributedSampler(
-        dataset=dataset,
-        num_replicas=process_group.size(),
-        rank=process_group.rank(),
-        shuffle=shuffle,
-        seed=seed,
-        drop_last=drop_last,
-    )
-
-    # Deterministic dataloader
-    def seed_worker(worker_id: int) -> None:
-        worker_seed = seed
-        np.random.seed(worker_seed)
-        torch.manual_seed(worker_seed)
-        random.seed(worker_seed)
-
-    return DataLoader(
-        dataset=dataset,
-        batch_size=batch_size,
-        sampler=sampler,
-        num_workers=num_workers,
-        collate_fn=collate_fn,
-        pin_memory=pin_memory,
-        drop_last=drop_last,
-        worker_init_fn=seed_worker,
-        **_kwargs,
-    )

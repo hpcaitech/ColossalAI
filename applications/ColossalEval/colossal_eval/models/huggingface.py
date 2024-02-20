@@ -11,6 +11,7 @@ from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokeni
 
 from colossalai.logging import DistributedLogger
 from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.utils import get_current_device
 
 from .base import BaseModel
 
@@ -128,12 +129,12 @@ class HuggingFaceModel(BaseModel):
             self.model = AutoModel.from_pretrained(path, **model_kwargs)
             shard_former = ShardFormer(shard_config)
             self.model, sharded_parameters = shard_former.optimize(self.model)
-            self.model.to(torch.cuda.current_device())
+            self.model.to(get_current_device())
 
             if peft_path is not None:
                 raise NotImplementedError("ShardFormer for PEFT models is not implemented.")
         else:
-            self.model = AutoModel.from_pretrained(path, **model_kwargs).to(torch.cuda.current_device())
+            self.model = AutoModel.from_pretrained(path, **model_kwargs).to(get_current_device())
             if peft_path is not None:
                 self.model = PeftModel.from_pretrained(self.model, peft_path, is_trainable=False)
         self.model.eval()
@@ -155,11 +156,11 @@ class HuggingFaceModel(BaseModel):
         """
         input_ids = torch.nn.utils.rnn.pad_sequence(
             input_ids_list, batch_first=True, padding_value=self.tokenizer.pad_token_id
-        ).to(torch.cuda.current_device())
+        ).to(get_current_device())
         labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX).to(
-            torch.cuda.current_device()
+            get_current_device()
         )
-        attention_mask = input_ids.ne(self.tokenizer.pad_token_id).to(torch.cuda.current_device())
+        attention_mask = input_ids.ne(self.tokenizer.pad_token_id).to(get_current_device())
 
         outputs = self.model(input_ids, attention_mask=attention_mask)[0]
 
@@ -464,7 +465,7 @@ class HuggingFaceModel(BaseModel):
             return_tensors="pt",
             return_token_type_ids=False,
             max_length=self.model_max_length - max_new_tokens,
-        ).to(torch.cuda.current_device())
+        ).to(get_current_device())
 
         # Set output_scores=True to get prediction scores.
         outputs = self.model.generate(
@@ -598,12 +599,12 @@ class HuggingFaceCausalLM(HuggingFaceModel):
             self.model = AutoModelForCausalLM.from_pretrained(path, **model_kwargs)
             shard_former = ShardFormer(shard_config)
             self.model, sharded_parameters = shard_former.optimize(self.model)
-            self.model.to(torch.cuda.current_device())
+            self.model.to(get_current_device())
 
             if peft_path is not None:
                 raise NotImplementedError("ShardFormer for PEFT models is not implemented.")
         else:
-            self.model = AutoModelForCausalLM.from_pretrained(path, **model_kwargs).to(torch.cuda.current_device())
+            self.model = AutoModelForCausalLM.from_pretrained(path, **model_kwargs).to(get_current_device())
             if peft_path is not None:
                 self.model = PeftModel.from_pretrained(self.model, peft_path, is_trainable=False)
 

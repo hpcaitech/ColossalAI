@@ -6,6 +6,8 @@ if Version(torch.__version__) >= Version("2.0.0"):
 else:
     from torch.optim.lr_scheduler import _LRScheduler
 
+from colossalai.logging import get_dist_logger
+
 
 class _enable_get_lr_call:
     def __init__(self, o):
@@ -19,7 +21,39 @@ class _enable_get_lr_call:
         self.o._get_lr_called_within_step = False
 
 
-class DelayerScheduler(_LRScheduler):
+class TwoStageScheduler(_LRScheduler):
+    def __init__(self, optimizer, after_scheduler: _LRScheduler, last_epoch=-1):
+        self.after_scheduler = after_scheduler
+        self.finished = False
+        super().__init__(optimizer, last_epoch)
+
+    def state_dict(self):
+        state_dict = {key: value for key, value in self.__dict__.items() if key not in "optimizer"}
+        if isinstance(state_dict["after_scheduler"], _LRScheduler):
+            state_dict["after_scheduler_type"] = type(state_dict["after_scheduler"]).__name__
+            state_dict["after_scheduler_dict"] = state_dict["after_scheduler"].state_dict()
+            del state_dict["after_scheduler"]
+        else:
+            raise NotImplementedError()
+        return state_dict
+
+    def load_state_dict(self, state_dict):
+        if "after_scheduler_dict" not in state_dict:
+            logger = get_dist_logger()
+            logger.warning(
+                "after_scheduler_dict is not found, skip loading after_scheduler. This may cause unexpected behavior."
+            )
+        else:
+            self.after_scheduler.load_state_dict(state_dict["after_scheduler_dict"])
+        state_dict = {
+            key: value
+            for key, value in state_dict.items()
+            if key not in ("after_scheduler_type", "after_scheduler_dict")
+        }
+        super().load_state_dict(state_dict)
+
+
+class DelayerScheduler(TwoStageScheduler):
     """Starts with a flat lr schedule until it reaches N epochs then applies
     the specific scheduler (For example: ReduceLROnPlateau)
 
@@ -35,19 +69,7 @@ class DelayerScheduler(_LRScheduler):
         if delay_epochs < 0:
             raise ValueError(f"delay_epochs must >= 0, got {delay_epochs}")
         self.delay_epochs = delay_epochs
-        self.after_scheduler = after_scheduler
-        self.finished = False
-        super().__init__(optimizer, last_epoch)
-
-    def state_dict(self):
-        state_dict = {key: value for key, value in self.__dict__.items() if key not in "optimizer"}
-        if isinstance(state_dict["after_scheduler"], _LRScheduler):
-            state_dict["after_scheduler_type"] = type(state_dict["after_scheduler"]).__name__
-            state_dict["after_scheduler_dict"] = state_dict["after_scheduler"].state_dict()
-            del state_dict["after_scheduler"]
-        else:
-            raise NotImplementedError()
-        return state_dict
+        super().__init__(optimizer, after_scheduler, last_epoch)
 
     def get_lr(self):
         if self.last_epoch >= self.delay_epochs:
@@ -71,7 +93,7 @@ class DelayerScheduler(_LRScheduler):
             return super(DelayerScheduler, self).step(epoch)
 
 
-class WarmupScheduler(_LRScheduler):
+class WarmupScheduler(TwoStageScheduler):
     """Starts with a linear warmup lr schedule until it reaches N epochs then applies
     the specific scheduler (For example: ReduceLROnPlateau).
 
@@ -85,19 +107,7 @@ class WarmupScheduler(_LRScheduler):
 
     def __init__(self, optimizer, warmup_epochs, after_scheduler, last_epoch=-1):
         self.warmup_epochs = int(warmup_epochs)
-        self.after_scheduler = after_scheduler
-        self.finished = False
-        super().__init__(optimizer, last_epoch)
-
-    def state_dict(self):
-        state_dict = {key: value for key, value in self.__dict__.items() if key not in "optimizer"}
-        if isinstance(state_dict["after_scheduler"], _LRScheduler):
-            state_dict["after_scheduler_type"] = type(state_dict["after_scheduler"]).__name__
-            state_dict["after_scheduler_dict"] = state_dict["after_scheduler"].state_dict()
-            del state_dict["after_scheduler"]
-        else:
-            raise NotImplementedError()
-        return state_dict
+        super().__init__(optimizer, after_scheduler, last_epoch)
 
     def get_lr(self):
         if self.last_epoch >= self.warmup_epochs:
@@ -120,7 +130,7 @@ class WarmupScheduler(_LRScheduler):
             return super().step(epoch)
 
 
-class WarmupDelayerScheduler(_LRScheduler):
+class WarmupDelayerScheduler(TwoStageScheduler):
     """Starts with a linear warmup lr schedule until it reaches N epochs and a flat lr schedule
     until it reaches M epochs then applies the specific scheduler (For example: ReduceLROnPlateau).
 
@@ -140,19 +150,7 @@ class WarmupDelayerScheduler(_LRScheduler):
             raise ValueError(f"warmup_epochs must >= 0, got {warmup_epochs}")
         self.warmup_epochs = warmup_epochs
         self.delay_epochs = delay_epochs
-        self.after_scheduler = after_scheduler
-        self.finished = False
-        super().__init__(optimizer, last_epoch)
-
-    def state_dict(self):
-        state_dict = {key: value for key, value in self.__dict__.items() if key not in "optimizer"}
-        if isinstance(state_dict["after_scheduler"], _LRScheduler):
-            state_dict["after_scheduler_type"] = type(state_dict["after_scheduler"]).__name__
-            state_dict["after_scheduler_dict"] = state_dict["after_scheduler"].state_dict()
-            del state_dict["after_scheduler"]
-        else:
-            raise NotImplementedError()
-        return state_dict
+        super().__init__(optimizer, after_scheduler, last_epoch)
 
     def get_lr(self):
         if self.last_epoch >= self.warmup_epochs + self.delay_epochs:
