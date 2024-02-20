@@ -100,9 +100,13 @@ def test_context_attention(
     k_cache_triton = torch.zeros_like(k_cache_ref)
     v_cache_triton = torch.zeros_like(v_cache_ref)
 
+    _, num_heads, head_dim = q_unpad.shape
+
     out_triton = context_attention_unpadded(
         q_unpad, k_unpad, v_unpad, k_cache_triton, v_cache_triton, context_lengths, block_tables, block_size
     )
+
+    out_triton = out_triton.view(-1, num_heads, head_dim)
 
     out_torch = torch_attn_unpad(q_unpad, k_unpad, v_unpad, context_lengths, num_attn_heads, num_kv_heads)
 
