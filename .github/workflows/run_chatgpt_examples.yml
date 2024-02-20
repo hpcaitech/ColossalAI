@@ -28,6 +28,10 @@ jobs:
       - name: Checkout ColossalAI
         uses: actions/checkout@v2
 
+      - name: Install Colossal-AI
+        run: |
+          BUILD_EXT=1 pip install -v -e .
+
       - name: Install ChatGPT
         run: |
           cd applications/ColossalChat
