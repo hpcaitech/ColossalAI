@@ -31,18 +31,14 @@ MODELS_DIR=$TEMP_DIR/models_config
 # Skip those tests due to CI tests timeout
 MODELS=('llama')
 PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d')
-# PLUGINS=('gemini')
 LORA_RANK=('0')  # skip to reduce CI execution time, can pass all locally
 
 export OMP_NUM_THREADS=8
 
-# install requirements
-pip install -r $EXAMPLES_DIR/requirements.txt
-
 get_pretrain() {
     local model=$1
     if [[ $model == "llama" ]]; then
-        echo "$PRETRAINED_MODEL_PATH/tinyllama-110M"
+        echo "nickypro/tinyllama-110M"
     elif [[ $model == "opt" ]]; then
         echo "facebook/opt-125m"
     else
