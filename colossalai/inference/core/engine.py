@@ -137,7 +137,8 @@ class InferenceEngine:
 
     def generate(
         self,
-        prompts: List[str] = None,
+        requests_id: Union[List[int], int] = None,
+        prompts: Union[List[str], str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
         return_token_ids: bool = False,
         generation_config: Optional[GenerationConfig] = None,
@@ -157,7 +158,7 @@ class InferenceEngine:
         with torch.inference_mode():
             self.generation_config = generation_config
             if prompts is not None or prompts_token_ids is not None:
-                self.add_request(prompts=prompts, prompts_token_ids=prompts_token_ids)
+                self.add_request(requests_id=requests_id, prompts=prompts, prompts_token_ids=prompts_token_ids)
 
             output_seqs_list = []
             total_tokens_list = []
@@ -204,8 +205,8 @@ class InferenceEngine:
 
     def add_request(
         self,
-        requests_id: List[int] = None,
-        prompts: List[str] = None,
+        requests_id: Union[List[int], int] = None,
+        prompts: Union[List[str], str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
     ) -> None:
         """

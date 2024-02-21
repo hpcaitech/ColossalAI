@@ -1,7 +1,8 @@
 """
 Our config contains various options for inference optimization, it is a unified API that wraps all the configurations for inference.
 """
-
+import argparse
+import dataclasses
 import logging
 from dataclasses import dataclass
 from typing import Optional, Union
@@ -140,3 +141,18 @@ class InferenceConfig:
                 meta_config[type] = getattr(model_config, type)
 
         return GenerationConfig.from_dict(meta_config)
+
+    @classmethod
+    def from_cli_args(cls, args: argparse.Namespace) -> "InferenceConfig":
+        # Get the list of attributes of this dataclass.
+        attrs = [attr.name for attr in dataclasses.fields(cls)]
+        inference_config_args = {}
+        for attr in attrs:
+            if hasattr(args, attr):
+                inference_config_args[attr] = getattr(args, attr)
+            else:
+                inference_config_args[attr] = getattr(cls, attr)
+
+        # Set the attributes from the parsed arguments.
+        inference_config = cls(**inference_config_args)
+        return inference_config
