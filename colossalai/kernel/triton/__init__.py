@@ -13,7 +13,7 @@ if HAS_TRITON:
     from .fused_rotary_embedding import fused_rotary_embedding
     from .gptq_triton import gptq_fused_linear_triton
     from .kvcache_copy import copy_kv_to_blocked_cache
-    from .no_pad_rotary_embedding import rotary_embedding
+    from .no_pad_rotary_embedding import decoding_fused_rotary_embedding, rotary_embedding
     from .rms_layernorm import rms_layernorm
     from .rotary_cache_copy import get_xine_cache
     from .softmax import softmax
@@ -28,4 +28,5 @@ if HAS_TRITON:
         "rotary_embedding",
         "fused_rotary_embedding",
         "get_xine_cache",
+        "decoding_fused_rotary_embedding",
     ]
