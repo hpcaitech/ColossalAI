@@ -95,7 +95,7 @@ def benchmark_inference(args):
         else:
             assert args.model_path, "When testing pretrained weights, the model path must be provided.'"
             model = transformers.LlamaForCausalLM.from_pretrained(args.model_path).cuda()
-            tokenizer = AutoTokenizer.from_pretrained(args.model_path)
+            tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
 
         model = model.eval()
 
@@ -122,6 +122,7 @@ def benchmark_inference(args):
         elif args.mode == "vllm":
             engine = LLM(
                 model=args.model_path,
+                tokenizer="hf-internal-testing/llama-tokenizer",
                 max_num_seqs=mbsz,
                 dtype="float16",
                 enforce_eager=True,
