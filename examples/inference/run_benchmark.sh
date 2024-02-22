@@ -23,8 +23,6 @@ CUDA_VISIBLE_DEVICES_set_n_least_memory_usage() {
 
 CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 1
 
-export CUDA_VISIBLE_DEVICES=3
-
 # benchmark llama2-7b one single GPU
 for input_len in  128 512 1024; do
     for output_len in 128 256; do
