@@ -19,12 +19,12 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     return hidden_states.reshape(bsz, num_key_value_heads * n_rep, seq_len, head_dim)
 
 
-def prepare_padding_mask(kv_lengths: torch.Tensor, bsz: int, kv_seq_len: int, device="cuda"):
-    padding_mask = torch.zeros((bsz, 1, 1, kv_seq_len), dtype=torch.float32, device=device)
+def prepare_padding_mask(kv_lengths: torch.Tensor, bsz: int, q_len: int, kv_len: int, device="cuda"):
+    padding_mask = torch.zeros((bsz, 1, q_len, kv_len), dtype=torch.float32, device=device)
     for i in range(bsz):
         cur_seq_len = kv_lengths[i].item()
-        assert cur_seq_len <= kv_seq_len
-        padding_mask[i, :, :, : kv_seq_len - cur_seq_len] = float("-inf")
+        assert cur_seq_len <= kv_len
+        padding_mask[i, :, :, : kv_len - cur_seq_len] = float("-inf")
     return padding_mask
 
 
@@ -33,12 +33,12 @@ def prepare_padding_mask(kv_lengths: torch.Tensor, bsz: int, kv_seq_len: int, de
 # https://github.com/huggingface/transformers/blob/633215ba58fe5114d8c8d32e415a04600e010701/src/transformers/models/llama/modeling_llama.py#L350
 def torch_attn_ref(
     q: torch.Tensor,  # [bsz, num_heads, q_len, head_dim]
-    k: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_dim]
-    v: torch.Tensor,  # [bsz, num_heads, kv_seq_len, head_dim]
-    attention_mask: torch.Tensor,  # [bsz, 1, seq_len, kv_seq_len]
+    k: torch.Tensor,  # [bsz, num_heads, kv_len, head_dim]
+    v: torch.Tensor,  # [bsz, num_heads, kv_len, head_dim]
+    attention_mask: torch.Tensor,  # [bsz, 1, q_len, kv_len]
     bsz: int,
-    seq_len: int,
-    kv_seq_len: int,
+    q_len: int,
+    kv_len: int,
     num_heads: int,
     num_kv_heads: int,
     head_dim: int,
@@ -54,22 +54,22 @@ def torch_attn_ref(
 
     qk = torch.matmul(q, k.transpose(2, 3))
     attn_scores = qk / (head_dim**0.5)
-    assert attn_scores.shape == (bsz, num_heads, seq_len, kv_seq_len), "Invalid shape of attention scores"
+
+    assert attn_scores.shape == (bsz, num_heads, q_len, kv_len), "Invalid shape of attention scores"
     # for left-side padding
-    if attention_mask.size() != (bsz, 1, seq_len, kv_seq_len):
-        raise ValueError(
-            f"Attention mask should be of size {(bsz, 1, seq_len, kv_seq_len)}, but is {attention_mask.size()}"
-        )
+    if attention_mask.size() != (bsz, 1, q_len, kv_len):
+        raise ValueError(f"Attention mask should be of size {(bsz, 1, q_len, kv_len)}, but is {attention_mask.size()}")
 
     attn_scores = attn_scores + attention_mask
     attn_weights = F.softmax(attn_scores.to(dtype=torch.float32), dim=-1).to(dtype=q.dtype)
     out = torch.matmul(attn_weights, v)
-    if out.size() != (bsz, num_heads, seq_len, head_dim):
+    if out.size() != (bsz, num_heads, q_len, head_dim):
         raise ValueError(
-            f"`attn_output` should be of size {(bsz, num_heads, seq_len, head_dim)}, but is" f" {out.size()}"
+            f"`attn_output` should be of size {(bsz, num_heads, q_len, head_dim)}, but is" f" {out.size()}"
         )
     out = out.transpose(1, 2).contiguous()
-    out = out.squeeze(1)
+    out = out.view(-1, out.size(-2), out.size(-1))
+    # out [bsz * q_len, num_heads, head_dim]
     return out
 
 
