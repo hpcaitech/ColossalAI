@@ -449,4 +449,4 @@ class BatchBucket:
         return self.fd_interm_tensor
 
     def __repr__(self) -> str:
-        return f"(sequences_dict={self._sequences_dict}, " f"is_prompts={self.is_prompts})"
+        return f"(sequences_dict={self._sequences_dict}, is_prompts={self.is_prompts})"
