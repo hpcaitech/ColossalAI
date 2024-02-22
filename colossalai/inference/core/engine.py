@@ -57,6 +57,7 @@ class InferenceEngine:
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.generation_config = inference_config.to_generation_config(self.model_config)
         model = model.eval()
+        model = model.cuda()
         model.to(self.dtype)
 
         if model_policy is None:
@@ -222,6 +223,9 @@ class InferenceEngine:
             prompts = self.format_prompt(prompts)
 
         block_size = self.inference_config.block_size
+
+        if not isinstance(prompts, list):
+            prompts = [prompts]
 
         if prompts_token_ids is None:
             assert prompts, "When the prompts_token_ids is none, the input prompt list must be provided."
