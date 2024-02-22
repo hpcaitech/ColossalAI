@@ -251,7 +251,7 @@ class InferenceEngine:
         prompts_num = len(prompts_token_ids)
 
         for i in range(prompts_num):
-            if isinstance(prompts, list):
+            if request_ids:
                 if not isinstance(request_ids, list):
                     request_ids = [request_ids]
                 assert isinstance(
