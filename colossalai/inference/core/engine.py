@@ -224,7 +224,7 @@ class InferenceEngine:
 
         block_size = self.inference_config.block_size
 
-        if not isinstance(prompts, list):
+        if prompts is not None and not isinstance(prompts, list):
             prompts = [prompts]
 
         if prompts_token_ids is None:
