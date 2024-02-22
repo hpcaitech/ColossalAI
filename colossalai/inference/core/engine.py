@@ -57,6 +57,7 @@ class InferenceEngine:
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.generation_config = inference_config.to_generation_config(self.model_config)
         model = model.eval()
+        model.to(self.device)
         model.to(self.dtype)
 
         if model_policy is None:
@@ -66,13 +67,18 @@ class InferenceEngine:
                 model_type = "nopadding_" + self.model_config.model_type
             model_policy = model_policy_map[model_type]()
 
-        pg_mesh = ProcessGroupMesh(inference_config.pp_size, inference_config.tp_size)
+        world_size = self.inference_config.tp_size * self.inference_config.pp_size
+
+        if world_size > 1:
+            pg_mesh = ProcessGroupMesh(inference_config.pp_size, inference_config.tp_size)
+        else:
+            pg_mesh = None
 
         self.model = self._shardformer(
             model,
             model_policy,
             None,
-            pg_mesh.get_group_along_axis(TP_AXIS) if inference_config.pp_size * inference_config.tp_size > 1 else None,
+            pg_mesh.get_group_along_axis(TP_AXIS) if pg_mesh else None,
         )
 
         self.verbose = verbose
@@ -156,16 +162,19 @@ class InferenceEngine:
             List[str]: Inference result returned by one generation.
         """
         with torch.inference_mode():
-            self.generation_config = generation_config
+            if generation_config is not None:
+                self.generation_config = generation_config
+
             if prompts is not None or prompts_token_ids is not None:
+                if isinstance(prompts, str) and isinstance(requests_id, int):
+                    prompts = [prompts]
+                    requests_id = [requests_id]
                 self.add_request(requests_id=requests_id, prompts=prompts, prompts_token_ids=prompts_token_ids)
 
             output_seqs_list = []
             total_tokens_list = []
 
             # intuition: If user provide a generation config, we should replace the existing one.
-            if generation_config is not None:
-                self.generation_config = generation_config
 
             while self.request_handler.check_unfinished_seqs():
                 output_seqs_list += self.step()
@@ -206,7 +215,7 @@ class InferenceEngine:
     def add_request(
         self,
         requests_id: Union[List[int], int] = None,
-        prompts: Union[List[str], str] = None,
+        prompts: List[str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
     ) -> None:
         """
@@ -219,6 +228,7 @@ class InferenceEngine:
         """
 
         # apply the prompt template to the input prompts
+
         if self.has_prompt_template and prompts is not None:
             prompts = self.format_prompt(prompts)
 

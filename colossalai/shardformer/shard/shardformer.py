@@ -3,8 +3,6 @@ from typing import Dict, List, Tuple
 import torch.nn as nn
 from torch import Tensor
 
-from colossalai.cluster import DistCoordinator
-
 from ..policies.base_policy import Policy
 from .shard_config import ShardConfig
 from .sharder import ModelSharder
@@ -32,7 +30,7 @@ class ShardFormer:
     """
 
     def __init__(self, shard_config: ShardConfig):
-        self.coordinator = DistCoordinator()
+        # self.coordinator = DistCoordinator()
         self.shard_config = shard_config
 
     def optimize(self, model: nn.Module, policy: Policy = None) -> Tuple[nn.Module, List[Dict[int, Tensor]]]:

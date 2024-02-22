@@ -1,13 +1,11 @@
 import argparse
 import json
-from typing import Generator
 
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-import colossalai
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
 from colossalai.inference.server.utils import id_generator
@@ -15,16 +13,16 @@ from colossalai.inference.server.utils import id_generator
 TIMEOUT_KEEP_ALIVE = 5  # seconds.
 app = FastAPI()
 engine = None
-available_models = ["llama2-7b"]
+models_dict = {"Llama_Models": ("llama2-7b",)}
 
 
-@app.get("v0/models")
-def available_models() -> Response:
-    return JSONResponse(available_models)
+@app.get("/v0/models")
+def get_available_models() -> Response:
+    return JSONResponse(models_dict)
 
 
 @app.post("/generate")
-def generate(request: Request) -> Response:
+async def generate(request: Request) -> Response:
     """Generate completion for the request.
 
     A request should be a JSON object with the following fields:
@@ -32,22 +30,20 @@ def generate(request: Request) -> Response:
     - stream: whether to stream the results or not.
     - other fields:
     """
-    request_dict = request.json()
+    request_dict = await request.json()
     prompt = request_dict.pop("prompt")
-    stream = request_dict.pop("stream", False)
+    stream = request_dict.pop("stream", None)
     request_id = id_generator()
 
-    results_generator = engine.generate(
+    results = engine.generate(
         request_id,
         prompt,
     )
 
     # Streaming case
-    def stream_results() -> Generator[bytes, None]:
-        for request_output in results_generator:
-            prompt = request_output.prompt
-            text_outputs = [prompt + output.text for output in request_output.outputs]
-            ret = {"text": text_outputs}
+    def stream_results():
+        for request_output in results:
+            ret = {"text": request_output}
             yield (json.dumps(ret) + "\0").encode("utf-8")
 
     if stream:
@@ -55,7 +51,7 @@ def generate(request: Request) -> Response:
 
     # Non-streaming case
     final_output = None
-    for request_output in results_generator:
+    for request_output in results:
         if request.is_disconnected():
             # Abort the request if the client disconnects.
             engine.abort(request_id)
@@ -63,9 +59,7 @@ def generate(request: Request) -> Response:
         final_output = request_output
 
     assert final_output is not None
-    prompt = final_output.prompt
-    text_outputs = [prompt + output.text for output in final_output.outputs]
-    ret = {"text": text_outputs}
+    ret = {"text": final_output}
     return JSONResponse(ret)
 
 
@@ -146,7 +140,6 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    colossalai.launch(config={}, rank=0, world_size=1, host="localhost", port=args.port, backend="nccl")
 
     inference_config = InferenceConfig.from_cli_args(args)
     model = AutoModelForCausalLM.from_pretrained(args.model)
