@@ -5,7 +5,10 @@ from colossalai.inference.batch_bucket import BatchBucket
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.kv_cache import KVCacheManager
 from colossalai.inference.struct import Sequence
+from colossalai.logging import get_dist_logger
 from colossalai.testing import parameterize
+
+logger = get_dist_logger(__name__)
 
 
 @parameterize(
@@ -83,6 +86,7 @@ def test_bucket(test_config):
         num_heads, cache_manager.get_head_size(), max_batch_size, max_length, block_size, kv_max_split_num=2
     )
     block_tables = bb.add_seqs([seq1, seq2])
+    logger.debug(f"bb information: {bb}")
     assert block_tables.shape == (2, cache_manager.max_blocks_per_sequence)
     assert torch.all(block_tables < 0), "Initialized block_tables should be negative values"
 

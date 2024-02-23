@@ -447,3 +447,6 @@ class BatchBucket:
     def fd_inter_tensor(self) -> None:
         assert self.fd_interm_tensor is not None, "fd_interm_tensor is not provided"
         return self.fd_interm_tensor
+
+    def __repr__(self) -> str:
+        return f"(sequences_dict={self._sequences_dict}, is_prompts={self.is_prompts})"

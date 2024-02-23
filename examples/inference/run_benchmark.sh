@@ -27,7 +27,7 @@ CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 1
 for input_len in  128 512 1024; do
     for output_len in 128 256; do
         for bsz in 16 32 64; do
-            python3 ${PY_SCRIPT} -m llama2-7b --tp_size 1 --pp_size 1 -b ${bsz} -s ${input_len} --output_len ${output_len} --mode ${mode} --model_path "/home/caidi/llama_model/" | tee logs/${input_len}_${output_len}_${mode}_${GPU}_${bsz}.txt
+            python3 ${PY_SCRIPT} -m llama2-7b --tp_size 1 --pp_size 1 -b ${bsz} -s ${input_len} --output_len ${output_len} --mode ${mode} --test_random_weight | tee logs/${input_len}_${output_len}_${mode}_${GPU}_${bsz}.txt
         done
     done
 done
