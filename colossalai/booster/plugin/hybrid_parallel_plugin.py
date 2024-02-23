@@ -1033,6 +1033,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             enable_sequence_parallelism=enable_sequence_parallelism,
             enable_sequence_overlap=enable_sequence_overlap,
         )
+        print("self.shard_config", self.shard_config)
         self.amp_config = dict(
             initial_scale=initial_scale,
             growth_factor=growth_factor,
@@ -1058,6 +1059,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             overlap_communication=overlap_communication,
             cpu_offload=cpu_offload,
             partition_grad=(self.zero_stage == 2),
+            forced_dtype=torch.bfloat16,
         )
 
         self.max_norm = max_norm
@@ -1099,6 +1101,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         param_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
+            print("use_ddp", use_ddp)
             model = HybridParallelModule(
                 model,
                 precision=self.precision,

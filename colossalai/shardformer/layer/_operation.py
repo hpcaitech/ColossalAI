@@ -9,6 +9,7 @@ except:
 
 try:
     import fused_weight_gradient_mlp_cuda
+
     _grad_accum_fusion_available = True
 except ImportError:
     _grad_accum_fusion_available = False
@@ -77,10 +78,11 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
         use_bias = ctx.use_bias
 
         # In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias.
-        weight = weight.view(weight.shape)
-        bias = bias.view(bias.shape)
+        # weight = weight.view(weight.shape)
+        # bias = bias.view(bias.shape)
 
         total_input = input
+        # print("grad_output.shape", grad_output.shape, "weight.shape", weight.shape)
         grad_input = grad_output.matmul(weight.T)
         grad_output = grad_output.contiguous()
         # Convert the tensor shapes to 2D for execution compatibility
@@ -93,9 +95,10 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
             handle = dist.all_reduce(grad_input, group=ctx.process_group, async_op=True)
             # Delay the start of weight gradient computation shortly (3us) to have
             # all-reduce scheduled first and have GPU resources allocated
-            _ = torch.empty(1, device=grad_output.device) + 1
+            # _ = torch.empty(1, device=grad_output.device) + 1
 
         grad_weight = total_input.t().matmul(grad_output)
+        # print("use_biasuse_biasuse_biasuse_biasuse_bias",use_bias)
         grad_bias = grad_output.sum(dim=0) if use_bias else None
 
         if ctx.async_grad_allreduce:
@@ -115,7 +118,6 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
         ctx.use_bias = bias is not None
         ctx.process_group = process_group
         ctx.async_grad_allreduce = async_grad_allreduce
-
         if bias is not None:
             output = F.linear(input_, weight, bias)
         else:
@@ -129,8 +131,8 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
         use_bias = ctx.use_bias
 
         # In order to be hooked into Gemini's '__torch_function__', adding a view operation to bias.
-        if use_bias:
-            bias.view(bias.shape)
+        # if use_bias:
+        #     bias.view(bias.shape)
 
         total_input = input
         grad_input = grad_output.matmul(weight)
@@ -145,7 +147,7 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
             handle = dist.all_reduce(grad_input, group=ctx.process_group, async_op=True)
             # Delay the start of weight gradient computation shortly (3us) to have
             # all-reduce scheduled first and have GPU resources allocated
-            _ = torch.empty(1, device=grad_output.device) + 1
+            # _ = torch.empty(1, device=grad_output.device) + 1
 
         if _grad_accum_fusion_available and weight.grad is not None:
             grad = weight.grad
@@ -205,8 +207,8 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         overlap = ctx.overlap
 
         # In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias. Used in FusedLayerNorm
-        if use_bias:
-            bias = bias.view(bias.shape)
+        # if use_bias:
+        #     bias = bias.view(bias.shape)
 
         if not overlap:
             input_parallel = _gather(input_, dim, process_group)
@@ -431,7 +433,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
             input_parallel = torch.cat(tensor_list, dim=dim).contiguous()
             # calculate gradient
             if len(input_parallel.shape) > 2:
-                input_parallel = input_parallel.view(-1, input_parallel.shape[-1])   
+                input_parallel = input_parallel.view(-1, input_parallel.shape[-1])
             grad_weight = input_parallel.t().matmul(grad_output)
             # wait until reduce-scatter finished
             reducescatter_handle.wait()

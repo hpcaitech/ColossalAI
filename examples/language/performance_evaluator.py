@@ -107,6 +107,7 @@ class PerformanceEvaluator:
 
     def on_fit_end(self) -> None:
         avg_duration = all_reduce_mean(self.timer.duration, self.coordinator.world_size)
+        # avg_duration = self.timer.duration
         avg_throughput = self.num_samples * self.dp_world_size / (avg_duration + 1e-12)
         mp_world_size = self.coordinator.world_size // self.dp_world_size
         avg_tflops_per_gpu_megatron = self.flop_megatron / 1e12 / (avg_duration + 1e-12) / mp_world_size
