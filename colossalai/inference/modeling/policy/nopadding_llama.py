@@ -29,8 +29,10 @@ except:
 def get_triton_rmsnorm_forward():
     if HAS_TRITON_RMSNORM:
 
-        def _triton_rmsnorm_forward(self: LlamaRMSNorm, hidden_states: torch.Tensor, norm_output: torch.Tensor):
-            return rms_layernorm(hidden_states, self.weight.data, self.variance_epsilon, norm_output)
+        def _triton_rmsnorm_forward(
+            self: LlamaRMSNorm, hidden_states: torch.Tensor, norm_output: torch.Tensor, residual: torch.Tensor = None
+        ):
+            return rms_layernorm(hidden_states, self.weight.data, self.variance_epsilon, norm_output, residual)
 
         return _triton_rmsnorm_forward
     else:

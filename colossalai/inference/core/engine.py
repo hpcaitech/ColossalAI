@@ -139,13 +139,13 @@ class InferenceEngine:
         )
         shardformer = ShardFormer(shard_config=shardconfig)
         shard_model, _ = shardformer.optimize(model, model_policy)
-        return shard_model.cuda()
+        return shard_model
 
     def generate(
         self,
-        requests_id: Union[List[int], int] = None,
         prompts: Union[List[str], str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
+        request_ids: Union[List[int], int] = None,
         return_token_ids: bool = False,
         generation_config: Optional[GenerationConfig] = None,
     ) -> List[str]:
@@ -155,6 +155,7 @@ class InferenceEngine:
         Args:
             prompts (Union[List[str], optional): Input prompts. Defaults to None.
             prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
+            request_ids (List[int], optional): The request ID. Defaults to None.
             return_token_ids (bool): Whether to return output token ids. Defaults to False.
             generation_config (GenerationConfig, optional): Huggingface GenerationConfig used for inference. Defaults to None.
 
@@ -166,10 +167,10 @@ class InferenceEngine:
                 self.generation_config = generation_config
 
             if prompts is not None or prompts_token_ids is not None:
-                if isinstance(prompts, str) and isinstance(requests_id, int):
+                if isinstance(prompts, str) and isinstance(request_ids, int):
                     prompts = [prompts]
-                    requests_id = [requests_id]
-                self.add_request(requests_id=requests_id, prompts=prompts, prompts_token_ids=prompts_token_ids)
+                    request_ids = [request_ids]
+                self.add_request(request_ids=request_ids, prompts=prompts, prompts_token_ids=prompts_token_ids)
 
             output_seqs_list = []
             total_tokens_list = []
@@ -214,7 +215,7 @@ class InferenceEngine:
 
     def add_request(
         self,
-        requests_id: Union[List[int], int] = None,
+        request_ids: Union[List[int], int] = None,
         prompts: List[str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
     ) -> None:
@@ -222,7 +223,7 @@ class InferenceEngine:
         Add requests.
 
         Args:
-            requests_id (List[int], optional): The request ID. Defaults to None.
+            request_ids (List[int], optional): The request ID. Defaults to None.
             prompts (Union[List[str], optional): Input prompts. Defaults to None.
             prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
         """
@@ -233,6 +234,9 @@ class InferenceEngine:
             prompts = self.format_prompt(prompts)
 
         block_size = self.inference_config.block_size
+
+        if prompts is not None and not isinstance(prompts, list):
+            prompts = [prompts]
 
         if prompts_token_ids is None:
             assert prompts, "When the prompts_token_ids is none, the input prompt list must be provided."
@@ -256,8 +260,12 @@ class InferenceEngine:
         prompts_num = len(prompts_token_ids)
 
         for i in range(prompts_num):
-            if requests_id:
-                request_id = requests_id[i]
+            if request_ids:
+                assert isinstance(
+                    request_ids[0], int
+                ), f"The request_id type must be int, but got {type(request_ids[0])}"
+                assert len(request_ids) == prompts_num
+                request_id = request_ids[i]
             else:
                 request_id = next(self.counter)
             if prompts == None:

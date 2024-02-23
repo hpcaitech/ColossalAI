@@ -211,7 +211,7 @@ def flash_decoding_attention(
             records the (kv) sequence lengths incorporating past kv sequence lengths.
         block_tables (torch.Tensor): [batch_size, max_blocks_per_sequence]
         max_seq_len_in_batch (int): Maximum sequence length in the batch.
-        output (torch.Tensor):  [bsz, num_heads, head_dim]
+        output (torch.Tensor):  [bsz, num_heads * head_dim]
         mid_output (torch.Tensor): [ max_bsz , num_heads, kv_max_split_num, head_dim]
             Intermediate output tensor. `max_bsz` should be greater than or equal to `bsz`.
         mid_output_lse (torch.Tensor): [ max_bsz , num_heads, kv_max_split_num]
@@ -220,7 +220,7 @@ def flash_decoding_attention(
         num_kv_group (int, optional): Number of key/value groups. Defaults to 1.
 
     Returns:
-        Output tensor with shape [bsz, num_heads, head_dim]
+        Output tensor with shape [bsz, num_heads * head_dim]
     """
     q = q.squeeze() if q.dim() == 4 else q
     assert q.dim() == 3, f"Incompatible q dim: {q.dim()}"
@@ -261,7 +261,7 @@ def flash_decoding_attention(
     # NOTE use `triton.next_power_of_2` here to utilize the cache mechanism of triton
     # To optimize, revise batching/scheduling to batch 2^n sequences in a batch (preferred)
     grid = (triton.next_power_of_2(bsz), num_heads, triton.cdiv(triton.next_power_of_2(max_seq_len_in_batch), BLOCK_KV))
-    output = torch.empty((bsz, num_heads, head_dim), dtype=q.dtype, device=q.device) if output is None else output
+    output = torch.empty((bsz, num_heads * head_dim), dtype=q.dtype, device=q.device) if output is None else output
 
     _flash_decoding_fwd_kernel[grid](
         q,
@@ -294,7 +294,7 @@ def flash_decoding_attention(
         BLOCK_SIZE=block_size,
         HEAD_DIM=head_dim,
     )
-    
+
     grid = (triton.next_power_of_2(bsz), num_heads)
 
     _flash_decoding_fwd_reduce_kernel[grid](
@@ -311,8 +311,8 @@ def flash_decoding_attention(
         mid_output_lse.stride(1),
         mid_output_lse.stride(2),
         output.stride(0),
-        output.stride(1),
-        output.stride(2),
+        head_dim,
+        1,
         BLOCK_KV=block_size,
         HEAD_DIM=head_dim,
     )

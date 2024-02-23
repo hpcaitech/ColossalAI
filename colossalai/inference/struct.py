@@ -157,7 +157,7 @@ class Sequence:
             f"prompt={self.prompt}, "
             f"status={self.status.name}, "
             f"sample_params={self.sample_params}, "
-            f"input_len={self.input_len}),"
+            f"input_len={self.input_len},"
             f"output_len={self.output_len})"
         )
 
