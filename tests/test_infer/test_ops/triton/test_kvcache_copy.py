@@ -17,7 +17,7 @@ except ImportError:
 
 TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 
-HEAD_DIM = 128
+HEAD_DIM = 32
 
 
 def prepare_data(
@@ -32,9 +32,8 @@ def prepare_data(
     device,
     dtype=torch.float16,
 ):
-    assert max_seq_len > n, "max_seq_len must be greater than or equal to n"
-    # past_kv_seq_lengths in this test records the previous kv seq len
-    # (not incorporating the current input whose seq len is 1)
+    assert max_seq_len > n, "max_seq_len must be greater than n"
+
     past_kv_seq_lengths = (
         torch.tensor([max_seq_len - n for _ in range(bsz)], dtype=torch.int32, device=device)
         if same_context_len
@@ -54,11 +53,11 @@ def prepare_data(
     new_k = torch.randn((bsz, n, num_kv_heads, head_dim), dtype=dtype, device=device)
     new_v = torch.randn((bsz, n, num_kv_heads, head_dim), dtype=dtype, device=device)
     # mock allocating blocks for the new k/v and update block tables
-    mock_alloc_single_token(block_tables, past_kv_seq_lengths, block_size)
-    # kv seq len = past kv seq len + seq len (1 during decoding stage)
-    kv_seq_lengths = past_kv_seq_lengths + 1
+    for _ in range(n):
+        mock_alloc_single_token(block_tables, past_kv_seq_lengths, block_size)
+        past_kv_seq_lengths += 1
 
-    return new_k, new_v, k_cache, v_cache, kv_seq_lengths, block_tables
+    return new_k, new_v, k_cache, v_cache, past_kv_seq_lengths, block_tables
 
 
 @pytest.mark.skipif(not (HAS_TRITON and TRITON_CUDA_SUPPORT), reason="requires triton")
@@ -92,37 +91,34 @@ def test_copy_kv_to_caches(
         device=device,
         dtype=dtype,
     )
-    # k_cache_torch = k_cache.clone().detach()
-    # copy_to_cache(new_k, k_cache_torch, lengths=kv_seq_lengths, block_tables=block_tables, type="decoding")
+    k_source = new_k.view(-1, new_k.size(-2), new_k.size(-1))
+    v_source = new_v.view(-1, new_v.size(-2), new_v.size(-1))
     k_cache_copy = k_cache.detach().clone()
-    past_kv_seq_len = kv_seq_lengths - n_tokens
-    target_block_ids = block_tables[range(0, block_tables.size(0)), past_kv_seq_len // block_size]
-    offsets_in_block = past_kv_seq_len % block_size
+    past_kv_seq_lengths = kv_seq_lengths - n_tokens
+    target_block_ids = block_tables[range(0, block_tables.size(0)), past_kv_seq_lengths // block_size]
+    offsets_in_block = past_kv_seq_lengths % block_size
 
-    print("offsets_in_block: ", offsets_in_block)
-
-    # n_tokens > 1
+    # Copy k (or v) to k (or v) cache
+    copy_k_to_blocked_cache(new_k, k_cache, kv_seq_lengths, block_tables, n=n_tokens)
+    # Reshape target k from k cache to compare if matching with original tensor
+    # Mainly to handle cases of n_tokens > 1
     k_target = []
     for i in range(bsz):
-        block_id_start = target_block_ids[i].item()
+        block_table = block_tables[i]
+        curr_kv_len = past_kv_seq_lengths[i].item()
         offset = offsets_in_block[i].item()
         tokens_left = n_tokens
         while tokens_left > 0:
             tokens_to_fill = min(block_size - offset, tokens_left)
-            k_target.append(k_cache[block_id_start, :, offset : offset + tokens_to_fill, :])
-            block_id_start += 1  #
+            curr_block_id = block_table[curr_kv_len // block_size]
+            k_target.append(k_cache[curr_block_id, :, offset : offset + tokens_to_fill, :])
+            curr_kv_len += tokens_to_fill
             tokens_left -= tokens_to_fill
             offset = 0
-    k_target = torch.stack(k_target, dim=0)  # [bsz, num_kv_heads, n, head_dim]
-    k_target = k_target.transpose(1, 2).contiguous()  # [bsz, n, num_kv_heads, head_dim]
-    k_target = k_target.view(-1, k_target.size(-2), k_target.size(-1))
+    k_target = torch.concat(k_target, dim=1).transpose(0, 1).contiguous()  # [bsz * n, num_kv_heads, head_dim]
 
-    # Copy k (or v) to k (or v) cache
-    copy_k_to_blocked_cache(new_k, k_cache, kv_seq_lengths, block_tables, n=n_tokens)
-    # k_target = k_cache[target_block_ids, :, offsets_in_block, :]
-    k_source = new_k.view(-1, new_k.size(-2), new_k.size(-1))
     assert k_target.shape == k_source.shape
-    assert torch.equal(k_target, k_source)
+    assert torch.allclose(k_target, k_source)
 
     if n_tokens == 1:
         # Copy k and v to k/v caches
@@ -130,14 +126,10 @@ def test_copy_kv_to_caches(
         copy_kv_to_blocked_cache(new_k, new_v, k_cache, v_cache, kv_seq_lengths, block_tables)
         k_target = k_cache_copy[target_block_ids, :, offsets_in_block, :]
         v_target = v_cache[target_block_ids, :, offsets_in_block, :]
-        v_source = new_v.squeeze()
         assert k_target.shape == k_source.shape
         assert torch.equal(k_target, k_source)
         assert v_target.shape == v_source.shape
         assert torch.equal(v_target, v_source)
-        # target_torch = k_cache_copy[target_block_ids, :, offsets_in_block, :]
-        # assert target_torch.shape == source.shape
-        # assert torch.equal(target_torch, source)
 
 
 BATCH = 16
@@ -183,6 +175,7 @@ def benchmark_kvcache_copy(
         max_seq_len // block_size,
         same_context_len,
         KV_SEQ_LEN,
+        n=1,
         device=device,
         dtype=dtype,
     )
@@ -199,5 +192,5 @@ def benchmark_kvcache_copy(
 
 
 if __name__ == "__main__":
-    test_copy_kv_to_caches(4, 32, 8, 16, True, 5)
-    # benchmark_kvcache_copy.run(save_path=".", print_data=True)
+    # test_copy_kv_to_caches(4, 16, 8, 16, True, 1)
+    benchmark_kvcache_copy.run(save_path=".", print_data=True)

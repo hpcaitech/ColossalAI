@@ -33,14 +33,14 @@ def _copy_to_kcache_seqlen_n_kernel(
     last_bt_block_idx = past_kv_seq_len // block_size
     block_table_ptr = BLOCK_TABLES + cur_seq_idx * stride_bts
     block_id = tl.load(block_table_ptr + last_bt_block_idx * stride_btb)
-    offsets_in_last_block = past_kv_seq_len % block_size
+    offset_last_block = past_kv_seq_len % block_size
     offsets_dmodel = tl.arange(0, HEAD_DIM)
-    offsets_kv = cur_seq_idx * stride_kt + cur_kv_head_idx * stride_kh + offsets_dmodel * stride_kd
+    offsets_kv = cur_token_idx * stride_kt + cur_kv_head_idx * stride_kh + offsets_dmodel * stride_kd
     kv = tl.load(KV + offsets_kv)
     offsets_kvcache = (
         block_id * stride_cacheb
         + cur_kv_head_idx * stride_cacheh
-        + offsets_in_last_block * stride_cachebs
+        + offset_last_block * stride_cachebs
         + offsets_dmodel * stride_cached
     )
     tl.store(KVCache + offsets_kvcache, kv)
@@ -125,7 +125,7 @@ def copy_k_to_blocked_cache(
     assert k.size(-1) == k_cache.size(-1), "Incompatible head dim"
     assert k.dtype == k_cache.dtype, "Expected consistent dtype for tensor and cache."
 
-    k = k.view(-1, k.size(-2), k.size(-1)) if k.dim() == 4 else k
+    k = k.reshape(-1, k.size(-2), k.size(-1)) if k.dim() == 4 else k
     assert k.dim() == 3, f"Invalid k dim {k.dim()}"
     bsz, num_kv_heads, head_dim = k.shape
     # NOTE when n > 1, the shape of k is [bsz * n, num_kv_heads, head_dim]
