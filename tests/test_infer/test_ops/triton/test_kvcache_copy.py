@@ -118,7 +118,7 @@ def test_copy_kv_to_caches(
     k_target = torch.concat(k_target, dim=1).transpose(0, 1).contiguous()  # [bsz * n, num_kv_heads, head_dim]
 
     assert k_target.shape == k_source.shape
-    assert torch.allclose(k_target, k_source)
+    assert torch.equal(k_target, k_source)
 
     if n_tokens == 1:
         # Copy k and v to k/v caches
