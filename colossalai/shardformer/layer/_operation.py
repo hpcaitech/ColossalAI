@@ -94,8 +94,7 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
             # Asynchronous all-reduce
             handle = dist.all_reduce(grad_input, group=ctx.process_group, async_op=True)
             # Relay on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
-            # all-reduce scheduled first and have GPU resources allocated
-            _ = torch.empty(1, device=grad_output.device) + 1
+            # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
 
         grad_weight = total_input.t().matmul(grad_output)
         grad_bias = grad_output.sum(dim=0) if use_bias else None
@@ -145,8 +144,7 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
             # Asynchronous all-reduce
             handle = dist.all_reduce(grad_input, group=ctx.process_group, async_op=True)
             # Relay on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
-            # all-reduce scheduled first and have GPU resources allocated
-            _ = torch.empty(1, device=grad_output.device) + 1
+            # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
 
         if _grad_accum_fusion_available and weight.grad is not None:
             grad = weight.grad
@@ -229,9 +227,8 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                     input_.shape, dtype=input_parallel.dtype, device=input_parallel.device
                 ).contiguous()
                 handle = dist.reduce_scatter(output, input_list, group=process_group, async_op=True)
-                # Delay the start of weight gradient computation shortly (3us) to have
-                # reduce-scatter scheduled first and have GPU resources allocated
-                _ = torch.empty(1, device=grad_output.device) + 1
+                # Relay on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
+                # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
 
             if _grad_accum_fusion_available and weight.grad is not None:
                 grad = weight.grad
@@ -395,9 +392,8 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                     input_.shape, dtype=input_parallel.dtype, device=input_parallel.device
                 ).contiguous()
                 handle = dist.reduce_scatter(output, input_list, group=process_group, async_op=True)
-                # Delay the start of weight gradient computation shortly (3us) to have
-                # reduce-scatter scheduled first and have GPU resources allocated
-                _ = torch.empty(1, device=grad_output.device) + 1
+                # Relay on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
+                # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
 
             grad_weight = total_input.t().matmul(grad_output)
             grad_bias = grad_output.sum(dim=0) if use_bias else None

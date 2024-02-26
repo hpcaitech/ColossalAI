@@ -25,10 +25,10 @@ from examples.language.performance_evaluator import PerformanceEvaluator
 # Constants
 # ==============================
 MODEL_CONFIGS = {
-    "small": GPT2Config(activation_function="gelu"),
-    "medium": GPT2Config(n_embd=1024, n_head=16, n_layer=24, activation_function="gelu"),
-    "large": GPT2Config(n_embd=1280, n_head=20, n_layer=36, activation_function="gelu"),
-    "default": GPT2Config(n_embd=4096, n_head=32, n_layer=32, n_positions=4096, activation_function="gelu"),
+    "118M": GPT2Config(activation_function="gelu"),
+    "338M": GPT2Config(n_embd=1024, n_head=16, n_layer=24, activation_function="gelu"),
+    "738M": GPT2Config(n_embd=1280, n_head=20, n_layer=36, activation_function="gelu"),
+    "6.21B": GPT2Config(n_embd=4096, n_head=32, n_layer=32, n_positions=4096, activation_function="gelu"),
 }
 
 
@@ -37,7 +37,7 @@ def main():
     # Parse Arguments
     # ==============================
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", type=str, default="default", help="Model configuration")
+    parser.add_argument("-c", "--config", type=str, default="6.21B", help="Model configuration")
     parser.add_argument(
         "-p",
         "--plugin",
