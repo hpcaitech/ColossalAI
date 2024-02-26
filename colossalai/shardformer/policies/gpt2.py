@@ -5,7 +5,12 @@ from torch import Tensor, nn
 
 import colossalai.shardformer.layer as col_nn
 
-from ..modeling.gpt2 import GPT2PipelineForwards, get_gpt2_flash_attention_forward, gpt2_sequence_parallel_forward_fn
+from ..modeling.gpt2 import (
+    GPT2PipelineForwards,
+    get_gpt2_flash_attention_forward,
+    get_lm_forward_with_dist_cross_entropy,
+    gpt2_sequence_parallel_forward_fn,
+)
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -53,10 +58,10 @@ class GPT2Policy(Policy):
                         suffix="wte",
                         target_module=col_nn.VocabParallelEmbedding1D,
                     ),
-                    # SubModuleReplacementDescription(
-                    #     suffix="drop",
-                    #     target_module=col_nn.DropoutForParallelInput,
-                    # ),
+                    SubModuleReplacementDescription(
+                        suffix="drop",
+                        target_module=col_nn.DropoutForParallelInput,
+                    ),
                 ]
             )
 
@@ -82,30 +87,25 @@ class GPT2Policy(Policy):
                     SubModuleReplacementDescription(
                         suffix="mlp.c_fc",
                         target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                        kwargs={
-                            "n_fused": 1,
-                            "seq_parallel": use_sequence_parallel,
-                            "overlap": overlap,
-                            "skip_bias_add": True,
-                        },
+                        kwargs={"n_fused": 1, "seq_parallel": use_sequence_parallel, "overlap": overlap},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.c_proj",
                         target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel, "skip_bias_add": True},
+                        kwargs={"seq_parallel": use_sequence_parallel},
                     ),
-                    # SubModuleReplacementDescription(
-                    #     suffix="attn.attn_dropout",
-                    #     target_module=col_nn.DropoutForParallelInput,
-                    # ),
-                    # SubModuleReplacementDescription(
-                    #     suffix="attn.resid_dropout",
-                    #     target_module=col_nn.DropoutForParallelInput,
-                    # ),
-                    # SubModuleReplacementDescription(
-                    #     suffix="mlp.dropout",
-                    #     target_module=col_nn.DropoutForParallelInput,
-                    # ),
+                    SubModuleReplacementDescription(
+                        suffix="attn.attn_dropout",
+                        target_module=col_nn.DropoutForParallelInput,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="attn.resid_dropout",
+                        target_module=col_nn.DropoutForParallelInput,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.dropout",
+                        target_module=col_nn.DropoutForParallelInput,
+                    ),
                 ],
             )
 
@@ -145,7 +145,7 @@ class GPT2Policy(Policy):
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_gpt2_flash_attention_forward(self.shard_config),
+                    "forward": get_gpt2_flash_attention_forward(),
                 },
                 policy=policy,
                 target_key=GPT2Attention,
@@ -269,10 +269,10 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
                 GPT2LMHeadModel: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True}
+                            suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": False}
                         )
                     ],
-                    # method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
+                    method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
                 )
             }
             module_policy.update(addon_module)

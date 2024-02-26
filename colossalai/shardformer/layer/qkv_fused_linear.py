@@ -320,8 +320,9 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         else:
             # Set up backprop all-reduce.
             input_parallel = reduce_backward(input_, self.process_group)
-            input_parallel = input_
-            output_parallel = matmul_with_async_comm(input_parallel, self.weight, bias, self.process_group, False)
+            output_parallel = matmul_with_async_comm(
+                input_parallel, self.weight, bias, self.process_group, self.async_communication
+            )
 
         if self.gather_output:
             # All-gather across the partitions.
@@ -330,8 +331,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
             output = output_parallel
 
         if self.skip_bias_add:
-            # return output, self.bias
-            return output
+            return output, self.bias
         else:
             return output
 
@@ -528,8 +528,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
                     handle.wait()
                 output = torch.cat(output_parallel_list, dim=-1)
         else:
-            # output_parallel = torch.matmul(input_, self.weight)
-            output_parallel = matmul_with_async_comm(input_, self.weight, None, self.process_group, False)
+            output_parallel = torch.matmul(input_, self.weight)
             if self.seq_parallel:
                 output = linear_reducescatter_forward_gather_backward(output_parallel, self.process_group, 1)
             else:
@@ -540,8 +539,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
                 output = output + self.bias
             return output
         else:
-            # return output, self.bias
-            return output
+            return output, self.bias
 
 
 # ====================================
@@ -736,7 +734,6 @@ class FusedLinear1D_Col(ParallelModule):
             output = output_parallel
 
         if self.skip_bias_add:
-            # return output, self.bias
-            return output
+            return output, self.bias
         else:
             return output

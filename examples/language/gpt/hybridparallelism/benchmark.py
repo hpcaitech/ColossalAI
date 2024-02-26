@@ -131,11 +131,7 @@ def main():
             pp_style=args.pp_style,
             zero_stage=args.zero,
             num_model_chunks=args.num_model_chunks,
-            # enable_all_optimization=True,
-            # enable_flash_attention=True,
-            # enable_jit_fused=True,
-            enable_fused_normalization=True,
-            # enable_sequence_parallelism=True,
+            enable_all_optimization=True,
             num_microbatches=args.mbs,
             cpu_offload=args.cpu_offload,
             precision="bf16",
@@ -176,18 +172,14 @@ def main():
         else nullcontext()
     )
 
-    # with init_ctx:
-    #     model = GPT2LMHeadModel(config)
-    model = GPT2LMHeadModel(config)
+    with init_ctx:
+        model = GPT2LMHeadModel(config)
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")
-    # print("args.ignore_steps", args.ignore_steps)
-    # print("args.batch_size", args.batch_size)
-    # print("max_length", args.max_length)
     performance_evaluator = PerformanceEvaluator(
         model_numel,
         model.config.n_layer,
@@ -226,24 +218,6 @@ def main():
             optimizer.step()
             optimizer.zero_grad()
             performance_evaluator.on_step_end(**batch)
-
-        # for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not coordinator.is_master())):
-        #     performance_evaluator.on_step_start(step)
-
-        #     with torch.profiler.profile(
-        #         activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
-        #         schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=5),
-        #         on_trace_ready=torch.profiler.tensorboard_trace_handler("/home/jiangmingyan/workspace/trace/shardformer/GPT2-12-bf16"),
-        #         with_stack=True,
-        #         record_shapes=True
-        #     ) as prof:
-        #         for _ in range(0 + 2 + 5):
-        #             outputs = model(**batch)
-        #             loss = outputs[0]
-        #             booster.backward(loss, optimizer)
-        #             optimizer.step()
-        #             optimizer.zero_grad()
-        #             prof.step()
         coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
 
     performance_evaluator.on_fit_end()

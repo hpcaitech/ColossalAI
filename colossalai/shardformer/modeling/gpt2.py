@@ -330,13 +330,12 @@ class GPT2PipelineForwards:
             loss_fct = CrossEntropyLoss()
             shift_logits = shift_logits.view(-1, shift_logits.size(-1))
             shift_labels = shift_labels.view(-1)
-            # if shard_config.enable_tensor_parallelism:
-            #     loss = cross_entropy_1d(
-            #         shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
-            #     )
-            # else:
-            #     loss = loss_fct(shift_logits, shift_labels)
-            loss = loss_fct(shift_logits, shift_labels)
+            if shard_config.enable_tensor_parallelism:
+                loss = cross_entropy_1d(
+                    shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
+                )
+            else:
+                loss = loss_fct(shift_logits, shift_labels)
 
         if not return_dict:
             output = (lm_logits,) + outputs[1:]
@@ -727,7 +726,7 @@ class GPT2PipelineForwards:
         )
 
 
-def get_gpt2_flash_attention_forward(shard_config: ShardConfig):
+def get_gpt2_flash_attention_forward():
     from transformers.models.gpt2.modeling_gpt2 import GPT2Attention
 
     from colossalai.nn.layer.colo_attention import AttnMaskType, ColoAttention
@@ -778,12 +777,10 @@ def get_gpt2_flash_attention_forward(shard_config: ShardConfig):
         else:
             present = None
 
-        flash_attention_mask = None
         if not self.is_cross_attention:
             attn_mask_type = AttnMaskType.causal
-        else:
-            attn_mask_type = None
-        if not getattr(shard_config, "causal_lm", False) and attention_mask != None:
+            flash_attention_mask = None
+        if attention_mask != None:
             flash_attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool)).contiguous()
             if not torch.all(flash_attention_mask):
                 if attn_mask_type == AttnMaskType.causal:

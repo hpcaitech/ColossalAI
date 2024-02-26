@@ -35,6 +35,8 @@ from .pp_plugin_base import PipelinePluginBase
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
+PRECISION_TORCH_TYPE = {"fp16": torch.float16, "fp32": torch.float32, "bf16": torch.bfloat16}
+
 
 def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
     if isinstance(x, torch.Tensor) and torch.is_floating_point(x):
@@ -1033,7 +1035,6 @@ class HybridParallelPlugin(PipelinePluginBase):
             enable_sequence_parallelism=enable_sequence_parallelism,
             enable_sequence_overlap=enable_sequence_overlap,
         )
-        print("self.shard_config", self.shard_config)
         self.amp_config = dict(
             initial_scale=initial_scale,
             growth_factor=growth_factor,
@@ -1059,7 +1060,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             overlap_communication=overlap_communication,
             cpu_offload=cpu_offload,
             partition_grad=(self.zero_stage == 2),
-            forced_dtype=torch.bfloat16,
+            forced_dtype=PRECISION_TORCH_TYPE[precision],
         )
 
         self.max_norm = max_norm
@@ -1101,7 +1102,6 @@ class HybridParallelPlugin(PipelinePluginBase):
         param_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
-            print("use_ddp", use_ddp)
             model = HybridParallelModule(
                 model,
                 precision=self.precision,
