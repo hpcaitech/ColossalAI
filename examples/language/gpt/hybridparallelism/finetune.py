@@ -64,7 +64,7 @@ def evaluate_model(
                 current_pp_group_ranks = pg_mesh.get_ranks_in_group(pp_group)
                 current_rank = dist.get_rank()
                 batch = iter([batch])
-                outputs = booster.execute_pipeline(batch, model, criterion, return_loss=True, return_outputs=True)
+                outputs = booster.execute_pipeline(batch, model, criterion, return_loss=True, return_outputs=False)
 
                 if is_pp_last_stage:
                     logits = outputs["outputs"]["logits"]
@@ -145,7 +145,7 @@ def train_epoch(
         for _ in pbar:
             if use_pipeline:
                 outputs = booster.execute_pipeline(
-                    train_dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
+                    train_dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=False
                 )
                 # Backward and optimize
                 if is_pp_last_stage:

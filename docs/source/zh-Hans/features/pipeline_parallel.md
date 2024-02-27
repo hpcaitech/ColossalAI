@@ -194,7 +194,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: 
                                                 _criterion,
                                                 optimizer,
                                                 return_loss=True,
-                                                return_outputs=True)
+                                                return_outputs=False)
             # Backward and optimize
             if is_pp_last_stage:
                 loss = outputs['loss']
