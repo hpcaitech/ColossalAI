@@ -185,7 +185,7 @@ def main():
             microbatch_size=1,
             enable_jit_fused=False,
             zero_stage=0,
-            precision="fp32",
+            precision=args.mixed_precision,
             initial_scale=1,
         )
     else:
