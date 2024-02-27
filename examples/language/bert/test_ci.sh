@@ -2,6 +2,7 @@
 set -x
 
 pip install -r requirements.txt
+pip install --force-reinstall colossalai
 
 FAIL_LIMIT=3
 

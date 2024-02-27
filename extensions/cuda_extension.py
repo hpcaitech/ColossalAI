@@ -59,7 +59,7 @@ class _CudaExtension(_CppExtension):
         set_cuda_arch_list(CUDA_HOME)
 
         # get build dir
-        build_directory = _Extension.get_jit_extension_folder_path()
+        build_directory = self.get_jit_extension_folder_path()
         build_directory = Path(build_directory)
         build_directory.mkdir(parents=True, exist_ok=True)
 
