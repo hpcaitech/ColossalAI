@@ -1183,6 +1183,9 @@ class HybridParallelPlugin(PipelinePluginBase):
     ) -> dict:
         assert self.enable_pipeline_parallelism, "pipeline parallelism is not enabled"
 
+        if return_outputs:
+            warnings.warn("return_outputs may lead to significant extra memory consumption.")
+
         # Create a context for gradient synchronization based on the optimizer type.
         # If it's a HybridParallelZeroOptimizer, use optimizer.no_sync(); otherwise, use model.no_sync().
         # This is to avoid redundant gradient reduction in pipeline parallelism (multiple microbatch values should be reduced once),
