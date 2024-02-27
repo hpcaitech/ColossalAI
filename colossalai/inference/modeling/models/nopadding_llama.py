@@ -13,14 +13,22 @@ from transformers.models.llama.modeling_llama import (
 
 from colossalai.inference.batch_bucket import BatchBucket
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
+from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.triton import (
     context_attention_unpadded,
-    decoding_fused_rotary_embedding,
     flash_decoding_attention,
     get_xine_cache,
     rotary_embedding,
 )
 from colossalai.logging import get_dist_logger
+
+try:
+    from colossalai._C import inference_ops_cuda as inference_ops
+except:
+    inference_ops = None
+
+if inference_ops is None:
+    inference_ops = InferenceOpsLoader().load()
 
 logger = get_dist_logger(__name__)
 
@@ -283,7 +291,6 @@ class NopadLlamaAttention(LlamaAttention):
             )
 
         block_size = k_cache.size(-2)
-
         if is_prompts:
             rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
             attn_output = context_attention_unpadded(
@@ -300,16 +307,9 @@ class NopadLlamaAttention(LlamaAttention):
                 sm_scale=sm_scale,
             )
         else:
-            decoding_fused_rotary_embedding(
-                query_states,
-                key_states,
-                value_states,
-                cos_sin[0],
-                cos_sin[1],
-                k_cache,
-                v_cache,
-                block_tables,
-                sequence_lengths,
+            rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
+            inference_ops.decode_kv_cache_memcpy(
+                key_states, value_states, k_cache, v_cache, sequence_lengths, block_tables
             )
             attn_output = flash_decoding_attention(
                 q=query_states,

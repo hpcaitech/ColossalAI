@@ -4,6 +4,7 @@ from kernel_utils import generate_caches_and_block_tables_v2, mock_alloc_single_
 from packaging import version
 
 from colossalai.inference.modeling.layers.attention import copy_to_cache
+from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.triton import copy_kv_to_blocked_cache
 from colossalai.utils import get_current_device
 
@@ -15,9 +16,18 @@ except ImportError:
     HAS_TRITON = False
     print("please install triton from https://github.com/openai/triton")
 
+
 TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 
-HEAD_DIM = 128
+try:
+    from colossalai._C import inference_ops_cuda as inference_ops
+except:
+    inference_ops = None
+
+if inference_ops is None:
+    inference_ops = InferenceOpsLoader().load()
+
+HEAD_DIM = 4
 
 
 def prepare_data(
@@ -29,7 +39,7 @@ def prepare_data(
     same_context_len,
     max_seq_len,
     device,
-    dtype=torch.float16,
+    dtype=torch.float32,
 ):
     # past_kv_seq_lengths in this test records the previous kv seq len
     # (not incorporating the current input whose seq len is 1)
@@ -78,7 +88,7 @@ def test_copy_kv_to_caches(
     torch.cuda.reset_peak_memory_stats()
 
     max_seq_len = block_size * max_num_blocks_per_seq
-    dtype = torch.float16
+    dtype = torch.float32
     device = get_current_device()
 
     new_k, new_v, k_cache, v_cache, kv_seq_lengths, block_tables = prepare_data(
@@ -92,9 +102,10 @@ def test_copy_kv_to_caches(
         device=device,
         dtype=dtype,
     )
-    # k_cache_torch = k_cache.clone().detach()
-    # copy_to_cache(new_k, k_cache_torch, lengths=kv_seq_lengths, block_tables=block_tables, type="decoding")
-    copy_kv_to_blocked_cache(new_k, new_v, k_cache, v_cache, kv_seq_lengths, block_tables)
+
+    new_k = new_k.squeeze(1) if new_k.dim() == 4 else new_k
+    new_v = new_v.squeeze(1) if new_v.dim() == 4 else new_v
+    inference_ops.decode_kv_cache_memcpy(new_k, new_v, k_cache, v_cache, kv_seq_lengths, block_tables)
 
     past_kv_seq_len = kv_seq_lengths - 1
     target_block_ids = block_tables[range(0, block_tables.size(0)), past_kv_seq_len // block_size]
@@ -123,9 +134,9 @@ configs = [
         x_names=["KV_SEQ_LEN"],
         x_vals=[2**i for i in range(8, 13)],
         line_arg="provider",
-        line_vals=["torch_copy_func", "triton_copy_func"],
-        line_names=["torch_copy_func", "triton_copy_func"],
-        styles=[("red", "-"), ("blue", "-")],
+        line_vals=["torch_copy_func", "triton_copy_func", "cuda_copy_func"],
+        line_names=["torch_copy_func", "triton_copy_func", "cuda_copy_func"],
+        styles=[("red", "-"), ("blue", "-"), ("green", "-")],
         ylabel="ms",
         plot_name=f"kvcache_copy_decoding_stage-batch-{BATCH}",
         args={"bsz": BATCH, "block_size": 16, "max_seq_len": 8192, "num_kv_heads": 16, "same_context_len": True},
@@ -143,7 +154,7 @@ def benchmark_kvcache_copy(
     num_kv_heads: int,
     same_context_len: bool,
 ):
-    dtype = torch.float16
+    dtype = torch.float32
     device = get_current_device()
 
     assert KV_SEQ_LEN <= max_seq_len, "Assigned maximum kv length must be smaller or equal to maximum seq len"
@@ -164,8 +175,12 @@ def benchmark_kvcache_copy(
     # TODO copy_to_cache needs to support copying both k and v at the same time in the future.
     if provider == "torch_copy_func":
         fn = lambda: copy_to_cache(new_k, k_cache, lengths=context_lengths, block_tables=block_tables, type="decoding")
-    if provider == "triton_copy_func":
+    elif provider == "triton_copy_func":
         fn = lambda: copy_kv_to_blocked_cache(new_k, new_v, k_cache, v_cache, context_lengths, block_tables)
+    elif provider == "cuda_copy_func":
+        new_k = new_k.squeeze(1) if new_k.dim() == 4 else new_k
+        new_v = new_v.squeeze(1) if new_v.dim() == 4 else new_v
+        fn = lambda: inference_ops.decode_kv_cache_memcpy(new_k, new_v, k_cache, v_cache, context_lengths, block_tables)
 
     ms, min_ms, max_ms = triton.testing.do_bench(fn, warmup=WARM_UPS, rep=REPS, quantiles=quantiles)
     return ms, min_ms, max_ms
@@ -173,4 +188,4 @@ def benchmark_kvcache_copy(
 
 if __name__ == "__main__":
     test_copy_kv_to_caches(4, 32, 8, 16, True)
-    # benchmark_kvcache_copy.run(save_path=".", print_data=True)
+    benchmark_kvcache_copy.run(save_path=".", print_data=True)
