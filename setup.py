@@ -121,8 +121,9 @@ setup(
             "tests",
             "scripts",
             "requirements",
+            "extensions",
             "*.egg-info",
-        )
+        ),
     ),
     description="An integrated large-scale model training system with efficient parallelization techniques",
     long_description=fetch_readme(),
@@ -153,10 +154,7 @@ setup(
     ],
     package_data={
         "colossalai": [
-            "_C/*.pyi",
-            "kernel/cuda_native/csrc/*",
-            "kernel/cuda_native/csrc/kernel/*",
-            "kernel/cuda_native/csrc/kernels/include/*",
+            "kernel/extensions/csrc/**/*",
         ]
     },
 )

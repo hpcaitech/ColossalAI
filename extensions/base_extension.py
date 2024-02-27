@@ -1,7 +1,7 @@
 import hashlib
 import os
 from abc import ABC, abstractmethod
-from typing import Union
+from typing import Callable, Union
 
 __all__ = ["_Extension"]
 
@@ -64,7 +64,7 @@ class _Extension(ABC):
         """
 
     @abstractmethod
-    def assert_hardware_compatible(self) -> bool:
+    def assert_hardware_compatible(self) -> None:
         """
         Check if the hardware required by the kernel is compatible.
         """
@@ -74,9 +74,9 @@ class _Extension(ABC):
         pass
 
     @abstractmethod
-    def build_jit(self) -> None:
+    def build_jit(self) -> Callable:
         pass
 
     @abstractmethod
-    def load(self):
+    def load(self) -> Callable:
         pass
