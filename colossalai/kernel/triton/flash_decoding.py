@@ -201,7 +201,8 @@ def flash_decoding_attention(
     Flash decoding implemented with a blocked KV Cache (PagedAttention) during decoding stage.
 
     Args:
-        q (torch.Tensor):       [bsz, num_heads, head_dim]
+        q (torch.Tensor): [bsz * q_len, num_heads, head_dim]
+            q_len > 1 only for verification process in speculative-decoding.
         k_cache (torch.Tensor): [num_blocks, num_kv_heads, block_size, head_dim]
         v_cache (torch.Tensor): [num_blocks, num_kv_heads, block_size, head_dim]
         kv_seq_len (torch.Tensor): [batch_size]
@@ -209,10 +210,12 @@ def flash_decoding_attention(
         block_tables (torch.Tensor): [batch_size, max_blocks_per_sequence]
         max_seq_len_in_batch (int): Maximum sequence length in the batch.
         output (torch.Tensor):  [bsz, num_heads * head_dim]
-        mid_output (torch.Tensor): [ max_bsz , num_heads, kv_max_split_num, head_dim]
+        mid_output (torch.Tensor): [max_bsz * q_len, num_heads, kv_max_split_num, head_dim]
             Intermediate output tensor. `max_bsz` should be greater than or equal to `bsz`.
-        mid_output_lse (torch.Tensor): [ max_bsz , num_heads, kv_max_split_num]
+            q_len > 1 only for verification process in speculative-decoding.
+        mid_output_lse (torch.Tensor): [max_bsz * q_len, num_heads, kv_max_split_num]
             Log-sum-exp of intermediate output. `max_bsz` should be greater than or equal to `bsz`.
+            q_len > 1 only for verification process in speculative-decoding.
         block_size (int): Size of each block in the blocked key/value cache.
         num_kv_group (int, optional): Number of key/value groups. Defaults to 1.
         q_length (int): Query length. Use for speculative decoding when `q_length` > 1 (i.e. the last n tokens).
@@ -224,6 +227,7 @@ def flash_decoding_attention(
     q = q.squeeze() if q.dim() == 4 else q
     assert q.dim() == 3, f"Incompatible q dim: {q.dim()}"
     n_tokens, num_heads, head_dim = q.shape
+    assert n_tokens % q_len == 0, "Invalid q_len"
     bsz = n_tokens // q_len
 
     assert head_dim in {32, 64, 128, 256}
@@ -257,6 +261,13 @@ def flash_decoding_attention(
     if output is None:
         # A hack to prevent `view` operation in modeling
         output = torch.empty((bsz * q_len, num_heads * head_dim), dtype=q.dtype, device=q.device)
+
+    assert (
+        mid_output.size(2) == mid_output_lse.size(2) >= kv_max_split_num
+    ), "Incompatible kv split number of intermediate output tensors"
+    assert (
+        mid_output.size(0) == mid_output_lse.size(0) >= output.size(0) == n_tokens
+    ), f"Incompatible first dimension of output tensors"
 
     # NOTE use `triton.next_power_of_2` here to utilize the cache mechanism of triton
     # To optimize, revise batching/scheduling to batch 2^n sequences in a batch (preferred)

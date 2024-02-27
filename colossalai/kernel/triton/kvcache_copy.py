@@ -120,7 +120,7 @@ def copy_k_to_blocked_cache(
         k_cache (torch.Tensor): [num_blocks, num_kv_heads, block_size, head_dim] - Blocked key or value cache.
         kv_lengths (torch.Tensor): [bsz] - Past key/value sequence lengths plus current sequence length for each sequence.
         block_tables (torch.Tensor): [bsz, max_blocks_per_sequence] - Block tables for each sequence.
-        n (int): Number of tokens to copy. Default to 1.
+        n (int): Number of tokens to copy for each sequence. Default to 1.
     """
     assert k.size(-1) == k_cache.size(-1), "Incompatible head dim"
     assert k.dtype == k_cache.dtype, "Expected consistent dtype for tensor and cache."
@@ -130,7 +130,7 @@ def copy_k_to_blocked_cache(
     bsz, num_kv_heads, head_dim = k.shape
     # NOTE when n > 1, the shape of k is [bsz * n, num_kv_heads, head_dim]
     if n > 1:
-        assert bsz % n == 0, "Each sequence should have the same number of tokens to copy"
+        assert bsz % n == 0, "Each sequence should have the same number of tokens to be copied"
         bsz = bsz // n
 
     assert kv_lengths.shape[0] == block_tables.shape[0] == bsz, (
