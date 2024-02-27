@@ -23,9 +23,8 @@ from colossalai.tensor.d_tensor.api import (
 )
 
 from ._operation import (
-    gather_forward_split_backward,
     gather_forward_reducescatter_backward,
-    reducescatter_forward_gather_backward,
+    gather_forward_split_backward,
     linear_gather_forward_reducescatter_backward,
     linear_reducescatter_forward_gather_backward,
     linear_with_async_comm,
@@ -202,10 +201,12 @@ class Linear1D_Col(ParallelModule):
 
         if self.seq_parallel_mode is None:
             output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, True)
-        elif self.seq_parallel_mode == "1":
-            input_parallel = gather_forward_reducescatter_backward(input_parallel, self.process_group, self.seq_parallel_dim)
+        elif self.seq_parallel_mode == "split_gather":
+            input_parallel = gather_forward_reducescatter_backward(
+                input_parallel, self.process_group, self.seq_parallel_dim
+            )
             output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, False)
-        elif self.seq_parallel_mode == "2":
+        elif self.seq_parallel_mode == "ring":
             output_parallel = linear_gather_forward_reducescatter_backward(
                 input_parallel, self.weight, bias, self.process_group, True, self.seq_parallel_dim, self.overlap, True
             )
@@ -419,13 +420,13 @@ class Linear1D_Row(ParallelModule):
             if self.seq_parallel_mode is None:
                 output_parallel = linear_with_async_comm(input_, self.weight, None, self.process_group, False)
                 output = reduce_forward(output_parallel, self.process_group)
-            elif self.seq_parallel_mode == "1":
-                #output = linear_with_async_comm(input_, self.weight, None, None, False)
+            elif self.seq_parallel_mode == "split_gather":
+                # output = linear_with_async_comm(input_, self.weight, None, None, False)
                 output_parallel = linear_with_async_comm(input_, self.weight, None, self.process_group, False)
                 output = reducescatter_forward_gather_backward(
-                                        output_parallel, self.process_group, self.seq_parallel_dim
+                    output_parallel, self.process_group, self.seq_parallel_dim
                 )
-            elif self.seq_parallel_mode == "2":
+            elif self.seq_parallel_mode == "ring":
                 output = linear_reducescatter_forward_gather_backward(
                     input_,
                     self.weight,

@@ -318,12 +318,12 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
             output_parallel = matmul_with_async_comm(
                 input_parallel, self.weight, bias, self.process_group, self.async_communication
             )
-        elif self.seq_parallel_mode == "1":
+        elif self.seq_parallel_mode == "split_gather":
             input_parallel = input_
             output_parallel = matmul_gather_forward_reducescatter_backward(
                 input_parallel, self.weight, bias, self.process_group, True, 1, self.overlap
             )
-        elif self.seq_parallel_mode == "2":
+        elif self.seq_parallel_mode == "ring":
             input_parallel = input_
             output_parallel = matmul_gather_forward_reducescatter_backward(
                 input_parallel, self.weight, bias, self.process_group, True, 1, self.overlap, True
@@ -536,10 +536,10 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
             if self.seq_parallel_mode is None:
                 output_parallel = torch.matmul(input_, self.weight)
                 output = reduce_forward(output_parallel, self.process_group)
-            elif self.seq_parallel_mode == "1":
+            elif self.seq_parallel_mode == "split_gather":
                 output_parallel = torch.matmul(input_, self.weight)
                 output = reducescatter_forward_gather_backward(output_parallel, self.process_group, 1)
-            elif self.seq_parallel_mode == "2":
+            elif self.seq_parallel_mode == "ring":
                 output_parallel = torch.matmul(input_, self.weight)
                 output = reducescatter_forward_gather_backward(output_parallel, self.process_group, 1)
 
