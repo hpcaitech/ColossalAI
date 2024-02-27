@@ -47,6 +47,13 @@ class LlamaPolicy(Policy):
         else:
             norm_cls = RMSNorm
 
+        if self.pipeline_stage_manager is not None:
+            self.shard_config.enable_sequence_parallelism = False
+            self.shard_config.enable_sequence_overlap = False
+            warnings.warn(
+                f"For llama, sequence parallelism is currently not compatible with pipeline parallelism, set to be False"
+            )
+
         sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
         sp_size = self.shard_config.sequence_parallel_size
         sp_group = self.shard_config.sequence_parallel_process_group
@@ -61,15 +68,15 @@ class LlamaPolicy(Policy):
             sp_group = None
 
         use_flash_attention = self.shard_config.enable_flash_attention
-        # todo: currently sp mode 2 and 3 need to be used with flashattention
-        if sp_mode in ["2", "3"]:
+        # Currently sp mode ring and all_to_all need to be used with flashattention
+        if sp_mode in ["ring", "all_to_all"]:
             if not use_flash_attention:
                 warnings.warn(
                     f"Sequence parallelism mode {sp_mode} need to be used with FlashAttention, will enable FlashAttention automatically."
                 )
                 use_flash_attention = True
 
-        if sp_mode == "1":
+        if sp_mode == "split_gather":
             self.append_or_create_method_replacement(
                 description={
                     "forward": get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group),
@@ -84,7 +91,7 @@ class LlamaPolicy(Policy):
                 policy=policy,
                 target_key=LlamaAttention,
             )
-        elif sp_mode == "2":
+        elif sp_mode == "ring":
             self.append_or_create_method_replacement(
                 description={
                     "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group),
@@ -99,7 +106,7 @@ class LlamaPolicy(Policy):
                 policy=policy,
                 target_key=LlamaModel,
             )
-        elif sp_mode == "3":
+        elif sp_mode == "all_to_all":
             decoder_attribute_replacement = {
                 "num_heads": self.model.config.num_attention_heads // sp_size,
                 # "head_dim": self.model.config.hidden_size // self.model.config.num_attention_heads,

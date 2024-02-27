@@ -225,7 +225,7 @@ class GPT2PipelineForwards:
         # split the input tensor along sequence dimension
         # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
         if shard_config and shard_config.enable_sequence_parallelism:
-            if shard_config.sequence_parallelism_mode == "1":
+            if shard_config.sequence_parallelism_mode == "split_gather":
                 hidden_states = split_forward_gather_backward(
                     hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
                 )
@@ -284,7 +284,7 @@ class GPT2PipelineForwards:
 
         # When sequence parallelism done, gather the output tensor in forward and split it in backward
         if shard_config and shard_config.enable_sequence_parallelism:
-            if shard_config.sequence_parallelism_mode == "1":
+            if shard_config.sequence_parallelism_mode == "split_gather":
                 hidden_states = gather_forward_split_backward(
                     hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
                 )
@@ -823,7 +823,7 @@ def get_gpt2_flash_attention_forward(sp_mode, sp_size, sp_group):
         else:
             query, key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
 
-        if sp_mode == "3":
+        if sp_mode == "all_to_all":
             query = all_to_all_comm(query)
             key = all_to_all_comm(key)
             value = all_to_all_comm(value)
@@ -850,7 +850,7 @@ def get_gpt2_flash_attention_forward(sp_mode, sp_size, sp_group):
         dropout_p = self.attn_dropout.p if self.training else 0.0
         attn_output = ColoAttention.attention(query, key, value, **attention_mask, dropout_p=dropout_p, scale=scale)
         attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
-        if sp_mode == "3":
+        if sp_mode == "all_to_all":
             attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)
 
         attn_output = self.c_proj(attn_output)
@@ -904,7 +904,7 @@ def gpt2_sequence_parallel_forward_fn(sp_mode, sp_size, sp_group):
 
         # use variable seq_len to replace input_shape[-1]
         seq_len = input_shape[-1]
-        if sp_mode in ["2", "3"]:
+        if sp_mode in ["ring", "all_to_all"]:
             seq_len *= sp_size
 
         if token_type_ids is not None:
@@ -917,7 +917,7 @@ def gpt2_sequence_parallel_forward_fn(sp_mode, sp_size, sp_group):
             past_key_values = tuple([None] * len(self.h))
         else:
             past_length = past_key_values[0][0].size(-2)
-            if sp_mode in ["2", "3"]:
+            if sp_mode in ["ring", "all_to_all"]:
                 past_length *= sp_size
         if position_ids is None:
             position_ids = torch.arange(
@@ -929,10 +929,10 @@ def gpt2_sequence_parallel_forward_fn(sp_mode, sp_size, sp_group):
             position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
 
         # split position ids when using sequence parallel
-        if sp_mode in ["2", "3"]:
+        if sp_mode in ["ring", "all_to_all"]:
             position_ids = torch.chunk(position_ids.clone(), sp_size, dim=1)[dist.get_rank(sp_group)]
 
-        if sp_mode in ["2", "3"]:
+        if sp_mode in ["ring", "all_to_all"]:
             attention_mask = _gather(attention_mask, 1, sp_group)
 
         # Prepare head mask if needed
@@ -1130,7 +1130,7 @@ def gpt2_sequence_parallel_forward_fn(shard_config: ShardConfig):
         head_mask = self.get_head_mask(head_mask, self.config.n_layer)
 
         if inputs_embeds is None:
-            if sp_mode in ["2"]:
+            if sp_mode in ["ring"]:
                 input_ids = _gather(input_ids, 1, sp_group)
                 inputs_embeds = self.wte(input_ids)
                 inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
@@ -1172,7 +1172,7 @@ def gpt2_sequence_parallel_forward_fn(shard_config: ShardConfig):
         all_cross_attentions = () if output_attentions and self.config.add_cross_attention else None
         all_hidden_states = () if output_hidden_states else None
 
-        if sp_mode == "1":
+        if sp_mode == "split_gather":
             # split the input tensor along sequence dimension
             # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
             hidden_states = split_forward_gather_backward(hidden_states, dim=1, process_group=sp_group)

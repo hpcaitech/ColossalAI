@@ -56,17 +56,17 @@ class GPT2Policy(Policy):
         sp_size = self.shard_config.sequence_parallel_size
         sp_group = self.shard_config.sequence_parallel_process_group
         overlap = self.shard_config.enable_sequence_overlap
-        sp_partial_derived = sp_mode in ["1", "2"]
+        sp_partial_derived = sp_mode in ["split_gather", "ring"]
         use_flash_attention = self.shard_config.enable_flash_attention
         # todo: currently sp mode 2 and 3 need to be used with flashattention
-        if sp_mode in ["2", "3"]:
+        if sp_mode in ["ring", "all_to_all"]:
             if not use_flash_attention:
                 warnings.warn(
                     f"Sequence parallelism mode {sp_mode} need to be used with FlashAttention, will enable FlashAttention automatically."
                 )
                 use_flash_attention = True
 
-        if sp_mode == "3":
+        if sp_mode == "all_to_all":
             decoder_attribute_replacement = {
                 "num_heads": self.model.config.num_attention_heads // sp_size,
             }

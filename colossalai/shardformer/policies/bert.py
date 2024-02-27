@@ -68,7 +68,7 @@ class BertPolicy(Policy):
 
         sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
         overlap = self.shard_config.enable_sequence_overlap
-        sp_partial_derived = sp_mode in ["1"]
+        sp_partial_derived = sp_mode == "split_gather"
 
         if self.shard_config.enable_tensor_parallelism:
             policy[BertLayer] = ModulePolicyDescription(
@@ -141,7 +141,7 @@ class BertPolicy(Policy):
                 ]
             )
 
-        if sp_mode == "1":
+        if sp_mode == "split_gather":
             self.append_or_create_method_replacement(
                 description={"forward": bert_sequence_parallel_forward_fn(self.shard_config)},
                 policy=policy,

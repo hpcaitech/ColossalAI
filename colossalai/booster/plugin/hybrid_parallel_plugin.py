@@ -35,7 +35,7 @@ from colossalai.zero.low_level import LowLevelZeroOptimizer
 from .pp_plugin_base import PipelinePluginBase
 
 DP_AXIS, PP_AXIS, TP_AXIS, SP_AXIS = 0, 1, 2, 3
-SUPPORT_SP_MODE = ["1", "2", "3"]
+SUPPORT_SP_MODE = ["split_gather", "ring", "all_to_all"]
 
 PRECISION_TORCH_TYPE = {"fp16": torch.float16, "fp32": torch.float32, "bf16": torch.bfloat16}
 
@@ -173,12 +173,12 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         """
 
         if self.shard_config.enable_sequence_parallelism:
-            if self.shard_config.sequence_parallelism_mode in ["1", "2"]:
+            if self.shard_config.sequence_parallelism_mode in ["split_gather", "ring"]:
                 # If sequence parallelism is enabled and mode is 1 or 2, gradients are synchronized
                 # across the tensor parallelism group.
                 group = self.tp_group
                 require_flag = True
-            elif self.shard_config.sequence_parallelism_mode == "3":
+            elif self.shard_config.sequence_parallelism_mode == "all_to_all":
                 # If sequence parallelism is enabled and mode is 3, gradients are synchronized
                 # across the sequence parallelism group.
                 group = self.sp_group
@@ -1003,7 +1003,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             assert (
                 self.sequence_parallelism_mode in SUPPORT_SP_MODE
             ), f"Sequence parallelism mode {self.sequence_parallelism_mode} is not in the supported list {SUPPORT_SP_MODE}"
-            if self.sequence_parallelism_mode in ["1", "2"]:
+            if self.sequence_parallelism_mode in ["split_gather", "ring"]:
                 assert (
                     tp_size > 1
                 ), f"Sequence parallelism mode {self.sequence_parallelism_mode} must be enabled when using tensor parallelism"
@@ -1013,7 +1013,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     )
                 self.sp_size = 1
                 self.dp_size = dist.get_world_size() // (tp_size * pp_size)
-            elif self.sequence_parallelism_mode in ["3"]:
+            elif self.sequence_parallelism_mode in ["all_to_all"]:
                 assert (
                     tp_size == 1
                 ), f"Sequence parallelism mode {self.sequence_parallelism_mode} cannot be used with tensor parallelism"
@@ -1077,7 +1077,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
         self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
         self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
-        if self.enable_sequence_parallelism and self.sequence_parallelism_mode in ["1", "2"]:
+        if self.enable_sequence_parallelism and self.sequence_parallelism_mode in ["split_gather", "ring"]:
             self.sp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
         else:
             self.sp_group = self.pg_mesh.get_group_along_axis(SP_AXIS)
@@ -1199,7 +1199,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                         tp_process_group=self.tp_group,
                     )
             else:
-                if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "3":
+                if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
                     self.zero_dp_size = self.sp_size
                     self.zero_dp_group = self.sp_group
                 else:

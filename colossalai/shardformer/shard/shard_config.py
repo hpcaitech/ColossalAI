@@ -8,7 +8,7 @@ from torch.distributed import ProcessGroup
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 __all__ = ["ShardConfig"]
-SUPPORT_SP_MODE = ["1", "2", "3"]
+SUPPORT_SP_MODE = ["split_gather", "ring", "all_to_all"]
 
 
 @dataclass
@@ -65,11 +65,11 @@ class ShardConfig:
             assert (
                 self.sequence_parallelism_mode in SUPPORT_SP_MODE
             ), f"Sequence parallelism mode {self.sequence_parallelism_mode} is not in the supported list {SUPPORT_SP_MODE}"
-            if self.sequence_parallelism_mode in ["1", "2"]:
+            if self.sequence_parallelism_mode in ["split_gather", "ring"]:
                 assert (
                     self.enable_tensor_parallelism
                 ), f"sequence parallelism mode {self.sequence_parallelism_mode} can only be used when enable_tensor_parallelism is True"
-            elif self.sequence_parallelism_mode in ["3"]:
+            elif self.sequence_parallelism_mode in ["all_to_all"]:
                 assert (
                     not self.enable_tensor_parallelism
                 ), f"sequence parallelism mode {self.sequence_parallelism_mode} can only be used when enable_tensor_parallelism is False"
@@ -112,7 +112,7 @@ class ShardConfig:
             self.enable_sequence_parallelism = True
             self.enable_sequence_overlap = True
             # todo modify default sequence parallelism mode and process group
-            self.sequence_parallelism_mode = "1"
+            self.sequence_parallelism_mode = "split_gather"
             self.sequence_parallel_process_group = self.tensor_parallel_process_group
 
     def _infer(self):

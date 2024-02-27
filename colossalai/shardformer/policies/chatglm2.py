@@ -58,7 +58,7 @@ class ChatGLMPolicy(Policy):
 
         sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
         overlap = self.shard_config.enable_sequence_overlap
-        sp_partial_derived = sp_mode in ["1"]
+        sp_partial_derived = sp_mode == "split_gather"
 
         if self.shard_config.enable_tensor_parallelism:
             policy[ChatGLMModel] = ModulePolicyDescription(
@@ -148,7 +148,7 @@ class ChatGLMPolicy(Policy):
             )
 
         # use sequence parallel
-        if sp_mode == "1":
+        if sp_mode == "split_gather":
             self.append_or_create_method_replacement(
                 description={"forward": get_chatglm_sequence_parallel_forward_fn(self.shard_config)},
                 policy=policy,
