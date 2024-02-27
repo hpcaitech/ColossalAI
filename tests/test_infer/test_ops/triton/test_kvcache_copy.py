@@ -192,5 +192,5 @@ def benchmark_kvcache_copy(
 
 
 if __name__ == "__main__":
-    # test_copy_kv_to_caches(4, 16, 8, 16, True, 1)
-    benchmark_kvcache_copy.run(save_path=".", print_data=True)
+    test_copy_kv_to_caches(4, 32, 8, 16, True, 1)
+    # benchmark_kvcache_copy.run(save_path=".", print_data=True)
