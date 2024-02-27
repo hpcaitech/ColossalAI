@@ -214,7 +214,7 @@ class BloomPipelineForwards:
         # split the input tensor along sequence dimension
         # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
         if shard_config and shard_config.enable_sequence_parallelism:
-            if shard_config.sequence_parallelism_mode == "1":
+            if shard_config.sequence_parallelism_mode == "split_gather":
                 hidden_states = split_forward_gather_backward(
                     hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
                 )
@@ -263,7 +263,7 @@ class BloomPipelineForwards:
 
         # When sequence parallelism done, gather the output tensor in forward and split it in backward
         if shard_config and shard_config.enable_sequence_parallelism:
-            if shard_config.sequence_parallelism_mode == "1":
+            if shard_config.sequence_parallelism_mode == "split_gather":
                 hidden_states = gather_forward_split_backward(
                     hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
                 )

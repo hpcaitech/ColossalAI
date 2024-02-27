@@ -199,7 +199,7 @@ class ChatGLMPipelineForwards:
         start_idx, end_idx = stage_index[0], stage_index[1]
 
         if shard_config and shard_config.enable_sequence_parallelism:
-            if shard_config.sequence_parallelism_mode == "1":
+            if shard_config.sequence_parallelism_mode == "split_gather":
                 hidden_states = split_forward_gather_backward(
                     hidden_states, dim=0, process_group=shard_config.tensor_parallel_process_group
                 )
@@ -224,7 +224,7 @@ class ChatGLMPipelineForwards:
                 presents = presents + (kv_cache,)
 
         if shard_config and shard_config.enable_sequence_parallelism:
-            if shard_config.sequence_parallelism_mode == "1":
+            if shard_config.sequence_parallelism_mode == "split_gather":
                 hidden_states = gather_forward_split_backward(
                     hidden_states, dim=0, process_group=shard_config.tensor_parallel_process_group
                 )

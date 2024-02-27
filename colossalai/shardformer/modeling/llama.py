@@ -453,7 +453,7 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_size):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
 
-        if sp_mode in ["1", "2"]:
+        if sp_mode in ["split_gather", "ring"]:
             q_len *= sp_size
         assert q_len % 4 == 0, "Flash Attention Error: The sequence length should be a multiple of 4."
 
@@ -462,7 +462,7 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_size):
         value_states = self.v_proj(hidden_states)
 
         # sp: all-to-all comminucation when introducing sequence parallel
-        if sp_mode == "3":
+        if sp_mode == "all_to_all":
             query_states = all_to_all_comm(query_states)
             key_states = all_to_all_comm(key_states)
             value_states = all_to_all_comm(value_states)
@@ -499,7 +499,7 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_size):
         attn_mask_type = AttnMaskType.causal
 
         # TODO use_distributed_mask
-        use_distributed_mask = True if sp_mode in ["2", "3"] else False
+        use_distributed_mask = True if sp_mode in ["ring", "all_to_all"] else False
         if not getattr(shard_config, "causal_lm", False) and attention_mask != None:
             if use_distributed_mask is True:
                 flash_attention_mask = attention_mask
@@ -510,7 +510,7 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_size):
                     )
                 flash_attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool)).contiguous()
             attn_mask_type = AttnMaskType.paddedcausal
-        hidden_size = self.hidden_size // sp_size if sp_mode == "3" else self.hidden_size
+        hidden_size = self.hidden_size // sp_size if sp_mode == "all_to_all" else self.hidden_size
 
         attention = ColoAttention(embed_dim=hidden_size, num_heads=self.num_heads)
         attn_output = attention(
@@ -523,7 +523,7 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_size):
         )
 
         # sp: all-to-all comminucation when introducing sequence parallel
-        if sp_mode == "3":
+        if sp_mode == "all_to_all":
             attn_output = all_to_all_comm(attn_output, None, scatter_dim=1, gather_dim=2)
         attn_output = self.o_proj(attn_output)
 
@@ -570,8 +570,8 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
         use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
-        # sp: modify sp_len when sequence parallel mode is 2
-        if sp_mode in ["1", "2"]:
+        # sp: modify sp_len when sequence parallel mode is ring
+        if sp_mode in ["split_gather", "ring"]:
             q_len *= sp_size
         if self.config.pretraining_tp > 1:
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
@@ -596,7 +596,7 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
             value_states = self.v_proj(hidden_states)
 
         # sp: all-to-all comminucation when introducing sequence parallel
-        if sp_mode == "3":
+        if sp_mode == "all_to_all":
             query_states = all_to_all_comm(query_states, sp_group)
             key_states = all_to_all_comm(key_states, sp_group)
             value_states = all_to_all_comm(value_states, sp_group)
@@ -676,7 +676,7 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
 
         attn_output = attn_output.transpose(1, 2).contiguous()
         # sp: all-to-all comminucation when introducing sequence parallel
-        if sp_mode == "3":
+        if sp_mode == "all_to_all":
             attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim)
             attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)
         else:
@@ -807,7 +807,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
         # sp: modify seq_length when using sequence parallel
-        if sp_mode in ["2", "3"]:
+        if sp_mode in ["ring", "all_to_all"]:
             seq_length *= sp_size
 
         seq_length_with_past = seq_length
@@ -829,7 +829,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
             position_ids = position_ids.view(-1, seq_length).long()
 
         if inputs_embeds is None:
-            if sp_mode == "2":
+            if sp_mode == "ring":
                 input_ids = _gather(input_ids, 1, sp_group)
                 inputs_embeds = self.embed_tokens(input_ids)
                 input_ids = input_ids.chunk(sp_size, dim=1)[torch.distributed.get_rank(sp_group)]
@@ -838,7 +838,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                 inputs_embeds = self.embed_tokens(input_ids)
 
         # TODO use_distributed_mask
-        use_distributed_mask = True if sp_mode in ["2", "3"] else False
+        use_distributed_mask = True if sp_mode in ["ring", "all_to_all"] else False
 
         # embed positions
         if sp_mode is None or use_distributed_mask is False:
@@ -847,7 +847,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                     (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
                 )
 
-            if sp_mode in ["2", "3"]:
+            if sp_mode in ["ring", "all_to_all"]:
                 attention_mask = _gather(attention_mask, 1, sp_group)
 
             attention_mask = self._prepare_decoder_attention_mask(
@@ -866,10 +866,10 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
             attention_mask = _gather(attention_mask, 1, sp_group)
 
         hidden_states = inputs_embeds
-        if sp_mode == "1":
+        if sp_mode == "split_gather":
             hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group)
 
-        if (self.gradient_checkpointing or sp_mode in ["2", "3"]) and self.training:
+        if (self.gradient_checkpointing or sp_mode in ["ring", "all_to_all"]) and self.training:
             if use_cache:
                 logger.warning_once(
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
@@ -887,7 +887,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
 
             past_key_value = past_key_values[idx] if past_key_values is not None else None
 
-            if (self.gradient_checkpointing or sp_mode in ["2", "3"]) and self.training:
+            if (self.gradient_checkpointing or sp_mode in ["ring", "all_to_all"]) and self.training:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -1077,7 +1077,7 @@ def get_llama_decoder_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
 
         hidden_states = self.input_layernorm(hidden_states)
 
-        if sp_mode == "1":
+        if sp_mode == "split_gather":
             hidden_states = gather_forward_reducescatter_backward(hidden_states, sp_group, 1)
 
         # Self Attention
@@ -1090,19 +1090,19 @@ def get_llama_decoder_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
             use_cache=use_cache,
         )
 
-        if sp_mode == "1":
+        if sp_mode == "split_gather":
             hidden_states = reducescatter_forward_gather_backward(hidden_states, sp_group, 1)
         hidden_states = residual + hidden_states
 
         # Fully Connected
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
-        if sp_mode == "1":
+        if sp_mode == "split_gather":
             hidden_states = gather_forward_reducescatter_backward(hidden_states, sp_group, 1)
 
         hidden_states = self.mlp(hidden_states)
 
-        if sp_mode == "1":
+        if sp_mode == "split_gather":
             hidden_states = reducescatter_forward_gather_backward(hidden_states, sp_group, 1)
         hidden_states = residual + hidden_states
 
