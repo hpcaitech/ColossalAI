@@ -16,6 +16,7 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import cross_entropy_1d
+from ..layer._operation import _gather
 
 try:
     from transformers.models.llama.modeling_llama import _prepare_4d_causal_attention_mask
@@ -287,6 +288,9 @@ class LlamaPipelineForwards:
                 else:
                     shift_logits = shift_logits.view(-1, self.config.vocab_size)
                     loss = loss_fct(shift_logits, shift_labels)
+
+            if not shard_config.parallel_output:
+                logits = _gather(logits, -1, shard_config.tensor_parallel_process_group)
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
@@ -587,6 +591,9 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             else:
                 shift_logits = shift_logits.view(-1, self.config.vocab_size)
                 loss = loss_fct(shift_logits, shift_labels)
+
+        if not shard_config.parallel_output:
+            logits = _gather(logits, -1, shard_config.tensor_parallel_process_group)
 
         if not return_dict:
             output = (logits,) + outputs[1:]
