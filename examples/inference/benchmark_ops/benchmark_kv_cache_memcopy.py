@@ -1,5 +1,4 @@
 import torch
-from packaging import version
 
 from colossalai.inference.modeling.layers.attention import copy_to_cache
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
@@ -11,9 +10,6 @@ try:
     import triton  # noqa
 except ImportError:
     print("please install triton from https://github.com/openai/triton")
-
-
-TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 
 try:
     from colossalai._C import inference_ops_cuda as inference_ops
