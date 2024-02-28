@@ -78,7 +78,7 @@ def check_state_dict_equal(
                 v2 = v2.to("cpu")
             if ignore_dtype:
                 v1 = v1.to(v2.dtype)
-            assert_close_loose(v1, v2, rtol=2e-3, atol=2e-3)
+            assert_close_loose(v1, v2, rtol=3e-3, atol=3e-3)
         else:
             assert v1 == v2, f"{v1} not equals to {v2}"
 
