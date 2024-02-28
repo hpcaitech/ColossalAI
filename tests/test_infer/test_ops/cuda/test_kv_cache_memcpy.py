@@ -1,21 +1,9 @@
 import pytest
 import torch
-from packaging import version
 
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.utils import get_current_device
 from tests.test_infer.test_ops.triton.test_kvcache_copy import prepare_data
-
-try:
-    import triton  # noqa
-
-    HAS_TRITON = True
-except ImportError:
-    HAS_TRITON = False
-    print("please install triton from https://github.com/openai/triton")
-
-
-TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 
 try:
     from colossalai._C import inference_ops_cuda as inference_ops
@@ -28,7 +16,6 @@ if inference_ops is None:
 HEAD_DIM = 4
 
 
-@pytest.mark.skipif(not (HAS_TRITON and TRITON_CUDA_SUPPORT), reason="requires triton")
 @pytest.mark.parametrize("bsz", [4, 7, 32])
 @pytest.mark.parametrize("block_size", [16, 32, 64])
 @pytest.mark.parametrize("max_num_blocks_per_seq", [8, 32])
