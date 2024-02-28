@@ -4,6 +4,7 @@ from .flash_attention import (
     FlashAttentionNpuExtension,
     FlashAttentionXformersCudaExtension,
 )
+from .inference import InferenceOpsCudaExtension
 from .layernorm import LayerNormCudaExtension
 from .moe import MoeCudaExtension
 from .optimizer import FusedOptimizerCudaExtension
@@ -15,6 +16,7 @@ ALL_EXTENSIONS = [
     LayerNormCudaExtension,
     MoeCudaExtension,
     FusedOptimizerCudaExtension,
+    InferenceOpsCudaExtension,
     ScaledMaskedSoftmaxCudaExtension,
     ScaledUpperTriangleMaskedSoftmaxCudaExtension,
     FlashAttentionDaoCudaExtension,
@@ -28,6 +30,7 @@ __all__ = [
     "LayerNormCudaExtension",
     "MoeCudaExtension",
     "FusedOptimizerCudaExtension",
+    "InferenceOpsCudaExtension",
     "ScaledMaskedSoftmaxCudaExtension",
     "ScaledUpperTriangleMaskedSoftmaxCudaExtension",
     "FlashAttentionDaoCudaExtension",
