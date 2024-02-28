@@ -16,6 +16,7 @@ from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.triton import (
     context_attention_unpadded,
+    decoding_fused_rotary_embedding,
     flash_decoding_attention,
     get_xine_cache,
     rotary_embedding,
@@ -82,6 +83,9 @@ def llama_model_forward(
     sequence_lengths = batch.get_sequence_lengths()
     batch_size = batch.current_batch_size
     kv_seq_len = sequence_lengths.max().item()
+    use_cuda = True
+    if batch_size >= 32 and kv_seq_len > 512:
+        use_cuda = False
 
     hidden_states = self.embed_tokens(input_ids)
 
@@ -115,6 +119,7 @@ def llama_model_forward(
             output_tensor=output_tensor,
             norm_output=norm_output,
             sm_scale=sm_scale,
+            use_cuda=use_cuda,
         )
 
     if batch.is_prompts:
@@ -142,6 +147,7 @@ def llama_decoder_layer_forward(
     output_tensor: torch.Tensor = None,
     norm_output: torch.Tensor = None,
     sm_scale: int = None,
+    use_cuda: bool = True,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     """This function will replace the forward function of LlamaDecoderLayer.
 
@@ -161,6 +167,7 @@ def llama_decoder_layer_forward(
         output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
         norm_output (torch.Tensor, optional): The mid tensor holds the output of layernorm. Defaults to None.
         sm_scale (int, optional): Used for flash attention. Defaults to None.
+        use_cuda: (bool, optional): Whether to use cuda kernel. Defaults to True.
     """
 
     hidden_states, residual = self.input_layernorm(hidden_states, norm_output, residual)
@@ -177,6 +184,7 @@ def llama_decoder_layer_forward(
         fd_inter_tensor=fd_inter_tensor,
         output_tensor=output_tensor,
         sm_scale=sm_scale,
+        use_cuda=use_cuda,
     )
 
     # Fully Connected
@@ -260,6 +268,7 @@ class NopadLlamaAttention(LlamaAttention):
         fd_inter_tensor: FDIntermTensors = None,
         output_tensor: torch.Tensor = None,
         sm_scale: int = None,
+        use_cuda: bool = True,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Args:
@@ -276,6 +285,7 @@ class NopadLlamaAttention(LlamaAttention):
                 storing intermediate values in flash-decoding. Defaults to None.
             output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
             sm_scale (int, optional): Used for flash attention. Defaults to None.
+            use_cuda: (bool, optional): Whether to use cuda kernel. Defaults to True.
         """
 
         if self.num_heads != self.num_key_value_heads:
@@ -307,10 +317,23 @@ class NopadLlamaAttention(LlamaAttention):
                 sm_scale=sm_scale,
             )
         else:
-            rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
-            inference_ops.decode_kv_cache_memcpy(
-                key_states, value_states, k_cache, v_cache, sequence_lengths, block_tables
-            )
+            if use_cuda:
+                rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
+                inference_ops.decode_kv_cache_memcpy(
+                    key_states, value_states, k_cache, v_cache, sequence_lengths, block_tables
+                )
+            else:
+                decoding_fused_rotary_embedding(
+                    query_states,
+                    key_states,
+                    value_states,
+                    cos_sin[0],
+                    cos_sin[1],
+                    k_cache,
+                    v_cache,
+                    block_tables,
+                    sequence_lengths,
+                )
             attn_output = flash_decoding_attention(
                 q=query_states,
                 k_cache=k_cache,
