@@ -11,13 +11,7 @@ try:
 except ImportError:
     print("please install triton from https://github.com/openai/triton")
 
-try:
-    from colossalai._C import inference_ops_cuda as inference_ops
-except:
-    inference_ops = None
-
-if inference_ops is None:
-    inference_ops = InferenceOpsLoader().load()
+inference_ops = InferenceOpsLoader().load()
 
 HEAD_DIM = 4
 BATCH = 16

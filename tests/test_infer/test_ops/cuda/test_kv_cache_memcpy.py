@@ -5,13 +5,7 @@ from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.utils import get_current_device
 from tests.test_infer.test_ops.triton.test_kvcache_copy import prepare_data
 
-try:
-    from colossalai._C import inference_ops_cuda as inference_ops
-except:
-    inference_ops = None
-
-if inference_ops is None:
-    inference_ops = InferenceOpsLoader().load()
+inference_ops = InferenceOpsLoader().load()
 
 HEAD_DIM = 4
 
