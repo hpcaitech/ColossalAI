@@ -38,6 +38,9 @@ def get_cos_sin(lengths, cos_cache, sin_cache, is_prompts, dtype):
     return (cos_output, sin_output)
 
 
+@pytest.mark.skipif(
+    not TRITON_CUDA_SUPPORT or not HAS_TRITON, reason="triton requires cuda version to be higher than 11.4"
+)
 @pytest.mark.parametrize("BATCH_SIZE", [4])
 @pytest.mark.parametrize("MAX_SEQ_LEN", [64])
 @pytest.mark.parametrize("HEAD_DIM", [64])
@@ -59,46 +62,5 @@ def test_get_xine_cache(BATCH_SIZE, MAX_SEQ_LEN, HEAD_DIM, dtype):
     assert torch.allclose(sin, nsin_ref)
 
 
-configs = [
-    triton.testing.Benchmark(
-        x_names=["max_num_tokens"],
-        x_vals=[2**i for i in range(6, 12)],
-        line_arg="provider",
-        line_vals=["torch_get_cos_sin", "triton_get_cos_sin"],
-        line_names=["torch_get_cos_sin", "triton_get_cos_sin"],
-        styles=[("red", "-"), ("blue", "-")],
-        ylabel="ms",
-        plot_name="Get_cos-sin_func",
-        args={"batch_size": 16, "head_dim": 256},
-    )
-]
-
-
-@triton.testing.perf_report(configs)
-def benchmark_get_xine_cache(
-    provider: str,
-    max_num_tokens: int,
-    batch_size: int,
-    head_dim: int,
-):
-    warmup = 10
-    rep = 1000
-    dtype = torch.float16
-    cos_cache = torch.randn((8912, head_dim), dtype=dtype, device="cuda")
-    sin_cache = torch.randn((8912, head_dim), dtype=dtype, device="cuda")
-    lengths = torch.randint(2, max_num_tokens, (batch_size,), device="cuda")
-
-    if provider == "torch_get_cos_sin":
-        fn = lambda: get_cos_sin(lengths, cos_cache, sin_cache, is_prompts=True, dtype=dtype)
-    elif provider == "triton_get_cos_sin":
-        fn = lambda: get_xine_cache(lengths, cos_cache, sin_cache, is_prompts=True)
-    else:
-        raise ValueError("Undefined provider")
-
-    ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-    return ms
-
-
 if __name__ == "__main__":
     test_get_xine_cache(4, 64, 256, torch.float32)
-    # benchmark_get_xine_cache.run(save_path=".",print_data=True)
