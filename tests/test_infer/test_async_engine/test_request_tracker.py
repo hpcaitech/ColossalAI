@@ -1,6 +1,7 @@
 import pytest
 
 from colossalai.inference.core.async_engine import RequestTracker
+from colossalai.inference.struct import Sequence
 
 
 class SampleEvent:
@@ -59,18 +60,17 @@ def test_request_tracker():
     assert not new
     assert stream_4.finished
 
-    tracker.add_request(5)
+    stream_5 = tracker.add_request(5)
     assert tracker.new_requests_event.flag
-    # tracker.process_request_output(
-    #     RequestOutput("2", "output", [], [], [], finished=True))
-    # new, finished = tracker.get_new_and_finished_requests()
-    # assert not tracker.new_requests_event.flag
-    # assert len(finished) == 1
-    # assert "2" in finished
-    # assert len(new) == 1
-    # assert new[0]["request_id"] == "5"
-    # assert stream_2.finished
-    # assert not stream_5.finished
+    tracker.process_finished_request(Sequence(2, "output", [], 4, [], 0, 0))
+    new, finished = tracker.get_new_and_finished_requests()
+    assert not tracker.new_requests_event.flag
+    assert len(finished) == 1
+    assert 2 in finished
+    assert len(new) == 1
+    assert new[0]["request_id"] == 5
+    assert stream_2.finished
+    assert not stream_5.finished
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 from itertools import count
-from typing import List, Optional, Union
+from typing import Iterable, List, Optional, Union
 
 import numpy as np
 import torch
@@ -86,7 +86,7 @@ class InferenceEngine:
             self.logger = get_dist_logger(__name__)
 
         self.request_handler = RequestHandler(self.inference_config, self.model_config)
-        self.k_cahce, self.v_cache = self.request_handler.get_kvcache()
+        self.k_cache, self.v_cache = self.request_handler.get_kvcache()
         # DISCUSS maybe move this into batch info?
 
         self.counter = count()
@@ -143,9 +143,9 @@ class InferenceEngine:
 
     def generate(
         self,
+        request_ids: Union[List[int], int] = None,
         prompts: Union[List[str], str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
-        request_ids: Union[List[int], int] = None,
         return_token_ids: bool = False,
         generation_config: Optional[GenerationConfig] = None,
     ) -> List[str]:
@@ -285,6 +285,55 @@ class InferenceEngine:
             )
             self.request_handler.add_sequence(sequence)
 
+    def add_single_request(
+        self, request_id: int, prompt: str = None, prompt_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None
+    ):
+        """
+        Add a single request.
+        """
+        if self.has_prompt_template and prompt is not None:
+            prompt = self.format_prompt(prompt)
+
+        block_size = self.inference_config.block_size
+        if prompt_token_ids is None:
+            assert prompt, "When the prompts_token_ids is none, the input prompt list must be provided."
+            prompt_token_ids = self.tokenizer.encode(prompt, padding=self.inference_config.pad_input)
+
+        if isinstance(prompt_token_ids, list):
+            pass
+        elif isinstance(prompt_token_ids, torch.Tensor) or isinstance(prompt_token_ids, np.ndarray):
+            prompt_token_ids = prompt_token_ids.tolist()
+        else:
+            raise TypeError(
+                f"The dtype of prompts_token_ids must be one of list, torch.Tensor, np.ndarray, but got {type(prompt_token_ids)}."
+            )
+
+        assert (
+            len(prompt_token_ids) <= self.inference_config.max_input_len
+        ), f"The length of input prompts {len(prompt_token_ids)} must be less than max_input_len {self.inference_config.max_input_len}."
+
+        sequence = Sequence(
+            request_id,
+            prompt,
+            prompt_token_ids,
+            block_size,
+            None,
+            self.tokenizer.eos_token_id,
+            self.tokenizer.pad_token_id,
+            self.inference_config.max_output_len,
+        )
+        self.request_handler.add_sequence(sequence)
+
+    def abort_request(self, request_id: Union[int, Iterable[int]]):
+        """
+        Abort a request with request id
+        """
+        if isinstance(request_id, int):
+            self.request_handler.abort_sequence(request_id)
+        else:
+            for id in request_id:
+                self.request_handler.abort_sequence(id)
+
     def step(self) -> List[str]:
         """
         In each step, do the follows:
@@ -302,7 +351,7 @@ class InferenceEngine:
         # TODO: padding_id is used for generating attn_mask and will be removed if nopad version is supported.
         logits = self.model(
             batch,
-            self.k_cahce,
+            self.k_cache,
             self.v_cache,
         )
 

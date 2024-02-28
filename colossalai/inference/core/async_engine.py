@@ -1,4 +1,5 @@
 import asyncio
+from functools import partial
 from logging import Logger
 from typing import AsyncIterator, Dict, Iterable, List, Optional, Set, Tuple, Type
 
@@ -10,7 +11,7 @@ class AsyncEngineDeadError(RuntimeError):
 
 
 def _raise_exception_on_finish(task: asyncio.Task, request_tracker: "RequestTracker") -> None:
-    msg = "Task finished unexpectedly. This should never happen! " "Please open an issue on Github."
+    msg = "Task finished unexpectedly. This should never happen! "
     try:
         try:
             task.result()
@@ -73,26 +74,24 @@ class RequestTracker:
     def init_event(self):
         self.new_requests_event = asyncio.Event()
 
-    def propagate_exception(self, exc: Exception, request_id: Optional[str] = None) -> None:
-        """Propagate an exception to request streams
-        (all if request_id is None)."""
+    def propagate_exception(self, exc: Exception, request_id: Optional[int] = None) -> None:
+        """
+        Propagate an exception to request streams (all if request_id is None).
+        """
         if request_id is not None:
             self._request_streams[request_id].put(exc)
         else:
             for stream in self._request_streams.values():
                 stream.put(exc)
 
-    def process_request_output(self, request_output, *, verbose: bool = False) -> None:
-        """Process a request output from the engine."""
-        request_id = request_output.request_id
+    def process_finished_request(self, finished_request) -> None:
+        """Process a finished request from the engine."""
+        request_id = finished_request.request_id
 
-        self._request_streams[request_id].put(request_output)
-        if request_output.finished:
-            if verbose:
-                Logger.info(f"Finished request {request_id}.")
-            self.abort_request(request_id)
+        self._request_streams[request_id].put(finished_request)
+        self.abort_request(request_id)
 
-    def add_request(self, request_id: str, **engine_add_request_kwargs) -> AsyncStream:
+    def add_request(self, request_id: int, **engine_add_request_kwargs) -> AsyncStream:
         """
         Add a request to be sent to the engine on the next background
         loop iteration.
@@ -107,7 +106,7 @@ class RequestTracker:
 
         return stream
 
-    def abort_request(self, request_id: str, *, verbose: bool = False) -> None:
+    def abort_request(self, request_id: int, *, verbose: bool = False) -> None:
         """Abort a request during next background loop iteration."""
         if verbose:
             Logger.info(f"Aborted request {request_id}.")
@@ -120,11 +119,26 @@ class RequestTracker:
 
         self._request_streams[request_id].finish()
 
-    def get_new_and_finished_requests(self) -> Tuple[List[Dict], Set[str]]:
+    def get_new_requests(self):
+        """
+        Get new requests from http server.
+        """
+        new_requests: List[Dict] = []
+
+        while not self._new_requests.empty():
+            stream, new_request = self._new_requests.get_nowait()
+            self._request_streams[stream.request_id] = stream
+            new_requests.append(new_request)
+
+        self.new_requests_event.clear()
+
+        return new_requests
+
+    def get_new_and_finished_requests(self) -> Tuple[List[Dict], Set[int]]:
         """Get the new requests and finished requests to be
         sent to the engine."""
         new_requests: List[Dict] = []
-        finished_requests: Set[str] = set()
+        finished_requests: Set[int] = set()
 
         while not self._finished_requests.empty():
             request_id = self._finished_requests.get_nowait()
@@ -164,10 +178,13 @@ class _AsyncInferenceEngine(InferenceEngine):
         generated results.
         """
         batch = self.request_handler.schedule()
-
-        logits = await self.model(
+        loop = asyncio.get_running_loop()
+        # 使用 run_in_executor 运行同步的 self.model 方法
+        logits = await loop.run_in_executor(
+            None,
+            self.model,
             batch,
-            self.k_cahce,
+            self.k_cache,
             self.v_cache,
         )
 
@@ -176,9 +193,10 @@ class _AsyncInferenceEngine(InferenceEngine):
 
         self.request_handler.search_tokens(self.generation_config, logits)
 
+        # Return: List[Sequence]
         finished_sequences = self.request_handler.update()
 
-        return finished_sequences
+        return finished_sequences, batch.current_batch_size
 
 
 class AsyncInferenceEngine:
@@ -209,10 +227,12 @@ class AsyncInferenceEngine:
         if self.background_loop_status:
             raise RuntimeError("Existing loop is running")
 
+        self._request_tracker.init_event()
+
         self._background_loop_unshielded = asyncio.get_event_loop().create_task(self.run_engine_loop())
-        # self._background_loop_unshielded.add_done_callback(
-        #     partial(_raise_exception_on_finish,
-        #             request_tracker=self._request_tracker))
+        self._background_loop_unshielded.add_done_callback(
+            partial(_raise_exception_on_finish, request_tracker=self._request_tracker)
+        )
         self.background_loop = asyncio.shield(self._background_loop_unshielded)
 
     def _init_engine(self, **kwargs):
@@ -224,21 +244,34 @@ class AsyncInferenceEngine:
 
         Returns True if there are in-progress requests.
         """
-        request_outputs = await self.engine.async_step()
+        new_requests = self._request_tracker.get_new_requests()
+        for new_request in new_requests:
+            self.engine.add_single_request(**new_request)
+        newly_finished_seqs, has_running_requests = await self.engine.async_step()
+        for seq in newly_finished_seqs:
+            self._request_tracker.process_finished_request(seq)
 
-        for request_output in request_outputs:
-            self._request_tracker.process_request_output(request_output, verbose=self.log_requests)
+        return has_running_requests
 
-        return len(request_outputs) > 0
+    async def _engine_abort(self, request_ids: Iterable[int]):
+        self.engine.abort_request(request_ids)
 
-    async def abort(self, request_ids: Iterable[int]):
-        self.engine.abort(request_ids)
+    def abort(self, request_id: int):
+        """
+        Abort a single request
+        """
+        if not self.background_loop_status:
+            raise RuntimeError("Background loop is not running or launched correctly.")
+        return self._abort(request_id)
+
+    def _abort(self, request_id: int):
+        self._request_tracker.abort_request(request_id)
 
     async def run_engine_loop(self):
         processing_requests = False
         while True:
             if not processing_requests:
-                await self.request_tracker.wait_for_new_requests()
+                await self._request_tracker.wait_for_new_requests()
             processing_requests = await self.step()
             await asyncio.sleep(0)
 
@@ -248,6 +281,9 @@ class AsyncInferenceEngine:
         prompt: Optional[str],
         prompt_token_ids: Optional[List[int]] = None,
     ) -> AsyncStream:
+        """
+        Add a request to the background tracker(waitting queue), start the background loop if needed.
+        """
         if not self.background_loop_status:
             if self.start_engine_loop:
                 self.start_background_loop()
@@ -266,6 +302,11 @@ class AsyncInferenceEngine:
         prompt: Optional[str],
         prompt_token_ids: Optional[List[int]] = None,
     ) -> AsyncIterator[str]:
+        """
+        Generate output from a request. It receives the request from http server, adds it into the
+        waitting queue of Async Engine and streams the output sequence.
+
+        """
         try:
             stream = await self.add_request(request_id, prompt, prompt_token_ids=prompt_token_ids)
             async for request_output in stream:
@@ -274,11 +315,5 @@ class AsyncInferenceEngine:
         except (Exception, asyncio.CancelledError) as e:
             # If there is an exception or coroutine is cancelled, abort the
             # request.
-            self.abort_request(request_id)
+            self._abort(request_id)
             raise e
-
-    def abort_request(self, request_id: str) -> None:
-        """
-        Abort a request from request tracker.
-        """
-        self._request_tracker.abort_request(request_id)

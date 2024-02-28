@@ -7,7 +7,8 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from colossalai.inference.config import InferenceConfig
-from colossalai.inference.core.engine import InferenceEngine
+from colossalai.inference.core.async_engine import AsyncInferenceEngine
+from colossalai.inference.server.completion_service import ColossalAICompletionServing
 from colossalai.inference.server.utils import id_generator
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds.
@@ -61,6 +62,14 @@ async def generate(request: Request) -> Response:
     assert final_output is not None
     ret = {"text": final_output}
     return JSONResponse(ret)
+
+
+@app.post("/v1/completion")
+async def create_completion(request: Request):
+    generator = await completion_serving.create_completion(request)
+    output = tokenizer.decode(generator.output_token_id)
+    ret = {"request_id": generator.request_id, "text": output}
+    return ret
 
 
 def add_engine_config(parser):
@@ -144,7 +153,11 @@ if __name__ == "__main__":
     inference_config = InferenceConfig.from_cli_args(args)
     model = AutoModelForCausalLM.from_pretrained(args.model)
     tokenizer = AutoTokenizer.from_pretrained(args.model)
-    engine = InferenceEngine(model=model, tokenizer=tokenizer, inference_config=inference_config)
+    # engine = InferenceEngine(model=model, tokenizer=tokenizer, inference_config=inference_config)
+    async_engine = AsyncInferenceEngine(
+        start_engine_loop=True, model=model, tokenizer=tokenizer, inference_config=inference_config
+    )
+    completion_serving = ColossalAICompletionServing(async_engine, served_model=model.__class__.__name__)
 
     app.root_path = args.root_path
     uvicorn.run(
