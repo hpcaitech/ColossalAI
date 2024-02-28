@@ -38,8 +38,7 @@ def test_fused_rotary_emb():
     cos_cache = -1.2 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
     sin_cache = -2.0 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
 
-    cos = get_xine_cache(lengths, cos_cache[:, : head_dim // 2])
-    sin = get_xine_cache(lengths, sin_cache[:, : head_dim // 2])
+    cos, sin = get_xine_cache(lengths, cos_cache[:, : head_dim // 2], sin_cache[:, : head_dim // 2])
 
     rotary_embedding(q, k, cos, sin)
     fused_rotary_embedding(q_copy, k_copy, cos_cache, sin_cache, lengths)
