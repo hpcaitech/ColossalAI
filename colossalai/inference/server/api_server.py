@@ -7,19 +7,20 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from colossalai.inference.config import InferenceConfig
-from colossalai.inference.core.async_engine import AsyncInferenceEngine
 from colossalai.inference.server.completion_service import ColossalAICompletionServing
 from colossalai.inference.server.utils import id_generator
+
+from colossalai.inference.core.async_engine import AsyncInferenceEngine, InferenceEngine  # noqa
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds.
 app = FastAPI()
 engine = None
-models_dict = {"Llama_Models": ("llama2-7b",)}
+supported_models_dict = {"Llama_Models": ("llama2-7b",)}
 
 
 @app.get("/v0/models")
 def get_available_models() -> Response:
-    return JSONResponse(models_dict)
+    return JSONResponse(supported_models_dict)
 
 
 @app.post("/generate")
@@ -34,12 +35,10 @@ async def generate(request: Request) -> Response:
     request_dict = await request.json()
     prompt = request_dict.pop("prompt")
     stream = request_dict.pop("stream", None)
-    request_id = id_generator()
 
-    results = engine.generate(
-        request_id,
-        prompt,
-    )
+    request_id = id_generator()
+    generation_config = get_generation_config(request_dict)
+    results = engine.generate(request_id, prompt, generation_config=generation_config)
 
     # Streaming case
     def stream_results():
@@ -66,10 +65,20 @@ async def generate(request: Request) -> Response:
 
 @app.post("/v1/completion")
 async def create_completion(request: Request):
-    generator = await completion_serving.create_completion(request)
+    request_dict = await request.json()
+    generation_config = get_generation_config(request_dict)
+    generator = await completion_serving.create_completion(request_dict, generation_config)
     output = tokenizer.decode(generator.output_token_id)
     ret = {"request_id": generator.request_id, "text": output}
     return ret
+
+
+def get_generation_config(request):
+    generation_config = async_engine.engine.generation_config
+    for arg in request:
+        if hasattr(generation_config, arg):
+            generation_config[arg] = request[arg]
+    return generation_config
 
 
 def add_engine_config(parser):
@@ -153,10 +162,10 @@ if __name__ == "__main__":
     inference_config = InferenceConfig.from_cli_args(args)
     model = AutoModelForCausalLM.from_pretrained(args.model)
     tokenizer = AutoTokenizer.from_pretrained(args.model)
-    # engine = InferenceEngine(model=model, tokenizer=tokenizer, inference_config=inference_config)
     async_engine = AsyncInferenceEngine(
         start_engine_loop=True, model=model, tokenizer=tokenizer, inference_config=inference_config
     )
+    engine = async_engine.engine
     completion_serving = ColossalAICompletionServing(async_engine, served_model=model.__class__.__name__)
 
     app.root_path = args.root_path

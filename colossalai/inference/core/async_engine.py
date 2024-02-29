@@ -190,9 +190,8 @@ class _AsyncInferenceEngine(InferenceEngine):
 
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
-
+        print(logits)
         self.request_handler.search_tokens(self.generation_config, logits)
-
         # Return: List[Sequence]
         finished_sequences = self.request_handler.update()
 
@@ -256,7 +255,7 @@ class AsyncInferenceEngine:
     async def _engine_abort(self, request_ids: Iterable[int]):
         self.engine.abort_request(request_ids)
 
-    def abort(self, request_id: int):
+    async def abort(self, request_id: int):
         """
         Abort a single request
         """
