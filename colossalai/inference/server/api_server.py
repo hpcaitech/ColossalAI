@@ -67,7 +67,7 @@ async def generate(request: Request) -> Response:
 async def create_completion(request: Request):
     request_dict = await request.json()
     generation_config = get_generation_config(request_dict)
-    generator = await completion_serving.create_completion(request_dict, generation_config)
+    generator = await completion_serving.create_completion(request, generation_config)
     output = tokenizer.decode(generator.output_token_id)
     ret = {"request_id": generator.request_id, "text": output}
     return ret

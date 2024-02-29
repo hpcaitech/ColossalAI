@@ -243,6 +243,7 @@ class InferenceEngine:
             prompts_token_ids = self.tokenizer.batch_encode_plus(prompts, padding=self.inference_config.pad_input)[
                 "input_ids"
             ]
+            print(prompts_token_ids)
 
         if isinstance(prompts_token_ids, list):
             pass
@@ -357,8 +358,10 @@ class InferenceEngine:
 
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
-        self.request_handler.search_tokens(self.generation_config, logits)
 
+        print("in step", logits)
+
+        self.request_handler.search_tokens(self.generation_config, logits)
         finished_sequences = self.request_handler.update()
 
         return finished_sequences

@@ -190,12 +190,11 @@ class _AsyncInferenceEngine(InferenceEngine):
 
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
-        print(logits)
         self.request_handler.search_tokens(self.generation_config, logits)
         # Return: List[Sequence]
         finished_sequences = self.request_handler.update()
 
-        return finished_sequences, batch.current_batch_size
+        return finished_sequences, self.request_handler.current_requests_in_batch() > 0
 
 
 class AsyncInferenceEngine:
