@@ -5,7 +5,7 @@ from colossalai.inference.core.async_engine import AsyncInferenceEngine
 from .utils import id_generator
 
 
-class ColossalAICompletionServing:
+class CompletionServing:
     def __init__(self, engine: AsyncInferenceEngine, served_model: str):
         self.engine = engine
         self.served_model = served_model

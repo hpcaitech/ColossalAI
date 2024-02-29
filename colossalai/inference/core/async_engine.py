@@ -179,7 +179,8 @@ class _AsyncInferenceEngine(InferenceEngine):
         """
         batch = self.request_handler.schedule()
         loop = asyncio.get_running_loop()
-        # 使用 run_in_executor 运行同步的 self.model 方法
+
+        # Use run_in_executor to asyncally run the sync method model.forward().
         logits = await loop.run_in_executor(
             None,
             self.model,

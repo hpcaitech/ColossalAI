@@ -1,3 +1,17 @@
+"""
+Doc:
+    Feature:
+    - FastAPI based http server for Colossal-Inference
+    - Completion Service Supported
+    Usage: (for local user)
+    - First, Lauch an API locally. `python3 -m colossalai.inference.server.api_server  --model path of your llama2 model`
+    - Second, you can turn to the page `http://127.0.0.1:8000/docs` to check the api
+    - For completion service, you can invoke it by using `curl -X POST  http://127.0.0.1:8000/v1/completion  \
+         -H 'Content-Type: application/json' \
+         -d '{"prompt":"hello, who are you? ","stream":"False"}'`
+"""
+
+
 import argparse
 import json
 
@@ -7,7 +21,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from colossalai.inference.config import InferenceConfig
-from colossalai.inference.server.completion_service import ColossalAICompletionServing
+from colossalai.inference.server.completion_service import CompletionServing
 from colossalai.inference.server.utils import id_generator
 
 from colossalai.inference.core.async_engine import AsyncInferenceEngine, InferenceEngine  # noqa
@@ -159,14 +173,14 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    inference_config = InferenceConfig.from_cli_args(args)
+    inference_config = InferenceConfig.from_dict(vars(args))
     model = AutoModelForCausalLM.from_pretrained(args.model)
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     async_engine = AsyncInferenceEngine(
         start_engine_loop=True, model=model, tokenizer=tokenizer, inference_config=inference_config
     )
     engine = async_engine.engine
-    completion_serving = ColossalAICompletionServing(async_engine, served_model=model.__class__.__name__)
+    completion_serving = CompletionServing(async_engine, served_model=model.__class__.__name__)
 
     app.root_path = args.root_path
     uvicorn.run(
