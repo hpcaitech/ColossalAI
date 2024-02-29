@@ -9,7 +9,7 @@
    <a href="https://www.colossalai.org/"> Documentation </a> |
    <a href="https://github.com/hpcaitech/ColossalAI/tree/main/examples"> Examples </a> |
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> |
-   <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
+   <a href="https://hpc-ai.com/blog"> Blog </a></h3>
 
    [![GitHub Repo stars](https://img.shields.io/github/stars/hpcaitech/ColossalAI?style=social)](https://github.com/hpcaitech/ColossalAI/stargazers)
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build_on_schedule.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build_on_schedule.yml)
