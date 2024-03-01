@@ -937,6 +937,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_jit_fused: bool = False,
         enable_sequence_parallelism: bool = False,
         enable_sequence_overlap: bool = False,
+        parallel_output: bool = True,
         num_microbatches: Optional[int] = None,
         microbatch_size: Optional[int] = None,
         initial_scale: float = 2**16,
@@ -981,6 +982,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_flash_attention = enable_flash_attention
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
+        self.parallel_output = parallel_output
         self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size)
         self.stage_manager = None
         self.schedule = None
@@ -1033,6 +1035,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             enable_jit_fused=self.enable_jit_fused,
             enable_sequence_parallelism=enable_sequence_parallelism,
             enable_sequence_overlap=enable_sequence_overlap,
+            parallel_output=self.parallel_output,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
