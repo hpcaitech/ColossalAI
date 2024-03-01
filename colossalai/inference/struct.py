@@ -164,6 +164,7 @@ class Sequence:
         return (
             f"(request_id={self.request_id}, "
             f"prompt={self.prompt}, "
+            f"output_token_id={self.output_token_id},"
             f"status={self.status.name}, "
             f"sample_params={self.sample_params}, "
             f"input_len={self.input_len},"

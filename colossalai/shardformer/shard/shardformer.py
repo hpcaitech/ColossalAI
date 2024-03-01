@@ -1,6 +1,7 @@
 import os
 from typing import Dict, List, Tuple
 
+import torch.distributed as dist
 import torch.nn as nn
 from torch import Tensor
 
@@ -36,7 +37,11 @@ class ShardFormer:
     """
 
     def __init__(self, shard_config: ShardConfig):
-        self.coordinator = DistCoordinator()
+        self.is_distributed = dist.is_initialized()
+        if self.is_distributed:
+            self.coordinator = DistCoordinator()
+        else:
+            self.coordinator = None
         self.shard_config = shard_config
 
     def optimize(self, model: nn.Module, policy: Policy = None) -> Tuple[nn.Module, List[Dict[int, Tensor]]]:
