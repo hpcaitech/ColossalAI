@@ -8,6 +8,7 @@ from .gpt import *
 from .gptj import *
 from .llama import *
 from .opt import *
+from .qwen2 import *
 from .sam import *
 from .t5 import *
 from .vit import *
