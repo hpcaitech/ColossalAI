@@ -1,6 +1,5 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
-#include <stdio.h>
 
 #include "type_shim.h"
 
@@ -15,8 +14,8 @@ __global__ void decode_kv_cache_memcpy_kernel(
     const int num_heads,
     const int head_size,
     const int block_size,
-    const int key_stride,
-    const int value_stride,
+    const int64_t key_stride,
+    const int64_t value_stride,
     const int block_table_stride
 )
 {
@@ -34,9 +33,9 @@ __global__ void decode_kv_cache_memcpy_kernel(
     for (int i = threadIdx.x; i < hidden_size; i += blockDim.x) {
         const int head_id = i / head_size;
         const int head_offset = i % head_size;
-        const int key_src_id = seq_id * key_stride + i;
-        const int value_src_id = seq_id * value_stride + i;
-        const int target_src_id = block_id * hidden_size * block_size
+        const int64_t key_src_id = seq_id * key_stride + i;
+        const int64_t value_src_id = seq_id * value_stride + i;
+        const int64_t target_src_id = block_id * hidden_size * block_size
                                       + head_id * block_size * head_size
                                       + block_offset * head_size + head_offset;
 
@@ -52,15 +51,15 @@ void decode_kv_cache_memcpy(
     torch::Tensor& key_cache,           // [num_blocks, num_heads, block_size, head_size]
     torch::Tensor& value_cache,         // [num_blocks, num_heads, block_size, head_size]
     torch::Tensor& sequence_lengths,    // [batch_size]
-    torch::Tensor& block_tables)       // [batch_size, max_seq_len]
+    torch::Tensor& block_tables)        // [batch_size, max_seq_len]
 {
     int num_tokens = key.size(0);
     int num_heads = key.size(1);
     int head_size = key.size(2);
     int block_size = key_cache.size(2);
 
-    int key_stride = key.stride(0);
-    int value_stride = value.stride(0);
+    int64_t key_stride = key.stride(0);
+    int64_t value_stride = value.stride(0);
     int block_table_stride = block_tables.stride(0);
 
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();

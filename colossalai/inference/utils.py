@@ -47,5 +47,5 @@ def init_to_get_rotary(self, base=10000, use_elem=False):
     t = torch.arange(max_seq_len + 1024 * 64, device="cpu", dtype=torch.float32) / rope_scaling_factor
     freqs = torch.outer(t, inv_freq)
 
-    self._cos_cached = torch.cos(freqs).to(torch.float16).cuda()
-    self._sin_cached = torch.sin(freqs).to(torch.float16).cuda()
+    self._cos_cached = torch.cos(freqs).to(self.dtype).cuda()
+    self._sin_cached = torch.sin(freqs).to(self.dtype).cuda()
