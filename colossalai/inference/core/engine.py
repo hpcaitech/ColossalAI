@@ -209,7 +209,7 @@ class InferenceEngine:
         if isinstance(prompts, (list, tuple)):
             return [self.inference_config.prompt_template.format(input_text=prompt) for prompt in prompts]
         elif isinstance(prompts, str):
-            return self.inference_config.rompt_template.format(input_text=prompts)
+            return self.inference_config.prompt_template.format(input_text=prompts)
         else:
             raise TypeError(f"Expected the input prompt to be one of list, tuple, or str, but got {type(prompts)}.")
 

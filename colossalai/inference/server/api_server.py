@@ -30,6 +30,7 @@ TIMEOUT_KEEP_ALIVE = 5  # seconds.
 app = FastAPI()
 engine = None
 supported_models_dict = {"Llama_Models": ("llama2-7b",)}
+prompt_template_choices = ["llama", "vicuna"]
 
 
 @app.get("/v0/models")
@@ -121,7 +122,12 @@ def add_engine_config(parser):
     parser.add_argument("--max_batch_size", type=int, default=8, help="maximum number of batch size")
 
     # generation arguments
-    parser.add_argument("--use_prompt_template", action="store_true", help="whether to use prompt template")
+    parser.add_argument(
+        "--prompt_template",
+        choices=prompt_template_choices,
+        default=None,
+        help=f"Allowed choices are {','.join(prompt_template_choices)}. Default to None.",
+    )
 
     # Quantization settings.
     parser.add_argument(
