@@ -62,6 +62,9 @@ class BatchBucket:
     def current_batch_size(self):
         return self._current_batch_size
 
+    def __len__(self):
+        return self._current_batch_size
+
     @property
     def available_batch_size(self):
         return self.max_batch_size - self._current_batch_size
