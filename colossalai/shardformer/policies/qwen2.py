@@ -19,6 +19,7 @@ __all__ = ["Qwen2Policy", "Qwen2ForCausalLMPolicy", "Qwen2ForSequenceClassificat
 
 
 class Qwen2Policy(Policy):
+<<<<<<< HEAD
     def __init__() -> None:
         super().__init__()
         import transformers
@@ -28,6 +29,8 @@ class Qwen2Policy(Policy):
             "4.39.3"
         ), "The Qwen2 model should run on a transformers version of 4.39.3."
 
+=======
+>>>>>>> feat: support qwen2 model
     def config_sanity_check(self):
         pass
 
@@ -44,12 +47,16 @@ class Qwen2Policy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
+<<<<<<< HEAD
         try:
             from transformers.models.qwen2.modeling_qwen2 import Qwen2Attention, Qwen2DecoderLayer, Qwen2Model
         except ImportError:
             Qwen2Attention = "Qwen2Attention"
             Qwen2DecoderLayer = "Qwen2DecoderLayer"
             Qwen2Model = "Qwen2Model"
+=======
+        from transformers.models.qwen2.modeling_qwen2 import Qwen2Attention, Qwen2DecoderLayer, Qwen2Model
+>>>>>>> feat: support qwen2 model
 
         policy = {}
 
@@ -165,10 +172,17 @@ class Qwen2Policy(Policy):
             module = self.model.model
 
         if stage_manager.is_interleave:
+<<<<<<< HEAD
             layers_per_stage = stage_manager.distribute_layers(
                 len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
             )
             stage_manager.stage_indices = stage_manager.get_stage_index(
+=======
+            layers_per_stage = self.distribute_layers(
+                len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
+            )
+            stage_manager.stage_indices = Policy.get_stage_index(
+>>>>>>> feat: support qwen2 model
                 layers_per_stage,
                 stage_manager.stage,
                 num_model_chunks=stage_manager.num_model_chunks,
@@ -179,8 +193,13 @@ class Qwen2Policy(Policy):
             }
 
         else:
+<<<<<<< HEAD
             layers_per_stage = stage_manager.distribute_layers(len(module.layers), stage_manager.num_stages)
             stage_index = stage_manager.get_stage_index(layers_per_stage, stage_manager.stage)
+=======
+            layers_per_stage = Policy.distribute_layers(len(module.layers), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+>>>>>>> feat: support qwen2 model
             method_replacement = {
                 "forward": partial(
                     new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
@@ -206,10 +225,17 @@ class Qwen2Policy(Policy):
         held_layers = []
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
+<<<<<<< HEAD
             layers_per_stage = stage_manager.distribute_layers(
                 len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
             )
             stage_indices = stage_manager.get_stage_index(
+=======
+            layers_per_stage = self.distribute_layers(
+                len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
+            )
+            stage_indices = Policy.get_stage_index(
+>>>>>>> feat: support qwen2 model
                 layers_per_stage,
                 stage_manager.stage,
                 num_model_chunks=stage_manager.num_model_chunks,
@@ -223,10 +249,17 @@ class Qwen2Policy(Policy):
                 held_layers.append(module.norm)
 
         else:
+<<<<<<< HEAD
             layers_per_stage = stage_manager.distribute_layers(len(module.layers), stage_manager.num_stages)
             if stage_manager.is_first_stage():
                 held_layers.append(module.embed_tokens)
             start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage, stage_manager.stage)
+=======
+            layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
+            if stage_manager.is_first_stage():
+                held_layers.append(module.embed_tokens)
+            start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+>>>>>>> feat: support qwen2 model
             held_layers.extend(module.layers[start_idx:end_idx])
             if stage_manager.is_last_stage():
                 held_layers.append(module.norm)
