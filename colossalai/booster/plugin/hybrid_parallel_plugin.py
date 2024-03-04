@@ -36,6 +36,8 @@ from .pp_plugin_base import PipelinePluginBase
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
+PRECISION_TORCH_TYPE = {"fp16": torch.float16, "fp32": torch.float32, "bf16": torch.bfloat16}
+
 
 def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
     if isinstance(x, torch.Tensor) and torch.is_floating_point(x):
@@ -1059,6 +1061,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             overlap_communication=overlap_communication,
             cpu_offload=cpu_offload,
             partition_grad=(self.zero_stage == 2),
+            forced_dtype=PRECISION_TORCH_TYPE[precision],
         )
 
         self.max_norm = max_norm
