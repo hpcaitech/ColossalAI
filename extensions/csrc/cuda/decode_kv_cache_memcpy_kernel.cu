@@ -21,9 +21,8 @@ __global__ void decode_kv_cache_memcpy_kernel(
 {
     const int seq_id = blockIdx.x;
     const int seq_len = sequence_lengths[seq_id] - 1;
-    const int seq_id_in_block_table = seq_len / block_size;
     const int block_offset = seq_len % block_size;
-    const int block_id = block_tables[seq_id * block_table_stride + seq_id_in_block_table];
+    const int block_id = block_tables[seq_id * block_table_stride + seq_len / block_size];
     const int hidden_size = num_heads * head_size;
 
     if ( block_id < 0 ) {

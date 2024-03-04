@@ -3,9 +3,12 @@ import torch
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
+
 inference_ops = InferenceOpsLoader().load()
 
+from tests.test_infer.test_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache_v2
 from tests.test_infer.test_ops.triton.test_rotary_embdding_unpad import torch_rotary_emb
+
 
 @pytest.mark.parametrize("BATCH_SIZE", [4])
 @pytest.mark.parametrize("SEQ_LEN", [64])
@@ -28,20 +31,60 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
     assert torch.allclose(embd_x0, embd_stimulated_x)
 
     # create data
+    block_size = 32
+    max_num_blocks_per_seq = 4
+    q_shape = (TOTAL_TOKENS, H, D)
+    q = -2.3 + 0.5 * torch.randn(q_shape, dtype=dtype, device="cuda")
+    k_shape = (TOTAL_TOKENS, H, D)
+    k = -2.3 + 0.5 * torch.randn(k_shape, dtype=dtype, device="cuda")
     cos_shape = (TOTAL_TOKENS, D // 2)
     cos = -1.2 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
     sin = -2.0 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
+    cache_shape = (BATCH_SIZE * max_num_blocks_per_seq, H, block_size, D)
+    k_cache = torch.zeros(size=cache_shape, dtype=dtype, device="cuda")
+    v = torch.randn_like(k)
+    v_cache = torch.zeros_like(k_cache)
+    past_kv_seq_lengths = torch.tensor([SEQ_LEN - 1 for _ in range(BATCH_SIZE)], dtype=torch.int32, device="cuda")
+    block_tables = mock_alloc_block_table_and_kvcache_v2(
+        k, v, k_cache, v_cache, past_kv_seq_lengths, BATCH_SIZE, max_num_blocks_per_seq, block_size
+    )
     new_k = torch.randn((BATCH_SIZE, H, D), dtype=dtype, device="cuda")
     new_q = torch.randn_like(new_k)
+    new_v = torch.randn_like(new_k)
 
+    kv_seq_lengths = past_kv_seq_lengths + 1
+    block_tables = block_tables.to(device="cuda")
     q_ref = torch_rotary_emb(new_q, cos[:BATCH_SIZE], sin[:BATCH_SIZE])
     k_ref = torch_rotary_emb(new_k, cos[:BATCH_SIZE], sin[:BATCH_SIZE])
 
-    inference_ops.rotary_embedding(new_q, new_k, cos, sin)
-    
+    new_q_copy = new_q.clone()
+    new_k_copy = new_k.clone()
+
+    inference_ops.rotary_embedding_and_cache_copy(
+        new_q, new_k, new_v, cos, sin, k_cache, v_cache, kv_seq_lengths, block_tables
+    )
+
+    inference_ops.rotary_embedding(new_q_copy, new_k_copy, cos, sin)
+
+    past_kv_seq_len = kv_seq_lengths - 1
+    target_block_ids = block_tables[range(0, block_tables.size(0)), past_kv_seq_len // block_size]
+    offsets_in_block = past_kv_seq_len % block_size
+    k_target = k_cache[target_block_ids, :, offsets_in_block, :]
+    k_source = new_k_copy.squeeze()
+    v_target = v_cache[target_block_ids, :, offsets_in_block, :]
+    v_source = new_v.squeeze()
+
     assert torch.allclose(new_q, q_ref, atol=1e-4, rtol=1e-4)
-    assert torch.allclose(new_k, k_ref, atol=1e-4, rtol=1e-4)
+    assert torch.allclose(k_target, k_ref, atol=1e-4, rtol=1e-4)
+
+    assert torch.allclose(new_q_copy, q_ref, atol=1e-4, rtol=1e-4)
+    assert torch.allclose(new_k_copy, k_ref, atol=1e-4, rtol=1e-4)
+
+    assert k_target.shape == k_source.shape
+    assert torch.equal(k_target, k_source)
+    assert v_target.shape == v_source.shape
+    assert torch.equal(v_target, v_source)
 
 
 if __name__ == "__main__":
-    test_rotary_emb(16, 128, 128, 512, torch.float16)
+    test_rotary_emb(16, 64, 128, 512, torch.float32)
