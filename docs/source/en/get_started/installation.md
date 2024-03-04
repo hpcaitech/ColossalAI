@@ -23,7 +23,7 @@ pip install colossalai
 If you want to build PyTorch extensions during installation, you can use the command below. Otherwise, the PyTorch extensions will be built during runtime.
 
 ```shell
-CUDA_EXT=1 pip install colossalai
+BUILD_EXT=1 pip install colossalai
 ```
 
 
@@ -39,7 +39,7 @@ cd ColossalAI
 pip install -r requirements/requirements.txt
 
 # install colossalai
-CUDA_EXT=1 pip install .
+BUILD_EXT=1 pip install .
 ```
 
 If you don't want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer), just don't specify the `CUDA_EXT`:
@@ -61,7 +61,7 @@ unzip 1.8.0.zip
 cp -r cub-1.8.0/cub/ colossalai/kernel/cuda_native/csrc/kernels/include/
 
 # install
-CUDA_EXT=1 pip install .
+BUILD_EXT=1 pip install .
 ```
 
 <!-- doc-test-command: echo "installation.md does not need test" -->

@@ -6,11 +6,13 @@ on:
     - cron:  '0 0 * * 6' # release on every Sunday 00:00 UTC time
 
 jobs:
-  build-n-publish:
+  publish:
     if: github.repository == 'hpcaitech/ColossalAI'
     name: Build and publish Python 🐍 distributions 📦 to PyPI
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      status: ${{ steps.publish.outcome }}
     steps:
     - uses: actions/checkout@v2
 
@@ -18,7 +20,9 @@ jobs:
       with:
         python-version: '3.8.14'
 
-    - run: NIGHTLY=1 python setup.py sdist build
+    - run: |
+        python .github/workflows/scripts/update_setup_for_nightly.py
+        python setup.py sdist build
 
     # publish to PyPI if executed on the main branch
     - name: Publish package to PyPI
@@ -31,7 +35,7 @@ jobs:
 
   notify:
     name: Notify Lark via webhook
-    needs: build-n-publish
+    needs: publish
     runs-on: ubuntu-latest
     if: ${{ always() }} && github.repository == 'hpcaitech/ColossalAI'
     steps:
@@ -62,4 +66,4 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           WEBHOOK_URL: ${{ secrets.LARK_NOTIFICATION_WEBHOOK_URL }}
-          STATUS: ${{ steps.publish.outcome }}
+          STATUS: ${{ needs.publish.outputs.status }}

@@ -25,7 +25,7 @@ SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
 TENSORBOARD_DIR="${PARENT_TENSORBOARD_DIR}${FULL_PROJECT_NAME}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}${FULL_PROJECT_NAME}.json"
 
-colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 30013 train_sft.py \
+colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 30013 train.py \
     --pretrained $PRETRAINED_MODEL_PATH \
     --dataset ${dataset[@]} \
     --plugin "zero2" \
@@ -44,3 +44,4 @@ colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 30013 train_
     --use_grad_checkpoint \
     --use_flash_attn \
     --use_neft \
+    --pad_token "eos"
