@@ -13,7 +13,6 @@ class InferenceOpsCudaExtension(_CudaExtension):
                 "cuda/colossal_inference_C_frontend.cpp",
                 "cuda/decode_kv_cache_memcpy_kernel.cu",
                 "cuda/fused_rotary_emb_and_cache_kernel.cu",
-                "cuda/rotary_embedding_kernel.cu",
             ]
         ]
         return ret

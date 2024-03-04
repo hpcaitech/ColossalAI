@@ -28,16 +28,19 @@
   switch (TYPE) {                                                     \
     case at::ScalarType::Float: {                                     \
       using scalar_t = float;                                         \
+      using VecSize = 4;                                              \
       __VA_ARGS__;                                                    \
       break;                                                          \
     }                                                                 \
     case at::ScalarType::Half: {                                      \
       using scalar_t = at::Half;                                      \
+      using VecSize = 8;                                              \
       __VA_ARGS__;                                                    \
       break;                                                          \
     }                                                                 \
     case at::ScalarType::BFloat16: {                                  \
       using scalar_t = at::BFloat16;                                  \
+      using VecSize = 8;                                              \
       __VA_ARGS__;                                                    \
       break;                                                          \
     }                                                                 \

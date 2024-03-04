@@ -298,7 +298,7 @@ class NopadLlamaAttention(LlamaAttention):
             )
 
         block_size = k_cache.size(-2)
-        
+
         if is_prompts:
             if use_cuda_kernel:
                 inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
@@ -323,6 +323,7 @@ class NopadLlamaAttention(LlamaAttention):
                 inference_ops.decode_kv_cache_memcpy(
                     key_states, value_states, k_cache, v_cache, sequence_lengths, block_tables
                 )
+                # inference_ops.rotary_embedding_and_cache_copy(query_states, key_states, value_states, cos_sin[0], cos_sin[1], k_cache, v_cache, sequence_lengths, block_tables)
             else:
                 decoding_fused_rotary_embedding(
                     query_states,
