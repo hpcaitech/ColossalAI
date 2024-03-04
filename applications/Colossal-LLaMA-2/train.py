@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Continual Pre-training of LLaMA-2 developed by Colossal-AI Team
+Continual Pre-training/Supervised fine-tuning of Colossal-LLaMA-2 developed by Colossal-AI Team
 """
 
 import argparse
@@ -16,22 +16,24 @@ from colossal_llama2.dataset.loader import (
     DataCollatorForSupervisedDataset,
     StatefulDistributedSampler,
     load_tokenized_dataset,
-    setup_distributed_dataloader,
 )
 from colossal_llama2.utils.ckpt_io import load_checkpoint, save_checkpoint
 from colossal_llama2.utils.flash_attention_patch import replace_with_flash_attention
 from colossal_llama2.utils.froze import freeze_non_embeds_parameters
+from colossal_llama2.utils.neftune_patch import activate_neftune, deactivate_neftune
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizer
+from transformers import LlamaForCausalLM, LlamaTokenizer
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.utils import get_current_device
 
 
 def get_model_numel(model: torch.nn.Module) -> int:
@@ -83,6 +85,7 @@ def main() -> None:
     parser.add_argument("--tensorboard_dir", type=str, default="logs_dir", help="Tensorboard directory")
     parser.add_argument("--config_file", type=str, default="config_file", help="Config file")
     parser.add_argument("--num_epochs", type=int, default=1, help="Number of training epochs")
+    parser.add_argument("--accumulation_steps", type=int, default=1, help="Number of accumulation steps")
     parser.add_argument("--micro_batch_size", type=int, default=2, help="Batch size of each process")
     parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
     parser.add_argument("--max_length", type=int, default=4096, help="Model max length")
@@ -109,6 +112,12 @@ def main() -> None:
         help="Use flash-attention",
     )
     parser.add_argument(
+        "--use_neft",
+        action="store_true",
+        default=False,
+        help="Use NEFTune",
+    )
+    parser.add_argument(
         "--freeze_non_embeds_params",
         action="store_true",
         default=False,
@@ -116,6 +125,8 @@ def main() -> None:
     )
     parser.add_argument("--tp", type=int, default=1)
     parser.add_argument("--zero", type=int, default=1)
+    parser.add_argument("--pad_token", choices=["eos", "unk"], default="eos")
+    parser.add_argument("--padding_mode", choices=["max_length", "longest"], default="max_length")
     args = parser.parse_args()
 
     with open(args.config_file, "w") as f:
@@ -125,6 +136,7 @@ def main() -> None:
     # Initialize Distributed Training
     # ==============================
     colossalai.launch_from_torch({})
+    accelerator = get_accelerator()
     coordinator = DistCoordinator()
 
     # ==============================
@@ -142,6 +154,7 @@ def main() -> None:
             precision=args.mixed_precision,
             initial_scale=2**16,
             max_norm=args.grad_clip,
+            enable_gradient_accumulation=(args.accumulation_steps > 1),
         )
     elif args.plugin == "gemini_auto":
         plugin = GeminiPlugin(
@@ -149,6 +162,7 @@ def main() -> None:
             placement_policy="auto",
             initial_scale=2**16,
             max_norm=args.grad_clip,
+            enable_gradient_accumulation=(args.accumulation_steps > 1),
         )
     elif args.plugin == "zero2":
         plugin = LowLevelZeroPlugin(
@@ -182,7 +196,10 @@ def main() -> None:
     # Initialize Tokenizer, Dataset, Collator and Dataloader
     # ======================================================
     tokenizer = LlamaTokenizer.from_pretrained(args.pretrained)
-    tokenizer.pad_token = tokenizer.unk_token
+    if args.pad_token == "eos":
+        tokenizer.pad_token = tokenizer.eos_token
+    elif args.pad_token == "unk":
+        tokenizer.pad_token = tokenizer.unk_token
     tokenizer.add_bos_token = False
     tokenizer.add_eos_token = False
 
@@ -193,38 +210,36 @@ def main() -> None:
     coordinator.print_on_master(f"Load dataset: {args.dataset}")
 
     dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train")
-    data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer, max_length=args.max_length)
-    dataloader = setup_distributed_dataloader(
+    data_collator = DataCollatorForSupervisedDataset(
+        tokenizer=tokenizer, max_length=args.max_length, padding=args.padding_mode
+    )
+    dataloader = plugin.prepare_dataloader(
         dataset=dataset,
         batch_size=args.micro_batch_size,
         shuffle=True,
         drop_last=True,
         collate_fn=data_collator,
+        distributed_sampler_cls=StatefulDistributedSampler,
     )
     coordinator.print_on_master(
-        f"Max CUDA memory after data loader: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB"
+        f"Max device memory after data loader: {accelerator.max_memory_allocated() / 1024 ** 2:.2f} MB"
     )
 
     # ======================================================
     # Initialize Model, Objective, Optimizer and LR Scheduler
     # ======================================================
-
-    # colossalai has changed api for get_current_device in 0.3.4 version or newer
-    try:
-        from colossalai.accelerator import get_accelerator
-
-        current_device = get_accelerator().get_current_device()
-    except:
-        from colossalai.utils import get_current_device
-
-        current_device = get_current_device()
-
-    init_ctx = LazyInitContext(default_device=current_device) if isinstance(plugin, (GeminiPlugin,)) else nullcontext()
+    init_ctx = (
+        LazyInitContext(default_device=get_current_device())
+        if isinstance(plugin, (GeminiPlugin, HybridParallelPlugin))
+        else nullcontext()
+    )
     with init_ctx:
-        model = LlamaForCausalLM(LlamaConfig.from_pretrained(args.pretrained))
+        model = LlamaForCausalLM.from_pretrained(args.pretrained)
         # Freeze part of parameters.
         if args.freeze_non_embeds_params:
             freeze_non_embeds_parameters(model=model)
+    # this is essential, otherwise the grad checkpoint will not work.
+    model.train()
 
     if args.use_grad_checkpoint:
         model.gradient_checkpointing_enable()
@@ -246,12 +261,14 @@ def main() -> None:
         adamw_mode=True,
     )
 
+    if args.warmup_steps is None:
+        args.warmup_steps = int(args.num_epochs * 0.025 * (len(dataloader) // args.accumulation_steps))
+        coordinator.print_on_master(f"Warmup steps is set to {args.warmup_steps}")
+
     lr_scheduler = CosineAnnealingWarmupLR(
         optimizer=optimizer,
-        total_steps=args.num_epochs * len(dataloader),
-        warmup_steps=args.warmup_steps
-        if args.warmup_steps is not None
-        else int(args.num_epochs * len(dataloader) * 0.025),
+        total_steps=args.num_epochs * (len(dataloader) // args.accumulation_steps),
+        warmup_steps=args.warmup_steps,
         eta_min=0.1 * args.lr,
     )
 
@@ -267,11 +284,9 @@ def main() -> None:
 
     torch.set_default_dtype(torch.float)
 
-    if args.load_checkpoint is None:
-        coordinator.print_on_master(f"Load pretrained model checkpoint from {args.pretrained}")
-        booster.load_model(model, args.pretrained, strict=False)
-
-    coordinator.print_on_master(f"Booster init max CUDA memory: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
+    coordinator.print_on_master(
+        f"Booster init max device memory: {accelerator.max_memory_allocated() / 1024 ** 2:.2f} MB"
+    )
     coordinator.print_on_master(
         f"Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
     )
@@ -298,85 +313,109 @@ def main() -> None:
             coordinator.print_on_master(f"Loaded sample at index {sampler_start_idx}")
 
         coordinator.print_on_master(
-            f"Checkpoint loaded max CUDA memory: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB"
+            f"Checkpoint loaded max device memory: {accelerator.max_memory_allocated() / 1024 ** 2:.2f} MB"
         )
         coordinator.print_on_master(
-            f"Checkpoint loaded CUDA memory: {torch.cuda.memory_allocated() / 1024 ** 2:.2f} MB"
+            f"Checkpoint loaded device memory: {accelerator.memory_allocated() / 1024 ** 2:.2f} MB"
         )
         coordinator.print_on_master(
             f"Checkpoint loaded max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
         )
 
-    num_steps_per_epoch = len(dataloader)
+    if args.use_neft:
+        coordinator.print_on_master("Activate NEFTune.")
+        model, handle = activate_neftune(model)
+
+    num_steps_per_epoch = len(dataloader) // args.accumulation_steps
     # If resume training, set the sampler start index to the correct value
     assert isinstance(dataloader.sampler, StatefulDistributedSampler)
     dataloader.sampler.set_start_index(start_index=sampler_start_idx)
 
     for epoch in range(start_epoch, args.num_epochs):
         dataloader.sampler.set_epoch(epoch=epoch)
-        with tqdm(
-            iterable=enumerate(dataloader, start=start_step),
+        pbar = tqdm(
             desc=f"Epoch {epoch}",
             disable=not coordinator.is_master(),
             total=num_steps_per_epoch,
-            initial=start_step,
-        ) as pbar:
-            for step, batch in pbar:
-                batch = {k: v.to(current_device) for k, v in batch.items() if isinstance(v, torch.Tensor)}
+            initial=start_step // args.accumulation_steps,
+        )
+        total_loss = torch.tensor(0.0, device=get_current_device())
+        for step, batch in enumerate(dataloader, start=start_step):
+            batch = {k: v.to(get_current_device()) for k, v in batch.items() if isinstance(v, torch.Tensor)}
 
-                batch_output = model(**batch)
+            batch_output = model(**batch)
 
-                loss = batch_output.loss
+            loss = batch_output.loss / args.accumulation_steps
+            total_loss.add_(loss.data)
 
-                booster.backward(loss=loss, optimizer=optimizer)
+            booster.backward(loss=loss, optimizer=optimizer)
 
+            if (step + 1) % args.accumulation_steps == 0:
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
-                all_reduce_mean(tensor=loss)
-                pbar.set_postfix({"Loss": f"{loss.item():.4f}"})
+                all_reduce_mean(tensor=total_loss)
+                pbar.set_postfix({"Loss": f"{total_loss.item():.4f}"})
                 if coordinator.is_master():
-                    global_step = epoch * num_steps_per_epoch + step
-                    writer.add_scalar(tag="Loss", scalar_value=loss.item(), global_step=global_step)
+                    global_step = (epoch * num_steps_per_epoch) + (step + 1) // args.accumulation_steps
+                    writer.add_scalar(tag="Loss", scalar_value=total_loss.item(), global_step=global_step)
                     writer.add_scalar(
                         tag="Learning Rate",
                         scalar_value=lr_scheduler.get_last_lr()[0],
                         global_step=global_step,
                     )
-                # Save modeling.
+                total_loss.fill_(0.0)
+                pbar.update()
+            # Save modeling.
 
-                if (args.save_interval > 0 and (step + 1) % args.save_interval == 0) or (step + 1) == len(dataloader):
-                    coordinator.print_on_master("\nStart saving model checkpoint with running states")
-                    save_checkpoint(
-                        save_dir=args.save_dir,
-                        booster=booster,
-                        model=model,
-                        optimizer=optimizer,
-                        lr_scheduler=lr_scheduler,
-                        epoch=epoch,
-                        step=step + 1,
-                        batch_size=args.micro_batch_size,
-                        coordinator=coordinator,
-                    )
-                    coordinator.print_on_master(
-                        f"Saved checkpoint at epoch {epoch} step {step + 1} at folder {args.save_dir}"
-                    )
+            if (args.save_interval > 0 and (step + 1) % (args.save_interval * args.accumulation_steps) == 0) or (
+                step + 1
+            ) == len(dataloader):
+                coordinator.print_on_master("\nStart saving model checkpoint with running states")
 
-                # Delete CUDA cache.
-                # del batch, batch_labels, batch_output, loss
-                torch.cuda.empty_cache()
+                if args.use_neft:
+                    coordinator.print_on_master("Deactivate NEFTune before saving model.")
+                    deactivate_neftune(model, handle)
+
+                accelerator.empty_cache()
+                save_checkpoint(
+                    save_dir=args.save_dir,
+                    booster=booster,
+                    model=model,
+                    optimizer=optimizer,
+                    lr_scheduler=lr_scheduler,
+                    epoch=epoch,
+                    step=step + 1,
+                    batch_size=args.micro_batch_size,
+                    coordinator=coordinator,
+                )
+                coordinator.print_on_master(
+                    f"Saved checkpoint at epoch {epoch} step {step + 1} at folder {args.save_dir}"
+                )
+
+                if args.use_neft:
+                    coordinator.print_on_master("Activate NEFTune.")
+                    model, handle = activate_neftune(model)
+
+            # Delete cache.
+            # del batch, batch_labels, batch_output, loss
+            accelerator.empty_cache()
 
         # the continue epochs are not resumed, so we need to reset the sampler start index and start step
         dataloader.sampler.set_start_index(start_index=0)
         start_step = 0
+
+    if args.use_neft:
+        coordinator.print_on_master("Deactivate NEFTune.")
+        deactivate_neftune(model, handle)
 
     # Final save.
     coordinator.print_on_master("Start saving final model checkpoint")
     booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
     coordinator.print_on_master(f"Saved final model checkpoint at epoch {epoch} at folder {args.save_dir}")
 
-    coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
+    coordinator.print_on_master(f"Max device memory usage: {accelerator.max_memory_allocated()/1024**2:.2f} MB")
 
 
 if __name__ == "__main__":

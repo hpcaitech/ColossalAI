@@ -83,6 +83,8 @@ def get_activation(act: str) -> Callable:
         return torch.nn.GELU()
     elif act == "swiglu":
         return SwiGLU
+    elif act == "silu":
+        return torch.nn.SiLU()
     else:
         raise NotImplementedError("Unsupported activation function")
 

@@ -9,7 +9,7 @@
    <a href="https://www.colossalai.org/"> 文档 </a> |
    <a href="https://github.com/hpcaitech/ColossalAI/tree/main/examples"> 例程 </a> |
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> 论坛 </a> |
-   <a href="https://medium.com/@hpcaitech"> 博客 </a></h3>
+   <a href="https://hpc-ai.com/blog"> 博客 </a></h3>
 
    [![GitHub Repo stars](https://img.shields.io/github/stars/hpcaitech/ColossalAI?style=social)](https://github.com/hpcaitech/ColossalAI/stargazers)
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build_on_schedule.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build_on_schedule.yml)
