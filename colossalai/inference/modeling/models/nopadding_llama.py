@@ -15,6 +15,7 @@ from colossalai.inference.batch_bucket import BatchBucket
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.kernel.triton import (
     context_attention_unpadded,
+    copy_k_to_blocked_cache,
     decoding_fused_rotary_embedding,
     flash_decoding_attention,
     get_xine_cache,
@@ -77,19 +78,32 @@ def llama_model_forward(
 
     hidden_states = self.embed_tokens(input_ids)
 
-    cos_sin = get_xine_cache(sequence_lengths, self._cos_cached, self._sin_cached, batch.is_prompts)
-
-    if batch.is_prompts:
-        output_tensor = torch.zeros(
-            (sequence_lengths.sum().item(), batch.num_heads * batch.head_dim), dtype=batch.dtype, device=batch.device
-        )
+    if batch.use_spec_dec:
+        # For speculative-decoding Prefill and Verifying Stage
+        if batch.is_prompts:
+            # output tensor shape is the same as normal Prefill Stage
+            o_tensor_size = (sequence_lengths.sum().item(), batch.num_heads * batch.head_dim)
+            rotary_indexes = [torch.arange(0, length) for length in sequence_lengths]
+        else:
+            # the number of tokens to be verified in parallel plus the correct token in the last step
+            n_tokens = batch.ver_num + 1
+            assert n_tokens == hidden_states.size(0)
+            o_tensor_size = (batch_size * n_tokens, batch.num_heads * batch.head_dim)
+            rotary_indexes = [(length - n_tokens + i).view(-1) for i in range(n_tokens) for length in sequence_lengths]
+        rotary_indexes = torch.cat(rotary_indexes, dim=-1)
+        cos_sin = (self._cos_cached[rotary_indexes], self._sin_cached[rotary_indexes])
     else:
-        output_tensor = torch.zeros(
-            (batch_size, batch.num_heads * batch.head_dim), dtype=batch.dtype, device=batch.device
-        )
-    sm_scale = 1.0 / (batch.head_dim**0.5)
+        # For normal Prefill and Decoding Stage
+        if batch.is_prompts:
+            o_tensor_size = (sequence_lengths.sum().item(), batch.num_heads * batch.head_dim)
+        else:
+            o_tensor_size = (batch_size, batch.num_heads * batch.head_dim)
+        cos_sin = get_xine_cache(sequence_lengths, self._cos_cached, self._sin_cached, batch.is_prompts)
 
+    sm_scale = 1.0 / (batch.head_dim**0.5)
+    output_tensor = torch.zeros(o_tensor_size, dtype=batch.dtype, device=batch.device)
     norm_output = torch.empty_like(hidden_states)
+    tokens_to_verify = batch.ver_num if batch.use_spec_dec else None
     residual = None
 
     for layer_id, decoder_layer in enumerate(self.layers):
@@ -100,6 +114,8 @@ def llama_model_forward(
             k_cache=k_caches[layer_id],
             v_cache=v_caches[layer_id],
             is_prompts=batch.is_prompts,
+            is_verifier=batch.use_spec_dec,
+            tokens_to_verify=tokens_to_verify,
             sequence_lengths=sequence_lengths,
             kv_seq_len=kv_seq_len,
             cos_sin=cos_sin,
@@ -110,9 +126,9 @@ def llama_model_forward(
         )
 
     if batch.is_prompts:
-        last_token_indexs = sequence_lengths.cumsum(dim=-1)
-        hidden_states = hidden_states[last_token_indexs - 1].contiguous()
-        residual = residual[last_token_indexs - 1].contiguous()
+        seq_len_cumsum = sequence_lengths.cumsum(dim=0)
+        hidden_states = hidden_states[seq_len_cumsum - 1].contiguous()
+        residual = residual[seq_len_cumsum - 1].contiguous()
         norm_output = torch.empty_like(hidden_states)
     hidden_states, _ = self.norm(hidden_states, norm_output, residual)
 
@@ -127,6 +143,8 @@ def llama_decoder_layer_forward(
     k_cache: torch.Tensor = None,
     v_cache: torch.Tensor = None,
     is_prompts: bool = True,
+    is_verifier: bool = False,
+    tokens_to_verify: int = None,
     sequence_lengths: torch.Tensor = None,
     kv_seq_len: int = 0,
     cos_sin: Tuple[torch.Tensor] = None,
@@ -163,6 +181,8 @@ def llama_decoder_layer_forward(
         k_cache=k_cache,
         v_cache=v_cache,
         is_prompts=is_prompts,
+        is_verifier=is_verifier,
+        tokens_to_verify=tokens_to_verify,
         sequence_lengths=sequence_lengths,
         kv_seq_len=kv_seq_len,
         cos_sin=cos_sin,
@@ -246,6 +266,8 @@ class NopadLlamaAttention(LlamaAttention):
         k_cache: torch.Tensor = None,
         v_cache: torch.Tensor = None,
         is_prompts: bool = True,
+        is_verifier: bool = False,
+        tokens_to_verify: int = None,
         sequence_lengths: torch.Tensor = None,
         kv_seq_len: int = 0,
         cos_sin: Tuple[torch.Tensor] = None,
@@ -300,17 +322,29 @@ class NopadLlamaAttention(LlamaAttention):
                 sm_scale=sm_scale,
             )
         else:
-            decoding_fused_rotary_embedding(
-                query_states,
-                key_states,
-                value_states,
-                cos_sin[0],
-                cos_sin[1],
-                k_cache,
-                v_cache,
-                block_tables,
-                sequence_lengths,
-            )
+            q_len = tokens_to_verify + 1 if is_verifier else 1
+
+            if is_verifier:
+                rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
+                copy_k_to_blocked_cache(
+                    key_states, k_cache, kv_lengths=sequence_lengths, block_tables=block_tables, n=q_len
+                )
+                copy_k_to_blocked_cache(
+                    value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables, n=q_len
+                )
+            else:
+                decoding_fused_rotary_embedding(
+                    query_states,
+                    key_states,
+                    value_states,
+                    cos_sin[0],
+                    cos_sin[1],
+                    k_cache,
+                    v_cache,
+                    block_tables,
+                    sequence_lengths,
+                )
+
             attn_output = flash_decoding_attention(
                 q=query_states,
                 k_cache=k_cache,
@@ -323,8 +357,10 @@ class NopadLlamaAttention(LlamaAttention):
                 mid_output=fd_inter_tensor.mid_output,
                 mid_output_lse=fd_inter_tensor.mid_output_lse,
                 sm_scale=sm_scale,
+                q_len=q_len,
             )
 
+        attn_output = attn_output.view(-1, self.hidden_size)
         attn_output = torch.mm(attn_output, self.o_proj_weight)
 
         return attn_output

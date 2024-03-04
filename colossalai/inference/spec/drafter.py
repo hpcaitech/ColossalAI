@@ -52,18 +52,16 @@ class Drafter:
         self.do_sample = False
         self.sample_fn = None
 
-    def reset_max_spec_num(self, n: int) -> None:
-        assert isinstance(n, int) and n > 1
-        self.max_spec_num = n
-
     def reset_past_key_values(self, past_key_values: Tuple[Tuple[torch.FloatTensor]] = None) -> None:
         self._past_key_values = past_key_values
 
-    def trim_kv_cache(self, invalid_token_num) -> Tuple[Tuple[torch.FloatTensor]]:
+    def trim_kv_cache(self, invalid_token_num: int) -> Tuple[Tuple[torch.FloatTensor]]:
         # Tuple of kv cache tensors: num_layers x 2 x (bsz x num_heads x seq_len x head_dim)
-        # Trim the last `invalid_token_num` kv caches
+        # Trim the last `invalid_token_num` kv caches;
         # The verifier (main model) might reject `invalid_token_num` tokens,
         # and so that we have to trim the invalid tokens for the kv cache of the drafter model.
+        if invalid_token_num < 1:
+            return None
         assert self._past_key_values is not None
         trimmed_past_key_values = []
         for layer_idx in range(len(self._past_key_values)):
