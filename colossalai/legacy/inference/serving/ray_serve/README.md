@@ -25,7 +25,7 @@ conda install -c conda-forge cupy cudnn cutensor nccl cuda-version=11.6
 
 # install colossalai with PyTorch extensions
 cd <path_to_ColossalAI_repo>
-CUDA_EXT=1 pip install -e .
+BUILD_EXT=1 pip install -e .
 
 # install other dependencies
 pip install triton==2.0.0.dev20221202

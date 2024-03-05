@@ -25,7 +25,7 @@ conda install -c "nvidia/label/cuda-11.6.2" cuda-toolkit
 cd <path_to_ColossalAI_repo>
 pip install -r requirements/requirements.txt
 pip install -r requirements/requirements-test.txt
-CUDA_EXT=1 pip install -e .
+BUILD_EXT=1 pip install -e .
 
 # install torchserve
 cd <path_to_torch_serve_repo>
