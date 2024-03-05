@@ -201,7 +201,7 @@ class AGIEvalDataset(BaseDataset):
         for file in files:
             dataset_name = os.path.basename(file)[0 : -len(".jsonl")]
 
-            few_shot_data = []
+            few_shot_data = None
             if few_shot:
                 # process demo once if it is few-shot-CoT
                 few_shot_data = combine_prompt(prompt_path, dataset_name, load_explanation=False, chat_mode=False)
