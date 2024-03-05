@@ -22,7 +22,6 @@ def main(args):
             break
         if input_query.strip() == "clear":
             past_key_values, history = None, []
-            os.system("clear")
             continue
 
         print(f"\n{roles[2]}: ", end="")
