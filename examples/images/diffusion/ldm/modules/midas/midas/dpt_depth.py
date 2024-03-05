@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from .base_model import BaseModel
 from .blocks import FeatureFusionBlock_custom, Interpolate, _make_encoder
-from vit import forward_vit
+from .vit import forward_vit
 
 
 def _make_fusion_block(features, use_bn):
