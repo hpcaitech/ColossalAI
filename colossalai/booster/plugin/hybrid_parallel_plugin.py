@@ -1067,7 +1067,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.max_norm = max_norm
 
     def __del__(self):
-        """Destroy the prcess groups in ProcessGroupMesh"""
+        """Destroy the process groups in ProcessGroupMesh"""
         self.pg_mesh.destroy_mesh_process_groups()
 
     @property
