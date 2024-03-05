@@ -173,7 +173,7 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
     Args:
         input_ (`torch.Tensor`): The input tensor from sequence parallel region.
         process_group (`torch.distributed.ProcessGroup`): The process group used for collective communication.
-        overlap (`bool`): Whther to overlap the all_gather op and gradient calculate in backward.
+        overlap (`bool`): Whether to overlap the all_gather op and gradient calculate in backward.
 
     """
 
@@ -534,7 +534,7 @@ class HookParameter(torch.autograd.Function):
         return grad_output, None, None
 
 
-def hook_paramter_in_backward(input, weight=None, bias=None):
+def hook_parameter_in_backward(input, weight=None, bias=None):
     return HookParameter.apply(input, weight, bias)
 
 
