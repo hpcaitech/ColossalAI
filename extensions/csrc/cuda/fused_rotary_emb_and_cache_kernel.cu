@@ -4,9 +4,7 @@
 
 #include "type_shim.h"
 
-#include "scaled_upper_triang_masked_softmax.h"
-
-template<typename scalar_t, int VecSize>
+template<typename scalar_t>
 __global__ void rotary_embedding_and_cache_copy_kernel(
     scalar_t* __restrict__ query,
     scalar_t* __restrict__ key,
