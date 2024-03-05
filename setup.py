@@ -70,7 +70,7 @@ def get_version() -> str:
 if BUILD_EXT:
     if not TORCH_AVAILABLE:
         raise ModuleNotFoundError(
-            "[extension] PyTorch is not found while CUDA_EXT=1. You need to install PyTorch first in order to build CUDA extensions"
+            "[extension] PyTorch is not found while BUILD_EXT=1. You need to install PyTorch first in order to build CUDA extensions"
         )
 
     from extensions import ALL_EXTENSIONS
