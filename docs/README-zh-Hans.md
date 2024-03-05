@@ -141,10 +141,10 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 [[模型权重]](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base)
 
 - 13B: 万元预算打造高质量13B私有模型
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Colossal-LLaMA-2)
-[[blog]](https://hpc-ai.com/blog/colossal-llama-2-13b)
-[[HuggingFace model weights]](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-13b-base)
-[[Modelscope model weights]](https://www.modelscope.cn/models/colossalai/Colossal-LLaMA-2-13b-base/summary)
+[[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Colossal-LLaMA-2)
+[[博客]](https://hpc-ai.com/blog/colossal-llama-2-13b)
+[[HuggingFace 模型权重]](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-13b-base)
+[[Modelscope 模型权重]](https://www.modelscope.cn/models/colossalai/Colossal-LLaMA-2-13b-base/summary)
 
 |             Model              |  Backbone  | Tokens Consumed | MMLU (5-shot) | CMMLU (5-shot) | AGIEval (5-shot) | GAOKAO (0-shot) | CEval (5-shot) |
 |:------------------------------:|:----------:|:---------------:|:-------------:|:--------------:|:----------------:|:---------------:|:--------------:|
@@ -264,8 +264,8 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 </p>
 
 - 700亿参数LLaMA2训练加速195%
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama2)
-[[blog]](https://www.hpc-ai.tech/blog/70b-llama2-training)
+[[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama2)
+[[博客]](https://www.hpc-ai.tech/blog/70b-llama2-training)
 
 ### LLaMA1
 <p align="center">
@@ -361,7 +361,8 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/SwiftInfer.jpg" width=800/>
 </p>
 
-- [SwiftInfer](https://github.com/hpcaitech/SwiftInfer): Inference performance improved by 46%, open source solution breaks the length limit of LLM for multi-round conversations
+- [SwiftInfer](https://github.com/hpcaitech/SwiftInfer): 开源解决方案打破了多轮对话的 LLM 长度限制，推理性能提高了46%
+
 
 <p id="GPT-3-Inference" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference_GPT-3.jpg" width=800/>
