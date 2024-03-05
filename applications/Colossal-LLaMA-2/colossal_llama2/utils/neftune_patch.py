@@ -17,7 +17,7 @@ import torch
 
 def unwrap(model):
     if hasattr(model, "module"):
-        return unwrap_model(model.module)
+        return model.unwrap()
     else:
         return model
 

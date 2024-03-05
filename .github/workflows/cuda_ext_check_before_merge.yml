@@ -51,4 +51,4 @@ jobs:
 
       - name: Build
         run: |
-          CUDA_EXT=1 pip install -v .
+          BUILD_EXT=1 pip install -v .

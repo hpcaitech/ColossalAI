@@ -1,3 +1,4 @@
+import os
 from contextlib import nullcontext
 
 import torch
@@ -10,6 +11,8 @@ from colossalai.lazy import LazyInitContext
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+
+os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
 
 
 def check_linear_1d_col(lazy_init: bool, seq_parallel: bool, overlap: bool):

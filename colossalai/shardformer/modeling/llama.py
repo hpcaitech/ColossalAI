@@ -16,6 +16,7 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import cross_entropy_1d
+from ..layer._operation import _gather
 
 try:
     from transformers.models.llama.modeling_llama import _prepare_4d_causal_attention_mask
@@ -224,13 +225,13 @@ class LlamaPipelineForwards:
         >>> model = LlamaForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
         >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
 
-        >>> prompt = "Hey, are you consciours? Can you talk to me?"
+        >>> prompt = "Hey, are you conscious? Can you talk to me?"
         >>> inputs = tokenizer(prompt, return_tensors="pt")
 
         >>> # Generate
         >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
         >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-        "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
+        "Hey, are you conscious? Can you talk to me?\nI'm not conscious, but I can talk to you."
         ```"""
         logger = logging.get_logger(__name__)
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -287,6 +288,9 @@ class LlamaPipelineForwards:
                 else:
                     shift_logits = shift_logits.view(-1, self.config.vocab_size)
                     loss = loss_fct(shift_logits, shift_labels)
+
+            if not shard_config.parallel_output:
+                logits = _gather(logits, -1, shard_config.tensor_parallel_process_group)
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
@@ -587,6 +591,9 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             else:
                 shift_logits = shift_logits.view(-1, self.config.vocab_size)
                 loss = loss_fct(shift_logits, shift_labels)
+
+        if not shard_config.parallel_output:
+            logits = _gather(logits, -1, shard_config.tensor_parallel_process_group)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

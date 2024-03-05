@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -329,3 +329,68 @@ class MoeOutGradScaler(torch.autograd.Function):
         if ctx.ep_size != 1:
             grad = grad / ctx.ep_size
         return grad, None
+
+
+def _all_to_all(
+    inputs: torch.Tensor,
+    input_split_sizes: Optional[List[int]] = None,
+    output_split_sizes: Optional[List[int]] = None,
+    group=None,
+    async_op: bool = False,
+):
+    """
+    Returns:
+        outputs: Tensor
+        handle: Optional[Work], if overlap is True
+    """
+    outputs_shape = list(inputs.shape)
+    if output_split_sizes is not None:
+        outputs_shape[0] = sum(output_split_sizes)
+    outputs = torch.empty(outputs_shape, dtype=inputs.dtype, device=inputs.device)
+    inputs = inputs.contiguous()
+    outputs = outputs.contiguous()
+    handle = dist.all_to_all_single(
+        outputs, inputs, output_split_sizes, input_split_sizes, group=group, async_op=async_op
+    )
+    return outputs, handle
+
+
+class AllToAllUneven(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx,
+        inputs,
+        input_split_sizes=None,
+        output_split_sizes=None,
+        group=None,
+        overlap: bool = False,
+    ):
+        """
+        Returns:
+            outputs: Tensor
+            handle: Optional[Work], if overlap is True
+        """
+        ctx.input_split_sizes = input_split_sizes
+        ctx.output_split_sizes = output_split_sizes
+        ctx.group = group
+        return _all_to_all(inputs, input_split_sizes, output_split_sizes, group, overlap)
+
+    @staticmethod
+    def backward(ctx: Any, *grad_outputs):
+        return (
+            _all_to_all(grad_outputs[0], ctx.output_split_sizes, ctx.input_split_sizes, ctx.group, False)[0],
+            None,
+            None,
+            None,
+            None,
+        )
+
+
+def all_to_all_uneven(
+    inputs: torch.Tensor,
+    input_split_sizes: Optional[List[int]] = None,
+    output_split_sizes: Optional[List[int]] = None,
+    group=None,
+    overlap: bool = False,
+):
+    return AllToAllUneven.apply(inputs, input_split_sizes, output_split_sizes, group, overlap)

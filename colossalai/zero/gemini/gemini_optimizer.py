@@ -621,7 +621,10 @@ class GeminiOptimizer(OptimizerWrapper):
         Return the param_groups in Pytorch format when saving to checkpoint.
         """
 
-        param_groups = copy.deepcopy(self.param_groups_backup)
+        param_groups = [
+            {**group, "params": group_info["params"]}
+            for group, group_info in zip(self.optim.param_groups, self.param_groups_backup)
+        ]
 
         # To be compatible with pytorch checkpointing,
         # store extra hyperparameters used by pytorch Adam optimizer.

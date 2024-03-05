@@ -77,7 +77,7 @@ git clone https://github.com/hpcaitech/ColossalAI.git
 cd ColossalAI
 
 # install colossalai
-CUDA_EXT=1 pip install .
+BUILD_EXT=1 pip install .
 ```
 
 #### Step 3: Accelerate with flash attention by xformers (Optional)

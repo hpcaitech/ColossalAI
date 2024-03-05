@@ -53,7 +53,7 @@ def fsdp_main(rank, world_size, args):
     train_loader = torch.utils.data.DataLoader(dataset, **train_kwargs)
     torch.cuda.set_device(rank)
 
-    config = LlamaConfig.from_pretrained("hpcaitech/openmoe-%s" % args.model_name)
+    config = LlamaConfig.from_pretrained("hpcai-tech/openmoe-%s" % args.model_name)
     set_openmoe_args(
         config,
         num_experts=config.num_experts,

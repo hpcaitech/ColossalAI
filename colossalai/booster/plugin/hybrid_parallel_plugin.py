@@ -1,5 +1,6 @@
 import ctypes
 import random
+import warnings
 from contextlib import contextmanager
 from functools import partial
 from types import MethodType
@@ -34,6 +35,8 @@ from colossalai.zero.low_level import LowLevelZeroOptimizer
 from .pp_plugin_base import PipelinePluginBase
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
+
+PRECISION_TORCH_TYPE = {"fp16": torch.float16, "fp32": torch.float32, "bf16": torch.bfloat16}
 
 
 def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
@@ -1058,6 +1061,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             overlap_communication=overlap_communication,
             cpu_offload=cpu_offload,
             partition_grad=(self.zero_stage == 2),
+            forced_dtype=PRECISION_TORCH_TYPE[precision],
         )
 
         self.max_norm = max_norm
@@ -1134,7 +1138,12 @@ class HybridParallelPlugin(PipelinePluginBase):
                         tp_process_group=self.tp_group,
                     )
             else:
-                assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
+                if self.dp_size == 1:
+                    warnings.warn(
+                        "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "
+                        "If you are not intended to use cpu_offload, please consider set zero_stage=0."
+                    )
+
                 assert self.precision != "fp32", "Please set precision to 'fp16' or 'bf16' when using ZeRO."
                 optimizer = HybridParallelZeroOptimizer(
                     optimizer,
@@ -1199,7 +1208,16 @@ class HybridParallelPlugin(PipelinePluginBase):
         return outputs
 
     def prepare_dataloader(
-        self, dataset, batch_size, shuffle=False, seed=1024, drop_last=False, pin_memory=False, num_workers=0, **kwargs
+        self,
+        dataset,
+        batch_size,
+        shuffle=False,
+        seed=1024,
+        drop_last=False,
+        pin_memory=False,
+        num_workers=0,
+        distributed_sampler_cls=None,
+        **kwargs,
     ):
         r"""
         Prepare a dataloader for distributed training. The dataloader will be wrapped by
@@ -1223,7 +1241,8 @@ class HybridParallelPlugin(PipelinePluginBase):
             :class:`torch.utils.data.DataLoader`: A DataLoader used for training or testing.
         """
         _kwargs = kwargs.copy()
-        sampler = DistributedSampler(
+        distributed_sampler_cls = distributed_sampler_cls or DistributedSampler
+        sampler = distributed_sampler_cls(
             dataset, num_replicas=self.pg_mesh.size(DP_AXIS), rank=self.pg_mesh.coordinate(DP_AXIS), shuffle=shuffle
         )
 
