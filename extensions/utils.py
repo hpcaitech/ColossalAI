@@ -154,7 +154,7 @@ def check_cuda_availability():
 def set_cuda_arch_list(cuda_dir):
     """
     This function sets the PyTorch TORCH_CUDA_ARCH_LIST variable for ahead-of-time extension compilation.
-    Ahead-of-time compilation occurs when CUDA_EXT=1 is set when running 'pip install'.
+    Ahead-of-time compilation occurs when BUILD_EXT=1 is set when running 'pip install'.
     """
     cuda_available = check_cuda_availability()
 

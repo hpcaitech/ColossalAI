@@ -5,7 +5,12 @@ from torch import Tensor, nn
 
 import colossalai.shardformer.layer as col_nn
 
-from ..modeling.gpt2 import GPT2PipelineForwards, get_gpt2_flash_attention_forward, gpt2_sequence_parallel_forward_fn
+from ..modeling.gpt2 import (
+    GPT2PipelineForwards,
+    get_gpt2_flash_attention_forward,
+    get_lm_forward_with_dist_cross_entropy,
+    gpt2_sequence_parallel_forward_fn,
+)
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -87,9 +92,7 @@ class GPT2Policy(Policy):
                     SubModuleReplacementDescription(
                         suffix="mlp.c_proj",
                         target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                        kwargs={
-                            "seq_parallel": use_sequence_parallel,
-                        },
+                        kwargs={"seq_parallel": use_sequence_parallel},
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.attn_dropout",
@@ -167,15 +170,35 @@ class GPT2Policy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
-        if stage_manager.is_first_stage():
-            held_layers.append(module.wte)
-            held_layers.append(module.wpe)
-            held_layers.append(module.drop)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
-        held_layers.extend(module.h[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            held_layers.append(module.ln_f)
+        if stage_manager.is_interleave:
+            assert stage_manager.num_model_chunks is not None
+            layers_per_stage = self.distribute_layers(
+                len(module.h), stage_manager.num_stages * stage_manager.num_model_chunks
+            )
+            stage_indices = Policy.get_stage_index(
+                layers_per_stage,
+                stage_manager.stage,
+                num_model_chunks=stage_manager.num_model_chunks,
+                num_stages=stage_manager.num_stages,
+            )
+            if stage_manager.is_first_stage(ignore_chunk=True):
+                held_layers.append(module.wte)
+                held_layers.append(module.wpe)
+                held_layers.append(module.drop)
+            for start_idx, end_idx in stage_indices:
+                held_layers.extend(module.h[start_idx:end_idx])
+            if stage_manager.is_last_stage(ignore_chunk=True):
+                held_layers.append(module.ln_f)
+        else:
+            layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
+            if stage_manager.is_first_stage():
+                held_layers.append(module.wte)
+                held_layers.append(module.wpe)
+                held_layers.append(module.drop)
+            start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+            held_layers.extend(module.h[start_idx:end_idx])
+            if stage_manager.is_last_stage():
+                held_layers.append(module.ln_f)
         return held_layers
 
     def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
@@ -189,13 +212,27 @@ class GPT2Policy(Policy):
         else:
             module = self.model.transformer
 
-        layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
-        stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-        method_replacement = {
-            "forward": partial(
-                new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
+        if stage_manager.is_interleave:
+            layers_per_stage = self.distribute_layers(
+                len(module.h), stage_manager.num_stages * stage_manager.num_model_chunks
             )
-        }
+            stage_manager.stage_indices = Policy.get_stage_index(
+                layers_per_stage,
+                stage_manager.stage,
+                num_model_chunks=stage_manager.num_model_chunks,
+                num_stages=stage_manager.num_stages,
+            )
+            method_replacement = {
+                "forward": partial(new_forward, stage_manager=stage_manager, shard_config=self.shard_config)
+            }
+        else:
+            layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            method_replacement = {
+                "forward": partial(
+                    new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
+                )
+            }
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
 
@@ -232,9 +269,10 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
                 GPT2LMHeadModel: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True}
+                            suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": False}
                         )
-                    ]
+                    ],
+                    method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
                 )
             }
             module_policy.update(addon_module)
@@ -249,7 +287,7 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
 
     def get_held_layers(self) -> List[nn.Module]:
         held_layers = super().get_held_layers()
-        if self.pipeline_stage_manager.is_last_stage():
+        if self.pipeline_stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.lm_head)
         return held_layers
 
