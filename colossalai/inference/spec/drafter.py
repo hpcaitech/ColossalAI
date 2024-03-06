@@ -29,8 +29,6 @@ class Drafter:
     ):
         self._tokenizer = tokenizer
         self.max_spec_num = max_spec_num
-        self.do_sample = False
-        self.sample_fn = None
         self._past_key_values = None
         self._device = device or get_current_device()
         self._dtype = dtype
@@ -51,14 +49,6 @@ class Drafter:
 
     def get_model(self) -> nn.Module:
         return self._drafter_model
-
-    def reset_sample_method(self, sample_fn: callable) -> None:
-        self.do_sample = True
-        self.sample_fn = sample_fn
-
-    def clear_sample_method(self) -> None:
-        self.do_sample = False
-        self.sample_fn = None
 
     def reset_past_key_values(self, past_key_values: Tuple[Tuple[torch.FloatTensor]] = None) -> None:
         self._past_key_values = past_key_values
@@ -116,17 +106,10 @@ class Drafter:
             )
             next_token_logits = outputs.logits[:, -1, :]
 
-            # Skip logits_processor for drafter model
-
-            # Sample
-            if self.do_sample:
-                if self.sample_fn is not None:
-                    probs = self.sample_fn(next_token_logits)
-                else:
-                    probs = nn.functional.softmax(next_token_logits, dim=-1)
-                next_token_ids = torch.multinomial(probs, num_samples=1).squeeze(1)
-            else:
-                next_token_ids = torch.argmax(next_token_logits, dim=-1)
+            # NOTE Only use greedy search for speculating.
+            #      As the drafter model usually has only a few layers with few parameters,
+            #      introducing sampling will make the speculation unstable and lead to worse performance.
+            next_token_ids = torch.argmax(next_token_logits, dim=-1)
 
             logits.append(next_token_logits)
             token_ids.append(next_token_ids)
