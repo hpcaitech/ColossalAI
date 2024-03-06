@@ -160,14 +160,15 @@ class InferenceEngine:
         spec_num = self.inference_config.n_spec_tokens
 
         batch = self.request_handler.schedule()  # prefill batch
-        batch.set_use_spec_dec(spec_num)
+        batch.set_use_spec_dec(spec_num)  # set batch to use-spec-dec mode
 
         assert batch.current_batch_size == 1, "Only support bsz 1 for speculative decoding for now."
         input_ids = batch.get_1D_inputs()  # bsz 1 for drafter model
 
         # 1. Prefill small model (Drafter) - fill past kv cache for drafter model
-        drafter_out = self.drafter.speculate(input_ids, 1)
+        drafter_out = self.drafter.speculate(input_ids, 1, None)
         next_token_ids_spec = drafter_out.next_tokens
+        drafter_past_key_values = drafter_out.past_key_values
 
         # 2. Prefill main model (Verifier) - fill past kv cache for main model
         logits = self.model(batch, self.k_cahce, self.v_cache)
@@ -176,9 +177,9 @@ class InferenceEngine:
         batch.append_batch_tokens(next_tokens)
         self.request_handler.allocate_batch_spec_dec(batch, 1)
         already_allocated_kv_len = batch.seq_lengths[0].item()
-
         input_ids = batch.get_1D_inputs_spec_dec(1)
 
+        batch.reset_use_spec_dec()  # reset batch use-spec-dec mode
         finished_sequences = self.request_handler.update()
 
         while True:
@@ -188,8 +189,10 @@ class InferenceEngine:
             batch.set_use_spec_dec(spec_num)
 
             # 3. Decoding - Drafter model speculates `n` tokens
-            drafter_out = self.drafter.speculate(input_ids, spec_num)
+            drafter_out = self.drafter.speculate(input_ids, spec_num, drafter_past_key_values)
             next_token_ids_spec = drafter_out.next_tokens
+            drafter_past_key_values = drafter_out.past_key_values
+
             for next_token_id_spec in next_token_ids_spec:
                 self.request_handler.append_next_tokens(next_token_id_spec.unsqueeze(0))
             cur_length = batch.seq_lengths[0].item()
@@ -201,7 +204,7 @@ class InferenceEngine:
             logits = self.model(batch, self.k_cahce, self.v_cache)
             next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
 
-            # 5. Compare logits and process the results
+            # 5. Compare and process the results
             diff_indexes = torch.nonzero(~(next_tokens[:-1] == next_token_ids_spec))
             n_matches = spec_num if diff_indexes.size(0) == 0 else diff_indexes[0][0].item()
             # revoke appended tokens for each Sequence in the current batch
@@ -210,7 +213,7 @@ class InferenceEngine:
             self.request_handler.append_next_tokens(next_tokens[n_matches].unsqueeze(0))
             input_ids = batch.get_1D_inputs_spec_dec(1)
             # trim past key values of the drafter model
-            self.drafter.trim_kv_cache(spec_num - n_matches - 1)
+            drafter_past_key_values = Drafter.trim_kv_cache(drafter_past_key_values, spec_num - n_matches - 1)
 
             self.request_handler.update_batch_finished(batch, generation_config=self.generation_config)
             finished_sequences = self.request_handler.update()

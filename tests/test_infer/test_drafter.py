@@ -34,12 +34,11 @@ def test_drafter(spec_num: int):
     assert out.speculated_length == spec_num
     assert out.next_tokens.shape == (spec_num,)
     assert out.logits.shape == (spec_num, len(tokenizer))
-    assert drafter._past_key_values[0][0].size(2) == out.past_key_values[0][0].size(2) == past_kv_length
+    assert out.past_key_values[0][0].size(2) == past_kv_length
 
-    reject_num = 3
-    assert reject_num <= spec_num
-    drafter.trim_kv_cache(reject_num)
-    assert drafter._past_key_values[0][0].size(2) == past_kv_length - reject_num
+    reject_num = max(0, spec_num - 1)
+    trimmed_past_key_values = drafter.trim_kv_cache(out.past_key_values, reject_num)
+    assert trimmed_past_key_values[0][0].size(2) == past_kv_length - reject_num
 
 
 def check_sd():
