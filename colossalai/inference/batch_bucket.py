@@ -43,7 +43,7 @@ class BatchBucket:
         self.dtype = dtype
 
         self._use_spec_dec = False
-        self._ver_num = None
+        self._num_tokens_to_verify = None
 
         self._current_batch_size = 0
         self._sequences_dict = dict()
@@ -96,17 +96,17 @@ class BatchBucket:
         return self._use_spec_dec
 
     @property
-    def ver_num(self) -> int:
-        assert self.use_spec_dec and self._ver_num is not None
-        return self._ver_num
+    def num_tokens_to_verify(self) -> int:
+        assert self.use_spec_dec and self._num_tokens_to_verify is not None
+        return self._num_tokens_to_verify
 
     def set_use_spec_dec(self, n: int = 5) -> None:
         self._use_spec_dec = True
-        self._ver_num = n
+        self._num_tokens_to_verify = n
 
     def reset_use_spec_dec(self) -> None:
         self._use_spec_dec = False
-        self._ver_num = None
+        self._num_tokens_to_verify = None
 
     def _make_compact(self) -> None:
         # Clean and Compress the batch based on its sequences dict.
@@ -469,7 +469,7 @@ class BatchBucket:
             if self.use_spec_dec:
                 # For Speculative Decoding
                 # the number of tokens to be verified in parallel plus the correct token in the last step
-                return self.get_1D_inputs_spec_dec(self.ver_num + 1)
+                return self.get_1D_inputs_spec_dec(self.num_tokens_to_verify + 1)
             assert all(
                 seq.output_len > 0 for seq in self._sequences_dict.values()
             ), "Sequence stage (Prefill/Decoding) must be the same in the batch"

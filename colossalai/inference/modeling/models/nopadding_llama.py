@@ -86,7 +86,7 @@ def llama_model_forward(
             rotary_indexes = [torch.arange(0, length) for length in sequence_lengths]
         else:
             # the number of tokens to be verified in parallel plus the correct token in the last step
-            n_tokens = batch.ver_num + 1
+            n_tokens = batch.num_tokens_to_verify + 1
             assert n_tokens == hidden_states.size(0)
             o_tensor_size = (batch_size * n_tokens, batch.num_heads * batch.head_dim)
             rotary_indexes = [(length - n_tokens + i).view(-1) for i in range(n_tokens) for length in sequence_lengths]
@@ -103,7 +103,7 @@ def llama_model_forward(
     sm_scale = 1.0 / (batch.head_dim**0.5)
     output_tensor = torch.zeros(o_tensor_size, dtype=batch.dtype, device=batch.device)
     norm_output = torch.empty_like(hidden_states)
-    tokens_to_verify = batch.ver_num if batch.use_spec_dec else None
+    tokens_to_verify = batch.num_tokens_to_verify if batch.use_spec_dec else None
     residual = None
 
     for layer_id, decoder_layer in enumerate(self.layers):
