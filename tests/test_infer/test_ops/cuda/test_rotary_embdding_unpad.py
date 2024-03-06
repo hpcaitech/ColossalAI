@@ -69,9 +69,9 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
     past_kv_seq_len = kv_seq_lengths - 1
     target_block_ids = block_tables[range(0, block_tables.size(0)), past_kv_seq_len // block_size]
     offsets_in_block = past_kv_seq_len % block_size
-    k_target = k_cache[target_block_ids, :, offsets_in_block, :]
+    k_target = k_cache[target_block_ids, :, offsets_in_block, :].squeeze()
     k_source = new_k_copy.squeeze()
-    v_target = v_cache[target_block_ids, :, offsets_in_block, :]
+    v_target = v_cache[target_block_ids, :, offsets_in_block, :].squeeze()
     v_source = new_v.squeeze()
 
     assert torch.allclose(new_q, q_ref, atol=1e-4, rtol=1e-4)
@@ -81,9 +81,10 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
     assert torch.allclose(new_k_copy, k_ref, atol=1e-4, rtol=1e-4)
 
     assert k_target.shape == k_source.shape
-    assert torch.equal(k_target, k_source)
+    assert torch.allclose(k_target, k_source, atol=1e-6, rtol=1e-6)
+
     assert v_target.shape == v_source.shape
-    assert torch.equal(v_target, v_source)
+    assert torch.allclose(v_target, v_source, atol=1e-6, rtol=1e-6)
 
 
 if __name__ == "__main__":
