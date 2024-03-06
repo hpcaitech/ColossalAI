@@ -20,15 +20,23 @@ class Drafter:
     """
 
     def __init__(
-        self, model: nn.Module, tokenizer: PreTrainedTokenizer, max_spec_num: int, device: torch.device = None
+        self,
+        model: nn.Module,
+        tokenizer: PreTrainedTokenizer,
+        max_spec_num: int,
+        device: torch.device = None,
+        dtype: torch.dtype = torch.float16,
     ):
-        self._drafter_model = model
         self._tokenizer = tokenizer
         self.max_spec_num = max_spec_num
         self.do_sample = False
         self.sample_fn = None
-        self._device = device or get_current_device()
         self._past_key_values = None
+        self._device = device or get_current_device()
+        self._dtype = dtype
+        self._drafter_model = model.to(self._device)
+        self._drafter_model = model.to(self._dtype)
+        self._drafter_model.eval()
 
     @property
     def past_key_values(self) -> Optional[Tuple[Tuple[torch.FloatTensor]]]:

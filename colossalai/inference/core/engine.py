@@ -81,13 +81,12 @@ class InferenceEngine:
         )
         self.drafter = None
         if self.inference_config.init_spec_dec:
-            drafter_model.eval()
-            drafter_model = drafter_model.to(self.device)
             self.drafter = Drafter(
-                drafter_model,
+                self.drafter_model,
                 self.tokenizer,
                 self.inference_config.n_spec_tokens,
                 device=self.device,
+                dtype=self.dtype,
             )
 
         self.verbose = verbose
