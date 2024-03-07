@@ -699,7 +699,7 @@ class BloomPipelineForwards:
             return {"hidden_states": hidden_states}
 
 
-def get_bloom_flash_attention_forward(enabel_jit_fused=False):
+def get_bloom_flash_attention_forward(enable_jit_fused=False):
     try:
         from xformers.ops import memory_efficient_attention as me_attention
     except:

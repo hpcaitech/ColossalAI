@@ -53,7 +53,7 @@ We follow the hyperparameter settings from the original LLaMA paper. We use Adam
 Please install the latest ColossalAI from source.
 
 ```bash
-CUDA_EXT=1 pip install -U git+https://github.com/hpcaitech/ColossalAI
+BUILD_EXT=1 pip install -U git+https://github.com/hpcaitech/ColossalAI
 ```
 
 Then install other dependencies.

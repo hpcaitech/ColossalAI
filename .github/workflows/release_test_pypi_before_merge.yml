@@ -49,6 +49,6 @@ jobs:
         # we need to install the requirements.txt first
         # as test-pypi may not contain the distributions for libs listed in the txt file
         pip install -r requirements/requirements.txt
-        pip install --index-url https://test.pypi.org/simple/ colossalai==$VERSION
+        pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.python.org/pypi colossalai==$VERSION
       env:
         VERSION: ${{ steps.prep-version.outputs.version }}

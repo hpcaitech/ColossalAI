@@ -88,7 +88,7 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
-          CUDA_EXT=1 pip install -v .
+          BUILD_EXT=1 pip install -v .
 
       - name: Test the example
         run: |
