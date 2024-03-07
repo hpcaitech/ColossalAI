@@ -25,6 +25,10 @@ from colossalai.shardformer.layer._operation import gather_forward_split_backwar
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import cross_entropy_1d
+<<<<<<< HEAD
+=======
+
+>>>>>>> fix
 
 class GPT2PipelineForwards:
     """
@@ -1088,7 +1092,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
                 )
             else:
                 loss = loss_fct(shift_logits, shift_labels)
-
 
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]
