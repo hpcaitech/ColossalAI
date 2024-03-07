@@ -4,6 +4,9 @@
    This file is adapted from fused adam in NVIDIA/apex, commit a109f85
    Licensed under the MIT License.
 */
+
+#pragma once
+
 #include <ATen/ATen.h>
 
 #include "compat.h"

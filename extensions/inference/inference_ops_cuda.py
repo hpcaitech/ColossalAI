@@ -12,6 +12,7 @@ class InferenceOpsCudaExtension(_CudaExtension):
             for fname in [
                 "cuda/colossal_inference_C_frontend.cpp",
                 "cuda/decode_kv_cache_memcpy_kernel.cu",
+                "cuda/activation_kernel.cu",
             ]
         ]
         return ret

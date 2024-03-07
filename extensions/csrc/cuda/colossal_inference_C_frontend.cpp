@@ -9,7 +9,10 @@ void decode_kv_cache_memcpy(
     torch::Tensor& sequence_lengths,  // [batch_size]
     torch::Tensor& block_tables);     // [batch_size, max_seq_len]
 
+torch::Tensor silu_and_mul(const torch::Tensor& ins);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("decode_kv_cache_memcpy", &decode_kv_cache_memcpy,
         "Copy the GPU memory of kvcache during the decode stage.");
+  m.def("silu_and_mul", &silu_and_mul, "Silu with a following multiply");
 }
