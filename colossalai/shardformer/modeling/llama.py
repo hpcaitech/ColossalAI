@@ -481,8 +481,9 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig):
             flash_attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool)).contiguous()
             attn_mask_type = AttnMaskType.paddedcausal
 
-        attention = ColoAttention(embed_dim=self.hidden_size, num_heads=self.num_heads)
-        attn_output = attention(
+        if not hasattr(self, "attention"):
+            self.attention = ColoAttention(embed_dim=self.hidden_size, num_heads=self.num_heads)
+        attn_output = self.attention(
             query_states,
             key_states,
             value_states,

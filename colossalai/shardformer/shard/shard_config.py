@@ -34,6 +34,8 @@ class ShardConfig:
     enable_all_optimization: bool = False
     enable_sequence_parallelism: bool = False
     enable_sequence_overlap: bool = False
+    parallel_output: bool = True
+    make_vocab_size_divisible_by: int = 128
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
     # pipeline_parallel_size: int
     # data_parallel_size: int

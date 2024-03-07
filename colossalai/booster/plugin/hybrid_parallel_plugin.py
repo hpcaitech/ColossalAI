@@ -937,6 +937,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_jit_fused: bool = False,
         enable_sequence_parallelism: bool = False,
         enable_sequence_overlap: bool = False,
+        parallel_output: bool = True,
         num_microbatches: Optional[int] = None,
         microbatch_size: Optional[int] = None,
         initial_scale: float = 2**16,
@@ -961,6 +962,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         pp_style: str = "1f1b",
         num_model_chunks: int = 1,
         enable_metadata_cache: bool = True,
+        make_vocab_size_divisible_by: int = 128,
     ) -> None:
         super().__init__()
         assert (
@@ -1033,6 +1035,8 @@ class HybridParallelPlugin(PipelinePluginBase):
             enable_jit_fused=self.enable_jit_fused,
             enable_sequence_parallelism=enable_sequence_parallelism,
             enable_sequence_overlap=enable_sequence_overlap,
+            parallel_output=parallel_output,
+            make_vocab_size_divisible_by=make_vocab_size_divisible_by,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
