@@ -1,4 +1,4 @@
-from .checkpoint import MoECheckpintIO
+from .checkpoint import MoECheckpointIO
 from .experts import MLPExperts
 from .layers import SparseMLP, apply_load_balance
 from .manager import MOE_MANAGER
@@ -14,7 +14,7 @@ __all__ = [
     "NormalNoiseGenerator",
     "UniformNoiseGenerator",
     "SparseMLP",
-    "MoECheckpintIO",
+    "MoECheckpointIO",
     "MOE_MANAGER",
     "apply_load_balance",
 ]
