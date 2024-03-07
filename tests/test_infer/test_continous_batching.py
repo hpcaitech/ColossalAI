@@ -30,8 +30,8 @@ def generate_inputs(num_sequences, min_length, max_length):
 
 def check_inference_engine(use_engine=False, prompt_template=None):
     setup_seed(20)
-    tokenizer = AutoTokenizer.from_pretrained("TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T")
-    model = LlamaForCausalLM.from_pretrained("TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T").cuda().half()
+    tokenizer = AutoTokenizer.from_pretrained("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+    model = LlamaForCausalLM.from_pretrained("TinyLlama/TinyLlama-1.1B-Chat-v1.0").cuda().half()
     model = model.eval()
 
     max_batch_size: int = 8
