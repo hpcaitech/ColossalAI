@@ -56,7 +56,6 @@ def format_numel_str(numel: int) -> str:
 
 def all_reduce_mean(tensor: torch.Tensor) -> torch.Tensor:
     dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM)
-    tensor = tensor.data
     tensor.div_(dist.get_world_size())
     return tensor
 

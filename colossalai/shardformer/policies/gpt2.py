@@ -38,6 +38,13 @@ class GPT2Policy(Policy):
             if vocab_size % world_size != 0:
                 new_vocab_size = vocab_size + world_size - vocab_size % world_size
                 self.model.resize_token_embeddings(new_vocab_size)
+        elif self.shard_config.pipeline_stage_manager is not None:
+            # padding vocab_size when using pipeline parallellism
+            new_vocab_size = vocab_size
+            multiple = self.shard_config.make_vocab_size_divisible_by
+            while (new_vocab_size % multiple) != 0:
+                new_vocab_size += 1
+            self.model.resize_token_embeddings(new_vocab_size)
         return self.model
 
     def module_policy(self):
