@@ -136,8 +136,7 @@ class RequestHandler:
 
         # For Spec-Dec, process the speculated tokens plus the token in the last step for each seq
         max_n_tokens = self.max_batch_size
-        if self.inference_config.init_spec_dec:
-            max_n_tokens *= self.inference_config.n_spec_tokens + 1
+        max_n_tokens *= self.inference_config.max_n_spec_tokens + 1
 
         fd_inter_tensor.initialize(
             max_batch_size=max_n_tokens,

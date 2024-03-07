@@ -45,14 +45,12 @@ class InferenceEngine:
         model: nn.Module,
         tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
         inference_config: InferenceConfig,
-        drafter_model: nn.Module = None,
         verbose: bool = False,
         model_policy: Policy = None,
     ) -> None:
         self.inference_config = inference_config
         self.model_config = model.config
         self.model = model
-        self.drafter_model = drafter_model
         self.device = torch.device("cuda")
         self.dtype = inference_config.dtype
         self.tokenizer = tokenizer
@@ -63,6 +61,12 @@ class InferenceEngine:
         model.eval()
         model = model.to(self.dtype)
         model = model.to(self.device)
+
+        # Model and relatable attrs of speculative decoding will be set by `enable_spec_dec`
+        self.use_spec_dec = False
+        self.drafter_model = None
+        self.drafter = None
+        self.n_spec_tokens = self.inference_config.max_n_spec_tokens
 
         if model_policy is None:
             if self.inference_config.pad_input:
@@ -79,15 +83,6 @@ class InferenceEngine:
             None,
             pg_mesh.get_group_along_axis(TP_AXIS) if inference_config.pp_size * inference_config.tp_size > 1 else None,
         )
-        self.drafter = None
-        if self.inference_config.init_spec_dec:
-            self.drafter = Drafter(
-                self.drafter_model,
-                self.tokenizer,
-                self.inference_config.n_spec_tokens,
-                device=self.device,
-                dtype=self.dtype,
-            )
 
         self.verbose = verbose
         if verbose:
@@ -111,9 +106,6 @@ class InferenceEngine:
             )
         if self.model.__class__.__name__ not in _supported_models:
             raise ValueError(f"Model {self.model.__class__.__name__} is not supported.")
-        if self.inference_config.init_spec_dec:
-            if self.drafter_model is None or not isinstance(self.drafter_model, nn.Module):
-                raise ValueError(f"Drafter model type must be nn.Module, but got {type(self.drafter_model)}")
 
     def _shardformer(
         self,
@@ -149,6 +141,65 @@ class InferenceEngine:
         shard_model, _ = shardformer.optimize(model, model_policy)
         return shard_model
 
+    def enable_spec_dec(self, drafter_model: nn.Module = None, n_spec_tokens: int = None) -> None:
+        """Initialize drafter (if it has not yet), and enable Speculative Decoding for subsequent generations.
+
+        Args:
+            drafter_model (nn.Module): The drafter model (small model) used to speculate tokens.
+                If provided, the previous drafter and drafter model, if exist, will be overwritten.
+            n_spec_tokens (Optional[int]): The number of tokens to speculate in each round of speculating-verifying.
+                If not provided, `max_n_spec_tokens` in InferenceConfig will be used.
+
+        ```python
+        ...
+        engine = InferenceEngine(model, tokenizer, inference_config)
+
+        engine.enable_spec_dec(drafter_model, n_spec_tokens=5)
+        engine.generate(...)  # Speculative Decoding
+
+        engine.disable_spec_dec()
+        engine.generate(...)  # Normal generation
+
+        engine.enable_spec_dec()
+        engine.generate(...)  # Speculative-Decoding using previously set drafter model and number of spec tokens
+        engine.clear_spec_dec()
+        ```
+        """
+        if drafter_model is None and self.drafter is None:
+            raise ValueError("Drafter not initialized. Please provide a Drafter Model")
+        if n_spec_tokens is not None:
+            assert 1 < n_spec_tokens <= self.inference_config.max_n_spec_tokens
+            self.n_spec_tokens = n_spec_tokens
+        if drafter_model is not None:
+            assert isinstance(drafter_model, nn.Module)
+            # overwrite the drafter, if exists
+            self.clear_spec_dec()
+            self.drafter_model = drafter_model
+            self.drafter = Drafter(
+                self.drafter_model,
+                self.tokenizer,
+                device=self.device,
+                dtype=self.dtype,
+            )
+        # using speculative decoding for subsequent generations
+        self.use_spec_dec = True
+
+    def disable_spec_dec(self) -> None:
+        """Disable using speculative decoding for subsequent generations."""
+        # set back to the maximum number of tokens to speculate
+        self.n_spec_tokens = self.inference_config.max_n_spec_tokens
+        self.use_spec_dec = False
+        return
+
+    def clear_spec_dec(self) -> None:
+        """Clear relatable structures of speculative decoding, if exist."""
+        if self.drafter_model or self.drafter:
+            self.drafter_model = None
+            self.drafter = None
+            torch.cuda.empty_cache()
+        self.use_spec_dec = False
+        return
+
     def steps_spec_dec(self) -> List[Sequence]:
         """
         Run Speculative Decoding steps. This is like retrieving a single batch and launch inference
@@ -157,10 +208,8 @@ class InferenceEngine:
         Returns:
             List[Sequence]: finished sequences generated by one step.
         """
-        spec_num = self.inference_config.n_spec_tokens
-
         batch = self.request_handler.schedule()  # prefill batch
-        batch.set_use_spec_dec(spec_num)  # set batch to use-spec-dec mode
+        batch.set_use_spec_dec(self.n_spec_tokens)  # set batch to use-spec-dec mode
 
         assert batch.current_batch_size == 1, "Only support bsz 1 for speculative decoding for now."
         input_ids = batch.get_1D_inputs()  # bsz 1 for drafter model
@@ -186,10 +235,10 @@ class InferenceEngine:
             # HACK Retrieve the running batch
             #      Using RequestHandler.schedule here will re-allocate same kv cache for the batch
             batch = self.request_handler.running_bb  # running batch
-            batch.set_use_spec_dec(spec_num)
+            batch.set_use_spec_dec(self.n_spec_tokens)
 
             # 3. Decoding - Drafter model speculates `n` tokens
-            drafter_out = self.drafter.speculate(input_ids, spec_num, drafter_past_key_values)
+            drafter_out = self.drafter.speculate(input_ids, self.n_spec_tokens, drafter_past_key_values)
             next_token_ids_spec = drafter_out.next_tokens
             drafter_past_key_values = drafter_out.past_key_values
 
@@ -206,14 +255,14 @@ class InferenceEngine:
 
             # 5. Compare and process the results
             diff_indexes = torch.nonzero(~(next_tokens[:-1] == next_token_ids_spec))
-            n_matches = spec_num if diff_indexes.size(0) == 0 else diff_indexes[0][0].item()
+            n_matches = self.n_spec_tokens if diff_indexes.size(0) == 0 else diff_indexes[0][0].item()
             # revoke appended tokens for each Sequence in the current batch
-            batch.revoke_batch_tokens(spec_num - n_matches)  # revoke drafted tokens
+            batch.revoke_batch_tokens(self.n_spec_tokens - n_matches)  # revoke drafted tokens
             # append the last correct token generated by the main model
             self.request_handler.append_next_tokens(next_tokens[n_matches].unsqueeze(0))
             input_ids = batch.get_1D_inputs_spec_dec(1)
             # trim past key values of the drafter model
-            drafter_past_key_values = Drafter.trim_kv_cache(drafter_past_key_values, spec_num - n_matches - 1)
+            drafter_past_key_values = Drafter.trim_kv_cache(drafter_past_key_values, self.n_spec_tokens - n_matches - 1)
 
             self.request_handler.update_batch_finished(batch, generation_config=self.generation_config)
             finished_sequences = self.request_handler.update()
@@ -231,7 +280,6 @@ class InferenceEngine:
         request_ids: List[int] = None,
         return_token_ids: bool = False,
         generation_config: Optional[GenerationConfig] = None,
-        use_spec_dec: bool = False,
     ) -> List[str]:
         """
         Executing the inference step.
@@ -257,8 +305,7 @@ class InferenceEngine:
             if generation_config is not None:
                 self.generation_config = generation_config
 
-            if use_spec_dec:
-                assert self.inference_config.init_spec_dec, "Spec-Dec configs have not been set."
+            if self.use_spec_dec:
                 assert self.drafter is not None, "Drafter Model is not initialized."
                 while self.request_handler.check_unfinished_seqs():
                     output_seqs_list += self.steps_spec_dec()

@@ -101,10 +101,15 @@ class BatchBucket:
         return self._num_tokens_to_verify
 
     def set_use_spec_dec(self, num_tokens_to_verify: int = 5) -> None:
+        """Set batch bucket to use speculatvie decoding.
+        This will notify the adjust the lengths of inputs during modeling,
+        and let the main model verifies tokens in parallel.
+        """
         self._use_spec_dec = True
         self._num_tokens_to_verify = num_tokens_to_verify
 
     def reset_use_spec_dec(self) -> None:
+        """Reset the usage of speculative decoding for the batch bucket"""
         self._use_spec_dec = False
         self._num_tokens_to_verify = None
 

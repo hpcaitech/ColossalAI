@@ -15,7 +15,6 @@ class Drafter:
     Args:
         model (nn.Module): The drafter model.
         tokenizer (transformers.PreTrainedTokenizer): The tokenizer for the drafter model.
-        max_spec_num (int): The maximum number of tokens to speculate.
         device (torch.device): The device for the drafter model.
     """
 
@@ -23,12 +22,10 @@ class Drafter:
         self,
         model: nn.Module,
         tokenizer: PreTrainedTokenizer,
-        max_spec_num: int,
         device: torch.device = None,
         dtype: torch.dtype = torch.float16,
     ):
         self._tokenizer = tokenizer
-        self.max_spec_num = max_spec_num
         self._device = device or get_current_device()
         self._dtype = dtype
         self._drafter_model = model.to(self._device)
@@ -77,7 +74,7 @@ class Drafter:
             n_spec_tokens (int): Number of tokens to speculate.
             past_key_values (Tuple[Tuple[torch.FloatTensor]]): The past key values of the input sequence.
         """
-        assert 0 <= n_spec_tokens <= self.max_spec_num, f"Invalid number {n_spec_tokens} to speculate"
+        assert n_spec_tokens >= 1, f"Invalid number {n_spec_tokens} to speculate"
 
         # For compatibility with transformers of versions before 4.38.0
         if input_ids.dim() == 1:

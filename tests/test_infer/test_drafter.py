@@ -25,7 +25,7 @@ def test_drafter(spec_num: int):
     drafter_model = LlamaForCausalLM(toy_config)
     drafter_model = drafter_model.eval().cuda()
 
-    drafter = Drafter(drafter_model, tokenizer, spec_num, device=device)
+    drafter = Drafter(drafter_model, tokenizer, device=device)
 
     input_ids = torch.randint(low=5, high=1000, size=(1, 6)).to(device)
     out = drafter.speculate(input_ids, spec_num)
@@ -69,10 +69,9 @@ def check_sd():
         max_output_len=128,
         prefill_ratio=1.2,
         block_size=16,
-        init_spec_dec=True,
-        n_spec_tokens=5,
     )
-    engine = InferenceEngine(main_model, tokenizer, inference_config, drafter_model=drafter_model)
+    engine = InferenceEngine(main_model, tokenizer, inference_config)
+    engine.enable_spec_dec(drafter_model, n_spec_tokens=5)
 
     dummy_inputs = torch.randint(low=5, high=1000, size=(1, 10), dtype=torch.long, device="cuda")
     generation_config = GenerationConfig(
@@ -81,8 +80,13 @@ def check_sd():
         eos_token_id=tokenizer.eos_token_id,
     )
     out, out_token_ids = engine.generate(
-        prompts_token_ids=dummy_inputs, generation_config=generation_config, return_token_ids=True, use_spec_dec=True
+        prompts_token_ids=dummy_inputs, generation_config=generation_config, return_token_ids=True
     )
+    engine.disable_spec_dec()
+    engine.clear_spec_dec()
+
+    assert not engine.use_spec_dec
+    assert engine.drafter is None and engine.drafter_model is None
 
     assert len(out) == 1
     assert len(out_token_ids) == 1 and len(out_token_ids[0]) == MAX_LEN
