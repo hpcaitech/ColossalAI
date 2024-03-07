@@ -78,7 +78,7 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
-          CUDA_EXT=1 pip install -v .
+          BUILD_EXT=1 pip install -v .
           pip install -r requirements/requirements-test.txt
       - name: Unit Testing
         run: |

@@ -51,7 +51,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         pp_group (ProcessGroup): Process group along pipeline parallel dimension.
         tp_group (ProcessGroup): Process group along tensor parallel dimension.
         zero_stage (int): The zero stage of plugin. Should be in [0, 1, 2].
-        verbose (bool, optional): Whether to print logging massage when saving/loading has been succesfully executed. Defaults to True.
+        verbose (bool, optional): Whether to print logging massage when saving/loading has been successfully executed. Defaults to True.
     """
 
     def __init__(
@@ -574,7 +574,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
             # obtain updated param group
             new_pg = copy.deepcopy(saved_pg)
-            new_pg["params"] = old_pg["params"]  # The parameters in the same group shouln't change.
+            new_pg["params"] = old_pg["params"]  # The parameters in the same group shouldn't change.
             updated_groups.append(new_pg)
         optimizer.optim.__dict__.update({"param_groups": updated_groups})
 

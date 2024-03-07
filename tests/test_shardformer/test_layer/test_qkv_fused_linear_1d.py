@@ -1,3 +1,4 @@
+import os
 from contextlib import nullcontext
 
 import torch
@@ -11,8 +12,10 @@ from colossalai.shardformer.layer import GPT2FusedLinearConv1D_Col, GPT2FusedLin
 from colossalai.shardformer.layer.qkv_fused_linear import split_fused_qkv_in_gpt2_style
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
-
 # This code is copied from https://github.com/huggingface/transformers
+os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
+
+
 class Conv1D(nn.Module):
     """
     1D-convolutional layer as defined by Radford et al. for OpenAI GPT (and also used in GPT-2).

@@ -40,7 +40,7 @@ def set_accelerator(accelerator: Union[str, BaseAccelerator]) -> None:
 def auto_set_accelerator() -> None:
     """
     Automatically check if any accelerator is available.
-    If an accelerator is availabe, set it as the global accelerator.
+    If an accelerator is available, set it as the global accelerator.
     """
     global _ACCELERATOR
 
