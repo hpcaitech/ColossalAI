@@ -52,13 +52,14 @@ async def generate(request: Request) -> Response:
     stream = request_dict.pop("stream", None)
 
     request_id = id_generator()
+    print("generate_id", request_id)
     generation_config = get_generation_config(request_dict)
     results = engine.generate(request_id, prompt, generation_config=generation_config)
 
     # Streaming case
     def stream_results():
         for request_output in results:
-            ret = {"text": request_output}
+            ret = {"text": request_output[len(prompt) :]}
             yield (json.dumps(ret) + "\0").encode("utf-8")
 
     if stream:
@@ -71,7 +72,7 @@ async def generate(request: Request) -> Response:
             # Abort the request if the client disconnects.
             engine.abort(request_id)
             return Response(status_code=499)
-        final_output = request_output
+        final_output = request_output[len(prompt) :]
 
     assert final_output is not None
     ret = {"text": final_output}
@@ -83,9 +84,15 @@ async def create_completion(request: Request):
     request_dict = await request.json()
     generation_config = get_generation_config(request_dict)
     generator = await completion_serving.create_completion(request, generation_config)
-    output = tokenizer.decode(generator.output_token_id)
-    ret = {"request_id": generator.request_id, "text": output}
-    return ret
+    if request.stream:
+        async for res in generator:
+            output = tokenizer.decode(res.output_token_id)
+            ret = {"request_id": res.request_id, "text": output}
+        return StreamingResponse(content=json.dumps(ret) + "\0", media_type="text/event-stream")
+    else:
+        output = tokenizer.decode(generator.output_token_id)
+        ret = {"request_id": generator.request_id, "text": output}
+        return JSONResponse(content=ret)
 
 
 def get_generation_config(request):

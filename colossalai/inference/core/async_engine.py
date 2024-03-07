@@ -63,7 +63,7 @@ class RequestTracker:
     """Synchronous abstraction for tracking requests."""
 
     def __init__(self) -> None:
-        self._request_streams: Dict[str, AsyncStream] = {}
+        self._request_streams: Dict[int, AsyncStream] = {}
         self._finished_requests: asyncio.Queue[int] = asyncio.Queue()
         self._new_requests: asyncio.Queue[Tuple[AsyncStream, dict]] = asyncio.Queue()
         self.new_requests_event = None
@@ -87,8 +87,10 @@ class RequestTracker:
     def process_finished_request(self, finished_request) -> None:
         """Process a finished request from the engine."""
         request_id = finished_request.request_id
-
-        self._request_streams[request_id].put(finished_request)
+        try:
+            self._request_streams[request_id].put(finished_request)
+        except:
+            raise RuntimeError(f"The request_id {request_id} is not found in our stream, please check")
         self.abort_request(request_id)
 
     def add_request(self, request_id: int, **engine_add_request_kwargs) -> AsyncStream:
