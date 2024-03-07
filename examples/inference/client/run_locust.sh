@@ -1,17 +1,24 @@
 #!/bin/bash
 
+#argument1: model_path
+
 # launch server
-model_path="/home/caidi/llama_model/"
+model_path=$(realpath $1)
+echo "Model Path: $model_path"
 echo "Starting server..."
 python -m colossalai.inference.server.api_server --model $model_path &
 SERVER_PID=$!
 
-# 等待服务器启动
+# waiting time
 sleep 60
 
-# 启动Locust
+# Run Locust
 echo "Starting Locust..."
-locust -f locustfile.py -t 300 --tags online-generation --host http://127.0.0.1:8000 --autostart --users 100
+echo "The test will automatically begin, you can turn to http://0.0.0.0:8089 for more information."
+locust -f locustfile.py -t 300 --tags online-generation --host http://127.0.0.1:8000 --autostart --users 100 --stop-timeout 10
 
-# 测试完成，终止server.py
+# kill Server
+echo "Stopping server..."
 kill $SERVER_PID
+
+echo "Test and server shutdown completely"

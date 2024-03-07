@@ -52,7 +52,6 @@ async def generate(request: Request) -> Response:
     stream = request_dict.pop("stream", None)
 
     request_id = id_generator()
-    print("generate_id", request_id)
     generation_config = get_generation_config(request_dict)
     results = engine.generate(request_id, prompt, generation_config=generation_config)
 
