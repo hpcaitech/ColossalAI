@@ -40,11 +40,10 @@ class GPT2Policy(Policy):
                 self.model.resize_token_embeddings(new_vocab_size)
         else:
             # Make vocab_size divisible by `make_vocab_size_divisible_by` to select a faster CUDA kernel operator.
-            new_vocab_size = vocab_size
             multiple = self.shard_config.make_vocab_size_divisible_by
-            while (new_vocab_size % multiple) != 0:
-                new_vocab_size += 1
-            self.model.resize_token_embeddings(new_vocab_size)
+            if vocab_size % multiple != 0:
+                new_vocab_size = (vocab_size // multiple + 1) * multiple
+                self.model.resize_token_embeddings(new_vocab_size)
         return self.model
 
     def module_policy(self):
