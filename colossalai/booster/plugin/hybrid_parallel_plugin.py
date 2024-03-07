@@ -897,6 +897,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_jit_fused (bool, optional): Whether to switch on JIT in Shardformer. Default to False.
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism in Shardformer. Defaults to False.
         enable_sequence_overlap (bool): Whether to turn on sequence overlap in Shardformer. Defaults to False.
+        parallel_output (bool): Whether to keep the output parallel when enabling tensor parallelism. Default to True.
         num_microbatches (int, optional): Number of microbatches when using pipeline parallelism. Defaults to None.
         microbatch_size (int, optional): Microbatch size when using pipeline parallelism.
             Either ``num_microbatches`` or ``microbatch_size`` should be provided if using pipeline.
@@ -923,6 +924,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         pp_style (str, optional): The style for pipeline parallelism. Defaults to '1f1b'.
         num_model_chunks (int, optional): The number of model chunks for interleaved pipeline parallelism. Defaults to 1.
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
+        make_vocab_size_divisible_by (bool, optional): make the vocabulary size is divisible by `make_vocab_size_divisible_by`,  to select a faster CUDA kernel operator. Default to 128.
     """
 
     def __init__(
