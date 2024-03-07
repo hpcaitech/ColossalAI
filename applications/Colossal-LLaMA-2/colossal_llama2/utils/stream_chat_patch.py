@@ -116,7 +116,7 @@ def streaming_chat(
     history.append({"role": roles[1], "message": input_query.strip()})
     history.append({"role": roles[2], "message": None})
 
-    for outputs in generate(model, **inputs, past_key_values=past_key_values,
+    for outputs in stream_generate(model, **inputs, past_key_values=past_key_values,
                             eos_token_id=eos_token_id, return_past_key_values=return_past_key_values,
                             **generation_kwargs):
         if return_past_key_values:
@@ -133,7 +133,7 @@ def streaming_chat(
                     
 
 @torch.inference_mode()
-def generate(
+def stream_generate(
     model: Any, 
     input_ids: torch.Tensor, 
     generation_config: Optional[GenerationConfig] = None,
