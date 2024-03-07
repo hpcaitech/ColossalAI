@@ -45,12 +45,12 @@ __global__ void decode_kv_cache_memcpy_kernel(
 }
 
 void decode_kv_cache_memcpy(
-    torch::Tensor& key,                 // [num_tokens, num_heads, head_size]
-    torch::Tensor& value,               // [num_tokens, num_heads, head_size]
-    torch::Tensor& key_cache,           // [num_blocks, num_heads, block_size, head_size]
-    torch::Tensor& value_cache,         // [num_blocks, num_heads, block_size, head_size]
-    torch::Tensor& sequence_lengths,    // [batch_size]
-    torch::Tensor& block_tables)        // [batch_size, max_seq_len]
+    at::Tensor& key,                 // [num_tokens, num_heads, head_size]
+    at::Tensor& value,               // [num_tokens, num_heads, head_size]
+    at::Tensor& key_cache,           // [num_blocks, num_heads, block_size, head_size]
+    at::Tensor& value_cache,         // [num_blocks, num_heads, block_size, head_size]
+    at::Tensor& sequence_lengths,    // [batch_size]
+    at::Tensor& block_tables)        // [batch_size, max_seq_len]
 {
     int num_tokens = key.size(0);
     int num_heads = key.size(1);
