@@ -83,8 +83,8 @@ def llama_model_forward(
     # NOTE: After testing, the performance of this configuration is relatively good. With updates
     # and optimizations to the CUDA kernel implementation, a more detailed analysis of this configuration's
     # selection should be conducted.
-    # if batch_size >= 32 and kv_seq_len > 512:
-    #     use_cuda_kernel = False
+    if batch_size >= 32 and kv_seq_len > 512:
+        use_cuda_kernel = False
 
     hidden_states = self.embed_tokens(input_ids)
 
@@ -341,11 +341,6 @@ class NopadLlamaAttention(LlamaAttention):
             )
         else:
             if use_cuda_kernel:
-                # using non-fused operation
-                # inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
-                # inference_ops.decode_kv_cache_memcpy(
-                #     key_states, value_states, k_cache, v_cache, sequence_lengths, block_tables
-                # )
                 inference_ops.rotary_embedding_and_cache_copy(
                     query_states,
                     key_states,

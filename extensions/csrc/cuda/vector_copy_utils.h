@@ -30,7 +30,7 @@ __device__ __inline__ void copy_vector<c10::BFloat16, 4>(
 template <>
 __device__ __inline__ void copy_vector<c10::BFloat16, 8>(
     c10::BFloat16 *dst, const c10::BFloat16 *src) {
-  *((float *)dst) = *((float *)src);
+  *((float4 *)dst) = *((float4 *)src);
 }
 
 template <>
@@ -42,7 +42,7 @@ __device__ __inline__ void copy_vector<c10::Half, 1>(c10::Half *dst,
 template <>
 __device__ __inline__ void copy_vector<c10::Half, 2>(c10::Half *dst,
                                                      const c10::Half *src) {
-  *((float2 *)dst) = *((float2 *)src);
+  *((float *)dst) = *((float *)src);
 }
 
 template <>
@@ -77,6 +77,7 @@ __device__ __inline__ void copy_vector<float, 8>(float *dst, const float *src) {
   // Since the maximum memory alignment length is 128 bits, we choose float4
   // here.
   *((float4 *)dst) = *((float4 *)src);
+  *((float4 *)(dst + 4)) = *((float4 *)(src + 4));
 }
 
 template <typename T>

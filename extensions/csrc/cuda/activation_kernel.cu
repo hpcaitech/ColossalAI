@@ -39,6 +39,9 @@ torch::Tensor silu_and_mul(const torch::Tensor& ins)
     auto ins_shape = ins.sizes().vec();
 
     ins_shape[0] = ins_shape[0]/2;
+    if (ins_shape[0] == 1) {
+      ins_shape.erase(ins_shape.begin());
+    }
     auto outs = torch::zeros(ins_shape,ins.options());
     auto outs_shape = ins.sizes().vec();
 
