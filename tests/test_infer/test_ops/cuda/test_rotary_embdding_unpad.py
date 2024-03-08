@@ -32,7 +32,7 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
 
     # create data
     block_size = 32
-    max_num_blocks_per_seq = 4
+    max_blocks_per_sequence = (TOTAL_TOKENS + block_size - 1) // block_size
     q_shape = (TOTAL_TOKENS, H, D)
     q = -2.3 + 0.5 * torch.randn(q_shape, dtype=dtype, device="cuda")
     k_shape = (TOTAL_TOKENS, H, D)
@@ -40,13 +40,13 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
     cos_shape = (TOTAL_TOKENS, D // 2)
     cos = -1.2 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
     sin = -2.0 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
-    cache_shape = (BATCH_SIZE * max_num_blocks_per_seq, H, block_size, D)
+    cache_shape = (BATCH_SIZE * max_blocks_per_sequence, H, block_size, D)
     k_cache = torch.zeros(size=cache_shape, dtype=dtype, device="cuda")
     v = torch.randn_like(k)
     v_cache = torch.zeros_like(k_cache)
     past_kv_seq_lengths = torch.tensor([SEQ_LEN - 1 for _ in range(BATCH_SIZE)], dtype=torch.int32, device="cuda")
     block_tables = mock_alloc_block_table_and_kvcache_v2(
-        k, v, k_cache, v_cache, past_kv_seq_lengths, BATCH_SIZE, max_num_blocks_per_seq, block_size
+        k, v, k_cache, v_cache, past_kv_seq_lengths, BATCH_SIZE, max_blocks_per_sequence, block_size
     )
     new_k = torch.randn((BATCH_SIZE, H, D), dtype=dtype, device="cuda")
     new_q = torch.randn_like(new_k)
@@ -88,4 +88,4 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
 
 
 if __name__ == "__main__":
-    test_rotary_emb(64, 512, 4, 128, torch.float16)
+    test_rotary_emb(16, 512, 4, 128, torch.float16)
