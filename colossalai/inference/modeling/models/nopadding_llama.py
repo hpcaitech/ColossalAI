@@ -81,8 +81,8 @@ def llama_model_forward(
     # NOTE: After testing, the performance of this configuration is relatively good. With updates
     # and optimizations to the CUDA kernel implementation, a more detailed analysis of this configuration's
     # selection should be conducted.
-    if batch_size >= 32 and kv_seq_len > 512:
-        use_cuda_kernel = False
+    # if batch_size >= 32 and kv_seq_len > 512:
+    #     use_cuda_kernel = False
 
     hidden_states = self.embed_tokens(input_ids)
 
