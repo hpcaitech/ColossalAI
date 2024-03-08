@@ -13,12 +13,13 @@ class InferenceOpsCudaExtension(_CudaExtension):
                 "cuda/colossal_inference_C_frontend.cpp",
                 "cuda/decode_kv_cache_memcpy_kernel.cu",
                 "cuda/activation_kernel.cu",
+                "cuda/rms_layernorm_kernel.cu",
             ]
         ]
         return ret
 
     def include_dirs(self):
-        ret = [self.get_cuda_home_include()]
+        ret = [self.csrc_abs_path("cuda/include"), self.get_cuda_home_include()]
         return ret
 
     def cxx_flags(self):
