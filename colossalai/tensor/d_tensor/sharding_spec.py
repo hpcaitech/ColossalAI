@@ -67,7 +67,6 @@ class DimSpec:
         difference_dict = {}
         for source_spec in source_spec_list:
             for target_spec in target_spec_list:
-                spec_pair = (deepcopy(source_spec), deepcopy(target_spec))
                 source_shard_list = self._convert_str_to_shard_list(source_spec)
                 target_shard_list = self._convert_str_to_shard_list(target_spec)
 
@@ -112,7 +111,7 @@ class DimSpec:
 
                 else:
                     difference = NAN
-                difference_dict[spec_pair] = difference
+                difference_dict[(source_spec, target_spec)] = difference
 
         self.difference_dict = difference_dict
 
