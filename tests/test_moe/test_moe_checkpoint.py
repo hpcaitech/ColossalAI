@@ -12,7 +12,6 @@ import colossalai
 from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
-from colossalai.moe.manager import MOE_MANAGER
 from colossalai.testing import DummyDataloader, check_state_dict_equal, rerun_if_address_is_in_use, spawn
 
 sys.path.append(
@@ -95,6 +94,7 @@ def get_model(parallel):
             precision="bf16",
             tp_size=1,
             pp_size=1,
+            ep_size=1,
             zero_stage=2,
             custom_policy=OpenMoeForCausalLMPolicy(),
         )
@@ -103,6 +103,7 @@ def get_model(parallel):
             precision="bf16",
             tp_size=1,
             pp_size=1,
+            ep_size=dist.get_world_size(),
             zero_stage=2,
             custom_policy=OpenMoeForCausalLMPolicy(),
         )
@@ -111,6 +112,7 @@ def get_model(parallel):
             precision="bf16",
             tp_size=1,
             pp_size=1,
+            ep_size=2,
             zero_stage=2,
             extra_dp_size=2,
             custom_policy=OpenMoeForCausalLMPolicy(),
@@ -120,6 +122,7 @@ def get_model(parallel):
             precision="bf16",
             tp_size=1,
             pp_size=2,
+            ep_size=2,
             zero_stage=1,
             microbatch_size=1,
             custom_policy=OpenMoeForCausalLMPolicy(),
@@ -130,27 +133,6 @@ def get_model(parallel):
 
 
 def _test_moe_checkpoint(rank, parallel):
-    if parallel == None:
-        MOE_MANAGER.setup(
-            parallel=None,
-        )
-    elif parallel == "ep":
-        MOE_MANAGER.setup(
-            parallel="EP",
-        )
-    elif parallel == "ep_zero":
-        MOE_MANAGER.setup(
-            parallel="EP",
-            max_ep_size=2,
-        )
-    elif parallel == "hybrid":
-        MOE_MANAGER.setup(
-            parallel="EP",
-            mode="fixed",
-            fixed_dp_size=1,
-            fixed_ep_size=2,
-            fixed_pp_size=2,
-        )
     model1, booster1, optim1 = get_model(parallel)
     model2, booster2, optim2 = get_model(parallel)
     model3, booster3, optim3 = get_model(parallel)
@@ -207,6 +189,7 @@ def _run_dist(rank, world_size, port, parallel):
     _test_moe_checkpoint(rank, parallel)
 
 
+@pytest.mark.skip(reason="This is tested in ColossalMOE")
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
 @pytest.mark.parametrize("parallel", [None, "ep", "ep_zero", "hybrid"])

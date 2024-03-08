@@ -3,7 +3,7 @@ import resource
 from contextlib import nullcontext
 
 import torch
-from attn import SUPPORT_FLASH, replace_xformers
+from attn import replace_with_flash_attention
 from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel
 from performance_evaluator import PerformanceEvaluator
@@ -188,8 +188,7 @@ def main():
         model.gradient_checkpointing_enable()
 
     if args.xformers:
-        assert SUPPORT_FLASH, "Use flash attention while xfomers is not installed"
-        replace_xformers(model)
+        replace_with_flash_attention(model)
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")

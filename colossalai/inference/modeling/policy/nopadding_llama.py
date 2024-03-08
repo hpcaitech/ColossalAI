@@ -1,6 +1,5 @@
 from functools import partial
 
-import torch
 from torch.nn import Parameter
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaForCausalLM, LlamaModel, LlamaRMSNorm
 
@@ -10,33 +9,13 @@ from colossalai.inference.modeling.models.nopadding_llama import (
     llama_causal_lm_forward,
     llama_decoder_layer_forward,
     llama_model_forward,
+    llama_rmsnorm_forward,
 )
 from colossalai.inference.utils import init_to_get_rotary
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
 
 # import colossalai
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
-
-try:
-    from colossalai.kernel.triton import rms_layernorm
-
-    HAS_TRITON_RMSNORM = True
-except:
-    print("you should install triton from https://github.com/openai/triton")
-    HAS_TRITON_RMSNORM = False
-
-
-def get_triton_rmsnorm_forward():
-    if HAS_TRITON_RMSNORM:
-
-        def _triton_rmsnorm_forward(
-            self: LlamaRMSNorm, hidden_states: torch.Tensor, norm_output: torch.Tensor, residual: torch.Tensor = None
-        ):
-            return rms_layernorm(hidden_states, self.weight.data, self.variance_epsilon, norm_output, residual)
-
-        return _triton_rmsnorm_forward
-    else:
-        return None
 
 
 class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy):
@@ -84,15 +63,9 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy):
             description=method_replacement, policy=policy, target_key=LlamaDecoderLayer
         )
 
-        infer_forward = None
-        if HAS_TRITON_RMSNORM:
-            infer_forward = get_triton_rmsnorm_forward()
-
-        if infer_forward is not None:
-            method_replacement = {"forward": partial(infer_forward)}
-            self.append_or_create_method_replacement(
-                description=method_replacement, policy=policy, target_key=LlamaRMSNorm
-            )
+        infer_forward = llama_rmsnorm_forward
+        method_replacement = {"forward": partial(infer_forward)}
+        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=LlamaRMSNorm)
 
         return policy
 

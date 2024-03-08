@@ -45,9 +45,13 @@ class MoeRouter(nn.Module, ABC):
         self._z_loss = None
         self.use_kernel = use_kernel
 
-    def get_capacity(self, logits_shape):
+    def get_capacity(self, num_tokens, num_experts, ep_group=None):
+        if ep_group is not None:
+            num_tokens_tensor = torch.tensor(num_tokens, device=get_accelerator().get_current_device())
+            dist.all_reduce(num_tokens_tensor, group=ep_group)
+            num_tokens = num_tokens_tensor.item() // dist.get_world_size(ep_group)
         capacity_factor = self.capacity_factor_train if self.training else self.capacity_factor_eval
-        capacity = math.floor(self.k_value * capacity_factor * logits_shape[-2] / logits_shape[-1])
+        capacity = math.floor(self.k_value * capacity_factor * num_tokens / num_experts)
         capacity += capacity % 2
         capacity = max(capacity, self.min_capacity)
         assert capacity > 0
@@ -150,7 +154,14 @@ class Top1Router(MoeRouter):
                 high=torch.tensor(1.0, device=get_accelerator().get_current_device()),
             ).rsample
 
-    def forward(self, inputs: torch.Tensor, use_kernel: bool = False, ep_group: Optional[ProcessGroup] = None) -> Tuple:
+    def forward(
+        self,
+        inputs: torch.Tensor,
+        use_kernel: bool = False,
+        ep_group: Optional[ProcessGroup] = None,
+        use_loss: bool = False,
+        use_norm: bool = False,
+    ) -> Tuple:
         """
         Args:
             inputs (torch.Tensor): The input tensor of shape (batch_size * seq_len, num_experts).
@@ -168,7 +179,8 @@ class Top1Router(MoeRouter):
         assert inputs.dtype == torch.float
         probs = F.softmax(inputs, dim=-1)
         num_experts = probs.size(-1)
-        capacity = self.get_capacity(inputs.shape)
+        num_tokens = inputs.size(0)
+        capacity = self.get_capacity(num_tokens, num_experts, ep_group)
 
         top1_idx = torch.argmax(inputs, dim=-1)
         mask = F.one_hot(top1_idx, num_classes=num_experts).to(torch.int32)
@@ -207,7 +219,7 @@ class Top1Router(MoeRouter):
             weight = mask * probs.type_as(inputs)
             combine_weights = weight.unsqueeze(2) * ranks.unsqueeze(1)
             sec_mask = combine_weights.bool()
-            return used_capacity, combine_weights, sec_mask
+            return used_capacity, combine_weights, sec_mask, probs
 
 
 class Top2Router(MoeRouter):
@@ -240,7 +252,14 @@ class Top2Router(MoeRouter):
             drop_tks=drop_tks,
         )
 
-    def forward(self, inputs: torch.Tensor, use_kernel: bool = False, ep_group: Optional[ProcessGroup] = None) -> Tuple:
+    def forward(
+        self,
+        inputs: torch.Tensor,
+        use_kernel: bool = False,
+        ep_group: Optional[ProcessGroup] = None,
+        use_norm: bool = False,
+        use_loss: bool = True,
+    ) -> Tuple:
         """
         Args:
             inputs (torch.Tensor): The input tensor of shape (batch_size * seq_len, num_experts).
@@ -257,8 +276,13 @@ class Top2Router(MoeRouter):
 
         assert inputs.dtype == torch.float
         probs = F.softmax(inputs, dim=-1)
+        if use_norm:
+            routing_weights, _ = torch.topk(probs, 2, dim=-1)
+            probs = probs / routing_weights.sum(dim=-1, keepdim=True)
+
         num_experts = probs.size(-1)
-        capacity = self.get_capacity(inputs.shape)
+        num_tokens = inputs.size(0)
+        capacity = self.get_capacity(num_tokens, num_experts, ep_group)
 
         top1_idx = torch.argmax(probs, dim=-1)
         mask1 = F.one_hot(top1_idx, num_classes=num_experts).to(torch.int32)
@@ -270,10 +294,11 @@ class Top2Router(MoeRouter):
         cmask = cmask.float() / 2.0  # div 2 to normalize it to 1
 
         # calculate loss
-        expert_indices = torch.stack([top1_idx, top2_idx], dim=-1)
-        self.set_aux_loss(probs, expert_indices, num_experts)
-        self.set_z_loss(inputs)
-        self.pop_router_loss()
+        if use_loss:
+            expert_indices = torch.stack([top1_idx, top2_idx], dim=-1)
+            self.set_aux_loss(probs, expert_indices, num_experts)
+            self.set_z_loss(inputs)
+            self.pop_router_loss()
 
         if not self.training and not self.drop_tks and ep_group is not None:
             max_num = torch.max(torch.sum(cmask, dim=0))

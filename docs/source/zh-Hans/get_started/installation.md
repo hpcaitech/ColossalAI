@@ -20,10 +20,10 @@ pip install colossalai
 
 **注：现在只支持Linux。**
 
-如果你想同时安装PyTorch扩展的话，可以添加`CUDA_EXT=1`。如果不添加的话，PyTorch扩展会在运行时自动安装。
+如果你想同时安装PyTorch扩展的话，可以添加`BUILD_EXT=1`。如果不添加的话，PyTorch扩展会在运行时自动安装。
 
 ```shell
-CUDA_EXT=1 pip install colossalai
+BUILD_EXT=1 pip install colossalai
 ```
 
 ## 从源安装
@@ -38,10 +38,10 @@ cd ColossalAI
 pip install -r requirements/requirements.txt
 
 # install colossalai
-CUDA_EXT=1 pip install .
+BUILD_EXT=1 pip install .
 ```
 
-如果您不想安装和启用 CUDA 内核融合（使用融合优化器时强制安装），您可以不添加`CUDA_EXT=1`：
+如果您不想安装和启用 CUDA 内核融合（使用融合优化器时强制安装），您可以不添加`BUILD_EXT=1`：
 
 ```shell
 pip install .
@@ -60,7 +60,7 @@ unzip 1.8.0.zip
 cp -r cub-1.8.0/cub/ colossalai/kernel/cuda_native/csrc/kernels/include/
 
 # install
-CUDA_EXT=1 pip install .
+BUILD_EXT=1 pip install .
 ```
 
 <!-- doc-test-command: echo "installation.md does not need test" -->

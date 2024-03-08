@@ -224,6 +224,7 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
             size_per_shard (int, optional): Size per shard in MB. Defaults to 1024.
             use_safetensors (bool, optional): Whether to use safe tensors. Defaults to False.
         """
+        torch.cuda.empty_cache()
         if os.path.isfile(checkpoint):
             logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
             return
@@ -265,6 +266,7 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
                         f"index located at {save_index_file}."
                     )
         dist.barrier()
+        torch.cuda.empty_cache()
 
     # ========================================================
     # Abstract methods for optimizer loading/saving implementation
@@ -332,10 +334,12 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
 
         def _get_param_id_from_optimizer_param(
-            param: torch.Tensor, master_to_working_map: Optional[Dict[int, torch.Tensor]] = None
+            param: torch.Tensor, master_to_working_map: Optional[Dict[int, torch.Tensor]] = None, optimizer=None
         ):
             if master_to_working_map is not None and id(param) in master_to_working_map:
                 working_param = master_to_working_map[id(param)]
+            elif hasattr(optimizer, "moe_master_to_working_map") and id(param) in optimizer.moe_master_to_working_map:
+                working_param = optimizer.moe_master_to_working_map[id(param)]
             else:
                 working_param = param
             return optimizer.param_info["param2id"][id(working_param)]
@@ -347,7 +351,7 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
         master_to_working_map = optimizer.get_master_to_working_map()
         for pg in optimizer.optim.param_groups:
             for param in pg["params"]:
-                param_id = _get_param_id_from_optimizer_param(param, master_to_working_map)
+                param_id = _get_param_id_from_optimizer_param(param, master_to_working_map, optimizer)
                 id_map[param_id] = param
 
         # Read checkpoint index file.
@@ -371,14 +375,10 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
             new_pg = copy.deepcopy(saved_pg)
             new_pg["params"] = old_pg["params"]  # The parameters in the same group shouln't change.
             updated_groups.append(new_pg)
-        # ep extra group
-        if MOE_MANAGER.parallel == "EP":
+        # ep param group
+        if len(optimizer.optim.param_groups) > len(saved_groups):
             new_pg = copy.deepcopy(saved_pg)
-            new_pg["params"] = optimizer.optim.param_groups[-1][
-                "params"
-            ]  # Only keep the parameters kept by current pipeline stage.
-            for param in new_pg["params"]:
-                param.data = param.data.to(torch.float32)
+            new_pg["params"] = optimizer.optim.param_groups[-1]["params"]
             updated_groups.append(new_pg)
         optimizer.optim.__dict__.update({"param_groups": updated_groups})
 
@@ -389,7 +389,7 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
             for param in pg["params"]:
                 if param is None:
                     continue
-                param_id = _get_param_id_from_optimizer_param(param, master_to_working_map)
+                param_id = _get_param_id_from_optimizer_param(param, master_to_working_map, optimizer)
                 if param_id not in weight_map:
                     continue
                 filename = weight_map[param_id]
@@ -400,26 +400,33 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
 
                 file_path = os.path.join(ckpt_root_path, filename)
                 state_dict = load_shard_state_dict(Path(file_path), use_safetensors=False)
+
+                # Then shard the loaded optimizer states if using tp/zero.
+                for pid, state in list(state_dict.items()):
+                    if pid in id_map:
+                        param = id_map[pid]
+                        if master_to_working_map is not None and id(param) in master_to_working_map:
+                            working_param = master_to_working_map[id(param)]
+                        elif (
+                            hasattr(optimizer, "moe_master_to_working_map")
+                            and id(param) in optimizer.moe_master_to_working_map
+                        ):
+                            working_param = optimizer.moe_master_to_working_map[id(param)]
+                        else:
+                            working_param = param
+                        original_shape = optimizer.param_info["param2shape"][id(working_param)]
+                        sharded_state = self.pre_load_optim(
+                            state,
+                            working_param,
+                            current_shape=working_param.shape,
+                            original_shape=original_shape,
+                            device="cpu",
+                            inplace=True,
+                        )
+                        state_dict[pid] = sharded_state
+
                 load_states_into_optimizer(optimizer.optim, state_dict, id_map, strict=True)
                 loaded_file.add(filename)
-
-        # Then shard the loaded optimizer states if using tp/zero.
-        for param, state in optimizer.optim.state.items():
-            device = param.device
-            if master_to_working_map is not None and id(param) in master_to_working_map:
-                working_param = master_to_working_map[id(param)]
-            else:
-                working_param = param
-            original_shape = optimizer.param_info["param2shape"][id(working_param)]
-            sharded_state = self.pre_load_optim(
-                state,
-                param,
-                current_shape=working_param.shape,
-                original_shape=original_shape,
-                device=device,
-                inplace=True,
-            )
-            optimizer.optim.state[param] = sharded_state
 
         sharded_optimizer_loading_epilogue(optimizer.optim)
         if self.verbose and self.coordinator.is_master():
@@ -576,6 +583,8 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
 
             if master_to_working_map is not None and id(param) in master_to_working_map:
                 working_param = master_to_working_map[id(param)]
+            elif hasattr(optimizer, "moe_master_to_working_map") and id(param) in optimizer.moe_master_to_working_map:
+                working_param = optimizer.moe_master_to_working_map[id(param)]
             else:
                 working_param = param
 
@@ -618,6 +627,7 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
             prefix (str): Perfix of file to save
             size_per_shard (int): Max file size of each file shard that store state tensors
         """
+        torch.cuda.empty_cache()
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
         if os.path.isfile(checkpoint):
             logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
@@ -723,6 +733,7 @@ class MoECheckpintIO(HybridParallelCheckpointIO):
                         f"You can find where each parameters has been saved in the "
                         f"index located at {final_index_file_path}."
                     )
+        torch.cuda.empty_cache()
 
     def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
         """
