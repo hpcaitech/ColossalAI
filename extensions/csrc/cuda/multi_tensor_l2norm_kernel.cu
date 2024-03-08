@@ -11,7 +11,8 @@
 #include <assert.h>
 
 #include "multi_tensor_apply.cuh"
-#include "type_shim.h"
+#include "../common/micros.h"
+#include "include/block_reduce.h"
 
 #define BLOCK_SIZE 512
 #define ILP 4

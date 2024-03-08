@@ -9,7 +9,7 @@
 #include "ATen/AccumulateType.h"
 #include "ATen/cuda/CUDAContext.h"
 #include "ATen/cuda/DeviceUtils.cuh"
-#include "type_shim.h"
+#include "../common/micros.h"
 
 template <typename U>
 __device__ void cuWelfordOnlineSum(const U curr, U& mu, U& sigma2, U& count) {
