@@ -25,6 +25,7 @@ from colossalai.shardformer.layer._operation import gather_forward_split_backwar
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import cross_entropy_1d
+from ..layer._operation import gather_forward_split_backward
 
 class GPT2PipelineForwards:
     """
