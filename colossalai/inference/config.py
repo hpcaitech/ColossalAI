@@ -84,6 +84,8 @@ class InferenceConfig:
         top_k (Optional[int]): The number of highest probability vocabulary tokens to keep for top-k-filtering, defaults to None.
         top_p (Optional[float]): The cumulative probability threshold for retaining tokens with a total probability above it, defaults to None.
         min_p (Optional[float]): The minimum probability to keep for top-p filtering, defaults to None.
+        n_spec_tokens (int): The maximum number of speculating tokens, defaults to None.
+        glimpse_large_kv (bool): Whether to use large KV in drafter model, defaults to False.
         block_size (int): The number of blocks in a logical block, defaults to 16.
         tp_size (int): Tensor parallel size, defaults to 1.
         pp_size (int): Pipeline parallel size, defaults to 1.
@@ -117,6 +119,10 @@ class InferenceConfig:
     top_k: Optional[int] = None
     top_p: Optional[float] = None
     min_p: Optional[float] = None
+
+    # speculative decoding configs
+    max_n_spec_tokens: int = 5
+    glimpse_large_kv: bool = False
 
     # paged attention configs
     block_size: int = 16
