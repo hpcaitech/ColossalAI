@@ -3,7 +3,7 @@
 #argument1: model_path
 
 # launch server
-model_path=$(realpath $1)
+model_path=${1:-"lmsys/vicuna-7b-v1.3"}
 echo "Model Path: $model_path"
 echo "Starting server..."
 python -m colossalai.inference.server.api_server --model $model_path &
