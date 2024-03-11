@@ -7,7 +7,7 @@
 #include <assert.h>
 #include <cuda_runtime.h>
 
-#include "compat.h"
+#include "../common/micros.h"
 #include "multi_tensor_apply.cuh"
 
 #define BLOCK_SIZE 512

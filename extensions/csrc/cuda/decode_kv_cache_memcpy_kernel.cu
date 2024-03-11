@@ -2,7 +2,7 @@
 #include <torch/extension.h>
 #include <stdio.h>
 
-#include "type_shim.h"
+#include "../common/micros.h"
 
 template<typename scalar_t>
 __global__ void decode_kv_cache_memcpy_kernel(

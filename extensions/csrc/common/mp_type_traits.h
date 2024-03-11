@@ -2,10 +2,10 @@
 
 #include <ATen/ATen.h>
 
-#include "../type_shim.h"
+#include "micros.h"
 
-namespace infer {
-namespace dtype {
+namespace colossalAI {
+namespace common {
 
 template <typename T>
 class MPTypeTrait {
@@ -31,5 +31,5 @@ class MPTypeTrait<at::BFloat16> {
   using Type = float;
 };
 
-}  // namespace dtype
-}  // namespace infer
+}  // namespace common
+}  // namespace colossalAI

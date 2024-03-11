@@ -12,7 +12,7 @@
 #include <assert.h>
 #include <c10/cuda/CUDAGuard.h>
 
-#include "compat.h"
+#include "../common/micros.h"
 
 // #include <iostream>
 

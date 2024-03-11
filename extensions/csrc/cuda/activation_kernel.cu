@@ -2,13 +2,13 @@
 #include <torch/extension.h>
 #include <stdio.h>
 
-#include "type_shim.h"
-#include "include/mp_type_traits.h"
+#include "../common/micros.h"
+#include "../common/mp_type_traits.h"
 
 template<typename T>
 __device__ __forceinline__ T silu_kernel(const T& x) {
   // x * sigmoid(x)
-  using MT = typename infer::dtype::MPTypeTrait<T>::Type;
+  using MT = typename colossalAI::common::MPTypeTrait<T>::Type;
   return static_cast<T>((static_cast<MT>(x)) / (static_cast<MT>(1.0f) + expf(static_cast<MT>(-x))));
 }
 
@@ -17,7 +17,7 @@ __global__ void act_and_mul_kernel(
   const scalar_t* __restrict__ ins_data,
   scalar_t* __restrict__ outs_data,
   const int64_t numel) {
-  using MT = typename infer::dtype::MPTypeTrait<scalar_t>::Type;
+  using MT = typename colossalAI::common::MPTypeTrait<scalar_t>::Type;
 
   int64_t idx = static_cast<int64_t>(threadIdx.x) + static_cast<int64_t>(blockIdx.x) * static_cast<int64_t>(blockDim.x);
   const int64_t grid_size = blockDim.x * gridDim.x;
