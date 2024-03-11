@@ -911,6 +911,7 @@ class HybridParallelPlugin(PipelinePluginBase):
     Args:
         tp_size (int): The size of tensor parallelism. Tensor parallelism will not be used when tp_size is set to 1.
         pp_size (int): The number of pipeline stages in pipeline parallelism. Pipeline parallelism will not be used when pp_size is set to 1.
+        sp_size (int): The size of sequence parallelism.
         precision (str, optional): Specifies the precision of parameters during training.
                                     Auto-mixied precision will be used when this argument is set to 'fp16' or 'bf16', otherwise model is trained with 'fp32'.
                                     Defaults to 'fp16'.
@@ -923,6 +924,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_flash_attention (bool, optional): Whether to switch on flash attention in Shardformer. Defaults to False.
         enable_jit_fused (bool, optional): Whether to switch on JIT in Shardformer. Default to False.
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism in Shardformer. Defaults to False.
+        sequence_parallelism_mode (str): The Sequence parallelism mode. Can only be choosed from ["split_gather", "ring", "all_to_all"]. Defaults to "split_gather".
         enable_sequence_overlap (bool): Whether to turn on sequence overlap in Shardformer. Defaults to False.
         parallel_output (bool): Whether to keep the output parallel when enabling tensor parallelism. Default to True.
         num_microbatches (int, optional): Number of microbatches when using pipeline parallelism. Defaults to None.
@@ -1017,6 +1019,9 @@ class HybridParallelPlugin(PipelinePluginBase):
                 assert (
                     tp_size == 1
                 ), f"Sequence parallelism mode {self.sequence_parallelism_mode} cannot be used with tensor parallelism"
+                assert (
+                    pp_size == 1
+                ), f"Sequence parallelism mode {self.sequence_parallelism_mode} cannot be used with pipeline parallelism"
                 self.sp_size = dist.get_world_size() if sp_size is None else sp_size
                 self.dp_size = dist.get_world_size() // (self.sp_size * pp_size)
         else:
@@ -1199,6 +1204,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                         tp_process_group=self.tp_group,
                     )
             else:
+                # Here we bind the ZeRO group with sp group when user enable both ZeRO and all_to_all sp.
                 if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
                     self.zero_dp_size = self.sp_size
                     self.zero_dp_group = self.sp_group
