@@ -9,7 +9,7 @@ class ScaledMaskedSoftmaxCudaExtension(_CudaExtension):
     def sources_files(self):
         ret = [
             self.csrc_abs_path(fname)
-            for fname in ["cuda/scaled_masked_softmax.cpp", "cuda/scaled_masked_softmax_cuda.cu"]
+            for fname in ["cuda/pybind/scaled_masked_softmax.cpp", "cuda/scaled_masked_softmax_kernel.cu"]
         ]
         return ret
 
