@@ -19,12 +19,19 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     return hidden_states.reshape(bsz, num_key_value_heads * n_rep, seq_len, head_dim)
 
 
-def prepare_padding_mask(kv_lengths: torch.Tensor, bsz: int, q_len: int, kv_len: int, device="cuda"):
+def create_attention_mask(kv_lengths: torch.Tensor, bsz: int, q_len: int, kv_len: int, device="cuda"):
+    assert q_len <= kv_len
+
+    causal_mask = torch.full((q_len, q_len), fill_value=float("-inf"), device=device).triu(diagonal=1)
+
     padding_mask = torch.zeros((bsz, 1, q_len, kv_len), dtype=torch.float32, device=device)
     for i in range(bsz):
         cur_seq_len = kv_lengths[i].item()
         assert cur_seq_len <= kv_len
         padding_mask[i, :, :, : kv_len - cur_seq_len] = float("-inf")
+
+    padding_mask[:, :, -q_len:, -q_len:] += causal_mask
+
     return padding_mask
 
 
@@ -56,11 +63,13 @@ def torch_attn_ref(
     attn_scores = qk / (head_dim**0.5)
 
     assert attn_scores.shape == (bsz, num_heads, q_len, kv_len), "Invalid shape of attention scores"
-    # for left-side padding
-    if attention_mask.size() != (bsz, 1, q_len, kv_len):
-        raise ValueError(f"Attention mask should be of size {(bsz, 1, q_len, kv_len)}, but is {attention_mask.size()}")
+    if attention_mask is not None:
+        if attention_mask.size() != (bsz, 1, q_len, kv_len):
+            raise ValueError(
+                f"Attention mask should be of size {(bsz, 1, q_len, kv_len)}, but is {attention_mask.size()}"
+            )
+        attn_scores = attn_scores + attention_mask
 
-    attn_scores = attn_scores + attention_mask
     attn_weights = F.softmax(attn_scores.to(dtype=torch.float32), dim=-1).to(dtype=q.dtype)
     out = torch.matmul(attn_weights, v)
     if out.size() != (bsz, num_heads, q_len, head_dim):
