@@ -79,7 +79,7 @@ class InferenceConfig:
         micro_batch_size (int): the micro batch size, defaults to 1. Only useful when `pp_size` > 1.
         micro_batch_buffer_size (int): the buffer size for micro batch. Normally, it should be the same as the number of pipeline stages.
         use_cuda_graph (bool): Whether to enforce CUDA graph execution. If False, we will disable CUDA graph and always execute the model in eager mode. If True, we will use eager execution in hybrid.
-        max_context_len_to_capture (int)
+        max_context_len_to_capture (int): max context len that could be captured by CUDA Graph, per sequence
 
     """
 

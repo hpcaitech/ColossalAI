@@ -92,7 +92,6 @@ if HAS_TRITON:
 
     def rms_layernorm(x, weight, eps, norm_output=None, residual=None):
         # allocate output
-        # y = torch.empty_like(x) if norm_output is None else norm_output
         y = (
             x * 0 if norm_output is None else norm_output
         )  # to make the operation non-functional, store y as the intermediate activation

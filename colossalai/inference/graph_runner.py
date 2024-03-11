@@ -42,7 +42,6 @@ class CUDAGraphRunner:
         self.graph = torch.cuda.CUDAGraph()
         with torch.cuda.graph(self.graph, pool=memory_pool):
             hidden_states = self.model(
-                # batch,
                 input_tokens_ids,
                 output_tensor,
                 inputmetadata,
