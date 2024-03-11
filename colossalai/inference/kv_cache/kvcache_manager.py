@@ -349,6 +349,26 @@ class KVCacheManager:
 
         return seqs_to_recycle
 
+    def allocate_n_tokens_from_block_tables(
+        self,
+        block_tables: torch.Tensor,
+        context_lens: torch.Tensor,
+        bsz: int,
+        n: int,
+    ) -> List[int]:
+        """Allocate logical cache blocks for `n` new tokens for a batch of sequences during decoding stage."""
+        assert block_tables.dim() == 2
+        assert context_lens.dim() == 1
+
+        bsz = block_tables.size(0) if bsz is None else bsz
+        assert bsz == 1, "Support bsz 1 for now"  # TODO support bsz > 1
+
+        seqs_to_recycle = []
+        for i in range(n):
+            seqs_to_recycle += self.allocate_tokens_from_block_tables(block_tables, context_lens - n + i + 1, bsz)
+
+        return seqs_to_recycle
+
     def allocate_single_block(self, block_table: torch.Tensor, block_local_idx: int) -> int:
         """Allocate space asked on a single block in the block table, specified by the provided position id,
         and updates the provided block table with the allocated block.
@@ -420,9 +440,7 @@ class KVCacheManager:
         Returns:
             The remaining space required to be allocated (in other blocks).
         """
-        assert (
-            block.available_space > 0
-        ), "Tried to allocate some space but found no available space left in chosen block."
+        assert block.available_space > 0, f"Found no available space left in the chosen block {block}."
         space_to_allocate = min(block.available_space, space_asked)
         block.allocate(space_to_allocate)
         return space_asked - space_to_allocate

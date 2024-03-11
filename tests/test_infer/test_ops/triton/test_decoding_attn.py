@@ -6,8 +6,8 @@ from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
 from tests.test_infer.test_ops.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
+    create_attention_mask,
     generate_caches_and_block_tables_v2,
-    prepare_padding_mask,
     torch_attn_ref,
 )
 
@@ -91,9 +91,9 @@ def test_flash_decoding(
 
     k_torch = convert_kv_unpad_to_padded(k_unpad, kv_lengths, bsz, max_kv_len_in_b)
     v_torch = convert_kv_unpad_to_padded(v_unpad, kv_lengths, bsz, max_kv_len_in_b)
-    torch_padding_mask = prepare_padding_mask(kv_lengths, bsz, q_len, max_kv_len_in_b, q.device)
+    attention_mask = create_attention_mask(kv_lengths, bsz, q_len, max_kv_len_in_b, q.device)
     out_torch = torch_attn_ref(
-        q, k_torch, v_torch, torch_padding_mask, bsz, q_len, max_kv_len_in_b, num_attn_heads, num_kv_heads, HEAD_DIM
+        q, k_torch, v_torch, attention_mask, bsz, q_len, max_kv_len_in_b, num_attn_heads, num_kv_heads, HEAD_DIM
     )
 
     k_cache, v_cache, block_tables = generate_caches_and_block_tables_v2(
@@ -137,7 +137,6 @@ def test_flash_decoding(
 
     assert out_torch.shape == out_triton.shape
     assert torch.allclose(out_torch, out_triton, atol=1e-3, rtol=1e-4)
-
 
 if __name__ == "__main__":
     test_flash_decoding(16, 32, 32, 16, 1, True)
