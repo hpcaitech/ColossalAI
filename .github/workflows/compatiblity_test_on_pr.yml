@@ -82,7 +82,7 @@ jobs:
           pip install -r requirements/requirements-test.txt
       - name: Unit Testing
         run: |
-          PYTHONPATH=$PWD pytest tests
+          PYTHONPATH=$PWD pytest --durations=0 tests
         env:
           DATA: /data/scratch/cifar-10
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
