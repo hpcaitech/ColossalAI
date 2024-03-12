@@ -21,7 +21,7 @@ class CpuAdamX86Extension(_CudaExtension):
     # necessary 4 functions
     def sources_files(self):
         ret = [
-            self.csrc_abs_path("cuda/cpu_adam.cpp"),
+            self.csrc_abs_path("x86/cpu_adam.cpp"),
         ]
         return ret
 

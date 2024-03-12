@@ -10,12 +10,12 @@ class FusedOptimizerCudaExtension(_CudaExtension):
         ret = [
             self.csrc_abs_path(fname)
             for fname in [
-                "cuda/colossal_C_frontend.cpp",
+                "cuda/pybind/optimizer.cpp",
                 "cuda/multi_tensor_sgd_kernel.cu",
                 "cuda/multi_tensor_scale_kernel.cu",
-                "cuda/multi_tensor_adam.cu",
+                "cuda/multi_tensor_adam_kernel.cu",
                 "cuda/multi_tensor_l2norm_kernel.cu",
-                "cuda/multi_tensor_lamb.cu",
+                "cuda/multi_tensor_lamb_kernel.cu",
             ]
         ]
         return ret

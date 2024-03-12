@@ -7,7 +7,7 @@ class LayerNormCudaExtension(_CudaExtension):
         super().__init__(name="layernorm_cuda")
 
     def sources_files(self):
-        ret = [self.csrc_abs_path(fname) for fname in ["cuda/layer_norm_cuda.cpp", "cuda/layer_norm_cuda_kernel.cu"]]
+        ret = [self.csrc_abs_path(fname) for fname in ["cuda/pybind/layer_norm.cpp", "cuda/layer_norm_kernel.cu"]]
         return ret
 
     def include_dirs(self):

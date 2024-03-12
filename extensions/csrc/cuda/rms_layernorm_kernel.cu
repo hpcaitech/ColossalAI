@@ -9,7 +9,7 @@
 
 
 #include "block_reduce.h"
-#include "type_shim.h"
+#include "../common/micros.h"
 
 template<typename scalar_t>
 __global__ void rms_layernorm_kernel(

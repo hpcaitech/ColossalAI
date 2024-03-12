@@ -13,8 +13,8 @@ class ScaledUpperTriangleMaskedSoftmaxCudaExtension(_CudaExtension):
         ret = [
             self.csrc_abs_path(fname)
             for fname in [
-                "cuda/scaled_upper_triang_masked_softmax.cpp",
-                "cuda/scaled_upper_triang_masked_softmax_cuda.cu",
+                "cuda/pybind/scaled_upper_triang_masked_softmax.cpp",
+                "cuda/scaled_upper_triang_masked_softmax_kernel.cu",
             ]
         ]
         return ret
