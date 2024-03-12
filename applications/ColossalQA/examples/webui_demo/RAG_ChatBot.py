@@ -140,7 +140,7 @@ class RAG_ChatBot:
         result = self.rag_chain.run(
             query=user_input,
             stop=[memory.human_prefix + ": "],
-            rejection_trigger_keywrods=ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS,
+            rejection_trigger_keywords=ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS,
             rejection_answer=ZH_RETRIEVAL_QA_REJECTION_ANSWER,
         )
         return result, memory
