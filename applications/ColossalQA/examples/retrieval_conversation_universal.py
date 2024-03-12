@@ -11,7 +11,7 @@ if __name__ == '__main__':
     parser.add_argument('--sql_file_path', type=str, default=None, help='path to the a empty folder for storing sql files for indexing')
     args = parser.parse_args()
     
-    # Will ask for documents path in runnning time
+    # Will ask for documents path in running time
     session = UniversalRetrievalConversation(files_en=None, 
                 files_zh=None, 
                 zh_model_path=args.zh_model_path, en_model_path=args.en_model_path,
