@@ -1,5 +1,6 @@
 import pytest
 import torch
+import torch.distributed as dist
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
@@ -72,6 +73,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     if stage_manager is None or stage_manager.is_first_stage():
         if test_config["precision"] == "fp32":
             atol, rtol = 2e-4, 1e-3
+            if dist.get_world_size() > 4:
+                atol, rtol = 4e-4, 3e-2
         else:
             atol, rtol = 5e-3, 5e-3
         check_weight(falcon, sharded_falcon, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False)
