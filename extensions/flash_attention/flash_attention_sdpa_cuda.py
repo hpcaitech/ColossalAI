@@ -25,4 +25,31 @@ class FlashAttentionSdpaCudaExtension(_Extension):
         raise NotImplementedError("Flash attention SDPA does not require just-in-time compilation.")
 
     def load(self):
-        pass
+        from typing import Optional
+
+        import torch
+
+        def flash_attention(
+            q: torch.Tensor,
+            k: torch.Tensor,
+            v: torch.Tensor,
+            dropout_p: float = 0.0,
+            scale: Optional[float] = None,
+            attention_mask: Optional[torch.Tensor] = None,
+            is_causal: bool = False,
+            cu_seqlens_q: Optional[torch.Tensor] = None,
+            cu_seqlens_kv: Optional[torch.Tensor] = None,
+            max_seqlen_q: Optional[int] = None,
+            max_seqlen_kv: Optional[int] = None,
+            indices: Optional[torch.Tensor] = None,
+        ):
+            return torch.nn.functional.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=attention_mask,
+                dropout_p=dropout_p,
+                scale=scale,
+            )
+
+        return flash_attention
