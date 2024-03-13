@@ -182,7 +182,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         overlap_communication: bool = True,
         use_ep_inside: bool = True,
         custom_policy: Policy = None,
-        checkpoint_io: Optional[MoECheckpintIO] = None,
+        checkpoint_io: Optional[MoECheckpointIO] = None,
     ) -> None:
         assert (
             dist.get_world_size() % (tp_size * pp_size) == 0
@@ -340,7 +340,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             num_workers=num_workers,
             **_kwargs,
         )
-
 
     def get_checkpoint_io(self) -> MoECheckpointIO:
         if self.checkpoint_io is None:
