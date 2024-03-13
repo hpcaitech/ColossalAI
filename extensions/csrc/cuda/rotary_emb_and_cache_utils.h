@@ -1,8 +1,8 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
 
+#include "../common/vector_copy_utils.h"
 #include "stdio.h"
-#include "vector_copy_utils.h"
 
 template <typename scalar_t, int VecSize>
 inline __device__ void apply_emb_rotary_compute(
