@@ -2,6 +2,8 @@ import os
 
 import pytest
 import torch
+import torch.distributed as dist
+from torch.testing import assert_close
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
@@ -47,6 +49,20 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     # During pipeline parallelism, we cannot get the grad of norm layer during first stage, so we only check this when pp is not enbaled
     if stage_manager is None:
         norm_layer_for_check.append("norm")
+
+    # Check the grad when using ZeRO-1 and ZeRO-2
+    if (
+        booster.plugin.zero_stage in [1, 2]
+        and booster.plugin.shard_config.enable_sequence_parallelism
+        and booster.plugin.shard_config.sequence_parallelism_mode == "all_to_all"
+    ):
+        for p1, p2 in zip(llama_model.parameters(), sharded_optimizer._master_param_groups_of_current_rank[0]):
+            working_p = sharded_optimizer._param_store.master_to_working_param[id(p2)]
+            grads = sharded_optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(working_p))
+            grad_index = 0 if sharded_optimizer._partition_grads else sharded_optimizer._local_rank
+            grad = grads[grad_index]
+            sharded_grad = p1.grad.view(-1).chunk(dist.get_world_size())[dist.get_rank()]
+            assert_close(sharded_grad, grad[: sharded_grad.shape[0]], atol=5e-3, rtol=5e-3, check_dtype=False)
 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
@@ -138,7 +154,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "enable_sequence_parallelism": True,
             "sequence_parallelism_mode": "all_to_all",
             "use_lazy_init": True,
-            "precision": "fp32",
+            "zero_stage": 2,
+            "precision": "fp16",
             "initial_scale": 1,
         },
         {
@@ -149,7 +166,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "sequence_parallelism_mode": "all_to_all",
             "enable_flash_attention": True,
             "use_lazy_init": True,
-            "precision": "fp32",
+            "precision": "fp16",
             "initial_scale": 1,
         },
         {
