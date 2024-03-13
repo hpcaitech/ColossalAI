@@ -22,15 +22,11 @@ def setup_seed(seed):
 def check_inference_engine(use_engine=False, prompt_template=None):
     setup_seed(20)
     tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
-    model = (
-        LlamaForCausalLM(
-            LlamaConfig(
-                vocab_size=50000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=16
-            )
+    model = LlamaForCausalLM(
+        LlamaConfig(
+            vocab_size=50000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=16
         )
-        .cuda()
-        .half()
-    )
+    ).cuda()
     model = model.eval()
 
     inputs = [
@@ -44,7 +40,7 @@ def check_inference_engine(use_engine=False, prompt_template=None):
     top_k = 50
 
     if use_engine:
-        inference_config = InferenceConfig(max_output_len=output_len, prompt_template=prompt_template)
+        inference_config = InferenceConfig(max_output_len=output_len, prompt_template=prompt_template, dtype="fp32")
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         assert inference_engine.generation_config.max_new_tokens == output_len
         inference_engine.add_request(prompts=inputs)

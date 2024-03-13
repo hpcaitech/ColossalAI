@@ -1,7 +1,11 @@
 import torch
 import triton
+from vllm._C import ops
 
-from colossalai.kernel.triton.fused_rotary_embedding import fused_rotary_embedding
+from colossalai.kernel.kernel_loader import InferenceOpsLoader
+from colossalai.kernel.triton import rotary_embedding
+
+inference_ops = InferenceOpsLoader().load()
 
 BATCH = 16
 configs = [
@@ -9,9 +13,9 @@ configs = [
         x_names=["num_tokens"],
         x_vals=[2**i for i in range(4, 12)],
         line_arg="provider",
-        line_vals=["torch_rotary_emb_func", "triton_rotary_emb_func"],
-        line_names=["torch_rotary_emb_func", "triton_rotary_emb_func"],
-        styles=[("red", "-"), ("blue", "-")],
+        line_vals=["triton_func", "colossal_cuda_func", "vllm_cuda_func"],
+        line_names=["triton_func", "colossal_cuda_func", "vllm_cuda_func"],
+        styles=[("red", "-"), ("blue", "-"), ("yellow", "-")],
         ylabel="ms",
         plot_name=f"rotary_emb-batch-{BATCH}",
         args={"num_kv_heads": 16},
@@ -48,12 +52,19 @@ def benchmark_rotary_emb(
     cos_shape = (4096, head_dim // 2)
     cos = -1.2 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
     sin = -2.0 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
-    lengths = torch.tensor([3, 4, 6, 7], device="cuda")
 
-    if provider == "torch_rotary_emb_func":
-        fn = lambda: torch_rotary_emb(q, cos[:num_tokens], sin[:num_tokens])
-    elif provider == "triton_rotary_emb_func":
-        fn = lambda: fused_rotary_embedding(q, k, cos, sin, lengths)
+    cos_sin = torch.stack((cos, sin), dim=1).contiguous()
+
+    positions = torch.arange(num_tokens).cuda()
+
+    if provider == "triton_func":
+        fn = lambda: rotary_embedding(q, k, cos, sin)
+    elif provider == "colossal_cuda_func":
+        fn = lambda: inference_ops.rotary_embedding(q, k, cos, sin)
+    elif provider == "vllm_cuda_func":
+        q = q.view(num_tokens, -1)
+        k = k.view(num_tokens, -1)
+        fn = lambda: ops.rotary_embedding(positions, q, k, head_dim, cos_sin, True)
     else:
         raise ValueError("Undefined provider")
 

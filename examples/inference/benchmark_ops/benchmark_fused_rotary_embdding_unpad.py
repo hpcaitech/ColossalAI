@@ -1,7 +1,10 @@
 import torch
 
+from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.triton import copy_kv_to_blocked_cache, decoding_fused_rotary_embedding, rotary_embedding
 from tests.test_infer.test_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache_v2, mock_alloc_single_token
+
+inference_ops = InferenceOpsLoader().load()
 
 try:
     import triton  # noqa
@@ -16,9 +19,19 @@ configs = [
         x_names=["num_tokens"],
         x_vals=[2**i for i in range(4, 11)],
         line_arg="provider",
-        line_vals=["no_fused_rotary_emb_func", "fused_triton_rotary_emb_func"],
-        line_names=["no_fused_rotary_emb_func", "fused_triton_rotary_emb_func"],
-        styles=[("red", "-"), ("blue", "-")],
+        line_vals=[
+            "no_fused_triton_rotary_emb_func",
+            "fused_triton_rotary_emb_func",
+            "no_fused_cuda_rotary_emb_func",
+            "fused_cuda_rotary_emb_func",
+        ],
+        line_names=[
+            "no_fused_triton_rotary_emb_func",
+            "fused_triton_rotary_emb_func",
+            "no_fused_cuda_rotary_emb_func",
+            "fused_cuda_rotary_emb_func",
+        ],
+        styles=[("red", "-"), ("blue", "-"), ("green", "-"), ("yellow", "-")],
         ylabel="ms",
         plot_name=f"rotary_emb-batch-{BATCH}",
         args={"num_kv_heads": 16},
@@ -32,7 +45,7 @@ def benchmark_rotary_emb(
     num_tokens: int,
     num_kv_heads: int,
 ):
-    BATCH_SIZE = 4
+    BATCH_SIZE = 16
     SEQ_LEN = num_tokens // BATCH_SIZE
     max_num_blocks_per_seq = 8
     block_size = 64
@@ -68,7 +81,7 @@ def benchmark_rotary_emb(
     kv_seq_lengths = past_kv_seq_lengths + 1
     block_tables = block_tables.to(device="cuda")
 
-    if provider == "no_fused_rotary_emb_func":
+    if provider == "no_fused_triton_rotary_emb_func":
         fn = lambda: [
             rotary_embedding(new_q, new_k, cos, sin),
             copy_kv_to_blocked_cache(
@@ -77,7 +90,16 @@ def benchmark_rotary_emb(
         ]
     elif provider == "fused_triton_rotary_emb_func":
         fn = lambda: decoding_fused_rotary_embedding(
-            new_q, new_k, new_k, cos, sin, k_cache, k_cache, block_tables, kv_seq_lengths
+            new_q, new_k, new_v, cos, sin, k_cache, v_cache, block_tables, kv_seq_lengths
+        )
+    elif provider == "no_fused_cuda_rotary_emb_func":
+        fn = lambda: [
+            inference_ops.rotary_embedding(new_q, new_k, cos, sin),
+            inference_ops.decode_kv_cache_memcpy(new_k, new_v, k_cache, v_cache, kv_seq_lengths, block_tables),
+        ]
+    elif provider == "fused_cuda_rotary_emb_func":
+        fn = lambda: inference_ops.rotary_embedding_and_cache_copy(
+            new_q, new_k, new_v, cos, sin, k_cache, v_cache, kv_seq_lengths, block_tables
         )
     else:
         raise ValueError("Undefined provider")

@@ -12,6 +12,7 @@ class InferenceOpsCudaExtension(_CudaExtension):
             for fname in [
                 "cuda/pybind/inference.cpp",
                 "cuda/decode_kv_cache_memcpy_kernel.cu",
+                "cuda/fused_rotary_emb_and_cache_kernel.cu",
                 "cuda/activation_kernel.cu",
                 "cuda/rms_layernorm_kernel.cu",
             ]
