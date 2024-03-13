@@ -78,7 +78,7 @@ def _broadcast_object_list(
         c10d._warn_not_in_group("broadcast_object_list")
         return
 
-    is_nccl_backend = _check_for_nccl_backend(group)
+    is_nccl_backend = check_for_nccl_backend(group)
     current_device = None
 
     if device is not None:
