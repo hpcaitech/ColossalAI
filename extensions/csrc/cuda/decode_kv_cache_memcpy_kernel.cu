@@ -1,8 +1,8 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
 
-#include "type_shim.h"
 #include "vector_copy_utils.h"
+#include "../common/micros.h"
 
 template<typename scalar_t, int VecSize>
 __global__ void decode_kv_cache_memcpy_kernel(

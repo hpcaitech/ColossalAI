@@ -10,7 +10,7 @@
 #include <torch/extension.h>
 
 #include "scaled_masked_softmax.h"
-#include "type_shim.h"
+#include "../common/micros.h"
 
 namespace multihead_attn {
 namespace fused_softmax {
