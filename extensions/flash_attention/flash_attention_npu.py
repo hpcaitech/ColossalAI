@@ -7,7 +7,7 @@ class FlashAttentionNpuExtension(_Extension):
 
     def is_available(self) -> bool:
         try:
-            import torch_npu  # noqa
+            import torch_npu
 
             return hasattr(torch_npu, "npu_fusion_attention")
         except:
@@ -44,7 +44,8 @@ class FlashAttentionNpuExtension(_Extension):
             cu_seqlens_kv: Optional[torch.Tensor] = None,
             max_seqlen_q: Optional[int] = None,
             max_seqlen_kv: Optional[int] = None,
-            indices: Optional[torch.Tensor] = None,
+            q_indices: Optional[torch.Tensor] = None,
+            kv_indices: Optional[torch.Tensor] = None,
         ):
             num_heads = q.size(1)
             return torch_npu.npu_fusion_attention(

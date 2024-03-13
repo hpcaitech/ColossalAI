@@ -41,7 +41,8 @@ class FlashAttentionSdpaCudaExtension(_Extension):
             cu_seqlens_kv: Optional[torch.Tensor] = None,
             max_seqlen_q: Optional[int] = None,
             max_seqlen_kv: Optional[int] = None,
-            indices: Optional[torch.Tensor] = None,
+            q_indices: Optional[torch.Tensor] = None,
+            kv_indices: Optional[torch.Tensor] = None,
         ):
             return torch.nn.functional.scaled_dot_product_attention(
                 q,

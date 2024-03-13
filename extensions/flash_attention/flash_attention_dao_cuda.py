@@ -10,6 +10,9 @@ class FlashAttentionDaoCudaExtension(_Extension):
         try:
             import torch
 
+            from flash_attn import flash_attn_func, flash_attn_varlen_kvpacked_func  # noqa
+            from flash_attn.bert_padding import index_first_axis, pad_input  # noqa
+
             cuda_available = torch.cuda.is_available()
         except:
             cuda_available = False
@@ -32,54 +35,62 @@ class FlashAttentionDaoCudaExtension(_Extension):
         from typing import Optional
 
         import torch
-        from flash_attn.flash_attn_interface import flash_attn_func, flash_attn_varlen_func
+        from einops import rearrange
+        from flash_attn import flash_attn_func, flash_attn_varlen_kvpacked_func
+        from flash_attn.bert_padding import index_first_axis, pad_input
+
+        def _unpad_input(hidden_states: torch.Tensor, indices: torch.Tensor):
+            return index_first_axis(rearrange(hidden_states, "b s ... -> (b s) ..."), indices)
 
         def flash_attention(
             q: torch.Tensor,
             k: torch.Tensor,
             v: torch.Tensor,
-            seq_len_info_q: "SeqLenInfo",
-            seq_len_info_kv: "SeqLenInfo",
-            origin_attn_mask: Optional[torch.Tensor] = None,
-            bias: Optional[torch.Tensor] = None,
             dropout_p: float = 0.0,
-            scale: float = None,
-            causal: bool = False,
-            padded: bool = False,
+            scale: Optional[float] = None,
+            attention_mask: Optional[torch.Tensor] = None,
+            is_causal: bool = False,
+            cu_seqlens_q: Optional[torch.Tensor] = None,
+            cu_seqlens_kv: Optional[torch.Tensor] = None,
+            max_seqlen_q: Optional[int] = None,
+            max_seqlen_kv: Optional[int] = None,
+            q_indices: Optional[torch.Tensor] = None,
+            kv_indices: Optional[torch.Tensor] = None,
         ):
-            """
-            Arguments:
-                q: (batch, q_seqlen, nheads, headdim)
-                k: (batch, kv_seqlen, nheads, headdim)
-                v: (batch, kv_seqlen, nheads, headdim)
-                batch_size: int.
-                seq_len: int.
-                dropout_p: float. Dropout probability.
-                sm_scale: float. The scaling of QK^T before applying softmax.
-                    Default to 1 / sqrt(headdim).
-                causal: bool. Whether to apply causal attention mask (e.g., for auto-regressive modeling).
-            Return:
-                attn_out: (batch, q_seqlen, nheads, headdim).
-            """
-            # check if the input is in allowed dtypes
-            if padded:
-                if seq_len_info_kv == None:
-                    seq_len_info_kv = seq_len_info_q
-
-                attn_out = flash_attn_varlen_func(
+            # [B, N, S, D] -> [B, S, N, D]
+            q = q.transpose(1, 2)
+            k = k.transpose(1, 2)
+            v = v.transpose(1, 2)
+            b, s_q = q.shape[:2]
+            if cu_seqlens_q is not None:
+                # padded / padded causal
+                # unpad input: [B, S, N, D] -> [T, N, D]
+                q = _unpad_input(q, q_indices)
+                kv = _unpad_input(torch.stack(tensors=(k, v), dim=2), kv_indices)
+                attn_output = flash_attn_varlen_kvpacked_func(
+                    q,
+                    kv,
+                    cu_seqlens_q,
+                    cu_seqlens_kv,
+                    max_seqlen_q,
+                    max_seqlen_kv,
+                    dropout_p=dropout_p,
+                    softmax_scale=scale,
+                    causal=is_causal,
+                )
+                # pad output: [T, N, D] -> [B, S, N, D]
+                attn_output = pad_input(attn_output, q_indices, b, s_q)
+            else:
+                # causal / no attn mask
+                attn_output = flash_attn_func(
                     q,
                     k,
                     v,
-                    seq_len_info_q.cu_seqlens,
-                    seq_len_info_kv.cu_seqlens,
-                    seq_len_info_q.max_seqlen,
-                    seq_len_info_kv.max_seqlen,
-                    dropout_p,
-                    scale,
-                    causal,
+                    dropout_p=dropout_p,
+                    softmax_scale=scale,
+                    causal=is_causal,
                 )
-            else:
-                attn_out = flash_attn_func(q, k, v, dropout_p=dropout_p, softmax_scale=scale, causal=causal)
-            return attn_out
+            # [B, S, N, D] -> [B, N, S, D]
+            return attn_output.transpose(1, 2)
 
         return flash_attention

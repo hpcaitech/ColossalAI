@@ -72,9 +72,9 @@ class ColoAttention:
     ) -> Dict[str, torch.Tensor]:
         """Return a dictionary of keyword arguments for attention function. It supports 4 mask type.
         1. custom mask: no padding mask and is_causal=False, return {}, users should handle attention mask by themselves.
-        2. padded mask: recv padding mask and is_causal=False, return {attention_mask, attention_mask_type, cu_seqlens_q, cu_seqlens_kv, max_seqlen_q, max_seqlen_kv, indices}.
+        2. padded mask: recv padding mask and is_causal=False, return {attention_mask, attention_mask_type, cu_seqlens_q, cu_seqlens_kv, max_seqlen_q, max_seqlen_kv, q_indices, kv_indices}.
         3. causal mask: no padding mask and is_causal=True, return {attention_mask, attention_mask_type}.
-        4. padded causal mask: recv padding mask and is_causal=True, return {attention_mask, attention_mask_type, cu_seqlens_q, cu_seqlens_kv, max_seqlen_q, max_seqlen_kv, indices}.
+        4. padded causal mask: recv padding mask and is_causal=True, return {attention_mask, attention_mask_type, cu_seqlens_q, cu_seqlens_kv, max_seqlen_q, max_seqlen_kv, q_indices, kv_indices}.
 
         Args:
             shape_4d (Tuple[int]): Should be (B, 1, Sq, Skv)
@@ -100,15 +100,16 @@ class ColoAttention:
                 kv_padding_mask = q_padding_mask
             assert q_padding_mask.shape == (b, s_q) and kv_padding_mask.shape == (b, s_kv)
             attention_mask = torch.einsum("bi,bj->bij", q_padding_mask, kv_padding_mask).to(dtype=dtype, device=device)
-            max_seqlen_q, cu_seqlens_q, indices = get_pad_info(q_padding_mask)
-            max_seqlen_kv, cu_seqlens_kv, _ = get_pad_info(kv_padding_mask)
+            max_seqlen_q, cu_seqlens_q, q_indices = get_pad_info(q_padding_mask)
+            max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
             outputs.update(
                 {
                     "cu_seqlens_q": cu_seqlens_q,
                     "cu_seqlens_kv": cu_seqlens_kv,
                     "max_seqlen_q": max_seqlen_q,
                     "max_seqlen_kv": max_seqlen_kv,
-                    "indices": indices,
+                    "q_indices": q_indices,
+                    "kv_indices": kv_indices,
                 }
             )
             if is_causal:
@@ -135,7 +136,8 @@ class ColoAttention:
         cu_seqlens_kv: Optional[torch.Tensor] = None,
         max_seqlen_q: Optional[int] = None,
         max_seqlen_kv: Optional[int] = None,
-        indices: Optional[torch.Tensor] = None,
+        q_indices: Optional[torch.Tensor] = None,
+        kv_indices: Optional[torch.Tensor] = None,
         dropout_p: float = 0.0,
         scale: Optional[float] = None,
     ) -> torch.Tensor:
@@ -176,7 +178,8 @@ class ColoAttention:
                     and cu_seqlens_kv is None
                     and max_seqlen_q is None
                     and max_seqlen_kv is None
-                    and indices is None
+                    and q_indices is None
+                    and kv_indices is None
                 )
             elif attention_mask_type in (AttnMaskType.PADDED, AttnMaskType.PADDED_CAUSAL):
                 assert (
@@ -184,7 +187,8 @@ class ColoAttention:
                     and cu_seqlens_kv is not None
                     and max_seqlen_q is not None
                     and max_seqlen_kv is not None
-                    and indices is not None
+                    and q_indices is not None
+                    and kv_indices is not None
                 )
         else:
             # if attention_mask is None, attention_mask_type should be the default value
@@ -210,5 +214,6 @@ class ColoAttention:
             cu_seqlens_kv=cu_seqlens_kv,
             max_seqlen_q=max_seqlen_q,
             max_seqlen_kv=max_seqlen_kv,
-            indices=indices,
+            q_indices=q_indices,
+            kv_indices=kv_indices,
         )
