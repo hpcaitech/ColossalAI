@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from colossalai.inference.config import InferenceConfig
+from colossalai.inference.server.chat_service import ChatServing
 from colossalai.inference.server.completion_service import CompletionServing
 from colossalai.inference.server.utils import id_generator
 
@@ -28,7 +29,6 @@ from colossalai.inference.core.async_engine import AsyncInferenceEngine, Inferen
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds.
 app = FastAPI()
-engine = None
 supported_models_dict = {"Llama_Models": ("llama2-7b",)}
 prompt_template_choices = ["llama", "vicuna"]
 
@@ -85,6 +85,16 @@ async def create_completion(request: Request):
     generator = await completion_serving.create_completion(request, generation_config)
     output = tokenizer.decode(generator.output_token_id)
     ret = {"request_id": generator.request_id, "text": output}
+    return ret
+
+
+@app.post("/v1/chat")
+async def create_chat(request: Request):
+    request_dict = await request.json()
+    generation_config = get_generation_config(request_dict)
+    generator = await chat_serving.create_chat(request, generation_config)
+    output = tokenizer.decode(generator.content.output_token_id)
+    ret = {"role": generator.role, "text": output}
     return ret
 
 
@@ -171,6 +181,18 @@ def parse_args():
         "specified, the model name will be the same as "
         "the huggingface name.",
     )
+    parser.add_argument(
+        "--chat-template",
+        type=str,
+        default=None,
+        help="The file path to the chat template, " "or the template in single-line form " "for the specified model",
+    )
+    parser.add_argument(
+        "--response-role",
+        type=str,
+        default="assistant",
+        help="The role name to return if " "`request.add_generation_prompt=true`.",
+    )
     parser = add_engine_config(parser)
 
     return parser.parse_args()
@@ -187,10 +209,16 @@ if __name__ == "__main__":
     )
     engine = async_engine.engine
     completion_serving = CompletionServing(async_engine, served_model=model.__class__.__name__)
-
+    chat_serving = ChatServing(
+        async_engine,
+        served_model=model.__class__.__name__,
+        tokenizer=tokenizer,
+        response_role=args.response_role,
+        chat_template=args.chat_template,
+    )
     app.root_path = args.root_path
     uvicorn.run(
-        app,
+        app=app,
         host=args.host,
         port=args.port,
         log_level="debug",

@@ -1,0 +1,135 @@
+import asyncio
+import codecs
+from typing import Any
+
+from fastapi import Request
+from pydantic import BaseModel
+
+from colossalai.inference.core.async_engine import AsyncInferenceEngine
+
+from .utils import id_generator
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: Any
+
+
+class ChatServing:
+    def __init__(
+        self, engine: AsyncInferenceEngine, served_model: str, tokenizer, response_role: str, chat_template=None
+    ):
+        self.engine = engine
+        self.served_model = served_model
+        self.tokenizer = tokenizer
+        self.response_role = response_role
+        self._load_chat_template(chat_template)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+
+    async def create_chat(self, request: Request, generation_config):
+        request_dict = await request.json()
+        messages = request_dict["messages"]
+        stream = request_dict.pop("stream", False)
+        add_generation_prompt = request_dict.pop("add_generation_prompt", False)
+        request_id = id_generator()
+        try:
+            prompt = self.tokenizer.apply_chat_template(
+                conversation=messages,
+                tokenize=False,
+                add_generation_prompt=add_generation_prompt,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Error in applying chat template from request: {str(e)}")
+
+        # it is not a intuitive way
+        self.engine.engine.generation_config = generation_config
+        result_generator = self.engine.generate(request_id, prompt=prompt)
+
+        if stream == True:
+            return self.chat_completion_stream_generator(request, request_dict, result_generator, request_id)
+        else:
+            return await self.chat_completion_full_generator(request, request_dict, result_generator, request_id)
+
+    async def chat_completion_stream_generator(self, request, request_dict, result_generator, request_id: int):
+        # Send first response for each request.n (index) with the role
+        role = self.get_chat_request_role(request, request_dict)
+        choice_data = ChatMessage(role=role, content=result_generator)
+
+        if "echo" in request_dict:
+            last_msg_content = ""
+            if (
+                request.messages
+                and isinstance(request.messages, list)
+                and request.messages[-1].get("content")
+                and request.messages[-1].get("role") == role
+            ):
+                last_msg_content = request.messages[-1]["content"]
+
+        full_message = last_msg_content + choice_data.content
+        choice_data.content = full_message
+
+        yield choice_data
+
+    async def chat_completion_full_generator(
+        self,
+        request: Request,
+        request_dict: dict,
+        result_generator,
+        request_id,
+    ):
+        async for res in result_generator:
+            if await request.is_disconnected():
+                # Abort the request if the client disconnects.
+                await self.engine.abort(request_id)
+                return {"error_msg": "Client disconnected"}
+            final_res = res
+        assert final_res is not None
+
+        role = self.get_chat_request_role(request, request_dict)
+        choice_data = ChatMessage(role=role, content=final_res)
+
+        if "echo" in request_dict:
+            last_msg_content = ""
+            if (
+                request.messages
+                and isinstance(request.messages, list)
+                and request.messages[-1].get("content")
+                and request.messages[-1].get("role") == role
+            ):
+                last_msg_content = request.messages[-1]["content"]
+
+            full_message = last_msg_content + choice_data.content
+            choice_data.content = full_message
+
+        print(choice_data)
+        return choice_data
+
+    def get_chat_request_role(self, request: Request, request_dict: dict) -> str:
+        if "add_generation_prompt" in request_dict:
+            return self.response_role
+        else:
+            return request_dict["messages"][-1]["role"]
+
+    def _load_chat_template(self, chat_template):
+        if chat_template is not None:
+            try:
+                with open(chat_template, "r") as f:
+                    self.tokenizer.chat_template = f.read()
+            except OSError:
+                # If opening a file fails, set chat template to be args to
+                # ensure we decode so our escape are interpreted correctly
+                self.tokenizer.chat_template = codecs.decode(chat_template, "unicode_escape")
+
+        #     logger.info(
+        #         f"Using supplied chat template:\n{self.tokenizer.chat_template}"
+        #     )
+        # elif self.tokenizer.chat_template is not None:
+        #     logger.info(
+        #         f"Using default chat template:\n{self.tokenizer.chat_template}"
+        #     )
+        # else:
+        #     logger.warning(
+        #         "No chat template provided. Chat API will not work.")
