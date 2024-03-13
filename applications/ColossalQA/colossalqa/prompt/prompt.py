@@ -75,7 +75,7 @@ Assistant: 我认识一个叫张三的人
 # Below are English retrieval qa prompts
 
 _EN_RETRIEVAL_QA_PROMPT = """[INST] <<SYS>>Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist content.
-If the answer cannot be infered based on the given context, please say "I cannot answer the question based on the information given.".<</SYS>>
+If the answer cannot be inferred based on the given context, please say "I cannot answer the question based on the information given.".<</SYS>>
 Use the context and chat history to answer the question.
 
 context:
@@ -97,8 +97,8 @@ Chat history:
 Human: I have a friend, Mike. Do you know him?
 Assistant: Yes, I know a person named Mike
 
-sentence: What's his favorate food?
-disambiguated sentence: What's Mike's favorate food?
+sentence: What's his favorite food?
+disambiguated sentence: What's Mike's favorite food?
 [/INST]
 Chat history:
 {chat_history}

@@ -164,7 +164,7 @@ class GenerateSchedule(PipelineSchedule):
             self.timestamps[self.mb_manager.idx].append(time.time())
         assert (
             "logits" in logits
-        ), f"When first stage in GENERATE phase, the ouput should have attribute `logits`, but has {logits.keys()}"
+        ), f"When first stage in GENERATE phase, the output should have attribute `logits`, but has {logits.keys()}"
         new_token = self._get_token_id(logits["logits"])
 
         self.mb_manager.step(new_token)
@@ -401,7 +401,7 @@ class GenerateSchedule(PipelineSchedule):
                             self.timestamps[self.mb_manager.idx].append(time.time())
                         assert (
                             "logits" in logits
-                        ), f"When first stage in GENERATE phase, the ouput should have attribute `logits`, but has {logits.keys()}"
+                        ), f"When first stage in GENERATE phase, the output should have attribute `logits`, but has {logits.keys()}"
                         new_token = self._get_token_id(logits["logits"])
                         self.mb_manager.step(new_token)
                         # If the current micro batch is not DONE, go through blocks

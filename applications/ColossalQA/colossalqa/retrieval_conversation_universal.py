@@ -103,7 +103,7 @@ class UniversalRetrievalConversation:
                     break
                 data_name = input("Enter a short description of the data:")
                 separator = input(
-                    "Enter a separator to force separating text into chunks, if no separator is given, the defaut separator is '\\n\\n', press ENTER directly to skip:"
+                    "Enter a separator to force separating text into chunks, if no separator is given, the default separator is '\\n\\n', press ENTER directly to skip:"
                 )
                 separator = separator if separator != "" else "\n\n"
                 retriever_data = DocumentLoader([[file, data_name.replace(" ", "_")]]).all_data

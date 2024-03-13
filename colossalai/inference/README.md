@@ -89,7 +89,7 @@ docker pull hpcaitech/colossalai-inference:v2
 docker run -it --gpus all --name ANY_NAME -v $PWD:/workspace -w /workspace hpcaitech/colossalai-inference:v2 /bin/bash
 
 # enter into docker container
-cd /path/to/CollossalAI
+cd /path/to/ColossalAI
 pip install -e .
 
 ```
