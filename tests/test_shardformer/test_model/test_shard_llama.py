@@ -41,6 +41,12 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     row_layer_for_check = ["layers[0].self_attn.q_proj", "embed_tokens"]
     col_layer_for_check = ["layers[0].self_attn.o_proj"]
+    # Here we check the grad of layernorm because an all-reduce operation should be performed during sequence parallelism
+    norm_layer_for_check = ["layers[0].input_layernorm", "layers[0].post_attention_layernorm"]
+
+    # During pipeline parallelism, we cannot get the grad of norm layer during first stage, so we only check this when pp is not enbaled
+    if stage_manager is None:
+        norm_layer_for_check.append("norm")
 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
@@ -55,8 +61,19 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         col_layer_grads = get_grad_tensors_for_check(
             llama_model, shard_llama_model, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False
         )
+        norm_layer_grads = get_grad_tensors_for_check(
+            llama_model,
+            shard_llama_model,
+            norm_layer_for_check,
+            tp_group,
+            atol=atol,
+            rtol=rtol,
+            dim=1,
+            verbose=False,
+        )
         grads_to_check.update(col_layer_grads)
         grads_to_check.update(row_layer_grads)
+        grads_to_check.update(norm_layer_grads)
 
     # optimizer executes step
     org_optimizer.step()
