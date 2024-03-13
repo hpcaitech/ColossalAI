@@ -11,7 +11,7 @@ class MoeCudaExtension(_CudaExtension):
         return ret
 
     def sources_files(self):
-        ret = [self.csrc_abs_path(fname) for fname in ["cuda/moe.cpp", "cuda/moe_kernel.cu"]]
+        ret = [self.csrc_abs_path(fname) for fname in ["cuda/pybind/moe.cpp", "cuda/moe_kernel.cu"]]
         return ret
 
     def cxx_flags(self):
