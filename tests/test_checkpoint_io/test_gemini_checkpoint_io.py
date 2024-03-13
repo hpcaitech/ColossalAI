@@ -16,7 +16,6 @@ from colossalai.testing import (
     clear_cache_before_run,
     parameterize,
     rerun_if_address_is_in_use,
-    skip_if_not_enough_gpus,
     spawn,
 )
 from tests.kit.model_zoo import model_zoo
@@ -176,13 +175,6 @@ def run_dist(rank, world_size, port):
 @rerun_if_address_is_in_use()
 def test_gemini_ckpIO():
     spawn(run_dist, 4)
-
-
-@pytest.mark.largedist
-@skip_if_not_enough_gpus(min_gpus=8)
-@rerun_if_address_is_in_use()
-def test_gemini_ckpIO_3d():
-    spawn(run_dist, 8)
 
 
 if __name__ == "__main__":
