@@ -55,17 +55,11 @@ class LlamaPolicy(Policy):
             )
 
         sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
-        sp_size = self.shard_config.sequence_parallel_size
-        sp_group = self.shard_config.sequence_parallel_process_group
-        if self.pipeline_stage_manager is not None:
-            if sp_mode is not None:
-                warnings.warn(
-                    "Sequence parallelism is not supported under pipeline parallelism setting. "
-                    "Sequence parallelism will be disabled."
-                )
-            sp_mode = None
-            sp_size = None
-            sp_group = None
+        sp_size = self.shard_config.sequence_parallel_size if self.shard_config.enable_sequence_parallelism else None
+        sp_group = (
+            self.shard_config.sequence_parallel_process_group if self.shard_config.enable_sequence_parallelism else None
+        )
+        sp_partial_derived = sp_mode in ["split_gather", "ring"]
 
         use_flash_attention = self.shard_config.enable_flash_attention
         # Currently sp mode ring and all_to_all need to be used with flashattention
@@ -200,10 +194,12 @@ class LlamaPolicy(Policy):
                 SubModuleReplacementDescription(
                     suffix="input_layernorm",
                     target_module=norm_cls,
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 SubModuleReplacementDescription(
                     suffix="post_attention_layernorm",
                     target_module=norm_cls,
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
             ],
             policy=policy,
@@ -214,6 +210,7 @@ class LlamaPolicy(Policy):
             description=SubModuleReplacementDescription(
                 suffix="norm",
                 target_module=norm_cls,
+                kwargs={"sp_partial_derived": sp_partial_derived},
             ),
             policy=policy,
             target_key=LlamaModel,
