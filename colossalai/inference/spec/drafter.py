@@ -6,7 +6,7 @@ from transformers import PreTrainedTokenizer
 
 from colossalai.utils import get_current_device
 
-from .struct import DrafterOutput
+from .struct import DrafterOutput, GlideInput
 
 
 class Drafter:
@@ -66,6 +66,7 @@ class Drafter:
         input_ids: torch.Tensor,
         n_spec_tokens: int,
         past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+        glide_input: Optional[GlideInput] = None,
     ) -> DrafterOutput:
         """Generate n_spec_tokens tokens using the drafter model.
 
@@ -73,6 +74,8 @@ class Drafter:
             input_ids (torch.Tensor): Input token ids.
             n_spec_tokens (int): Number of tokens to speculate.
             past_key_values (Tuple[Tuple[torch.FloatTensor]]): The past key values of the input sequence.
+            glide_input (Optional[GlideInput]): The packed input for glimpsing kv caches of the main model,
+                when using the glide model as a drafter.
         """
         assert n_spec_tokens >= 1, f"Invalid number {n_spec_tokens} to speculate"
 
@@ -89,6 +92,7 @@ class Drafter:
                 return_dict=True,
                 use_cache=True,
                 past_key_values=past_key_values,
+                glide_input=glide_input,
             )
             next_token_logits = outputs.logits[:, -1, :]
 

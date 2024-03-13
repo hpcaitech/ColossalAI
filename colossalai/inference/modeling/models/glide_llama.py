@@ -1,4 +1,3 @@
-import math
 import warnings
 from typing import List, Optional, Tuple, Union
 
@@ -9,19 +8,22 @@ from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
 )
-from transformers.modeling_outputs import BaseModelOutputWithPast
+from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
     LlamaConfig,
     LlamaDecoderLayer,
     LlamaDynamicNTKScalingRotaryEmbedding,
+    LlamaForCausalLM,
     LlamaLinearScalingRotaryEmbedding,
     LlamaMLP,
+    LlamaModel,
     LlamaRMSNorm,
     LlamaRotaryEmbedding,
-    repeat_kv,
 )
 
+from colossalai.inference.spec import GlideInput
+from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger(__name__)
@@ -48,13 +50,91 @@ def apply_single_rotary_pos_emb(q, cos, sin, position_ids):
 
 # This code is adapted from huggingface transformers:
 # https://github.com/huggingface/transformers/blob/v4.36.2/src/transformers/models/llama/modeling_llama.py
-def glide_llama_model_forward(
-    self,
+def glide_llama_causal_lm_forward(
+    self: LlamaForCausalLM,
     input_ids: torch.LongTensor = None,
+    glide_input: Optional[GlideInput] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
     past_key_values: Optional[List[torch.FloatTensor]] = None,
-    large_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+    inputs_embeds: Optional[torch.FloatTensor] = None,
+    labels: Optional[torch.LongTensor] = None,
+    use_cache: Optional[bool] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+) -> Union[Tuple, CausalLMOutputWithPast]:
+    r"""
+    Args:
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+            config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+            (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+
+    Returns:
+
+    Example:
+
+    ```python
+    >>> from transformers import AutoTokenizer, LlamaForCausalLM
+
+    >>> model = LlamaForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
+    >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
+
+    >>> prompt = "Hey, are you conscious? Can you talk to me?"
+    >>> inputs = tokenizer(prompt, return_tensors="pt")
+
+    >>> # Generate
+    >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
+    >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+    "Hey, are you conscious? Can you talk to me?\nI'm not conscious, but I can talk to you."
+    ```"""
+    output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+    output_hidden_states = (
+        output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+    )
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+    outputs = self.model(
+        input_ids=input_ids,
+        glide_input=glide_input,
+        attention_mask=attention_mask,
+        position_ids=position_ids,
+        past_key_values=past_key_values,
+        inputs_embeds=inputs_embeds,
+        use_cache=use_cache,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+    )
+
+    hidden_states = outputs[0]
+    logits = self.lm_head(hidden_states)
+    logits = logits.float()
+
+    if not return_dict:
+        output = (logits,) + outputs[1:]
+        return output
+
+    return CausalLMOutputWithPast(
+        loss=None,
+        logits=logits,
+        past_key_values=outputs.past_key_values,
+        hidden_states=outputs.hidden_states,
+        attentions=outputs.attentions,
+    )
+
+
+# This code is adapted from huggingface transformers:
+# https://github.com/huggingface/transformers/blob/v4.36.2/src/transformers/models/llama/modeling_llama.py
+def glide_llama_model_forward(
+    self: LlamaModel,
+    input_ids: torch.LongTensor = None,
+    glide_input: GlideInput = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    past_key_values: Optional[List[torch.FloatTensor]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
@@ -129,10 +209,11 @@ def glide_llama_model_forward(
         # GlideLlamaDecoderLayer
         layer_outputs = decoder_layer(
             hidden_states,
+            glide_input=glide_input,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_values,
-            large_key_values=large_key_values,
+            # large_key_values=large_key_values,
             output_attentions=output_attentions,
             use_cache=use_cache,
         )
@@ -244,70 +325,50 @@ class LlamaCrossAttention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
+        glide_input: GlideInput = None,  # Used for glimpsing main model's KV caches
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        large_key_values: Optional[Tuple[torch.Tensor]] = None,  # 2 x (bsz, num_heads, kv_len, head_dim)
         output_attentions: bool = False,
         use_cache: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Optional[torch.Tensor]:
         bsz, q_len, _ = hidden_states.size()
-        large_bsz, large_head_num, kv_len, large_head_dim = large_key_values[0].size()
-        query_states = self.q_proj(hidden_states)
-        kv_seq_len = large_key_values[0].shape[-2]
+        # large_bsz, large_head_num, kv_len, large_head_dim = large_key_values[0].size()
 
-        if self.use_remap:
-            key_states = self.remap_k(large_key_values[0])
-            value_states = self.remap_v(large_key_values[1])
-        else:
-            key_states, value_states = large_key_values
+        block_tables = glide_input.block_tables
+        large_k_cache = glide_input.large_k_cache
+        large_v_cache = glide_input.large_v_cache
+        sequence_lengths = glide_input.sequence_lengths
+        cache_block_size = large_k_cache.size(-2)
+
+        query_states = self.q_proj(hidden_states)
+        kv_seq_len = sequence_lengths.max().item()
+
+        rotary_indexes = [(length - 1).view(-1) for length in sequence_lengths]
+        cos, sin = self._cos_cached[rotary_indexes], self._sin_cached[rotary_indexes]
 
         query_states = query_states.view(bsz, -1, self.large_num_heads, self.large_head_dim).transpose(1, 2)
 
         # for RoPE
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len + 32)  # XXX 32 <- maximum n tokens speculate(?)
+        cos, sin = self.rotary_emb(query_states, seq_len=kv_seq_len + 32)  # XXX 32 <- maximum n tokens speculate(?)
         query_states = apply_single_rotary_pos_emb(query_states, cos, sin, position_ids)
-        if self.use_remap:
-            key_states = apply_single_rotary_pos_emb(
-                key_states, cos, sin, torch.arange(kv_seq_len).view(1, -1).to(key_states.device)
-            )
+        query_states = query_states.reshape(-1, self.large_num_heads, self.large_head_dim)
 
-        key_states = repeat_kv(key_states, self.num_key_value_groups)
-        value_states = repeat_kv(value_states, self.num_key_value_groups)
-
-        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.large_head_dim)
-
-        if attn_weights.size() != (bsz, self.large_num_heads, q_len, kv_seq_len):
-            raise ValueError(
-                f"Attention weights should be of size {(bsz, self.large_num_heads, q_len, kv_seq_len)}, but is"
-                f" {attn_weights.size()}"
-            )
-
-        if attention_mask is not None:
-            if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-                raise ValueError(
-                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
-                )
-            attn_weights = attn_weights + attention_mask
-
-        # upcast attention to fp32
-        log_attention = None
-        if output_attentions:
-            log_attention = nn.functional.log_softmax(attn_weights, dim=-1, dtype=torch.float32)
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-        attn_output = torch.matmul(attn_weights, value_states)
-
-        if attn_output.size() != (bsz, self.large_num_heads, q_len, self.large_head_dim):
-            raise ValueError(
-                f"`attn_output` should be of size {(bsz, self.large_num_heads, q_len, self.large_head_dim)}, but is"
-                f" {attn_output.size()}"
-            )
+        attn_output = flash_decoding_attention(
+            q=query_states,
+            k_cache=large_k_cache,
+            v_cache=large_v_cache,
+            kv_seq_len=sequence_lengths,
+            block_tables=block_tables,
+            block_size=cache_block_size,
+            max_seq_len_in_batch=kv_seq_len,
+        )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(bsz, q_len, self.large_hidden_size)
 
         attn_output = self.o_proj(attn_output)
 
-        return attn_output, log_attention
+        return attn_output
 
 
 # A class to be used to replace LlamaDecoderLayer in a Llama Model as Drafter in speculative decoding.
@@ -337,10 +398,10 @@ class GlideLlamaDecoderLayer(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
+        glide_input: GlideInput = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        large_key_values: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         **kwargs,
@@ -380,16 +441,25 @@ class GlideLlamaDecoderLayer(nn.Module):
         )
         hidden_states = residual + hidden_states
 
+        curr_q_len = hidden_states.size(1)
         # Cross attention
-        if large_key_values is not None:
-            # skip if large key values are not provided
+        if glide_input is None or not glide_input.glimpse_ready:
+            warnings.warn(
+                "Data used for glimpsing the past KV caches of the main model (verifier) is not complete. "
+                "Fall back to normal decoder layer modeling (drafter). "
+                "This might lead to incorrect results when using the Glide Models for speculative decoding."
+            )
+        elif curr_q_len == 1:
+            # Notice that we skip prefill stage
+            # always use the output of the main model as the inputs for the next round of speculation
             residual = hidden_states
 
-            hidden_states, cross_attn_weights, _ = self.cross_attn(
+            hidden_states = self.cross_attn(
                 hidden_states=hidden_states,
+                glide_input=glide_input,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
-                large_key_values=large_key_values,
+                # large_key_values=large_key_values,
                 output_attentions=output_attentions,
                 use_cache=True,
             )
@@ -402,9 +472,6 @@ class GlideLlamaDecoderLayer(nn.Module):
         hidden_states = residual + hidden_states
 
         outputs = (hidden_states,)
-
-        if output_attentions:
-            outputs += (cross_attn_weights,)
 
         if use_cache:
             outputs += (present_key_value,)
