@@ -5,15 +5,15 @@ class FlashAttentionNpuExtension(_Extension):
     def __init__(self):
         super().__init__(name="flash_attention_npu", support_aot=False, support_jit=False)
 
-    def is_hardware_available(self) -> bool:
+    def is_available(self) -> bool:
         try:
             import torch_npu  # noqa
 
-            return True
+            return hasattr(torch_npu, "npu_fusion_attention")
         except:
             return False
 
-    def assert_hardware_compatible(self) -> bool:
+    def assert_compatible(self) -> bool:
         pass
 
     def build_aot(self) -> None:

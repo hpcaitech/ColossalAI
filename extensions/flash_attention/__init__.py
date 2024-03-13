@@ -1,6 +1,6 @@
 from .flash_attention_dao_cuda import FlashAttentionDaoCudaExtension
 from .flash_attention_npu import FlashAttentionNpuExtension
-from .flash_attention_xformers_cuda import FlashAttentionXformersCudaExtension
+from .flash_attention_sdpa_cuda import FlashAttentionSdpaCudaExtension
 
 try:
     import flash_attention  # noqa
@@ -17,4 +17,4 @@ except:
     HAS_MEM_EFF_ATTN = False
 
 
-__all__ = ["FlashAttentionDaoCudaExtension", "FlashAttentionXformersCudaExtension", "FlashAttentionNpuExtension"]
+__all__ = ["FlashAttentionDaoCudaExtension", "FlashAttentionSdpaCudaExtension", "FlashAttentionNpuExtension"]

@@ -5,7 +5,7 @@ class FlashAttentionDaoCudaExtension(_Extension):
     def __init__(self):
         super().__init__(name="flash_attention_dao_cuda", support_aot=False, support_jit=False, priority=10)
 
-    def is_hardware_available(self) -> bool:
+    def is_available(self) -> bool:
         # cuda extension can only be built if cuda is available
         try:
             import torch
@@ -15,7 +15,7 @@ class FlashAttentionDaoCudaExtension(_Extension):
             cuda_available = False
         return cuda_available
 
-    def assert_hardware_compatible(self) -> bool:
+    def assert_compatible(self) -> bool:
         pass
 
     def build_aot(self) -> None:
@@ -29,18 +29,10 @@ class FlashAttentionDaoCudaExtension(_Extension):
         )
 
     def load(self):
-        try:
-            from flash_attn.flash_attn_interface import flash_attn_func, flash_attn_varlen_func
-        except ImportError:
-            raise ModuleNotFoundError(
-                (
-                    "We rely on the third-party flash-attn library for flash attention. Please install flash-attn via 'pip install flash-attn --no-build-isolation'"
-                )
-            )
-
         from typing import Optional
 
         import torch
+        from flash_attn.flash_attn_interface import flash_attn_func, flash_attn_varlen_func
 
         def flash_attention(
             q: torch.Tensor,
