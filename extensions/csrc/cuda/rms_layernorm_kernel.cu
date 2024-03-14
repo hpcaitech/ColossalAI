@@ -1,4 +1,4 @@
-/*This code from VLLM:
+/*This code from FasterTransformer:
  *     https://github.com/NVIDIA/FasterTransformer/blob/main/src/fastertransformer/kernels/layernorm_kernels.cu
  *     with minor changes. */
 
@@ -10,7 +10,7 @@
 
 #include "block_reduce.h"
 #include "../common/micros.h"
-#include "../common/cuda_type_utils.h"
+#include "cuda_type_utils.h"
 
 #define DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(DATA_SIZE, TYPE, NAME, ...)  \
   if (DATA_SIZE == 2) {                                                     \
@@ -39,6 +39,32 @@
         AT_ERROR(#NAME, " not implemented for '", toString(TYPE), "'");     \
     }                                                                       \
   }                                                                         \
+
+#define RMSNORM_LAUNCHER(UNROLL_FACTOR, THREADDIM)                                 \
+  DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(                                          \
+    input.element_size(),                                                          \
+    input.scalar_type(),                                                           \
+    "rms_layernorm_kernel",                                                        \
+    rms_layernorm_kernel<scalar_t, UNROLL_FACTOR><<<grid, THREADDIM, 0, stream>>>( \
+      out.data_ptr<scalar_t>(),                                                    \
+      input.data_ptr<scalar_t>(),                                                  \
+      weight.data_ptr<scalar_t>(),                                                 \
+      epsilon,                                                                     \
+      num_tokens,                                                                  \
+      hidden_size);)                                                               \
+
+#define FUSED_ADD_RMSNORM_LAUNCHER(UNROLL_FACTOR, THREADDIM)                                  \
+  DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(                                                     \
+    input.element_size(),                                                                     \
+    input.scalar_type(),                                                                      \
+    "fused_add_rms_layernorm_kernel",                                                         \
+    fused_add_rms_layernorm_kernel<scalar_t, UNROLL_FACTOR><<<grid, THREADDIM, 0, stream>>>(  \
+      input.data_ptr<scalar_t>(),                                                             \
+      residual.data_ptr<scalar_t>(),                                                          \
+      weight.data_ptr<scalar_t>(),                                                            \
+      epsilon,                                                                                \
+      num_tokens,                                                                             \
+      hidden_size);)                                                                          \
 
 // optimized for half and bf16
 template<typename scalar_t, int unroll_factor>
@@ -218,29 +244,9 @@ void rms_layernorm(
 
   if (num_tokens >= 512) {
     if (input.scalar_type() == at::ScalarType::Float) {
-      DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(
-        input.element_size(),
-        input.scalar_type(),
-        "rms_layernorm_kernel",
-        rms_layernorm_kernel<scalar_t, 8><<<grid, hidden_size / 8, 0, stream>>>(
-          out.data_ptr<scalar_t>(),
-          input.data_ptr<scalar_t>(),
-          weight.data_ptr<scalar_t>(),
-          epsilon,
-          num_tokens,
-          hidden_size);)
+      RMSNORM_LAUNCHER(8, hidden_size / 8);
     } else {
-      DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(
-        input.element_size(),
-        input.scalar_type(),
-        "rms_layernorm_kernel",
-        rms_layernorm_kernel<scalar_t, 4><<<grid, hidden_size / 8, 0, stream>>>(
-          out.data_ptr<scalar_t>(),
-          input.data_ptr<scalar_t>(),
-          weight.data_ptr<scalar_t>(),
-          epsilon,
-          num_tokens,
-          hidden_size);)
+      RMSNORM_LAUNCHER(4, hidden_size / 8);
     }
   } else {
     int unroll_factor = (hidden_size + block.x - 1) / block.x;
@@ -250,56 +256,16 @@ void rms_layernorm(
     }
     switch (unroll_factor) {
       case 1:
-        DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(
-          input.element_size(),
-          input.scalar_type(),
-          "rms_layernorm_kernel",
-          rms_layernorm_kernel<scalar_t, 1><<<grid, block, 0, stream>>>(
-            out.data_ptr<scalar_t>(),
-            input.data_ptr<scalar_t>(),
-            weight.data_ptr<scalar_t>(),
-            epsilon,
-            num_tokens,
-            hidden_size);)
+        RMSNORM_LAUNCHER(1, block);
         break;
       case 2:
-        DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(
-          input.element_size(),
-          input.scalar_type(),
-          "rms_layernorm_kernel",
-          rms_layernorm_kernel<scalar_t, 2><<<grid, block, 0, stream>>>(
-            out.data_ptr<scalar_t>(),
-            input.data_ptr<scalar_t>(),
-            weight.data_ptr<scalar_t>(),
-            epsilon,
-            num_tokens,
-            hidden_size);)
+        RMSNORM_LAUNCHER(2, block);
         break;
       case 4:
-        DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(
-          input.element_size(),
-          input.scalar_type(),
-          "rms_layernorm_kernel",
-          rms_layernorm_kernel<scalar_t, 4><<<grid, block, 0, stream>>>(
-            out.data_ptr<scalar_t>(),
-            input.data_ptr<scalar_t>(),
-            weight.data_ptr<scalar_t>(),
-            epsilon,
-            num_tokens,
-            hidden_size);)
+        RMSNORM_LAUNCHER(4, block);
         break;
       case 8:
-        DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(
-          input.element_size(),
-          input.scalar_type(),
-          "rms_layernorm_kernel",
-          rms_layernorm_kernel<scalar_t, 8><<<grid, block, 0, stream>>>(
-            out.data_ptr<scalar_t>(),
-            input.data_ptr<scalar_t>(),
-            weight.data_ptr<scalar_t>(),
-            epsilon,
-            num_tokens,
-            hidden_size);)
+        RMSNORM_LAUNCHER(8, block);
         break;
       default:
         AT_ERROR("unroll_factor must be 1, 2, 4 or 8");
@@ -322,29 +288,9 @@ void fused_add_rms_layernorm(
 
   if (num_tokens >= 512) {
     if (input.scalar_type() == at::ScalarType::Float) {
-      DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(
-        input.element_size(),
-        input.scalar_type(),
-        "fused_add_rms_layernorm_kernel",
-        fused_add_rms_layernorm_kernel<scalar_t, 8><<<grid, hidden_size / 8, 0, stream>>>(
-          input.data_ptr<scalar_t>(),
-          residual.data_ptr<scalar_t>(),
-          weight.data_ptr<scalar_t>(),
-          epsilon,
-          num_tokens,
-          hidden_size);)
+      FUSED_ADD_RMSNORM_LAUNCHER(8, hidden_size / 8);
     } else {
-      DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(
-        input.element_size(),
-        input.scalar_type(),
-        "fused_add_rms_layernorm_kernel",
-        fused_add_rms_layernorm_kernel<scalar_t, 4><<<grid, hidden_size / 8, 0, stream>>>(
-          input.data_ptr<scalar_t>(),
-          residual.data_ptr<scalar_t>(),
-          weight.data_ptr<scalar_t>(),
-          epsilon,
-          num_tokens,
-          hidden_size);)
+      FUSED_ADD_RMSNORM_LAUNCHER(4, hidden_size / 8);
     }
   } else {
     int unroll_factor = (hidden_size + block.x - 1) / block.x;
@@ -354,56 +300,16 @@ void fused_add_rms_layernorm(
     }
     switch (unroll_factor) {
       case 1:
-        DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(
-          input.element_size(),
-          input.scalar_type(),
-          "fused_add_rms_layernorm_kernel",
-          fused_add_rms_layernorm_kernel<scalar_t, 1><<<grid, block, 0, stream>>>(
-            input.data_ptr<scalar_t>(),
-            residual.data_ptr<scalar_t>(),
-            weight.data_ptr<scalar_t>(),
-            epsilon,
-            num_tokens,
-            hidden_size);)
+        FUSED_ADD_RMSNORM_LAUNCHER(1, block);
         break;
       case 2:
-        DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(
-          input.element_size(),
-          input.scalar_type(),
-          "fused_add_rms_layernorm_kernel",
-          fused_add_rms_layernorm_kernel<scalar_t, 2><<<grid, block, 0, stream>>>(
-            input.data_ptr<scalar_t>(),
-            residual.data_ptr<scalar_t>(),
-            weight.data_ptr<scalar_t>(),
-            epsilon,
-            num_tokens,
-            hidden_size);)
+        FUSED_ADD_RMSNORM_LAUNCHER(2, block);
         break;
       case 4:
-        DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(
-          input.element_size(),
-          input.scalar_type(),
-          "fused_add_rms_layernorm_kernel",
-          fused_add_rms_layernorm_kernel<scalar_t, 4><<<grid, block, 0, stream>>>(
-            input.data_ptr<scalar_t>(),
-            residual.data_ptr<scalar_t>(),
-            weight.data_ptr<scalar_t>(),
-            epsilon,
-            num_tokens,
-            hidden_size);)
+        FUSED_ADD_RMSNORM_LAUNCHER(4, block);
         break;
       case 8:
-        DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(
-          input.element_size(),
-          input.scalar_type(),
-          "fused_add_rms_layernorm_kernel",
-          fused_add_rms_layernorm_kernel<scalar_t, 8><<<grid, block, 0, stream>>>(
-            input.data_ptr<scalar_t>(),
-            residual.data_ptr<scalar_t>(),
-            weight.data_ptr<scalar_t>(),
-            epsilon,
-            num_tokens,
-            hidden_size);)
+        FUSED_ADD_RMSNORM_LAUNCHER(8, block);
         break;
       default:
         AT_ERROR("unroll_factor must be 1, 2, 4 or 8");

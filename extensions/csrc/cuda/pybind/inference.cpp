@@ -21,6 +21,8 @@ void fused_add_rms_layernorm(torch::Tensor& input,     // [..., hidden_size]
                              torch::Tensor& weight,    // [hidden_size]
                              float epsilon);
 
+// void flash_decoding_attention();
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("decode_kv_cache_memcpy", &decode_kv_cache_memcpy,
         "Copy the GPU memory of kvcache during the decode stage.");
