@@ -105,7 +105,7 @@ class Target {
   static Target DefaultAscendTarget();
 
   static Target DefaultCUDATarget() {
-    return Target(OS::Linux, Arch::CUDA, BitLen::k64);
+    return Target(OS::Linux, Arch::NVGPU, BitLen::k64);
   }
 
   friend std::ostream& operator<<(std::ostream& os, const Target& target);

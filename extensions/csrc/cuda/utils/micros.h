@@ -3,10 +3,12 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-#define CUDA_CHECK(func)                                           \
-  {                                                                \
-    auto status = func;                                            \
-    if (status != cudaSuccess) {                                   \
-      LOG(FATAL) << "CUDA Error : " << cudaGetErrorString(status); \
-    }                                                              \
+#include <exception>
+
+#define CUDA_CHECK(func)                                    \
+  {                                                         \
+    auto status = func;                                     \
+    if (status != cudaSuccess) {                            \
+      throw std::runtime_error(cudaGetErrorString(status)); \
+    }                                                       \
   }
