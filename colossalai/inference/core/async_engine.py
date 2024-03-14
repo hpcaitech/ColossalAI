@@ -29,34 +29,23 @@ class AsyncStream:
     """A stream of Output for a request that can be
     iterated over asynchronously."""
 
-    def __init__(self, request_id: str) -> None:
+    def __init__(self, request_id: int) -> None:
         self.request_id = request_id
-        self._queue = asyncio.Queue()
-        self._finished = False
+        self._future = asyncio.Future()
 
-    def put(self, item) -> None:
-        if self._finished:
-            return
-        self._queue.put_nowait(item)
+    def set_result(self, result) -> None:
+        """Set final result and  signal taht it's ready"""
+        if not self._future.done():
+            self._future.set_result(result)
 
-    def finish(self) -> None:
-        self._queue.put_nowait(StopIteration)
-        self._finished = True
+    async def get_result(self):
+        """Wait for the result to be set and return it."""
+        return await self._future
 
     @property
     def finished(self) -> bool:
-        return self._finished
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        result = await self._queue.get()
-        if result is StopIteration:
-            raise StopAsyncIteration
-        elif isinstance(result, Exception):
-            raise result
-        return result
+        """Check if the stream has finished by checking if the future is done."""
+        return self._future.done()
 
 
 class RequestTracker:
@@ -79,16 +68,16 @@ class RequestTracker:
         Propagate an exception to request streams (all if request_id is None).
         """
         if request_id is not None:
-            self._request_streams[request_id].put(exc)
+            self._request_streams[request_id].set_result(exc)
         else:
             for stream in self._request_streams.values():
-                stream.put(exc)
+                stream.set_result(exc)
 
     def process_finished_request(self, finished_request) -> None:
         """Process a finished request from the engine."""
         request_id = finished_request.request_id
         try:
-            self._request_streams[request_id].put(finished_request)
+            self._request_streams[request_id].set_result(finished_request)
         except:
             raise RuntimeError(f"The request_id {request_id} is not found in our stream, please check")
         self.abort_request(request_id)
@@ -119,7 +108,7 @@ class RequestTracker:
             # The request has already finished or been aborted.
             return
 
-        self._request_streams[request_id].finish()
+        self._request_streams[request_id].set_result(None)
 
     def get_new_requests(self):
         """
@@ -199,6 +188,10 @@ class _AsyncInferenceEngine(InferenceEngine):
 
         return finished_sequences, self.request_handler.current_requests_in_batch() > 0
 
+    def _process_outputs(self, sequences):
+        for sequence in sequences:
+            sequence.output = self.tokenizer.decode(sequence.output_token_id)
+
 
 class AsyncInferenceEngine:
     """An asynchronous wrapper for LLMEngine.
@@ -249,6 +242,7 @@ class AsyncInferenceEngine:
         for new_request in new_requests:
             self.engine.add_single_request(**new_request)
         newly_finished_seqs, has_running_requests = await self.engine.async_step()
+        self.engine._process_outputs(newly_finished_seqs)
         for seq in newly_finished_seqs:
             self._request_tracker.process_finished_request(seq)
 
@@ -310,8 +304,7 @@ class AsyncInferenceEngine:
         """
         try:
             stream = await self.add_request(request_id, prompt, prompt_token_ids=prompt_token_ids)
-            async for request_output in stream:
-                yield request_output
+            return await stream.get_result()
 
         except (Exception, asyncio.CancelledError) as e:
             # If there is an exception or coroutine is cancelled, abort the

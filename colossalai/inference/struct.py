@@ -64,6 +64,7 @@ class Sequence:
         eos_token_id (int): The eos token id for this inference process.
         pad_token_id (int): The pad token id for this inference process.
         max_output_len (int): Maximum output length.
+        output(str): The output of sequence
     """
 
     request_id: int
@@ -74,6 +75,7 @@ class Sequence:
     eos_token_id: int
     pad_token_id: int
     max_output_len: int = 256
+    output: str = None
 
     def __post_init__(self):
         self.output_token_id = []
