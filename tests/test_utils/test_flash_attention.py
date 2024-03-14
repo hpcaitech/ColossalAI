@@ -1,167 +1,152 @@
 import math
+from copy import copy
 
-import pytest
 import torch
-from einops import rearrange
+from torch.testing import assert_close
 
-from colossalai.kernel.extensions.flash_attention import HAS_FLASH_ATTN, HAS_MEM_EFF_ATTN
+from colossalai.kernel.kernel_loader import (
+    FlashAttentionLoader,
+    FlashAttentionWithCustomMaskLoader,
+    FlashAttentionWithPaddingMaskLoader,
+)
+from colossalai.shardformer.layer import AttnMaskType, ColoAttention
+from colossalai.shardformer.layer.attn import invert_mask
 from colossalai.testing import clear_cache_before_run, parameterize
+from colossalai.utils import get_current_device, set_seed
 
-if HAS_MEM_EFF_ATTN or HAS_FLASH_ATTN:
-    from colossalai.nn.layer.colo_attention import AttnMaskType, ColoAttention
+DTYPE = [torch.float16, torch.bfloat16]
+B, N, S, D = 2, 32, 256, 32
 
-DTYPE = [torch.float16, torch.bfloat16, torch.float32]
+TOL_MAP = {
+    torch.float16: {"atol": 4e-3, "rtol": 0},
+    torch.bfloat16: {"atol": 4e-2, "rtol": 0},
+}
 
 
-def attention_ref(q, k, v, attn_mask=None, causal=False):
-    """
-    attention output of the control group
-    """
-    dtype_og = q.dtype
-    seqlen_q, seqlen_k = q.shape[1], k.shape[1]
-    d = q.shape[-1]
-    scale = 1.0 / math.sqrt(d)
-    scores = torch.einsum("bthd,bshd->bhts", q * scale, k)
-
+def attention_ref(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask=None, dropout_p=0.0):
+    head_dim = q.size(-1)
+    attn_weights = torch.matmul(q, k.transpose(2, 3)) / math.sqrt(head_dim)
     if attn_mask is not None:
-        scores.masked_fill_(rearrange(~attn_mask, "b s -> b 1 1 s"), float("-inf"))
-    if causal:
-        causal_mask = torch.triu(torch.ones(seqlen_q, seqlen_k, dtype=torch.bool, device=q.device), 1)
-        scores.masked_fill_(causal_mask, float("-inf"))
-    attention = torch.softmax(scores, dim=-1)
-
-    output = torch.einsum("bhts,bshd->bthd", attention, v)
-    output = rearrange(output, "b s h d -> b s (h d)")
-
-    # Modify the data at the positions of the mask to 0
-    if attn_mask is not None:
-        output.masked_fill_(rearrange(~attn_mask, "b s -> b s 1"), 0.0)
-
-    return output.to(dtype=dtype_og)
+        attn_weights = attn_weights + attn_mask
+    attn_weights = torch.softmax(attn_weights, dim=-1, dtype=torch.float).to(q.dtype)
+    attn_weights = torch.dropout(attn_weights, p=dropout_p, train=True)
+    attn_output = torch.matmul(attn_weights, v)
+    return attn_output
 
 
-@pytest.mark.skipif(not HAS_MEM_EFF_ATTN and not HAS_FLASH_ATTN, reason="xformers is not available")
+def gen_padded_kwargs(dtype: torch.dtype):
+    padding_mask = torch.ones((B, S), dtype=torch.int, device=get_current_device())
+    padding_mask[0, : S // 4] = 0
+    return (
+        ColoAttention.prepare_attn_kwargs((B, 1, S, S), dtype, padding_mask.device, q_padding_mask=padding_mask),
+        padding_mask,
+    )
+
+
+def gen_padded_causal_kwargs(dtype: torch.dtype):
+    padding_mask = torch.ones((B, S), dtype=torch.int, device=get_current_device())
+    padding_mask[0, S // 2 :] = 0
+    return (
+        ColoAttention.prepare_attn_kwargs(
+            (B, 1, S, S), dtype, padding_mask.device, q_padding_mask=padding_mask, is_causal=True
+        ),
+        padding_mask,
+    )
+
+
+def gen_causal_kwargs(dtype: torch.dtype):
+    return ColoAttention.prepare_attn_kwargs((B, 1, S, S), dtype, get_current_device(), is_causal=True), None
+
+
+def gen_custom_kwargs(dtype: torch.dtype):
+    attn_mask = torch.ones((B, S, S), dtype=dtype, device=get_current_device())
+    attn_mask[0, : S // 2, S // 2 :] = 0
+    attn_mask[0, S // 2 :, : S // 2] = 0
+    attn_mask[1, :, S // 4 :] = 0
+    attn_mask = invert_mask(attn_mask).unsqueeze(1)
+    assert not torch.all(attn_mask != 0, dim=-1).any()
+    return {"attention_mask": attn_mask}, None
+
+
+def post_process_kwargs_for_raw_attn(attn_kwargs: dict):
+    if "attention_mask_type" in attn_kwargs:
+        attn_kwargs = copy(attn_kwargs)
+        mask_type = attn_kwargs.pop("attention_mask_type")
+        attn_kwargs["is_causal"] = mask_type in (AttnMaskType.CAUSAL, AttnMaskType.PADDED_CAUSAL)
+    return attn_kwargs
+
+
+def check_attn_func(dtype: torch.dtype, attn_func, attn_kwargs: dict, padding_mask=None):
+    tols = TOL_MAP[dtype]
+    q = torch.randn((B, N, S, D), dtype=dtype, device=get_current_device(), requires_grad=True)
+    k = torch.randn((B, N, S, D), dtype=dtype, device=get_current_device(), requires_grad=True)
+    v = torch.randn((B, N, S, D), dtype=dtype, device=get_current_device(), requires_grad=True)
+    q_flash = q.clone().detach().requires_grad_(True)
+    k_flash = k.clone().detach().requires_grad_(True)
+    v_flash = v.clone().detach().requires_grad_(True)
+    attn_mask = attn_kwargs.get("attention_mask", None)
+    ref_output = attention_ref(q, k, v, attn_mask)
+    output = attn_func(q_flash, k_flash, v_flash, **attn_kwargs)
+    grad = torch.randn_like(output)
+    if padding_mask is not None:
+        # [B, Sq] -> [B, 1, Sq, 1]
+        padding_mask = padding_mask[:, None, :, None].logical_not()
+        ref_output = ref_output.masked_fill(padding_mask, 0)
+        output = output.masked_fill(padding_mask, 0)
+        grad.masked_fill_(padding_mask, 0)
+    assert_close(output, ref_output, **tols)
+    grad_q, grad_k, grad_v = torch.autograd.grad(output, (q_flash, k_flash, v_flash), grad)
+    grad_ref_q, grad_ref_k, grad_ref_v = torch.autograd.grad(ref_output, (q, k, v), grad)
+    assert_close(grad_q, grad_ref_q, **tols)
+    assert_close(grad_k, grad_ref_k, **tols)
+    assert_close(grad_v, grad_ref_v, **tols)
+    assert_close(q.grad, q_flash.grad, **tols)
+    assert_close(k.grad, k_flash.grad, **tols)
+    assert_close(v.grad, v_flash.grad, **tols)
+
+
 @clear_cache_before_run()
-@parameterize("proj_shape", [(6, 8, 4, 16)])
 @parameterize("dtype", DTYPE)
-@parameterize("dropout", [0.0])
-def test_attention_gpt(proj_shape, dtype, dropout):
-    (B, S, H, D_HEAD) = proj_shape
-    D = H * D_HEAD
+def test_flash_attn_func(dtype: torch.dtype):
+    torch.backends.cudnn.deterministic = True
+    set_seed(0)
+    # (func, name, need_postprocess)
+    avail_attn_funcs = [(ColoAttention.attention, "coloattn", False)]
+    avail_custom_mask_attn_funcs = [(ColoAttention.attention, "coloattn", False)]
+    avail_padding_mask_attn_funcs = [(ColoAttention.attention, "coloattn", False)]
+    for ext_cls in FlashAttentionLoader.REGISTRY:
+        ext = ext_cls()
+        if ext.is_available():
+            ext.assert_compatible()
+            avail_attn_funcs.append((ext.load(), ext.name, True))
+    for ext_cls in FlashAttentionWithCustomMaskLoader.REGISTRY:
+        ext = ext_cls()
+        if ext.is_available():
+            ext.assert_compatible()
+            avail_custom_mask_attn_funcs.append((ext.load(), ext.name, True))
+    for ext_cls in FlashAttentionWithPaddingMaskLoader.REGISTRY:
+        ext = ext_cls()
+        if ext.is_available():
+            ext.assert_compatible()
+            avail_padding_mask_attn_funcs.append((ext.load(), ext.name, True))
 
-    q = torch.randn((B, S, H, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
-    k = torch.randn((B, S, H, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
-    v = torch.randn((B, S, H, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
+    test_sets = {
+        "none": (lambda dtype: ({}, None), avail_attn_funcs),
+        "padded": (gen_padded_kwargs, avail_padding_mask_attn_funcs),
+        "padded_causal": (gen_padded_causal_kwargs, avail_padding_mask_attn_funcs),
+        "causal": (gen_causal_kwargs, avail_attn_funcs),
+        "custom": (gen_custom_kwargs, avail_custom_mask_attn_funcs),
+    }
 
-    mask = [torch.ones(S - i, dtype=torch.bool, device="cuda") for i in range(B)]
-    mask = torch.nn.utils.rnn.pad_sequence(mask, batch_first=True)
-
-    attn = ColoAttention(D, H, dropout=dropout)
-    y = attn(q, k, v, attn_mask=mask, attn_mask_type=AttnMaskType.paddedcausal)
-
-    assert list(y.shape) == [B, S, D]
-
-    out_ref = attention_ref(q, k, v, mask, causal=True)
-
-    # check gradients
-    dy = torch.rand_like(y)
-    grad_q, grad_k, grad_v = torch.autograd.grad(y, (q, k, v), dy)
-    grad_ref_q, grad_ref_k, grad_ref_v = torch.autograd.grad(out_ref, (q, k, v), dy)
-
-    torch.allclose(y, out_ref, atol=1e-7), f"{(y - out_ref).abs().max()}"
-    torch.allclose(grad_q, grad_ref_q, atol=1e-7), f"{(grad_q - grad_ref_q).abs().max()}"
-    torch.allclose(grad_k, grad_ref_k, atol=1e-7), f"{(grad_k - grad_ref_k).abs().max()}"
-    torch.allclose(grad_v, grad_ref_v, atol=1e-7), f"{(grad_v - grad_ref_v).abs().max()}"
-
-
-@pytest.mark.skipif(not HAS_MEM_EFF_ATTN and not HAS_FLASH_ATTN, reason="xformers is not available")
-@clear_cache_before_run()
-@parameterize("proj_shape", [(6, 8, 4, 16)])
-@parameterize("dtype", DTYPE)
-@parameterize("dropout", [0.0])
-def test_attention_bert(proj_shape, dtype, dropout):
-    (B, S, H, D_HEAD) = proj_shape
-    D = H * D_HEAD
-
-    q = torch.randn((B, S, H, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
-    k = torch.randn((B, S, H, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
-    v = torch.randn((B, S, H, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
-
-    # attention mask of shape [B, S] with zero padding to max length S
-    mask = torch.randint(0, 2, (B, S), dtype=torch.bool, device="cuda")
-
-    attn = ColoAttention(D, H, dropout=dropout)
-    y = attn(q, k, v, attn_mask=mask, attn_mask_type=AttnMaskType.padding)
-
-    assert list(y.shape) == [B, S, D]
-
-    out_ref = attention_ref(q, k, v, mask, causal=False)
-
-    dy = torch.rand_like(y)
-    grad_q, grad_k, grad_v = torch.autograd.grad(y, (q, k, v), dy)
-    grad_ref_q, grad_ref_k, grad_ref_v = torch.autograd.grad(out_ref, (q, k, v), dy)
-
-    torch.allclose(y, out_ref, atol=1e-7), f"{(y - out_ref).abs().max()}"
-    torch.allclose(grad_q, grad_ref_q, atol=1e-7), f"{(grad_q - grad_ref_q).abs().max()}"
-    torch.allclose(grad_k, grad_ref_k, atol=1e-7), f"{(grad_k - grad_ref_k).abs().max()}"
-    torch.allclose(grad_v, grad_ref_v, atol=1e-7), f"{(grad_v - grad_ref_v).abs().max()}"
+    for mask_type, (gen_kwargs_func, attn_funcs) in test_sets.items():
+        attn_kwargs, padding_mask = gen_kwargs_func(dtype)
+        for attn_func, name, need_postprocess in attn_funcs:
+            print(f"{dtype}, {name}, {mask_type}")
+            if need_postprocess:
+                check_attn_func(dtype, attn_func, post_process_kwargs_for_raw_attn(attn_kwargs), padding_mask)
+            else:
+                check_attn_func(dtype, attn_func, attn_kwargs, padding_mask)
 
 
-@pytest.mark.skipif(not HAS_MEM_EFF_ATTN and not HAS_FLASH_ATTN, reason="xformers is not available")
-@clear_cache_before_run()
-@parameterize("proj_shape", [(6, 8, 4, 16)])
-@parameterize("dtype", DTYPE)
-@parameterize("dropout", [0.0])
-def test_attention_no_mask(proj_shape, dtype, dropout):
-    (B, S, H, D_HEAD) = proj_shape
-    D = H * D_HEAD
-
-    q = torch.randn((B, S, H, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
-    k = torch.randn((B, S, H, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
-    v = torch.randn((B, S, H, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
-
-    attn = ColoAttention(D, H, dropout=dropout)
-    y = attn(q, k, v)
-
-    assert list(y.shape) == [B, S, D]
-
-    out_ref = attention_ref(q, k, v, None, causal=False)
-
-    dy = torch.rand_like(y)
-    grad_q, grad_k, grad_v = torch.autograd.grad(y, (q, k, v), dy)
-    grad_ref_q, grad_ref_k, grad_ref_v = torch.autograd.grad(out_ref, (q, k, v), dy)
-
-    torch.allclose(y, out_ref, atol=1e-7), f"{(y - out_ref).abs().max()}"
-    torch.allclose(grad_q, grad_ref_q, atol=1e-7), f"{(grad_q - grad_ref_q).abs().max()}"
-    torch.allclose(grad_k, grad_ref_k, atol=1e-7), f"{(grad_k - grad_ref_k).abs().max()}"
-    torch.allclose(grad_v, grad_ref_v, atol=1e-7), f"{(grad_v - grad_ref_v).abs().max()}"
-
-
-@pytest.mark.skipif(not HAS_MEM_EFF_ATTN and not HAS_FLASH_ATTN, reason="xformers is not available")
-@clear_cache_before_run()
-@parameterize("proj_shape", [(6, 24, 8, 4, 16)])
-@parameterize("dtype", DTYPE)
-@parameterize("dropout", [0.0])
-def test_cross_attention(proj_shape, dtype, dropout):
-    (B, S, T, H, D_HEAD) = proj_shape
-    D = H * D_HEAD
-
-    q = torch.randn((B, T, H, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
-    k = torch.randn((B, S, H, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
-    v = torch.randn((B, S, H, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
-
-    attn = ColoAttention(D, H, dropout=dropout)
-    y = attn(q, k, v, attn_mask_type=AttnMaskType.causal)
-
-    assert list(y.shape) == [B, T, D]
-
-    out_ref = attention_ref(q, k, v, None, causal=True)
-
-    dy = torch.rand_like(y)
-    grad_q, grad_k, grad_v = torch.autograd.grad(y, (q, k, v), dy)
-    grad_ref_q, grad_ref_k, grad_ref_v = torch.autograd.grad(out_ref, (q, k, v), dy)
-
-    torch.allclose(y, out_ref, atol=1e-18), f"{(y - out_ref).abs().max()}"
-    torch.allclose(grad_q, grad_ref_q, atol=1e-7), f"{(grad_q - grad_ref_q).abs().max()}"
-    torch.allclose(grad_k, grad_ref_k, atol=1e-7), f"{(grad_k - grad_ref_k).abs().max()}"
-    torch.allclose(grad_v, grad_ref_v, atol=1e-7), f"{(grad_v - grad_ref_v).abs().max()}"
+if __name__ == "__main__":
+    test_flash_attn_func()

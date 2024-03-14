@@ -4,7 +4,11 @@ from typing import Callable, Dict, Optional, Tuple
 import torch
 import torch.nn.functional as F
 
-from colossalai.kernel.kernel_loader import FlashAttentionLoader, FlashAttentionWithCustomMaskLoader
+from colossalai.kernel.kernel_loader import (
+    FlashAttentionLoader,
+    FlashAttentionWithCustomMaskLoader,
+    FlashAttentionWithPaddingMaskLoader,
+)
 
 __all__ = [
     "AttnMaskType",
@@ -53,6 +57,7 @@ class ColoAttention:
     # these two attrs are initialized in the first call of attention() method
     _flash_attn_func: Optional[Callable] = None
     _flash_attn_with_custom_mask_func: Optional[Callable] = None
+    _flash_attn_with_padding_mask_func: Optional[Callable] = None
 
     @staticmethod
     def _init_flash_attn_func():
@@ -60,6 +65,8 @@ class ColoAttention:
             ColoAttention._flash_attn_func = FlashAttentionLoader().load()
         if ColoAttention._flash_attn_with_custom_mask_func is None:
             ColoAttention._flash_attn_with_custom_mask_func = FlashAttentionWithCustomMaskLoader().load()
+        if ColoAttention._flash_attn_with_padding_mask_func is None:
+            ColoAttention._flash_attn_with_padding_mask_func = FlashAttentionWithPaddingMaskLoader().load()
 
     @staticmethod
     def prepare_attn_kwargs(
@@ -170,8 +177,12 @@ class ColoAttention:
             torch.Tensor: Output tensor. Shape should be [B, N, Sq, D]
         """
         ColoAttention._init_flash_attn_func()
+        # known issue: sdpa does not support attention mask which contains whole row of masked tokens, which leads to nan
+        # this case is usaul when padding mask is used and self attention is performed
+        # thus, we don't use sdpa when padding mask is used
         # sanity check
         if attention_mask is not None:
+            assert torch.is_floating_point(attention_mask), "attention_mask should be a floating point tensor."
             if attention_mask_type in (AttnMaskType.CUSTOM, AttnMaskType.CAUSAL):
                 assert (
                     cu_seqlens_q is None
@@ -181,6 +192,8 @@ class ColoAttention:
                     and q_indices is None
                     and kv_indices is None
                 )
+                if attention_mask_type == AttnMaskType.CUSTOM:
+                    assert not torch.all(attention_mask != 0, dim=-1).any()
             elif attention_mask_type in (AttnMaskType.PADDED, AttnMaskType.PADDED_CAUSAL):
                 assert (
                     cu_seqlens_q is not None
@@ -196,6 +209,8 @@ class ColoAttention:
         # kernel dispatch
         if attention_mask is not None and attention_mask_type == AttnMaskType.CUSTOM:
             attn_func = ColoAttention._flash_attn_with_custom_mask_func
+        elif attention_mask_type in (AttnMaskType.PADDED, AttnMaskType.PADDED_CAUSAL):
+            attn_func = ColoAttention._flash_attn_with_padding_mask_func
         else:
             attn_func = ColoAttention._flash_attn_func
         is_causal = attention_mask is not None and attention_mask_type in (
