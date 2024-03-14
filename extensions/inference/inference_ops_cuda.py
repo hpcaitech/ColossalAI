@@ -17,12 +17,13 @@ class InferenceOpsCudaExtension(_CudaExtension):
                 "cuda/activation_kernel.cu",
                 "cuda/rms_layernorm_kernel.cu",
                 "cuda/get_cos_and_sin_kernel.cu",
+                "cuda/flash_decoding_attention_kernel.cu",
             ]
         ]
         return ret
 
     def include_dirs(self):
-        ret = [self.csrc_abs_path("cuda/include"), self.get_cuda_home_include()]
+        ret = [self.csrc_abs_path("cuda/include"), self.csrc_abs_path("cuda/attention"), self.get_cuda_home_include()]
         return ret
 
     def cxx_flags(self):
