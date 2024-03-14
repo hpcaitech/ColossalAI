@@ -34,7 +34,9 @@ def check_inference_engine(use_cuda_graph=False, batch_size=32):
 
     prompts_token_ids = []
     for i in range(batch_size):
-        prompts_token_ids.append(np.random.randint(low=0, high=100, size=random.randint(1, 1024)).tolist())
+        prompts_token_ids.append(
+            np.random.randint(low=0, high=100, size=random.randint(1, max(1024 // batch_size, 32))).tolist()
+        )
 
     input_len = 1024
     output_len = 128

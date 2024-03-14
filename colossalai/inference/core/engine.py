@@ -117,7 +117,8 @@ class InferenceEngine:
         max_context_len_to_capture = self.inference_config.max_context_len_to_capture
         max_num_blocks = (max_context_len_to_capture + block_size - 1) // block_size
         input_tokens_ids = torch.zeros(max_batch_size, dtype=torch.long).cuda()
-        self.graph_block_tables = np.zeros((max(_BATCH_SIZES_TO_CAPTURE), max_num_blocks), dtype=np.int32)
+        # self.graph_block_tables = np.zeros((max(_BATCH_SIZES_TO_CAPTURE), max_num_blocks), dtype=np.int32)
+        self.graph_block_tables = np.full((max(_BATCH_SIZES_TO_CAPTURE), max_num_blocks), -1, dtype=np.int32)
         self.graph_block_tables[:, 0] = np.arange(max_num_blocks, max_num_blocks + max(_BATCH_SIZES_TO_CAPTURE))
         self.graph_block_tables[0, :] = np.arange(
             0, max_num_blocks
