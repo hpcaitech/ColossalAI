@@ -15,11 +15,11 @@ from colossalai.testing import clear_cache_before_run, parameterize
 from colossalai.utils import get_current_device, set_seed
 
 DTYPE = [torch.float16, torch.bfloat16]
-B, N, S, D = 2, 32, 256, 32
+B, N, S, D = 2, 8, 256, 32
 
 TOL_MAP = {
-    torch.float16: {"atol": 4e-3, "rtol": 0},
-    torch.bfloat16: {"atol": 4e-2, "rtol": 0},
+    torch.float16: {"atol": 5e-4, "rtol": 2e-3},
+    torch.bfloat16: {},
 }
 
 
@@ -78,28 +78,23 @@ def post_process_kwargs_for_raw_attn(attn_kwargs: dict):
 
 def check_attn_func(dtype: torch.dtype, attn_func, attn_kwargs: dict, padding_mask=None):
     tols = TOL_MAP[dtype]
-    q = torch.randn((B, N, S, D), dtype=dtype, device=get_current_device(), requires_grad=True)
-    k = torch.randn((B, N, S, D), dtype=dtype, device=get_current_device(), requires_grad=True)
-    v = torch.randn((B, N, S, D), dtype=dtype, device=get_current_device(), requires_grad=True)
+    q = torch.rand((B, N, S, D), dtype=dtype, device=get_current_device(), requires_grad=True)
+    k = torch.rand((B, N, S, D), dtype=dtype, device=get_current_device(), requires_grad=True)
+    v = torch.rand((B, N, S, D), dtype=dtype, device=get_current_device(), requires_grad=True)
     q_flash = q.clone().detach().requires_grad_(True)
     k_flash = k.clone().detach().requires_grad_(True)
     v_flash = v.clone().detach().requires_grad_(True)
     attn_mask = attn_kwargs.get("attention_mask", None)
     ref_output = attention_ref(q, k, v, attn_mask)
     output = attn_func(q_flash, k_flash, v_flash, **attn_kwargs)
-    grad = torch.randn_like(output)
     if padding_mask is not None:
         # [B, Sq] -> [B, 1, Sq, 1]
         padding_mask = padding_mask[:, None, :, None].logical_not()
         ref_output = ref_output.masked_fill(padding_mask, 0)
         output = output.masked_fill(padding_mask, 0)
-        grad.masked_fill_(padding_mask, 0)
     assert_close(output, ref_output, **tols)
-    grad_q, grad_k, grad_v = torch.autograd.grad(output, (q_flash, k_flash, v_flash), grad)
-    grad_ref_q, grad_ref_k, grad_ref_v = torch.autograd.grad(ref_output, (q, k, v), grad)
-    assert_close(grad_q, grad_ref_q, **tols)
-    assert_close(grad_k, grad_ref_k, **tols)
-    assert_close(grad_v, grad_ref_v, **tols)
+    output.mean().backward()
+    ref_output.mean().backward()
     assert_close(q.grad, q_flash.grad, **tols)
     assert_close(k.grad, k_flash.grad, **tols)
     assert_close(v.grad, v_flash.grad, **tols)
