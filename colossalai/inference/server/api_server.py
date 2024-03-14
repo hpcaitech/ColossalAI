@@ -81,14 +81,14 @@ async def generate(request: Request) -> Response:
 @app.post("/v1/completion")
 async def create_completion(request: Request):
     request_dict = await request.json()
+    stream = request_dict.pop("stream", False)
     generation_config = get_generation_config(request_dict)
-    generator = await completion_serving.create_completion(request, generation_config)
-    if "stream" in request_dict and request_dict["stream"]:
-        async for res in generator:
-            ret = {"request_id": res.request_id, "text": generator.output}
+    result = await completion_serving.create_completion(request, generation_config)
+
+    ret = {"request_id": result.request_id, "text": result.output}
+    if stream:
         return StreamingResponse(content=json.dumps(ret) + "\0", media_type="text/event-stream")
     else:
-        ret = {"request_id": generator.request_id, "text": generator.output}
         return JSONResponse(content=ret)
 
 
