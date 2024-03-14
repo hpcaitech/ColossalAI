@@ -32,7 +32,10 @@ logger = get_dist_logger(__name__)
 
 try:
     from flash_attn import flash_attn_varlen_func
+
+    use_flash_attn2 = True
 except ImportError:
+    use_flash_attn2 = False
     logger.warning(f"flash_attn2 has not been installed yet, we will use triton flash attn instead.")
 
 
@@ -86,7 +89,7 @@ def llama_model_forward(
     if batch_size >= 32 and kv_seq_len > 512:
         use_cuda_kernel = False
 
-    if use_cuda_kernel and batch.dtype != torch.float32:
+    if use_cuda_kernel and batch.dtype != torch.float32 and use_flash_attn2:
         cu_seqlens = F.pad(torch.cumsum(sequence_lengths, dim=0, dtype=torch.torch.int32), (1, 0))
     else:
         cu_seqlens = None
@@ -334,8 +337,8 @@ class NopadLlamaAttention(LlamaAttention):
         block_size = k_cache.size(-2)
 
         if is_prompts:
-            if use_cuda_kernel and query_states.dtype != torch.float32:
-                # flash attn 2 currently only supports FP16.
+            if use_cuda_kernel and query_states.dtype != torch.float32 and use_flash_attn2:
+                # flash attn 2 currently only supports FP16/BF16.
                 inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
                 inference_ops.context_kv_cache_memcpy(
                     key_states, value_states, k_cache, v_cache, sequence_lengths, cu_seqlens, block_tables, kv_seq_len

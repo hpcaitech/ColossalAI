@@ -12,7 +12,7 @@ inference_ops = InferenceOpsLoader().load()
 HEAD_DIM = 4
 
 
-def test_decode_copy_kv_to_caches(
+def run_decode_copy_kv_to_caches(
     bsz: int,
     block_size: int,
     max_num_blocks_per_seq: int,
@@ -58,7 +58,7 @@ def test_decode_copy_kv_to_caches(
     assert torch.equal(v_target, v_source)
 
 
-def test_context_copy_kv_to_cache(
+def run_context_copy_kv_to_cache(
     bsz: int,
     block_size: int,
     max_num_blocks_per_seq: int,
@@ -114,8 +114,8 @@ def test_kv_cache_memcopy(
     num_kv_heads: int,
     same_context_len: bool,
 ):
-    test_context_copy_kv_to_cache(bsz, block_size, max_num_blocks_per_seq, num_kv_heads, same_context_len)
-    test_decode_copy_kv_to_caches(bsz, block_size, max_num_blocks_per_seq, num_kv_heads, same_context_len)
+    run_context_copy_kv_to_cache(bsz, block_size, max_num_blocks_per_seq, num_kv_heads, same_context_len)
+    run_decode_copy_kv_to_caches(bsz, block_size, max_num_blocks_per_seq, num_kv_heads, same_context_len)
 
 
 if __name__ == "__main__":
