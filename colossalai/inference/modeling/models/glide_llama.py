@@ -343,14 +343,12 @@ class LlamaCrossAttention(nn.Module):
         query_states = self.q_proj(hidden_states)
         kv_seq_len = sequence_lengths.max().item()
 
-        rotary_indexes = [(length - 1).view(-1) for length in sequence_lengths]
-        cos, sin = self._cos_cached[rotary_indexes], self._sin_cached[rotary_indexes]
-
         query_states = query_states.view(bsz, -1, self.large_num_heads, self.large_head_dim).transpose(1, 2)
 
         # for RoPE
         cos, sin = self.rotary_emb(query_states, seq_len=kv_seq_len + 32)  # XXX 32 <- maximum n tokens speculate(?)
         query_states = apply_single_rotary_pos_emb(query_states, cos, sin, position_ids)
+        query_states = query_states.transpose(1, 2)
         query_states = query_states.reshape(-1, self.large_num_heads, self.large_head_dim)
 
         attn_output = flash_decoding_attention(
@@ -361,9 +359,9 @@ class LlamaCrossAttention(nn.Module):
             block_tables=block_tables,
             block_size=cache_block_size,
             max_seq_len_in_batch=kv_seq_len,
-        )
+        )  # attn_output: [bsz * q_len, num_heads * head_dim]
 
-        attn_output = attn_output.transpose(1, 2).contiguous()
+        # attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(bsz, q_len, self.large_hidden_size)
 
         attn_output = self.o_proj(attn_output)

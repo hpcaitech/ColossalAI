@@ -9,7 +9,7 @@ from transformers import GenerationConfig, PreTrainedTokenizer, PreTrainedTokeni
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.modeling.policy import model_policy_map
-from colossalai.inference.spec import Drafter
+from colossalai.inference.spec import Drafter, GlideInput
 from colossalai.inference.struct import Sequence
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -66,6 +66,7 @@ class InferenceEngine:
         self.use_spec_dec = False
         self.drafter_model = None
         self.drafter = None
+        self.use_glide = False
         self.n_spec_tokens = self.inference_config.max_n_spec_tokens
 
         if model_policy is None:
@@ -93,6 +94,10 @@ class InferenceEngine:
         # DISCUSS maybe move this into batch info?
 
         self.counter = count()
+
+        # Only for testing usage
+        self._total_tokens_spec = 0
+        self._total_tokens_hit = 0
 
     def _verify_args(self) -> None:
         """Verify the input args"""
@@ -137,11 +142,16 @@ class InferenceEngine:
             enable_jit_fused=False,
             enable_sequence_parallelism=False,
         )
-        shardformer = ShardFormer(shard_config=shardconfig)
-        shard_model, _ = shardformer.optimize(model, model_policy)
+        self.shard_former = ShardFormer(shard_config=shardconfig)
+        shard_model, _ = self.shard_former.optimize(model, model_policy)
         return shard_model
 
-    def enable_spec_dec(self, drafter_model: nn.Module = None, n_spec_tokens: int = None) -> None:
+    def enable_spec_dec(
+        self,
+        drafter_model: nn.Module = None,
+        n_spec_tokens: int = None,
+        use_glide_drafter: bool = False,
+    ) -> None:
         """Initialize drafter (if it has not yet), and enable Speculative Decoding for subsequent generations.
 
         Args:
@@ -149,6 +159,8 @@ class InferenceEngine:
                 If provided, the previous drafter and drafter model, if exist, will be overwritten.
             n_spec_tokens (Optional[int]): The number of tokens to speculate in each round of speculating-verifying.
                 If not provided, `max_n_spec_tokens` in InferenceConfig will be used.
+            use_glide_drafter (bool): Whether to use glide model for speculative decoding. Defaults to False.
+                If True, the drafter model will be replaced by a glide model.
 
         ```python
         ...
@@ -181,6 +193,7 @@ class InferenceEngine:
                 device=self.device,
                 dtype=self.dtype,
             )
+            self.use_glide = use_glide_drafter
         self.request_handler.set_spec_dec_mode(self.n_spec_tokens)
         # using speculative decoding for subsequent generations
         self.use_spec_dec = True
@@ -190,6 +203,7 @@ class InferenceEngine:
         self.request_handler.unset_spec_dec_mode()
         # set back to the maximum number of tokens to speculate
         self.n_spec_tokens = self.inference_config.max_n_spec_tokens
+        self.use_glide = False
         self.use_spec_dec = False
 
     def clear_spec_dec(self) -> None:
@@ -200,6 +214,7 @@ class InferenceEngine:
             self.drafter_model = None
             self.drafter = None
             torch.cuda.empty_cache()
+        self.use_glide = False
         self.use_spec_dec = False
 
     def steps_spec_dec(self) -> List[Sequence]:
@@ -216,6 +231,7 @@ class InferenceEngine:
         input_ids = batch.get_1D_inputs()  # bsz 1 for drafter model
 
         # 1. Prefill small model (Drafter) - fill past kv cache for drafter model
+        # NOTE For glide drafter models, we won't actually apply glide during prefill stage
         drafter_out = self.drafter.speculate(input_ids, 1, None)
         next_token_ids_spec = drafter_out.next_tokens
         drafter_past_key_values = drafter_out.past_key_values
@@ -231,6 +247,9 @@ class InferenceEngine:
 
         finished_sequences = self.request_handler.update()
 
+        total_tokens_spec = 0
+        total_tokens_hit = 0
+
         while True:
             # HACK Retrieve the running batch
             #      Using RequestHandler.schedule here will re-allocate same kv cache for the batch
@@ -238,10 +257,26 @@ class InferenceEngine:
             assert batch.current_batch_size == 1, "Only support bsz 1 for speculative decoding for now."
 
             # 3. Decoding - Drafter model speculates `n` tokens
-            drafter_out = self.drafter.speculate(input_ids, self.n_spec_tokens, drafter_past_key_values)
+            glide_input = None
+            if self.use_glide:
+                glide_input = GlideInput(
+                    batch.get_block_table_tensor(),
+                    self.k_cahce[-1],  # use kv cahces of the last layer
+                    self.v_cache[-1],
+                    batch.get_sequence_lengths(),
+                )
+
+            drafter_out = self.drafter.speculate(
+                input_ids,
+                self.n_spec_tokens,
+                drafter_past_key_values,
+                glide_input=glide_input,
+            )
             next_token_ids_spec = drafter_out.next_tokens
             drafter_past_key_values = drafter_out.past_key_values
             drafter_spec_length = drafter_out.speculated_length
+
+            total_tokens_spec += drafter_spec_length
 
             for next_token_id_spec in next_token_ids_spec:
                 self.request_handler.append_next_tokens(next_token_id_spec.unsqueeze(0))
@@ -251,6 +286,8 @@ class InferenceEngine:
                 already_allocated_kv_len = cur_length
 
             # 4. Decoding - Main model verifies `n` tokens in parallel
+            if drafter_spec_length < batch.num_tokens_to_verify:
+                batch.set_use_spec_dec(num_tokens_to_verify=drafter_spec_length)
             logits = self.model(batch, self.k_cahce, self.v_cache)
             next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
 
@@ -258,8 +295,11 @@ class InferenceEngine:
             diff_indexes = torch.nonzero(~(next_tokens[:-1] == next_token_ids_spec))
             n_matches = drafter_spec_length if diff_indexes.size(0) == 0 else diff_indexes[0][0].item()
 
+            total_tokens_hit += n_matches
+
             # revoke appended tokens for each Sequence in the current batch
             batch.revoke_batch_tokens(drafter_spec_length - n_matches)  # revoke drafted tokens
+
             # append the last correct token generated by the main model
             self.request_handler.append_next_tokens(next_tokens[n_matches].unsqueeze(0))
 
@@ -267,6 +307,7 @@ class InferenceEngine:
             drafter_past_key_values = Drafter.trim_kv_cache(
                 drafter_past_key_values, drafter_spec_length - n_matches - 1
             )
+
             # prepare inputs for the next round of speculation
             n = 1 if n_matches < drafter_spec_length else 2
             input_ids = batch.get_1D_inputs_spec_dec(n)
@@ -275,6 +316,20 @@ class InferenceEngine:
             finished_sequences = self.request_handler.update()
             if len(finished_sequences) > 0:
                 break
+
+        self._total_tokens_spec += total_tokens_spec
+        self._total_tokens_hit += total_tokens_hit
+        print(
+            f"  Total tokens speculated: {total_tokens_spec}, Total tokens hit: {total_tokens_hit}, Hit Ratio: {total_tokens_hit / total_tokens_spec}"
+        )
+        print(
+            f"Global tokens speculated: {self._total_tokens_spec}, Global tokens hit: {self._total_tokens_hit}, Global Hit Ratio: {self._total_tokens_hit / self._total_tokens_spec}"
+        )
+
+        # Reset back the number of speculated tokens of the batch,
+        # this is used to handle the last round of speculation, in which case the number of speculated tokens
+        # by the drafter is less than the number of speculated tokens set to the engine.
+        batch.set_use_spec_dec(num_tokens_to_verify=self.n_spec_tokens)
 
         return finished_sequences
 
