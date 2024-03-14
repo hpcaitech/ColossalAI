@@ -9,6 +9,16 @@ void decode_kv_cache_memcpy(
     torch::Tensor& sequence_lengths,  // [batch_size]
     torch::Tensor& block_tables);     // [batch_size, max_seq_len]
 
+void context_kv_cache_memcpy(
+    at::Tensor& key,          // [num_tokens, head_num, head_dim]
+    at::Tensor& value,        // [num_tokens, head_num, head_dim]
+    at::Tensor& key_cache,    // [num_blocks, head_num, block_size, head_dim]
+    at::Tensor& value_cache,  // [num_blocks, head_num, block_size, head_dim]
+    at::Tensor& sequence_lengths,  // [batch_size]
+    at::Tensor& cu_seqlens,        // [batch_size + 1]
+    at::Tensor& block_tables,      // [batch_size, max_seq_len]
+    int max_seq_len_in_batch);
+
 void rotary_embedding(
     torch::Tensor& query,  // [total_tokens, head_num, head_dim]
     torch::Tensor& key,    // [total_tokens, kv_head_num, head_dim]
@@ -41,6 +51,9 @@ void fused_add_rms_layernorm(torch::Tensor& input,     // [..., hidden_size]
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("decode_kv_cache_memcpy", &decode_kv_cache_memcpy,
         "Copy the GPU memory of kvcache during the decode stage.");
+
+  m.def("context_kv_cache_memcpy", &context_kv_cache_memcpy,
+        "Copy the GPU memory of kvcache during the context stage.");
 
   m.def(
       "rotary_embedding_and_cache_copy", &rotary_embedding_and_cache_copy,

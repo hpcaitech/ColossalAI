@@ -2,6 +2,7 @@
 from typing import List, Optional, Tuple
 
 import torch
+import torch.nn.functional as F
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
     LlamaConfig,
@@ -30,10 +31,9 @@ inference_ops = InferenceOpsLoader().load()
 logger = get_dist_logger(__name__)
 
 try:
-    HAS_TRITON = True
+    from flash_attn import flash_attn_varlen_func
 except ImportError:
-    HAS_TRITON = False
-    logger.warning(f"triton has not been installed yet, we will use torch to complete the attention calculation.")
+    logger.warning(f"flash_attn2 has not been installed yet, we will use triton flash attn instead.")
 
 
 def llama_causal_lm_forward(
@@ -86,6 +86,11 @@ def llama_model_forward(
     if batch_size >= 32 and kv_seq_len > 512:
         use_cuda_kernel = False
 
+    if use_cuda_kernel and batch.dtype != torch.float32:
+        cu_seqlens = F.pad(torch.cumsum(sequence_lengths, dim=0, dtype=torch.torch.int32), (1, 0))
+    else:
+        cu_seqlens = None
+
     hidden_states = self.embed_tokens(input_ids)
 
     cos_sin = get_xine_cache(sequence_lengths, self._cos_cached, self._sin_cached, batch.is_prompts)
@@ -119,6 +124,7 @@ def llama_model_forward(
             norm_output=norm_output,
             sm_scale=sm_scale,
             use_cuda_kernel=use_cuda_kernel,
+            cu_seqlens=cu_seqlens,
         )
 
     if batch.is_prompts:
@@ -147,6 +153,7 @@ def llama_decoder_layer_forward(
     norm_output: torch.Tensor = None,
     sm_scale: int = None,
     use_cuda_kernel: bool = True,
+    cu_seqlens: torch.Tensor = None,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     """This function will replace the forward function of LlamaDecoderLayer.
 
@@ -167,6 +174,7 @@ def llama_decoder_layer_forward(
         norm_output (torch.Tensor, optional): The mid tensor holds the output of layernorm. Defaults to None.
         sm_scale (int, optional): Used for flash attention. Defaults to None.
         use_cuda_kernel: (bool, optional): Whether to use cuda kernel. Defaults to True.
+        cu_seqlens(torch.Tensor, optional): Holding the cumulative sum of sequence length.
     """
 
     hidden_states, residual = self.input_layernorm(hidden_states, norm_output, residual, use_cuda_kernel)
@@ -184,6 +192,7 @@ def llama_decoder_layer_forward(
         output_tensor=output_tensor,
         sm_scale=sm_scale,
         use_cuda_kernel=use_cuda_kernel,
+        cu_seqlens=cu_seqlens,
     )
 
     # Fully Connected
@@ -288,6 +297,7 @@ class NopadLlamaAttention(LlamaAttention):
         output_tensor: torch.Tensor = None,
         sm_scale: int = None,
         use_cuda_kernel: bool = True,
+        cu_seqlens: torch.Tensor = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Args:
@@ -305,7 +315,10 @@ class NopadLlamaAttention(LlamaAttention):
             output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
             sm_scale (int, optional): Used for flash attention. Defaults to None.
             use_cuda_kernel: (bool, optional): Whether to use cuda kernel. Defaults to True.
+            cu_seqlens(torch.Tensor, optional): Holding the cumulative sum of sequence length.
         """
+
+        token_nums = hidden_states.size(0)
 
         if self.num_heads != self.num_key_value_heads:
             query_states = torch.mm(hidden_states, self.q_proj_weight).view(-1, self.num_heads, self.head_dim)
@@ -313,7 +326,6 @@ class NopadLlamaAttention(LlamaAttention):
             value_states = torch.mm(hidden_states, self.v_proj_weight).view(-1, self.num_key_value_heads, self.head_dim)
         else:
             # fused qkv
-            token_nums = hidden_states.size(0)
             hidden_states = hidden_states.expand(3, -1, -1)
             query_states, key_states, value_states = (
                 torch.bmm(hidden_states, self.qkv_weight).view(3, token_nums, self.num_heads, self.head_dim).unbind(0)
@@ -322,23 +334,40 @@ class NopadLlamaAttention(LlamaAttention):
         block_size = k_cache.size(-2)
 
         if is_prompts:
-            if use_cuda_kernel:
+            if use_cuda_kernel and query_states.dtype != torch.float32:
+                # flash attn 2 currently only supports FP16.
                 inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
+                inference_ops.context_kv_cache_memcpy(
+                    key_states, value_states, k_cache, v_cache, sequence_lengths, cu_seqlens, block_tables, kv_seq_len
+                )
+                attn_output = flash_attn_varlen_func(
+                    query_states,
+                    key_states,
+                    value_states,
+                    cu_seqlens_q=cu_seqlens,
+                    cu_seqlens_k=cu_seqlens,
+                    max_seqlen_q=kv_seq_len,
+                    max_seqlen_k=kv_seq_len,
+                    dropout_p=0.0,
+                    softmax_scale=sm_scale,
+                    causal=True,
+                )
+                attn_output = attn_output.view(token_nums, -1)
             else:
                 rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
-            attn_output = context_attention_unpadded(
-                q=query_states,
-                k=key_states,
-                v=value_states,
-                k_cache=k_cache,
-                v_cache=v_cache,
-                context_lengths=sequence_lengths,
-                block_tables=block_tables,
-                block_size=block_size,
-                output=output_tensor,
-                max_seq_len=kv_seq_len,
-                sm_scale=sm_scale,
-            )
+                attn_output = context_attention_unpadded(
+                    q=query_states,
+                    k=key_states,
+                    v=value_states,
+                    k_cache=k_cache,
+                    v_cache=v_cache,
+                    context_lengths=sequence_lengths,
+                    block_tables=block_tables,
+                    block_size=block_size,
+                    output=output_tensor,
+                    max_seq_len=kv_seq_len,
+                    sm_scale=sm_scale,
+                )
         else:
             if use_cuda_kernel:
                 inference_ops.rotary_embedding_and_cache_copy(
@@ -436,6 +465,5 @@ class NopadLlamaMLP(LlamaMLP):
         """
         hidden_states = hidden_states.expand(2, -1, -1)
         gate_up_proj_out = torch.bmm(hidden_states, self.gate_up_weight)
-        act_out = torch.nn.functional.silu(gate_up_proj_out[0], inplace=True)
-        tmp_out = act_out * gate_up_proj_out[1]
-        return torch.mm(tmp_out, self.down_proj_weight)
+        act_out = inference_ops.silu_and_mul(gate_up_proj_out)
+        return torch.mm(act_out, self.down_proj_weight)
