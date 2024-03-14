@@ -4,7 +4,7 @@
 #include "../common/vector_copy_utils.h"
 #include "../common/micros.h"
 
-template<typename scalar_t, typename MT, int VecSize>
+template<typename scalar_t, int VecSize>
 __global__ void context_kv_cache_memcpy_kernel(
     const scalar_t* __restrict__ key,
     const scalar_t* __restrict__ value,
