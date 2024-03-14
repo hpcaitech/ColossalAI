@@ -7,7 +7,7 @@
 #include <cassert>
 #include <vector>
 
-#include "compat.h"
+#include "../../common/micros.h"
 
 namespace {
 
