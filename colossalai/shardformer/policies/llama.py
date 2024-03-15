@@ -11,6 +11,7 @@ from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Ro
 from ..modeling.llama import (
     LlamaPipelineForwards,
     get_llama_flash_attention_forward,
+    get_llama_model_forward_for_flash_attn,
     get_lm_forward_with_dist_cross_entropy,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -135,6 +136,15 @@ class LlamaPolicy(Policy):
                 policy=policy,
                 target_key=LlamaAttention,
             )
+            if self.pipeline_stage_manager is None:
+                # replace llama model forward method
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_llama_model_forward_for_flash_attn(self.shard_config),
+                    },
+                    policy=policy,
+                    target_key=LlamaModel,
+                )
 
         return policy
 
