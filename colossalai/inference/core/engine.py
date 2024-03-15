@@ -1,11 +1,17 @@
 import os
 from itertools import count
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, OrderedDict, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
-from transformers import AutoModelForCausalLM, GenerationConfig, PreTrainedTokenizer, PreTrainedTokenizerFast
+from transformers import (
+    AutoModelForCausalLM,
+    GenerationConfig,
+    PretrainedConfig,
+    PreTrainedTokenizer,
+    PreTrainedTokenizerFast,
+)
 
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.config import InferenceConfig
@@ -218,17 +224,40 @@ class InferenceEngine:
         self.use_glide = False
         self.use_spec_dec = False
 
-    def glide_drafter_from_pretrained(self, model_path: Union[str, os.PathLike], config) -> nn.Module:
+    def convert_to_glide_model(self, model: nn.Module, state_dict: Union[Dict, OrderedDict]) -> nn.Module:
+        """
+        Convert the given model to a glide model.
+
+        Args:
+            model (nn.Module): The drafter model to be converted to GLIDE model.
+
+        Returns:
+            nn.Module: The converted glide model.
+        """
+        # get the policy corresponding to the drafter model from policy map
+        model_type = model.config.model_type
+        glide_type = f"glide_{model_type}"
+        if glide_type not in model_policy_map:
+            raise ValueError(f"GLIDE type {glide_type} is not supported yet. Please check the model type {model_type}")
+        policy = model_policy_map[glide_type]
+
+        # shard the drafter model add corresponding GLIDE layer
+        glide_model = self._shardformer(model, policy())
+        glide_model.load_state_dict(state_dict)
+
+        return glide_model
+
+    def glide_drafter_from_pretrained(self, model_path: Union[str, os.PathLike], config: PretrainedConfig) -> nn.Module:
         """
         Load and prepare a pretrained glide model used as a drafter model, from the given path.
 
         Usage:
         ```python
-        drafter_config = AutoConfig.from_pretrained(drafter_model_path)
         glide_config = GlideLlamaConfig(
+            intermediate_size=8192,
             large_hidden_size=4096,
             large_num_attention_heads=32,
-            **drafter_config.to_dict(),
+            num_hidden_layers=1,
         )
         # create a GLIDE drafte model
         drafter_model = engine.glide_drafter_from_pretrained(drafter_model_path, glide_config)
@@ -248,22 +277,13 @@ class InferenceEngine:
         if model_name not in _supported_models:
             raise ValueError(f"Model {model_name} is not supported yet as a glide drafter.")
 
-        # get the policy corresponding to the drafter model from policy map
-        model_type = drafter_model.config.model_type
-        glide_type = f"glide_{model_type}"
-        if glide_type not in model_policy_map:
-            raise ValueError(f"GLIDE type {glide_type} is not supported yet. Please check the model type {model_type}")
-        policy = model_policy_map[glide_type]
-
-        # shard the drafter model add corresponding GLIDE layer
-        self._shardformer(drafter_model, policy())
-
         # load params from the model path
         files = [f for f in os.listdir(model_path) if f.endswith(".pth") or f.endswith(".pt") or f.endswith(".bin")]
         # assume only use a single checkpoint file for drafter model
         file_path = os.path.join(model_path, files[-1])
         state_dict = torch.load(file_path)
-        drafter_model.load_state_dict(state_dict)
+
+        drafter_model = self.convert_to_glide_model(drafter_model, state_dict)
 
         return drafter_model
 
