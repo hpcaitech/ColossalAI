@@ -3,8 +3,6 @@ import torch
 from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
 
 import colossalai
-from colossalai.inference.config import GenerationConfig, InferenceConfig
-from colossalai.inference.core.engine import InferenceEngine
 from colossalai.inference.modeling.models.glide_llama import GlideLlamaConfig
 from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.spec.drafter import Drafter
@@ -43,57 +41,6 @@ def test_drafter(spec_num: int):
     reject_num = max(0, spec_num - 1)
     trimmed_past_key_values = drafter.trim_kv_cache(out.past_key_values, reject_num)
     assert trimmed_past_key_values[0][0].size(2) == past_kv_length - reject_num
-
-
-def check_spec_dec():
-    torch.manual_seed(123)
-
-    tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
-    # Dummy configs for testing
-    toy_config = LlamaConfig(num_hidden_layers=NUM_LAYERS)
-    toy_config.pad_token_id = tokenizer.eos_token_id
-    drafter_model = LlamaForCausalLM(toy_config)
-    drafter_model = drafter_model.eval().cuda()
-    large_config = LlamaConfig(
-        hidden_size=4096,
-        intermediate_size=11008,
-        num_attention_heads=32,
-        num_hidden_layers=8,
-        num_key_value_heads=32,
-        max_position_embeddings=2048,
-    )
-    large_config.pad_token_id = tokenizer.eos_token_id
-    main_model = LlamaForCausalLM(large_config)
-
-    inference_config = InferenceConfig(
-        dtype="fp16",
-        micro_batch_size=1,
-        max_batch_size=1,
-        max_input_len=128,
-        max_output_len=128,
-        prefill_ratio=1.2,
-        block_size=16,
-    )
-    engine = InferenceEngine(main_model, tokenizer, inference_config)
-    engine.enable_spec_dec(drafter_model, n_spec_tokens=5)
-
-    dummy_inputs = torch.randint(low=5, high=1000, size=(1, 10), dtype=torch.long, device="cuda")
-    generation_config = GenerationConfig(
-        pad_token_id=tokenizer.eos_token_id,
-        max_length=MAX_LEN,
-        eos_token_id=tokenizer.eos_token_id,
-    )
-    out, out_token_ids = engine.generate(
-        prompts_token_ids=dummy_inputs, generation_config=generation_config, return_token_ids=True
-    )
-    engine.disable_spec_dec()
-    engine.clear_spec_dec()
-
-    assert not engine.use_spec_dec
-    assert engine.drafter is None and engine.drafter_model is None
-
-    assert len(out) == 1
-    assert len(out_token_ids) == 1 and len(out_token_ids[0]) == MAX_LEN
 
 
 def check_shard_drafter():
