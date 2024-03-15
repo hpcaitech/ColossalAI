@@ -1,3 +1,5 @@
+# This is modified from huggingface transformers
+# https://github.com/huggingface/transformers/blob/v4.36.2/src/transformers/models/llama/modeling_llama.py
 import warnings
 from typing import List, Optional, Tuple, Union
 
@@ -29,8 +31,6 @@ from colossalai.logging import get_dist_logger
 logger = get_dist_logger(__name__)
 
 
-# The following functions are adapted from huggingface transformers
-# https://github.com/huggingface/transformers/blob/v4.36.2/src/transformers/models/llama/modeling_llama.py
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
     x1 = x[..., : x.shape[-1] // 2]
@@ -48,8 +48,6 @@ def apply_single_rotary_pos_emb(q, cos, sin, position_ids):
     return q_embed
 
 
-# This code is adapted from huggingface transformers:
-# https://github.com/huggingface/transformers/blob/v4.36.2/src/transformers/models/llama/modeling_llama.py
 def glide_llama_causal_lm_forward(
     self: LlamaForCausalLM,
     input_ids: torch.LongTensor = None,
@@ -126,8 +124,6 @@ def glide_llama_causal_lm_forward(
     )
 
 
-# This code is adapted from huggingface transformers:
-# https://github.com/huggingface/transformers/blob/v4.36.2/src/transformers/models/llama/modeling_llama.py
 def glide_llama_model_forward(
     self: LlamaModel,
     input_ids: torch.LongTensor = None,
@@ -252,7 +248,7 @@ class GlideLlamaConfig(LlamaConfig):
         self,
         large_hidden_size=4096,
         large_num_attention_heads=32,
-        use_remap=True,
+        use_remap=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -261,8 +257,6 @@ class GlideLlamaConfig(LlamaConfig):
         self.large_num_attention_heads = large_num_attention_heads
 
 
-# This code is adapted from huggingface transformers
-# https://github.com/huggingface/transformers/blob/v4.36.2/src/transformers/models/llama/modeling_llama.py
 class LlamaCrossAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
@@ -371,8 +365,6 @@ class LlamaCrossAttention(nn.Module):
 
 # A class to be used to replace LlamaDecoderLayer in a Llama Model as Drafter in speculative decoding.
 # Refer to GLIDE with a CAPE https://arxiv.org/pdf/2402.02082.pdf
-# This code is adapted from huggingface transformers
-# https://github.com/huggingface/transformers/blob/v4.36.2/src/transformers/models/llama/modeling_llama.py
 class GlideLlamaDecoderLayer(nn.Module):
     def __init__(self, config: GlideLlamaConfig, layer_idx: Optional[int] = None):
         super().__init__()
