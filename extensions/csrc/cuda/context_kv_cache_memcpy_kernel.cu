@@ -33,20 +33,41 @@ __global__ void context_kv_cache_memcpy_kernel(
     const int block_offset = seq_token_id % block_size;
     const int hidden_size = head_num * head_dim;
     const int total_token_id = cu_seqlens[seq_id] + seq_token_id;
+    int head_id;
+    int head_offset;
+    int64_t key_src_id;
+    int64_t value_src_id;
+    int64_t target_id;
 
+    int i = threadIdx.x * VecSize;
 
-    for (int i = threadIdx.x * VecSize; i < hidden_size; i += blockDim.x * VecSize) {
-        const int head_id = i / head_dim;
-        const int head_offset = i % head_dim;
-        const int64_t key_src_id = total_token_id * key_stride + i;
-        const int64_t value_src_id = total_token_id * value_stride + i;
-        const int64_t target_id = block_id * hidden_size * block_size
+    for (; i <= (hidden_size - VecSize); i += blockDim.x * VecSize) {
+        head_id = i / head_dim;
+        head_offset = i % head_dim;
+        key_src_id = total_token_id * key_stride + i;
+        value_src_id = total_token_id * value_stride + i;
+        target_id = block_id * hidden_size * block_size
                                       + head_id * block_size * head_dim
                                       + block_offset * head_dim + head_offset;
 
         copy_vector<scalar_t, VecSize>(key_cache + target_id, key + key_src_id);
         copy_vector<scalar_t, VecSize>(value_cache + target_id, value + value_src_id);
     }
+
+    // tail process
+    for (; i < hidden_size; ++i ) {
+        head_id = i / head_dim;
+        head_offset = i % head_dim;
+        key_src_id = total_token_id * key_stride + i;
+        value_src_id = total_token_id * value_stride + i;
+        target_id = block_id * hidden_size * block_size
+                                    + head_id * block_size * head_dim
+                                    + block_offset * head_dim + head_offset;
+
+        key_cache[target_id] =  key[key_src_id];
+        value_cache[target_id] = value[value_src_id];
+    }
+
 }
 
 template<typename scalar_t>

@@ -30,7 +30,9 @@ __global__ void decode_kv_cache_memcpy_kernel(
         return ;
     }
 
-    for (int i = threadIdx.x * VecSize; i < hidden_size; i += blockDim.x * VecSize) {
+    int i = threadIdx.x * VecSize;
+
+    for (; i <= (hidden_size - VecSize); i += blockDim.x * VecSize) {
         const int head_id = i / head_dim;
         const int head_offset = i % head_dim;
         const int64_t key_src_id = seq_id * key_stride + i;
@@ -41,6 +43,19 @@ __global__ void decode_kv_cache_memcpy_kernel(
 
         copy_vector<scalar_t, VecSize>(key_cache + target_id, key + key_src_id);
         copy_vector<scalar_t, VecSize>(value_cache + target_id, value + value_src_id);
+    }
+
+    for (; i < hidden_size; ++i ) {
+        const int head_id = i / head_dim;
+        const int head_offset = i % head_dim;
+        const int64_t key_src_id = seq_id * key_stride + i;
+        const int64_t value_src_id = seq_id * value_stride + i;
+        const int64_t target_id = block_id * hidden_size * block_size
+                                    + head_id * block_size * head_dim
+                                    + block_offset * head_dim + head_offset;
+
+        key_cache[target_id] = key[key_src_id];
+        value_cache[target_id] = value[value_src_id];
     }
 
 }
