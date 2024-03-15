@@ -102,10 +102,6 @@ class InferenceEngine:
 
         self.counter = count()
 
-        # Only for testing usage
-        self._total_tokens_spec = 0
-        self._total_tokens_hit = 0
-
     def _verify_args(self) -> None:
         """Verify the input args"""
         if not isinstance(self.inference_config, InferenceConfig):
@@ -317,9 +313,6 @@ class InferenceEngine:
 
         finished_sequences = self.request_handler.update()
 
-        total_tokens_spec = 0
-        total_tokens_hit = 0
-
         while True:
             # HACK Retrieve the running batch
             #      Using RequestHandler.schedule here will re-allocate same kv cache for the batch
@@ -346,8 +339,6 @@ class InferenceEngine:
             drafter_past_key_values = drafter_out.past_key_values
             drafter_spec_length = drafter_out.speculated_length
 
-            total_tokens_spec += drafter_spec_length
-
             for next_token_id_spec in next_token_ids_spec:
                 self.request_handler.append_next_tokens(next_token_id_spec.unsqueeze(0))
             cur_length = batch.seq_lengths[0].item()
@@ -364,8 +355,6 @@ class InferenceEngine:
             # 5. Compare and process the results
             diff_indexes = torch.nonzero(~(next_tokens[:-1] == next_token_ids_spec))
             n_matches = drafter_spec_length if diff_indexes.size(0) == 0 else diff_indexes[0][0].item()
-
-            total_tokens_hit += n_matches
 
             # revoke appended tokens for each Sequence in the current batch
             batch.revoke_batch_tokens(drafter_spec_length - n_matches)  # revoke drafted tokens
@@ -386,15 +375,6 @@ class InferenceEngine:
             finished_sequences = self.request_handler.update()
             if len(finished_sequences) > 0:
                 break
-
-        self._total_tokens_spec += total_tokens_spec
-        self._total_tokens_hit += total_tokens_hit
-        print(
-            f"  Total tokens speculated: {total_tokens_spec}, Total tokens hit: {total_tokens_hit}, Hit Ratio: {total_tokens_hit / total_tokens_spec}"
-        )
-        print(
-            f"Global tokens speculated: {self._total_tokens_spec}, Global tokens hit: {self._total_tokens_hit}, Global Hit Ratio: {self._total_tokens_hit / self._total_tokens_spec}"
-        )
 
         # Reset back the number of speculated tokens of the batch,
         # this is used to handle the last round of speculation, in which case the number of speculated tokens

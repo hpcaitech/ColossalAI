@@ -209,7 +209,6 @@ def glide_llama_model_forward(
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_values,
-            # large_key_values=large_key_values,
             output_attentions=output_attentions,
             use_cache=use_cache,
         )
@@ -326,7 +325,6 @@ class LlamaCrossAttention(nn.Module):
         use_cache: bool = False,
     ) -> Optional[torch.Tensor]:
         bsz, q_len, _ = hidden_states.size()
-        # large_bsz, large_head_num, kv_len, large_head_dim = large_key_values[0].size()
 
         block_tables = glide_input.block_tables
         large_k_cache = glide_input.large_k_cache
@@ -340,7 +338,7 @@ class LlamaCrossAttention(nn.Module):
         query_states = query_states.view(bsz, -1, self.large_num_heads, self.large_head_dim).transpose(1, 2)
 
         # for RoPE
-        cos, sin = self.rotary_emb(query_states, seq_len=kv_seq_len + 32)  # XXX 32 <- maximum n tokens speculate(?)
+        cos, sin = self.rotary_emb(query_states, seq_len=kv_seq_len + 32)
         query_states = apply_single_rotary_pos_emb(query_states, cos, sin, position_ids)
         query_states = query_states.transpose(1, 2)
         query_states = query_states.reshape(-1, self.large_num_heads, self.large_head_dim)
@@ -355,7 +353,6 @@ class LlamaCrossAttention(nn.Module):
             max_seq_len_in_batch=kv_seq_len,
         )  # attn_output: [bsz * q_len, num_heads * head_dim]
 
-        # attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(bsz, q_len, self.large_hidden_size)
 
         attn_output = self.o_proj(attn_output)
@@ -449,7 +446,6 @@ class GlideLlamaDecoderLayer(nn.Module):
                 glide_input=glide_input,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
-                # large_key_values=large_key_values,
                 output_attentions=output_attentions,
                 use_cache=True,
             )
