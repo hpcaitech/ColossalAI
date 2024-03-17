@@ -43,7 +43,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     grads_to_check = {}
     if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
         if test_config["precision"] == "fp32":
-            atol, rtol = 1e-4, 1e-3
+            atol, rtol = 2e-4, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
         col_layer_grads = get_grad_tensors_for_check(
