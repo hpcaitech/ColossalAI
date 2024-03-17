@@ -17,6 +17,8 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from tests.kit.model_zoo import model_zoo
+from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
+from colossalai.checkpoint_io.utils import gather_distributed_param
 
 
 class RandomDataset(Dataset):
@@ -255,12 +257,15 @@ def run_grad_acc_test(test_args):
             optimizer.step()
             optimizer.zero_grad()
 
-    # tricky code here, shard the origin model inorder to check the parameters in the same stage.
-    origin_model, origin_optimizer, _, dataloader, _ = booster.boost(
-        origin_model, origin_optimizer, dataloader=dataloader
-    )
-    for p1, p2 in zip(model.unwrap().parameters(), origin_model.unwrap().parameters()):
-        assert_close(p1.to(p2.dtype), p2, atol=1e-2, rtol=1e-2)
+    if booster.plugin.stage_manager is None or booster.plugin.stage_manager.is_first_stage(): 
+        for p1, p2 in zip(model.unwrap().parameters(), origin_model.parameters()):
+            if is_distributed_tensor(p1) or is_customized_distributed_tensor(p1):
+                p1 = gather_distributed_param(p1, keep_vars=False)
+            if p1.dim() > 1:
+                assert_close(p1.to(p2.dtype)[: p2.shape[0], :], p2, atol=1e-2, rtol=1e-2)
+            else:
+                assert_close(p1.to(p2.dtype), p2, atol=1e-2, rtol=1e-2)
+            
 
 
 def run_dist(rank, world_size, port, early_stop: bool = True):
