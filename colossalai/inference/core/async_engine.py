@@ -185,12 +185,10 @@ class _AsyncInferenceEngine(InferenceEngine):
         self.request_handler.search_tokens(self.generation_config, logits)
         # Return: List[Sequence]
         finished_sequences = self.request_handler.update()
+        for sequence in finished_sequences:
+            sequence.output = self.tokenizer.decode(sequence.output_token_id)
 
         return finished_sequences, self.request_handler.current_requests_in_batch() > 0
-
-    def _process_outputs(self, sequences):
-        for sequence in sequences:
-            sequence.output = self.tokenizer.decode(sequence.output_token_id)
 
 
 class AsyncInferenceEngine:
@@ -242,7 +240,7 @@ class AsyncInferenceEngine:
         for new_request in new_requests:
             self.engine.add_single_request(**new_request)
         newly_finished_seqs, has_running_requests = await self.engine.async_step()
-        self.engine._process_outputs(newly_finished_seqs)
+
         for seq in newly_finished_seqs:
             self._request_tracker.process_finished_request(seq)
 
