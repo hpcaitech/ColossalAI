@@ -189,7 +189,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         return module
 
 
-def get_param_info(optim: Optimizer, model: torch.nn.Module):
+def get_param_info(optim: Optimizer):
     # Get a backup of necessary information of parameters for future use, which includes:
     # 1. A complete param_group, with params in the form of param_id
     # 2. A mapping from param address (obtained using id(param)) to integer param_id
@@ -219,13 +219,6 @@ def get_param_info(optim: Optimizer, model: torch.nn.Module):
 
         param_info["param_groups"].append(packed_group)
         start_index += len(group["params"])
-
-    input_embedding = model.get_input_embeddings()
-    if input_embedding is not None:
-        param_info["old_input_embedding_param_id"] = id(input_embedding.weight)
-    output_embedding = model.get_output_embeddings()
-    if output_embedding is not None:
-        param_info["old_output_embedding_param_id"] = id(output_embedding.weight)
 
     return param_info
 
@@ -1079,7 +1072,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             overlap_communication=overlap_communication,
             cpu_offload=cpu_offload,
             partition_grad=(self.zero_stage == 2),
-            # forced_dtype=PRECISION_TORCH_TYPE[precision],
+            forced_dtype=PRECISION_TORCH_TYPE[precision],
         )
 
         self.max_norm = max_norm
@@ -1087,32 +1080,6 @@ class HybridParallelPlugin(PipelinePluginBase):
     def __del__(self):
         """Destroy the process groups in ProcessGroupMesh"""
         self.pg_mesh.destroy_mesh_process_groups()
-
-    def set_resized_embedding_to_optimizer(self, model, optimizer, param_info):
-        old_input_embedding_param_id = param_info["old_input_embedding_param_id"]
-        if old_input_embedding_param_id is not None:
-            for param_group in optimizer.param_groups:
-                group_params = param_group["params"]
-                new_params = []
-                for param in group_params:
-                    if id(param) == old_input_embedding_param_id:
-                        new_input_embeddings = model.module.get_input_embeddings()
-                        new_params.append(new_input_embeddings.weight)
-                    else:
-                        new_params.append(param)
-                param_group["params"] = new_params
-        old_output_embedding_param_id = param_info["old_output_embedding_param_id"]
-        if old_output_embedding_param_id is not None:
-            for param_group in optimizer.param_groups:
-                group_params = param_group["params"]
-                new_params = []
-                for param in group_params:
-                    if id(param) == old_output_embedding_param_id:
-                        new_output_embeddings = model.module.get_output_embeddings()
-                        new_params.append(new_output_embeddings.weight)
-                    else:
-                        new_params.append(param)
-                param_group["params"] = new_params
 
     @property
     def enable_pipeline_parallelism(self) -> bool:
@@ -1144,7 +1111,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
-        param_info = get_param_info(optimizer, model)
+        param_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
             model = HybridParallelModule(
@@ -1157,8 +1124,6 @@ class HybridParallelPlugin(PipelinePluginBase):
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,
             )
-
-        self.set_resized_embedding_to_optimizer(model, optimizer, param_info)
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
                 if self.precision in ["fp16", "bf16"]:

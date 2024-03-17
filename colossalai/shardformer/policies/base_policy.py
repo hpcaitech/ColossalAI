@@ -5,9 +5,11 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
+from colossalai.lazy.lazy_init import LazyInitContext
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
