@@ -28,24 +28,21 @@ def generate_inputs(num_sequences, min_length, max_length):
     return sequences
 
 
+@parameterize(
+    "max_batch_size", 8, "max_output_len", 512, "max_input_len", 64, "do_sample", True, "top_p", 0.5, "top_k", 50
+)
 def check_inference_engine(use_engine=False, prompt_template=None):
     setup_seed(20)
     tokenizer = AutoTokenizer.from_pretrained("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
     model = LlamaForCausalLM.from_pretrained("TinyLlama/TinyLlama-1.1B-Chat-v1.0").cuda().half()
     model = model.eval()
 
-    max_batch_size: int = 8
-    max_output_len: int = 512
-    max_input_len: int = 64
-
     inputs_token_ids = generate_inputs(10 * max_batch_size, min_length=10, max_length=max_input_len)
 
-    do_sample = True
-    top_p = 0.5
-    top_k = 50
-
     if use_engine:
-        inference_config = InferenceConfig(max_output_len=max_output_len, prompt_template=prompt_template)
+        inference_config = InferenceConfig(
+            max_batch_size=max_batch_size, max_output_len=max_output_len, prompt_template=prompt_template
+        )
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         assert inference_engine.generation_config.max_new_tokens == max_output_len
         inference_engine.add_request(prompts_token_ids=inputs_token_ids)
@@ -73,20 +70,20 @@ def check_inference_engine(use_engine=False, prompt_template=None):
 
 
 @parameterize("prompt_template", [None, "llama"])
-def check_continous_batching(prompt_template):
+def check_continuous_batching(prompt_template):
     check_inference_engine(use_engine=True, prompt_template=prompt_template)
 
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, port=port, host="localhost")
-    check_continous_batching()
+    check_continuous_batching()
 
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-def test_continous_batching():
+def test_continuous_batching():
     spawn(run_dist, 1)
 
 
 if __name__ == "__main__":
-    test_continous_batching()
+    test_continuous_batching()
