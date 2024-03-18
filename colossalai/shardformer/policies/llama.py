@@ -24,14 +24,16 @@ class LlamaPolicy(Policy):
         pass
 
     def preprocess(self):
-        vocab_size = self.model.config.vocab_size
-        multiple = self.shard_config.make_vocab_size_divisible_by
+        # reshape the embedding layer
+        r"""
+        Reshape the Embedding layer to make the embedding dimension divisible by world_size
+        """
         if self.shard_config.enable_tensor_parallelism:
+            vocab_size = self.model.config.vocab_size
             world_size = self.shard_config.tensor_parallel_size
-            multiple = multiple * world_size // (math.gcd(multiple, world_size))
-        if vocab_size % multiple != 0:
-            new_vocab_size = vocab_size + multiple - vocab_size % multiple
-            self.resize_token_embeddings(self.model, new_vocab_size)
+            if vocab_size % world_size != 0:
+                new_vocab_size = vocab_size + world_size - vocab_size % world_size
+                self.model.resize_token_embeddings(new_vocab_size)
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
