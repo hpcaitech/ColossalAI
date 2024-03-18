@@ -141,10 +141,11 @@ def check_spec_dec(num_layers, max_length):
         intermediate_size=8192,
         large_hidden_size=4096,
         large_num_attention_heads=32,
-        num_hidden_layers=1,
+        num_hidden_layers=num_layers,
     )
     drafter_model = LlamaForCausalLM(glide_config)
-    glide_model = engine.convert_to_glide_model(drafter_model, drafter_model.state_dict())  # dummy state dict
+    # dummy state dict
+    glide_model = engine.convert_to_glide_model(drafter_model, drafter_model.state_dict(), strict=False)
 
     engine.enable_spec_dec(glide_model, use_glide_drafter=True)
 

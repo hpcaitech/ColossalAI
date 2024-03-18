@@ -220,12 +220,16 @@ class InferenceEngine:
         self.use_glide = False
         self.use_spec_dec = False
 
-    def convert_to_glide_model(self, model: nn.Module, state_dict: Union[Dict, OrderedDict]) -> nn.Module:
+    def convert_to_glide_model(
+        self, model: nn.Module, state_dict: Union[Dict, OrderedDict], strict: bool = True
+    ) -> nn.Module:
         """
         Convert the given model to a glide model.
 
         Args:
             model (nn.Module): The drafter model to be converted to GLIDE model.
+            state_dict (Union[Dict, OrderedDict]): The state dict to be loaded to the converted model.
+            strict (bool, optional): Whether to strictly load the state dict. Defaults to True.
 
         Returns:
             nn.Module: The converted glide model.
@@ -239,7 +243,7 @@ class InferenceEngine:
 
         # shard the drafter model add corresponding GLIDE layer
         glide_model = self._shardformer(model, policy())
-        glide_model.load_state_dict(state_dict)
+        glide_model.load_state_dict(state_dict, strict=strict)
 
         return glide_model
 
