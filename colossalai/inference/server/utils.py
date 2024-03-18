@@ -14,3 +14,13 @@ class NumericIDGenerator:
 
 
 id_generator = NumericIDGenerator()
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: Any
+
+
+class ChatCompletionResponseStreamChoice(BaseModel):
+    index: int
+    message: ChatMessage

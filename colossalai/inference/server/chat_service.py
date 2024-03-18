@@ -1,18 +1,11 @@
 import asyncio
 import codecs
-from typing import Any
 
 from fastapi import Request
-from pydantic import BaseModel
 
 from colossalai.inference.core.async_engine import AsyncInferenceEngine
 
-from .utils import id_generator
-
-
-class ChatMessage(BaseModel):
-    role: str
-    content: Any
+from .utils import ChatCompletionResponseStreamChoice, ChatMessage
 
 
 class ChatServing:
@@ -56,22 +49,40 @@ class ChatServing:
     async def chat_completion_stream_generator(self, request, request_dict, result_generator, request_id: int):
         # Send first response for each request.n (index) with the role
         role = self.get_chat_request_role(request, request_dict)
-        choice_data = ChatMessage(role=role, content=result_generator)
+        n = request_dict.get("n", 1)
+        echo = request_dict.get("echo", False)
+        for i in range(n):
+            choice_data = ChatCompletionResponseStreamChoice(index=i, message=ChatMessage(role=role))
+            data = choice_data.model_dump_json(exclude_unset=True)
+            yield f"data: {data}\n\n"
 
-        if "echo" in request_dict:
+        # Send response to echo the input portion of the last message
+        if echo:
             last_msg_content = ""
             if (
-                request.messages
-                and isinstance(request.messages, list)
-                and request.messages[-1].get("content")
-                and request.messages[-1].get("role") == role
+                request_dict["messages"]
+                and isinstance(request_dict["messages"], list)
+                and request_dict["messages"][-1].get("content")
+                and request_dict["messages"][-1].get("role") == role
             ):
-                last_msg_content = request.messages[-1]["content"]
+                last_msg_content = request_dict["messages"][-1]["content"]
+            if last_msg_content:
+                for i in range(n):
+                    choice_data = ChatCompletionResponseStreamChoice(
+                        index=i, message=ChatMessage(content=last_msg_content)
+                    )
+                    data = choice_data.model_dump_json(exclude_unset=True)
+                    yield f"data: {data}\n\n"
 
-        full_message = last_msg_content + choice_data.content
-        choice_data.content = full_message
+        # Send response for each token for each request.n (index)
+        [""] * n
+        [0] * n
+        choice_data = ChatMessage(content=result_generator.text)
+        data = chunk.model_dump_json(exclude_unset=True, exclude_none=True)
+        yield f"data: {data}\n\n"
 
-        yield choice_data
+    # Send the final done message after all response.n are finished
+    yield "data: [DONE]\n\n"
 
     async def chat_completion_full_generator(
         self,
@@ -80,12 +91,12 @@ class ChatServing:
         result_generator,
         request_id,
     ):
-        async for res in result_generator:
-            if await request.is_disconnected():
-                # Abort the request if the client disconnects.
-                await self.engine.abort(request_id)
-                return {"error_msg": "Client disconnected"}
-            final_res = res
+        if await request.is_disconnected():
+            # Abort the request if the client disconnects.
+            await self.engine.abort(request_id)
+            return {"error_msg": "Client disconnected"}
+
+        final_res = res
         assert final_res is not None
 
         role = self.get_chat_request_role(request, request_dict)
@@ -104,11 +115,11 @@ class ChatServing:
             full_message = last_msg_content + choice_data.content
             choice_data.content = full_message
 
-        print(choice_data)
         return choice_data
 
     def get_chat_request_role(self, request: Request, request_dict: dict) -> str:
-        if "add_generation_prompt" in request_dict:
+        add_generation_prompt = request_dict.get("add_generation_prompt", False)
+        if add_generation_prompt:
             return self.response_role
         else:
             return request_dict["messages"][-1]["role"]
