@@ -5,11 +5,9 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
-from colossalai.lazy.lazy_init import LazyInitContext
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
@@ -245,46 +243,3 @@ class Policy(ABC):
             stage_indices.append([start_idx, end_idx])
 
         return stage_indices[0] if num_model_chunks == 1 else stage_indices
-    
-
-    def resize_token_embeddings(self, model, new_num_tokens):
-        input_embeddings = self.model.get_input_embeddings()
-        if input_embeddings is not None:
-            self._resize_token_embeddings(model, input_embeddings, new_num_tokens)
-        output_embedddings = self.model.get_output_embeddings()
-        if output_embedddings is not None:
-            self._resize_lm_head(model, output_embedddings, new_num_tokens)
-
-    def _resize_token_embeddings(self, model, embedding, new_num_tokens):
-        LazyInitContext.materialize(embedding)
-        old_num_tokens = embedding.num_embeddings
-        input_embedding_dim = embedding.embedding_dim
-        old_weight_data = embedding.weight.data
-        embedding.num_embeddings = new_num_tokens
-        if embedding.padding_idx is not None and embedding.padding_idx > new_num_tokens:
-            embedding.padding_idx = embedding.padding_idx - (old_num_tokens-new_num_tokens)
-        factory_kwargs = {'device': embedding.weight.device, 'dtype': embedding.weight.dtype}
-        embedding.weight.data = torch.empty((new_num_tokens, input_embedding_dim), **factory_kwargs)
-        embedding.reset_parameters()
-        model._init_weights(embedding)
-        # Copy token embeddings from the previous weights
-        num_tokens_to_copy = min(old_num_tokens, new_num_tokens)
-        embedding.weight.data[:num_tokens_to_copy, :] = old_weight_data[:num_tokens_to_copy, :]
-
-    def _resize_lm_head(self, model, lm_head, new_num_tokens):
-        LazyInitContext.materialize(lm_head)
-        old_num_tokens, lm_head_dim = (lm_head.weight.size())
-        old_weight_data = lm_head.weight.data
-        old_bias_data = lm_head.bias.data if lm_head.bias is not None else None
-        lm_head.out_features = new_num_tokens
-        factory_kwargs = {'device': lm_head.weight.device, 'dtype': lm_head.weight.dtype}
-        lm_head.weight.data = torch.empty((new_num_tokens, lm_head_dim), **factory_kwargs)
-        if lm_head.bias is not None:
-            lm_head.bias.data = torch.empty(new_num_tokens, **factory_kwargs)
-        lm_head.reset_parameters()
-        model._init_weights(lm_head)
-        # Copy token embeddings from the previous weights
-        num_tokens_to_copy = min(old_num_tokens, new_num_tokens)
-        lm_head.weight.data[:num_tokens_to_copy, :] = old_weight_data[:num_tokens_to_copy, :]
-        if lm_head.bias is not None:
-            lm_head.bias.data[:num_tokens_to_copy] = old_bias_data[:num_tokens_to_copy]
