@@ -61,6 +61,7 @@ class Sequence:
         pad_token_id (int): The pad token id for this inference process.
         max_output_len (int): Maximum output length.
         ignore_eos(bool): Whether to ignore the EOS token and continue generating tokens when encountering the EOS token.
+        output(str): The output of sequence
     """
 
     request_id: int
@@ -73,6 +74,7 @@ class Sequence:
     max_output_len: int = 256
     # NOTE(caidi) This is a temporary solution. It's better to move the logic to turn on or off the flag in sampling module in future.
     ignore_eos: bool = False
+    output: str = None
 
     def __post_init__(self):
         self.output_token_id = []

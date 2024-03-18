@@ -620,10 +620,10 @@ class InferenceEngine:
             prompts_token_ids = self.tokenizer.batch_encode_plus(prompts, padding=self.inference_config.pad_input)[
                 "input_ids"
             ]
-            print(prompts_token_ids)
 
         if isinstance(prompts_token_ids, list):
-            pass
+            if isinstance(prompts_token_ids[0], torch.Tensor):
+                prompts_token_ids = [prompt_token_ids.tolist() for prompt_token_ids in prompts_token_ids]
         elif isinstance(prompts_token_ids, torch.Tensor) or isinstance(prompts_token_ids, np.ndarray):
             prompts_token_ids = prompts_token_ids.tolist()
         else:
@@ -738,8 +738,6 @@ class InferenceEngine:
             logits = logits[:, -1, :]
         next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
         self.request_handler.append_next_tokens(next_tokens)
-
-        print("in step", logits)
 
         self.request_handler.search_tokens(self.generation_config, logits)
         finished_sequences = self.request_handler.update()
