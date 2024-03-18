@@ -1,15 +1,22 @@
+import os
 from itertools import count
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, OrderedDict, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
-from transformers import GenerationConfig, PreTrainedTokenizer, PreTrainedTokenizerFast
+from transformers import (
+    AutoModelForCausalLM,
+    GenerationConfig,
+    PretrainedConfig,
+    PreTrainedTokenizer,
+    PreTrainedTokenizerFast,
+)
 
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.modeling.policy import model_policy_map
-from colossalai.inference.spec import Drafter
+from colossalai.inference.spec import Drafter, GlideInput
 from colossalai.inference.struct import Sequence
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -66,6 +73,7 @@ class InferenceEngine:
         self.use_spec_dec = False
         self.drafter_model = None
         self.drafter = None
+        self.use_glide = False
         self.n_spec_tokens = self.inference_config.max_n_spec_tokens
 
         if model_policy is None:
@@ -141,7 +149,12 @@ class InferenceEngine:
         shard_model, _ = shardformer.optimize(model, model_policy)
         return shard_model
 
-    def enable_spec_dec(self, drafter_model: nn.Module = None, n_spec_tokens: int = None) -> None:
+    def enable_spec_dec(
+        self,
+        drafter_model: nn.Module = None,
+        n_spec_tokens: int = None,
+        use_glide_drafter: bool = False,
+    ) -> None:
         """Initialize drafter (if it has not yet), and enable Speculative Decoding for subsequent generations.
 
         Args:
@@ -149,6 +162,8 @@ class InferenceEngine:
                 If provided, the previous drafter and drafter model, if exist, will be overwritten.
             n_spec_tokens (Optional[int]): The number of tokens to speculate in each round of speculating-verifying.
                 If not provided, `max_n_spec_tokens` in InferenceConfig will be used.
+            use_glide_drafter (bool): Whether to use glide model for speculative decoding. Defaults to False.
+                If True, the drafter model will be replaced by a glide model.
 
         ```python
         ...
@@ -181,6 +196,7 @@ class InferenceEngine:
                 device=self.device,
                 dtype=self.dtype,
             )
+            self.use_glide = use_glide_drafter
         self.request_handler.set_spec_dec_mode(self.n_spec_tokens)
         # using speculative decoding for subsequent generations
         self.use_spec_dec = True
@@ -190,6 +206,7 @@ class InferenceEngine:
         self.request_handler.unset_spec_dec_mode()
         # set back to the maximum number of tokens to speculate
         self.n_spec_tokens = self.inference_config.max_n_spec_tokens
+        self.use_glide = False
         self.use_spec_dec = False
 
     def clear_spec_dec(self) -> None:
@@ -200,7 +217,75 @@ class InferenceEngine:
             self.drafter_model = None
             self.drafter = None
             torch.cuda.empty_cache()
+        self.use_glide = False
         self.use_spec_dec = False
+
+    def convert_to_glide_model(
+        self, model: nn.Module, state_dict: Union[Dict, OrderedDict], strict: bool = True
+    ) -> nn.Module:
+        """
+        Convert the given model to a glide model.
+
+        Args:
+            model (nn.Module): The drafter model to be converted to GLIDE model.
+            state_dict (Union[Dict, OrderedDict]): The state dict to be loaded to the converted model.
+            strict (bool, optional): Whether to strictly load the state dict. Defaults to True.
+
+        Returns:
+            nn.Module: The converted glide model.
+        """
+        # get the policy corresponding to the drafter model from policy map
+        model_type = model.config.model_type
+        glide_type = f"glide_{model_type}"
+        if glide_type not in model_policy_map:
+            raise ValueError(f"GLIDE type {glide_type} is not supported yet. Please check the model type {model_type}")
+        policy = model_policy_map[glide_type]
+
+        # shard the drafter model add corresponding GLIDE layer
+        glide_model = self._shardformer(model, policy())
+        glide_model.load_state_dict(state_dict, strict=strict)
+
+        return glide_model
+
+    def glide_drafter_from_pretrained(self, model_path: Union[str, os.PathLike], config: PretrainedConfig) -> nn.Module:
+        """
+        Load and prepare a pretrained glide model used as a drafter model, from the given path.
+
+        Usage:
+        ```python
+        glide_config = GlideLlamaConfig(
+            intermediate_size=8192,
+            large_hidden_size=4096,
+            large_num_attention_heads=32,
+            num_hidden_layers=1,
+        )
+        # create a GLIDE drafte model
+        drafter_model = engine.glide_drafter_from_pretrained(drafter_model_path, glide_config)
+        ```
+
+        Args:
+            model_path (Union[str, os.PathLike]): The path to the pretrained glide model.
+            config: Glide model config.
+
+        Returns:
+            nn.Module: The model ready to be used as a GLIDE drafter model.
+        """
+        drafter_model = AutoModelForCausalLM.from_pretrained(config)
+        # For now, we try to support the same set of base models for glide models (drafter)
+        # as those for main models (verifier)
+        model_name = drafter_model.__class__.__name__
+        if model_name not in _supported_models:
+            raise ValueError(f"Model {model_name} is not supported yet as a glide drafter.")
+
+        # load params from the model path
+        files = [f for f in os.listdir(model_path) if f.endswith(".pth") or f.endswith(".pt") or f.endswith(".bin")]
+        # assume only use a single checkpoint file for drafter model
+        file_path = os.path.join(model_path, files[-1])
+        state_dict = torch.load(file_path)
+
+        drafter_model = self.convert_to_glide_model(drafter_model, state_dict)
+
+        return drafter_model
 
     def steps_spec_dec(self) -> List[Sequence]:
         """
@@ -216,6 +301,7 @@ class InferenceEngine:
         input_ids = batch.get_1D_inputs()  # bsz 1 for drafter model
 
         # 1. Prefill small model (Drafter) - fill past kv cache for drafter model
+        # NOTE For glide drafter models, we won't actually apply glide during prefill stage
         drafter_out = self.drafter.speculate(input_ids, 1, None)
         next_token_ids_spec = drafter_out.next_tokens
         drafter_past_key_values = drafter_out.past_key_values
@@ -238,7 +324,21 @@ class InferenceEngine:
             assert batch.current_batch_size == 1, "Only support bsz 1 for speculative decoding for now."
 
             # 3. Decoding - Drafter model speculates `n` tokens
-            drafter_out = self.drafter.speculate(input_ids, self.n_spec_tokens, drafter_past_key_values)
+            glide_input = None
+            if self.use_glide:
+                glide_input = GlideInput(
+                    batch.get_block_table_tensor(),
+                    self.k_cahce[-1],  # use kv cahces of the last layer
+                    self.v_cache[-1],
+                    batch.get_sequence_lengths(),
+                )
+
+            drafter_out = self.drafter.speculate(
+                input_ids,
+                self.n_spec_tokens,
+                drafter_past_key_values,
+                glide_input=glide_input,
+            )
             next_token_ids_spec = drafter_out.next_tokens
             drafter_past_key_values = drafter_out.past_key_values
             drafter_spec_length = drafter_out.speculated_length
@@ -251,6 +351,8 @@ class InferenceEngine:
                 already_allocated_kv_len = cur_length
 
             # 4. Decoding - Main model verifies `n` tokens in parallel
+            if drafter_spec_length < batch.num_tokens_to_verify:
+                batch.set_use_spec_dec(num_tokens_to_verify=drafter_spec_length)
             logits = self.model(batch, self.k_cahce, self.v_cache)
             next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
 
@@ -260,6 +362,7 @@ class InferenceEngine:
 
             # revoke appended tokens for each Sequence in the current batch
             batch.revoke_batch_tokens(drafter_spec_length - n_matches)  # revoke drafted tokens
+
             # append the last correct token generated by the main model
             self.request_handler.append_next_tokens(next_tokens[n_matches].unsqueeze(0))
 
@@ -267,6 +370,7 @@ class InferenceEngine:
             drafter_past_key_values = Drafter.trim_kv_cache(
                 drafter_past_key_values, drafter_spec_length - n_matches - 1
             )
+
             # prepare inputs for the next round of speculation
             n = 1 if n_matches < drafter_spec_length else 2
             input_ids = batch.get_1D_inputs_spec_dec(n)
@@ -275,6 +379,11 @@ class InferenceEngine:
             finished_sequences = self.request_handler.update()
             if len(finished_sequences) > 0:
                 break
+
+        # Reset back the number of speculated tokens of the batch,
+        # this is used to handle the last round of speculation, in which case the number of speculated tokens
+        # by the drafter is less than the number of speculated tokens set to the engine.
+        batch.set_use_spec_dec(num_tokens_to_verify=self.n_spec_tokens)
 
         return finished_sequences
 
