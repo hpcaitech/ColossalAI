@@ -197,6 +197,7 @@ class RequestHandler:
                             break
 
                     num_seqs_to_add = min(len(lst), self.max_batch_size - self.running_list.total_seq_num)
+                    # for now the recycle logic is not working
                     remove_list.extend(lst[:num_seqs_to_add])
                     self.running_list.extend(lst[:num_seqs_to_add])
 
