@@ -174,7 +174,7 @@ def _ring_as_gather(func, input_to_gather=None, input_local=None, process_group=
     group_size = dist.get_world_size(process_group)
     cur_rank = dist.get_rank(process_group)
 
-    #output_tensors = [torch.empty((input_shape[0], input_shape[1], weight_shape[0])) for _ in range(group_size)]
+    # output_tensors = [torch.empty((input_shape[0], input_shape[1], weight_shape[0])) for _ in range(group_size)]
 
     # initialization of ring communication
     recv_rank = cur_rank + 1 if cur_rank + 1 < group_size else 0
@@ -279,7 +279,7 @@ class _GatherForwardReduceScatterBackward(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         dim = ctx.dim
-        process_group = ctx.process_group 
+        process_group = ctx.process_group
 
         # do reduce-scatter
         new_shape = list(grad_output.shape)
@@ -287,7 +287,9 @@ class _GatherForwardReduceScatterBackward(torch.autograd.Function):
             new_shape[dim] % dist.get_world_size(process_group) == 0
         ), f"The dimension to split ({new_shape[dim]}) is not a multiple of tensor parallel size ({dist.get_world_size(process_group)}). "
         new_shape[dim] = new_shape[dim] // dist.get_world_size(process_group)
-        grad_list = [item.contiguous() for item in torch.chunk(grad_output, dist.get_world_size(process_group), dim=dim)]
+        grad_list = [
+            item.contiguous() for item in torch.chunk(grad_output, dist.get_world_size(process_group), dim=dim)
+        ]
         output = torch.empty(new_shape, dtype=grad_output.dtype, device=grad_output.device)
         dist.reduce_scatter(output, grad_list, group=process_group)
 
@@ -316,13 +318,13 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         if ring is True:
             input_to_gather = {}
             input_local = {}
-            input_to_gather['input'] = input_
-            input_local['weight'] = weight
+            input_to_gather["input"] = input_
+            input_local["weight"] = weight
 
             output = _ring_as_gather(
-                F.linear, 
-                input_to_gather=input_to_gather, 
-                input_local=input_local, 
+                F.linear,
+                input_to_gather=input_to_gather,
+                input_local=input_local,
                 process_group=process_group,
             )
 
@@ -440,7 +442,9 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         return output, grad_weight, grad_bias, None, None, None, None, None
 
 
-def _ring_as_reducescatter(func, input_to_reducescatter=None, input_local=None, process_group=None, reducescatter_dim=1):
+def _ring_as_reducescatter(
+    func, input_to_reducescatter=None, input_local=None, process_group=None, reducescatter_dim=1
+):
     # currently only support one single tensor as output
     group_size = dist.get_world_size(process_group)
     cur_rank = dist.get_rank(process_group)
@@ -513,16 +517,16 @@ class _LinearWithReduceScatterForwardGatherBackward(torch.autograd.Function):
         if ring is True:
             input_to_reducescatter = {}
             input_local = {}
-            input_to_reducescatter['input'] = input_
-            input_local['weight'] = weight
+            input_to_reducescatter["input"] = input_
+            input_local["weight"] = weight
 
             if bias is not None:
-                input_to_reducescatter['bias'] = bias
+                input_to_reducescatter["bias"] = bias
 
             output = _ring_as_reducescatter(
-                F.linear, 
-                input_to_reducescatter=input_to_reducescatter, 
-                input_local=input_local, 
+                F.linear,
+                input_to_reducescatter=input_to_reducescatter,
+                input_local=input_local,
                 process_group=process_group,
             )
         else:
@@ -629,15 +633,15 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         if ring is True:
             input_to_gather = {}
             input_local = {}
-            input_to_gather['input'] = input_
-            input_local['other'] = weight
+            input_to_gather["input"] = input_
+            input_local["other"] = weight
 
             output = _ring_as_gather(
-                torch.matmul, 
-                input_to_gather=input_to_gather, 
-                input_local=input_local, 
+                torch.matmul,
+                input_to_gather=input_to_gather,
+                input_local=input_local,
                 process_group=process_group,
-                gather_dim=dim
+                gather_dim=dim,
             )
 
         else:
@@ -739,13 +743,19 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, input_, dim, process_group):
+    def forward(ctx, input_, dim, process_group, grad_scale=None):
         ctx.process_group = process_group
         ctx.dim = dim
+        ctx.grad_scale = grad_scale
         return _split(input_, dim, process_group)
 
     @staticmethod
     def backward(ctx, grad_output):
+        if ctx.grad_scale is not None:
+            if ctx.grad_scale == "up":
+                grad_output = grad_output * dist.get_world_size(ctx.process_group)
+            elif ctx.grad_scale == "down":
+                grad_output = grad_output / dist.get_world_size(ctx.process_group)
         return _gather(grad_output, ctx.dim, ctx.process_group), None, None
 
 
@@ -796,13 +806,19 @@ class _GatherForwardSplitBackward(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, input_, dim, process_group):
+    def forward(ctx, input_, dim, process_group, grad_scale=None):
         ctx.process_group = process_group
         ctx.dim = dim
+        ctx.grad_scale = grad_scale
         return _gather(input_, dim, process_group)
 
     @staticmethod
     def backward(ctx, grad_output):
+        if ctx.grad_scale is not None:
+            if ctx.grad_scale == "up":
+                grad_output = grad_output * dist.get_world_size(ctx.process_group)
+            elif ctx.grad_scale == "down":
+                grad_output = grad_output / dist.get_world_size(ctx.process_group)
         return _split(grad_output, ctx.dim, ctx.process_group), None, None
 
 
