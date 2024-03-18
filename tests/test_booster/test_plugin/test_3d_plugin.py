@@ -17,8 +17,6 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from tests.kit.model_zoo import model_zoo
-from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
-from colossalai.checkpoint_io.utils import gather_distributed_param
 
 
 class RandomDataset(Dataset):
