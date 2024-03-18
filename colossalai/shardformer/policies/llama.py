@@ -220,7 +220,7 @@ class LlamaPolicy(Policy):
         if use_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_size),
+                    "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_group, sp_size),
                 },
                 policy=policy,
                 target_key=LlamaAttention,

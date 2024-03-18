@@ -20,9 +20,7 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import (
     _gather,
     all_to_all_comm,
-    gather_forward_reducescatter_backward,
     gather_forward_split_backward,
-    reducescatter_forward_gather_backward,
     split_forward_gather_backward,
 )
 from colossalai.shardformer.shard import ShardConfig
@@ -439,7 +437,7 @@ class LlamaPipelineForwards:
             return {"hidden_states": hidden_states}
 
 
-def get_llama_flash_attention_forward(shard_config, sp_mode, sp_size):
+def get_llama_flash_attention_forward(shard_config, sp_mode, sp_group, sp_size):
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
     llama_version = 2
@@ -471,9 +469,9 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_size):
 
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
-            query_states = all_to_all_comm(query_states)
-            key_states = all_to_all_comm(key_states)
-            value_states = all_to_all_comm(value_states)
+            query_states = all_to_all_comm(query_states, sp_group)
+            key_states = all_to_all_comm(key_states, sp_group)
+            value_states = all_to_all_comm(value_states, sp_group)
             bsz, q_len, _ = query_states.size()
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
@@ -530,7 +528,7 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_size):
 
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
-            attn_output = all_to_all_comm(attn_output, None, scatter_dim=1, gather_dim=2)
+            attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)
         attn_output = self.o_proj(attn_output)
 
         return attn_output, None, past_key_value
@@ -1161,7 +1159,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
         hidden_states = self.norm(hidden_states)
 
         # Todo: Maybe this line can be optimized
-        hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
+        hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale="up")
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -1282,75 +1280,5 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-
-    return forward
-
-
-def get_llama_decoder_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        output_attentions: Optional[bool] = False,
-        use_cache: Optional[bool] = False,
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-        """
-        Args:
-            hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
-            attention_mask (`torch.FloatTensor`, *optional*): attention mask of size
-                `(batch, 1, tgt_len, src_len)` where padding elements are indicated by very large negative values.
-            output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more detail.
-            use_cache (`bool`, *optional*):
-                If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
-                (see `past_key_values`).
-            past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
-        """
-
-        residual = hidden_states
-
-        hidden_states = self.input_layernorm(hidden_states)
-
-        if sp_mode == "split_gather":
-            hidden_states = gather_forward_reducescatter_backward(hidden_states, sp_group, 1)
-
-        # Self Attention
-        hidden_states, self_attn_weights, present_key_value = self.self_attn(
-            hidden_states=hidden_states,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_value=past_key_value,
-            output_attentions=output_attentions,
-            use_cache=use_cache,
-        )
-
-        if sp_mode == "split_gather":
-            hidden_states = reducescatter_forward_gather_backward(hidden_states, sp_group, 1)
-        hidden_states = residual + hidden_states
-
-        # Fully Connected
-        residual = hidden_states
-        hidden_states = self.post_attention_layernorm(hidden_states)
-        if sp_mode == "split_gather":
-            hidden_states = gather_forward_reducescatter_backward(hidden_states, sp_group, 1)
-
-        hidden_states = self.mlp(hidden_states)
-
-        if sp_mode == "split_gather":
-            hidden_states = reducescatter_forward_gather_backward(hidden_states, sp_group, 1)
-        hidden_states = residual + hidden_states
-
-        outputs = (hidden_states,)
-
-        if output_attentions:
-            outputs += (self_attn_weights,)
-
-        if use_cache:
-            outputs += (present_key_value,)
-
-        return outputs
 
     return forward
