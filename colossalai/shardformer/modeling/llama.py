@@ -270,6 +270,7 @@ class LlamaPipelineForwards:
             stage_manager=stage_manager,
             hidden_states=hidden_states,
             stage_index=stage_index,
+            shard_config=shard_config,
         )
         past_key_values = None
 
@@ -363,6 +364,7 @@ class LlamaPipelineForwards:
             stage_manager=stage_manager,
             hidden_states=hidden_states,
             stage_index=stage_index,
+            shard_config=shard_config,
         )
 
         if input_ids is not None:
