@@ -49,7 +49,7 @@ async def generate(request: Request) -> Response:
     """
     request_dict = await request.json()
     prompt = request_dict.pop("prompt")
-    stream = request_dict.pop("stream", None)
+    stream = request_dict.pop("stream", "false").lower()
 
     request_id = id_generator()
     generation_config = get_generation_config(request_dict)
@@ -61,7 +61,7 @@ async def generate(request: Request) -> Response:
             ret = {"text": request_output[len(prompt) :]}
             yield (json.dumps(ret) + "\0").encode("utf-8")
 
-    if stream:
+    if stream == "true":
         return StreamingResponse(stream_results())
 
     # Non-streaming case
