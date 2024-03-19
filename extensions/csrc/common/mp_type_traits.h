@@ -8,26 +8,22 @@ namespace colossalAI {
 namespace common {
 
 template <typename T>
-class MPTypeTrait {
- public:
+struct MPTypeTrait {
   using Type = float;
 };
 
 template <>
-class MPTypeTrait<float> {
- public:
+struct MPTypeTrait<float> {
   using Type = float;
 };
 
 template <>
-class MPTypeTrait<at::Half> {
- public:
+struct MPTypeTrait<at::Half> {
   using Type = float;
 };
 
 template <>
-class MPTypeTrait<at::BFloat16> {
- public:
+struct MPTypeTrait<at::BFloat16> {
   using Type = float;
 };
 
