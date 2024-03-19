@@ -360,7 +360,6 @@ void apply_rotary_embedding(
 
     using m_scalar_t = typename colossalAI::common::ScalarTypeTrait<high_precision, scalar_t>::Type;
 
-    m_scalar_t = scalar_t
     int vec_size = get_vec_size<scalar_t>(query);
 
     if ((head_dim / 2) % vec_size != 0) {
