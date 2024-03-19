@@ -87,6 +87,9 @@ def check_linear_1d_row(lazy_init: bool, seq_parallel: bool):
     linear.load_state_dict(linear_row.state_dict())
     linear_row.load_state_dict(linear.state_dict())
 
+    for p in linear_row.parameters():
+        pass
+
     # check computation correctness
     # [batch_size, seq_len, hidden_size]
     x = torch.rand(2, 4, 32).cuda()

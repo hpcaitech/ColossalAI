@@ -459,6 +459,7 @@ class DeviceMesh:
 
                 # replace the local rank in the given dimension with the
                 # local rank of the current process iterated
+
                 process_coordinates[dim] = _local_rank
                 processes_in_the_same_process_group[dim].append(process_coordinates)
 
