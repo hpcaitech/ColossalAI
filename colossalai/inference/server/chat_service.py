@@ -1,11 +1,14 @@
 import asyncio
 import codecs
+import logging
 
 from fastapi import Request
 
 from colossalai.inference.core.async_engine import AsyncInferenceEngine
 
-from .utils import ChatCompletionResponseStreamChoice, ChatMessage
+from .utils import ChatCompletionResponseStreamChoice, ChatMessage, DeltaMessage, id_generator
+
+logger = logging.getLogger("colossalai-inference")
 
 
 class ChatServing:
@@ -25,7 +28,7 @@ class ChatServing:
     async def create_chat(self, request: Request, generation_config):
         request_dict = await request.json()
         messages = request_dict["messages"]
-        stream = request_dict.pop("stream", False)
+        stream = request_dict.pop("stream", "false").lower()
         add_generation_prompt = request_dict.pop("add_generation_prompt", False)
         request_id = id_generator()
         try:
@@ -41,7 +44,7 @@ class ChatServing:
         self.engine.engine.generation_config = generation_config
         result_generator = self.engine.generate(request_id, prompt=prompt)
 
-        if stream == True:
+        if stream == "true":
             return self.chat_completion_stream_generator(request, request_dict, result_generator, request_id)
         else:
             return await self.chat_completion_full_generator(request, request_dict, result_generator, request_id)
@@ -50,14 +53,14 @@ class ChatServing:
         # Send first response for each request.n (index) with the role
         role = self.get_chat_request_role(request, request_dict)
         n = request_dict.get("n", 1)
-        echo = request_dict.get("echo", False)
+        echo = request_dict.get("echo", "false").lower()
         for i in range(n):
-            choice_data = ChatCompletionResponseStreamChoice(index=i, message=ChatMessage(role=role))
+            choice_data = ChatCompletionResponseStreamChoice(index=i, message=DeltaMessage(role=role))
             data = choice_data.model_dump_json(exclude_unset=True)
             yield f"data: {data}\n\n"
 
         # Send response to echo the input portion of the last message
-        if echo:
+        if echo == "true":
             last_msg_content = ""
             if (
                 request_dict["messages"]
@@ -69,7 +72,7 @@ class ChatServing:
             if last_msg_content:
                 for i in range(n):
                     choice_data = ChatCompletionResponseStreamChoice(
-                        index=i, message=ChatMessage(content=last_msg_content)
+                        index=i, message=DeltaMessage(content=last_msg_content)
                     )
                     data = choice_data.model_dump_json(exclude_unset=True)
                     yield f"data: {data}\n\n"
@@ -77,12 +80,13 @@ class ChatServing:
         # Send response for each token for each request.n (index)
         [""] * n
         [0] * n
-        choice_data = ChatMessage(content=result_generator.text)
-        data = chunk.model_dump_json(exclude_unset=True, exclude_none=True)
+        result = await result_generator
+        choice_data = DeltaMessage(content=result.output)
+        data = choice_data.model_dump_json(exclude_unset=True, exclude_none=True)
         yield f"data: {data}\n\n"
 
-    # Send the final done message after all response.n are finished
-    yield "data: [DONE]\n\n"
+        # Send the final done message after all response.n are finished
+        yield "data: [DONE]\n\n"
 
     async def chat_completion_full_generator(
         self,
@@ -96,13 +100,14 @@ class ChatServing:
             await self.engine.abort(request_id)
             return {"error_msg": "Client disconnected"}
 
-        final_res = res
-        assert final_res is not None
+        result = await result_generator
+        assert result is not None
 
         role = self.get_chat_request_role(request, request_dict)
-        choice_data = ChatMessage(role=role, content=final_res)
+        choice_data = ChatMessage(role=role, content=result.output)
+        echo = request_dict.get("echo", "false").lower()
 
-        if "echo" in request_dict:
+        if echo == "true":
             last_msg_content = ""
             if (
                 request.messages
@@ -134,13 +139,8 @@ class ChatServing:
                 # ensure we decode so our escape are interpreted correctly
                 self.tokenizer.chat_template = codecs.decode(chat_template, "unicode_escape")
 
-        #     logger.info(
-        #         f"Using supplied chat template:\n{self.tokenizer.chat_template}"
-        #     )
-        # elif self.tokenizer.chat_template is not None:
-        #     logger.info(
-        #         f"Using default chat template:\n{self.tokenizer.chat_template}"
-        #     )
-        # else:
-        #     logger.warning(
-        #         "No chat template provided. Chat API will not work.")
+            logger.info(f"Using supplied chat template:\n{self.tokenizer.chat_template}")
+        elif self.tokenizer.chat_template is not None:
+            logger.info(f"Using default chat template:\n{self.tokenizer.chat_template}")
+        else:
+            logger.warning("No chat template provided. Chat API will not work.")

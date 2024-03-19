@@ -1,3 +1,8 @@
+from typing import Any, Optional
+
+from pydantic import BaseModel
+
+
 # make it singleton
 class NumericIDGenerator:
     _instance = None
@@ -21,6 +26,11 @@ class ChatMessage(BaseModel):
     content: Any
 
 
+class DeltaMessage(BaseModel):
+    role: Optional[str] = None
+    content: Optional[Any] = None
+
+
 class ChatCompletionResponseStreamChoice(BaseModel):
     index: int
-    message: ChatMessage
+    message: DeltaMessage

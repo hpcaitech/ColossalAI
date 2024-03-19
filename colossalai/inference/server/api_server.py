@@ -81,12 +81,12 @@ async def generate(request: Request) -> Response:
 @app.post("/v1/completion")
 async def create_completion(request: Request):
     request_dict = await request.json()
-    stream = request_dict.pop("stream", False)
+    stream = request_dict.pop("stream", "false").lower()
     generation_config = get_generation_config(request_dict)
     result = await completion_serving.create_completion(request, generation_config)
 
     ret = {"request_id": result.request_id, "text": result.output}
-    if stream:
+    if stream == "true":
         return StreamingResponse(content=json.dumps(ret) + "\0", media_type="text/event-stream")
     else:
         return JSONResponse(content=ret)
@@ -95,10 +95,14 @@ async def create_completion(request: Request):
 @app.post("/v1/chat")
 async def create_chat(request: Request):
     request_dict = await request.json()
+
+    stream = request_dict.get("stream", "false").lower()
     generation_config = get_generation_config(request_dict)
-    generator = await chat_serving.create_chat(request, generation_config)
-    output = tokenizer.decode(generator.content.output_token_id)
-    ret = {"role": generator.role, "text": output}
+    message = await chat_serving.create_chat(request, generation_config)
+    if stream == "true":
+        return StreamingResponse(content=message, media_type="text/event-stream")
+    else:
+        ret = {"role": message.role, "text": message.content}
     return ret
 
 
