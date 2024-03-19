@@ -4,7 +4,6 @@
 
 #include "../common/micros.h"
 #include "../common/mp_type_traits.h"
-#include "utils/gpu_launch_config.h"
 
 template<typename T>
 __device__ __forceinline__ T silu_kernel(const T& x) {
