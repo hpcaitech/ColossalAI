@@ -71,10 +71,10 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype, high_precision):
     new_k_copy = new_k.clone()
 
     inference_ops.rotary_embedding_and_cache_copy(
-        new_q, new_k, new_v, cos, sin, k_cache, v_cache, kv_seq_lengths, block_tables, False
+        new_q, new_k, new_v, cos, sin, k_cache, v_cache, kv_seq_lengths, block_tables, high_precision
     )
 
-    inference_ops.rotary_embedding(new_q_copy, new_k_copy, cos, sin, False)
+    inference_ops.rotary_embedding(new_q_copy, new_k_copy, cos, sin, high_precision)
 
     past_kv_seq_len = kv_seq_lengths - 1
     target_block_ids = block_tables[range(0, block_tables.size(0)), past_kv_seq_len // block_size]
@@ -98,4 +98,4 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype, high_precision):
 
 
 if __name__ == "__main__":
-    test_rotary_emb(16, 64, 4, 128, torch.float16, False)
+    test_rotary_emb(16, 64, 4, 128, torch.float16, True)

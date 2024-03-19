@@ -41,16 +41,18 @@ except ImportError:
 
 def llama_causal_lm_forward(
     self: LlamaForCausalLM,
-    batch: BatchBucket = None,
-    k_caches: List[torch.Tensor] = None,
-    v_caches: List[torch.Tensor] = None,
+    batch: BatchBucket,
+    k_caches: List[torch.Tensor],
+    v_caches: List[torch.Tensor],
+    high_precision: bool = False,
 ):
     """This function will replace the forward function of LlamaForCausalLM.
 
     Args:
-        batch (BatchInfo, optional): It stores the necessary input information for this inference. Defaults to None.
-        k_caches (List[torch.Tensor], optional): It holds the GPU memory for the key cache. Defaults to None.
-        v_caches (List[torch.Tensor], optional): It holds the GPU memory for the value cache. Defaults to None.
+        batch (BatchInfo): It stores the necessary input information for this inference.
+        k_caches (List[torch.Tensor]): It holds the GPU memory for the key cache.
+        v_caches (List[torch.Tensor]): It holds the GPU memory for the value cache.
+        high_precision(Optional[bool]): Whether to cast fp16 to fp32 for calculation, defaults to False.
     """
 
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
@@ -59,6 +61,7 @@ def llama_causal_lm_forward(
         batch=batch,
         k_caches=k_caches,
         v_caches=v_caches,
+        high_precision=high_precision,
     )
     logits = torch.mm(hidden_states, self.lm_head.weight)
     return logits
@@ -66,16 +69,18 @@ def llama_causal_lm_forward(
 
 def llama_model_forward(
     self: LlamaModel,
-    batch: BatchBucket = None,
-    k_caches: List[torch.Tensor] = None,
-    v_caches: List[torch.Tensor] = None,
+    batch: BatchBucket,
+    k_caches: List[torch.Tensor],
+    v_caches: List[torch.Tensor],
+    high_precision: bool = False,
 ):
     """This function will replace the forward function of LlamaModel.
 
     Args:
-        batch (BatchInfo, optional): It stores the necessary input information for this inference.. Defaults to None.
-        k_caches (List[torch.Tensor], optional): It holds the GPU memory for the key cache. Defaults to None.
-        v_caches (List[torch.Tensor], optional): It holds the GPU memory for the value cache. Defaults to None.
+        batch (BatchInfo): It stores the necessary input information for this inference.
+        k_caches (List[torch.Tensor]): It holds the GPU memory for the key cache.
+        v_caches (List[torch.Tensor]): It holds the GPU memory for the value cache.
+        high_precision(Optional[bool]): Whether to cast fp16 to fp32 for calculation, defaults to False.
     """
     input_ids = batch.get_1D_inputs()
     block_tables = batch.get_block_table_tensor()
@@ -118,16 +123,17 @@ def llama_model_forward(
             block_tables=block_tables,
             k_cache=k_caches[layer_id],
             v_cache=v_caches[layer_id],
-            is_prompts=batch.is_prompts,
             sequence_lengths=sequence_lengths,
-            kv_seq_len=kv_seq_len,
             cos_sin=cos_sin,
             fd_inter_tensor=batch.fd_inter_tensor,
+            is_prompts=batch.is_prompts,
+            kv_seq_len=kv_seq_len,
             output_tensor=output_tensor,
             norm_output=norm_output,
             sm_scale=sm_scale,
             use_cuda_kernel=use_cuda_kernel,
             cu_seqlens=cu_seqlens,
+            high_precision=high_precision,
         )
 
     if batch.is_prompts:
@@ -144,40 +150,42 @@ def llama_decoder_layer_forward(
     self: LlamaDecoderLayer,
     hidden_states: torch.Tensor,
     residual: torch.Tensor,
-    block_tables: torch.Tensor = None,
-    k_cache: torch.Tensor = None,
-    v_cache: torch.Tensor = None,
+    block_tables: torch.Tensor,
+    k_cache: torch.Tensor,
+    v_cache: torch.Tensor,
+    sequence_lengths: torch.Tensor,
+    cos_sin: Tuple[torch.Tensor],
+    fd_inter_tensor: FDIntermTensors,
     is_prompts: bool = True,
-    sequence_lengths: torch.Tensor = None,
     kv_seq_len: int = 0,
-    cos_sin: Tuple[torch.Tensor] = None,
-    fd_inter_tensor: FDIntermTensors = None,
     output_tensor: torch.Tensor = None,
     norm_output: torch.Tensor = None,
     sm_scale: int = None,
     use_cuda_kernel: bool = True,
     cu_seqlens: torch.Tensor = None,
+    high_precision: bool = False,
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     """This function will replace the forward function of LlamaDecoderLayer.
 
     Args:
         hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
         residual (torch.Tensor): shape [token_num, embed_dim], used to be added to hidden_states in out_proj.
-        block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
-            storing mapping of token_position_id -> block_id. Defaults to None.
-        k_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
-        v_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
+        block_tables (torch.Tensor): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
+            storing mapping of token_position_id -> block_id.
+        k_cache (torch.Tensor): It holds the GPU memory for the key cache.
+        v_cache (torch.Tensor): It holds the GPU memory for the key cache.
+        sequence_lengths (torch.Tensor): Holding the sequence length of each sequence.
+        cos_sin (Tuple[torch.Tensor]): Holding cos and sin.
+        fd_inter_tensor (FDIntermTensors): Holding tensors used for
+            storing intermediate values in flash-decoding.
         is_prompts (bool, optional): Whether the current inference process is in the context input phase. Defaults to True.
-        sequence_lengths (torch.Tensor, optional): Holding the sequence length of each sequence. Defaults to None.
         kv_seq_len (int, optional): The max sequence length of input sequences. Defaults to 0.
-        cos_sin (Tuple[torch.Tensor], optional): Holding cos and sin. Defaults to None.
-        fd_inter_tensor (FDIntermTensors, optional): Holding tensors used for
-            storing intermediate values in flash-decoding. Defaults to None.
         output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
         norm_output (torch.Tensor, optional): The mid tensor holds the output of layernorm. Defaults to None.
         sm_scale (int, optional): Used for flash attention. Defaults to None.
         use_cuda_kernel: (bool, optional): Whether to use cuda kernel. Defaults to True.
         cu_seqlens(torch.Tensor, optional): Holding the cumulative sum of sequence length.
+        high_precision(Optional[bool]): Whether to cast fp16 to fp32 for calculation, defaults to False.
     """
 
     hidden_states, residual = self.input_layernorm(hidden_states, norm_output, residual, use_cuda_kernel)
@@ -187,15 +195,16 @@ def llama_decoder_layer_forward(
         block_tables=block_tables,
         k_cache=k_cache,
         v_cache=v_cache,
-        is_prompts=is_prompts,
         sequence_lengths=sequence_lengths,
-        kv_seq_len=kv_seq_len,
         cos_sin=cos_sin,
         fd_inter_tensor=fd_inter_tensor,
+        is_prompts=is_prompts,
+        kv_seq_len=kv_seq_len,
         output_tensor=output_tensor,
         sm_scale=sm_scale,
         use_cuda_kernel=use_cuda_kernel,
         cu_seqlens=cu_seqlens,
+        high_precision=high_precision,
     )
 
     # Fully Connected
@@ -289,36 +298,38 @@ class NopadLlamaAttention(LlamaAttention):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        block_tables: torch.Tensor = None,
-        k_cache: torch.Tensor = None,
-        v_cache: torch.Tensor = None,
+        block_tables: torch.Tensor,
+        k_cache: torch.Tensor,
+        v_cache: torch.Tensor,
+        sequence_lengths: torch.Tensor,
+        cos_sin: Tuple[torch.Tensor],
+        fd_inter_tensor: FDIntermTensors,
         is_prompts: bool = True,
-        sequence_lengths: torch.Tensor = None,
         kv_seq_len: int = 0,
-        cos_sin: Tuple[torch.Tensor] = None,
-        fd_inter_tensor: FDIntermTensors = None,
         output_tensor: torch.Tensor = None,
         sm_scale: int = None,
         use_cuda_kernel: bool = True,
         cu_seqlens: torch.Tensor = None,
+        high_precision: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
         Args:
             hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
-            block_tables (torch.Tensor, optional): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
-                storing mapping of token_position_id -> block_id. Defaults to None.
-            k_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
-            v_cache (torch.Tensor, optional): It holds the GPU memory for the key cache. Defaults to None.
-            is_prompts (bool, optional): Whether the current inference process is in the context input phase. Defaults to True.
-            sequence_lengths (torch.Tensor, optional): Holding the sequence length of each sequence. Defaults to None.
-            kv_seq_len (int, optional): The max sequence length of input sequences. Defaults to 0.
-            cos_sin (Tuple[torch.Tensor], optional): Holding cos and sin. Defaults to None.
+            block_tables (torch.Tensor): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
+                storing mapping of token_position_id -> block_id.
+            k_cache (torch.Tensor): It holds the GPU memory for the key cache.
+            v_cache (torch.Tensor): It holds the GPU memory for the key cache.
+            sequence_lengths (torch.Tensor, optional): Holding the sequence length of each sequence.
+            cos_sin (Tuple[torch.Tensor], optional): Holding cos and sin.
             fd_inter_tensor (FDIntermTensors, optional): Holding tensors used for
-                storing intermediate values in flash-decoding. Defaults to None.
+                storing intermediate values in flash-decoding.
+            is_prompts (bool, optional): Whether the current inference process is in the context input phase. Defaults to True.
+            kv_seq_len (int, optional): The max sequence length of input sequences. Defaults to 0.
             output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
             sm_scale (int, optional): Used for flash attention. Defaults to None.
             use_cuda_kernel: (bool, optional): Whether to use cuda kernel. Defaults to True.
             cu_seqlens(torch.Tensor, optional): Holding the cumulative sum of sequence length.
+            high_precision(Optional[bool]): Whether to cast fp16 to fp32 for calculation, defaults to False.
         """
 
         token_nums = hidden_states.size(0)
@@ -339,10 +350,11 @@ class NopadLlamaAttention(LlamaAttention):
         if is_prompts:
             if use_cuda_kernel and query_states.dtype != torch.float32 and use_flash_attn2:
                 # flash attn 2 currently only supports FP16/BF16.
-                inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1], False)
+                inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1], high_precision)
                 inference_ops.context_kv_cache_memcpy(
                     key_states, value_states, k_cache, v_cache, sequence_lengths, cu_seqlens, block_tables, kv_seq_len
                 )
+
                 attn_output = flash_attn_varlen_func(
                     query_states,
                     key_states,
@@ -383,7 +395,7 @@ class NopadLlamaAttention(LlamaAttention):
                     v_cache,
                     sequence_lengths,
                     block_tables,
-                    False,
+                    high_precision,
                 )
             else:
                 decoding_fused_rotary_embedding(

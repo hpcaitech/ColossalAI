@@ -1,3 +1,4 @@
+// in transformers source code, huggingface uses fp16 to compute rope so we follow the same precision
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
 

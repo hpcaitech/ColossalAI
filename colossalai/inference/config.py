@@ -55,7 +55,7 @@ class InferenceConfig:
         pp_size (int): Pipeline parallel size, defaults to 1.
         micro_batch_size (int): the micro batch size, defaults to 1. Only useful when `pp_size` > 1.
         micro_batch_buffer_size (int): the buffer size for micro batch. Normally, it should be the same as the number of pipeline stages.
-
+        high_precision(Optional[bool]): Whether to cast fp16 to fp32 for calculation, defaults to False.
     """
 
     # NOTE: arrange configs according to their importance and frequency of usage
@@ -89,6 +89,7 @@ class InferenceConfig:
     pp_size: int = 1
     micro_batch_size: int = 1
     micro_batch_buffer_size: int = None
+    high_precision: Optional[bool] = False
 
     def __post_init__(self):
         self._verify_config()
@@ -107,6 +108,9 @@ class InferenceConfig:
         assert (
             self.dtype in _ALLOWED_DTYPES
         ), f"Expected dtype to be in {_ALLOWED_DTYPES} but found an unknown dtype: {self.dtype}"
+
+        if self.dtype == torch.float32:
+            self.high_precision = False
 
         # check distributed
         assert (not torch.distributed.is_initialized() and self.tp_size * self.pp_size == 1) or (
