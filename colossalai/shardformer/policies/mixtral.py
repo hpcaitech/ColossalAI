@@ -17,10 +17,9 @@ from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
+from colossalai.shardformer.modeling.mixtral import EPMixtralSparseMoeBlock
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 from colossalai.shardformer.shard import ShardConfig
-
-from .mixtral_layer import EPMixtralSparseMoeBlock
 
 __all__ = ["MixtralPolicy", "MixtralForCausalLMPolicy"]
 
