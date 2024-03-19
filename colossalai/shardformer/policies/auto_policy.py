@@ -192,6 +192,12 @@ _POLICY_LIST = {
     "transformers.models.qwen2.modeling_qwen2.Qwen2ForSequenceClassification": PolicyLocation(
         file_name="qwen2", class_name="Qwen2ForSequenceClassificationPolicy"
     ),
+    "transformers.models.mixtral.modeling_mixtral.MixtralModel": PolicyLocation(
+        file_name="mixtral", class_name="MixtralModelPolicy"
+    ),
+    "transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM": PolicyLocation(
+        file_name="mixtral", class_name="MixtralForCausalLMPolicy"
+    ),
 }
 
 

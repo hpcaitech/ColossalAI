@@ -3,13 +3,13 @@ from copy import deepcopy
 import pytest
 import torch
 import torch.distributed as dist
-from colossal_moe.models.mixtral_layer import EPMixtralSparseMoeBlock
 from torch.testing import assert_close
 from transformers.models.mixtral.configuration_mixtral import MixtralConfig
 from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
 
 import colossalai
 from colossalai.moe import MOE_MANAGER
+from colossalai.shardformer.modeling.mixtral import EPMixtralSparseMoeBlock
 from colossalai.testing.utils import spawn
 
 tokens, n_experts = 7, 4
