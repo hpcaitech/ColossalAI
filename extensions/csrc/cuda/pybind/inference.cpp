@@ -23,7 +23,8 @@ void rotary_embedding(
     torch::Tensor& query,  // [total_tokens, head_num, head_dim]
     torch::Tensor& key,    // [total_tokens, kv_head_num, head_dim]
     torch::Tensor& cos,    // [total_tokens, head_dim]
-    torch::Tensor& sin);   // [total_tokens, head_dim]
+    torch::Tensor& sin,    // [total_tokens, head_dim]
+    bool high_precision);
 
 void rotary_embedding_and_cache_copy(
     torch::Tensor& query,      // [num_tokens, head_num, head_dim]
@@ -35,7 +36,9 @@ void rotary_embedding_and_cache_copy(
     torch::Tensor&
         value_cache,  // [num_blocks, num_heads, block_size, head_dim]
     torch::Tensor& sequence_lengths,  // [batch_size]
-    torch::Tensor& block_tables);     // [batch_size, max_seq_len]
+    torch::Tensor& block_tables,      // [batch_size, max_seq_len]
+    bool high_precision);
+
 torch::Tensor silu_and_mul(const torch::Tensor& ins);
 
 void rms_layernorm(torch::Tensor& out,     // [..., hidden_size]

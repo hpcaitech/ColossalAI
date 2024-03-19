@@ -1,9 +1,9 @@
-
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
 
 #include "../common/vector_copy_utils.h"
 #include "../common/micros.h"
+#include "../common/mp_type_traits.h"
 
 template <typename scalar_t, typename m_scalar_t, int VecSize>
 __device__ void apply_emb_rotary_compute(
@@ -216,7 +216,7 @@ __global__ void rotary_embedding_kernel(
     apply_emb_rotary_compute<scalar_t, m_scalar_t, VecSize>(key, cos_ptr, sin_ptr, key_stride, token_id, shard_block_size, half_head_dim, kv_head_num, head_dim);
 }
 
-template<typename scalar_t, typename m_scalar_t>
+template<typename scalar_t, bool high_precision>
 void apply_rotary_embedding_and_cache_copy(
     at::Tensor& query,               // [num_tokens, head_num, head_dim]
     at::Tensor& key,                 // [num_tokens, kv_head_num, head_dim]
@@ -240,6 +240,8 @@ void apply_rotary_embedding_and_cache_copy(
     int cos_stride = cos.stride(0);
     int sin_stride = sin.stride(0);
     int block_table_stride = block_tables.stride(0);
+
+    using m_scalar_t = typename colossalAI::common::ScalarTypeTrait<high_precision, scalar_t>::Type;
 
     int vec_size = get_vec_size<scalar_t>(query);
 
@@ -338,12 +340,12 @@ void apply_rotary_embedding_and_cache_copy(
     AT_CUDA_CHECK(cudaGetLastError());
 }
 
-template<typename scalar_t, typename m_scalar_t>
+template<typename scalar_t, bool high_precision>
 void apply_rotary_embedding(
     at::Tensor& query,   // [total_tokens, head_num, head_dim]
     at::Tensor& key,     // [total_tokens, kv_head_num, head_dim]
     at::Tensor& cos,     // [total_tokens, head_dim]
-    at::Tensor& sin      // [total_tokens, head_dim]
+    at::Tensor& sin     // [total_tokens, head_dim]
 ){
     int num_tokens = query.size(0);
     int head_num = query.size(1);
@@ -355,6 +357,9 @@ void apply_rotary_embedding(
     int cos_stride = cos.stride(0);
     int sin_stride = sin.stride(0);
 
+    using m_scalar_t = typename colossalAI::common::ScalarTypeTrait<high_precision, scalar_t>::Type;
+
+    m_scalar_t = scalar_t
     int vec_size = get_vec_size<scalar_t>(query);
 
     if ((head_dim / 2) % vec_size != 0) {
@@ -439,18 +444,11 @@ void rotary_embedding_and_cache_copy(
     at::Tensor& block_tables,        // [batch_size, max_seq_len]
     bool high_precision)
 {
-
-    if (high_precision) {
-        using m_scalar_t = typename colossalAI::common::MPTypeTrait<T>::Type;
-    }
-    else {
-        using m_scalar_t = m_scalar_t;
-    }
-
-    DISPATCH_FLOAT_HALF_AND_BFLOAT(
+    DISPATCH_FLOAT_HALF_AND_BFLOAT_WITH_HIGH_PRECISION(
+        high_precision,
         query.scalar_type(),
         "rotary_embedding_and_cache_copy",
-        apply_rotary_embedding_and_cache_copy<scalar_t, m_scalar_t>(
+        apply_rotary_embedding_and_cache_copy<scalar_t, high_precision>(
             query,
             key,
             value,
@@ -470,18 +468,11 @@ void rotary_embedding(
     at::Tensor& sin,      // [total_tokens, head_dim]
     bool high_precision
 ){
-
-    if (high_precision) {
-        using m_scalar_t = typename colossalAI::common::MPTypeTrait<T>::Type;
-    }
-    else {
-        using m_scalar_t = m_scalar_t;
-    }
-
-    DISPATCH_FLOAT_HALF_AND_BFLOAT(
+    DISPATCH_FLOAT_HALF_AND_BFLOAT_WITH_HIGH_PRECISION(
+        high_precision,
         query.scalar_type(),
         "rotary_embedding",
-        apply_rotary_embedding<scalar_t, m_scalar_t>(
+        apply_rotary_embedding<scalar_t, high_precision>(
             query,
             key,
             cos,

@@ -15,7 +15,8 @@ from tests.test_infer.test_ops.triton.test_rotary_embdding_unpad import torch_ro
 @pytest.mark.parametrize("H", [32])
 @pytest.mark.parametrize("D", [64])
 @pytest.mark.parametrize("dtype", [torch.float16])
-def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
+@pytest.mark.parametrize("high_precision", [True, False])
+def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype, high_precision):
     torch.manual_seed(10)
     TOTAL_TOKENS = BATCH_SIZE * SEQ_LEN
     # our crafted op equals to Transformers
@@ -54,17 +55,26 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
 
     kv_seq_lengths = past_kv_seq_lengths + 1
     block_tables = block_tables.to(device="cuda")
-    q_ref = torch_rotary_emb(new_q, cos[:BATCH_SIZE], sin[:BATCH_SIZE])
-    k_ref = torch_rotary_emb(new_k, cos[:BATCH_SIZE], sin[:BATCH_SIZE])
+
+    if high_precision:
+        high_precision_cos = cos[:BATCH_SIZE].to(torch.float32)
+        high_precision_sin = sin[:BATCH_SIZE].to(torch.float32)
+        high_precision_q = new_q.to(torch.float32)
+        high_precision_k = new_k.to(torch.float32)
+        q_ref = torch_rotary_emb(high_precision_q, high_precision_cos, high_precision_sin).to(torch.float16)
+        k_ref = torch_rotary_emb(high_precision_k, high_precision_cos, high_precision_sin).to(torch.float16)
+    else:
+        q_ref = torch_rotary_emb(new_q, cos[:BATCH_SIZE], sin[:BATCH_SIZE])
+        k_ref = torch_rotary_emb(new_k, cos[:BATCH_SIZE], sin[:BATCH_SIZE])
 
     new_q_copy = new_q.clone()
     new_k_copy = new_k.clone()
 
     inference_ops.rotary_embedding_and_cache_copy(
-        new_q, new_k, new_v, cos, sin, k_cache, v_cache, kv_seq_lengths, block_tables
+        new_q, new_k, new_v, cos, sin, k_cache, v_cache, kv_seq_lengths, block_tables, False
     )
 
-    inference_ops.rotary_embedding(new_q_copy, new_k_copy, cos, sin)
+    inference_ops.rotary_embedding(new_q_copy, new_k_copy, cos, sin, False)
 
     past_kv_seq_len = kv_seq_lengths - 1
     target_block_ids = block_tables[range(0, block_tables.size(0)), past_kv_seq_len // block_size]
@@ -74,18 +84,18 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
     v_target = v_cache[target_block_ids, :, offsets_in_block, :].squeeze()
     v_source = new_v.squeeze()
 
-    assert torch.allclose(new_q, q_ref, atol=1e-6, rtol=1e-6)
-    assert torch.allclose(k_target, k_ref, atol=1e-6, rtol=1e-6)
+    assert torch.allclose(new_q, q_ref)
+    assert torch.allclose(k_target, k_ref)
 
-    assert torch.allclose(new_q_copy, q_ref, atol=1e-6, rtol=1e-6)
-    assert torch.allclose(new_k_copy, k_ref, atol=1e-6, rtol=1e-6)
+    assert torch.allclose(new_q_copy, q_ref)
+    assert torch.allclose(new_k_copy, k_ref)
 
     assert k_target.shape == k_source.shape
-    assert torch.allclose(k_target, k_source, atol=1e-6, rtol=1e-6)
+    assert torch.allclose(k_target, k_source)
 
     assert v_target.shape == v_source.shape
     assert torch.equal(v_target, v_source)
 
 
 if __name__ == "__main__":
-    test_rotary_emb(16, 512, 4, 128, torch.float16)
+    test_rotary_emb(16, 64, 4, 128, torch.float16, False)

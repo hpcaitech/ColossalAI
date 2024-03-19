@@ -339,7 +339,7 @@ class NopadLlamaAttention(LlamaAttention):
         if is_prompts:
             if use_cuda_kernel and query_states.dtype != torch.float32 and use_flash_attn2:
                 # flash attn 2 currently only supports FP16/BF16.
-                inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
+                inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1], False)
                 inference_ops.context_kv_cache_memcpy(
                     key_states, value_states, k_cache, v_cache, sequence_lengths, cu_seqlens, block_tables, kv_seq_len
                 )
@@ -383,6 +383,7 @@ class NopadLlamaAttention(LlamaAttention):
                     v_cache,
                     sequence_lengths,
                     block_tables,
+                    False,
                 )
             else:
                 decoding_fused_rotary_embedding(
