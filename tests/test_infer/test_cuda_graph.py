@@ -49,6 +49,7 @@ def check_inference_engine(use_cuda_graph=False, batch_size=32):
             max_batch_size=batch_size,
             max_input_len=input_len,
             max_output_len=output_len,
+            use_cuda_kernel=False,
             use_cuda_graph=True,
             block_size=16,
         )
@@ -57,6 +58,7 @@ def check_inference_engine(use_cuda_graph=False, batch_size=32):
             max_batch_size=batch_size,
             max_input_len=input_len,
             max_output_len=output_len,
+            use_cuda_kernel=False,
             use_cuda_graph=False,
             block_size=16,
         )

@@ -40,6 +40,7 @@ class InputMetaData:
     fd_inter_tensor (torch.Tensor, optional): A tensor representing intermediate data for flash decoding. Defaults to None.
     batch_size (int, optional): The current batch size. Defaults to 64.
     is_prompts (bool, optional): Indicates whether prefill or decoding. Defaults to False(decoding).
+    use_cuda_kernel(bool): Whether to use cuda kernel, faster but lose some precision occasionally
     use_cuda_graph (bool, optional): Indicates whether to use the CUDA graph. Defaults to False.
     kv_seq_len (int, optional): Key-value sequence length. Defaults to 512.
     head_dim (int, optional): Head dimension. Defaults to 32.
@@ -50,6 +51,7 @@ class InputMetaData:
     fd_inter_tensor: FDIntermTensors = None
     batch_size: int = 64  # current_batch_size
     is_prompts: bool = False
+    use_cuda_kernel: bool = False
     use_cuda_graph: bool = False
     kv_seq_len: int = 512
     head_dim: int = 32
@@ -83,6 +85,7 @@ class InferenceConfig:
         pp_size (int): Pipeline parallel size, defaults to 1.
         micro_batch_size (int): the micro batch size, defaults to 1. Only useful when `pp_size` > 1.
         micro_batch_buffer_size (int): the buffer size for micro batch. Normally, it should be the same as the number of pipeline stages.
+        use_cuda_kernel(bool): Whether to use cuda kernel, faster but lose some precision occasionally
         use_cuda_graph (bool): Whether to enforce CUDA graph execution. If False, we will disable CUDA graph and always execute the model in eager mode. If True, we will use eager execution in hybrid.
         max_context_len_to_capture (int): max context len that could be captured by CUDA Graph, per sequence
 
@@ -119,6 +122,9 @@ class InferenceConfig:
     pp_size: int = 1
     micro_batch_size: int = 1
     micro_batch_buffer_size: int = None
+
+    # cuda kernel option
+    use_cuda_kernel: bool = False
 
     # cuda_graph
     use_cuda_graph: bool = False
