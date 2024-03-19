@@ -6,51 +6,13 @@
 #include <assert.h>
 #include <c10/macros/Macros.h>
 #include <cuda_fp16.h>
-#include <stdint.h>
 
 #include <cfloat>
 #include <limits>
 
+#include "utils/vector_copy_utils.h"
+
 namespace {
-
-template <typename Datatype, int ELEMENTS_PER_LDG>
-__device__ __inline__ void copy_vector(Datatype *dst, const Datatype *src);
-
-template <>
-__device__ __inline__ void copy_vector<c10::BFloat16, 1>(
-    c10::BFloat16 *dst, const c10::BFloat16 *src) {
-  *dst = *src;
-}
-
-template <>
-__device__ __inline__ void copy_vector<c10::BFloat16, 4>(
-    c10::BFloat16 *dst, const c10::BFloat16 *src) {
-  *((float2 *)dst) = *((float2 *)src);
-}
-
-template <>
-__device__ __inline__ void copy_vector<c10::Half, 1>(c10::Half *dst,
-                                                     const c10::Half *src) {
-  *dst = *src;
-}
-
-template <>
-__device__ __inline__ void copy_vector<c10::Half, 4>(c10::Half *dst,
-                                                     const c10::Half *src) {
-  *((float2 *)dst) = *((float2 *)src);
-}
-
-template <>
-__device__ __inline__ void copy_vector<uint8_t, 1>(uint8_t *dst,
-                                                   const uint8_t *src) {
-  *dst = *src;
-}
-
-template <>
-__device__ __inline__ void copy_vector<uint8_t, 4>(uint8_t *dst,
-                                                   const uint8_t *src) {
-  *((half2 *)dst) = *((half2 *)src);
-}
 
 int log2_ceil(int value) {
   int log2_value = 0;

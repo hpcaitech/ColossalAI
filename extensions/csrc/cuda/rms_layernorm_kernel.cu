@@ -10,7 +10,7 @@
 
 #include "block_reduce.h"
 #include "../common/micros.h"
-#include "../common/cuda_type_utils.h"
+#include "utils/cuda_type_utils.h"
 
 #define DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(DATA_SIZE, TYPE, NAME, ...)  \
   if (DATA_SIZE == 2) {                                                     \

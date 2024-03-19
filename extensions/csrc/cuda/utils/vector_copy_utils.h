@@ -1,10 +1,11 @@
 
+#pragma once
+
 #include <c10/macros/Macros.h>
 #include <cuda_fp16.h>
+#include <stdint.h>
 
 #include <cfloat>
-
-#include "string"
 
 template <typename Datatype, int ELEMENTS_PER_LDG>
 __device__ __inline__ void copy_vector(Datatype *dst, const Datatype *src);
@@ -58,6 +59,18 @@ __device__ __inline__ void copy_vector<c10::Half, 8>(c10::Half *dst,
 }
 
 template <>
+__device__ __inline__ void copy_vector<uint8_t, 1>(uint8_t *dst,
+                                                   const uint8_t *src) {
+  *dst = *src;
+}
+
+template <>
+__device__ __inline__ void copy_vector<uint8_t, 4>(uint8_t *dst,
+                                                   const uint8_t *src) {
+  *((half2 *)dst) = *((half2 *)src);
+}
+
+template <>
 __device__ __inline__ void copy_vector<float, 1>(float *dst, const float *src) {
   *dst = *src;
 }
@@ -78,6 +91,31 @@ __device__ __inline__ void copy_vector<float, 8>(float *dst, const float *src) {
   // here.
   *((float4 *)dst) = *((float4 *)src);
   *((float4 *)(dst + 4)) = *((float4 *)(src + 4));
+}
+
+template <typename Datatype, int ELEMENTS_PER_LDG>
+__device__ __inline__ void copy_zero_vector(Datatype *dst);
+
+template <>
+__device__ __inline__ void copy_zero_vector<c10::BFloat16, 1>(
+    c10::BFloat16 *dst) {
+  *dst = 0.0;
+}
+
+template <>
+__device__ __inline__ void copy_zero_vector<c10::BFloat16, 4>(
+    c10::BFloat16 *dst) {
+  *((float2 *)dst) = make_float2(0.0f, 0.0f);
+}
+
+template <>
+__device__ __inline__ void copy_zero_vector<c10::Half, 1>(c10::Half *dst) {
+  *dst = 0.0;
+}
+
+template <>
+__device__ __inline__ void copy_zero_vector<c10::Half, 4>(c10::Half *dst) {
+  *((float2 *)dst) = make_float2(0.0f, 0.0f);
 }
 
 template <typename T>
