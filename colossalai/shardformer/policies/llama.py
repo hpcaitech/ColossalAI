@@ -250,18 +250,17 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
 
         policy = super().module_policy()
 
-        setattr(self.shard_config, "causal_lm", True)
-
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
             new_item = {
                 LlamaForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
-                        SubModuleReplacementDescription(suffix="lm_head", target_module=Linear1D_Col)
+                        SubModuleReplacementDescription(suffix="lm_head", target_module=Linear1D_Col, kwargs={"gather_output": not self.shard_config.parallel_output})
                     ],
-                    method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
                 )
             }
+            if self.shard_config.parallel_output:
+                new_item[LlamaForCausalLM].method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)}
             policy.update(new_item)
 
         if self.pipeline_stage_manager:

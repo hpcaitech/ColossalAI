@@ -331,15 +331,12 @@ class GPT2PipelineForwards:
             loss_fct = CrossEntropyLoss()
             shift_logits = shift_logits.view(-1, shift_logits.size(-1))
             shift_labels = shift_labels.view(-1)
-            if shard_config.enable_tensor_parallelism:
+            if shard_config.parallel_output:
                 loss = cross_entropy_1d(
                     shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
                 )
             else:
                 loss = loss_fct(shift_logits, shift_labels)
-
-            if not shard_config.parallel_output:
-                lm_logits = gather_forward_split_backward(lm_logits, -1, shard_config.tensor_parallel_process_group)
 
         if not return_dict:
             output = (lm_logits,) + outputs[1:]
@@ -1078,18 +1075,12 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             shift_logits = lm_logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
             # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
             shift_logits = shift_logits.view(-1, shift_logits.size(-1))
             shift_labels = shift_labels.view(-1)
-            if shard_config.enable_tensor_parallelism:
-                loss = cross_entropy_1d(
-                    shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
-                )
-            else:
-                loss = loss_fct(shift_logits, shift_labels)
+            loss = cross_entropy_1d(
+                shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
+            )
 
-        if not shard_config.parallel_output:
-            lm_logits = gather_forward_split_backward(lm_logits, -1, shard_config.tensor_parallel_process_group)
 
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]
