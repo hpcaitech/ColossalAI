@@ -9,7 +9,6 @@ from coati.dataset import (
     DataCollatorForPreferenceDataset,
     StatefulDistributedSampler,
     load_tokenized_dataset,
-    setup_conversation_template,
     setup_distributed_dataloader,
 )
 from coati.models import convert_to_lora_module, disable_dropout
@@ -25,7 +24,9 @@ from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
+from colossalai.logging import get_dist_logger
 
+logger = get_dist_logger()
 
 def train(args):
     # check lora compatibility
