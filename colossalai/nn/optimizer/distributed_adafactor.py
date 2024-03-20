@@ -4,27 +4,7 @@ import torch
 from torch.optim import Optimizer
 import torch.distributed as dist
 
-def _gather(input_: torch.Tensor, group_:torch.distributed.ProcessGroup) -> torch.Tensor:
-    """Gather tensors and concatinate along the last dimension."""
-    group = group_
-
-    # Bypass the function if we are using only 1 GPU.
-    if torch.distributed.get_world_size(group=group) == 1:
-        return input_
-
-    # Size and dimension.
-    last_dim = input_.dim() - 1
-    rank = torch.distributed.get_rank(group=group)
-    world_size = torch.distributed.get_world_size(group=group)
-
-    tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
-    tensor_list[rank] = input_
-    torch.distributed.all_gather(tensor_list, input_, group=group)
-
-    # Note: torch.cat already creates a contiguous tensor.
-    output = torch.cat(tensor_list, dim=last_dim).contiguous()
-
-    return output
+from colossalai.shardformer.layer._operation import _gather
 
 
 # DistributedAdaFactor (with Tensor parallel and Zero stage 2)
@@ -59,30 +39,14 @@ class DistributedAdaFactor(Optimizer):
             "warmup_init": warmup_init,
         }
         super().__init__(params, defaults)
-        # self.tensor_parallel_size = device_mesh._physical_mesh_id.shape[0]
-        # self.tensor_parallel_group = device_mesh.get_process_group(axis=1) # "Expected row process group"
-        # self.localRank = int(os.environ['LOCAL_RANK']) 
-        # self.worldSize = int(os.environ['WORLD_SIZE']) 
-        # self.sharding_spec_dict = sharding_spec_dict
-        # self.param_shape = param_shape # Dict{id:shape}, sample {id(weight): torch.Size(4,4)}
-        
         self.localRank = None
         self.worldSize = None
         self.tensor_parallel_size = None
         self.tensor_parallel_group = None
         self.sharding_spec_dict = None
         self.param_shape = None # Dict{id:shape}, sample {id(weight): torch.Size(4,4)}
-        # self.setup_distribute(defaults)
     
     def setup_distribute(self, device_mesh, sharding_spec_dict, param_shape):
-        # device_mesh = defaults['device_mesh']
-        # sharding_spec_dict = defaults['sharding_spec_dict']
-        # self.tensor_parallel_size = device_mesh._physical_mesh_id.shape[0]
-        # self.tensor_parallel_group = device_mesh.get_process_group(axis=1) # "Expected row process group"
-        # self.localRank = int(os.environ['LOCAL_RANK']) 
-        # self.worldSize = int(os.environ['WORLD_SIZE']) 
-        # self.sharding_spec_dict = sharding_spec_dict
-        # self.param_shape = defaults['param_shape'] # Dict{id:shape}, sample {id(weight): torch.Size(4,4)}
         device_mesh = device_mesh
         self.tensor_parallel_size = device_mesh._physical_mesh_id.shape[0]
         self.tensor_parallel_group = device_mesh.get_process_group(axis=1) # "Expected row process group"
@@ -250,7 +214,6 @@ class DistributedAdaFactor(Optimizer):
                     # ==============================
                     if sharding_spec.sharding_sequence[0] == 'R': 
                         update_reshape = update.view(-1, param_width_parallel)
-                        # print(f"grad {grad}")
                         grad_reshape = grad.view(-1, param_width_parallel)
                         exp_avg_sq_row = state["exp_avg_sq_row"] # [H]
                         exp_avg_sq_col = state["exp_avg_sq_col"] # [W/N]
@@ -276,7 +239,7 @@ class DistributedAdaFactor(Optimizer):
                         dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
                         exp_avg_sq_col.div_(self.tensor_parallel_size)
                         # gather row
-                        exp_avg_sq_row_gather = _gather(exp_avg_sq_row, self.tensor_parallel_group)
+                        exp_avg_sq_row_gather = _gather(input_=exp_avg_sq_row, dim=-1, process_group=self.tensor_parallel_group)
                         sq_row_meam = exp_avg_sq_row_gather.mean(dim=-1, keepdim=True)
                         update_reshape = self._approx_sq_grad_row_parallel(exp_avg_sq_row, exp_avg_sq_col, sq_row_meam)
                         update_reshape.mul_(grad_reshape)

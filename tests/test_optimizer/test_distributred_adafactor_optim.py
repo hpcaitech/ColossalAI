@@ -19,6 +19,7 @@ from colossalai.tensor.d_tensor import (
 from colossalai.tensor.d_tensor.layout import Layout
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.testing import parameterize
+from colossalai.shardformer.layer._operation import _gather
 
 # # Set weight bias
 # def setup_param_groups(bert_model: nn.Module) -> list:
@@ -44,29 +45,6 @@ from colossalai.testing import parameterize
 #         p.data = torch_p.grad.clone().to(g_dtype)
 #         p.grad = p.data
 #         p.data = orig_p
-
-# All Gather function
-def _gather(input_: torch.Tensor, group_:torch.distributed.ProcessGroup) -> torch.Tensor:
-    """Gather tensors and concatinate along the last dimension."""
-    group = group_
-
-    # Bypass the function if we are using only 1 GPU.
-    if torch.distributed.get_world_size(group=group) == 1:
-        return input_
-
-    # Size and dimension.
-    last_dim = input_.dim() - 1
-    rank = torch.distributed.get_rank(group=group)
-    world_size = torch.distributed.get_world_size(group=group)
-
-    tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
-    tensor_list[rank] = input_
-    torch.distributed.all_gather(tensor_list, input_, group=group)
-
-    # Note: torch.cat already creates a contiguous tensor.
-    output = torch.cat(tensor_list, dim=last_dim).contiguous()
-
-    return output
 
 # dist env
 def init_dist():
@@ -150,12 +128,9 @@ def main(dtype):
     # local_bias [W]  [4]
     local_weight_flatten = nn.Parameter(weight_shard.clone().flatten().requires_grad_(True))
     local_bias_flatten = nn.Parameter(bias.clone().flatten().requires_grad_(True))
-    # print(f"weight shape len {len(weight.shape)} {weight.shape}; bias len {len(bias.shape)} shape {bias.shape}")
-    # params_shape = [weight.shape, bias.shape]
     params_shape = {id(local_weight_flatten): weight.shape, id(local_bias_flatten): bias.shape}
     sharding_spec_dict = {id(local_weight_flatten): sharding_spec, id(local_bias_flatten): None}
-    # print(f"params_shape device{device} {params_shape}")
-    # print(f"Type sharding_spec {type(sharding_spec)}")
+
     
     # ==============================
     # Adafactor Base (For Coloumn Parallel)
@@ -184,10 +159,9 @@ def main(dtype):
     # tensor parallel & flatten view &gather data (Coloumn Parallel)
     torch.cuda.synchronize()
     reshape_flatten_weight = local_weight_flatten.view(-1, H // tensor_parallel_size) # reshape
-    gather_flatten_weight = _gather(reshape_flatten_weight.data, device_mesh.get_process_group(axis=1)) # gather
+    gather_flatten_weight = _gather(input_ = reshape_flatten_weight.data, dim=-1, process_group=device_mesh.get_process_group(axis=1)) # gather
     weight_correctness = correctness_verify(weight.data, gather_flatten_weight, dtype)
     bias_correctness = correctness_verify(bias.data, local_bias_flatten.data, dtype)
-    # print(f"weight_correctness {weight_correctness}")
     if weight_correctness:
         print(f"Distributed weight (Column Parallel) correctness Pass")
     else:
@@ -227,8 +201,8 @@ def main(dtype):
         zero_end = get_time()
     
         reshape_flatten_weight = local_weight_flatten.view(-1, H // tensor_parallel_size) # reshape
-        gather_flatten_weight = _gather(reshape_flatten_weight.data, device_mesh.get_process_group(axis=1)) # gather
-
+        gather_flatten_weight = _gather(input_ = reshape_flatten_weight.data, dim=-1, process_group=device_mesh.get_process_group(axis=1)) # gather
+        
         torch.cuda.synchronize()
         v3_weight_correctness = correctness_verify(weight.data, gather_flatten_weight, dtype)
         v3_bias_correctness = correctness_verify(bias.data, local_bias_flatten.data, dtype)
@@ -272,15 +246,11 @@ def main(dtype):
     device_mesh_row = DeviceMesh(torch.Tensor([i for i in range(world_size)]), (1, tensor_parallel_size), init_process_group=True)
     sharding_spec_row = ShardingSpec(dim_size=weight.dim(), dim_partition_dict={0: [1]})
     weight_row_shard = distribute_tensor(weight_row, device_mesh_row, sharding_spec_row)
-    # print(f"sharding_spec_row {list(sharding_spec_row.sharding_sequence)}")
     local_weight_row_flatten = nn.Parameter(weight_row_shard.clone().flatten().requires_grad_(True))
     local_bias_row_flatten = nn.Parameter(bias_row.clone().flatten().requires_grad_(True))
     params_shape_row = {id(local_weight_row_flatten): weight.shape, id(local_bias_row_flatten): bias.shape}
     sharding_spec_row_dict = {id(local_weight_row_flatten): sharding_spec_row, id(local_bias_row_flatten): None}
-    # if device == 0:
-    #     print(f'weight_row {weight_row}')
-    # print(f"weight_row_shard device {device} {weight_row_shard}") 
-    
+
     # ==============================
     # Adafactor Base (For Row Parallel)
     # ==============================
@@ -290,9 +260,7 @@ def main(dtype):
     weight_row.grad = torch.rand_like(weight_row)
     bias_row.grad = torch.rand_like(bias_row)
     optimizer_base.step()
-    # if device == 0:
-    #     print(f'weight_row {weight_row}')
-    
+
     # ==============================
     # DistributedAdafactor (Row Parallel)
     # ==============================
@@ -303,19 +271,14 @@ def main(dtype):
     local_weight_row_flatten.grad = distribute_tensor(weight_row.grad, device_mesh_row, sharding_spec_row).clone().flatten()
     local_bias_row_flatten.grad = bias_row.grad.clone().flatten()
     optimizer_zero2.step()
-    # print(f'local_weight_row_flatten {local_weight_row_flatten}')
-    
-    
-    # print(f"local_weight_row_flatten.grad device {device} {local_weight_row_flatten.grad}") 
-    
+
     # ==============================
     # Correctness Verify (Row Parallel)
     # ==============================
     torch.cuda.synchronize()
-    gather_flatten_weight_row = _gather(local_weight_row_flatten.data, device_mesh_row.get_process_group(axis=1)) # gather
-    # print(f'gather_flatten_weight_row reshape {gather_flatten_weight_row}')
+    gather_flatten_weight_row = _gather(input_=local_weight_row_flatten.data,dim=-1, process_group=device_mesh_row.get_process_group(axis=1)) # gather
     reshape_flatten_weight_row = gather_flatten_weight_row.view(-1, W) # reshape
-    # print(f'reshape_flatten_weight_row reshape {reshape_flatten_weight_row}')
+
 
     weight_correctness = correctness_verify(weight_row.data, reshape_flatten_weight_row, dtype)
     bias_correctness = correctness_verify(bias_row.data, local_bias_row_flatten.data, dtype)
@@ -351,8 +314,6 @@ def main(dtype):
         
         # Distributed Adafactor
         optimizer_zero2.zero_grad()
-        # local_weight_flatten.grad = distribute_tensor(weight_row.grad, device_mesh, sharding_spec).clone().flatten()
-        # local_bias_flatten.grad = bias_row.grad.clone().flatten()
         local_weight_row_flatten.grad = distribute_tensor(weight_row.grad, device_mesh_row, sharding_spec_row).clone().flatten()
         local_bias_row_flatten.grad = bias_row.grad.clone().flatten()
         zero_start = get_time()
@@ -360,10 +321,9 @@ def main(dtype):
         zero_end = get_time()
     
         torch.cuda.synchronize()
-        gather_flatten_weight_row = _gather(local_weight_row_flatten.data, device_mesh_row.get_process_group(axis=1)) # gather
-        # print(f'gather_flatten_weight_row reshape {gather_flatten_weight_row}')
+    
+        gather_flatten_weight_row = _gather(input_=local_weight_row_flatten.data,dim=-1, process_group=device_mesh_row.get_process_group(axis=1)) # gather
         reshape_flatten_weight_row = gather_flatten_weight_row.view(-1, W) # reshape
-        # print(f'reshape_flatten_weight_row reshape {reshape_flatten_weight_row}')
 
         weight_correctness = correctness_verify(weight_row.data, reshape_flatten_weight_row, dtype)
         bias_correctness = correctness_verify(bias_row.data, local_bias_row_flatten.data, dtype)
