@@ -1,5 +1,8 @@
 import torch
+import torch.distributed as dist
 from torch.optim import Optimizer
+
+from colossalai.tensor.d_tensor import api
 
 
 class CAME(Optimizer):
@@ -27,9 +30,16 @@ class CAME(Optimizer):
         clip_threshold=1.0,
         betas=(0.9, 0.999, 0.9999),
         weight_decay=0.0,
+        tp_process_group=None,
+        dp_process_group=None,
     ):
         assert lr > 0.0
         assert all([0.0 <= beta <= 1.0 for beta in betas])
+
+        self.tensor_parallel_group = tp_process_group
+        self.data_parallel_group = dp_process_group
+        self.tensor_parallel_rank = dist.get_rank(group=self.tensor_parallel_group)
+        self.data_parallel_rank = dist.get_rank(group=self.data_parallel_group)
 
         defaults = dict(
             lr=lr,
@@ -39,6 +49,16 @@ class CAME(Optimizer):
             weight_decay=weight_decay,
         )
         super(CAME, self).__init__(params, defaults)
+
+        self.clip_method = dict()
+        for group in self.param_groups:
+            for p in group["params"]:
+                try:
+                    api.get_device_mesh(p)
+                    sharding_spec = api.get_sharding_spec(p)
+                    self.clip_method[id(p)] = "col" if 0 in sharding_spec.dim_partition_dict.keys() else "row"
+                except:
+                    self.clip_method[id(p)] = None
 
     @property
     def supports_memory_efficient_fp16(self):
@@ -53,11 +73,33 @@ class CAME(Optimizer):
         return factored
 
     def _rms(self, tensor):
-        return tensor.norm(2) / (tensor.numel() ** 0.5)
+        if not self.tensor_parallel_group:
+            return tensor.norm(2) / (tensor.numel() ** 0.5)
+        # return tensor.norm(2) / (tensor.numel() ** 0.5)
+        # 计算当前设备上张量的平方和
+        local_sum_sq = tensor.pow(2).sum()
 
-    def _approx_sq_grad(self, exp_avg_sq_row, exp_avg_sq_col):
-        r_factor = (exp_avg_sq_row / exp_avg_sq_row.mean(dim=-1, keepdim=True)).rsqrt_().unsqueeze(-1)
+        # 在所有设备上汇总平方和
+        global_sum_sq = local_sum_sq.clone()
+        dist.all_reduce(global_sum_sq, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
+
+        # 在所有设备上汇总元素总数
+        local_numel = torch.tensor(tensor.numel(), device=tensor.device)
+        global_numel = local_numel.clone()
+        dist.all_reduce(global_numel, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
+
+        # 计算 RMS
+        rms = (global_sum_sq / global_numel).sqrt()
+        return rms
+
+    def _approx_sq_grad(self, exp_avg_sq_row, exp_avg_sq_col, clip_method):
+        exp_avg_sq_row_mean = exp_avg_sq_row.mean(dim=-1, keepdim=True)
+        if clip_method == "col":
+            dist.all_reduce(exp_avg_sq_row_mean, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
+            exp_avg_sq_row_mean /= dist.get_world_size(group=self.tensor_parallel_group)
+        r_factor = (exp_avg_sq_row / exp_avg_sq_row_mean).rsqrt_().unsqueeze(-1)
         c_factor = exp_avg_sq_col.unsqueeze(-2).rsqrt()
+
         return torch.mul(r_factor, c_factor)
 
     def step(self, closure=None):
@@ -108,18 +150,35 @@ class CAME(Optimizer):
                     exp_avg_sq_row = state["exp_avg_sq_row"]
                     exp_avg_sq_col = state["exp_avg_sq_col"]
 
-                    exp_avg_sq_row.mul_(group["betas"][1]).add_(update.mean(dim=-1), alpha=1.0 - group["betas"][1])
-                    exp_avg_sq_col.mul_(group["betas"][1]).add_(update.mean(dim=-2), alpha=1.0 - group["betas"][1])
+                    # 局部平均
+                    sq_mean_row = update.mean(dim=-1)
+                    sq_mean_col = update.mean(dim=-2)
+                    if self.tensor_parallel_group:
+                        # 全局同步
+                        if self.clip_method[id(p)] == "row":
+                            dist.all_reduce(sq_mean_row, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
+                            sq_mean_row /= dist.get_world_size(group=self.tensor_parallel_group)
+                        elif self.clip_method[id(p)] == "col":
+                            dist.all_reduce(sq_mean_col, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
+                            sq_mean_col /= dist.get_world_size(group=self.tensor_parallel_group)
+                        else:
+                            pass
+
+                    # 得到的exp_avg是完整exp_avg的切割
+                    exp_avg_sq_row.mul_(group["betas"][1]).add_(sq_mean_row, alpha=1.0 - group["betas"][1])
+                    exp_avg_sq_col.mul_(group["betas"][1]).add_(sq_mean_col, alpha=1.0 - group["betas"][1])
 
                     # Approximation of exponential moving average of square of gradient
-                    update = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
+                    update = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col, clip_method=self.clip_method[id(p)])
                     update.mul_(grad)
+
                 else:
                     exp_avg_sq = state["exp_avg_sq"]
 
                     exp_avg_sq.mul_(group["betas"][1]).add_(update, alpha=1.0 - group["betas"][1])
                     update = exp_avg_sq.rsqrt().mul_(grad)
 
+                # update也为完整update的切割
                 update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
 
                 exp_avg = state["exp_avg"]
@@ -133,11 +192,25 @@ class CAME(Optimizer):
                     exp_avg_res_row = state["exp_avg_res_row"]
                     exp_avg_res_col = state["exp_avg_res_col"]
 
-                    exp_avg_res_row.mul_(group["betas"][2]).add_(res.mean(dim=-1), alpha=1.0 - group["betas"][2])
-                    exp_avg_res_col.mul_(group["betas"][2]).add_(res.mean(dim=-2), alpha=1.0 - group["betas"][2])
+                    res_mean_row = res.mean(dim=-1)
+                    res_mean_col = res.mean(dim=-2)
+                    if self.tensor_parallel_group:
+                        if self.clip_method[id(p)] == "row":
+                            dist.all_reduce(res_mean_row, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
+                            res_mean_row /= dist.get_world_size(group=self.tensor_parallel_group)
+                        elif self.clip_method[id(p)] == "col":
+                            dist.all_reduce(res_mean_col, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
+                            res_mean_col /= dist.get_world_size(group=self.tensor_parallel_group)
+                        else:
+                            pass
+
+                    exp_avg_res_row.mul_(group["betas"][2]).add_(res_mean_row, alpha=1.0 - group["betas"][2])
+                    exp_avg_res_col.mul_(group["betas"][2]).add_(res_mean_col, alpha=1.0 - group["betas"][2])
 
                     # Approximation of exponential moving average of instability
-                    res_approx = self._approx_sq_grad(exp_avg_res_row, exp_avg_res_col)
+                    res_approx = self._approx_sq_grad(
+                        exp_avg_res_row, exp_avg_res_col, clip_method=self.clip_method[id(p)]
+                    )
                     update = res_approx.mul_(exp_avg)
                 else:
                     update = exp_avg.clone()
