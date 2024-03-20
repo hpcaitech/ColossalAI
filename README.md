@@ -133,14 +133,13 @@ distributed training and inference in a few lines.
 [[HuggingFace model weights]](https://huggingface.co/hpcai-tech/Open-Sora)
 [[Demo]](https://github.com/hpcaitech/Open-Sora?tab=readme-ov-file#-latest-demo)
 
-<p id="diffusion_demo" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/sora/open-sora-1.png" width=600/>
-</p>
+<div align="center">
+   <a href="https://www.youtube.com/watch?v=iDTxepqixuc">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/sora/sora-demo.png" width="700" />
+   </a>
+</div>
 
-<p id="diffusion_demo" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/sora/open-sora-2.png" width=600/>
-</p>
-
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ### Colossal-LLaMA-2
 
