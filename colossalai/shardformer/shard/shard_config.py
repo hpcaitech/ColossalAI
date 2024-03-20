@@ -37,6 +37,7 @@ class ShardConfig:
     enable_jit_fused: bool = False
     enable_sequence_parallelism: bool = False
     sequence_parallelism_mode: str = None
+    zero_stage: int = 0
     enable_sequence_overlap: bool = False
     parallel_output: bool = True
     # TODO padding vocab

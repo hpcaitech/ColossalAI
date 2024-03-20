@@ -77,10 +77,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         forced_dtype: Optional[torch.dtype] = None,
         moe_extra_dp_process_group: Optional[ProcessGroup] = None,
         master_weights: bool = True,  # master weights
-        enable_sequence_parallel: bool = False,
     ):
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
-        self._enable_sequence_parallel = enable_sequence_parallel
 
         self._dtype = self.optim.param_groups[0]["params"][0].dtype
         self._logger = get_dist_logger()
@@ -300,8 +298,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
             if self.moe_extra_dp_pg is None:
                 flat_grads = self._bucket_store.get_flatten_grad()
-                if not self._enable_sequence_parallel:
-                    flat_grads /= self._world_size
+                flat_grads /= self._world_size
             else:
                 # record moe and non moe param
                 moe_list = []
