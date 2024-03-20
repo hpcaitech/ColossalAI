@@ -128,13 +128,11 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 [[模型权重]](https://huggingface.co/hpcai-tech/Open-Sora)
 [[演示样例]](https://github.com/hpcaitech/Open-Sora?tab=readme-ov-file#-latest-demo)
 
-<p id="diffusion_demo" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/sora/open-sora-1.png" width=600/>
-</p>
-
-<p id="diffusion_demo" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/sora/open-sora-2.png" width=600/>
-</p>
+<div align="center">
+   <a href="https://www.bilibili.com/video/BV1dW421c7MN">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/sora/sora-demo-cn.png" width="700" />
+   </a>
+</div>
 
 ### Colossal-LLaMA-2
 
