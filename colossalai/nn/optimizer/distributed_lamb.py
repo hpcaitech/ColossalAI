@@ -26,7 +26,7 @@ class DistributedLamb(Optimizer):
         adam (bool, optional): always use trust ratio = 1, which turns this into
             Adam. Useful for comparison purposes.
         device_mesh: a 2D device mesh containing process groups for TP and ZeRO 2, initialized
-            from init_distributed() method.
+            from setup_distributed() method.
     .. _Large Batch Optimization for Deep Learning: Training BERT in 76 minutes:
         https://arxiv.org/abs/1904.00962
     """
@@ -60,7 +60,7 @@ class DistributedLamb(Optimizer):
         super().__init__(params, defaults)
 
     @staticmethod
-    def init_distributed(tp_size, zero_size):
+    def setup_distributed(tp_size, zero_size):
         """Initializes a device mesh containing process groups for TP and ZeRO 2"""
         world_size = tp_size * zero_size
         os_world_size = dist.get_world_size(None)

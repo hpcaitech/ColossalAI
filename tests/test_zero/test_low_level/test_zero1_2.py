@@ -157,7 +157,9 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
 
     # torch-ddp backward
     torch_output.mean().backward()
+    import torch.distributed as dist
 
+    dist.barrier()
     # check grad
     for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
         if p.grad is not None:

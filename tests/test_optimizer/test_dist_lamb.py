@@ -68,7 +68,7 @@ def set_dist_grad(
 ) -> None:
     """
     Set split grads for Tensor Parallel or ZeRO DP.
-    We do not need separate treatment for ZeRO,
+    We do not need a separate treatment for ZeRO,
     as the wrapper takes care of reduce-scattering grads.
     """
     rank = dist.get_rank(group)
@@ -78,8 +78,8 @@ def set_dist_grad(
         if torch_p.grad is None:
             torch_p.grad = torch.zeros_like(torch_p)
 
-        is_tp = hasattr(p, "dist_layout")
-        if is_tp:
+        is_distributed = hasattr(p, "dist_layout")
+        if is_distributed:
             sharding = p.dist_layout.sharding_spec.sharding_sequence
             split_dim = sharding.index(_TP_SPEC)
             shape = torch_p.split(world_size, dim=split_dim)[rank].shape
@@ -101,23 +101,19 @@ def set_dist_grad(
 
 @parameterize("p_g_dtype", _ALLOWED_P_G_TYPES)
 @parameterize("bias_correction", [False, True])
-@parameterize("zero_size", [2])
-@parameterize("tp_size", [2])
+@parameterize("tp_zero_size", [(4, 1), (2, 2), (1, 4)])
 def run_dist_lamb_optim(
-    bias_correction: bool,
-    p_g_dtype: tuple[torch.dtype, torch.dtype],
-    zero_size: int,
-    tp_size: int,
-    # device_mesh: DeviceMesh
+    bias_correction: bool, p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_size: tuple[int, int]
 ) -> None:
     p_dtype, g_dtype = p_g_dtype
-    device_mesh, *_ = DistributedLamb.init_distributed(tp_size, zero_size)
-    tp_group = device_mesh.get_process_group(axis=0)
-    dp_group = device_mesh.get_process_group(axis=1)
+    tp_size, zero_size = tp_zero_size
+    device_mesh, tp_group, dp_group = DistributedLamb.setup_distributed(tp_size, zero_size)
+    rank = dist.get_rank()
 
-    torch_model = Net()
-    model = TPNet(torch_model.fc1, torch_model.fc2, tp_group)
+    torch_model = Net().to(rank)
+    model = TPNet(torch_model.fc1, torch_model.fc2, tp_group).to(rank)
 
+    # Set up optimizers
     lr = 1e-3
     beta1, beta2 = 0.9, 0.999
     eps = 1e-8
@@ -132,21 +128,35 @@ def run_dist_lamb_optim(
     )
     if zero_size > 1:
         optim = LowLevelZeroOptimizer(
-            optim, overlap_communication=True, initial_scale=128, partition_grad=True, dp_process_group=dp_group
+            optim,
+            overlap_communication=True,
+            initial_scale=128,
+            partition_grad=True,
+            dp_process_group=dp_group,
+            verbose=True,
         )
 
-    rtol, atol = 1e-5, 1e-5
+    rtol, atol = 1e-6, 1e-6
     if p_dtype is torch.float16 or g_dtype is torch.float16:
-        rtol, atol = 2e-3, 2e-3
+        rtol, atol = 2e-4, 2e-4
     if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
-        rtol, atol = 4e-3, 4e-3
+        rtol, atol = 4e-4, 4e-4
 
+    x = torch.randn(32, _IN_DIM, dtype=p_dtype, device=rank)
     for _ in range(N_STEPS):
-        set_dist_grad(model, torch_model, g_dtype, optim.optim.tp_group)
+        # set_dist_grad(model, torch_model, g_dtype, optim.optim.tp_group)
+        out_tp = model(x).sum()
+        torch_model(x).sum().backward()
+        if zero_size > 1:
+            optim.backward(out_tp)
+        else:
+            out_tp.backward()
+
         torch_optim.step()
         optim.step()
         torch_optim.zero_grad()
         optim.zero_grad()
+
         for p, torch_p in zip(model.parameters(), torch_model.parameters()):
             # if overflow, the weight won't be updated. so there will be no nan in p
             assert not torch.isnan(p).any()
@@ -157,6 +167,7 @@ def check_dist_lamb(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_dist_lamb_optim()
+    print(f"rank {rank} tests passed :)")
 
 
 @pytest.mark.dist

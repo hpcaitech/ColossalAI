@@ -306,9 +306,8 @@ class DeviceMesh:
             # index means the local rank in the current axis
             # inner_tensor refers to the processes with the same local rank
 
-            if inner_tensor.numel() == 1:
-                # if the inner_tensor only has one element, it means that
-                # it already reaches the last axis
+            if inner_tensor.dim() == 0:
+                # if the inner_tensor already reaches the last axis,
                 # we append its local_rank in the last axis to the index_list
                 # and assign to the mapping
                 # the value of the mapping is the the local rank at the indexed axis of the device mesh
