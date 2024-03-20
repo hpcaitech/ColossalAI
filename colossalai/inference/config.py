@@ -55,7 +55,7 @@ class InferenceConfig:
         pp_size (int): Pipeline parallel size, defaults to 1.
         micro_batch_size (int): the micro batch size, defaults to 1. Only useful when `pp_size` > 1.
         micro_batch_buffer_size (int): the buffer size for micro batch. Normally, it should be the same as the number of pipeline stages.
-        high_precision(Optional[bool]): Whether to cast fp16 to fp32 for calculation, defaults to False.
+        high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
     """
 
     # NOTE: arrange configs according to their importance and frequency of usage

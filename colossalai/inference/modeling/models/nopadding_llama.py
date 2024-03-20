@@ -52,7 +52,7 @@ def llama_causal_lm_forward(
         batch (BatchInfo): It stores the necessary input information for this inference.
         k_caches (List[torch.Tensor]): It holds the GPU memory for the key cache.
         v_caches (List[torch.Tensor]): It holds the GPU memory for the value cache.
-        high_precision(Optional[bool]): Whether to cast fp16 to fp32 for calculation, defaults to False.
+        high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
     """
 
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
@@ -80,7 +80,7 @@ def llama_model_forward(
         batch (BatchInfo): It stores the necessary input information for this inference.
         k_caches (List[torch.Tensor]): It holds the GPU memory for the key cache.
         v_caches (List[torch.Tensor]): It holds the GPU memory for the value cache.
-        high_precision(Optional[bool]): Whether to cast fp16 to fp32 for calculation, defaults to False.
+        high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
     """
     input_ids = batch.get_1D_inputs()
     block_tables = batch.get_block_table_tensor()
@@ -185,7 +185,7 @@ def llama_decoder_layer_forward(
         sm_scale (int, optional): Used for flash attention. Defaults to None.
         use_cuda_kernel: (bool, optional): Whether to use cuda kernel. Defaults to True.
         cu_seqlens(torch.Tensor, optional): Holding the cumulative sum of sequence length.
-        high_precision(Optional[bool]): Whether to cast fp16 to fp32 for calculation, defaults to False.
+        high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
     """
 
     hidden_states, residual = self.input_layernorm(hidden_states, norm_output, residual, use_cuda_kernel)
@@ -329,7 +329,7 @@ class NopadLlamaAttention(LlamaAttention):
             sm_scale (int, optional): Used for flash attention. Defaults to None.
             use_cuda_kernel: (bool, optional): Whether to use cuda kernel. Defaults to True.
             cu_seqlens(torch.Tensor, optional): Holding the cumulative sum of sequence length.
-            high_precision(Optional[bool]): Whether to cast fp16 to fp32 for calculation, defaults to False.
+            high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
         """
 
         token_nums = hidden_states.size(0)
