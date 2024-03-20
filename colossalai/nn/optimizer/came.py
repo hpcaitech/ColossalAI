@@ -31,15 +31,15 @@ class CAME(Optimizer):
         betas=(0.9, 0.999, 0.9999),
         weight_decay=0.0,
         tp_process_group=None,
-        dp_process_group=None,
+        zero_process_group=None,
     ):
         assert lr > 0.0
         assert all([0.0 <= beta <= 1.0 for beta in betas])
 
         self.tensor_parallel_group = tp_process_group
-        self.data_parallel_group = dp_process_group
+        self.zero_parallel_group = zero_process_group
         self.tensor_parallel_rank = dist.get_rank(group=self.tensor_parallel_group)
-        self.data_parallel_rank = dist.get_rank(group=self.data_parallel_group)
+        self.zero_parallel_rank = dist.get_rank(group=self.zero_parallel_group)
 
         defaults = dict(
             lr=lr,
