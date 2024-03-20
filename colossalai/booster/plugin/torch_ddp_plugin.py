@@ -240,6 +240,12 @@ class TorchDDPPlugin(DPPluginBase):
         self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
     ) -> nn.Module:
         from peft import PeftModel, get_peft_model
+        from accelerate.utils import load_and_quantize_model
+        from accelerate.utils import BnbQuantizationConfig
+        import torch
+        bnb_quantization_config = BnbQuantizationConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
+
+        model = load_and_quantize_model(model, bnb_quantization_config)
 
         assert not isinstance(model, TorchDDPModel), "Lora should be enabled before boosting the model."
         if pretrained_dir is None:
