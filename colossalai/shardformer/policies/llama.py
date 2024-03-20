@@ -121,7 +121,7 @@ class LlamaPolicy(Policy):
             )
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group),
+                    "forward": get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group, self.shard_config.zero_stage),
                 },
                 policy=policy,
                 target_key=LlamaModel,

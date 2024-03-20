@@ -660,10 +660,6 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         self.dp_pg = dp_process_group
         self.tp_pg = tp_process_group
         self.pp_pg = pp_process_group
-        self.use_all_to_all_sequence_parallel = (
-            self.model.shard_config.enable_sequence_parallelism
-            and self.model.shard_config.sequence_parallelism_mode == "all_to_all"
-        )
         if use_pipeline:
             init_pipeline_optimizer(optimizer, model)
         super().__init__(
@@ -684,7 +680,6 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             cpu_offload=cpu_offload,
             dp_process_group=dp_process_group,
             forced_dtype=forced_dtype,
-            enable_sequence_parallel=self.use_all_to_all_sequence_parallel,
         )
 
     def sync_dp_grads(self):
@@ -1098,6 +1093,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             enable_sequence_parallelism=enable_sequence_parallelism,
             sequence_parallelism_mode=sequence_parallelism_mode,
             enable_sequence_overlap=enable_sequence_overlap,
+            zero_stage=zero_stage,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,

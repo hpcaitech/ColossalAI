@@ -756,7 +756,7 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
                 grad_output = grad_output * dist.get_world_size(ctx.process_group)
             elif ctx.grad_scale == "down":
                 grad_output = grad_output / dist.get_world_size(ctx.process_group)
-        return _gather(grad_output, ctx.dim, ctx.process_group), None, None
+        return _gather(grad_output, ctx.dim, ctx.process_group), None, None, None
 
 
 class _ReduceForward(torch.autograd.Function):
@@ -819,7 +819,7 @@ class _GatherForwardSplitBackward(torch.autograd.Function):
                 grad_output = grad_output * dist.get_world_size(ctx.process_group)
             elif ctx.grad_scale == "down":
                 grad_output = grad_output / dist.get_world_size(ctx.process_group)
-        return _split(grad_output, ctx.dim, ctx.process_group), None, None
+        return _split(grad_output, ctx.dim, ctx.process_group), None, None, None
 
 
 class _AllToAll(torch.autograd.Function):
@@ -1020,12 +1020,12 @@ def matmul_gather_forward_reducescatter_backward(
     )
 
 
-def gather_forward_split_backward(input_, dim, process_group):
-    return _GatherForwardSplitBackward.apply(input_, dim, process_group)
+def gather_forward_split_backward(input_, dim, process_group, grad_scale=None):
+    return _GatherForwardSplitBackward.apply(input_, dim, process_group, grad_scale)
 
 
-def split_forward_gather_backward(input_, dim, process_group):
-    return _SplitForwardGatherBackward.apply(input_, dim, process_group)
+def split_forward_gather_backward(input_, dim, process_group, grad_scale=None):
+    return _SplitForwardGatherBackward.apply(input_, dim, process_group, grad_scale)
 
 
 def reduce_forward(input_, process_group):

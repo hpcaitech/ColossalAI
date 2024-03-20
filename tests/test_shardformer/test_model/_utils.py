@@ -159,18 +159,7 @@ def run_forward_backward_with_hybrid_plugin(
 
     shard_test_data = {}
     for k, v in data.items():
-        if k not in ["input_ids", "attention_mask"]:
-            shard_test_data[k] = data[k].clone()
-        else:
-            # todo: check the correctness of using dim=-1: to be compatible with date_gen_for_double_heads()
-            shard_test_data[k] = (
-                torch.chunk(data[k].clone(), booster.plugin.shard_config.sequence_parallel_size, dim=-1)[
-                    dist.get_rank(booster.plugin.shard_config.sequence_parallel_process_group)
-                ]
-                if booster.plugin.shard_config.enable_sequence_parallelism
-                and booster.plugin.shard_config.sequence_parallelism_mode in ["ring", "all_to_all"]
-                else data[k].clone()
-            )
+        shard_test_data[k] = data[k].clone()
     unshard_test_data = {}
     for k, v in data.items():
         unshard_test_data[k] = data[k].clone()

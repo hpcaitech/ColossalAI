@@ -853,8 +853,6 @@ def gpt2_sequence_parallel_forward_fn(sp_mode, sp_size, sp_group):
 
         # use variable seq_len to replace input_shape[-1]
         seq_len = input_shape[-1]
-        if sp_mode in ["ring", "all_to_all"]:
-            seq_len *= sp_size
 
         if token_type_ids is not None:
             token_type_ids = token_type_ids.view(-1, seq_len)
@@ -866,8 +864,6 @@ def gpt2_sequence_parallel_forward_fn(sp_mode, sp_size, sp_group):
             past_key_values = tuple([None] * len(self.h))
         else:
             past_length = past_key_values[0][0].size(-2)
-            if sp_mode in ["ring", "all_to_all"]:
-                past_length *= sp_size
         if position_ids is None:
             position_ids = torch.arange(past_length, seq_len + past_length, dtype=torch.long, device=device)
             position_ids = position_ids.unsqueeze(0).view(-1, seq_len)
@@ -875,9 +871,6 @@ def gpt2_sequence_parallel_forward_fn(sp_mode, sp_size, sp_group):
         # split position ids when using sequence parallel
         if sp_mode in ["ring", "all_to_all"]:
             position_ids = torch.chunk(position_ids.clone(), sp_size, dim=1)[dist.get_rank(sp_group)]
-
-        if sp_mode in ["ring", "all_to_all"]:
-            attention_mask = _gather(attention_mask, 1, sp_group)
 
         # GPT2Attention mask.
         if attention_mask is not None:
@@ -917,12 +910,12 @@ def gpt2_sequence_parallel_forward_fn(sp_mode, sp_size, sp_group):
         head_mask = self.get_head_mask(head_mask, self.config.n_layer)
 
         if inputs_embeds is None:
-            if sp_mode in ["ring"]:
-                input_ids = _gather(input_ids, 1, sp_group)
-                inputs_embeds = self.wte(input_ids)
-                inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
-            else:
-                inputs_embeds = self.wte(input_ids)
+            inputs_embeds = self.wte(input_ids)
+        if sp_mode == "ring":
+            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
+        elif sp_mode == "all_to_all":
+            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 'down')
+
         position_embeds = self.wpe(position_ids)
         hidden_states = inputs_embeds + position_embeds
 

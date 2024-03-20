@@ -694,7 +694,7 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
     return forward
 
 
-def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
+def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group, zero_stage=0):
     logger = logging.get_logger(__name__)
 
     # Copied from transformers.models.bart.modeling_bart._make_causal_mask
@@ -804,10 +804,6 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
         else:
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
-        # sp: modify seq_length when using sequence parallel
-        if sp_mode in ["ring", "all_to_all"]:
-            seq_length *= sp_size
-
         seq_length_with_past = seq_length
         past_key_values_length = 0
 
@@ -827,13 +823,12 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
             position_ids = position_ids.view(-1, seq_length).long()
 
         if inputs_embeds is None:
-            if sp_mode == "ring":
-                input_ids = _gather(input_ids, 1, sp_group)
-                inputs_embeds = self.embed_tokens(input_ids)
-                input_ids = input_ids.chunk(sp_size, dim=1)[torch.distributed.get_rank(sp_group)]
-                inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
-            else:
-                inputs_embeds = self.embed_tokens(input_ids)
+            inputs_embeds = self.embed_tokens(input_ids)
+
+        if sp_mode in ["ring", "split_gather"]:
+            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
+        elif sp_mode == "all_to_all":
+            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 'down')
 
         # TODO use_distributed_mask
         use_distributed_mask = True if sp_mode in ["ring", "all_to_all"] else False
@@ -864,8 +859,6 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
             attention_mask = _gather(attention_mask, 1, sp_group)
 
         hidden_states = inputs_embeds
-        if sp_mode == "split_gather":
-            hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group)
 
         if (self.gradient_checkpointing or sp_mode in ["ring", "all_to_all"]) and self.training:
             if use_cache:
@@ -922,7 +915,10 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
         hidden_states = self.norm(hidden_states)
 
         # Todo: Maybe this line can be optimized
-        hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale="up")
+        if sp_mode == "ring" or sp_mode == "split_gather" or (sp_mode == "all_to_all" and zero_stage == 0):
+            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
+        elif sp_mode == "all_to_all" and zero_stage in [1, 2]:
+            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale="up")
 
         # add hidden states from the last decoder layer
         if output_hidden_states:

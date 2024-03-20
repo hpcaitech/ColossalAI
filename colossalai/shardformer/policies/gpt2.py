@@ -109,7 +109,9 @@ class GPT2Policy(Policy):
                     SubModuleReplacementDescription(
                         suffix="mlp.c_proj",
                         target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={
+                            "seq_parallel_mode": sp_mode,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.attn_dropout",
