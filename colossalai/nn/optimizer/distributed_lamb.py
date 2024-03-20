@@ -14,6 +14,10 @@ __all__ = ["DistributedLamb"]
 class DistributedLamb(Optimizer):
     r"""Implements the Lamb algorithm, with extra support for ZeRO 2 and Tensor Parallel.
     Proposed in `Large Batch Optimization for Deep Learning: Training BERT in 76 minutes`_.
+    Example (4 devices):
+        >>> device_mesh, tp_group, dp_group = DistributedLamb.set_distributed(2, 2)
+        >>> optim = DistributedLamb(model.parameters(), lr=1e-3, device_mesh=device_mesh)
+
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining
             parameter groups
@@ -26,7 +30,7 @@ class DistributedLamb(Optimizer):
         adam (bool, optional): always use trust ratio = 1, which turns this into
             Adam. Useful for comparison purposes.
         device_mesh: a 2D device mesh containing process groups for TP and ZeRO 2, initialized
-            from setup_distributed() method.
+            from setup_distributed() method. If None will downgrade to Lamb.
     .. _Large Batch Optimization for Deep Learning: Training BERT in 76 minutes:
         https://arxiv.org/abs/1904.00962
     """
