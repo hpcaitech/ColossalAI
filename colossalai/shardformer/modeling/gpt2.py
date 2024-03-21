@@ -25,6 +25,7 @@ from colossalai.shardformer.layer._operation import gather_forward_split_backwar
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import cross_entropy_1d
+from ..layer._operation import gather_forward_split_backward
 
 
 class GPT2PipelineForwards:
@@ -336,6 +337,9 @@ class GPT2PipelineForwards:
                 )
             else:
                 loss = loss_fct(shift_logits, shift_labels)
+
+            if not shard_config.parallel_output:
+                lm_logits = gather_forward_split_backward(lm_logits, -1, shard_config.tensor_parallel_process_group)
 
         if not return_dict:
             output = (lm_logits,) + outputs[1:]
@@ -793,11 +797,12 @@ def get_gpt2_flash_attention_forward():
             scale = scale * (1 / float(self.layer_idx + 1))
 
         # use coloattention
-        attention = ColoAttention(
-            embed_dim=self.embed_dim, num_heads=self.num_heads, dropout=self.attn_dropout.p, scale=scale
-        )
+        if not hasattr(self, "attention"):
+            self.attention = ColoAttention(
+                embed_dim=self.embed_dim, num_heads=self.num_heads, dropout=self.attn_dropout.p, scale=scale
+            )
 
-        attn_output = attention(query, key, value, attn_mask=flash_attention_mask, attn_mask_type=attn_mask_type)
+        attn_output = self.attention(query, key, value, attn_mask=flash_attention_mask, attn_mask_type=attn_mask_type)
 
         attn_output = self.c_proj(attn_output)
         attn_output = self.resid_dropout(attn_output)
@@ -1082,6 +1087,9 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
                 )
             else:
                 loss = loss_fct(shift_logits, shift_labels)
+
+        if not shard_config.parallel_output:
+            lm_logits = gather_forward_split_backward(lm_logits, -1, shard_config.tensor_parallel_process_group)
 
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]
