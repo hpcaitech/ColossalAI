@@ -8,7 +8,6 @@ import torch
 from torch import nn
 import torch.distributed as dist
 
-# from colossalai.nn.optimizer import Adafactor, DistributedAdaFactor
 from adafactor import Adafactor
 from distributed_adafactor import DistributedAdaFactor
 
@@ -16,10 +15,12 @@ from colossalai.tensor.d_tensor import (
     distribute_tensor,
     ShardingSpec,
 )
+import colossalai
 from colossalai.tensor.d_tensor.layout import Layout
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.testing import parameterize
 from colossalai.shardformer.layer._operation import _gather
+# from colossalai.nn.optimizer import DistributedAdaFactor
 
 # # Set weight bias
 # def setup_param_groups(bert_model: nn.Module) -> list:
