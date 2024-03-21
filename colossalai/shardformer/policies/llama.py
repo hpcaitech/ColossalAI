@@ -111,6 +111,16 @@ class LlamaPolicy(Policy):
                 policy=policy,
                 target_key=LlamaModel,
             )
+        else:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="embed_tokens",
+                    target_module=PaddingEmbedding,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                ),
+                policy=policy,
+                target_key=LlamaModel,
+            )           
 
         # optimization configuration
         self.append_or_create_submodule_replacement(

@@ -21,13 +21,19 @@ from colossalai.tensor.d_tensor.api import (
 )
 
 from ._operation import gather_forward_split_backward, reduce_forward
+<<<<<<< HEAD
 from .parallel_module import PaddingParallelModule, ParallelModule
+=======
+from .parallel_module import ParallelModule, PaddingParallelModule
+>>>>>>> padding vocab
 from .utils import create_randomizer_with_offset
+from colossalai.checkpoint_io.utils import gather_distributed_param
+_EXTRA_STATE_KEY_SUFFIX = '_extra_state'
 
 __all__ = ["Embedding1D", "VocabParallelEmbedding1D", "PaddingEmbedding"]
 
 
-class Embedding1D(ParallelModule):
+class Embedding1D(PaddingParallelModule):
     r"""Embedding for 1D parallelism.
 
     Args:
@@ -71,12 +77,9 @@ class Embedding1D(ParallelModule):
         *args,
         **kwargs,
     ):
-        super().__init__()
-
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
         self.process_group = process_group
-
         self.padding_idx = padding_idx
         self.embed_args = args
         self.embed_kwargs = kwargs
@@ -89,10 +92,12 @@ class Embedding1D(ParallelModule):
         # Parameters.
         if weight is None:
             factory_kwargs = {"device": device, "dtype": dtype}
-            self.weight = nn.Parameter(torch.empty((num_embeddings, self.embedding_dim), **factory_kwargs))
+            weight = nn.Parameter(torch.empty((num_embeddings, embedding_dim), **factory_kwargs))
         else:
             weight.data = weight.data.to(device=device, dtype=dtype)
-            self.weight = weight
+
+        super(Embedding1D, self).__init__(num_embeddings, num_embeddings, embedding_dim, weight)
+
         if not is_distributed_tensor(self.weight):
             sharded_weight = shard_colwise(self.weight.data, process_group)
             sharded_tensor_to_existing_param(sharded_weight, self.weight)
@@ -170,7 +175,11 @@ class PaddingEmbedding(PaddingParallelModule):
         dtype: torch.dtype = None,
         device: torch.device = None,
         weight: Optional[nn.Parameter] = None,
+<<<<<<< HEAD
         make_vocab_size_divisible_by: int = 64,
+=======
+        make_vocab_size_divisible_by: int = 128,
+>>>>>>> padding vocab
         *args,
         **kwargs,
     ):
@@ -180,21 +189,37 @@ class PaddingEmbedding(PaddingParallelModule):
         self.embed_kwargs = kwargs
         self.padding_idx = padding_idx
         if num_embeddings % make_vocab_size_divisible_by != 0:
+<<<<<<< HEAD
             self.num_embeddings = (
                 num_embeddings + make_vocab_size_divisible_by - (num_embeddings % make_vocab_size_divisible_by)
             )
         # create weight and bias
+=======
+            self.num_embeddings = num_embeddings + make_vocab_size_divisible_by - (num_embeddings % make_vocab_size_divisible_by)
+        # parameter
+>>>>>>> padding vocab
         if weight is None:
             factory_kwargs = {"device": device, "dtype": dtype}
             weight = nn.Parameter(torch.empty((num_embeddings, self.embedding_dim), **factory_kwargs))
         else:
             weight.data = weight.data.to(device=device, dtype=dtype)
 
+<<<<<<< HEAD
         super().__init__(self.num_embeddings, num_embeddings, weight)
 
         if weight is None:
             self.reset_parameters()
 
+=======
+        super(PaddingEmbedding, self).__init__(self.num_embeddings, num_embeddings, weight)
+
+        self.resize_token_embeddings()
+        # torch.nn.Embedding
+        if weight is None:
+            self.reset_parameters()
+
+
+>>>>>>> padding vocab
     def reset_parameters(self) -> None:
         init.normal_(self.weight)
         self._fill_padding_idx_with_zero()
@@ -205,12 +230,20 @@ class PaddingEmbedding(PaddingParallelModule):
                 self.weight[self.padding_idx].fill_(0)
 
     def forward(self, input: Tensor) -> Tensor:
+<<<<<<< HEAD
         return F.embedding(input, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
 
     @staticmethod
     def from_native_module(
         module: nn.Embedding, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
     ) -> PaddingParallelModule:
+=======
+        return F.embedding(
+            input, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
+        
+    @staticmethod
+    def from_native_module(module: nn.Embedding, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs) -> ParallelModule:
+>>>>>>> padding vocab
         r"""
         Convert a native pytorch embedding module to a parallel module.
         """
@@ -220,6 +253,10 @@ class PaddingEmbedding(PaddingParallelModule):
         embedding_dim = module.embedding_dim
         padding_idx = module.padding_idx
         device = module.weight.device
+<<<<<<< HEAD
+=======
+        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 128)
+>>>>>>> padding vocab
 
         # create the parallel module
         padding_embedding = PaddingEmbedding(
@@ -228,13 +265,21 @@ class PaddingEmbedding(PaddingParallelModule):
             padding_idx=padding_idx,
             device=device,
             weight=module.weight,
+<<<<<<< HEAD
+=======
+            make_vocab_size_divisible_by=make_vocab_size_divisible_by,
+>>>>>>> padding vocab
             *args,
             **kwargs,
         )
 
         return padding_embedding
+<<<<<<< HEAD
 
 
+=======
+    
+>>>>>>> padding vocab
 class VocabParallelEmbedding1D(PaddingParallelModule):
     r"""Embedding parallelized in the vocabulary dimension.
 
@@ -275,7 +320,11 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
         process_group: ProcessGroup = None,
         weight: Optional[nn.Parameter] = None,
         weight_initializer: Callable = init.normal_(),
+<<<<<<< HEAD
         make_vocab_size_divisible_by: int = 64,
+=======
+        make_vocab_size_divisible_by: int = 128,
+>>>>>>> padding vocab
         *args,
         **kwargs,
     ):
@@ -288,6 +337,7 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
         tensor_parallel_size = dist.get_world_size(group=process_group)
         tensor_parallel_rank = dist.get_rank(group=process_group)
 
+<<<<<<< HEAD
         # generate weight and bias
         if weight is None:
             factory_kwargs = {"device": device, "dtype": dtype}
@@ -296,15 +346,22 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
             weight.data = weight.data.to(device=device, dtype=dtype)
 
         # calculate new padding size
+=======
+>>>>>>> padding vocab
         multiple = make_vocab_size_divisible_by * tensor_parallel_size
         if num_embeddings % multiple != 0:
             self.num_embeddings = num_embeddings + multiple - (num_embeddings % multiple)
 
+<<<<<<< HEAD
         # resize vocabulary size
         super().__init__(self.num_embeddings, num_embeddings, weight)
 
         # deal with tensor parallelism
         self.num_embeddings_per_partition = divide(self.num_embeddings, tensor_parallel_size)
+=======
+        self.num_embeddings_per_partition = divide(self.num_embeddings, tensor_parallel_size)
+        print("num_embeddings_per_partition", self.num_embeddings_per_partition)
+>>>>>>> padding vocab
         self.vocab_start_index = tensor_parallel_rank * self.num_embeddings_per_partition
         self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
 
@@ -315,12 +372,32 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
         seed = torch.random.initial_seed()
         self.randomizer = create_randomizer_with_offset(seed, process_group=self.process_group)
 
+<<<<<<< HEAD
+=======
+        # parameter
+        if weight is None:
+            factory_kwargs = {"device": device, "dtype": dtype}
+            weight = nn.Parameter(torch.empty((num_embeddings, self.embedding_dim), **factory_kwargs))
+        else:
+            weight.data = weight.data.to(device=device, dtype=dtype)
+
+        super().__init__(self.num_embeddings, num_embeddings, weight)
+
+
+        # resize vocabulary size
+        self.resize_token_embeddings()
+        print("weight", self.num_embeddings, self.new_num_embeddings, self.old_num_embeddings, self.embedding_dim, self.weight.shape)
+        
+>>>>>>> padding vocab
         if not is_distributed_tensor(self.weight):
             sharded_weight = shard_rowwise(self.weight.data, process_group)
             sharded_tensor_to_existing_param(sharded_weight, self.weight)
 
         if weight is None:
             self.reset_parameters(weight_initializer)
+
+        print(f"embedding self.weight{self.num_embeddings} {self.old_num_embeddings}{dist.get_rank(self.process_group)}, bias{self.bias}", self.weight.shape)
+
 
     @staticmethod
     def from_native_module(
@@ -341,6 +418,8 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
             assert len(process_group) == 1, f"Expected only one process group, got {len(process_group)}."
             process_group = process_group[0]
 
+        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 128)
+
         # create the parallel module
         vocab_embedding_1d = VocabParallelEmbedding1D(
             num_embeddings=num_embeddings,
@@ -349,6 +428,7 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
             device=device,
             process_group=process_group,
             weight=module.weight,
+            make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             *args,
             **kwargs,
         )
