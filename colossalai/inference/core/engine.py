@@ -389,6 +389,7 @@ class InferenceEngine:
             fd_inter_tensor=batch.fd_inter_tensor,
             batch_size=batch.current_batch_size,
             is_prompts=batch.is_prompts,
+            use_cuda_kernel=self.inference_config.use_cuda_kernel,
             use_cuda_graph=use_cuda_graph,
             kv_seq_len=sequence_lengths.max().item(),
             head_dim=batch.head_dim,
