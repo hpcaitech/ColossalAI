@@ -23,8 +23,6 @@ from colossalai.tensor.d_tensor.api import (
 from ._operation import gather_forward_split_backward, reduce_forward
 from .parallel_module import ParallelModule, PaddingParallelModule
 from .utils import create_randomizer_with_offset
-from colossalai.checkpoint_io.utils import gather_distributed_param
-_EXTRA_STATE_KEY_SUFFIX = '_extra_state'
 
 __all__ = ["Embedding1D", "VocabParallelEmbedding1D", "PaddingEmbedding"]
 
@@ -192,7 +190,7 @@ class PaddingEmbedding(PaddingParallelModule):
         super(PaddingEmbedding, self).__init__(self.num_embeddings, num_embeddings, weight)
 
         self.resize_token_embeddings()
-        # torch.nn.Embedding
+
         if weight is None:
             self.reset_parameters()
 
@@ -295,7 +293,6 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
             self.num_embeddings = num_embeddings + multiple - (num_embeddings % multiple)
 
         self.num_embeddings_per_partition = divide(self.num_embeddings, tensor_parallel_size)
-        print("num_embeddings_per_partition", self.num_embeddings_per_partition)
         self.vocab_start_index = tensor_parallel_rank * self.num_embeddings_per_partition
         self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
 
@@ -318,7 +315,6 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
 
         # resize vocabulary size
         self.resize_token_embeddings()
-        print("weight", self.num_embeddings, self.new_num_embeddings, self.old_num_embeddings, self.embedding_dim, self.weight.shape)
         
         if not is_distributed_tensor(self.weight):
             sharded_weight = shard_rowwise(self.weight.data, process_group)
@@ -326,8 +322,6 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
 
         if weight is None:
             self.reset_parameters(weight_initializer)
-
-        print(f"embedding self.weight{self.num_embeddings} {self.old_num_embeddings}{dist.get_rank(self.process_group)}, bias{self.bias}", self.weight.shape)
 
 
     @staticmethod
