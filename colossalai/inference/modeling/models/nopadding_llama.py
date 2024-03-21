@@ -199,8 +199,7 @@ def llama_rmsnorm_forward(
     residual: torch.Tensor = None,
     use_cuda_kernel: bool = True,
 ):
-    # if use_cuda_kernel:
-    if False:
+    if use_cuda_kernel:
         if residual is not None:
             inference_ops.fused_add_rms_layernorm(hidden_states, residual, self.weight.data, self.variance_epsilon)
             return hidden_states, residual
@@ -340,8 +339,7 @@ class NopadLlamaAttention(LlamaAttention):
                 sm_scale=sm_scale,
             )
         else:
-            # if use_cuda_kernel:
-            if False:
+            if use_cuda_kernel:
                 inference_ops.rotary_embedding_and_cache_copy(
                     query_states,
                     key_states,
