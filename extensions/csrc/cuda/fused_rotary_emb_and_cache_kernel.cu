@@ -2,7 +2,7 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
 
-#include "../common/vector_copy_utils.h"
+#include "utils/vector_copy_utils.h"
 #include "../common/micros.h"
 
 template <typename scalar_t, int VecSize>
