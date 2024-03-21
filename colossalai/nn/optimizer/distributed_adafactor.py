@@ -5,6 +5,8 @@ from torch.optim import Optimizer
 import torch.distributed as dist
 
 from colossalai.shardformer.layer._operation import _gather
+from colossalai.device.device_mesh import DeviceMesh
+from colossalai.tensor.d_tensor import ShardingSpec
 
 
 # DistributedAdaFactor (with Tensor parallel and Zero stage 2)
@@ -47,11 +49,11 @@ class DistributedAdaFactor(Optimizer):
         self.param_shape = None # Dict{id:shape}, sample {id(weight): torch.Size(4,4)}
     
     def setup_distribute(self, 
-                         device_mesh, 
-                         sharding_spec_dict, 
-                         param_shape)-> None:
+                         device_mesh: DeviceMesh, 
+                         sharding_spec_dict: dict[int, ShardingSpec], 
+                         param_shape: dict[int, torch.Size])-> None:
         """
-        inject features to the Optimizer
+        Inject features to the Optimizer
         Args:
             device_mesh (DeviceMesh): The devices group to run the optimizer
             sharding_spec_dict (Dict{id(param):ShardingSpec}): ShardingSpecs of Each params
