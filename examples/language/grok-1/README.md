@@ -21,6 +21,8 @@ wget https://github.com/xai-org/grok-1/raw/main/tokenizer.model
 
 ## Inference
 
+You need 8x A100 80GB or equivalent GPUs to run the inference.
+
 We provide two scripts for inference. `run_inference_fast.sh` uses tensor parallelism provided by ColossalAI, and it is faster. `run_inference_slow.sh` uses auto device provided by transformers, and it is slower.
 
 Command format:
