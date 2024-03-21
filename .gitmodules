@@ -1,6 +1,3 @@
 [submodule "examples/tutorial/fastfold/FastFold"]
 	path = examples/tutorial/fastfold/FastFold
 	url = https://github.com/hpcaitech/FastFold
-[submodule "grok-1"]
-	path = examples/language/grok-1/grok_1
-	url = https://huggingface.co/hpcai-tech/grok-1
