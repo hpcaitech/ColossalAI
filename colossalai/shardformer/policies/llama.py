@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
 
-from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, RMSNorm, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, LmHead_Linear_Col, Linear1D_Row, RMSNorm, VocabParallelEmbedding1D, PaddingEmbedding
 
 from ..modeling.llama import (
     LlamaPipelineForwards,
@@ -23,15 +23,6 @@ class LlamaPolicy(Policy):
         pass
 
     def preprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
-            # Resize embedding
-            vocab_size = self.model.config.vocab_size
-            world_size = self.shard_config.tensor_parallel_size
-
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
-
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
@@ -96,10 +87,21 @@ class LlamaPolicy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
                     target_module=VocabParallelEmbedding1D,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
                 ),
                 policy=policy,
                 target_key=LlamaModel,
             )
+        else:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="embed_tokens",
+                    target_module=PaddingEmbedding,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                ),
+                policy=policy,
+                target_key=LlamaModel,
+            )           
 
         # optimization configuration
         self.append_or_create_submodule_replacement(
@@ -254,10 +256,11 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
 
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
+            self.shard_config.parallel_output = True
             new_item = {
                 LlamaForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
-                        SubModuleReplacementDescription(suffix="lm_head", target_module=Linear1D_Col)
+                        SubModuleReplacementDescription(suffix="lm_head", target_module=LmHead_Linear_Col, kwargs={"gather_output": not self.shard_config.parallel_output, "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by})
                     ],
                     method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
                 )
