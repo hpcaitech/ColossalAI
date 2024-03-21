@@ -46,7 +46,18 @@ class DistributedAdaFactor(Optimizer):
         self.sharding_spec_dict = None
         self.param_shape = None # Dict{id:shape}, sample {id(weight): torch.Size(4,4)}
     
-    def setup_distribute(self, device_mesh, sharding_spec_dict, param_shape):
+    def setup_distribute(self, 
+                         device_mesh, 
+                         sharding_spec_dict, 
+                         param_shape)-> None:
+        """
+        inject features to the Optimizer
+        Args:
+            device_mesh (DeviceMesh): The devices group to run the optimizer
+            sharding_spec_dict (Dict{id(param):ShardingSpec}): ShardingSpecs of Each params
+            param_shape  (Dict{id(param):shape}): Paramater Shape of Each params
+            
+        """
         device_mesh = device_mesh
         self.tensor_parallel_size = device_mesh._physical_mesh_id.shape[0]
         self.tensor_parallel_group = device_mesh.get_process_group(axis=1) # "Expected row process group"
@@ -68,6 +79,13 @@ class DistributedAdaFactor(Optimizer):
 
     @staticmethod
     def _get_options(param_group, param_shape): 
+        """
+        Determines whether the current param is factored
+        Args:
+            param_group : param group
+            param_shape : Original Shape of param
+            
+        """
         factored = (len(param_shape) >= 2) 
         use_first_moment = param_group["beta1"] is not None
         return factored, use_first_moment
