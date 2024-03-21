@@ -109,6 +109,7 @@ class InferenceConfig:
             self.dtype in _ALLOWED_DTYPES
         ), f"Expected dtype to be in {_ALLOWED_DTYPES} but found an unknown dtype: {self.dtype}"
 
+        # skip using casting when the data type is float32
         if self.dtype == torch.float32:
             self.high_precision = False
 
