@@ -83,6 +83,7 @@
  <li>
    <a href="#Installation">Installation</a>
    <ul>
+     <li><a href="#apex-Installation">apex Installation</a></li>
      <li><a href="#PyPI">PyPI</a></li>
      <li><a href="#Install-From-Source">Install From Source</a></li>
    </ul>
@@ -407,8 +408,23 @@ Requirements:
 - CUDA >= 11.0
 - [NVIDIA GPU Compute Capability](https://developer.nvidia.com/cuda-gpus) >= 7.0 (V100/RTX20 and higher)
 - Linux OS
+- apex
 
 If you encounter any problem with installation, you may want to raise an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose) in this repository.
+
+### apex Installation
+
+You are likely to face the following problems without `apex`:
+
+- "ModuleNotFoundError: No module named 'colossalai._C.cpu_adam".
+- No module named 'colossalai._C.fused_optim'
+
+
+```bash
+git clone https://github.com/NVIDIA/apex
+cd apex
+pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+```
 
 ### Install from PyPI
 
