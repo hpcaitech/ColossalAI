@@ -50,6 +50,8 @@ class DistributedAdaFactor(Optimizer):
         self.param_shape = None # Dict{id:shape}, sample {id(weight): torch.Size(4,4)}
     
     def setup_distribute(self, 
+                         local_rank: int,
+                         world_size: int,
                          device_mesh: DeviceMesh, 
                          sharding_spec_dict: dict[int, ShardingSpec], 
                          param_shape: dict[int, torch.Size])-> None:
@@ -64,8 +66,8 @@ class DistributedAdaFactor(Optimizer):
         device_mesh = device_mesh
         self.tensor_parallel_size = device_mesh._physical_mesh_id.shape[0]
         self.tensor_parallel_group = device_mesh.get_process_group(axis=1) # "Expected row process group"
-        self.local_rank = int(os.environ['LOCAL_RANK']) 
-        self.world_size = int(os.environ['WORLD_SIZE']) 
+        self.local_rank = local_rank
+        self.world_size = world_size
         self.sharding_spec_dict = sharding_spec_dict
         self.param_shape = param_shape # Dict{id:shape}, sample {id(weight): torch.Size(4,4)}
 

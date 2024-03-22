@@ -61,7 +61,7 @@ def exam_dist_adafactor_step(dtype: torch.dtype):
     # ==============================
     # Base Case
     # ==============================
-    H, W = 4, 4
+    H, W = 4096, 4096
     model_col = nn.Linear(H, W).to(local_rank) # Col parallel weight  
     weight, bias = model_col.weight, model_col.bias
     device_mesh = DeviceMesh(torch.Tensor([i for i in range(world_size)]), (1, tensor_parallel_size), init_process_group=True)
@@ -97,11 +97,11 @@ def exam_dist_adafactor_step(dtype: torch.dtype):
     
     # col parallel
     optimizer_cp = DistributedAdaFactor([weight_col_shard_flatten, bias_col_flatten])
-    optimizer_cp.setup_distribute(device_mesh=device_mesh, sharding_spec_dict=col_sharding_spec_dict, param_shape = col_params_shape)
+    optimizer_cp.setup_distribute(local_rank=local_rank, world_size=world_size, device_mesh=device_mesh, sharding_spec_dict=col_sharding_spec_dict, param_shape = col_params_shape)
     
     # row parallel
     optimizer_rp = DistributedAdaFactor([weight_row_shard_flatten, bias_row_flatten])
-    optimizer_rp.setup_distribute(device_mesh=device_mesh, sharding_spec_dict=row_sharding_spec_dict, param_shape = row_params_shape)
+    optimizer_rp.setup_distribute(local_rank=local_rank, world_size=world_size,device_mesh=device_mesh, sharding_spec_dict=row_sharding_spec_dict, param_shape = row_params_shape)
     
     N_STEPS = 10
     for _ in range(N_STEPS):
