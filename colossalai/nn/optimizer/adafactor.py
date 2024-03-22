@@ -3,7 +3,7 @@ import os
 import torch
 from torch.optim import Optimizer
 
-
+__all__ = ["Adafactor"]
 # Adafactor 
 class Adafactor(Optimizer):
     def __init__(
@@ -76,7 +76,6 @@ class Adafactor(Optimizer):
         loss = None
         if closure is not None:
             loss = closure()
-        # print(f"param_groups:\n {list(self.param_groups)}")
         
         """
         param_groups: Dict
@@ -97,14 +96,12 @@ class Adafactor(Optimizer):
         for group in self.param_groups:
             # update weight & bias
             for p in group["params"]:
-                # print(f"base p.grad {p.grad}\n")
                 if p.grad is None:
                     continue
                 """
                 # grad shape is same as weigh / bias
                 """
                 grad = p.grad
-                # print(f"grad {p.grad}")
                 if grad.dtype in {torch.float16, torch.bfloat16}:
                     grad = grad.float()
                 if grad.is_sparse:
@@ -128,9 +125,7 @@ class Adafactor(Optimizer):
                 """
                 
                 state = self.state[p]
-                # print(f"state {list(state)}")
                 grad_shape = grad.shape
-                # print(f"grad_shape {grad_shape}")
 
                 factored, use_first_moment = self._get_options(group, grad_shape)
                 # State Initialization
@@ -161,47 +156,24 @@ class Adafactor(Optimizer):
                 
                 state["step"] += 1
                 # state["RMS"] = self._rms(p_data_fp32)
-                # print(f"RMS base {state['RMS']}")
-                # if factored:
-                #    print(f"v0 device {0} RMS {state['RMS']}")
                 lr = self._get_lr(group, state)
-                
-                # 参数Beta 2
                 beta2t = 1.0 - math.pow(state["step"], group["decay_rate"])
-                # print(f"beta2t {beta2t}")
                 update = (grad**2) + group["eps"][0]
                 if factored:  
-                    # 若使用adafactor
                     exp_avg_sq_row = state["exp_avg_sq_row"]
                     exp_avg_sq_col = state["exp_avg_sq_col"]
-                    
-                    # (Line No.5)计算行指数平均
+                    # Exponential average of row indexes
                     exp_avg_sq_row.mul_(beta2t).add_(update.mean(dim=-1), alpha=(1.0 - beta2t))
-                    # (Line No.6)计算列指数平均
-                    exp_avg_sq_col.mul_(beta2t).add_(update.mean(dim=-2), alpha=(1.0 - beta2t))
-                    
-                    
-                    # if factored and int(os.environ['LOCAL_RANK']) == 0:  
-                    #     # print(f"v0 device {int(os.environ['LOCAL_RANK'])} shape {update.shape} update {update} update_mean_dim-1 {update.mean(dim=-1)}")
-                    #     print(f"v0 device {int(os.environ['LOCAL_RANK'])} shape {exp_avg_sq_row.shape} exp_avg_sq_row {exp_avg_sq_row}")
-                    #     # print(f"v0 device {int(os.environ['LOCAL_RANK'])} shape {exp_avg_sq_col.shape} exp_avg_sq_row {exp_avg_sq_col}")
-
-                        
-                    # (Line No.7)近似计算，提前开根号
+                    # Exponential average of columns indexes
+                    exp_avg_sq_col.mul_(beta2t).add_(update.mean(dim=-2), alpha=(1.0 - beta2t))                        
                     # Approximation of exponential moving average of square of gradient
                     update = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
                     update.mul_(grad)
                 else:
-                    # 若使用adam
                     exp_avg_sq = state["exp_avg_sq"]
-
                     exp_avg_sq.mul_(beta2t).add_(update, alpha=(1.0 - beta2t))
                     update = exp_avg_sq.rsqrt().mul_(grad)
-                
-                # if factored and int(os.environ['LOCAL_RANK']) == 0:  
-                #     print(f"v0 device {int(os.environ['LOCAL_RANK'])} shape {update.shape} update {update}")
-
-                #  (Line No.8)
+                # RMS
                 # update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
                 update.mul_(lr)
 
@@ -212,16 +184,7 @@ class Adafactor(Optimizer):
 
                 if group["weight_decay"] != 0:
                     p_data_fp32.add_(p_data_fp32, alpha=(-group["weight_decay"] * lr))
-                
-                # if factored and int(os.environ['LOCAL_RANK']) == 0:  
-                #     print(f"v0 device {int(os.environ['LOCAL_RANK'])} shape {update.shape} update {update}")
-
-                
                 p_data_fp32.add_(-update)
-                # if factored:  
-                #     print(f"v0 device {int(os.environ['LOCAL_RANK'])} shape {p_data_fp32.shape} p_data_fp32 {p_data_fp32}")
-
-
                 if p.dtype in {torch.float16, torch.bfloat16}:
                     p.copy_(p_data_fp32)
 

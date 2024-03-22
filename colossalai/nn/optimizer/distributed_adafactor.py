@@ -10,6 +10,7 @@ from colossalai.tensor.d_tensor import ShardingSpec
 
 
 # DistributedAdaFactor (with Tensor parallel and Zero stage 2)
+__all__ = ["DistributedAdaFactor"]
 class DistributedAdaFactor(Optimizer):
     def __init__(
         self,
@@ -41,8 +42,8 @@ class DistributedAdaFactor(Optimizer):
             "warmup_init": warmup_init,
         }
         super().__init__(params, defaults)
-        self.localRank = None
-        self.worldSize = None
+        self.local_rank = None
+        self.world_size = None
         self.tensor_parallel_size = None
         self.tensor_parallel_group = None
         self.sharding_spec_dict = None
@@ -63,8 +64,8 @@ class DistributedAdaFactor(Optimizer):
         device_mesh = device_mesh
         self.tensor_parallel_size = device_mesh._physical_mesh_id.shape[0]
         self.tensor_parallel_group = device_mesh.get_process_group(axis=1) # "Expected row process group"
-        self.localRank = int(os.environ['LOCAL_RANK']) 
-        self.worldSize = int(os.environ['WORLD_SIZE']) 
+        self.local_rank = int(os.environ['LOCAL_RANK']) 
+        self.world_size = int(os.environ['WORLD_SIZE']) 
         self.sharding_spec_dict = sharding_spec_dict
         self.param_shape = param_shape # Dict{id:shape}, sample {id(weight): torch.Size(4,4)}
 
@@ -169,7 +170,7 @@ class DistributedAdaFactor(Optimizer):
                             param_width_parallel = param_width
                 
                 # grad shape is same as weigh / bias
-                grad = p.grad.to(self.localRank)
+                grad = p.grad.to(self.local_rank)
                 if grad.dtype in {torch.float16, torch.bfloat16}:
                     grad = grad.float()
                 if grad.is_sparse:
@@ -220,7 +221,7 @@ class DistributedAdaFactor(Optimizer):
                     else:
                         state["exp_avg_sq"] = state["exp_avg_sq"].to(grad)
 
-                p_data_fp32 = p.to(self.localRank)
+                p_data_fp32 = p.to(self.local_rank)
                 if p.dtype in {torch.float16, torch.bfloat16}:
                     p_data_fp32 = p_data_fp32.float()
                 state["step"] += 1

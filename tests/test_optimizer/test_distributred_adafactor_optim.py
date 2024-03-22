@@ -13,6 +13,8 @@ from distributed_adafactor import DistributedAdaFactor
 
 from colossalai.tensor.d_tensor import (
     distribute_tensor,
+    shard_rowwise,
+    shard_colwise,
     ShardingSpec,
 )
 import colossalai
