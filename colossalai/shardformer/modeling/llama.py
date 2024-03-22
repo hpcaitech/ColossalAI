@@ -278,7 +278,7 @@ class LlamaPipelineForwards:
                 shift_labels = shift_labels.view(-1)
                 # Enable model parallelism
                 shift_labels = shift_labels.to(shift_logits.device)
-                if shard_config.parallel_output:
+                if shard_config.enable_tensor_parallelism and shard_config.parallel_output:
                     new_vocab_size = logits.shape[-1]
                     shift_logits = shift_logits.view(-1, new_vocab_size)
                     loss = cross_entropy_1d(

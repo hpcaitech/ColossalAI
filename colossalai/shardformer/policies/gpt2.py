@@ -276,7 +276,6 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
             }
             if self.shard_config.parallel_output:
                 addon_module[GPT2LMHeadModel].method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)}
-            print(addon_module)
             module_policy.update(addon_module)
 
         if self.pipeline_stage_manager is not None:
