@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
 
-from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, LmHead_Linear_Col, Linear1D_Row, RMSNorm, VocabParallelEmbedding1D, PaddingEmbedding
+from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, LmHead_Linear_Col, Padding_LmHead_Linear, Linear1D_Row, RMSNorm, VocabParallelEmbedding1D, PaddingEmbedding
 
 from ..modeling.llama import (
     LlamaPipelineForwards,
@@ -265,7 +265,15 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                     method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
                 )
             }
-            policy.update(new_item)
+        else:
+           new_item = {
+                LlamaForCausalLM: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(suffix="lm_head", target_module=Padding_LmHead_Linear, kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by})
+                    ],
+                )
+            }
+        policy.update(new_item)
 
         if self.pipeline_stage_manager:
             # set None as default

@@ -209,7 +209,7 @@ class PaddingEmbedding(PaddingParallelModule):
             input, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
         
     @staticmethod
-    def from_native_module(module: nn.Embedding, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs) -> ParallelModule:
+    def from_native_module(module: nn.Embedding, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs) -> PaddingParallelModule:
         r"""
         Convert a native pytorch embedding module to a parallel module.
         """
@@ -327,7 +327,7 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
     @staticmethod
     def from_native_module(
         module: nn.Embedding, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
-    ) -> ParallelModule:
+    ) -> PaddingParallelModule:
         r"""
         Convert a native pytorch embedding module to a parallel module.
         """
