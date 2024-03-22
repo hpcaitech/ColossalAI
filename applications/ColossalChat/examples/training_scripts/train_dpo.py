@@ -84,6 +84,7 @@ def train(args):
             tp_size=args.tp,
             pp_size=1,
             zero_stage=0,
+            parallel_output=False,
             precision=args.mixed_precision,
         )
     else:

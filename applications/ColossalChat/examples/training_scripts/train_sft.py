@@ -88,6 +88,7 @@ def train(args):
             tp_size=args.tp,
             pp_size=1,
             zero_stage=0,
+            parallel_output=False,
             max_norm=args.grad_clip,
             precision=args.mixed_precision,
         )
