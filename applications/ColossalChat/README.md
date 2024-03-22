@@ -94,10 +94,11 @@ More details can be found in the latest news.
 ### Install the Environment
 
 ```bash
+# Create new environment
 conda create -n colossal-chat python=3.10.9 (>=3.8.7)
 conda activate colossal-chat
 
-# install flash-attention
+# Install flash-attention
 git clone -b v2.0.5 https://github.com/Dao-AILab/flash-attention.git
 cd $FLASH_ATTENTION_ROOT/
 pip install .
@@ -108,14 +109,14 @@ pip install .
 cd $FLASH_ATTENTION_ROOT/csrc/rotary
 pip install .
 
-# clone Colossalai
+# Clone Colossalai
 git clone https://github.com/hpcaitech/ColossalAI.git
 
-# install ColossalAI
+# Install ColossalAI
 cd $COLOSSAL_AI_ROOT
-CUDA_EXT=1 pip install .
+BUILD_EXT=1 pip install .
 
-# install ColossalChat
+# Install ColossalChat
 cd $COLOSSAL_AI_ROOT/applications/Chat
 pip install .
 ```
@@ -124,7 +125,7 @@ pip install .
 
 ### RLHF Training Stage1 - Supervised Instructs Tuning
 
-Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. Here's a detailed guide on how to SFT your LLM with ColossalChat. More details can be found in [./examples/README.md](./examples/README.md)
+Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. Here's a detailed guide on how to SFT your LLM with ColossalChat. More details can be found in [example guideline](./examples/README.md).
 
 #### Step 1: Data Collection
 The first step in Stage 1 is to collect a dataset of human demonstrations of the following format.
@@ -151,10 +152,10 @@ The first step in Stage 1 is to collect a dataset of human demonstrations of the
 #### Step 2: Preprocessing
 Once you have collected your SFT dataset, you will need to preprocess it. This involves four steps: data cleaning, data deduplication, formatting and tokenization. In this section, we will focus on formatting and tokenization. 
 
-In this code, we provide a flexible way for users to set the conversation template for formatting chat data using Huggingface's newest feature--- chat template. Please follow the guide in [this document](./examples/README.md) on how to format and tokenize data.
+In this code, we provide a flexible way for users to set the conversation template for formatting chat data using Huggingface's newest feature--- chat template. Please follow the [example guideline](./examples/README.md) on how to format and tokenize data.
 
 #### Step 3: Training
-Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning. More details can be found in [./example/README.md](./examples/README.md).
+Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning. More details can be found in [example guideline](./examples/README.md).
 
 ### RLHF Training Stage2 - Training Reward Model
 
@@ -194,7 +195,7 @@ Below shows the preference dataset format used in training the reward model.
 Similar to the second step in the previous stage, we format the reward data into the same structured format as used in step 2 of the SFT stage. You can run [prepare_preference_dataset.sh](./examples/data_preparation_scripts/prepare_preference_dataset.sh) to prepare the preference data for reward model training.
 
 #### Step 3: Training
-You can run [train_rm.sh](./examples/training_scripts/train_rm.sh) to start the reward model training. More details can be found in [./example/README.md](./examples/README.md).
+You can run [train_rm.sh](./examples/training_scripts/train_rm.sh) to start the reward model training. More details can be found in [example guideline](./examples/README.md).
 
 ### RLHF Training Stage3 - Proximal Policy Optimization
 
@@ -225,7 +226,7 @@ PPO uses two kind of training data--- the prompt data and the sft data (optional
 To prepare the prompt dataset for PPO training, simply run [prepare_prompt_dataset.sh](./examples/data_preparation_scripts/prepare_prompt_dataset.sh)
 
 #### Step 3: Training
-You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to start PPO training. Here are some unique arguments for PPO, please refer to the training configuration section for other training configuration. More detais can be found in [./example/README.md](./examples/README.md).
+You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to start PPO training. Here are some unique arguments for PPO, please refer to the training configuration section for other training configuration. More detais can be found in [example guideline](./examples/README.md).
 
 ```bash
 --pretrain $PRETRAINED_MODEL_PATH \
@@ -274,7 +275,7 @@ Please refer the [sft section](#dpo-training-stage1---supervised-instructs-tunin
 For DPO training, you only need the preference dataset. Please follow the instruction in the [preference dataset preparation section](#rlhf-training-stage2---training-reward-model) to prepare the preference data for DPO training.
 
 #### Step 2: Training
-You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to start DPO training. More detais can be found in [./example/README.md](./examples/README.md).
+You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to start DPO training. More detais can be found in [example guideline](./examples/README.md).
 
 ### Inference Quantization and Serving - After Training
 
