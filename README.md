@@ -25,6 +25,7 @@
 </div>
 
 ## Latest News
+* [2024/03] [Grok-1 of PyTorch + HuggingFace version is now available!](https://hpc-ai.com/blog/grok-1-of-pytorch-huggingface-version-is-now-available)
 * [2024/03] [Open-Sora: Revealing Complete Model Parameters, Training Details, and Everything for Sora-like Video Generation Models](https://hpc-ai.com/blog/open-sora-v1.0)
 * [2024/03] [Open-Sora：Sora Replication Solution with 46% Cost Reduction, Sequence Expansion to Nearly a Million](https://hpc-ai.com/blog/open-sora)
 * [2024/01] [Inference Performance Improved by 46%, Open Source Solution Breaks the Length Limit of LLM for Multi-Round Conversations](https://hpc-ai.com/blog/Colossal-AI-SwiftInfer)
@@ -72,6 +73,7 @@
  <li>
    <a href="#Inference">Inference</a>
    <ul>
+     <li><a href="#Grok-1">Grok-1: 314B model of PyTorch + HuggingFace Inference</a></li>
      <li><a href="#SwiftInfer">SwiftInfer:Breaks the Length Limit of LLM for Multi-Round Conversations with 46% Acceleration</a></li>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">OPT-175B Online Serving for Text Generation</a></li>
@@ -365,6 +367,12 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 
 
 ## Inference
+### Grok-1
+An easy-to-use Python + PyTorch + HuggingFace version of 314B Grok-1 Inference.
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/grok-1)
+[[blog]](https://hpc-ai.com/blog/grok-1-of-pytorch-huggingface-version-is-now-available)
+[[HuggingFace Grok-1 PyTorch model weights]](https://huggingface.co/hpcai-tech/grok-1)
+
 <p id="SwiftInfer" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/SwiftInfer.jpg" width=800/>
 </p>
