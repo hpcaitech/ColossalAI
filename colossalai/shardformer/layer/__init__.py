@@ -25,4 +25,5 @@ __all__ = [
     "ParallelModule",
     "PaddingEmbedding",
     "LmHead_Linear_Col",
+    "Padding_LmHead_Linear",
 ]
