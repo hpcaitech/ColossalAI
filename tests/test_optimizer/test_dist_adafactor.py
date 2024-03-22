@@ -11,13 +11,10 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.d_tensor import (
-    is_distributed_tensor,
-    is_sharded,
     distribute_tensor,
+    sharded_tensor_to_param,
     shard_rowwise,
     shard_colwise,
-    sharded_tensor_to_param,
-    ShardingSpec,
     get_layout,
     get_sharding_spec
 )
@@ -28,7 +25,6 @@ import sys
 sys.path.append('./colossalai/nn/optimizer/')
 from adafactor import Adafactor
 from distributed_adafactor import DistributedAdaFactor
-
 
 def init_dist():
     rank = int(os.environ['RANK']) 
@@ -54,7 +50,7 @@ def correctness_verify(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: torc
     # return torch.all(tensor1.isclose(tensor2, rtol=rtol, atol=atol, equal_nan=True))
     assert_close(tensor1, tensor2, rtol=rtol, atol=atol, equal_nan=True)
 
-@parameterize("dtype", [torch.float32]) # , torch.float16, torch.bfloat16
+@parameterize("dtype", [torch.float32, torch.float16, torch.bfloat16]) # , torch.float16, torch.bfloat16
 def exam_dist_adafactor_step(dtype: torch.dtype):
     local_rank = int(os.environ['LOCAL_RANK'])
     world_size = int(os.environ['WORLD_SIZE'])
@@ -73,7 +69,7 @@ def exam_dist_adafactor_step(dtype: torch.dtype):
     # ==============================
     # Col Parallel
     # ==============================
-    weight_col_shard = shard_colwise(weight.clone())
+    weight_col_shard = shard_colwise(weight.clone(), device_mesh.get_process_group(axis=1))
     weight_col_shard_layout = get_layout(weight_col_shard) # Layout info weight_col_shard_layout.global_shape
     weight_col_shard_shard_spec = get_sharding_spec(weight_col_shard) # Shard spec
     weight_col_shard_flatten = nn.Parameter(weight_col_shard.clone().flatten().requires_grad_(True))
@@ -84,7 +80,7 @@ def exam_dist_adafactor_step(dtype: torch.dtype):
     # ==============================
     # Row Parallel 
     # ==============================
-    weight_row_shard = shard_rowwise(weight.clone())
+    weight_row_shard = shard_rowwise(weight.clone(), device_mesh.get_process_group(axis=1))
     weight_row_shard_layout = get_layout(weight_row_shard) # Layout info weight_row_shard_layout.global_shape
     weight_row_shard_shard_spec = get_sharding_spec(weight_row_shard) # Shard spec
     weight_row_shard_flatten = nn.Parameter(weight_row_shard.clone().flatten().requires_grad_(True)) # flatten input(not dtensor) to optimizer
@@ -107,7 +103,7 @@ def exam_dist_adafactor_step(dtype: torch.dtype):
     optimizer_rp = DistributedAdaFactor([weight_row_shard_flatten, bias_row_flatten])
     optimizer_rp.setup_distribute(device_mesh=device_mesh, sharding_spec_dict=row_sharding_spec_dict, param_shape = row_params_shape)
     
-    N_STEPS = 1
+    N_STEPS = 10
     for _ in range(N_STEPS):
         # base step
         optimizer_base.zero_grad()
@@ -123,7 +119,7 @@ def exam_dist_adafactor_step(dtype: torch.dtype):
         
         # row parallel step
         optimizer_rp.zero_grad()
-        weight_row_shard_flatten.grad = distribute_tensor(weight.grad, device_mesh, weight_col_shard_shard_spec).clone().flatten()
+        weight_row_shard_flatten.grad = distribute_tensor(weight.grad, device_mesh, weight_row_shard_shard_spec).clone().flatten()
         bias_row_flatten.grad = bias.grad.clone().flatten()
         optimizer_rp.step()
         
@@ -131,9 +127,12 @@ def exam_dist_adafactor_step(dtype: torch.dtype):
         weight_col_gather = _gather(input_=weight_col_shard_flatten.data.view(-1, H // tensor_parallel_size),dim=-1, process_group=device_mesh.get_process_group(axis=1)) # gather
         weight_row_gather = _gather(input_=weight_row_shard_flatten.data,dim=-1, process_group=device_mesh.get_process_group(axis=1)).view(-1, W) # gather
         
+        
         # verify
-        correctness_verify(weight.data, weight_col_gather.data, dtype)
-        correctness_verify(weight.data, weight_row_gather.data, dtype)
+        col_correct = correctness_verify(weight.data, weight_col_gather.data, dtype)
+        row_correct = correctness_verify(weight.data, weight_row_gather.data, dtype)
+        
+        # print(f"col corrness {col_correct}  row correct {row_correct}")
     
 def run_dist(rank, world_size, port):
     config = {}
