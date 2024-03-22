@@ -16,7 +16,6 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import cross_entropy_1d
-from ..layer._operation import gather_forward_split_backward
 
 try:
     from transformers.models.llama.modeling_llama import _prepare_4d_causal_attention_mask
@@ -586,7 +585,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
                 loss = cross_entropy_1d(
                     shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group, vocab_size=self.lm_head.out_features
                 )
-                logits = gather_forward_split_backward(logits, -1, shard_config.tensor_parallel_process_group)
             else:
                 shift_logits = shift_logits.view(-1, self.config.vocab_size)
                 loss = loss_fct(shift_logits, shift_labels)

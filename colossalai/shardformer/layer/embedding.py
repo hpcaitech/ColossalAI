@@ -187,7 +187,7 @@ class PaddingEmbedding(PaddingParallelModule):
         else:
             weight.data = weight.data.to(device=device, dtype=dtype)
 
-        super(PaddingEmbedding, self).__init__(self.num_embeddings, num_embeddings, weight)
+        super().__init__(self.num_embeddings, num_embeddings, weight)
 
         self.resize_token_embeddings()
 
