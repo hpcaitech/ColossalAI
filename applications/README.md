@@ -4,7 +4,7 @@ This directory contains the applications that are powered by Colossal-AI.
 
 The list of applications include:
 
-- [X] [Open-Sora](https://github.com/hpcaitech/Open-Sora): Sora Replication Solution with 46% Cost Reduction, Sequence Expansion to Nearly a Million
+- [X] [Open-Sora](https://github.com/hpcaitech/Open-Sora): Revealing Complete Model Parameters, Training Details, and Everything for Sora-like Video Generation Models
 - [X] [Colossal-LLaMA-2](./Colossal-LLaMA-2/): Continual Pre-training of LLaMA-2.
 - [X] [ColossalEval](./ColossalEval): Evaluation Pipeline for LLMs.
 - [X] [ColossalChat](./Chat/README.md): Replication of ChatGPT with RLHF.
