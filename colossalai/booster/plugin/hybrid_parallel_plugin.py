@@ -36,6 +36,8 @@ from .pp_plugin_base import PipelinePluginBase
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
+PRECISION_TORCH_TYPE = {"fp16": torch.float16, "fp32": torch.float32, "bf16": torch.bfloat16}
+
 
 def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
     if isinstance(x, torch.Tensor) and torch.is_floating_point(x):
@@ -197,7 +199,12 @@ def get_param_info(optim: Optimizer):
 
     if optim is None:
         return {}
-    param_info = {"param_groups": [], "param2id": {}, "id2param": {}, "param2shape": {}}
+    param_info = {
+        "param_groups": [],
+        "param2id": {},
+        "id2param": {},
+        "param2shape": {},
+    }
     start_index = 0
     for group in optim.param_groups:
         packed_group = {k: v for k, v in group.items() if k != "params"}
@@ -897,6 +904,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_jit_fused (bool, optional): Whether to switch on JIT in Shardformer. Default to False.
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism in Shardformer. Defaults to False.
         enable_sequence_overlap (bool): Whether to turn on sequence overlap in Shardformer. Defaults to False.
+        parallel_output (bool): Whether to keep the output parallel when enabling tensor parallelism. Default to True.
         num_microbatches (int, optional): Number of microbatches when using pipeline parallelism. Defaults to None.
         microbatch_size (int, optional): Microbatch size when using pipeline parallelism.
             Either ``num_microbatches`` or ``microbatch_size`` should be provided if using pipeline.
@@ -937,6 +945,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_jit_fused: bool = False,
         enable_sequence_parallelism: bool = False,
         enable_sequence_overlap: bool = False,
+        parallel_output: bool = True,
         num_microbatches: Optional[int] = None,
         microbatch_size: Optional[int] = None,
         initial_scale: float = 2**16,
@@ -1033,6 +1042,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             enable_jit_fused=self.enable_jit_fused,
             enable_sequence_parallelism=enable_sequence_parallelism,
             enable_sequence_overlap=enable_sequence_overlap,
+            parallel_output=parallel_output,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
@@ -1059,12 +1069,13 @@ class HybridParallelPlugin(PipelinePluginBase):
             overlap_communication=overlap_communication,
             cpu_offload=cpu_offload,
             partition_grad=(self.zero_stage == 2),
+            forced_dtype=PRECISION_TORCH_TYPE[precision],
         )
 
         self.max_norm = max_norm
 
     def __del__(self):
-        """Destroy the prcess groups in ProcessGroupMesh"""
+        """Destroy the process groups in ProcessGroupMesh"""
         self.pg_mesh.destroy_mesh_process_groups()
 
     @property

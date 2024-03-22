@@ -1,9 +1,9 @@
 torch<2.0.0, >=1.12.1
 packaging==23.1
-colossalai==0.3.2
+colossalai==0.3.5
 autoflake==2.2.1
 black==23.9.1
-transformers
+transformers==4.33.3
 tensorboard==2.14.0
 six==1.16.0
 datasets

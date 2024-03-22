@@ -122,7 +122,7 @@ class GPTJPipelineForwards:
         # head_mask has shape n_layer x batch x num_attention_heads x N x N
         head_mask = self.get_head_mask(head_mask, self.config.n_layer)
 
-        # position id to be asssigned not just for the first stage for attn input
+        # position id to be assigned not just for the first stage for attn input
         if position_ids is not None:
             position_ids = position_ids.view(-1, seq_length)
         else:
@@ -593,7 +593,7 @@ def get_gptj_flash_attention_forward():
 
         # key = key.permute(0, 2, 1, 3)
         # query = query.permute(0, 2, 1, 3)
-        key = key.to(dtype=value.dtype)  # fp16 compatability
+        key = key.to(dtype=value.dtype)  # fp16 compatibility
         query = query.to(dtype=value.dtype)
 
         if layer_past is not None:

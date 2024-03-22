@@ -22,7 +22,7 @@ from colossalai.booster.plugin.hybrid_parallel_plugin import (
 )
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.moe import MOE_MANAGER, MoECheckpintIO
+from colossalai.moe import MOE_MANAGER, MoECheckpointIO
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
@@ -182,7 +182,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         overlap_communication: bool = True,
         use_ep_inside: bool = True,
         custom_policy: Policy = None,
-        checkpoint_io: Optional[MoECheckpintIO] = None,
+        checkpoint_io: Optional[MoECheckpointIO] = None,
     ) -> None:
         assert (
             dist.get_world_size() % (tp_size * pp_size) == 0
@@ -341,9 +341,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             **_kwargs,
         )
 
-    def get_checkpoint_io(self) -> MoECheckpintIO:
+    def get_checkpoint_io(self) -> MoECheckpointIO:
         if self.checkpoint_io is None:
-            self.checkpoint_io = MoECheckpintIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
+            self.checkpoint_io = MoECheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
         else:
             self.checkpoint_io = self.checkpoint_io(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
         return self.checkpoint_io
