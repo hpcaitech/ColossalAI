@@ -106,7 +106,11 @@ class ScaledUpperTriangleMaskedSoftmaxLoader(KernelLoader):
 
 
 class FlashAttentionLoader(KernelLoader):
-    REGISTRY = [FlashAttentionNpuExtension, FlashAttentionDaoCudaExtension, FlashAttentionSdpaCudaExtension]
+    REGISTRY = [
+        FlashAttentionNpuExtension,
+        FlashAttentionDaoCudaExtension,
+        FlashAttentionSdpaCudaExtension,
+    ]
 
 
 class FlashAttentionWithPaddingMaskLoader(KernelLoader):
@@ -115,3 +119,7 @@ class FlashAttentionWithPaddingMaskLoader(KernelLoader):
 
 class FlashAttentionWithCustomMaskLoader(KernelLoader):
     REGISTRY = [FlashAttentionNpuExtension, FlashAttentionSdpaCudaExtension]
+
+
+class FlashAttentionForFloatAndCustomMaskLoader(KernelLoader):
+    REGISTRY = [FlashAttentionSdpaCudaExtension]

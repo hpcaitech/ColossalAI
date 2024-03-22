@@ -5,9 +5,11 @@ import torch
 import torch.nn.functional as F
 
 from colossalai.kernel.kernel_loader import (
+    FlashAttentionForFloatAndCustomMaskLoader,
     FlashAttentionLoader,
     FlashAttentionWithCustomMaskLoader,
     FlashAttentionWithPaddingMaskLoader,
+    KernelLoader,
 )
 
 __all__ = [
@@ -54,19 +56,47 @@ def get_pad_info(padding_mask: torch.Tensor) -> Tuple[int, torch.Tensor, torch.T
 
 
 class ColoAttention:
-    # these two attrs are initialized in the first call of attention() method
-    _flash_attn_func: Optional[Callable] = None
-    _flash_attn_with_custom_mask_func: Optional[Callable] = None
-    _flash_attn_with_padding_mask_func: Optional[Callable] = None
+    _kernel_dispatch_map: Optional[Dict[torch.dtype, Dict[Optional[AttnMaskType], Callable]]] = None
 
     @staticmethod
-    def _init_flash_attn_func():
-        if ColoAttention._flash_attn_func is None:
-            ColoAttention._flash_attn_func = FlashAttentionLoader().load()
-        if ColoAttention._flash_attn_with_custom_mask_func is None:
-            ColoAttention._flash_attn_with_custom_mask_func = FlashAttentionWithCustomMaskLoader().load()
-        if ColoAttention._flash_attn_with_padding_mask_func is None:
-            ColoAttention._flash_attn_with_padding_mask_func = FlashAttentionWithPaddingMaskLoader().load()
+    def _init_kernels_dispatch():
+        if ColoAttention._kernel_dispatch_map is None:
+            # fp16/bf16
+            half_dispatch_map = {
+                None: FlashAttentionLoader(),
+                AttnMaskType.CUSTOM: FlashAttentionWithCustomMaskLoader(),
+                AttnMaskType.PADDED: FlashAttentionWithPaddingMaskLoader(),
+                AttnMaskType.CAUSAL: FlashAttentionLoader(),
+                AttnMaskType.PADDED_CAUSAL: FlashAttentionWithPaddingMaskLoader(),
+            }
+            # fp32
+            float_dispatch_map = {
+                None: FlashAttentionForFloatAndCustomMaskLoader(),
+                AttnMaskType.CUSTOM: FlashAttentionForFloatAndCustomMaskLoader(),
+                AttnMaskType.CAUSAL: FlashAttentionForFloatAndCustomMaskLoader(),
+            }
+            ColoAttention._kernel_dispatch_map = {
+                torch.float16: half_dispatch_map,
+                torch.bfloat16: half_dispatch_map,
+                torch.float32: float_dispatch_map,
+            }
+
+    @staticmethod
+    def _dispatch_kernel(dtype: torch.dtype, mask_type: Optional[AttnMaskType]) -> Callable:
+        ColoAttention._init_kernels_dispatch()
+        if (
+            dtype not in ColoAttention._kernel_dispatch_map
+            or mask_type not in ColoAttention._kernel_dispatch_map[dtype]
+        ):
+            raise ValueError(
+                "FlashAttention kernel is not available for dtype {} and mask_type {}".format(dtype, mask_type)
+            )
+        # lazy load
+        if isinstance(ColoAttention._kernel_dispatch_map[dtype][mask_type], KernelLoader):
+            ColoAttention._kernel_dispatch_map[dtype][mask_type] = ColoAttention._kernel_dispatch_map[dtype][
+                mask_type
+            ].load()
+        return ColoAttention._kernel_dispatch_map[dtype][mask_type]
 
     @staticmethod
     def prepare_attn_kwargs(
@@ -105,7 +135,10 @@ class ColoAttention:
         if q_padding_mask is not None:
             if kv_padding_mask is None:
                 kv_padding_mask = q_padding_mask
-            assert q_padding_mask.shape == (b, s_q) and kv_padding_mask.shape == (b, s_kv)
+            assert q_padding_mask.shape == (b, s_q) and kv_padding_mask.shape == (
+                b,
+                s_kv,
+            )
             attention_mask = torch.einsum("bi,bj->bij", q_padding_mask, kv_padding_mask).to(dtype=dtype, device=device)
             max_seqlen_q, cu_seqlens_q, q_indices = get_pad_info(q_padding_mask)
             max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
@@ -176,7 +209,6 @@ class ColoAttention:
         Returns:
             torch.Tensor: Output tensor. Shape should be [B, N, Sq, D]
         """
-        ColoAttention._init_flash_attn_func()
         # known issue: sdpa does not support attention mask which contains whole row of masked tokens, which leads to nan
         # this case is usaul when padding mask is used and self attention is performed
         # thus, we don't use sdpa when padding mask is used
@@ -194,7 +226,10 @@ class ColoAttention:
                 )
                 if attention_mask_type == AttnMaskType.CUSTOM:
                     assert not torch.all(attention_mask != 0, dim=-1).any()
-            elif attention_mask_type in (AttnMaskType.PADDED, AttnMaskType.PADDED_CAUSAL):
+            elif attention_mask_type in (
+                AttnMaskType.PADDED,
+                AttnMaskType.PADDED_CAUSAL,
+            ):
                 assert (
                     cu_seqlens_q is not None
                     and cu_seqlens_kv is not None
@@ -207,12 +242,8 @@ class ColoAttention:
             # if attention_mask is None, attention_mask_type should be the default value
             assert attention_mask_type == AttnMaskType.CUSTOM
         # kernel dispatch
-        if attention_mask is not None and attention_mask_type == AttnMaskType.CUSTOM:
-            attn_func = ColoAttention._flash_attn_with_custom_mask_func
-        elif attention_mask_type in (AttnMaskType.PADDED, AttnMaskType.PADDED_CAUSAL):
-            attn_func = ColoAttention._flash_attn_with_padding_mask_func
-        else:
-            attn_func = ColoAttention._flash_attn_func
+        mask_type = attention_mask_type if attention_mask is not None else None
+        attn_func = ColoAttention._dispatch_kernel(q.dtype, mask_type)
         is_causal = attention_mask is not None and attention_mask_type in (
             AttnMaskType.CAUSAL,
             AttnMaskType.PADDED_CAUSAL,
