@@ -424,6 +424,88 @@ class Linear1D_Row(ParallelModule):
             return output, self.bias
         
 
+class Padding_LmHead_Linear(PaddingParallelModule):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+        weight: Optional[Parameter] = None,
+        bias_: Optional[Parameter] = None,
+        make_vocab_size_divisible_by: int = 128,
+        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+    ):
+        # Keep input parameters
+        self.in_features = in_features
+        self.out_features = out_features
+
+        if out_features % make_vocab_size_divisible_by != 0:
+            self.out_features = out_features + make_vocab_size_divisible_by - (out_features % make_vocab_size_divisible_by)
+        if weight is None:
+            factory_kwargs = {"device": device, "dtype": dtype}
+            weight = Parameter(torch.empty(out_features, self.in_features, **factory_kwargs))
+        else:
+            weight.data = weight.data.to(device=device, dtype=dtype)
+
+        if bias:
+            if bias_ is None:
+                self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))
+            else:
+                bias_.data = bias_.data.to(device=device, dtype=dtype)
+        else:
+            bias_ = None
+
+        super().__init__(self.out_features, out_features, weight, bias_)
+        if weight.shape[0] < self.out_features:
+            self.resize_token_embeddings()
+        
+        if weight is None:
+            self.reset_parameters(weight_initializer, bias_initializer)
+
+    def reset_parameters(self, weight_initializer, bias_initializer) -> None:
+        fan_in, fan_out = self.in_features, self.out_features
+        weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+        if self.bias is not None:
+            bias_initializer(self.bias, fan_in=fan_in)
+
+    @staticmethod
+    def from_native_module(
+        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
+    ) -> PaddingParallelModule:
+        r"""
+        Convert a native PyTorch linear layer to a parallelized linear layer.
+        """
+        LazyInitContext.materialize(module)
+        # get the attributes
+        in_features = module.in_features
+        out_features = module.out_features
+        bias = module.bias is not None
+        device = module.weight.device
+        # ensure only one process group is passed  
+        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 128)
+
+        lm_head_linear = Padding_LmHead_Linear(
+            in_features=in_features,
+            out_features=out_features,
+            bias=bias,
+            device=device,
+            weight=module.weight,
+            bias_=module.bias,
+            make_vocab_size_divisible_by=make_vocab_size_divisible_by,
+            *args,
+            **kwargs,
+        )
+
+        return lm_head_linear
+    
+    def forward(self, input: Tensor) -> Tensor:
+        output = F.linear(input, self.weight, self.bias)
+        output = output[..., :self.old_num_embeddings]
+        return output
+
 
 class LmHead_Linear_Col(PaddingParallelModule):
     r"""Linear layer with column parallelism.
@@ -473,8 +555,6 @@ class LmHead_Linear_Col(PaddingParallelModule):
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
     ):
-        super().__init__()
-
         # Keep input parameters
         self.in_features = in_features
         self.out_features = out_features
@@ -540,7 +620,7 @@ class LmHead_Linear_Col(PaddingParallelModule):
     @staticmethod
     def from_native_module(
         module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
-    ) -> ParallelModule:
+    ) -> PaddingParallelModule:
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
         """

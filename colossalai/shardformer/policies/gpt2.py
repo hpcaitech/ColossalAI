@@ -282,7 +282,17 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
                     method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
                 )
             }
-            module_policy.update(addon_module)
+        else:
+            addon_module = {
+                GPT2LMHeadModel: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="lm_head", target_module=col_nn.Padding_LmHead_Linear, kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                        )
+                    ]
+                )
+            }
+        module_policy.update(addon_module)
 
         if self.pipeline_stage_manager is not None:
             self.set_pipeline_forward(
@@ -326,7 +336,17 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
                     ]
                 )
             }
-            module_policy.update(addon_module)
+        else:
+            addon_module = {
+                GPT2DoubleHeadsModel: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="lm_head", target_module=col_nn.Padding_LmHead_Linear, kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                        )
+                    ]
+                )
+            }
+        module_policy.update(addon_module)
 
         if self.pipeline_stage_manager is not None:
             self.set_pipeline_forward(
