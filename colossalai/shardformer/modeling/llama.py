@@ -603,7 +603,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
                     shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group, vocab_size=self.lm_head.out_features
 >>>>>>> padding vocab
                 )
-                logits = gather_forward_split_backward(logits, -1, shard_config.tensor_parallel_process_group)
             else:
                 shift_logits = shift_logits.view(-1, self.config.vocab_size)
                 loss = loss_fct(shift_logits, shift_labels)
