@@ -244,15 +244,12 @@ class DistributedAdaFactor(Optimizer):
                     # Row Parallel ---> sq_col need Do (row) Reduce
                     # ==============================
                     elif sharding_spec.sharding_sequence[-1] == 'R':
-                        # print(f"dist device {self.local_rank} update {update}")
                         update_reshape = update.view(-1, p_shape[1])
-                        # print(f"dist device {self.local_rank} update {update_reshape}")
                         grad_reshape = grad.view(-1, p_shape[1])
                         exp_avg_sq_row = state["exp_avg_sq_row"] # [H/N]
                         exp_avg_sq_col = state["exp_avg_sq_col"] # [W]
                         exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
                         exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
-                        # print(f"dist device {self.local_rank} row {exp_avg_sq_row}")
                         # reduce col
                         dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
                         exp_avg_sq_col.div_(self.tensor_parallel_size)

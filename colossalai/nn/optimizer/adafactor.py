@@ -151,8 +151,8 @@ class Adafactor(Optimizer):
                         # Exponential moving average of gradient values
                         state["exp_avg"] = torch.zeros_like(grad)
                     if factored:
-                        state["exp_avg_sq_row"] = torch.zeros(grad_shape[:-1]).to(grad)
-                        state["exp_avg_sq_col"] = torch.zeros(grad_shape[:-2] + grad_shape[-1:]).to(grad)
+                        state["exp_avg_sq_row"] = torch.zeros(grad_shape[:-1], device=grad.device)
+                        state["exp_avg_sq_col"] = torch.zeros(grad_shape[:-2] + grad_shape[-1:], device=grad.device)
                     else:
                         state["exp_avg_sq"] = torch.zeros_like(grad)
 
@@ -176,15 +176,12 @@ class Adafactor(Optimizer):
                 beta2t = 1.0 - math.pow(state["step"], group["decay_rate"])
                 update = (grad**2) + group["eps"][0]
                 if factored:  
-                    # print(f"base update {update}")
                     exp_avg_sq_row = state["exp_avg_sq_row"]
                     exp_avg_sq_col = state["exp_avg_sq_col"]
                     # Exponential average of row indexes
                     exp_avg_sq_row.mul_(beta2t).add_(update.mean(dim=-1), alpha=(1.0 - beta2t))
                     # Exponential average of columns indexes
-                    exp_avg_sq_col.mul_(beta2t).add_(update.mean(dim=-2), alpha=(1.0 - beta2t))   
-                    
-                    # print(f"base row {exp_avg_sq_row}")                     
+                    exp_avg_sq_col.mul_(beta2t).add_(update.mean(dim=-2), alpha=(1.0 - beta2t))                     
                     # Approximation of exponential moving average of square of gradient
                     update = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
                     update.mul_(grad)
