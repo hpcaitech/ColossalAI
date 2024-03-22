@@ -1,5 +1,10 @@
 # Grok-1 Inference
 
+An easy-to-use Python + PyTorch + HuggingFace version of 314B Grok-1.
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/grok-1)
+[[blog]](https://hpc-ai.com/blog/grok-1-of-pytorch-huggingface-version-is-now-available)
+[[HuggingFace Grok-1 PyTorch model weights]](https://huggingface.co/hpcai-tech/grok-1)
+
 ## Install
 
 ```bash
