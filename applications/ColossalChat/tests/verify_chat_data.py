@@ -44,9 +44,9 @@ if __name__ == '__main__':
         
         to_verify_lable = to_verify_data[0]['labels_decode']
         for label in target_lable:
-            assert label in to_verify_lable, f'Label {label} not in target label {to_verify_lable}'
+            assert any([label in s for s in to_verify_lable]), f'Label {label} not in target label {to_verify_lable}'
         for label in target_negative_label:
-            assert label not in to_verify_lable, f'Negative label {label} in target label {to_verify_lable}'
+            assert all([label not in s for s in to_verify_lable]), f'Negative label {label} in target label {to_verify_lable}'
     elif args.data_type == "dpo":
         chosen_lable = data[0]['chosen'][0]['content'].strip()
         rejected_lable = data[0]['rejected'][0]['content'].strip()
@@ -54,8 +54,8 @@ if __name__ == '__main__':
         # Read to verify file
         to_verify_lable_chosen = to_verify_data[0]['chosen_label_decode']
         to_verify_lable_rejected = to_verify_data[0]['rejected_label_decode']
-        assert chosen_lable in to_verify_lable_chosen, f'Chosen label {chosen_lable} not in target chosen label {to_verify_lable_chosen}'
-        assert rejected_lable in to_verify_lable_rejected, f'Rejected label {rejected_lable} not in target rejected label {to_verify_lable_chosen}'
+        assert any([chosen_lable in s for s in to_verify_lable_chosen]), f'Chosen label {chosen_lable} not in target chosen label {to_verify_lable_chosen}'
+        assert any([rejected_lable in s for s in to_verify_lable_rejected]), f'Rejected label {rejected_lable} not in target rejected label {to_verify_lable_chosen}'
     
 
 

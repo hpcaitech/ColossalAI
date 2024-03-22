@@ -137,15 +137,44 @@ def main():
     # Prepare the tokenizer.
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir, use_fast=False, trust_remote_code=True)
     if os.path.exists(args.conversation_template_config):
-        conversation_template_config = json.load(open(args.conversation_template_config, "r", encoding='utf8'))
-        conversation_template = setup_conversation_template(tokenizer, 
-                                chat_template_config=conversation_template_config, 
-                                save_path=args.conversation_template_config)
+        chat_template_config = json.load(open(args.conversation_template_config, "r", encoding='utf8'))
     else:
         chat_template_config = {'system_message':"A chat between a curious human and an artificial intelligence assistant. "
         "The assistant gives helpful, detailed, and polite answers to the human's questions.\n\n"}  # Use default system message
-        conversation_template = setup_conversation_template(tokenizer, chat_template_config=chat_template_config, 
-                                save_path=args.conversation_template_config)
+    if args.type=='preference':
+        if 'stop_ids' not in chat_template_config:
+            # Ask the user to define stop_ids for PPO training
+            dummy_messages = [
+                {"role": "user", "content": "Hello, how are you?"},
+                {"role": "assistant", "content": "I'm doing great. How can I help you today?"},
+                {"role": "user", "content": "Who made you?"},
+                {"role": "assistant", "content": "I am a chatbot trained by Colossal-AI."}
+            ]
+            dummy_prompt = tokenizer.apply_chat_template(dummy_messages, tokenize=False)
+            tokenized = tokenizer(dummy_prompt, add_special_tokens=False)['input_ids']
+            tokens = tokenizer.convert_ids_to_tokens(tokenized, skip_special_tokens=False)
+            corresponding_str = [tokenizer.convert_tokens_to_string([token]) for token in tokens]
+            token_id_mapping = [{'token':s, 'id':tokenized[i]} for i, s in enumerate(corresponding_str)]
+            stop_ids = input("For PPO, we recommend to provide stop_ids for the properly stop the generation during roll out stage. "\
+                  "stop_ids are the ids of repetitive pattern that indicate the end of the assistant's response. "\
+                  "Here is an example of formatted prompt and token-id mapping, you can set stop_ids by entering a list "\
+                  "of integers, separate by space, press `Enter` to end. Or you can press `Enter` without input if you are "\
+                  "not using PPO or you prefer to not set the stop_ids, in that case, stop_ids will be set to tokenizer.eos_token_id. "\
+                  f"\nPrompt:\n{dummy_prompt}\nToken-id Mapping:\n{token_id_mapping}\nstop_ids:")
+            if stop_ids=="":
+                chat_template_config['stop_ids'] = [tokenizer.eos_token_id]
+            else:
+                try:
+                    chat_template_config['stop_ids'] = [int(s) for s in stop_ids.split()]
+                except ValueError:
+                    raise ValueError("Invalid input, please provide a list of integers.")
+    else:
+        # Set stop_ids to eos_token_id for other dataset types if not exist
+        if 'stop_ids' not in chat_template_config:
+            chat_template_config['stop_ids'] = [tokenizer.eos_token_id]
+
+    conversation_template = setup_conversation_template(tokenizer, chat_template_config=chat_template_config, 
+                            save_path=args.conversation_template_config)
     if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
         try:
             # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen
