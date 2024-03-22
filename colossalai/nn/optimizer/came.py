@@ -82,7 +82,7 @@ class CAME(Optimizer):
         factored = len(param_shape) >= 2
         return factored
 
-    def _rms(self, tensor, verbose):
+    def _rms(self, tensor):
         # return tensor.norm(2) / (tensor.numel() ** 0.5)
         # 计算当前设备上张量的平方和
         local_sum_sq = tensor.pow(2).sum()
@@ -103,19 +103,29 @@ class CAME(Optimizer):
     def _approx_sq_grad(self, exp_avg_sq_row, exp_avg_sq_col, clip_method):
         exp_avg_sq_row_mean = exp_avg_sq_row.mean(dim=-1, keepdim=True)
         if clip_method == "col":
-            dist.all_reduce(exp_avg_sq_row_mean, op=dist.ReduceOp.SUM, group=self.combined_parallel_group)
-            exp_avg_sq_row_mean /= dist.get_world_size(group=self.combined_parallel_group)
+            group = self.combined_parallel_group
+        else:
+            group = self.zero_parallel_group
+        dist.all_reduce(exp_avg_sq_row_mean, op=dist.ReduceOp.SUM, group=group)
+        exp_avg_sq_row_mean /= dist.get_world_size(group=group)
+
         r_factor = (exp_avg_sq_row / exp_avg_sq_row_mean).rsqrt_().unsqueeze(-1)
         c_factor = exp_avg_sq_col.unsqueeze(-2).rsqrt()
 
         return torch.mul(r_factor, c_factor)
 
-    def _unflatten_grad(self, param):
+    def _unflatten_grad_tensor_by_param(self, param):
         ori_shape = self.ori_shape[id(param)]
         if not (len(ori_shape) >= 2 and len(param.grad.data.shape) == 1):
             return param.grad.data
         remaining_dims = ori_shape[1:]
         return param.grad.data.reshape(-1, *remaining_dims)
+
+    def _flatten_update_tensor_by_param(self, param, tensor):
+        ori_shape = self.ori_shape[id(param)]
+        if not (len(ori_shape) >= 2 and len(param.grad.data.shape) == 1):
+            return tensor
+        return torch.flatten(tensor)
 
     def step(self, closure=None):
         """Performs a single optimization step.
@@ -129,11 +139,9 @@ class CAME(Optimizer):
 
         for group in self.param_groups:
             for p in group["params"]:
-                print(p.data.shape, self.ori_shape[id(p)])
                 if p.grad is None:
                     continue
-                grad = self._unflatten_grad(p)
-                print(p.data.shape, grad.shape)
+                grad = self._unflatten_grad_tensor_by_param(p)
                 if grad.dtype in {torch.float16, torch.bfloat16}:
                     grad = grad.float()
                 if grad.is_sparse:
@@ -161,7 +169,7 @@ class CAME(Optimizer):
                     state["RMS"] = 0
 
                 state["step"] += 1
-                state["RMS"] = self._rms(p.data, verbose=True)
+                state["RMS"] = self._rms(p.data)
 
                 update = (grad**2) + group["eps"][0]
                 if factored:
@@ -171,7 +179,7 @@ class CAME(Optimizer):
                     # 局部平均
                     sq_mean_row = update.mean(dim=-1)
                     sq_mean_col = update.mean(dim=-2)
-                    if self.tensor_parallel_group:
+                    if self.tensor_parallel_world_size > 1:
                         # 全局同步
                         if self.clip_method[id(p)] == "row":
                             dist.all_reduce(sq_mean_row, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
@@ -181,6 +189,9 @@ class CAME(Optimizer):
                             sq_mean_col /= dist.get_world_size(group=self.tensor_parallel_group)
                         else:
                             pass
+                    if self.zero_parallel_world_size > 1:
+                        dist.all_reduce(sq_mean_col, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
+                        sq_mean_col /= dist.get_world_size(group=self.zero_parallel_group)
 
                     # 得到的exp_avg是完整exp_avg的切割
                     exp_avg_sq_row.mul_(group["betas"][1]).add_(sq_mean_row, alpha=1.0 - group["betas"][1])
@@ -190,27 +201,26 @@ class CAME(Optimizer):
                     update = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col, clip_method=self.clip_method[id(p)])
                     update.mul_(grad)
                 else:
-                    # zero执行这个部分
+                    # bias执行这个部分
                     exp_avg_sq = state["exp_avg_sq"]
                     exp_avg_sq.mul_(group["betas"][1]).add_(update, alpha=1.0 - group["betas"][1])
                     update = exp_avg_sq.rsqrt().mul_(grad)
 
                 # update也为完整update的切割
-                update.div_((self._rms(update, verbose=False) / group["clip_threshold"]).clamp_(min=1.0))
+                update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
                 exp_avg = state["exp_avg"]
                 exp_avg.mul_(group["betas"][0]).add_(update, alpha=1 - group["betas"][0])
 
                 # Confidence-guided strategy
                 # Calculation of instability
                 res = (update - exp_avg) ** 2 + group["eps"][0]
-
                 if factored:
                     exp_avg_res_row = state["exp_avg_res_row"]
                     exp_avg_res_col = state["exp_avg_res_col"]
 
                     res_mean_row = res.mean(dim=-1)
                     res_mean_col = res.mean(dim=-2)
-                    if self.tensor_parallel_group:
+                    if self.tensor_parallel_world_size > 1:
                         if self.clip_method[id(p)] == "row":
                             dist.all_reduce(res_mean_row, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
                             res_mean_row /= dist.get_world_size(group=self.tensor_parallel_group)
@@ -219,6 +229,9 @@ class CAME(Optimizer):
                             res_mean_col /= dist.get_world_size(group=self.tensor_parallel_group)
                         else:
                             pass
+                    if self.zero_parallel_world_size > 1:
+                        dist.all_reduce(res_mean_col, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
+                        res_mean_col /= dist.get_world_size(group=self.zero_parallel_group)
 
                     exp_avg_res_row.mul_(group["betas"][2]).add_(res_mean_row, alpha=1.0 - group["betas"][2])
                     exp_avg_res_col.mul_(group["betas"][2]).add_(res_mean_col, alpha=1.0 - group["betas"][2])
@@ -235,6 +248,7 @@ class CAME(Optimizer):
                     p.data.add_(p.data, alpha=-group["weight_decay"] * group["lr"])
 
                 update.mul_(group["lr"])
+                update = self._flatten_update_tensor_by_param(p, update)
                 p.data.add_(-update)
 
         return loss

@@ -7,7 +7,7 @@ from torch.testing import assert_close
 
 import colossalai
 import colossalai.tensor.d_tensor.api as api
-from colossalai.nn.optimizer import CAME
+from colossalai.nn.optimizer.came import CAME
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.zero.low_level.low_level_optim import LowLevelZeroOptimizer
@@ -126,15 +126,15 @@ def check_linear_1d_col(lazy_init: bool, seq_parallel: bool, overlap: bool, tp: 
         assert_close(target_bias, linear_col.bias)
 
     # check optimizer correctness
-    dist_optim.step()
     optim.step()
+    dist_optim.step()
     dist_optim.zero_grad()
     optim.zero_grad()
     with torch.no_grad():
         target_weight = torch.chunk(linear.weight.clone(), tp, dim=clip_dim)[tp_rank]
     assert not torch.allclose(ori_target_weight, target_weight)
     assert not torch.allclose(ori_dist_weight, linear_col.weight)
-    # assert_close(target_weight, linear_col.weight)
+    assert_close(target_weight, linear_col.weight)
     if zero == 1:
         # 比state_dict()
         ori_state_dict = optim.state_dict()["state"][0]
@@ -150,9 +150,9 @@ def check_linear_1d_col(lazy_init: bool, seq_parallel: bool, overlap: bool, tp: 
 @parameterize("lazy_init", [False])
 @parameterize("seq_parallel", [False])
 @parameterize("overlap", [True])
-@parameterize("tp", [1])
+@parameterize("tp", [2])
 @parameterize("zero", [2])  # zero parallel size
-@parameterize("col", [True])
+@parameterize("col", [True, False])
 def run_dist_linear_test(lazy_init, seq_parallel, overlap, tp, zero, col):
     check_linear_1d_col(lazy_init, seq_parallel, overlap, tp, zero, col)
     # check_linear_1d_row(lazy_init, seq_parallel)
@@ -166,7 +166,7 @@ def check_dist_linear(rank, world_size, port=12256):
 
 @rerun_if_address_is_in_use()
 def test_linear():
-    spawn(check_dist_linear, nprocs=2)
+    spawn(check_dist_linear, nprocs=4)
 
 
 if __name__ == "__main__":
