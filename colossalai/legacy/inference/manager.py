@@ -131,14 +131,14 @@ class DynamicBatchManager:
                 self.stats_tool.count_prompt_tokens(new_batch)
                 self.running_batch = new_batch
                 yield from self._prefill_batch(self.running_batch)
-                self._filter_runing_batch()
+                self._filter_running_batch()
                 self.has_wait_tokens = 0
             return
 
         if self.has_wait_tokens < self.max_wait_tokens:
             self.stats_tool.count_output_tokens(self.running_batch)
             yield from self._decode_batch(self.running_batch)
-            self._filter_runing_batch()
+            self._filter_running_batch()
             self.has_wait_tokens += 1
             return
         else:
@@ -154,7 +154,7 @@ class DynamicBatchManager:
             else:
                 self.stats_tool.count_output_tokens(self.running_batch)
                 yield from self._decode_batch(self.running_batch)
-                self._filter_runing_batch()
+                self._filter_running_batch()
                 self.has_wait_tokens += 1
 
         return
@@ -243,7 +243,7 @@ class DynamicBatchManager:
                 self._filter_batch(batch)
             yield from self._output_process(finished_reqs)
 
-    def _filter_runing_batch(self):
+    def _filter_running_batch(self):
         if self.running_batch is not None and self.running_batch.is_clear():
             self.running_batch = None
 
