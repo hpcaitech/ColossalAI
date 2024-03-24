@@ -20,9 +20,9 @@ def print_output(text, output):
 
 
 @torch.no_grad()
-def inference(model, sp, text, **generate_kwargs):
-    input_ids = sp.encode(text)
-    input_ids = torch.tensor([input_ids]).cuda()
+def inference(model, tokenizer, text, **generate_kwargs):
+    input_ids = tokenizer(text, return_tensors="pt").input_ids
+    input_ids = input_ids.cuda()
     attention_mask = torch.ones_like(input_ids)
     inputs = {
         "input_ids": input_ids,
