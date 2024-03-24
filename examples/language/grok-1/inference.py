@@ -37,8 +37,8 @@ if __name__ == "__main__":
     gen_latency = overall_time - init_time
     avg_gen_latency = gen_latency / len(args.text)
     print(
-        f"Initializing time: {init_time} seconds.\n"
-        f"Overall time: {overall_time} seconds. \n"
-        f"Generation latency: {gen_latency} seconds. \n"
-        f"Average generation latency: {avg_gen_latency} seconds. \n"
+        f"Initializing time: {init_time:.2f} seconds.\n"
+        f"Overall time: {overall_time:.2f} seconds. \n"
+        f"Generation latency: {gen_latency:.2f} seconds. \n"
+        f"Average generation latency: {avg_gen_latency:.2f} seconds. \n"
     )
