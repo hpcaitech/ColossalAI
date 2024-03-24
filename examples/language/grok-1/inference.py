@@ -1,8 +1,7 @@
 import time
 
 import torch
-from sentencepiece import SentencePieceProcessor
-from transformers import AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, LlamaTokenizerFast
 from utils import get_defualt_parser, inference, print_output
 
 if __name__ == "__main__":
@@ -16,11 +15,17 @@ if __name__ == "__main__":
         device_map="auto",
         torch_dtype=torch.bfloat16,
     )
-    sp = SentencePieceProcessor(model_file=args.tokenizer)
+    model.eval()
+    init_time = time.time() - start
+
+    # A transformers-compatible version of the grok-1 tokenizer by Xenova
+    # https://huggingface.co/Xenova/grok-1-tokenizer
+    tokenizer = LlamaTokenizerFast.from_pretrained("Xenova/grok-1-tokenizer")
+
     for text in args.text:
         output = inference(
             model,
-            sp,
+            tokenizer,
             text,
             max_new_tokens=args.max_new_tokens,
             do_sample=args.do_sample,
@@ -28,5 +33,14 @@ if __name__ == "__main__":
             top_k=args.top_k,
             top_p=args.top_p,
         )
-        print_output(text, sp.decode(output))
-    print(f"Overall time: {time.time() - start} seconds.")
+        print_output(text, tokenizer.decode(output))
+
+    overall_time = time.time() - start
+    gen_latency = overall_time - init_time
+    avg_gen_latency = gen_latency / len(args.text)
+    print(
+        f"Initializing time: {init_time:.2f} seconds.\n"
+        f"Overall time: {overall_time:.2f} seconds. \n"
+        f"Generation latency: {gen_latency:.2f} seconds. \n"
+        f"Average generation latency: {avg_gen_latency:.2f} seconds. \n"
+    )

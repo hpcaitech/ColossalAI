@@ -5,7 +5,7 @@ An easy-to-use Python + PyTorch + HuggingFace version of 314B Grok-1.
 [[blog]](https://hpc-ai.com/blog/grok-1-of-pytorch-huggingface-version-is-now-available)
 [[HuggingFace Grok-1 PyTorch model weights]](https://huggingface.co/hpcai-tech/grok-1)
 
-## Install
+## Installation
 
 ```bash
 # Make sure you install colossalai from the latest source code
@@ -16,33 +16,36 @@ cd examples/language/grok-1
 pip install -r requirements.txt
 ```
 
-## Tokenizer preparation
-
-You should download the tokenizer from the official grok-1 repository.
-
-```bash
-wget https://github.com/xai-org/grok-1/raw/main/tokenizer.model
-```
-
 ## Inference
 
 You need 8x A100 80GB or equivalent GPUs to run the inference.
 
-We provide two scripts for inference. `run_inference_fast.sh` uses tensor parallelism provided by ColossalAI, and it is faster. `run_inference_slow.sh` uses auto device provided by transformers, and it is slower.
-
-Command format:
-
-```bash
-./run_inference_fast.sh <model_name_or_path> <tokenizer_path>
-./run_inference_slow.sh <model_name_or_path> <tokenizer_path>
-```
-
-`model_name_or_path` can be a local path or a model name from Hugging Face model hub. We provided weights on model hub, named `hpcaitech/grok-1`.
+We provide two scripts for inference. `run_inference_fast.sh` uses tensor parallelism provided by ColossalAI, which is faster for generation, while `run_inference_slow.sh` uses auto device provided by transformers, which is relatively slower.
 
 Command example:
 
 ```bash
-./run_inference_fast.sh hpcaitech/grok-1 tokenizer.model
+./run_inference_fast.sh <MODEL_NAME_OR_PATH>
+./run_inference_slow.sh <MODEL_NAME_OR_PATH>
 ```
 
-It will take 5-10 minutes to load checkpoints. Don't worry, it's not stuck.
+`MODEL_NAME_OR_PATH` can be a model name from Hugging Face model hub or a local path to PyTorch-version model checkpoints. We provided weights on model hub, named `hpcaitech/grok-1`. And you could also download the weights in advance using `git`:
+```bash
+git lfs install
+git clone https://huggingface.co/hpcai-tech/grok-1
+```
+
+It will take, depending on your Internet speed, several hours to tens of hours to download checkpoints (about 600G!), and 5-10 minutes to load checkpoints when it's ready to launch the inference. Don't worry, it's not stuck.
+
+
+## Performance
+
+For request of batch size set to 1 and maximum length set to 100:
+
+| Method                  | Initialization-Duration(sec) | Average-Generation-Latency(sec) |
+|-------------------------|------------------------------|---------------------------------|
+| ColossalAI              | 431.45                       | 14.92                           |
+| HuggingFace Auto-Device | 426.96                       | 48.38                           |
+| JAX                     | 147.61                       | 56.25                           |
+
+Tested on 8x80G NVIDIA H800.
