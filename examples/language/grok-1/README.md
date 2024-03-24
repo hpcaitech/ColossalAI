@@ -1,6 +1,6 @@
 # Grok-1 Inference
 
-## Install
+## Installation
 
 ```bash
 # Make sure you install colossalai from the latest source code
@@ -31,3 +31,16 @@ git clone https://huggingface.co/hpcai-tech/grok-1
 ```
 
 It will take, depending on your Internet speed, several hours to tens of hours to download checkpoints (about 600G!), and 5-10 minutes to load checkpoints when it's ready to launch the inference. Don't worry, it's not stuck.
+
+
+## Performance
+
+For request of batch size set to 1 and maximum length set to 100:
+
+| Method                  | Initialization-Duration(sec) | Average-Generation-Latency(sec) |
+|-------------------------|------------------------------|---------------------------------|
+| ColossalAI              | 431.45                       | 14.92                           |
+| HuggingFace Auto-Device | 426.96                       | 48.38                           |
+| JAX                     | 147.61                       | 56.25                           |
+
+Tested on 8x80G NVIDIA H800.
