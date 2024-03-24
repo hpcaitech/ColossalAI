@@ -18,6 +18,8 @@ if __name__ == "__main__":
     model.eval()
     init_time = time.time() - start
 
+    # A transformers-compatible version of the grok-1 tokenizer by Xenova
+    # https://huggingface.co/Xenova/grok-1-tokenizer
     tokenizer = LlamaTokenizerFast.from_pretrained("Xenova/grok-1-tokenizer")
 
     for text in args.text:
