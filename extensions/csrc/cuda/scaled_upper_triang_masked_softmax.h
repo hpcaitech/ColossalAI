@@ -11,6 +11,8 @@
 #include <cfloat>
 #include <limits>
 
+#include "utils/vector_copy_utils.h"
+
 namespace {
 
 int log2_ceil(int value) {

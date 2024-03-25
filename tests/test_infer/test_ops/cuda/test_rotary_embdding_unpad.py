@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 import torch
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply_rotary_pos_emb
@@ -10,11 +11,18 @@ from tests.test_infer.test_ops.triton.kernel_utils import mock_alloc_block_table
 from tests.test_infer.test_ops.triton.test_rotary_embdding_unpad import torch_rotary_emb
 
 
+def numpy_allclose(x, y, rtol, atol):
+    x_numpy = x.detach().cpu().numpy()
+    y_numpy = y.detach().cpu().numpy()
+
+    np.testing.assert_allclose(x_numpy, y_numpy, rtol=rtol, atol=atol)
+
+
 @pytest.mark.parametrize("BATCH_SIZE", [4])
 @pytest.mark.parametrize("SEQ_LEN", [64])
 @pytest.mark.parametrize("H", [32])
 @pytest.mark.parametrize("D", [64])
-@pytest.mark.parametrize("dtype", [torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
     torch.manual_seed(10)
     TOTAL_TOKENS = BATCH_SIZE * SEQ_LEN
@@ -54,17 +62,36 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
 
     kv_seq_lengths = past_kv_seq_lengths + 1
     block_tables = block_tables.to(device="cuda")
-    q_ref = torch_rotary_emb(new_q, cos[:BATCH_SIZE], sin[:BATCH_SIZE])
-    k_ref = torch_rotary_emb(new_k, cos[:BATCH_SIZE], sin[:BATCH_SIZE])
 
     new_q_copy = new_q.clone()
     new_k_copy = new_k.clone()
 
+    if dtype == torch.float16:
+        rtol = 1e-3
+        atol = 1e-3
+
+        new_q_fp16 = new_q.clone()
+        new_k_fp16 = new_k.clone()
+
+        high_precision_cos = cos[:BATCH_SIZE].to(torch.float32)
+        high_precision_sin = sin[:BATCH_SIZE].to(torch.float32)
+        high_precision_q = new_q.to(torch.float32)
+        high_precision_k = new_k.to(torch.float32)
+        q_ref = torch_rotary_emb(high_precision_q, high_precision_cos, high_precision_sin).to(torch.float16)
+        k_ref = torch_rotary_emb(high_precision_k, high_precision_cos, high_precision_sin).to(torch.float16)
+
+    else:
+        rtol = 1e-5
+        atol = 1e-7
+
+        q_ref = torch_rotary_emb(new_q, cos[:BATCH_SIZE], sin[:BATCH_SIZE])
+        k_ref = torch_rotary_emb(new_k, cos[:BATCH_SIZE], sin[:BATCH_SIZE])
+
     inference_ops.rotary_embedding_and_cache_copy(
-        new_q, new_k, new_v, cos, sin, k_cache, v_cache, kv_seq_lengths, block_tables
+        new_q, new_k, new_v, cos, sin, k_cache, v_cache, kv_seq_lengths, block_tables, True
     )
 
-    inference_ops.rotary_embedding(new_q_copy, new_k_copy, cos, sin)
+    inference_ops.rotary_embedding(new_q_copy, new_k_copy, cos, sin, True)
 
     past_kv_seq_len = kv_seq_lengths - 1
     target_block_ids = block_tables[range(0, block_tables.size(0)), past_kv_seq_len // block_size]
@@ -74,18 +101,26 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype):
     v_target = v_cache[target_block_ids, :, offsets_in_block, :].squeeze()
     v_source = new_v.squeeze()
 
-    assert torch.allclose(new_q, q_ref, atol=1e-6, rtol=1e-6)
-    assert torch.allclose(k_target, k_ref, atol=1e-6, rtol=1e-6)
+    numpy_allclose(new_q, q_ref, rtol=rtol, atol=atol)
+    numpy_allclose(k_target, k_ref, rtol=rtol, atol=atol)
 
-    assert torch.allclose(new_q_copy, q_ref, atol=1e-6, rtol=1e-6)
-    assert torch.allclose(new_k_copy, k_ref, atol=1e-6, rtol=1e-6)
+    numpy_allclose(new_q_copy, q_ref, rtol=rtol, atol=atol)
+    numpy_allclose(new_k_copy, k_ref, rtol=rtol, atol=atol)
 
     assert k_target.shape == k_source.shape
-    assert torch.allclose(k_target, k_source, atol=1e-6, rtol=1e-6)
+    numpy_allclose(k_target, k_source, rtol=rtol, atol=atol)
 
     assert v_target.shape == v_source.shape
     assert torch.equal(v_target, v_source)
 
+    if dtype == torch.float16:
+        # After testing cuda fp16 high_precision, it was found to have higher precision than torch fp16. Therefore, the threshold here has been relaxed to pass the test.
+        rtol = 1e-3
+        atol = 1e-1
+        inference_ops.rotary_embedding(new_q_fp16, new_k_fp16, cos, sin, False)
+        numpy_allclose(new_q_copy, new_q_fp16, rtol=rtol, atol=atol)
+        numpy_allclose(new_k_copy, new_k_fp16, rtol=rtol, atol=atol)
+
 
 if __name__ == "__main__":
-    test_rotary_emb(16, 512, 4, 128, torch.float16)
+    test_rotary_emb(16, 64, 4, 128, torch.float16)

@@ -56,6 +56,7 @@ class InferenceEngine:
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.generation_config = inference_config.to_generation_config(self.model_config)
+        self.high_precision = inference_config.high_precision
         model = model.eval()
         model = model.cuda()
         model.to(self.dtype)
@@ -297,6 +298,7 @@ class InferenceEngine:
             batch,
             self.k_cahce,
             self.v_cache,
+            self.high_precision,
         )
 
         if self.inference_config.pad_input:

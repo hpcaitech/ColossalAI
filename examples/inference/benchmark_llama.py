@@ -136,7 +136,8 @@ def benchmark_inference(args):
 
         data = data_gen(mbsz, args.seq_len)
 
-        data = data.tolist()
+        if args.mode == "colossalai" or args.mode == "vllm":
+            data = data.tolist()
 
         generation_config = GenerationConfig(
             pad_token_id=tokenizer.pad_token_id,
