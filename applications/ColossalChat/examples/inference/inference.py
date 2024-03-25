@@ -115,7 +115,7 @@ def main(args):
     }
     round = 1
 
-    conv = setup_conversation_template(tokenizer, conversation_template_config)
+    conv = setup_conversation_template(tokenizer, conversation_template_config, args.conversation_template_config)
 
     while True:
         if args.io == "simple":
@@ -148,7 +148,7 @@ def main(args):
 
         chat_io.prompt_for_output('assistant')
 
-        prompt = conv.get_prompt()
+        prompt = conv.get_prompt(add_generation_prompt=True)
         print(prompt+'<end_of_prompt>')
         input_ids = tokenizer(prompt, return_tensors="pt", add_special_tokens=False)["input_ids"].to(
             torch.cuda.current_device()
@@ -162,7 +162,7 @@ def main(args):
             max_length=model_max_length,
             temperature=0.7,
             early_stopping=True,
-            stop_token_ids = conversation_template_config['assistant_line_end'],
+            stop_token_ids = conversation_template_config['stop_ids'],
             **model_kwargs,
         )
 
