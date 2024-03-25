@@ -1,5 +1,6 @@
+import time
 from itertools import count
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -7,7 +8,9 @@ import torch.nn as nn
 from transformers import GenerationConfig, PreTrainedTokenizer, PreTrainedTokenizerFast
 
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.inference.config import InferenceConfig
+from colossalai.inference.batch_bucket import BatchBucket
+from colossalai.inference.config import InferenceConfig, InputMetaData
+from colossalai.inference.graph_runner import CUDAGraphRunner
 from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.struct import Sequence
 from colossalai.logging import get_dist_logger
@@ -24,6 +27,8 @@ PP_AXIS, TP_AXIS = 0, 1
 _supported_models = [
     "LlamaForCausalLM",
 ]
+
+_BATCH_SIZES_TO_CAPTURE = [1, 2, 4] + [8 * i for i in range(1, 33)]
 
 
 class InferenceEngine:
@@ -82,10 +87,92 @@ class InferenceEngine:
             self.logger = get_dist_logger(__name__)
 
         self.request_handler = RequestHandler(self.inference_config, self.model_config)
-        self.k_cahce, self.v_cache = self.request_handler.get_kvcache()
+        self.k_cache, self.v_cache = self.request_handler.get_kvcache()
         # DISCUSS maybe move this into batch info?
 
         self.counter = count()
+
+        self.use_cuda_graph = self.inference_config.use_cuda_graph
+        if self.use_cuda_graph:
+            self.graph_runners: Dict[int, CUDAGraphRunner] = {}
+            self.graph_memory_pool = None  # Set during graph capture.
+            if verbose:
+                self.logger.info("Colossal AI CUDA Graph Capture on")
+
+            self.capture_model(self.k_cache, self.v_cache)
+
+    @torch.inference_mode()
+    def capture_model(self, k_cache: List[torch.Tensor], v_cache: List[torch.Tensor]):
+        assert self.use_cuda_graph, "please turn on the cuda graph"
+
+        if self.verbose:
+            self.logger.info("Colossal AI CUDA Graph Capture begin")
+
+        t_capture_begin = time.perf_counter()
+
+        block_size = self.inference_config.block_size
+        head_dim = self.model_config.hidden_size // self.model_config.num_attention_heads
+
+        # Prepare dummy inputs. These will be reused for all batch sizes.
+        max_batch_size = max(_BATCH_SIZES_TO_CAPTURE)
+        max_context_len_to_capture = self.inference_config.max_context_len_to_capture
+        max_num_blocks = (max_context_len_to_capture + block_size - 1) // block_size
+        input_tokens_ids = torch.zeros(max_batch_size, dtype=torch.long).cuda()
+        # self.graph_block_tables = np.zeros((max(_BATCH_SIZES_TO_CAPTURE), max_num_blocks), dtype=np.int32)
+        self.graph_block_tables = np.full((max(_BATCH_SIZES_TO_CAPTURE), max_num_blocks), -1, dtype=np.int32)
+        self.graph_block_tables[:, 0] = np.arange(max_num_blocks, max_num_blocks + max(_BATCH_SIZES_TO_CAPTURE))
+        self.graph_block_tables[0, :] = np.arange(
+            0, max_num_blocks
+        )  # NOTE this is a hack to insure cuda grpah could capture the fixed cuda kernel grid in flash decoding, to make the first seqlen as the max_seq_len
+        block_tables = torch.from_numpy(self.graph_block_tables).cuda()
+        output_tensor = torch.zeros(
+            (max_batch_size, self.model_config.num_attention_heads * head_dim), dtype=self.dtype, device=self.device
+        )
+        fd_inter_tensor = self.request_handler.running_bb.fd_inter_tensor
+
+        max_num_seqs = self.inference_config.max_batch_size
+        batch_size_capture_list = [bs for bs in _BATCH_SIZES_TO_CAPTURE if bs <= max_num_seqs]
+        sequence_lengths = torch.ones(max_batch_size, dtype=torch.int).cuda()
+        # NOTE this is a hack to insure cuda grpah could capture the fixed cuda kernel grid in flash decoding, to make the first seqlen as the max_seq_len
+        sequence_lengths[0] = torch.tensor(
+            self.inference_config.max_context_len_to_capture - 1, dtype=torch.int32
+        ).cuda()
+
+        # NOTE: Capturing the largest batch size first may help reduce the
+        # memory usage of CUDA graph.
+        for batch_size in reversed(batch_size_capture_list):
+            if self.verbose:
+                self.logger.info(f"batch size {batch_size} graph capturing")
+
+            input_meta_data = InputMetaData(
+                block_tables=block_tables[:batch_size],
+                sequence_lengths=sequence_lengths[:batch_size],
+                fd_inter_tensor=fd_inter_tensor,
+                batch_size=batch_size,
+                is_prompts=False,
+                use_cuda_graph=True,
+                high_precision=False,
+                kv_seq_len=sequence_lengths[:batch_size].max().item(),
+                head_dim=head_dim,
+                dtype=self.dtype,
+            )
+
+            graph_runner = CUDAGraphRunner(self.model)
+            graph_runner.capture(
+                input_tokens_ids[:batch_size],
+                output_tensor[:batch_size],
+                input_meta_data,
+                k_caches=k_cache,
+                v_caches=v_cache,
+                memory_pool=self.graph_memory_pool,
+            )
+            self.graph_memory_pool = graph_runner.graph.pool()
+            self.graph_runners[batch_size] = graph_runner
+
+        t_capture_end = time.perf_counter()
+
+        if self.verbose:
+            self.logger.info(f"CUDA Graph capture time: {t_capture_end - t_capture_begin} s")
 
     def _verify_config(self) -> None:
         """
@@ -279,13 +366,50 @@ class InferenceEngine:
             )
             self.request_handler.add_sequence(sequence)
 
+    def prepare_input(self, batch: BatchBucket) -> Tuple[torch.Tensor, torch.Tensor, InputMetaData]:
+        input_ids = batch.get_1D_inputs()
+
+        sequence_lengths = batch.get_sequence_lengths()
+        if batch.is_prompts:
+            output_tensor = torch.zeros(
+                (sequence_lengths.sum().item(), batch.num_heads * batch.head_dim),
+                dtype=batch.dtype,
+                device=batch.device,
+            )
+        else:
+            output_tensor = torch.zeros(
+                (batch.current_batch_size, batch.num_heads * batch.head_dim), dtype=batch.dtype, device=batch.device
+            )
+
+        # only when we have the graph for specific decoding batch size can we use the cuda graph for inference
+        use_cuda_graph = False
+        if self.use_cuda_graph and not batch.is_prompts and batch.current_batch_size in self.graph_runners.keys():
+            use_cuda_graph = True
+
+        input_meta_data = InputMetaData(
+            block_tables=batch.get_block_table_tensor(),
+            sequence_lengths=sequence_lengths,
+            fd_inter_tensor=batch.fd_inter_tensor,
+            batch_size=batch.current_batch_size,
+            is_prompts=batch.is_prompts,
+            use_cuda_kernel=self.inference_config.use_cuda_kernel,
+            use_cuda_graph=use_cuda_graph,
+            high_precision=self.high_precision,
+            kv_seq_len=sequence_lengths.max().item(),
+            head_dim=batch.head_dim,
+            dtype=batch.dtype,
+        )
+
+        return input_ids, output_tensor, input_meta_data
+
     def step(self) -> List[str]:
         """
         In each step, do the follows:
             1. Run RequestHandler.schedule() and get the batch used for inference.
-            2. Run model to generate the next token
-            3. Update waiting list and running list in RequestHandler and get finished sequences.
-            4. Decode and return finished sequences.
+            2. Get the input, inputinfo and output placeholder from the batchbucket
+            3. Run model to generate the next token
+            4. Update waiting list and running list in RequestHandler and get finished sequences.
+            5. Decode and return finished sequences.
 
         Returns:
             List[str]: Decoded finished sequences generated by one step.
@@ -293,14 +417,15 @@ class InferenceEngine:
 
         batch = self.request_handler.schedule()
 
-        # TODO: padding_id is used for generating attn_mask and will be removed if nopad version is supported.
-        logits = self.model(
-            batch,
-            self.k_cahce,
-            self.v_cache,
-            self.high_precision,
-        )
+        input_token_ids, output_tensor, input_meta_data = self.prepare_input(batch)
 
+        if input_meta_data.use_cuda_graph:
+            model_executable = self.graph_runners[input_meta_data.batch_size]
+        else:
+            model_executable = self.model
+
+        # TODO: padding_id is used for generating attn_mask and will be removed if nopad version is supported.
+        logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
         self.request_handler.search_tokens(self.generation_config, logits)

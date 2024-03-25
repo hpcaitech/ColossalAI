@@ -94,6 +94,8 @@ inference_config = InferenceConfig(
                 max_batch_size=4,
                 max_input_len=1024,
                 max_output_len=512,
+                use_cuda_kernel=True,
+                use_cuda_graph=False, # Turn on if you want to use CUDA Graph to accelerate inference
             )
 
 # Step 3: create an engine with model and config

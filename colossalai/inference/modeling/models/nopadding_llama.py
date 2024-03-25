@@ -13,7 +13,7 @@ from transformers.models.llama.modeling_llama import (
     LlamaRMSNorm,
 )
 
-from colossalai.inference.batch_bucket import BatchBucket
+from colossalai.inference.config import InputMetaData
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.triton import (
@@ -41,11 +41,12 @@ except ImportError:
 
 def llama_causal_lm_forward(
     self: LlamaForCausalLM,
-    batch: BatchBucket,
-    k_caches: List[torch.Tensor],
-    v_caches: List[torch.Tensor],
-    high_precision: bool = False,
-):
+    input_tokens_ids: torch.Tensor,
+    output_tensor: torch.Tensor,
+    inputmetadata: InputMetaData,
+    k_caches: List[torch.Tensor] = None,
+    v_caches: List[torch.Tensor] = None,
+) -> torch.Tensor:
     """This function will replace the forward function of LlamaForCausalLM.
 
     Args:
@@ -58,10 +59,13 @@ def llama_causal_lm_forward(
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     hidden_states = llama_model_forward(
         self.model,
-        batch=batch,
+        input_tokens_ids=input_tokens_ids,
+        output_tensor=output_tensor,
+        inputmetadata=inputmetadata,
         k_caches=k_caches,
         v_caches=v_caches,
-        high_precision=high_precision,
+        use_cuda_kernel=inputmetadata.use_cuda_kernel,  # Note currently the cuda kernel of layernorm, rotary_embedding_and_cache_copy couldn't pass the unitest but triton kernel could
+        high_precision=inputmetadata.high_precision,
     )
     logits = torch.mm(hidden_states, self.lm_head.weight)
     return logits
@@ -69,11 +73,14 @@ def llama_causal_lm_forward(
 
 def llama_model_forward(
     self: LlamaModel,
-    batch: BatchBucket,
-    k_caches: List[torch.Tensor],
-    v_caches: List[torch.Tensor],
+    input_tokens_ids: torch.Tensor,
+    output_tensor: torch.Tensor,
+    inputmetadata: InputMetaData,
+    k_caches: List[torch.Tensor] = None,
+    v_caches: List[torch.Tensor] = None,
+    use_cuda_kernel: Optional[bool] = True,
     high_precision: bool = False,
-):
+) -> torch.Tensor:
     """This function will replace the forward function of LlamaModel.
 
     Args:
@@ -82,36 +89,26 @@ def llama_model_forward(
         v_caches (List[torch.Tensor]): It holds the GPU memory for the value cache.
         high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
     """
-    input_ids = batch.get_1D_inputs()
-    block_tables = batch.get_block_table_tensor()
-    sequence_lengths = batch.get_sequence_lengths()
-    batch_size = batch.current_batch_size
-    kv_seq_len = sequence_lengths.max().item()
-    use_cuda_kernel = True
+    block_tables = inputmetadata.block_tables
+    sequence_lengths = inputmetadata.sequence_lengths
+    batch_size = inputmetadata.batch_size
+    kv_seq_len = inputmetadata.kv_seq_len
+
     # NOTE: After testing, the performance of this configuration is relatively good. With updates
     # and optimizations to the CUDA kernel implementation, a more detailed analysis of this configuration's
     # selection should be conducted.
     if batch_size >= 32 and kv_seq_len > 512:
         use_cuda_kernel = False
 
-    if use_cuda_kernel and batch.dtype != torch.float32 and use_flash_attn2:
+    hidden_states = self.embed_tokens(input_tokens_ids)
+    if use_cuda_kernel and inputmetadata != torch.float32 and use_flash_attn2:
         cu_seqlens = F.pad(torch.cumsum(sequence_lengths, dim=0, dtype=torch.torch.int32), (1, 0))
     else:
         cu_seqlens = None
 
-    hidden_states = self.embed_tokens(input_ids)
+    cos_sin = get_xine_cache(sequence_lengths, self._cos_cached, self._sin_cached, inputmetadata.is_prompts)
 
-    cos_sin = get_xine_cache(sequence_lengths, self._cos_cached, self._sin_cached, batch.is_prompts)
-
-    if batch.is_prompts:
-        output_tensor = torch.zeros(
-            (sequence_lengths.sum().item(), batch.num_heads * batch.head_dim), dtype=batch.dtype, device=batch.device
-        )
-    else:
-        output_tensor = torch.zeros(
-            (batch_size, batch.num_heads * batch.head_dim), dtype=batch.dtype, device=batch.device
-        )
-    sm_scale = 1.0 / (batch.head_dim**0.5)
+    sm_scale = 1.0 / (inputmetadata.head_dim**0.5)
 
     norm_output = torch.empty_like(hidden_states)
     residual = None
@@ -123,10 +120,10 @@ def llama_model_forward(
             block_tables=block_tables,
             k_cache=k_caches[layer_id],
             v_cache=v_caches[layer_id],
+            is_prompts=inputmetadata.is_prompts,
             sequence_lengths=sequence_lengths,
             cos_sin=cos_sin,
-            fd_inter_tensor=batch.fd_inter_tensor,
-            is_prompts=batch.is_prompts,
+            fd_inter_tensor=inputmetadata.fd_inter_tensor,
             kv_seq_len=kv_seq_len,
             output_tensor=output_tensor,
             norm_output=norm_output,
@@ -136,7 +133,7 @@ def llama_model_forward(
             high_precision=high_precision,
         )
 
-    if batch.is_prompts:
+    if inputmetadata.is_prompts:
         last_token_indexs = sequence_lengths.cumsum(dim=-1)
         hidden_states = hidden_states[last_token_indexs - 1].contiguous()
         residual = residual[last_token_indexs - 1].contiguous()
