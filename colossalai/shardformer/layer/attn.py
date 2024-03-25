@@ -132,8 +132,16 @@ class ColoAttention:
         assert len(shape_4d) == 4 and shape_4d[1] == 1
         b, _, s_q, s_kv = shape_4d
         outputs = {}
-        if q_padding_mask is not None:
+        if (q_padding_mask is None or q_padding_mask.bool().all()) and (
+            kv_padding_mask is None or kv_padding_mask.bool().all()
+        ):
+            # no padding
+            assert is_causal
+            outputs["attention_mask_type"] = AttnMaskType.CAUSAL
+            attention_mask = torch.ones(s_q, s_kv, dtype=dtype, device=device).tril(diagonal=0).expand(b, s_q, s_kv)
+        else:
             if kv_padding_mask is None:
+                # self attention
                 kv_padding_mask = q_padding_mask
             assert q_padding_mask.shape == (b, s_q) and kv_padding_mask.shape == (
                 b,
@@ -157,10 +165,6 @@ class ColoAttention:
                 attention_mask = attention_mask * attention_mask.new_ones(s_q, s_kv).tril(diagonal=0)
             else:
                 outputs["attention_mask_type"] = AttnMaskType.PADDED
-        else:
-            assert is_causal
-            outputs["attention_mask_type"] = AttnMaskType.CAUSAL
-            attention_mask = torch.ones(s_q, s_kv, dtype=dtype, device=device).tril(diagonal=0).expand(b, s_q, s_kv)
         attention_mask = invert_mask(attention_mask).unsqueeze(1)
         outputs["attention_mask"] = attention_mask
         return outputs
