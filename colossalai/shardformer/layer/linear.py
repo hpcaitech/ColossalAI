@@ -233,7 +233,8 @@ class Linear1D_Row(ParallelModule):
         dtype (`torch.dtype`): The dtype of parameters, defaults to None.
         parallel_input (bool): If set to ``True``, it's assumed that the input is split, defaults to False.
         process_group (`torch.distributed.ProcessGroup`): The process group to be used for weight sharding and communication, defaults to None.
-        seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
+        seq_parallel_mode (`str`): The type of sp mode, it will use sequence parallel when `seq_parallel_mode` is not None. Defaults to None.
+        seq_parallel_dim (`int`): Which dim will sequence parallelism split and gather the sequence.
         skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
             which is preserved for kernel fusion, defaults to False
         weight_initializer (:class:`typing.Callable`, optional):
@@ -253,7 +254,6 @@ class Linear1D_Row(ParallelModule):
         dtype: torch.dtype = None,
         device: torch.device = None,
         process_group: ProcessGroup = None,
-        # seq_parallel: bool = False,
         seq_parallel_mode: str = None,
         seq_parallel_dim: int = 1,
         parallel_input: bool = True,
@@ -412,7 +412,6 @@ class Linear1D_Row(ParallelModule):
                         output_parallel_list[i], group=self.process_group, async_op=True
                     )
                     handle_list.append(handle)
-                    # output_parallel_list[i] = reduce_input(output_parallel_list[i], ParallelMode.PARALLEL_1D)
                 for handle in handle_list:
                     handle.wait()
                 output = torch.cat(output_parallel_list, dim=-1)
@@ -421,7 +420,6 @@ class Linear1D_Row(ParallelModule):
                 output_parallel = linear_with_async_comm(input_, self.weight, None, self.process_group, False)
                 output = reduce_forward(output_parallel, self.process_group)
             elif self.seq_parallel_mode == "split_gather":
-                # output = linear_with_async_comm(input_, self.weight, None, None, False)
                 output_parallel = linear_with_async_comm(input_, self.weight, None, self.process_group, False)
                 output = reducescatter_forward_gather_backward(
                     output_parallel, self.process_group, self.seq_parallel_dim

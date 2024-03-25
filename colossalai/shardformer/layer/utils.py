@@ -39,7 +39,7 @@ class SeqParallelUtils:
         process_group: ProcessGroup,
         model: nn.Module = None,
         grads: List[torch.Tensor] = None,
-        require_flag: bool = True,
+        only_sp_partial: bool = True,
     ):
         """
         Allreduce partial derived gradients across the specified process group.
@@ -47,10 +47,10 @@ class SeqParallelUtils:
         This function performs gradient synchronization for parameters that are marked as partially derived in sequence parallelism.
 
         Args:
-            tp_group (ProcessGroup): The process group for gradient synchronization.
+            process_group (ProcessGroup): The process group for gradient synchronization.
             model (nn.Module): The model from which gradients will be synchronized.
             grads (List[torch.Tensor]): The list of gradients to be synchronized.
-
+            only_sp_partial (bool): Whether handle all the parameters or only parameters marked as partial derived.
         Raises:
             AssertionError: If both `model` and `grads` are provided or neither is provided.
         """
@@ -67,11 +67,10 @@ class SeqParallelUtils:
         if model is not None:
             # If `model` is provided, extract partial derived gradients from the model's parameters.
             grads = []
+
             for p in model.parameters():
                 if p.grad is not None:
-                    if require_flag and SeqParallelUtils.is_sp_partial_derived_param(p):
-                        grads.append(p.grad.data)
-                    elif not require_flag:
+                    if only_sp_partial and SeqParallelUtils.is_sp_partial_derived_param(p) or not only_sp_partial:
                         grads.append(p.grad.data)
 
             # Flatten and reduce the gradients using the specified process group.
