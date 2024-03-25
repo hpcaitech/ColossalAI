@@ -42,7 +42,7 @@ class InputMetaData:
     is_prompts (bool, optional): Indicates whether prefill or decoding. Defaults to False(decoding).
     use_cuda_kernel(bool): Whether to use cuda kernel, faster but lose some precision occasionally
     use_cuda_graph (bool, optional): Indicates whether to use the CUDA graph. Defaults to False.
-    high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
+    high_precision(bool, optional): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
     kv_seq_len (int, optional): Key-value sequence length. Defaults to 512.
     head_dim (int, optional): Head dimension. Defaults to 32.
     """
