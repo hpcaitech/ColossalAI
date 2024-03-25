@@ -68,8 +68,6 @@ def check_inference_engine(use_cuda_graph=False, batch_size=32):
     generation_config = GenerationConfig(do_sample=do_sample, top_p=top_p, top_k=top_k)
     outputs = inference_engine.generate(prompts_token_ids=prompts_token_ids, generation_config=generation_config)
 
-    # print(f"outputs, use_cuda_grpah is {use_cuda_graph}, output: {outputs}")
-
     return outputs
 
 
