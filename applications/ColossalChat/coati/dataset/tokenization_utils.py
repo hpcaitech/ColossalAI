@@ -108,8 +108,9 @@ def supervised_tokenize_sft(
         label_decode.append(tokenizer.decode(tokenized[start: end+1], skip_special_tokens=False))
     
     if tokenizer.bos_token_id is not None:
-        tokenized = [tokenizer.bos_token_id] + tokenized
-        labels = [ignore_index] + labels
+        if tokenized[0] != tokenizer.bos_token_id:
+            tokenized = [tokenizer.bos_token_id] + tokenized
+            labels = [ignore_index] + labels
 
     if tokenizer.eos_token_id is not None:
         # Force to add eos token at the end of the tokenized sequence
@@ -193,7 +194,8 @@ def tokenize_prompt_dataset(
     prompt = template.get_prompt(target_turn, add_generation_prompt=True)
     tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0] 
     if tokenizer.bos_token_id is not None:
-        tokenized = [tokenizer.bos_token_id] + tokenized
+        if tokenized[0] != tokenizer.bos_token_id:
+            tokenized = [tokenizer.bos_token_id] + tokenized
        
     # Skip overlength data
     if max_length - 1 < len(tokenized):
@@ -232,8 +234,9 @@ def apply_rlhf_data_format(template: Conversation, tokenizer: Any, context_len: 
         loss_mask[start: end+1] = [1] * len(loss_mask[start: end+1])
         label_decode.append(tokenizer.decode(tokenized[start: end+1], skip_special_tokens=False))
     if tokenizer.bos_token_id is not None:
-        tokenized = [tokenizer.bos_token_id] + tokenized
-        loss_mask = [0] + loss_mask
+        if tokenized[0] != tokenizer.bos_token_id:
+            tokenized = [tokenizer.bos_token_id] + tokenized
+            loss_mask = [0] + loss_mask
 
     if tokenizer.eos_token_id is not None:
         # Force to add eos token at the end of the tokenized sequence
