@@ -168,6 +168,7 @@ class LlamaPipelineForwards:
                 all_hidden_states += (hidden_states,)
 
             if idx - start_idx < num_ckpt_layers:
+
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
