@@ -34,7 +34,12 @@ from colossalai.shardformer.layer._operation import (
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import ColoAttention, cross_entropy_1d
+from transformers.models.llama.modeling_llama import _prepare_4d_causal_attention_mask, _prepare_4d_causal_attention_mask_for_sdpa
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> llama_model_forward
 
 class LlamaPipelineForwards:
     """
@@ -114,6 +119,10 @@ class LlamaPipelineForwards:
                 device=device,
             )
             position_ids = position_ids.unsqueeze(0)
+            
+        if self._use_flash_attention_2:
+            # 2d mask is passed through the layers
+            attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
 
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
