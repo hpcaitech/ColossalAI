@@ -24,6 +24,7 @@
 </div>
 
 ## 新闻
+* [2024/03] [Grok-1 of PyTorch + HuggingFace version is now available!](https://hpc-ai.com/blog/grok-1-of-pytorch-huggingface-version-is-now-available)
 * [2024/03] [Open-Sora: Revealing Complete Model Parameters, Training Details, and Everything for Sora-like Video Generation Models](https://hpc-ai.com/blog/open-sora-v1.0)
 * [2024/03] [Open-Sora：Sora Replication Solution with 46% Cost Reduction, Sequence Expansion to Nearly a Million](https://hpc-ai.com/blog/open-sora)
 * [2024/01] [Inference Performance Improved by 46%, Open Source Solution Breaks the Length Limit of LLM for Multi-Round Conversations](https://hpc-ai.com/blog/Colossal-AI-SwiftInfer)
@@ -71,6 +72,7 @@
 <li>
    <a href="#推理">推理</a>
    <ul>
+     <li><a href="#Grok-1">Grok-1: 3140亿参数PyTorch + HuggingFace推理</a></li>
      <li><a href="#SwiftInfer">SwiftInfer:打破LLM多轮对话的长度限制，推理加速46%</a></li>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">1750亿参数OPT在线推理服务</a></li>
@@ -128,13 +130,11 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 [[模型权重]](https://huggingface.co/hpcai-tech/Open-Sora)
 [[演示样例]](https://github.com/hpcaitech/Open-Sora?tab=readme-ov-file#-latest-demo)
 
-<p id="diffusion_demo" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/sora/open-sora-1.png" width=600/>
-</p>
-
-<p id="diffusion_demo" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/sora/open-sora-2.png" width=600/>
-</p>
+<div align="center">
+   <a href="https://www.bilibili.com/video/BV1dW421c7MN">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/sora/sora-demo-cn.png" width="700" />
+   </a>
+</div>
 
 ### Colossal-LLaMA-2
 
@@ -360,6 +360,12 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 
 ## 推理
+### Grok-1
+方便易用的Python + PyTorch + HuggingFace Grok-1 推理
+[[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/grok-1)
+[[博客]](https://hpc-ai.com/blog/grok-1-of-pytorch-huggingface-version-is-now-available)
+[[HuggingFace Grok-1 PyTorch模型权重]](https://huggingface.co/hpcai-tech/grok-1)
+
 <p id="SwiftInfer" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/SwiftInfer.jpg" width=800/>
 </p>
