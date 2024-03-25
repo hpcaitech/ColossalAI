@@ -74,7 +74,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
             loss = criterion(outputs[output_key])
             return loss
 
-        booster.execute_pipeline(data_iter, model, _criterion, optimizer, return_loss=True, return_outputs=False)
+        booster.execute_pipeline(data_iter, model, _criterion, optimizer, return_loss=True)
         optimizer.step()
 
     except Exception as e:
