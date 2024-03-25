@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-PRETRAINED=${1:-"hpcaitech/grok-1"}
+PRETRAINED=${1:-"hpcai-tech/grok-1"}
 
 python3 inference.py --pretrained "$PRETRAINED" \
     --max_new_tokens 100 \
