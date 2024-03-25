@@ -73,7 +73,7 @@ colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 31312 train_
     --experience_batch_size 4 \
     --train_batch_size 4 \
     --accumulation_steps 2 \
-    --lr 1e-6 \
+    --lr 9e-6 \
     --mixed_precision "bf16" \
     --grad_clip 0.1\
     --weight_decay 0.01 \
