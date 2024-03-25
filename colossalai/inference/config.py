@@ -44,6 +44,8 @@ class InputMetaData:
     use_cuda_graph (bool, optional): Indicates whether to use the CUDA graph. Defaults to False.
     kv_seq_len (int, optional): Key-value sequence length. Defaults to 512.
     head_dim (int, optional): Head dimension. Defaults to 32.
+    high_precision(bool, optional): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, Defaults to False.
+    dtype (torch.dtype, optional): The computation type of tensor, Defaults to torch.float32.
     """
 
     block_tables: torch.Tensor = None
@@ -55,6 +57,8 @@ class InputMetaData:
     use_cuda_graph: bool = False
     kv_seq_len: int = 512
     head_dim: int = 32
+    high_precision: bool = False
+    dtype: torch.dtype = torch.float32
 
     def __repr__(self) -> str:
         return f"InputMetaData(block_tables={self.block_tables}, sequence_lengths={self.sequence_lengths}, fd_inter_tensor={self.fd_inter_tensor}, batch_size={self.batch_size}, is_prompts={self.is_prompts}, use_cuda_graph={self.use_cuda_graph}, kv_seq_len={self.kv_seq_len}, head_dim={self.head_dim})"
