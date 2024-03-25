@@ -3,7 +3,7 @@ pytest
 coverage==7.2.3
 git+https://github.com/hpcaitech/pytest-testmon
 torchvision
-transformers==4.33.0
+transformers==4.36.0
 timm
 titans
 torchaudio
