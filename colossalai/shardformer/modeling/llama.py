@@ -36,10 +36,6 @@ from colossalai.shardformer.shard import ShardConfig
 from ..layer import ColoAttention, cross_entropy_1d
 from transformers.models.llama.modeling_llama import _prepare_4d_causal_attention_mask, _prepare_4d_causal_attention_mask_for_sdpa
 
-<<<<<<< HEAD
-=======
-
->>>>>>> llama_model_forward
 
 class LlamaPipelineForwards:
     """
