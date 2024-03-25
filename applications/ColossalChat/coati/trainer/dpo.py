@@ -2,7 +2,6 @@
 Dpo trainer
 """
 
-import os
 from typing import Any, Optional
 
 import torch
@@ -15,7 +14,6 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import trange
 from transformers import PreTrainedTokenizerBase
-import torch.nn.functional as F
 
 from colossalai.booster import Booster
 from colossalai.cluster import DistCoordinator
@@ -133,12 +131,12 @@ class DPOTrainer(SLTrainer):
                 batch["reject_attention_mask"],
                 batch["reject_loss_mask"],
             )
-            reject_loss_mask[:,-1]=False
+            reject_loss_mask[:, -1] = False
             batch_size = chosen_input_ids.size()[0]
 
             actor_all_logits = self.model(
                 input_ids=torch.cat([chosen_input_ids, reject_input_ids]),
-                attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask])
+                attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask]),
             )["logits"].to(torch.float32)
             actor_chosen_logits = actor_all_logits[:batch_size]
             actor_reject_logits = actor_all_logits[batch_size:]
@@ -155,8 +153,12 @@ class DPOTrainer(SLTrainer):
                     )["logits"].to(torch.float32)
                     ref_chosen_logits = ref_all_logits[:batch_size]
                     ref_reject_logits = ref_all_logits[batch_size:]
-                    logprob_ref_chosen = calc_masked_log_probs(ref_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:])
-                    logprob_ref_reject = calc_masked_log_probs(ref_reject_logits, reject_input_ids, reject_loss_mask[:, 1:])
+                    logprob_ref_chosen = calc_masked_log_probs(
+                        ref_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:]
+                    )
+                    logprob_ref_reject = calc_masked_log_probs(
+                        ref_reject_logits, reject_input_ids, reject_loss_mask[:, 1:]
+                    )
             else:
                 logprob_ref_chosen = None
                 logprob_ref_reject = None
@@ -206,9 +208,9 @@ class DPOTrainer(SLTrainer):
                         self.num_train_step,
                     )
                     self.writer.add_scalar(
-                        "train/margin", 
-                        self.accumulative_meter.get("chosen_rewards")-self.accumulative_meter.get("rejected_rewards"), 
-                        self.num_train_step
+                        "train/margin",
+                        self.accumulative_meter.get("chosen_rewards") - self.accumulative_meter.get("rejected_rewards"),
+                        self.num_train_step,
                     )
                     self.writer.add_scalar(
                         "train/accuracy",

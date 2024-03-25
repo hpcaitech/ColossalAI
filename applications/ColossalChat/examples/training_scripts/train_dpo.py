@@ -9,7 +9,6 @@ from coati.dataset import (
     DataCollatorForPreferenceDataset,
     StatefulDistributedSampler,
     load_tokenized_dataset,
-    setup_conversation_template,
     setup_distributed_dataloader,
 )
 from coati.models import convert_to_lora_module, disable_dropout
@@ -21,18 +20,16 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.cluster import DistCoordinator
-from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 
 def train(args):
     # check lora compatibility
-    if 'gemini' in args.plugin and args.lora_rank > 0:
-            raise ValueError("LoRA is not supported in GeminiPlugin. Please use other plugin")
-    if args.plugin=='gemini_auto' and args.accumulation_steps > 1:
-            raise ValueError("Gradient accumulation is not supported in GeminiPlugin. Please use other plugin")
+    if "gemini" in args.plugin and args.lora_rank > 0:
+        raise ValueError("LoRA is not supported in GeminiPlugin. Please use other plugin")
+    if args.plugin == "gemini_auto" and args.accumulation_steps > 1:
+        raise ValueError("Gradient accumulation is not supported in GeminiPlugin. Please use other plugin")
 
     # ==============================
     # Initialize Distributed Training
@@ -44,10 +41,10 @@ def train(args):
     # Initialize Booster
     # ==============================
     if args.plugin == "ddp":
-        '''
-        Default torch ddp plugin without any acceleration, for 
+        """
+        Default torch ddp plugin without any acceleration, for
         debugging purpose acceleration, for debugging purpose
-        '''
+        """
         plugin = TorchDDPPlugin(find_unused_parameters=True)
     elif args.plugin == "gemini":
         plugin = GeminiPlugin(
@@ -55,7 +52,7 @@ def train(args):
             placement_policy="static",
             initial_scale=2**16,
             max_norm=args.grad_clip,
-            enable_gradient_accumulation=True
+            enable_gradient_accumulation=True,
         )
     elif args.plugin == "gemini_auto":
         plugin = GeminiPlugin(
@@ -104,18 +101,22 @@ def train(args):
     init_ctx = nullcontext()
     with init_ctx:
         if args.use_flash_attn:
-            model = AutoModelForCausalLM.from_pretrained(args.pretrain, 
-                        torch_dtype=torch.bfloat16 if args.mixed_precision=='bf16' else torch.float16, 
-                        use_flash_attention_2=True)
+            model = AutoModelForCausalLM.from_pretrained(
+                args.pretrain,
+                torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
+                use_flash_attention_2=True,
+            )
             coordinator.print_on_master(msg="Flash-attention enabled successfully")
         else:
             model = AutoModelForCausalLM.from_pretrained(args.pretrain)
         disable_dropout(model)
         if args.enable_reference_model:
             if args.use_flash_attn:
-                ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain, 
-                            torch_dtype=torch.bfloat16 if args.mixed_precision=='bf16' else torch.float16, 
-                            use_flash_attention_2=True)
+                ref_model = AutoModelForCausalLM.from_pretrained(
+                    args.pretrain,
+                    torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
+                    use_flash_attention_2=True,
+                )
             else:
                 ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain)
             disable_dropout(ref_model)
@@ -134,14 +135,16 @@ def train(args):
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, use_fast=False, trust_remote_code=True)
-    if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
+    if hasattr(tokenizer, "pad_token") and hasattr(tokenizer, "eos_token") and tokenizer.eos_token is not None:
         try:
             # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen
-           tokenizer.pad_token = tokenizer.eos_token
+            tokenizer.pad_token = tokenizer.eos_token
         except AttributeError as e:
             logger.warning(f"Unable to set pad token to eos token, {str(e)}")
-    if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
-        logger.warning("The tokenizer does not have a pad token which is required. May lead to unintended behavior in training, Please consider manually set them.")
+    if not hasattr(tokenizer, "pad_token") or tokenizer.pad_token is None:
+        logger.warning(
+            "The tokenizer does not have a pad token which is required. May lead to unintended behavior in training, Please consider manually set them."
+        )
 
     tokenizer.add_bos_token = False
     tokenizer.add_eos_token = False

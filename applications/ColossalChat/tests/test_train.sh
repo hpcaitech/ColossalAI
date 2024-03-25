@@ -353,7 +353,7 @@ for lora_rank in ${LORA_RANK[@]}; do
             if [[ $plugin == "gemini_auto" ]]; then
                 grad_accu='1'
             fi
-            # gemini_auto doesn't support generation 
+            # gemini_auto doesn't support generation
             # (need to calculate ref_model logits through forwarding in inference mode)
             if [[ $plugin == "gemini_auto" ]]; then
                 echo "[Test]: Skipped $model-$plugin"

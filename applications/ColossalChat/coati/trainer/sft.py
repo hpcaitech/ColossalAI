@@ -106,7 +106,7 @@ class SFTTrainer(SLTrainer):
 
             loss_mean = all_reduce_mean(tensor=loss)
             self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
-            
+
             # Gradient accumulation
             if (i + 1) % self.accumulation_steps == 0:
                 self.optimizer.step()

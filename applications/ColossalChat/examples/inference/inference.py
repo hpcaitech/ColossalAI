@@ -1,16 +1,18 @@
 import argparse
+import json
 import os
 from typing import Dict
-from copy import deepcopy
-import json
+
 import torch
 from chatio import dummy_io, rich_io, simple_io
 from coati.dataset.conversation import setup_conversation_template
 from coati.models import generate_streaming
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
+
 from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger()
+
 
 def get_gpu_memory(max_gpus=None):
     """
@@ -27,7 +29,6 @@ def get_gpu_memory(max_gpus=None):
 
     for gpu_id in range(num_gpus):
         # Code to get GPU memory goes here
-        pass
         with torch.cuda.device(gpu_id):
             device = torch.cuda.current_device()
             gpu_properties = torch.cuda.get_device_properties(device)
@@ -59,10 +60,11 @@ def load_model_and_tokenizer(model_path, tokenizer_path, device="cuda", **kwargs
 
     return model, tokenizer
 
+
 def _set_default_generate_kwargs(model: PreTrainedModel) -> Dict:
     """
     Set default keyword arguments for generation based on the given model.
-    
+
     Args:
         model (PreTrainedModel): The model used for generation.
 
@@ -79,6 +81,7 @@ def _set_default_generate_kwargs(model: PreTrainedModel) -> Dict:
         new_kwargs["update_model_kwargs_fn"] = unwrapped_model._update_model_kwargs_for_generation
     return new_kwargs
 
+
 def generation_wrapper(*args, **kwargs):
     input_ids = args[1]
     tokenizer = args[2]
@@ -87,9 +90,8 @@ def generation_wrapper(*args, **kwargs):
 
 
 def main(args):
+    conversation_template_config = json.load(open(args.conversation_template_config, "r", encoding="utf8"))
 
-    conversation_template_config = json.load(open(args.conversation_template_config, "r", encoding='utf8'))
-                            
     max_new_tokens = args.max_new_tokens
     model_max_length = args.model_max_length
     model, tokenizer = load_model_and_tokenizer(
@@ -97,10 +99,10 @@ def main(args):
     )
 
     assert max_new_tokens <= model_max_length
-    if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
+    if hasattr(tokenizer, "pad_token") and hasattr(tokenizer, "eos_token") and tokenizer.eos_token is not None:
         try:
             # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen
-           tokenizer.pad_token = tokenizer.eos_token
+            tokenizer.pad_token = tokenizer.eos_token
         except AttributeError as e:
             logger.warning(f"Unable to set pad token to eos token, {str(e)}")
     tokenizer.padding_side = "left"
@@ -127,7 +129,7 @@ def main(args):
         else:
             raise ValueError(f"Unknown io type: {args.io}")
         # raw_text = print(">>> Human:", end=" ")
-        inp = chat_io.prompt_for_input('user')
+        inp = chat_io.prompt_for_input("user")
 
         if not inp:
             print("prompt should not be empty!")
@@ -144,12 +146,12 @@ def main(args):
 
         query_text = inp.strip()
 
-        conv.append_message('user', query_text)
+        conv.append_message("user", query_text)
 
-        chat_io.prompt_for_output('assistant')
+        chat_io.prompt_for_output("assistant")
 
         prompt = conv.get_prompt(add_generation_prompt=True)
-        print(prompt+'<end_of_prompt>')
+        print(prompt + "<end_of_prompt>")
         input_ids = tokenizer(prompt, return_tensors="pt", add_special_tokens=False)["input_ids"].to(
             torch.cuda.current_device()
         )
@@ -162,14 +164,14 @@ def main(args):
             max_length=model_max_length,
             temperature=0.7,
             early_stopping=True,
-            stop_token_ids = conversation_template_config['stop_ids'],
+            stop_token_ids=conversation_template_config["stop_ids"],
             **model_kwargs,
         )
 
         # print(f">>> Assistant:", end=" ")
         outputs = chat_io.stream_output(output_stream)
 
-        conv.append_message('assistant', outputs.strip())
+        conv.append_message("assistant", outputs.strip())
 
         with open("round.txt", mode="a", encoding="utf-8") as f:
             f.write("\n\n" + "=" * 10 + "\n")

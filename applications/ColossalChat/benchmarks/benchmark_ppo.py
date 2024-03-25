@@ -3,10 +3,11 @@ For becnhmarking ppo. Mudified from examples/training_scripts/train_ppo.py
 """
 
 import argparse
+import json
 import os
 import resource
 from contextlib import nullcontext
-import json
+
 import torch
 import torch.distributed as dist
 from coati.dataset import (
@@ -22,7 +23,7 @@ from coati.trainer import PPOTrainer
 from coati.trainer.callbacks import PerformanceEvaluator
 from coati.trainer.utils import is_rank_0
 from coati.utils import load_checkpoint, replace_with_flash_attention
-from transformers import OPTForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer, OPTForCausalLM
 from transformers.models.opt.configuration_opt import OPTConfig
 
 import colossalai
@@ -145,21 +146,25 @@ def benchmark_train(args):
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
     if os.path.exists(args.conversation_template_config):
-        conversation_template_config = json.load(open(args.conversation_template_config, "r", encoding='utf8'))
-        conversation_template = setup_conversation_template(tokenizer, 
-                                chat_template_config=conversation_template_config, 
-                                save_path=args.conversation_template_config)
-        stop_token_ids = conversation_template.assistant_line_end if len(conversation_template.assistant_line_end)>0 else None
+        conversation_template_config = json.load(open(args.conversation_template_config, "r", encoding="utf8"))
+        conversation_template = setup_conversation_template(
+            tokenizer, chat_template_config=conversation_template_config, save_path=args.conversation_template_config
+        )
+        stop_token_ids = (
+            conversation_template.assistant_line_end if len(conversation_template.assistant_line_end) > 0 else None
+        )
     else:
         raise ValueError("Conversation template config is not provided or incorrect")
-    if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
+    if hasattr(tokenizer, "pad_token") and hasattr(tokenizer, "eos_token") and tokenizer.eos_token is not None:
         try:
             # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen
-           tokenizer.pad_token = tokenizer.eos_token
+            tokenizer.pad_token = tokenizer.eos_token
         except AttributeError as e:
             logger.warning(f"Unable to set pad token to eos token, {str(e)}")
-    if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
-        logger.warning("The tokenizer does not have a pad token which is required. May lead to unintended behavior in training, Please consider manually set them.")
+    if not hasattr(tokenizer, "pad_token") or tokenizer.pad_token is None:
+        logger.warning(
+            "The tokenizer does not have a pad token which is required. May lead to unintended behavior in training, Please consider manually set them."
+        )
     tokenizer.add_bos_token = False
     tokenizer.add_eos_token = False
     tokenizer.padding_side = "left"  # left padding for generation (online learning)
@@ -476,8 +481,11 @@ if __name__ == "__main__":
         help="Choose which plugin to use",
     )
     parser.add_argument(
-        "--conversation_template_config", type=str, default=None, help="Path \
-        to save conversation template config files."
+        "--conversation_template_config",
+        type=str,
+        default=None,
+        help="Path \
+        to save conversation template config files.",
     )
     parser.add_argument("--grad_clip", type=float, default=1.0, help="Gradient clipping value")
     parser.add_argument("--weight_decay", type=float, default=0.1, help="Weight decay")

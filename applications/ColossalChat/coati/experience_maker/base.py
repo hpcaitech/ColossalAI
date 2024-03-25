@@ -88,4 +88,3 @@ class ExperienceMaker(ABC):
         Returns:
             Experience: The generated experience.
         """
-        pass

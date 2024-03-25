@@ -172,7 +172,7 @@ class RewardModelTrainer(SLTrainer):
                     self.writer.add_scalar("train/acc", self.accumulative_meter.get("accuracy"), self.num_train_step)
 
                 self.accumulative_meter.reset()
-                
+
                 # Save checkpoint
                 if self.save_interval > 0 and (self.num_train_step + 1) % self.save_interval == 0:
                     self.coordinator.print_on_master("\nStart saving model checkpoint with running states")

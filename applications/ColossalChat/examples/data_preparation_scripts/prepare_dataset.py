@@ -40,12 +40,7 @@ import random
 import time
 from multiprocessing import cpu_count
 
-from coati.dataset import (
-    setup_conversation_template,
-    supervised_tokenize_sft,
-    tokenize_prompt_dataset,
-    tokenize_rlhf
-)
+from coati.dataset import setup_conversation_template, supervised_tokenize_sft, tokenize_prompt_dataset, tokenize_rlhf
 from datasets import dataset_dict, load_dataset
 from transformers import AutoTokenizer
 
@@ -61,7 +56,7 @@ def main():
         type=str,
         required=True,
         default=None,
-        choices=['sft','prompt','preference'],
+        choices=["sft", "prompt", "preference"],
         help="Type of dataset, chose from 'sft', 'prompt', 'preference'.",
     )
     parser.add_argument(
@@ -75,8 +70,11 @@ def main():
         "--tokenizer_dir", type=str, required=True, default=None, help="A directory containing the tokenizer"
     )
     parser.add_argument(
-        "--conversation_template_config", type=str, default="conversation_template_config", help="Path \
-        to save conversation template config files."
+        "--conversation_template_config",
+        type=str,
+        default="conversation_template_config",
+        help="Path \
+        to save conversation template config files.",
     )
     parser.add_argument("--data_cache_dir", type=str, default="cache", help="Data cache directory")
     parser.add_argument(
@@ -137,52 +135,59 @@ def main():
     # Prepare the tokenizer.
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir, use_fast=False, trust_remote_code=True)
     if os.path.exists(args.conversation_template_config):
-        chat_template_config = json.load(open(args.conversation_template_config, "r", encoding='utf8'))
+        chat_template_config = json.load(open(args.conversation_template_config, "r", encoding="utf8"))
     else:
-        chat_template_config = {'system_message':"A chat between a curious human and an artificial intelligence assistant. "
-        "The assistant gives helpful, detailed, and polite answers to the human's questions.\n\n"}  # Use default system message
-    if args.type=='preference':
-        if 'stop_ids' not in chat_template_config:
+        chat_template_config = {
+            "system_message": "A chat between a curious human and an artificial intelligence assistant. "
+            "The assistant gives helpful, detailed, and polite answers to the human's questions.\n\n"
+        }  # Use default system message
+    if args.type == "preference":
+        if "stop_ids" not in chat_template_config:
             # Ask the user to define stop_ids for PPO training
             dummy_messages = [
                 {"role": "user", "content": "Hello, how are you?"},
                 {"role": "assistant", "content": "I'm doing great. How can I help you today?"},
                 {"role": "user", "content": "Who made you?"},
-                {"role": "assistant", "content": "I am a chatbot trained by Colossal-AI."}
+                {"role": "assistant", "content": "I am a chatbot trained by Colossal-AI."},
             ]
             dummy_prompt = tokenizer.apply_chat_template(dummy_messages, tokenize=False)
-            tokenized = tokenizer(dummy_prompt, add_special_tokens=False)['input_ids']
+            tokenized = tokenizer(dummy_prompt, add_special_tokens=False)["input_ids"]
             tokens = tokenizer.convert_ids_to_tokens(tokenized, skip_special_tokens=False)
             corresponding_str = [tokenizer.convert_tokens_to_string([token]) for token in tokens]
-            token_id_mapping = [{'token':s, 'id':tokenized[i]} for i, s in enumerate(corresponding_str)]
-            stop_ids = input("For PPO, we recommend to provide stop_ids for the properly stop the generation during roll out stage. "\
-                  "stop_ids are the ids of repetitive pattern that indicate the end of the assistant's response. "\
-                  "Here is an example of formatted prompt and token-id mapping, you can set stop_ids by entering a list "\
-                  "of integers, separate by space, press `Enter` to end. Or you can press `Enter` without input if you are "\
-                  "not using PPO or you prefer to not set the stop_ids, in that case, stop_ids will be set to tokenizer.eos_token_id. "\
-                  f"\nPrompt:\n{dummy_prompt}\nToken-id Mapping:\n{token_id_mapping}\nstop_ids:")
-            if stop_ids=="":
-                chat_template_config['stop_ids'] = [tokenizer.eos_token_id]
+            token_id_mapping = [{"token": s, "id": tokenized[i]} for i, s in enumerate(corresponding_str)]
+            stop_ids = input(
+                "For PPO, we recommend to provide stop_ids for the properly stop the generation during roll out stage. "
+                "stop_ids are the ids of repetitive pattern that indicate the end of the assistant's response. "
+                "Here is an example of formatted prompt and token-id mapping, you can set stop_ids by entering a list "
+                "of integers, separate by space, press `Enter` to end. Or you can press `Enter` without input if you are "
+                "not using PPO or you prefer to not set the stop_ids, in that case, stop_ids will be set to tokenizer.eos_token_id. "
+                f"\nPrompt:\n{dummy_prompt}\nToken-id Mapping:\n{token_id_mapping}\nstop_ids:"
+            )
+            if stop_ids == "":
+                chat_template_config["stop_ids"] = [tokenizer.eos_token_id]
             else:
                 try:
-                    chat_template_config['stop_ids'] = [int(s) for s in stop_ids.split()]
+                    chat_template_config["stop_ids"] = [int(s) for s in stop_ids.split()]
                 except ValueError:
                     raise ValueError("Invalid input, please provide a list of integers.")
     else:
         # Set stop_ids to eos_token_id for other dataset types if not exist
-        if 'stop_ids' not in chat_template_config:
-            chat_template_config['stop_ids'] = [tokenizer.eos_token_id]
+        if "stop_ids" not in chat_template_config:
+            chat_template_config["stop_ids"] = [tokenizer.eos_token_id]
 
-    conversation_template = setup_conversation_template(tokenizer, chat_template_config=chat_template_config, 
-                            save_path=args.conversation_template_config)
-    if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
+    conversation_template = setup_conversation_template(
+        tokenizer, chat_template_config=chat_template_config, save_path=args.conversation_template_config
+    )
+    if hasattr(tokenizer, "pad_token") and hasattr(tokenizer, "eos_token") and tokenizer.eos_token is not None:
         try:
             # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen
-           tokenizer.pad_token = tokenizer.eos_token
+            tokenizer.pad_token = tokenizer.eos_token
         except AttributeError as e:
             logger.warning(f"Unable to set pad token to eos token, {str(e)}")
-    if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
-        logger.warning("The tokenizer does not have a pad token which is required. May lead to unintended behavior in training, Please consider manually set them.")
+    if not hasattr(tokenizer, "pad_token") or tokenizer.pad_token is None:
+        logger.warning(
+            "The tokenizer does not have a pad token which is required. May lead to unintended behavior in training, Please consider manually set them."
+        )
 
     list_dataset = load_dataset(
         path="json",
@@ -193,18 +198,18 @@ def main():
         num_proc=cpu_count(),
     )
 
-    if args.type=='sft':
+    if args.type == "sft":
         preparation_function = supervised_tokenize_sft
-    elif args.type=='prompt':
+    elif args.type == "prompt":
         preparation_function = tokenize_prompt_dataset
-    elif args.type=='preference':
+    elif args.type == "preference":
         preparation_function = tokenize_rlhf
     else:
         raise ValueError("Unknow dataset type. Please choose one from ['sft', 'prompt', 'preference']")
-    
+
     for index, dataset in enumerate(list_dataset):
         assert isinstance(dataset, dataset_dict.Dataset)
-        if len(dataset)==0:
+        if len(dataset) == 0:
             # Hack: Skip empty dataset. If dataset contains less than num_of_rank samples, some rank may have empty dataset and leads to error
             continue
         if args.num_samples_per_datafile > 0:
@@ -224,7 +229,9 @@ def main():
             num_proc=min(len(dataset), cpu_count()),
         )
 
-        dataset = dataset.filter(lambda data: data["chosen_input_ids" if args.type=='preference' else "input_ids"] is not None)
+        dataset = dataset.filter(
+            lambda data: data["chosen_input_ids" if args.type == "preference" else "input_ids"] is not None
+        )
 
         # Save each jsonl spliced dataset.
         output_index = "0" * (5 - len(str(index))) + str(index)
@@ -255,6 +262,7 @@ def main():
             split="train",
         )
         dataset.save_to_disk(dataset_path=output_arrow_path, num_proc=min(len(dataset), cpu_count()))
+
 
 if __name__ == "__main__":
     main()

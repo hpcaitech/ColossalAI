@@ -1,8 +1,7 @@
-from typing import Any, Callable, Optional, List
+from typing import Any, Callable, List, Optional
 
 import torch
 import torch.distributed as dist
-import torch.nn.functional as F
 from transformers import PreTrainedTokenizer
 
 try:
@@ -40,6 +39,7 @@ def _prepare_logits_processor(
         processor_list.append(TopPLogitsWarper(top_p))
     return processor_list
 
+
 def _is_sequence_finished(unfinished_sequences: torch.Tensor) -> bool:
     """
     Check if the sequence generation is finished.
@@ -55,6 +55,7 @@ def _is_sequence_finished(unfinished_sequences: torch.Tensor) -> bool:
         unfinished_sequences = unfinished_sequences.clone()
         dist.all_reduce(unfinished_sequences)
     return unfinished_sequences.max() == 0
+
 
 def update_model_kwargs_fn(outputs: dict, new_mask, **model_kwargs) -> dict:
     """
@@ -86,9 +87,11 @@ def update_model_kwargs_fn(outputs: dict, new_mask, **model_kwargs) -> dict:
 
     return model_kwargs
 
+
 def prepare_inputs_fn(input_ids: torch.Tensor, pad_token_id: int, **model_kwargs) -> dict:
     model_kwargs["input_ids"] = input_ids
     return model_kwargs
+
 
 def _sample(
     model: Any,
@@ -101,7 +104,7 @@ def _sample(
     top_k: Optional[int] = None,
     top_p: Optional[float] = None,
     temperature: Optional[float] = None,
-    max_new_tokens: int=None,
+    max_new_tokens: int = None,
     prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
     update_model_kwargs_fn: Optional[Callable[[dict, Any], dict]] = None,
     stream_interval: int = 2,
@@ -144,8 +147,9 @@ def _sample(
         if "attention_mask" not in model_kwargs:
             model_kwargs["attention_mask"] = input_ids.ne(pad_token_id)
         model_inputs = (
-            prepare_inputs_fn(input_ids, past=past, **model_kwargs) if prepare_inputs_fn is not None \
-                else {"input_ids": input_ids, "attention_mask": input_ids.ne(pad_token_id)}
+            prepare_inputs_fn(input_ids, past=past, **model_kwargs)
+            if prepare_inputs_fn is not None
+            else {"input_ids": input_ids, "attention_mask": input_ids.ne(pad_token_id)}
         )
         outputs = model(**model_inputs)
 
@@ -166,7 +170,7 @@ def _sample(
         if eos_token_id is not None:
             assert pad_token_id is not None, "If `eos_token_id` is defined, make sure that `pad_token_id` is defined."
             next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
-    
+
         # Update generated ids, model inputs for next step
         input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
 
@@ -176,22 +180,23 @@ def _sample(
         # If eos_token was found in one sentence, set sentence to finished
         if eos_token_id is not None:
             unfinished_sequences = unfinished_sequences.mul((next_tokens != eos_token_id).long())
-        
+
         if stop_token_ids is not None:
             # If the last len(stop_token_ids) tokens of input_ids are equal to stop_token_ids, set sentence to finished.
-            tokens_to_check = input_ids[:, -len(stop_token_ids):]
-            unfinished_sequences = unfinished_sequences.mul(torch.any(tokens_to_check != torch.LongTensor(stop_token_ids).to(input_ids.device), dim=1).long())
+            tokens_to_check = input_ids[:, -len(stop_token_ids) :]
+            unfinished_sequences = unfinished_sequences.mul(
+                torch.any(tokens_to_check != torch.LongTensor(stop_token_ids).to(input_ids.device), dim=1).long()
+            )
 
         # Stop when each sentence is finished if early_stopping=True
-        if (
-            (early_stopping and _is_sequence_finished(unfinished_sequences))
-            or i == context_length + max_new_tokens - 1
-        ):
+        if (early_stopping and _is_sequence_finished(unfinished_sequences)) or i == context_length + max_new_tokens - 1:
             if i == context_length + max_new_tokens - 1:
                 # Force to end with stop token ids
-                input_ids[input_ids[:,-1]!=pad_token_id, -len(stop_token_ids):]=\
+                input_ids[input_ids[:, -1] != pad_token_id, -len(stop_token_ids) :] = (
                     torch.LongTensor(stop_token_ids).to(input_ids.device).long()
+                )
             return input_ids
+
 
 @torch.inference_mode()
 def generate(
@@ -244,7 +249,7 @@ def generate(
             temperature=temperature,
             prepare_inputs_fn=prepare_inputs_fn,
             update_model_kwargs_fn=update_model_kwargs_fn,
-            **model_kwargs
+            **model_kwargs,
         )
         return res
     elif is_beam_gen_mode:
@@ -264,7 +269,7 @@ def _sample_streaming(
     top_k: Optional[int] = None,
     top_p: Optional[float] = None,
     temperature: Optional[float] = None,
-    max_new_tokens: int=None,
+    max_new_tokens: int = None,
     prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
     update_model_kwargs_fn: Optional[Callable[[dict, Any], dict]] = None,
     stream_interval: int = 2,
@@ -343,11 +348,13 @@ def _sample_streaming(
         # if eos_token was found in one sentence, set sentence to finished
         if eos_token_id is not None:
             unfinished_sequences = unfinished_sequences.mul((next_tokens != eos_token_id).long())
-        
+
         if stop_token_ids is not None:
             # If the last len(stop_token_ids) tokens of input_ids are equal to stop_token_ids, set sentence to finished.
-            tokens_to_check = input_ids[:, - len(stop_token_ids) : ]
-            unfinished_sequences = unfinished_sequences.mul(torch.any(tokens_to_check != torch.LongTensor(stop_token_ids).to(input_ids.device), dim=1).long())
+            tokens_to_check = input_ids[:, -len(stop_token_ids) :]
+            unfinished_sequences = unfinished_sequences.mul(
+                torch.any(tokens_to_check != torch.LongTensor(stop_token_ids).to(input_ids.device), dim=1).long()
+            )
 
         # Stop when each sentence is finished if early_stopping=True
         if (

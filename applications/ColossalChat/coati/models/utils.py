@@ -1,14 +1,9 @@
 import json
 import os
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 import torch.nn.functional as F
-from torch.optim.lr_scheduler import _LRScheduler
-from torch.optim.optimizer import Optimizer
-
-from colossalai.booster import Booster
-from colossalai.cluster import DistCoordinator
 
 
 def get_model_numel(model: torch.nn.Module) -> int:
@@ -97,12 +92,12 @@ def masked_mean(tensor: torch.Tensor, mask: torch.Tensor, dim: int = 1) -> torch
 def calc_masked_log_probs(logits: torch.Tensor, sequences: torch.LongTensor, mask: torch.Tensor) -> torch.Tensor:
     """
     Calculate the masked log probabilities for a given sequence of logits.
-    
+
     Args:
         logits (torch.Tensor): The input logits tensor of shape (batch_size, sequence_length, vocab_size).
         sequences (torch.LongTensor): The input sequence tensor of shape (batch_size, sequence_length).
         mask (torch.Tensor): The mask tensor of shape (batch_size, sequence_length).
-        
+
     Returns:
         torch.Tensor: The masked log probabilities tensor of shape (batch_size, sequence_length - 1).
     """
@@ -125,6 +120,7 @@ def save_json(data: Dict[str, Any], file_path: Union[str, os.PathLike]) -> None:
     """
     with open(file=file_path, mode="w", encoding="utf-8") as fp:
         json.dump(data, fp=fp, ensure_ascii=False, indent=4)
+
 
 def disable_dropout(model: torch.nn.Module):
     """

@@ -4,7 +4,7 @@ Critic model
 
 from typing import Optional
 
-import torch 
+import torch
 import torch.nn as nn
 from coati.models import BaseModel
 from transformers import PretrainedConfig
@@ -18,7 +18,7 @@ class Critic(BaseModel):
         pretrained (str): path to pretrained model.
         config (PretrainedConfig): PretrainedConfig used to initiate the base model.
     """
- 
+
     def __init__(self, pretrained: str = None, config: Optional[PretrainedConfig] = None, **kwargs) -> None:
         super().__init__(pretrained=pretrained, config=config, **kwargs)
         # et last hidden state size with dummy input

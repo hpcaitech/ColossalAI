@@ -18,6 +18,7 @@ class BaseModel(nn.Module):
         config (PretrainedConfig): PretrainedConfig used to initiate the base model.
         **kwargs: all other kwargs as in AutoModel.from_pretrained
     """
+
     def __init__(self, pretrained: str = None, config: Optional[PretrainedConfig] = None, **kwargs) -> None:
         super().__init__()
         if pretrained is not None:
@@ -35,7 +36,7 @@ class BaseModel(nn.Module):
 
         self.config = self.model.config
         # create dummy input to get the size of the last hidden state
-        if 'use_flash_attention_2' in kwargs:
+        if "use_flash_attention_2" in kwargs:
             self.model = self.model.cuda()
         dummy_input = torch.zeros((1, 1), dtype=torch.long).to(self.model.device)
         out = self.model(dummy_input)
@@ -44,14 +45,14 @@ class BaseModel(nn.Module):
         # print("self.last_hidden_state_size: ",self.last_hidden_state_size)
 
     def resize_token_embeddings(self, *args, **kwargs):
-            """
-            Resize the token embeddings of the model.
+        """
+        Resize the token embeddings of the model.
 
-            Args:
-                *args: Variable length argument list.
-                **kwargs: Arbitrary keyword arguments.
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
 
-            Returns:
-                The resized token embeddings.
-            """
-            return self.model.resize_token_embeddings(*args, **kwargs)
+        Returns:
+            The resized token embeddings.
+        """
+        return self.model.resize_token_embeddings(*args, **kwargs)

@@ -3,7 +3,7 @@ PPO trainer
 """
 
 import os
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
 
 import torch
 import wandb
@@ -15,7 +15,6 @@ from coati.models.utils import calc_action_log_probs
 from coati.trainer.callbacks import Callback
 from coati.trainer.utils import all_reduce_mean
 from coati.utils import AccumulativeMeanMeter, save_checkpoint
-from coati.dataset import Conversation
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader, DistributedSampler
@@ -29,6 +28,7 @@ from colossalai.utils import get_current_device
 
 from .base import OLTrainer
 from .utils import CycledDataLoader, is_rank_0, to_device
+
 
 def _set_default_generate_kwargs(actor: PreTrainedModel) -> Dict:
     """
@@ -119,7 +119,7 @@ class PPOTrainer(OLTrainer):
         )
         self.generate_kwargs = _set_default_generate_kwargs(actor)
         self.generate_kwargs.update(generate_kwargs)
-        
+
         self.actor = actor
         self.critic = critic
         self.actor_booster = actor_booster
@@ -291,7 +291,7 @@ class PPOTrainer(OLTrainer):
                 )
                 for i in range(len(response_text)):
                     response_text[i] = response_text[i] + f"\n\nReward: {experience.reward[i]}"
-                    
+
                 if self.writer and is_rank_0() and "wandb_run" in self.__dict__:
                     # log output to wandb
                     my_table = wandb.Table(
@@ -369,7 +369,7 @@ class PPOTrainer(OLTrainer):
         Returns:
             None
         """
-        
+
         self.coordinator.print_on_master("\nStart saving actor checkpoint with running states")
         save_checkpoint(
             save_dir=self.actor_save_dir,

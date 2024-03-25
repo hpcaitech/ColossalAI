@@ -1,6 +1,6 @@
 import io
 import json
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List
 
 import torch
 import torch.distributed as dist
@@ -78,26 +78,27 @@ def chuncate_sequence(sequence: List[torch.Tensor], max_length: int, dtype: Any)
         for seq in sequence
     ]
 
-def find_first_occurrence_subsequence(seq: torch.Tensor, 
-    subseq: torch.Tensor, start_index: int=0) -> int:
+
+def find_first_occurrence_subsequence(seq: torch.Tensor, subseq: torch.Tensor, start_index: int = 0) -> int:
     if subseq is None:
         return 0
-    for i in range(start_index, len(seq)-len(subseq)+1):
-        if torch.all(seq[i:i+len(subseq)] == subseq):
+    for i in range(start_index, len(seq) - len(subseq) + 1):
+        if torch.all(seq[i : i + len(subseq)] == subseq):
             return i
     return -1
+
 
 def tokenize_and_concatenate(tokenizer: PreTrainedTokenizer, text: List[str], require_loss: List[bool]):
     """
     Tokenizes a list of texts using the provided tokenizer and concatenates the tokenized outputs.
-    
+
     Args:
         tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
         text (List[str]): The list of texts to tokenize.
         require_loss (List[bool]): A list of boolean values indicating whether each text requires loss calculation.
-    
+
     Returns:
-        Tuple[List[int], List[int], List[int]]: A tuple containing the concatenated tokenized input ids, 
+        Tuple[List[int], List[int], List[int]]: A tuple containing the concatenated tokenized input ids,
         the start positions of loss spans, and the end positions of loss spans.
     """
     input_ids = []
@@ -111,6 +112,7 @@ def tokenize_and_concatenate(tokenizer: PreTrainedTokenizer, text: List[str], re
         input_ids.extend(tokenized)
     return input_ids, loss_starts, loss_ends
 
+
 def split_templated_prompt_into_chunks(messages: List[Dict[str, str]], prompt: str):
     # Seperate templated prompt into chunks by human/assistant's lines, prepare data for tokenize_and_concatenate
     start_idx = 0
@@ -118,14 +120,14 @@ def split_templated_prompt_into_chunks(messages: List[Dict[str, str]], prompt: s
     require_loss = []
     for line in messages:
         first_occur = prompt.find(line["content"], start_idx)
-        if prompt[first_occur-1]!=' ':
+        if prompt[first_occur - 1] != " ":
             chunks.append(prompt[start_idx:first_occur])
-            chunks.append(prompt[first_occur:first_occur+len(line["content"])])
+            chunks.append(prompt[first_occur : first_occur + len(line["content"])])
         else:
-            chunks.append(prompt[start_idx:first_occur-1])
-            chunks.append(prompt[first_occur-1:first_occur+len(line["content"])])
+            chunks.append(prompt[start_idx : first_occur - 1])
+            chunks.append(prompt[first_occur - 1 : first_occur + len(line["content"])])
         start_idx = first_occur + len(line["content"])
-        if line['role'].lower()=='assistant':
+        if line["role"].lower() == "assistant":
             require_loss.append(False)
             require_loss.append(True)
         else:

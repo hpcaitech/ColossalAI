@@ -33,7 +33,7 @@ declare -a dataset=(
     YOUR/SFT/DATA/DIR/arrow/part-00007
     YOUR/SFT/DATA/DIR/arrow/part-00008
     YOUR/SFT/DATA/DIR/arrow/part-00009
-) 
+)
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
 FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"

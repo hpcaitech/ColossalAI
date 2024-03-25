@@ -66,9 +66,10 @@ class LoraLinear(lora.LoRALayer, nn.Module):
             nn.init.zeros_(self.lora_B)
 
     def train(self, mode: bool = True):
-        '''
+        """
         This function runs when model.train() is invoked. It is used to prepare the linear layer for training
-        '''
+        """
+
         def T(w):
             return w.T if self.fan_in_fan_out else w
 

@@ -95,4 +95,3 @@ for model in ${MODELS[@]}; do
         exit 1
     fi
 done
-

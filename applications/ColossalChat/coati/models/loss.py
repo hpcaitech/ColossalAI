@@ -134,7 +134,7 @@ class DpoLoss(nn.Module):
         pi_logratios = logprob_actor_chosen.sum(-1) - logprob_actor_reject.sum(-1)
         logits = pi_logratios - ref_logratios
         losses = -torch.nn.functional.logsigmoid(self.beta * logits)
-        
+
         # Calculate rewards for logging
         if logprob_ref_chosen is not None:
             chosen_rewards = self.beta * (logprob_actor_chosen.sum(-1) - logprob_ref_chosen.sum(-1)).detach()
@@ -153,6 +153,7 @@ class LogSigLoss(nn.Module):
     Pairwise Loss for Reward Model
     Details: https://arxiv.org/abs/2203.02155
     """
+
     def forward(self, chosen_reward: torch.Tensor, reject_reward: torch.Tensor) -> torch.Tensor:
         return -torch.nn.functional.logsigmoid(chosen_reward - reject_reward).mean()
 
@@ -162,6 +163,7 @@ class LogExpLoss(nn.Module):
     Pairwise Loss for Reward Model
     Details: https://arxiv.org/abs/2204.05862
     """
+
     def forward(self, chosen_reward: torch.Tensor, reject_reward: torch.Tensor) -> torch.Tensor:
         loss = torch.log(1 + torch.exp(reject_reward - chosen_reward)).mean()
         return loss

@@ -53,10 +53,10 @@ def save_checkpoint(
 
     booster.save_model(model, os.path.join(save_dir, "modeling"), shard=True)
 
-    '''
-    Temporary disable the following as save_optimizer causes all processes to hang in a multi-gpu environment, 
+    """
+    Temporary disable the following as save_optimizer causes all processes to hang in a multi-gpu environment,
     working on fixing this bug
-    '''
+    """
 
     booster.save_optimizer(optimizer, os.path.join(save_dir, "optimizer"), shard=True)
     booster.save_lr_scheduler(lr_scheduler, os.path.join(save_dir, "lr_scheduler"))

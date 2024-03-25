@@ -75,6 +75,7 @@ def to_device(x: Any, device: torch.device) -> Any:
     Returns:
         Any: The tensor or nested structure of tensors moved to the target device.
     """
+
     def _to(t: Any):
         if isinstance(t, torch.Tensor):
             return t.to(device)

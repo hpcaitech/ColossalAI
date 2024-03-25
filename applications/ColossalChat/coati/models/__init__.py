@@ -1,6 +1,6 @@
 from .base import BaseModel
 from .critic import Critic
-from .generation import generate, generate_streaming, update_model_kwargs_fn, prepare_inputs_fn
+from .generation import generate, generate_streaming, prepare_inputs_fn, update_model_kwargs_fn
 from .lora import convert_to_lora_module
 from .loss import DpoLoss, LogExpLoss, LogSigLoss, PolicyLoss, ValueLoss
 from .reward_model import RewardModel
@@ -20,5 +20,5 @@ __all__ = [
     "generate_streaming",
     "disable_dropout",
     "update_model_kwargs_fn",
-    "prepare_inputs_fn"
+    "prepare_inputs_fn",
 ]

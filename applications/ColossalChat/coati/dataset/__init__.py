@@ -1,4 +1,4 @@
-from .conversation import setup_conversation_template, Conversation
+from .conversation import Conversation, setup_conversation_template
 from .loader import (
     DataCollatorForPreferenceDataset,
     DataCollatorForPromptDataset,
@@ -7,11 +7,7 @@ from .loader import (
     load_tokenized_dataset,
     setup_distributed_dataloader,
 )
-from .tokenization_utils import (
-    supervised_tokenize_sft,
-    tokenize_prompt_dataset,
-    tokenize_rlhf,
-)
+from .tokenization_utils import supervised_tokenize_sft, tokenize_prompt_dataset, tokenize_rlhf
 
 __all__ = [
     "tokenize_prompt_dataset",
@@ -26,5 +22,5 @@ __all__ = [
     "supervised_tokenize_sft",
     "tokenize_rlhf",
     "setup_conversation_template",
-    "Conversation"
+    "Conversation",
 ]
