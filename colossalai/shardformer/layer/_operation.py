@@ -961,7 +961,6 @@ def _all_to_all_single(input_, seq_world_size, group, scatter_dim, gather_dim):
     if scatter_dim < 2:
         input_t = input_.reshape([seq_world_size, inp_shape[scatter_dim]] + inp_shape[scatter_dim + 1 :]).contiguous()
     else:
-        # transpose groups of heads with the seq-len parallel dimension, so that we can scatter them!
         input_t = (
             input_.reshape([-1, seq_world_size, inp_shape[scatter_dim]] + inp_shape[scatter_dim + 1 :])
             .transpose(0, 1)
@@ -971,7 +970,6 @@ def _all_to_all_single(input_, seq_world_size, group, scatter_dim, gather_dim):
     output = torch.empty_like(input_t)
     dist.all_to_all_single(output, input_t, group=group)
 
-    # if scattering the seq-dim, transpose the heads back to the original dimension
     if scatter_dim < 2:
         output = output.transpose(0, 1).contiguous()
 
