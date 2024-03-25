@@ -1007,9 +1007,6 @@ class HybridParallelPlugin(PipelinePluginBase):
             ), f"Sequence parallelism mode {self.sequence_parallelism_mode} is not in the supported list {SUPPORT_SP_MODE}"
             if self.sequence_parallelism_mode in ["split_gather", "ring"]:
                 assert (
-                    zero_stage == 0
-                ), f"Sequence parallelism mode {self.sequence_parallelism_mode} cannot be used with ZeRO-1 / ZeRO-2"
-                assert (
                     tp_size > 1
                 ), f"Sequence parallelism mode {self.sequence_parallelism_mode} must be enabled when using tensor parallelism"
                 if sp_size != 1:
