@@ -9,7 +9,7 @@ from copy import deepcopy
 from typing import Any, Dict, List, Union
 
 from coati.dataset.conversation import Conversation
-from coati.dataset.utils import find_first_occurrence_subsequence, find_round_starts_and_ends
+from coati.dataset.utils import tokenize_and_concatenate, split_templated_prompt_into_chunks
 from datasets import dataset_dict
 from torch.utils.data import ConcatDataset, Dataset
 from transformers import PreTrainedTokenizer
@@ -94,56 +94,31 @@ def supervised_tokenize_sft(
         )
 
     target_turn = turns[target_turn_index - 1]
-    prompt, seps_info = template.get_prompt(2 * target_turn, get_seps_info=True)
-    
-    seps_order = seps_info['seps_order']
-    end_of_system_line_position = seps_info['end_of_system_line_position']
-    tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0]
-
-    starts, ends = find_round_starts_and_ends(tokenizer, template, prompt, tokenized, seps_order, end_of_system_line_position)
-
-    if len(starts) != target_turn*2 or len(ends) != target_turn*2:
-        tokens = tokenizer.convert_ids_to_tokens(tokenized, skip_special_tokens=False)
-        corresponding_str = [tokenizer.convert_tokens_to_string([token]) for token in tokens]
-        token_str_mapping = [(tokenized[i], s) for i, s in enumerate(corresponding_str)]
-        raise ValueError(f"Please check whether the sequence control seperators are configed correctly \
-            in the prompt {prompt}. Please manually set sequence control tokens if this message continue to occur constantly.\nToken mapping:\n{token_str_mapping}\nCurrent Setting:\n{str(template)}")
-        
-    target_turns = []
-    last_sep = None
-    cnt = 0
-    while len(seps_order)>0:
-        turn1 = seps_order.pop(0)
-        turn2 = seps_order.pop(0)
-        assert turn1.endswith('start') and turn2.endswith('end')
-        assert turn1.replace('start','end')==turn2
-        if turn1.startswith('assistant'):
-            target_turns.append(cnt)
-        cnt += 1
-
-    starts=[starts[i] for i in target_turns]
-    ends=[ends[i] for i in target_turns]
+    prompt = template.get_prompt(2 * target_turn)
+    chunks, require_loss = split_templated_prompt_into_chunks(template.messages[:2 * target_turn], prompt)
+    tokenized, starts, ends = tokenize_and_concatenate(tokenizer, chunks, require_loss)
 
     labels = [ignore_index] * len(tokenized)
+    label_decode = []
     for start, end in zip(starts, ends):
-        labels[start: end] = tokenized[start: end]
-
-    labels_decode = deepcopy(labels)
-    if tokenizer.eos_token_id is not None:
-        for i, z in enumerate(labels_decode):
-            if z == ignore_index:
-                labels_decode[i] = tokenizer.eos_token_id
-    else:
-        # If the tokenizer doesn't have eos_token or pad_token: Qwen
-        for i, z in enumerate(labels_decode):
-            if z == ignore_index:
-                labels_decode[i] = 1  # Label decode is for debugging only, it is not used in training
- 
+        if end==len(tokenized):
+            tokenized = tokenized + [tokenizer.eos_token_id]
+            labels = labels + [ignore_index]
+        labels[start: end+1] = tokenized[start: end+1]
+        label_decode.append(tokenizer.decode(tokenized[start: end+1], skip_special_tokens=False))
     
     if tokenizer.bos_token_id is not None:
-        tokenized = [tokenizer.bos_token_id] + tokenized
-        labels = [ignore_index] + labels
-        label_decode = [tokenizer.eos_token_id or 1] + labels_decode
+        if tokenized[0] != tokenizer.bos_token_id:
+            tokenized = [tokenizer.bos_token_id] + tokenized
+            labels = [ignore_index] + labels
+
+    if tokenizer.eos_token_id is not None:
+        # Force to add eos token at the end of the tokenized sequence
+        if tokenized[-1] != tokenizer.eos_token_id:
+            tokenized = tokenized + [tokenizer.eos_token_id]
+            labels = labels + [tokenizer.eos_token_id]
+        else:
+            labels[-1] = tokenizer.eos_token_id
 
     # For some model without bos/eos may raise the following errors
     try:
@@ -151,11 +126,7 @@ def supervised_tokenize_sft(
     except TypeError as e:
         raise TypeError(str(e)+f'\nUnable to decode input_ids: {tokenized}')
 
-    try:
-        labels_decode = tokenizer.decode(labels_decode)
-    except TypeError as e:
-        raise TypeError(str(e)+f'\nUnable to decode labels: {labels_decode}')
-
+    
     # Check if all labels are ignored, this may happen when the tokenized length is too long
     if labels.count(ignore_index) == len(labels):
         return dict(
@@ -171,7 +142,7 @@ def supervised_tokenize_sft(
         input_ids=tokenized,
         labels=labels,
         inputs_decode=inputs_decode,
-        labels_decode=labels_decode,
+        labels_decode=label_decode,
         seq_length=len(tokenized),
         seq_category=data_point["category"] if "category" in data_point else "None",
     )
@@ -223,7 +194,8 @@ def tokenize_prompt_dataset(
     prompt = template.get_prompt(target_turn, add_generation_prompt=True)
     tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0] 
     if tokenizer.bos_token_id is not None:
-        tokenized = [tokenizer.bos_token_id] + tokenized
+        if tokenized[0] != tokenizer.bos_token_id:
+            tokenized = [tokenizer.bos_token_id] + tokenized
        
     # Skip overlength data
     if max_length - 1 < len(tokenized):
@@ -245,53 +217,34 @@ def tokenize_prompt_dataset(
 
 def apply_rlhf_data_format(template: Conversation, tokenizer: Any, context_len: int, mask_out_target_assistant_line_end=False):
     target_turn = int(len(template.messages)/2)
-    prompt, seps_info = template.get_prompt(target_turn * 2, get_seps_info=True)
-    seps_order = seps_info['seps_order']
-    end_of_system_line_position = seps_info['end_of_system_line_position']
-    tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0]
-
-    # Find start index and end index of each dialogue
-    starts, ends = find_round_starts_and_ends(tokenizer, template, prompt, tokenized, seps_order, end_of_system_line_position)
-
-    if len(starts) != target_turn*2 or len(ends) != target_turn*2:
-        tokens = tokenizer.convert_ids_to_tokens(tokenized, skip_special_tokens=False)
-        corresponding_str = [tokenizer.convert_tokens_to_string([token]) for token in tokens]
-        token_str_mapping = [(tokenized[i], s) for i, s in enumerate(corresponding_str)]
-        raise ValueError(f"Please check whether the sequence control seperators are configed correctly \
-            in the prompt {prompt}. Please manually set sequence control tokens if this message continue to occur constantly.\nToken mapping:\n{token_str_mapping}\nCurrent Setting:\n{str(template)}")
-
-    target_turns = []
-    last_sep = None
-    cnt = 0
-    while len(seps_order)>0:
-        turn1 = seps_order.pop(0)
-        turn2 = seps_order.pop(0)
-        assert turn1.endswith('start') and turn2.endswith('end')
-        assert turn1.replace('start','end')==turn2
-        if turn1.startswith('assistant'):
-            target_turns.append(cnt)
-        cnt += 1
-
-    starts=[starts[i] for i in target_turns][context_len:]
-    ends=[ends[i] for i in target_turns][context_len:]
-    if mask_out_target_assistant_line_end:
-        ends[-1] = ends[-1]-len(template.assistant_line_end)
-
+    prompt = template.get_prompt(target_turn * 2)
+    chunks, require_loss = split_templated_prompt_into_chunks(template.messages[:2 * target_turn], prompt)
+    tokenized, starts, ends = tokenize_and_concatenate(tokenizer, chunks, require_loss)
     loss_mask = [0] * len(tokenized)
     mask_token = tokenizer.eos_token_id or tokenizer.pad_token_id
     if mask_token is None:
         mask_token = 1 # If the tokenizer doesn't have eos_token or pad_token: Qwen
 
-    label_decode = [mask_token] * len(tokenized)
-    for start, end in zip(starts, ends):
-        for i in range(start, end):
-            loss_mask[i] = 1
-            label_decode[i] = tokenized[i]
-    label_decode = tokenizer.decode(label_decode, skip_special_tokens=False)
+    label_decode = []
+    for start, end in zip(starts[-1:], ends[-1:]):
+        # only the last round (chosen/rejected) counts
+        if end==len(tokenized):
+            tokenized = tokenized + [tokenizer.eos_token_id]
+            loss_mask = loss_mask + [1]
+        loss_mask[start: end+1] = [1] * len(loss_mask[start: end+1])
+        label_decode.append(tokenizer.decode(tokenized[start: end+1], skip_special_tokens=False))
     if tokenizer.bos_token_id is not None:
-        tokenized = [tokenizer.bos_token_id] + tokenized
-        loss_mask = [0] + loss_mask
-        label_decode = (tokenizer.eos_token or tokenizer.pad_token or '<s>') + label_decode
+        if tokenized[0] != tokenizer.bos_token_id:
+            tokenized = [tokenizer.bos_token_id] + tokenized
+            loss_mask = [0] + loss_mask
+
+    if tokenizer.eos_token_id is not None:
+        # Force to add eos token at the end of the tokenized sequence
+        if tokenized[-1] != tokenizer.eos_token_id:
+            tokenized = tokenized + [tokenizer.eos_token_id]
+            loss_mask = loss_mask + [1]
+        else:
+            loss_mask[-1] = 1
     
     return {"input_ids": tokenized, "loss_mask": loss_mask, "label_decode": label_decode}
 

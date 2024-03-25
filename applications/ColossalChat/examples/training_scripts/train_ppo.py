@@ -20,7 +20,7 @@ from coati.models import (
 from coati.trainer import PPOTrainer
 from coati.utils import load_checkpoint
 from transformers import AutoModelForCausalLM, AutoTokenizer
-
+import torch.distributed as dist
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
@@ -120,11 +120,13 @@ def train(args):
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, use_fast=False, trust_remote_code=True)
     if os.path.exists(args.conversation_template_config):
-        conversation_template_config = json.load(open(args.conversation_template_config, "r", encoding='utf8'))
+        with open(args.conversation_template_config, "r", encoding='utf8') as f:
+            conversation_template_config = json.load(f)
+        dist.barrier()
         conversation_template = setup_conversation_template(tokenizer, 
                                 chat_template_config=conversation_template_config, 
                                 save_path=args.conversation_template_config)
-        stop_token_ids = conversation_template.assistant_line_end if len(conversation_template.assistant_line_end)>0 else None
+        stop_ids = conversation_template.stop_ids if len(conversation_template.stop_ids)>0 else None
     else:
         raise ValueError("Conversation template config is not provided or incorrect")
     if hasattr(tokenizer, 'pad_token') and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
@@ -256,12 +258,14 @@ def train(args):
             tp_size=args.tp,
             pp_size=1,
             zero_stage=0,
+            parallel_output=False,
             precision=args.mixed_precision,
         )
         custom_plugin = HybridParallelPlugin(
             tp_size=args.tp,
             pp_size=1,
             zero_stage=0,
+            parallel_output=False,
             precision=args.mixed_precision,
             custom_policy=booster_policy,
         )
@@ -390,7 +394,7 @@ def train(args):
         actor_lr_scheduler,
         critic_lr_scheduler,
         tokenizer=tokenizer,
-        stop_token_ids=stop_token_ids,
+        stop_token_ids=stop_ids,
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
         train_batch_size=args.train_batch_size,

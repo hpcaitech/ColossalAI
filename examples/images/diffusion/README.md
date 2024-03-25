@@ -77,7 +77,7 @@ git clone https://github.com/hpcaitech/ColossalAI.git
 cd ColossalAI
 
 # install colossalai
-CUDA_EXT=1 pip install .
+BUILD_EXT=1 pip install .
 ```
 
 #### Step 3: Accelerate with flash attention by xformers (Optional)
@@ -202,6 +202,8 @@ python main.py --logdir /tmp/ -t -b configs/Teyvat/train_colossalai_teyvat.yaml
 ```
 
 ## Inference
+if you want to test with pretrain model,as bellow:
+python scripts/txt2img.py --prompt "a photograph of an astronaut riding a horse" --plms    --outdir ./output     --ckpt 512-base-ema.ckpt     --config configs/train_ddp.yaml
 
 You can get your training last.ckpt and train config.yaml in your `--logdir`, and run by
 ```

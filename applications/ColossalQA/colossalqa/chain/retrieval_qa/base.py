@@ -117,8 +117,8 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
             ) = copy.deepcopy(buffered_history_backup), copy.deepcopy(summarized_history_temp_backup)
 
         # if rejection_trigger_keywords is not given, return the response from LLM directly
-        rejection_trigger_keywrods = inputs.get('rejection_trigger_keywrods', [])
-        answer = answer if all([rej not in answer for rej in rejection_trigger_keywrods]) else None
+        rejection_trigger_keywords = inputs.get('rejection_trigger_keywords', [])
+        answer = answer if all([rej not in answer for rej in rejection_trigger_keywords]) else None
         if answer is None: 
             answer = inputs.get('rejection_answer', "抱歉，根据提供的信息无法回答该问题。")
         if self.combine_documents_chain.memory is not None:
@@ -161,8 +161,8 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
             input_documents=docs, question=question, callbacks=_run_manager.get_child(), **kwargs
         )
         # if rejection_trigger_keywords is not given, return the response from LLM directly
-        rejection_trigger_keywrods = inputs.get('rejection_trigger_keywrods', [])
-        answer = answer if all([rej not in answer for rej in rejection_trigger_keywrods]) or len(rejection_trigger_keywrods)==0 else None
+        rejection_trigger_keywords = inputs.get('rejection_trigger_keywords', [])
+        answer = answer if all([rej not in answer for rej in rejection_trigger_keywords]) or len(rejection_trigger_keywords)==0 else None
         if answer is None:
             answer = inputs.get('rejection_answer', "抱歉，根据提供的信息无法回答该问题。")
         self.combine_documents_chain.memory.save_context({"question": question}, {"output": answer})

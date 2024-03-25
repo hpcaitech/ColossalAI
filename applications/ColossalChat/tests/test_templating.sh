@@ -39,6 +39,7 @@ get_conversation_template_config() {
 
 # Test SFT data Preparation
 for model in ${MODELS[@]}; do
+    echo "Testing SFT data templating for $model"
     SAVE_DIR=$DATA_SAVE_PATH/sft/$model
     rm -rf $SAVE_DIR/cache
     rm -rf $SAVE_DIR/jsonl
@@ -68,6 +69,7 @@ done
 
 # Test DPO/PPO data Preparation
 for model in ${MODELS[@]}; do
+    echo "Testing DPO/PPO data templating for $model"
     SAVE_DIR=$DATA_SAVE_PATH/dpo/$model
     rm -rf $SAVE_DIR/cache
     rm -rf $SAVE_DIR/jsonl

@@ -53,7 +53,7 @@ colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 31312 train_
     --max_epochs 1 \
     --accumulation_steps 4 \
     --batch_size 2 \
-    --lr 5e-5 \
+    --lr 1e-6 \
     --mixed_precision "bf16" \
     --grad_clip 1.0 \
     --weight_decay 0.01 \

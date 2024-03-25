@@ -24,7 +24,7 @@ Assistant:
 ### English
 ```
 [INST] <<SYS>>Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.
-If the answer cannot be infered based on the given context, please don't share false information.<</SYS>>
+If the answer cannot be inferred based on the given context, please don't share false information.<</SYS>>
 Use the context and chat history to respond to the human's input at the end or carry on the conversation. You should generate one response only. No following up is needed.
 
 context:
@@ -51,7 +51,7 @@ Note that the "[INST] <<SYS>>...<</SYS>>" template is the specific prompt format
 #### Normal Length
 ```
 [INST] <<SYS>>Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.
-If the answer cannot be infered based on the given context, please don't share false information.<</SYS>>
+If the answer cannot be inferred based on the given context, please don't share false information.<</SYS>>
 Use the context and chat history to respond to the human's input at the end or carry on the conversation. You should generate one response only. No following up is needed.
 
 context:
@@ -73,7 +73,7 @@ Assistant:
 #### Overlength
 ```
 [INST] <<SYS>>Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.
-If the answer cannot be infered based on the given context, please don't share false information.<</SYS>>
+If the answer cannot be inferred based on the given context, please don't share false information.<</SYS>>
 Use the context and chat history to respond to the human's input at the end or carry on the conversation. You should generate one response only. No following up is needed.
 
 context:
