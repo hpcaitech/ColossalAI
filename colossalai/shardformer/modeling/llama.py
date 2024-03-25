@@ -118,7 +118,6 @@ class LlamaPipelineForwards:
                 past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
             )
             position_ids = position_ids.unsqueeze(0)
-<<<<<<< HEAD
 
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
@@ -145,29 +144,7 @@ class LlamaPipelineForwards:
             attention_mask = _prepare_4d_causal_attention_mask(
                 attention_mask, (batch_size, seq_length), hidden_states, past_key_values_length
             )
-=======
-            
-        if self._use_flash_attention_2:
-            # 2d mask is passed through the layers
-            attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
 
-        # embed positions, for the first stage, hidden_states is the input embeddings,
-        # for the other stages, hidden_states is the output of the previous stage
-        if LATEST_VERSION:
-            if self._use_sdpa and not output_attentions:
-            # output_attentions=True can not be supported when using SDPA, and we fall back on
-            # the manual implementation that requires a 4D causal mask in all cases.
-                attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
-                    attention_mask,
-                    (batch_size, seq_length),
-                    inputs_embeds,
-                    past_key_values_length,
-                )
-            else:
-                attention_mask = _prepare_4d_causal_attention_mask(
-                    attention_mask, (batch_size, seq_length), hidden_states, past_key_values_length
-                )
->>>>>>> llama_model_forward
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
@@ -198,14 +175,7 @@ class LlamaPipelineForwards:
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-<<<<<<< HEAD
             if idx - start_idx < num_ckpt_layers:
-=======
-            #past_key_value = past_key_values[idx] if past_key_values is not None else None
-
-            if self.gradient_checkpointing and self.training:
-
->>>>>>> llama_model_forward
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
