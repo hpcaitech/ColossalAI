@@ -22,11 +22,6 @@ from colossalai.shardformer.policies.auto_policy import Policy
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 
 
-def print_rank(prompt, value, rank=0):
-    if dist.get_rank() == rank:
-        print(f"rank-{rank}, {prompt}: {value}")
-
-
 def build_model(
     model_fn,
     enable_fused_normalization=True,

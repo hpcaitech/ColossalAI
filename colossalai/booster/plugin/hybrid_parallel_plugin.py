@@ -172,27 +172,27 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
 
         if self.shard_config.enable_sequence_parallelism:
             if self.shard_config.sequence_parallelism_mode in ["split_gather", "ring"]:
-                # If sequence parallelism is enabled and mode is 1 or 2, gradients are synchronized
+                # If sequence parallelism is enabled and mode is split_gather or ring, gradients are synchronized
                 # across the tensor parallelism group.
                 group = self.tp_group
-                require_flag = True
+                only_sp_partial = True
             elif self.shard_config.sequence_parallelism_mode == "all_to_all":
-                # If sequence parallelism is enabled and mode is 3, gradients are synchronized
+                # If sequence parallelism is enabled and mode is all_to_all, gradients are synchronized
                 # across the sequence parallelism group.
                 group = self.sp_group
-                require_flag = False
+                only_sp_partial = False
             else:
                 raise ValueError(f"Unknown sequence parallelism mode: {self.shard_config.sequence_parallelism_mode}")
 
             if grads is not None:
                 # Synchronize provided gradient tensors across the tensor parallelism group.
                 SeqParallelUtils.allreduce_partial_data_grad(
-                    process_group=group, grads=grads, require_flag=require_flag
+                    process_group=group, grads=grads, only_sp_partial=only_sp_partial
                 )
             else:
                 # Synchronize gradients from the model across the tensor parallelism group.
                 SeqParallelUtils.allreduce_partial_data_grad(
-                    process_group=group, model=self.module, require_flag=require_flag
+                    process_group=group, model=self.module, only_sp_partial=only_sp_partial
                 )
 
     def forward(self, *args, **kwargs):

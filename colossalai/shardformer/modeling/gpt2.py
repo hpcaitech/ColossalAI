@@ -23,7 +23,6 @@ from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import (
-    _gather,
     all_to_all_comm,
     gather_forward_split_backward,
     split_forward_gather_backward,
@@ -762,9 +761,9 @@ def get_gpt2_flash_attention_forward(sp_mode, sp_size, sp_group):
             query, key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
 
         if sp_mode == "all_to_all":
-            query = all_to_all_comm(query)
-            key = all_to_all_comm(key)
-            value = all_to_all_comm(value)
+            query = all_to_all_comm(query, sp_group)
+            key = all_to_all_comm(key, sp_group)
+            value = all_to_all_comm(value, sp_group)
 
         query = split_heads(query, self.num_heads, self.head_dim)
         key = split_heads(key, self.num_heads, self.head_dim)
@@ -914,7 +913,7 @@ def gpt2_sequence_parallel_forward_fn(sp_mode, sp_size, sp_group):
         if sp_mode == "ring":
             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
         elif sp_mode == "all_to_all":
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 'down')
+            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, "down")
 
         position_embeds = self.wpe(position_ids)
         hidden_states = inputs_embeds + position_embeds
