@@ -87,9 +87,6 @@ def check_linear_1d_row(lazy_init: bool, seq_parallel: bool):
     linear.load_state_dict(linear_row.state_dict())
     linear_row.load_state_dict(linear.state_dict())
 
-    for p in linear_row.parameters():
-        pass
-
     # check computation correctness
     # [batch_size, seq_len, hidden_size]
     x = torch.rand(2, 4, 32).cuda()
@@ -152,7 +149,8 @@ def check_linear_col_plus_row(lazy_init: bool, seq_parallel: bool, overlap: bool
     shard_out = linear_row(linear_col(x_for_shard))
     target_out = unshard_out if seq_parallel is False else torch.chunk(unshard_out.clone(), 2, dim=1)[dist.get_rank()]
     assert_close(target_out, shard_out)
-
+    if dist.get_rank() == 0:
+        print(f"max abs error: {torch.max(torch.abs(target_out - shard_out))}")
     # check backward correctness
     unshard_out.sum().backward()
     shard_out.sum().backward()

@@ -263,9 +263,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 else:
                     splited_param_current_rank = splited_params
 
+                # Send the splited view to the optimizer to match ZeRO 2 grad shape
                 params_current_rank.append(splited_param_current_rank)
                 self._param_store.link_master_and_working_param(splited_param_current_rank, param)
 
+            dist.barrier()
         return params_current_rank
 
     ###########################

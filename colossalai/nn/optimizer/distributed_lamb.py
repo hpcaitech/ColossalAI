@@ -1,12 +1,13 @@
 # Disclaimer: Modified from https://github.com/NUS-HPC-AI-Lab/pytorch-lamb/blob/master/optim/lamb.py
 
-import warnings
+
+from typing import Dict
 
 import torch
 import torch.distributed as dist
 from torch.optim import Optimizer
 
-from colossalai.device.device_mesh import DeviceMesh
+from colossalai.tensor.d_tensor import is_distributed_tensor
 
 __all__ = ["DistributedLamb"]
 
@@ -27,10 +28,6 @@ class DistributedLamb(Optimizer):
         eps (float, optional): term added to the denominator to improve
             numerical stability (default: 1e-8)
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
-        adam (bool, optional): always use trust ratio = 1, which turns this into
-            Adam. Useful for comparison purposes.
-        device_mesh: a 2D device mesh containing process groups for TP and ZeRO 2, initialized
-            from setup_distributed() method. If None will downgrade to Lamb.
     .. _Large Batch Optimization for Deep Learning: Training BERT in 76 minutes:
         https://arxiv.org/abs/1904.00962
     """
@@ -42,9 +39,7 @@ class DistributedLamb(Optimizer):
         betas=(0.9, 0.999),
         eps=1e-6,
         weight_decay=0,
-        adam=False,
         bias_correction=True,
-        device_mesh=None,
     ):
         if not 0.0 <= lr:
             raise ValueError("Invalid learning rate: {}".format(lr))
@@ -55,34 +50,30 @@ class DistributedLamb(Optimizer):
         if not 0.0 <= betas[1] < 1.0:
             raise ValueError("Invalid beta parameter at index 1: {}".format(betas[1]))
 
-        self.adam = adam
-        self.device_mesh = device_mesh
-        self.tp_group = device_mesh.get_process_group(axis=0) if device_mesh is not None else None
-        self.dp_group = device_mesh.get_process_group(axis=1) if device_mesh is not None else None
-
+        # self.setup_distributed(tp_group, dp_group)
+        self.shard_to_param = {}
+        self.tp_size = self.dp_size = 1
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
         super().__init__(params, defaults)
 
-    @staticmethod
-    def setup_distributed(tp_size, zero_size):
-        """Initializes a device mesh containing process groups for TP and ZeRO 2"""
-        world_size = tp_size * zero_size
-        os_world_size = dist.get_world_size(None)
-        if world_size == 1:
-            warnings.warn(
-                "You are using single device training. Distributed Lamb is not necessary\
-                and won't be initialized."
-            )
-        else:
-            device_ids = torch.arange(world_size)
-            mesh_shape = torch.Size((tp_size, zero_size))
-            assert (
-                os_world_size == world_size
-            ), f"You launched {os_world_size} processes != tp_size * dp_size = {world_size}"
-            device_mesh = DeviceMesh(device_ids, mesh_shape, init_process_group=True)
-            tp_group = device_mesh.get_process_group(axis=0)
-            dp_group = device_mesh.get_process_group(axis=1)
-            return device_mesh, tp_group, dp_group
+    def setup_distributed(
+        self, tp_group: dist.ProcessGroup = None, dp_group: dist.ProcessGroup = None, shard_to_param: Dict = None
+    ):
+        """Assign process groups for TP and ZeRO 2.
+        Arguments:
+            tp_group (dist.ProcessGroup): Tensor Parallel process group
+            dp_group (dist.ProcessGroup): ZeRO 2 process group
+            shard_to_param (Dict): ZeRO 2 feeds the optimizer a sharded param view to match reduce-scattered grad shape.
+            This maps from id(view) to original params; useful for checking distributed tensor's dist_layout.
+        """
+        self.tp_group = tp_group
+        self.dp_group = dp_group
+        if tp_group is not None:
+            self.tp_size = dist.get_world_size(tp_group)
+        if dp_group is not None:
+            self.dp_size = dist.get_world_size(dp_group)
+
+        self.shard_to_param = shard_to_param
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -95,10 +86,6 @@ class DistributedLamb(Optimizer):
         if closure is not None:
             loss = closure()
 
-        torch.nn.utils.clip_grad_norm_(
-            parameters=[p for group in self.param_groups for p in group["params"]], max_norm=1.0, norm_type=2
-        )
-
         for group in self.param_groups:
             for p in group["params"]:
                 if p.grad is None:
@@ -108,7 +95,6 @@ class DistributedLamb(Optimizer):
                     raise RuntimeError("Lamb does not support sparse gradients, consider SparseAdam instad.")
 
                 state = self.state[p]
-
                 # State initialization
                 if len(state) == 0:
                     state["step"] = 0
@@ -141,23 +127,41 @@ class DistributedLamb(Optimizer):
                 if group["weight_decay"] != 0:
                     update.add_(p.data, alpha=group["weight_decay"])
 
-                if not self.adam:
+                # Compute global layer-wise trust ratio
+                is_dist = (
+                    is_distributed_tensor(p)
+                    if self.dp_size <= 1
+                    else is_distributed_tensor(self.shard_to_param.get(id(p), None))
+                )
+
+                if is_dist:
+                    p_local = p
+                    g_sum = (update**2).sum()
+                    if self.dp_size > 1:
+                        # ZeRO 2 doesn't shard param. Compute full param norm w/o communication.
+                        dist.all_reduce(g_sum, group=self.dp_group)
+                        p_local = self.shard_to_param[id(p)]
+                    w_sum = (p_local**2).sum()
+                    sums = torch.stack([w_sum, g_sum])
+
+                    # Get global l2 norms
+                    if self.tp_size > 1:
+                        dist.all_reduce(sums, group=self.tp_group)
+                    w_norm, g_norm = sums.sqrt().chunk(2)
+                else:
+                    # Fall back to vanilla Lamb
                     w_norm = torch.norm(p)
                     g_norm = torch.norm(update)
-                    # TODO: Call all-reduce here
-                    if self.device_mesh is not None:
-                        norms = torch.stack([w_norm, g_norm])
-                        if self.dp_group is not None:
-                            dist.all_reduce(norms, group=self.dp_group)
-                        if self.tp_group is not None:
-                            dist.all_reduce(norms, group=self.tp_group)
 
-                        # No need to average the norms as we compute their ratio.
-                        w_norm, g_norm = norms.chunk(2)
+                trust_ratio = torch.where(
+                    w_norm > 0 and g_norm > 0, w_norm / g_norm, torch.tensor(1.0, device=w_norm.device)
+                )
 
-                    trust_ratio = torch.where(w_norm > 0 and g_norm > 0, w_norm / g_norm, torch.ones_like(w_norm))
-                    scaled_lr *= trust_ratio.item()
+                state["weight_norm"] = w_norm
+                state["adam_norm"] = g_norm
+                state["trust_ratio"] = trust_ratio
 
-                p.data.add_(update, alpha=-scaled_lr)
+                scaled_lr *= trust_ratio
+                p.data.add_(update, alpha=-scaled_lr.item())
 
         return loss

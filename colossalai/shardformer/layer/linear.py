@@ -116,6 +116,8 @@ class Linear1D_Col(ParallelModule):
         else:
             weight.data = weight.data.to(device=device, dtype=dtype)
             self.weight = weight
+        if dist.get_world_size(process_group) == 4:
+            pass
         if not is_distributed_tensor(self.weight):
             sharded_weight = shard_rowwise(self.weight.data, self.process_group)
             sharded_tensor_to_existing_param(sharded_weight, self.weight)
