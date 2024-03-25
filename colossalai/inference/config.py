@@ -45,7 +45,7 @@ class InputMetaData:
     kv_seq_len (int, optional): Key-value sequence length. Defaults to 512.
     head_dim (int, optional): Head dimension. Defaults to 32.
     high_precision(bool, optional): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, Defaults to False.
-    dtype (torch.dtype, optional): the computation type of tensor, Defaults to torch.float32.
+    dtype (torch.dtype, optional): The computation type of tensor, Defaults to torch.float32.
     """
 
     block_tables: torch.Tensor = None
