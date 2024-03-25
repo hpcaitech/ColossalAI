@@ -35,6 +35,8 @@ class ShardConfig:
     enable_sequence_parallelism: bool = False
     enable_sequence_overlap: bool = False
     parallel_output: bool = True
+    # NOTE: FIXME: gradient_checkpointing_ratio is only used in PipelineParallelism
+    gradient_checkpointing_ratio: Optional[float] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
     # TODO padding vocab
     # make_vocab_size_divisible_by: int = 128
@@ -61,6 +63,9 @@ class ShardConfig:
         # turn on all optimization if all_optimization is set to True
         if self.enable_all_optimization:
             self._turn_on_all_optimization()
+
+        if self.gradient_checkpointing_ratio is not None and not (0 <= self.gradient_checkpointing_ratio <= 1):
+            raise ValueError("gradient_checkpointing_ratio should be in 0% to 100%")
 
     def _turn_on_all_optimization(self):
         """

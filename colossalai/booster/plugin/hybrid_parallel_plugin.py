@@ -969,6 +969,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         custom_policy: Policy = None,
         pp_style: str = "1f1b",
         num_model_chunks: int = 1,
+        gradient_checkpointing_ratio: Optional[float] = None,
         enable_metadata_cache: bool = True,
     ) -> None:
         super().__init__()
@@ -1032,6 +1033,12 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
         self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
 
+        if gradient_checkpointing_ratio is not None:
+            if gradient_checkpointing_ratio < 0 or gradient_checkpointing_ratio > 1:
+                raise ValueError("gradient_checkpointing_ratio should be in 0% to 100%")
+            warnings.warn(
+                "gradient_checkpointing_ratio is only used in PipelineParallelism, will be ignored in other parallelism"
+            )
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
             pipeline_stage_manager=self.stage_manager,
@@ -1043,6 +1050,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             enable_sequence_parallelism=enable_sequence_parallelism,
             enable_sequence_overlap=enable_sequence_overlap,
             parallel_output=parallel_output,
+            gradient_checkpointing_ratio=gradient_checkpointing_ratio,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
