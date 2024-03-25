@@ -120,7 +120,7 @@ def main():
                 # run pipeline forward backward
                 batch = iter([batch])
                 outputs = booster.execute_pipeline(
-                    batch, model, criterion, optimizer, return_loss=True, return_outputs=True
+                    batch, model, criterion, optimizer, return_loss=True
                 )
             else:
                 outputs = model(**batch)
