@@ -127,7 +127,7 @@ class InferenceConfig:
     use_cuda_kernel: bool = False
 
     # cuda_graph
-    use_cuda_graph: bool = False
+    use_cuda_graph: bool = False  # NOTE only when we have the graph for specific decoding batch size can we use the cuda graph for inference
     max_context_len_to_capture: int = 512
 
     def __post_init__(self):

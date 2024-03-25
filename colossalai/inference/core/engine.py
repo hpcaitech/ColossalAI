@@ -101,7 +101,7 @@ class InferenceEngine:
             self.capture_model(self.k_cache, self.v_cache)
 
     @torch.inference_mode()
-    def capture_model(self, k_cache: torch.Tensor, v_cache: torch.Tensor):
+    def capture_model(self, k_cache: List[torch.Tensor], v_cache: List[torch.Tensor]):
         assert self.use_cuda_graph, "please turn on the cuda graph"
 
         if self.verbose:
@@ -395,13 +395,6 @@ class InferenceEngine:
             head_dim=batch.head_dim,
         )
 
-        # if not batch.is_prompts:
-        #     self.logger.info(f"decoding")
-        #     self.logger.info(f"input metadata is: {input_meta_data}")
-        # else:
-        #     self.logger.info(f"prefill")
-        #     self.logger.info(f"input metadata is: {input_meta_data}")
-
         return input_ids, output_tensor, input_meta_data
 
     def step(self) -> List[str]:
@@ -423,16 +416,11 @@ class InferenceEngine:
 
         if input_meta_data.use_cuda_graph:
             model_executable = self.graph_runners[input_meta_data.batch_size]
-            # self.logger.info("run cuda graph")
         else:
             model_executable = self.model
-            # self.logger.info("run original model")
 
         # TODO: padding_id is used for generating attn_mask and will be removed if nopad version is supported.
         logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
-
-        # logits_ = self.model(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
-        # assert torch.all(logits == logits_), f"error! not equal between origin model({logits_[-1]}) and CUDA Graph({logits[-1]})"
 
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
