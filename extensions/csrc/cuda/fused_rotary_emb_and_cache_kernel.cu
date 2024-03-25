@@ -1,14 +1,15 @@
-
+// in transformers source code, huggingface uses fp16 to compute rope so we follow the same precision
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
 
 #include "utils/vector_copy_utils.h"
 #include "../common/micros.h"
+#include "../common/mp_type_traits.h"
 
-template <typename scalar_t, int VecSize>
+template <typename scalar_t, typename m_scalar_t, int VecSize>
 __device__ void apply_emb_rotary_compute(
-    scalar_t* __restrict__ src, const scalar_t* __restrict__ cos_ptr,
-    const scalar_t* __restrict__ sin_ptr, const int64_t stride,
+    scalar_t* __restrict__ src, const m_scalar_t* __restrict__ cos_ptr,
+    const m_scalar_t* __restrict__ sin_ptr, const int64_t stride,
     const int token_id, const int shard_block_size, const int half_head_dim,
     const int head_num, const int head_dim) {
   scalar_t x[VecSize];
@@ -30,10 +31,10 @@ __device__ void apply_emb_rotary_compute(
 
 #pragma unroll
     for (int j = 0; j < VecSize; j++) {
-      out_x[j] = x[j] * cos_ptr[j * 32 + shard_offset] -
-                 y[j] * sin_ptr[j * 32 + shard_offset];
-      out_y[j] = y[j] * cos_ptr[j * 32 + shard_offset] +
-                 x[j] * sin_ptr[j * 32 + shard_offset];
+      out_x[j] = static_cast<scalar_t>(static_cast<m_scalar_t>(x[j]) * cos_ptr[j * 32 + shard_offset] -
+                 static_cast<m_scalar_t>(y[j]) * sin_ptr[j * 32 + shard_offset]);
+      out_y[j] = static_cast<scalar_t>(static_cast<m_scalar_t>(y[j]) * cos_ptr[j * 32 + shard_offset] +
+                 static_cast<m_scalar_t>(x[j]) * sin_ptr[j * 32 + shard_offset]);
     }
 
     copy_vector<scalar_t, VecSize>(src + addr_offset, out_x);
@@ -62,10 +63,10 @@ __device__ void apply_kv_memcopy(
   }
 }
 
-template <typename scalar_t, int VecSize>
+template <typename scalar_t, typename m_scalar_t, int VecSize>
 __device__ void cos_sin_memory_access(
     const scalar_t* __restrict__ cos, const scalar_t* __restrict__ sin,
-    scalar_t* cos_ptr, scalar_t* sin_ptr, const int token_id,
+    m_scalar_t* cos_ptr, m_scalar_t* sin_ptr, const int token_id,
     const int shard_block_size, const int cos_stride, const int sin_stride,
     const int half_head_dim) {
   for (int i = threadIdx.x; i < half_head_dim; i += blockDim.x) {
@@ -73,16 +74,16 @@ __device__ void cos_sin_memory_access(
     const int shard_offset = (i % shard_block_size) / VecSize;
     const int shard_head =
         (i / shard_block_size) * shard_block_size + i % VecSize * 32;
-    cos_ptr[shard_head + shard_offset] = cos[token_id * cos_stride + i];
-    sin_ptr[shard_head + shard_offset] = sin[token_id * sin_stride + i];
+    cos_ptr[shard_head + shard_offset] = static_cast<m_scalar_t>(cos[token_id * cos_stride + i]);
+    sin_ptr[shard_head + shard_offset] = static_cast<m_scalar_t>(sin[token_id * sin_stride + i]);
   }
 }
 
-template <typename scalar_t, int VecSize>
+template <typename scalar_t, typename m_scalar_t, int VecSize>
 __device__ void apply_k_rotary_emb_compute(
     scalar_t* __restrict__ key, scalar_t* __restrict__ value,
     scalar_t* __restrict__ key_cache, scalar_t* __restrict__ value_cache,
-    const scalar_t* __restrict__ cos_ptr, const scalar_t* __restrict__ sin_ptr,
+    const m_scalar_t* __restrict__ cos_ptr, const m_scalar_t* __restrict__ sin_ptr,
     const int* __restrict__ sequence_lengths,
     const int* __restrict__ block_tables, const int64_t key_stride,
     const int64_t value_stride, const int token_id,
@@ -120,10 +121,10 @@ __device__ void apply_k_rotary_emb_compute(
 
 #pragma unroll
     for (int j = 0; j < VecSize; j++) {
-      out_x[j] = x[j] * cos_ptr[j * 32 + shard_offset] -
-                 y[j] * sin_ptr[j * 32 + shard_offset];
-      out_y[j] = y[j] * cos_ptr[j * 32 + shard_offset] +
-                 x[j] * sin_ptr[j * 32 + shard_offset];
+      out_x[j] = static_cast<scalar_t>(static_cast<m_scalar_t>(x[j]) * cos_ptr[j * 32 + shard_offset] -
+                 static_cast<m_scalar_t>(y[j]) * sin_ptr[j * 32 + shard_offset]);
+      out_y[j] = static_cast<scalar_t>(static_cast<m_scalar_t>(y[j]) * cos_ptr[j * 32 + shard_offset] +
+                 static_cast<m_scalar_t>(x[j]) * sin_ptr[j * 32 + shard_offset]);
     }
 
     copy_vector<scalar_t, VecSize>(key_cache + target_id, out_x);
@@ -137,7 +138,7 @@ __device__ void apply_k_rotary_emb_compute(
       block_size, block_offset, head_dim, half_head_dim);
 }
 
-template<typename scalar_t, int VecSize>
+template<typename scalar_t, typename m_scalar_t, int VecSize>
 __global__ void rotary_embedding_and_cache_copy_kernel(
     scalar_t* __restrict__ query,
     scalar_t* __restrict__ key,
@@ -167,21 +168,21 @@ __global__ void rotary_embedding_and_cache_copy_kernel(
 
     extern __shared__ char shard_ptr[];
 
-    scalar_t *cos_ptr = (scalar_t*)shard_ptr;
-    scalar_t *sin_ptr = cos_ptr + half_shard_element_num;
+    m_scalar_t *cos_ptr = (m_scalar_t*)shard_ptr;
+    m_scalar_t *sin_ptr = cos_ptr + half_shard_element_num;
 
     // apply cos_sin memcopy
-    cos_sin_memory_access<scalar_t, VecSize>(cos, sin, cos_ptr, sin_ptr, token_id, shard_block_size, cos_stride, sin_stride, half_head_dim);
+    cos_sin_memory_access<scalar_t, m_scalar_t, VecSize>(cos, sin, cos_ptr, sin_ptr, token_id, shard_block_size, cos_stride, sin_stride, half_head_dim);
     __syncthreads();
 
     //compute query
-    apply_emb_rotary_compute<scalar_t, VecSize>(query, cos_ptr, sin_ptr, query_stride, token_id, shard_block_size, half_head_dim, head_num, head_dim);
+    apply_emb_rotary_compute<scalar_t, m_scalar_t, VecSize>(query, cos_ptr, sin_ptr, query_stride, token_id, shard_block_size, half_head_dim, head_num, head_dim);
 
     //compute key and copy kv
-    apply_k_rotary_emb_compute<scalar_t, VecSize>(key, value, key_cache, value_cache, cos_ptr, sin_ptr, sequence_lengths, block_tables, key_stride, value_stride, token_id, block_table_stride, head_num, head_dim, kv_head_num, block_size, half_head_dim, shard_block_size);
+    apply_k_rotary_emb_compute<scalar_t, m_scalar_t, VecSize>(key, value, key_cache, value_cache, cos_ptr, sin_ptr, sequence_lengths, block_tables, key_stride, value_stride, token_id, block_table_stride, head_num, head_dim, kv_head_num, block_size, half_head_dim, shard_block_size);
 }
 
-template<typename scalar_t, int VecSize>
+template<typename scalar_t, typename m_scalar_t, int VecSize>
 __global__ void rotary_embedding_kernel(
     scalar_t* __restrict__ query,
     scalar_t* __restrict__ key,
@@ -202,21 +203,21 @@ __global__ void rotary_embedding_kernel(
 
     extern __shared__ char shard_ptr[];
 
-    scalar_t *cos_ptr = (scalar_t*)shard_ptr;
-    scalar_t *sin_ptr = cos_ptr + half_shard_element_num;
+    m_scalar_t *cos_ptr = (m_scalar_t*)shard_ptr;
+    m_scalar_t *sin_ptr = cos_ptr + half_shard_element_num;
 
     // apply cos_sin memcopy
-    cos_sin_memory_access<scalar_t, VecSize>(cos, sin, cos_ptr, sin_ptr, token_id, shard_block_size, cos_stride, sin_stride, half_head_dim);
+    cos_sin_memory_access<scalar_t, m_scalar_t, VecSize>(cos, sin, cos_ptr, sin_ptr, token_id, shard_block_size, cos_stride, sin_stride, half_head_dim);
     __syncthreads();
 
     //compute query
-    apply_emb_rotary_compute<scalar_t, VecSize>(query, cos_ptr, sin_ptr, query_stride, token_id, shard_block_size, half_head_dim, head_num, head_dim);
+    apply_emb_rotary_compute<scalar_t, m_scalar_t, VecSize>(query, cos_ptr, sin_ptr, query_stride, token_id, shard_block_size, half_head_dim, head_num, head_dim);
 
     //compute key
-    apply_emb_rotary_compute<scalar_t, VecSize>(key, cos_ptr, sin_ptr, key_stride, token_id, shard_block_size, half_head_dim, kv_head_num, head_dim);
+    apply_emb_rotary_compute<scalar_t, m_scalar_t, VecSize>(key, cos_ptr, sin_ptr, key_stride, token_id, shard_block_size, half_head_dim, kv_head_num, head_dim);
 }
 
-template<typename scalar_t>
+template<typename scalar_t, bool high_precision>
 void apply_rotary_embedding_and_cache_copy(
     at::Tensor& query,               // [num_tokens, head_num, head_dim]
     at::Tensor& key,                 // [num_tokens, kv_head_num, head_dim]
@@ -241,6 +242,8 @@ void apply_rotary_embedding_and_cache_copy(
     int sin_stride = sin.stride(0);
     int block_table_stride = block_tables.stride(0);
 
+    using m_scalar_t = typename colossalAI::common::ScalarTypeTrait<high_precision, scalar_t>::Type;
+
     int vec_size = get_vec_size<scalar_t>(query);
 
     if ((head_dim / 2) % vec_size != 0) {
@@ -259,7 +262,7 @@ void apply_rotary_embedding_and_cache_copy(
 
     switch (vec_size) {
         case 1:
-            rotary_embedding_and_cache_copy_kernel<scalar_t, 1><<<grid, block, shard_element_num * sizeof(scalar_t), stream>>>(
+            rotary_embedding_and_cache_copy_kernel<scalar_t, m_scalar_t, 1><<<grid, block, shard_element_num * sizeof(m_scalar_t), stream>>>(
                 query.data_ptr<scalar_t>(),
                 key.data_ptr<scalar_t>(),
                 value.data_ptr<scalar_t>(),
@@ -283,7 +286,7 @@ void apply_rotary_embedding_and_cache_copy(
             );
             break;
         case 2:
-            rotary_embedding_and_cache_copy_kernel<scalar_t, 2><<<grid, block, shard_element_num * sizeof(scalar_t), stream>>>(
+            rotary_embedding_and_cache_copy_kernel<scalar_t, m_scalar_t, 2><<<grid, block, shard_element_num * sizeof(m_scalar_t), stream>>>(
                 query.data_ptr<scalar_t>(),
                 key.data_ptr<scalar_t>(),
                 value.data_ptr<scalar_t>(),
@@ -307,7 +310,7 @@ void apply_rotary_embedding_and_cache_copy(
             );
             break;
         case 4:
-            rotary_embedding_and_cache_copy_kernel<scalar_t, 4><<<grid, block, shard_element_num * sizeof(scalar_t), stream>>>(
+            rotary_embedding_and_cache_copy_kernel<scalar_t, m_scalar_t, 4><<<grid, block, shard_element_num * sizeof(m_scalar_t), stream>>>(
                 query.data_ptr<scalar_t>(),
                 key.data_ptr<scalar_t>(),
                 value.data_ptr<scalar_t>(),
@@ -338,12 +341,12 @@ void apply_rotary_embedding_and_cache_copy(
     AT_CUDA_CHECK(cudaGetLastError());
 }
 
-template<typename scalar_t>
+template<typename scalar_t, bool high_precision>
 void apply_rotary_embedding(
     at::Tensor& query,   // [total_tokens, head_num, head_dim]
     at::Tensor& key,     // [total_tokens, kv_head_num, head_dim]
     at::Tensor& cos,     // [total_tokens, head_dim]
-    at::Tensor& sin      // [total_tokens, head_dim]
+    at::Tensor& sin     // [total_tokens, head_dim]
 ){
     int num_tokens = query.size(0);
     int head_num = query.size(1);
@@ -354,6 +357,8 @@ void apply_rotary_embedding(
     int key_stride = key.stride(0);
     int cos_stride = cos.stride(0);
     int sin_stride = sin.stride(0);
+
+    using m_scalar_t = typename colossalAI::common::ScalarTypeTrait<high_precision, scalar_t>::Type;
 
     int vec_size = get_vec_size<scalar_t>(query);
 
@@ -373,7 +378,7 @@ void apply_rotary_embedding(
 
     switch (vec_size) {
         case 1:
-            rotary_embedding_kernel<scalar_t, 1><<<grid, block, shard_element_num * sizeof(scalar_t), stream>>>(
+            rotary_embedding_kernel<scalar_t, m_scalar_t, 1><<<grid, block, shard_element_num * sizeof(m_scalar_t), stream>>>(
                     query.data_ptr<scalar_t>(),
                     key.data_ptr<scalar_t>(),
                     cos.data_ptr<scalar_t>(),
@@ -389,7 +394,7 @@ void apply_rotary_embedding(
                 );
             break;
         case 2:
-            rotary_embedding_kernel<scalar_t, 2><<<grid, block, shard_element_num * sizeof(scalar_t), stream>>>(
+            rotary_embedding_kernel<scalar_t, m_scalar_t, 2><<<grid, block, shard_element_num * sizeof(m_scalar_t), stream>>>(
                     query.data_ptr<scalar_t>(),
                     key.data_ptr<scalar_t>(),
                     cos.data_ptr<scalar_t>(),
@@ -405,7 +410,7 @@ void apply_rotary_embedding(
                 );
             break;
         case 4:
-            rotary_embedding_kernel<scalar_t, 4><<<grid, block, shard_element_num * sizeof(scalar_t), stream>>>(
+            rotary_embedding_kernel<scalar_t, m_scalar_t, 4><<<grid, block, shard_element_num * sizeof(m_scalar_t), stream>>>(
                     query.data_ptr<scalar_t>(),
                     key.data_ptr<scalar_t>(),
                     cos.data_ptr<scalar_t>(),
@@ -436,12 +441,14 @@ void rotary_embedding_and_cache_copy(
     at::Tensor& key_cache,           // [num_blocks, head_num, block_size, head_dim]
     at::Tensor& value_cache,         // [num_blocks, head_num, block_size, head_dim]
     at::Tensor& sequence_lengths,    // [batch_size]
-    at::Tensor& block_tables)        // [batch_size, max_seq_len]
+    at::Tensor& block_tables,        // [batch_size, max_seq_len]
+    bool high_precision)
 {
-    DISPATCH_FLOAT_HALF_AND_BFLOAT(
+    DISPATCH_FLOAT_HALF_AND_BFLOAT_WITH_HIGH_PRECISION(
+        high_precision,
         query.scalar_type(),
         "rotary_embedding_and_cache_copy",
-        apply_rotary_embedding_and_cache_copy<scalar_t>(
+        apply_rotary_embedding_and_cache_copy<scalar_t, high_precision>(
             query,
             key,
             value,
@@ -458,12 +465,14 @@ void rotary_embedding(
     at::Tensor& query,   // [total_tokens, head_num, head_dim]
     at::Tensor& key,     // [total_tokens, kv_head_num, head_dim]
     at::Tensor& cos,     // [total_tokens, head_dim]
-    at::Tensor& sin      // [total_tokens, head_dim]
+    at::Tensor& sin,      // [total_tokens, head_dim]
+    bool high_precision
 ){
-    DISPATCH_FLOAT_HALF_AND_BFLOAT(
+    DISPATCH_FLOAT_HALF_AND_BFLOAT_WITH_HIGH_PRECISION(
+        high_precision,
         query.scalar_type(),
         "rotary_embedding",
-        apply_rotary_embedding<scalar_t>(
+        apply_rotary_embedding<scalar_t, high_precision>(
             query,
             key,
             cos,

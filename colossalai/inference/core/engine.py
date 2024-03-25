@@ -61,6 +61,7 @@ class InferenceEngine:
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.generation_config = inference_config.to_generation_config(self.model_config)
+        self.high_precision = inference_config.high_precision
         model = model.eval()
         model = model.cuda()
         model.to(self.dtype)
@@ -150,8 +151,10 @@ class InferenceEngine:
                 batch_size=batch_size,
                 is_prompts=False,
                 use_cuda_graph=True,
+                high_precision=False,
                 kv_seq_len=sequence_lengths[:batch_size].max().item(),
                 head_dim=head_dim,
+                dtype=self.dtype,
             )
 
             graph_runner = CUDAGraphRunner(self.model)
@@ -391,8 +394,10 @@ class InferenceEngine:
             is_prompts=batch.is_prompts,
             use_cuda_kernel=self.inference_config.use_cuda_kernel,
             use_cuda_graph=use_cuda_graph,
+            high_precision=self.high_precision,
             kv_seq_len=sequence_lengths.max().item(),
             head_dim=batch.head_dim,
+            dtype=batch.dtype,
         )
 
         return input_ids, output_tensor, input_meta_data
@@ -421,7 +426,6 @@ class InferenceEngine:
 
         # TODO: padding_id is used for generating attn_mask and will be removed if nopad version is supported.
         logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
-
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
         self.request_handler.search_tokens(self.generation_config, logits)
