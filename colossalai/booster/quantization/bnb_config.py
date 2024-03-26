@@ -1,11 +1,11 @@
 import warnings
-from dataclasses import field
+from dataclasses import field, dataclass
 from typing import List
 
 import torch
 
 
-
+@dataclass
 class BnbQuantizationConfig:
     """
     A plugin to enable BitsAndBytes 4bit and 8bit quantization

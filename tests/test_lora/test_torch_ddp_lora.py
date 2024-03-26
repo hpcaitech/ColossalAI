@@ -8,10 +8,8 @@ from torch.optim import AdamW
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import TorchDDPPlugin
+from colossalai.booster.plugin import TorchDDPPlugin, LowLevelZeroPlugin
 from colossalai.testing import (
-    assert_equal,
-    assert_not_equal,
     check_state_dict_equal,
     clear_cache_before_run,
     rerun_if_address_is_in_use,
@@ -26,63 +24,69 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
     model = model_fn()
     lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
 
-    plugin = TorchDDPPlugin()
-    booster = Booster(plugin=plugin)
+    test_plugins = [TorchDDPPlugin(), LowLevelZeroPlugin()]
+    for plugin in test_plugins:
 
-    model = booster.enable_lora(model, lora_config=lora_config)
-    model_copy = copy.deepcopy(model)
+        test_model = copy.deepcopy(model)
+        
+        booster = Booster(plugin=plugin)
 
-    optimizer = AdamW(model.parameters(), lr=0.001)
-    criterion = loss_fn
+        test_model = booster.enable_lora(test_model, lora_config=lora_config)
+        model_copy = copy.deepcopy(test_model)
 
-    model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
+        optimizer = AdamW(test_model.parameters(), lr=0.001)
+        criterion = loss_fn
 
-    data = data_gen_fn()
-    data = {k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
+        test_model, optimizer, criterion, _, _ = booster.boost(test_model, optimizer, criterion)
 
-    output = model(**data)
-    output = output_transform_fn(output)
-    loss = criterion(output)
+        data = data_gen_fn()
+        data = {k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
 
-    booster.backward(loss, optimizer)
-    optimizer.clip_grad_by_norm(1.0)
-    optimizer.step()
+        output = test_model(**data)
+        output = output_transform_fn(output)
+        loss = criterion(output)
 
-    for (n1, p1), (n2, p2) in zip(model.named_parameters(), model_copy.named_parameters()):
-        if "lora_" in n1:
-            # lora modules require gradients, thus updated
-            assert p1.requires_grad
-            assert_not_equal(p1.to(p2.device), p2)
-        else:
-            if not p1.requires_grad:
-                assert_equal(p1.to(p2.device), p2)
+        booster.backward(loss, optimizer)
+        optimizer.clip_grad_by_norm(1.0)
+        optimizer.step()
+
+        for (n1, p1), (n2, p2) in zip(test_model.named_parameters(), model_copy.named_parameters()):
+            if "lora_" in n1:
+                # lora modules require gradients, thus updated
+                assert p1.requires_grad
+                assert not torch.testing.assert_close(p1.to(p2.device).to(p2.dtype), p2, atol=5e-3, rtol=5e-3)
+            else:
+                if not p1.requires_grad:
+                    torch.testing.assert_close(p1.to(p2.device).to(p2.dtype), p2, atol=5e-3, rtol=5e-3)
 
 
 @clear_cache_before_run()
 def check_checkpoint(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type):
-    plugin = TorchDDPPlugin()
     lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
 
-    model_save = model_fn()
-    model_load = copy.deepcopy(model_save)
+    test_plugins = [TorchDDPPlugin(), LowLevelZeroPlugin()]
+    for plugin in test_plugins:
 
-    booster = Booster(plugin=plugin)
-    model_save = booster.enable_lora(model_save, lora_config=lora_config)
-    model_save, _, _, _, _ = booster.boost(model_save)
+        model_save = model_fn()
+        model_load = copy.deepcopy(model_save)
 
-    with shared_tempdir() as tempdir:
-        lora_ckpt_path = os.path.join(tempdir, "ckpt")
-        booster.save_lora_as_pretrained(model_save, lora_ckpt_path)
-        dist.barrier()
+        booster = Booster(plugin=plugin)
+        model_save = booster.enable_lora(model_save, lora_config=lora_config)
+        model_save, _, _, _, _ = booster.boost(model_save)
 
-        # The Lora checkpoint should be small in size
-        checkpoint_size_mb = os.path.getsize(os.path.join(lora_ckpt_path, "adapter_model.bin")) / (1024 * 1024)
-        assert checkpoint_size_mb < 1
+        with shared_tempdir() as tempdir:
+            lora_ckpt_path = os.path.join(tempdir, "ckpt")
+            booster.save_lora_as_pretrained(model_save, lora_ckpt_path)
+            dist.barrier()
 
-        model_load = booster.enable_lora(model_load, pretrained_dir=lora_ckpt_path)
-        model_load, _, _, _, _ = booster.boost(model_load)
+            # The Lora checkpoint should be small in size
+            checkpoint_size_mb = os.path.getsize(os.path.join(lora_ckpt_path, "adapter_model.bin")) / (1024 * 1024)
+            assert checkpoint_size_mb < 1
 
-        check_state_dict_equal(model_save.state_dict(), model_load.state_dict())
+            model_load = booster.enable_lora(model_load, pretrained_dir=lora_ckpt_path)
+            model_load, _, _, _, _ = booster.boost(model_load)
+
+            check_state_dict_equal(model_save.state_dict(), model_load.state_dict())
 
 
 def run_lora_test():

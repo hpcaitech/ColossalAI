@@ -73,26 +73,26 @@ def quantize_model(
     # custom device map
 
     # We keep some modules such as the lm_head in their original dtype for numerical stability reasons
-    #if bnb_quantization_config.skip_modules is None:
-    #    bnb_quantization_config.skip_modules = get_keys_to_not_convert(model)
+    if bnb_quantization_config.skip_modules is None:
+        bnb_quantization_config.skip_modules = get_keys_to_not_convert(model)
 
     # add cpu modules to skip modules only for 4-bit modules
-    if load_in_4bit:
-        bnb_quantization_config.skip_modules.extend(modules_on_cpu)
+    #if load_in_4bit:
+    #    bnb_quantization_config.skip_modules.extend(modules_on_cpu)
     modules_to_not_convert = bnb_quantization_config.skip_modules
 
     # We add the modules we want to keep in full precision
     if bnb_quantization_config.keep_in_fp32_modules is None:
         bnb_quantization_config.keep_in_fp32_modules = []
     keep_in_fp32_modules = bnb_quantization_config.keep_in_fp32_modules
-    modules_to_not_convert.extend(keep_in_fp32_modules)
+    #modules_to_not_convert.extend(keep_in_fp32_modules)
 
     # compatibility with peft
     model.is_loaded_in_4bit = load_in_4bit
     model.is_loaded_in_8bit = load_in_8bit
 
     # assert model_device is cuda
-    model_device = get_parameter_device(model)
+    model_device = next(model.parameters()).device
 
     model = replace_with_bnb_layers(model, bnb_quantization_config, modules_to_not_convert=modules_to_not_convert)
 
@@ -217,4 +217,129 @@ def _replace_with_bnb_layers(
         # Remove the last key for recursion
         current_key_name.pop(-1)
     return model, has_been_replaced
+
+
+def get_keys_to_not_convert(model):
+    r"""
+    An utility function to get the key of the module to keep in full precision if any For example for CausalLM modules
+    we may want to keep the lm_head in full precision for numerical stability reasons. For other architectures, we want
+    to keep the tied weights of the model. The function will return a list of the keys of the modules to not convert in
+    int8.
+
+    Parameters:
+    model (`torch.nn.Module`):
+        Input model
+    """
+    # Create a copy of the model
+    #with init_empty_weights():
+    #    tied_model = deepcopy(model)  # this has 0 cost since it is done inside `init_empty_weights` context manager`
+    tied_model = model
+
+    tied_params = find_tied_parameters(tied_model)
+    # For compatibility with Accelerate < 0.18
+    if isinstance(tied_params, dict):
+        tied_keys = sum(list(tied_params.values()), []) + list(tied_params.keys())
+    else:
+        tied_keys = sum(tied_params, [])
+    has_tied_params = len(tied_keys) > 0
+
+    # Check if it is a base model
+    is_base_model = False
+    if hasattr(model, "base_model_prefix"):
+        is_base_model = not hasattr(model, model.base_model_prefix)
+
+    # Ignore this for base models (BertModel, GPT2Model, etc.)
+    if (not has_tied_params) and is_base_model:
+        return []
+
+    # otherwise they have an attached head
+    list_modules = list(model.named_children())
+    list_last_module = [list_modules[-1][0]]
+
+    # add last module together with tied weights
+    intersection = set(list_last_module) - set(tied_keys)
+    list_untouched = list(set(tied_keys)) + list(intersection)
+
+    # remove ".weight" from the keys
+    names_to_remove = [".weight", ".bias"]
+    filtered_module_names = []
+    for name in list_untouched:
+        for name_to_remove in names_to_remove:
+            if name_to_remove in name:
+                name = name.replace(name_to_remove, "")
+        filtered_module_names.append(name)
+
+    return filtered_module_names
+
+
+def find_tied_parameters(model: nn.Module, **kwargs):
+    """
+    Find the tied parameters in a given model.
+
+    <Tip warning={true}>
+
+    The signature accepts keyword arguments, but they are for the recursive part of this function and you should ignore
+    them.
+
+    </Tip>
+
+    Args:
+        model (`torch.nn.Module`): The model to inspect.
+
+    Returns:
+        List[List[str]]: A list of lists of parameter names being all tied together.
+
+    Example:
+
+    ```py
+    >>> from collections import OrderedDict
+    >>> import torch.nn as nn
+
+    >>> model = nn.Sequential(OrderedDict([("linear1", nn.Linear(4, 4)), ("linear2", nn.Linear(4, 4))]))
+    >>> model.linear2.weight = model.linear1.weight
+    >>> find_tied_parameters(model)
+    [['linear1.weight', 'linear2.weight']]
+    ```
+    """
+    # Initialize result and named_parameters before recursing.
+    named_parameters = kwargs.get("named_parameters", None)
+    prefix = kwargs.get("prefix", "")
+    result = kwargs.get("result", {})
+
+    if named_parameters is None:
+        named_parameters = {n: p for n, p in model.named_parameters()}
+    else:
+        # A tied parameter will not be in the full `named_parameters` seen above but will be in the `named_parameters`
+        # of the submodule it belongs to. So while recursing we track the names that are not in the initial
+        # `named_parameters`.
+        for name, parameter in model.named_parameters():
+            full_name = name if prefix == "" else f"{prefix}.{name}"
+            if full_name not in named_parameters:
+                # When we find one, it has to be one of the existing parameters.
+                for new_name, new_param in named_parameters.items():
+                    if new_param is parameter:
+                        if new_name not in result:
+                            result[new_name] = []
+                        result[new_name].append(full_name)
+
+    # Once we have treated direct parameters, we move to the child modules.
+    for name, child in model.named_children():
+        child_name = name if prefix == "" else f"{prefix}.{name}"
+        find_tied_parameters(child, named_parameters=named_parameters, prefix=child_name, result=result)
+
+    return FindTiedParametersResult([sorted([weight] + list(set(tied))) for weight, tied in result.items()])
+
+
+class FindTiedParametersResult(list):
+    """
+    This is a subclass of a list to handle backward compatibility for Transformers. Do not rely on the fact this is not
+    a list or on the `values` method as in the future this will be removed.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def values(self):
+        # TODO: at the next Transformers release (4.28.0) issue a deprecation warning here.
+        return sum([x[1:] for x in self], [])
 

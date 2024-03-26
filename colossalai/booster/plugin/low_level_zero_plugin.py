@@ -342,11 +342,12 @@ class LowLevelZeroPlugin(DPPluginBase):
         assert not isinstance(model, LowLevelZeroModel), "Lora should be enabled before boosting the model."
         self.lora_enabled = True
         warnings.warn("You have enabled LoRa training. Please check the hyperparameters such as lr")
-        from accelerate.utils import load_and_quantize_model
-        from accelerate.utils import BnbQuantizationConfig
-        import torch
+        from ..quantization import quantize_model, BnbQuantizationConfig
+        #from accelerate.utils import load_and_quantize_model, BnbQuantizationConfig
+
         bnb_quantization_config = BnbQuantizationConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
-        model = load_and_quantize_model(model, bnb_quantization_config)
+        model = quantize_model(model, bnb_quantization_config)
+        #model = load_and_quantize_model(model, bnb_quantization_config)
 
         if pretrained_dir is None:
             peft_model = get_peft_model(model, lora_config)
