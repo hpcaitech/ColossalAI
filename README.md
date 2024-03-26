@@ -25,6 +25,8 @@
 </div>
 
 ## Latest News
+* [2024/03] [314 Billion Parameter Grok-1 Inference Accelerated by 3.8x, Efficient and Easy-to-Use PyTorch+HuggingFace version is Here](https://hpc-ai.com/blog/314-billion-parameter-grok-1-inference-accelerated-by-3.8x-efficient-and-easy-to-use-pytorchhuggingface-version-is-here)
+* [2024/03] [Open-Sora: Revealing Complete Model Parameters, Training Details, and Everything for Sora-like Video Generation Models](https://hpc-ai.com/blog/open-sora-v1.0)
 * [2024/03] [Open-Sora：Sora Replication Solution with 46% Cost Reduction, Sequence Expansion to Nearly a Million](https://hpc-ai.com/blog/open-sora)
 * [2024/01] [Inference Performance Improved by 46%, Open Source Solution Breaks the Length Limit of LLM for Multi-Round Conversations](https://hpc-ai.com/blog/Colossal-AI-SwiftInfer)
 * [2024/01] [Construct Refined 13B Private Model With Just $5000 USD, Upgraded Colossal-AI Llama-2 Open Source](https://hpc-ai.com/blog/colossal-llama-2-13b)
@@ -40,7 +42,7 @@
  <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI for Real World Applications</a>
    <ul>
-     <li><a href="#Open-Sora">Open-Sora: Open-Sora：Sora Replication Solution with 46% Cost Reduction, Sequence Expansion to Nearly a Million</a></li>
+     <li><a href="#Open-Sora">Open-Sora: Revealing Complete Model Parameters, Training Details, and Everything for Sora-like Video Generation Models</a></li>
      <li><a href="#Colossal-LLaMA-2">Colossal-LLaMA-2: One Half-Day of Training Using a Few Hundred Dollars Yields Similar Results to Mainstream Large Models, Open-Source and Commercial-Free Domain-Specific Llm Solution</a></li>
      <li><a href="#ColossalChat">ColossalChat: An Open-Source Solution for Cloning ChatGPT With a Complete RLHF Pipeline</a></li>
      <li><a href="#AIGC">AIGC: Acceleration of Stable Diffusion</a></li>
@@ -71,6 +73,7 @@
  <li>
    <a href="#Inference">Inference</a>
    <ul>
+     <li><a href="#Grok-1">Grok-1: 314B model of PyTorch + HuggingFace Inference</a></li>
      <li><a href="#SwiftInfer">SwiftInfer:Breaks the Length Limit of LLM for Multi-Round Conversations with 46% Acceleration</a></li>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">OPT-175B Online Serving for Text Generation</a></li>
@@ -126,18 +129,19 @@ distributed training and inference in a few lines.
 ## Colossal-AI in the Real World
 ### Open-Sora
 
-[Open-Sora](https://github.com/hpcaitech/Open-Sora)：Sora Replication Solution with 46% Cost Reduction, Sequence Expansion to Nearly a Million
+[Open-Sora](https://github.com/hpcaitech/Open-Sora)：Revealing Complete Model Parameters, Training Details, and Everything for Sora-like Video Generation Models
 [[code]](https://github.com/hpcaitech/Open-Sora)
-[[blog]](https://hpc-ai.com/blog/open-sora)
+[[blog]](https://hpc-ai.com/blog/open-sora-v1.0)
+[[HuggingFace model weights]](https://huggingface.co/hpcai-tech/Open-Sora)
+[[Demo]](https://github.com/hpcaitech/Open-Sora?tab=readme-ov-file#-latest-demo)
 
-<p id="diffusion_demo" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/sora/open-sora-1.png" width=600/>
-</p>
+<div align="center">
+   <a href="https://www.youtube.com/watch?v=iDTxepqixuc">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/sora/sora-demo.png" width="700" />
+   </a>
+</div>
 
-<p id="diffusion_demo" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/sora/open-sora-2.png" width=600/>
-</p>
-
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ### Colossal-LLaMA-2
 
@@ -363,6 +367,18 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 
 
 ## Inference
+### Grok-1
+<p id="Grok-1" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/images/grok-1-inference.jpg" width=600/>
+</p>
+
+ - 314 Billion Parameter Grok-1 Inference Accelerated by 3.8x, an easy-to-use Python + PyTorch + HuggingFace version for Inference.
+
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/grok-1)
+[[blog]](https://hpc-ai.com/blog/314-billion-parameter-grok-1-inference-accelerated-by-3.8x-efficient-and-easy-to-use-pytorchhuggingface-version-is-here)
+[[HuggingFace Grok-1 PyTorch model weights]](https://huggingface.co/hpcai-tech/grok-1)
+[[ModelScope Grok-1 PyTorch model weights]](https://www.modelscope.cn/models/colossalai/grok-1-pytorch/summary)
+
 <p id="SwiftInfer" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/SwiftInfer.jpg" width=800/>
 </p>

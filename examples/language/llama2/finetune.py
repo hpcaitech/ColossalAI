@@ -271,7 +271,7 @@ def main():
             for step in pbar:
                 if use_pipeline:
                     outputs = booster.execute_pipeline(
-                        dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
+                        dataloader_iter, model, _criterion, optimizer, return_loss=True
                     )
                     loss = outputs["loss"]
                 else:

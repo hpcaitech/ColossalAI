@@ -75,7 +75,7 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     model.train()
     if booster.plugin.stage_manager is not None:
         booster.execute_pipeline(
-            _preprocess_data(data), model, _criterion, optimizer, return_loss=True, return_outputs=False
+            _preprocess_data(data), model, _criterion, optimizer, return_loss=True
         )
     else:
         output = model(**_preprocess_data(data))
@@ -109,7 +109,7 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     data_for_origin = data_gen_fn()
     if booster.plugin.stage_manager is not None:
         booster.execute_pipeline(
-            _preprocess_data(data_for_shard), model, _criterion, optimizer, return_loss=True, return_outputs=False
+            _preprocess_data(data_for_shard), model, _criterion, optimizer, return_loss=True
         )
         booster.execute_pipeline(
             _preprocess_data(data_for_origin),
@@ -117,7 +117,6 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
             _criterion,
             new_optimizer,
             return_loss=True,
-            return_outputs=False,
         )
     else:
         old_model_loss = criterion(model(**_preprocess_data(data_for_shard)))
