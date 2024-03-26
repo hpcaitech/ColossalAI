@@ -1,5 +1,7 @@
 import math
 import os 
+from typing import Dict
+
 import torch
 from torch.optim import Optimizer
 import torch.distributed as dist
@@ -7,6 +9,15 @@ import torch.distributed as dist
 from colossalai.shardformer.layer._operation import _gather
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.d_tensor import ShardingSpec
+from colossalai.tensor.d_tensor import (
+    is_distributed_tensor,
+    distribute_tensor,
+    sharded_tensor_to_param,
+    shard_rowwise,
+    shard_colwise,
+    get_layout,
+    get_sharding_spec
+)
 
 
 # DistributedAdaFactor (with Tensor parallel and Zero stage 2)
@@ -42,34 +53,38 @@ class DistributedAdaFactor(Optimizer):
             "warmup_init": warmup_init,
         }
         super().__init__(params, defaults)
-        self.local_rank = None
-        self.world_size = None
-        self.tensor_parallel_size = None
+        self.tensor_parallel_size = 1
         self.tensor_parallel_group = None
-        self.sharding_spec_dict = None
+        self.data_parallel_size = 1
         self.param_shape = None # Dict{id:shape}, sample {id(weight): torch.Size(4,4)}
-    
+        self.shard_to_param = None # Dict{id:shape}, sample {id(param): torch.tensor}
+        
+        
     def setup_distribute(self, 
-                         local_rank: int,
-                         world_size: int,
-                         device_mesh: DeviceMesh, 
-                         sharding_spec_dict: dict[int, ShardingSpec], 
-                         param_shape: dict[int, torch.Size])-> None:
+                         tensor_parallel_group: dist.ProcessGroup = None, 
+                         data_parallel_group: dist.ProcessGroup = None,
+                         sharding_spec_dict: dict[int, ShardingSpec] = None, 
+                         param_shape: dict[int, torch.Size] = None,
+                         shard_to_param: Dict = None
+                         )-> None:
         """
         Inject features to the Optimizer
         Args:
-            device_mesh (DeviceMesh): The devices group to run the optimizer
+            tensor_parallel_group (dist.ProcessGroup): The devices group for tensor parallel
+            data_parallel_group (dist.ProcessGroup): The devices group for data parallel
             sharding_spec_dict (Dict{id(param):ShardingSpec}): ShardingSpecs of Each params
             param_shape  (Dict{id(param):shape}): Paramater Shape of Each params
             
         """
-        device_mesh = device_mesh
-        self.tensor_parallel_size = device_mesh._physical_mesh_id.shape[0]
-        self.tensor_parallel_group = device_mesh.get_process_group(axis=1) # "Expected row process group"
-        self.local_rank = local_rank
-        self.world_size = world_size
-        self.sharding_spec_dict = sharding_spec_dict
-        self.param_shape = param_shape # Dict{id:shape}, sample {id(weight): torch.Size(4,4)}
+        # device_mesh = device_mesh
+        # self.tensor_parallel_size = device_mesh._physical_mesh_id.shape[0]
+        self.tensor_parallel_group = tensor_parallel_group # "Expected row process group"
+        self.data_parallel_group = data_parallel_group
+        if self.tensor_parallel_group is not None:
+            self.tensor_parallel_size = dist.get_world_size(self.tensor_parallel_group)
+        if self.data_parallel_group is not None:
+            self.data_parallel_size = dist.get_world_size(self.data_parallel_group)
+        self.shard_to_param = shard_to_param
 
     @staticmethod
     def _get_lr(param_group, param_state):
@@ -146,63 +161,39 @@ class DistributedAdaFactor(Optimizer):
             for p in group["params"]:
                 if p.grad is None:
                     continue
-                
-                # ==============================
-                # Init Current Param Shape
-                # ==============================
-                if id(p) in self.param_shape.keys():
-                    p_shape = self.param_shape[id(p)]
-                    # if id(p) in self.sharding_spec_dict.keys() and self.sharding_spec_dict[id(p)] != None:
-                    #     sharding_spec = self.sharding_spec_dict[id(p)]
-                    if len(p_shape) >= 2: # factored
-                        sharding_spec = self.sharding_spec_dict[id(p)]
-                        if sharding_spec.sharding_sequence[0] == 'R': # Col Parallel 
-                            param_height_parallel = p_shape[0]
-                            param_width_parallel = p_shape[1] // self.tensor_parallel_size # W/N
-                        if sharding_spec.sharding_sequence[-1] == 'R': # Row Parallel
-                            param_height_parallel = p_shape[0] // self.tensor_parallel_size # H/N
-                            param_width_parallel = p_shape[1]
-                
-                # grad shape is same as weigh / bias
                 grad = p.grad
-                if grad.dtype in {torch.float16, torch.bfloat16}:
-                    grad = grad.float()
                 if grad.is_sparse:
                     raise RuntimeError("Adafactor does not support sparse gradients.")
                 
-                """
-                p (group["params"]) is weight
-                state 
-                {'step', 
-                'exp_avg_sq_row', 
-                'exp_avg_sq_col', 
-                'RMS'
-                }
+                state = self.state[p]
+                grad_shape = grad.shape # 1 dim shape
+                param_is_dtensor = is_distributed_tensor(self.shard_to_param.get(id(p)))
+                # print(f"param_is_dtensor {param_is_dtensor}")
+                if param_is_dtensor:
+                    grad_shape = self.shard_to_param.get(id(p)).shape # tp shape {}
+                else:
+                    grad_shape = grad.shape  # tp and zero shape 
+                # print(f"param_is_dtensor {param_is_dtensor} \n param shape {grad_shape}\n param {p} \n grad {grad}\n")
                 
-                p (group["params"]) is bias
-                state 
-                {'step', 
-                'exp_avg_sq', 
-                'RMS'
-                }
-                """
-                state = self.state[p]  # always empty
-                # grad_shape = grad.shape
-                factored, use_first_moment = self._get_options(group, p_shape)
+                factored, use_first_moment = self._get_options(group, grad_shape)
                 if len(state) == 0:
                     state["step"] = 0
                     if use_first_moment:
                         # Exponential moving average of gradient values
                         state["exp_avg"] = torch.zeros_like(grad)
                     if factored:
-                        if sharding_spec.sharding_sequence[0] == 'R': # Col Parallel
-                            state["exp_avg_sq_row"] = torch.zeros(p_shape[0]).to(grad)  # [H:4096]
-                            state["exp_avg_sq_col"] = torch.zeros(p_shape[1] // self.tensor_parallel_size).to(grad)  # [W/N:2048]
+                        shard_spec = get_sharding_spec(self.shard_to_param.get(id(p)))
+
+                        # print(f"param shape {grad_shape}\n shard spec {shard_spec}\n master param {self.shard_to_param.get(id(p))} local param {p}\n")
+                        if shard_spec.sharding_sequence[0] == 'R': # Col Parallel
+                            state["exp_avg_sq_row"] = torch.zeros(grad_shape[0] // self.data_parallel_size).to(grad)  # [H/dp]
+                            state["exp_avg_sq_col"] = torch.zeros(grad_shape[1]).to(grad)  # [W/TP]
+                            # print(f"Col Parallel row {grad_shape[0] // self.data_parallel_size } col {grad_shape[1]}\n")
                         
-                        if sharding_spec.sharding_sequence[-1] == 'R': # Row Parallel
-                            state["exp_avg_sq_row"] = torch.zeros(p_shape[0] // self.tensor_parallel_size).to(grad)  # [H/N:2048]
-                            state["exp_avg_sq_col"] = torch.zeros(p_shape[1]).to(grad)  # [W:4096]
-                            
+                        if shard_spec.sharding_sequence[-1] == 'R': # Row Parallel
+                            state["exp_avg_sq_row"] = torch.zeros(grad_shape[0] // self.tensor_parallel_size).to(grad)  # [H/dp/Tp]
+                            state["exp_avg_sq_col"] = torch.zeros(grad_shape[1]).to(grad)  # [W/TP]
+                            # print(f"ROW Parallel row {grad_shape[0] // self.data_parallel_size} col {grad_shape[1]}\n")
                     else:
                         state["exp_avg_sq"] = torch.zeros_like(grad)
                     state["RMS"] = 0
@@ -214,24 +205,27 @@ class DistributedAdaFactor(Optimizer):
                         state["exp_avg_sq_col"] = state["exp_avg_sq_col"].to(grad)
                     else:
                         state["exp_avg_sq"] = state["exp_avg_sq"].to(grad)
-
-                p_data_fp32 = p.to(self.local_rank)
+                
+                p_data_fp32 = p
                 if p.dtype in {torch.float16, torch.bfloat16}:
                     p_data_fp32 = p_data_fp32.float()
+                    
                 state["step"] += 1
                 lr = self._get_lr(group, state)
                 beta2t = 1.0 - math.pow(state["step"], group["decay_rate"])
-                update = (grad**2) + group["eps"][0]
-                if factored:  
+                update = (grad**2) + group["eps"][0]  
+                
+                if factored:
                     # ==============================
                     # First Dim is R, Last Dim is S{} means split dim -1  ---> 
                     # Coloum Parallel ---> sq_row need Do (col) Reduce
                     # ==============================
-                    if sharding_spec.sharding_sequence[0] == 'R': 
-                        update_reshape = update.view(-1, p_shape[1] // self.tensor_parallel_size)
-                        grad_reshape = grad.view(-1, p_shape[1] // self.tensor_parallel_size)
-                        exp_avg_sq_row = state["exp_avg_sq_row"] # [H]
-                        exp_avg_sq_col = state["exp_avg_sq_col"] # [W/N]
+                    shard_spec = get_sharding_spec(self.shard_to_param.get(id(p)))
+                    if shard_spec.sharding_sequence[0] == 'R': 
+                        update_reshape = update.view(-1, grad_shape[1])
+                        grad_reshape = grad.view(-1, grad_shape[1])
+                        exp_avg_sq_row = state["exp_avg_sq_row"] # [H/dp]
+                        exp_avg_sq_col = state["exp_avg_sq_col"] # [W/tp]
                         exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
                         exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
                         dist.all_reduce(exp_avg_sq_row, group=self.tensor_parallel_group)
@@ -243,10 +237,10 @@ class DistributedAdaFactor(Optimizer):
                     # Last Dim is R, First Dim is S{} means split dim 0  --->
                     # Row Parallel ---> sq_col need Do (row) Reduce
                     # ==============================
-                    elif sharding_spec.sharding_sequence[-1] == 'R':
-                        update_reshape = update.view(-1, p_shape[1])
-                        grad_reshape = grad.view(-1, p_shape[1])
-                        exp_avg_sq_row = state["exp_avg_sq_row"] # [H/N]
+                    elif shard_spec.sharding_sequence[-1] == 'R':
+                        update_reshape = update.view(-1, grad_shape[1])
+                        grad_reshape = grad.view(-1, grad_shape[1])
+                        exp_avg_sq_row = state["exp_avg_sq_row"] # [H/dp/tp]
                         exp_avg_sq_col = state["exp_avg_sq_col"] # [W]
                         exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
                         exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
@@ -267,7 +261,6 @@ class DistributedAdaFactor(Optimizer):
                 # (Line No.8) RMS
                 # update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
                 update.mul_(lr)
-            
                 if use_first_moment:
                     exp_avg = state["exp_avg"]
                     exp_avg.mul_(group["beta1"]).add_(update, alpha=(1 - group["beta1"]))
