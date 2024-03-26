@@ -46,7 +46,7 @@ jobs:
       matrix: ${{fromJson(needs.manual_check_matrix_preparation.outputs.matrix)}}
     container:
       image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
-      options: --gpus all --rm -v /data/scratch/examples-data:/data/
+      options: --gpus all --rm -v /data/scratch/examples-data:/data/ -v /dev/shm
     timeout-minutes: 15
     steps:
       - name: 📚 Checkout
@@ -60,5 +60,3 @@ jobs:
           echo "Testing ${dir} now"
           cd "${PWD}/examples/${dir}"
           bash test_ci.sh
-        env:
-          NCCL_SHM_DISABLE: 1
