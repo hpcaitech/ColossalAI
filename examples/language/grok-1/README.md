@@ -35,7 +35,7 @@ Command example:
 ./run_inference_slow.sh <MODEL_NAME_OR_PATH>
 ```
 
-`MODEL_NAME_OR_PATH` can be a model name from Hugging Face model hub or a local path to PyTorch-version model checkpoints. We provided weights on model hub, named `hpcaitech/grok-1`. And you could also download the weights in advance using `git`:
+`MODEL_NAME_OR_PATH` can be a model name from Hugging Face model hub or a local path to PyTorch-version model checkpoints. We have provided pytorch-version checkpoint on [HuggingFace model hub](https://huggingface.co/hpcai-tech/grok-1), named `hpcai-tech/grok-1`. And you could also download the weights in advance using `git`:
 ```bash
 git lfs install
 git clone https://huggingface.co/hpcai-tech/grok-1
