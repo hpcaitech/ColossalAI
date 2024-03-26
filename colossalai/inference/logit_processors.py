@@ -37,7 +37,7 @@ def top_p_logit_processor(logits, top_p: float):
 
     sorted_indices_to_remove = cumulative_probs > top_p
 
-    sorted_indices_to_remove = torch.roll(sorted_indices_to_remove, 1, 1)
+    sorted_indices_to_remove = torch.roll(sorted_indices_to_remove, 1, -1)
     sorted_indices_to_remove[..., 0] = 0
 
     indices_to_remove = sorted_indices_to_remove.scatter(dim=1, index=sorted_indices, src=sorted_indices_to_remove)
