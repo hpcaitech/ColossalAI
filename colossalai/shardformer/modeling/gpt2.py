@@ -990,7 +990,7 @@ def gpt2_sequence_parallel_forward_fn(sp_mode, sp_size, sp_group):
         if sp_mode == "ring":
             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
         elif sp_mode == "all_to_all":
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, "down")
+            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size)
 
         position_embeds = self.wpe(position_ids)
         hidden_states = inputs_embeds + position_embeds
