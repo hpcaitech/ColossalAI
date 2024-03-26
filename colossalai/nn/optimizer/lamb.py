@@ -82,15 +82,14 @@ class Lamb(Optimizer):
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
                 # NOTE: Paper v3 does not use debiasing.
+                scaled_lr = group["lr"]
                 if group["bias_correction"]:
                     bias_correction1 = 1 - beta1 ** state["step"]
                     bias_correction2 = 1 - beta2 ** state["step"]
                     # Apply debiasing to lr to avoid broadcast
-                    group["lr"] *= (bias_correction2**0.5) / bias_correction1
+                    scaled_lr *= (bias_correction2**0.5) / bias_correction1
                     # exp_avg.div_(bias_correction1)
                     # exp_avg_sq.div_(bias_correction2)
-
-                step_size = group["lr"]
 
                 weight_norm = p.data.pow(2).sum().sqrt()
 
@@ -109,6 +108,6 @@ class Lamb(Optimizer):
                 if self.adam:
                     trust_ratio = 1
 
-                p.data.add_(adam_step, alpha=-step_size * trust_ratio)
+                p.data.add_(adam_step, alpha=-scaled_lr * trust_ratio)
 
         return loss

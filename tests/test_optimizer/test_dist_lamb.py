@@ -31,7 +31,7 @@ _N_STEP = 3
 _IN_DIM = 32
 _HID_DIM = 128
 _SEED = 1024
-_COORDINATOR = None
+_COORD = None
 
 
 def get_split_dim(p):
@@ -207,7 +207,7 @@ def run_dist_lamb_basic(
         try:
             assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group)
         except Exception as e:
-            _COORDINATOR.print_on_master(
+            _COORD.print_on_master(
                 f"step {i + 1}: bias_correction: {bias_correction}, p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}"
             )
             raise e
@@ -295,7 +295,7 @@ def run_dist_lamb_fwd_bwd(
     try:
         assert_close(out, out_tp, rtol=rtol, atol=atol)
     except Exception as e:
-        _COORDINATOR.print_on_master(
+        _COORD.print_on_master(
             f"bias_correction: {bias_correction}, p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}"
         )
         raise e
@@ -314,7 +314,7 @@ def run_dist_lamb_fwd_bwd(
     try:
         assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group)
     except Exception as e:
-        _COORDINATOR.print_on_master(
+        _COORD.print_on_master(
             f"bias_correction: {bias_correction}, p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}"
         )
         raise e
@@ -323,11 +323,15 @@ def run_dist_lamb_fwd_bwd(
 def check_dist_lamb(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    global _COORDINATOR
-    _COORDINATOR = DistCoordinator()
+    global _COORD
+    _COORD = DistCoordinator()
 
     run_dist_lamb_basic()
+    _COORD.print_on_master("Basic tests passed")
+
     run_dist_lamb_fwd_bwd()
+    _COORD.print_on_master("Forward-backward tests passed")
+
     run_bert_test(optim_class=Lamb, sharded_optim_class=DistributedLamb)
     print(f"rank {rank} tests passed :)")
 

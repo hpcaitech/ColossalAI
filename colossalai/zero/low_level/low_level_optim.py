@@ -267,7 +267,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 params_current_rank.append(splited_param_current_rank)
                 self._param_store.link_master_and_working_param(splited_param_current_rank, param)
 
-            dist.barrier()
         return params_current_rank
 
     ###########################

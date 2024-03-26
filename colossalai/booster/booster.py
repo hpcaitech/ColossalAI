@@ -11,7 +11,6 @@ from torch.utils.data import DataLoader
 import colossalai.interface.pretrained as pretrained_utils
 from colossalai.checkpoint_io import GeneralCheckpointIO
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.nn.optimizer import DistributedLamb
 
 from .accelerator import Accelerator
 from .mixed_precision import MixedPrecision, mixed_precision_factory
@@ -138,11 +137,6 @@ class Booster:
         if self.plugin:
             model, optimizer, criterion, dataloader, lr_scheduler = self.plugin.configure(
                 model, optimizer, criterion, dataloader, lr_scheduler
-            )
-
-        if isinstance(optimizer.optim, DistributedLamb):
-            optimizer.optim.setup_distributed(
-                self.plugin.tp_group, self.plugin.dp_group, optimizer._param_store.master_to_working_param
             )
 
         if self.plugin and not self.plugin.control_device():
