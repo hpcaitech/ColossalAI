@@ -26,7 +26,7 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.shardformer import AdvancedPipelineConfig, ShardConfig, ShardFormer
 from colossalai.shardformer.layer.utils import SeqParallelUtils
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.tensor.d_tensor.api import is_distributed_tensor
@@ -930,7 +930,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         custom_policy (Policy, optional): Custom policy for Shardformer. Defaults to None.
         pp_style (str, optional): The style for pipeline parallelism. Defaults to '1f1b'.
         num_model_chunks (int, optional): The number of model chunks for interleaved pipeline parallelism. Defaults to 1.
-        gradient_checkpointing_ratio (float, optional): The ratio [0, 1] of gradient checkpointing. Defaults to None.
+        advanced_pipeline_config (AdvancedPipelineConfig, optional): Advanced pipeline configuration for pipeline parallelism. Defaults to None.
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
     """
 
@@ -970,7 +970,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         custom_policy: Policy = None,
         pp_style: str = "1f1b",
         num_model_chunks: int = 1,
-        gradient_checkpointing_ratio: Optional[float] = None,
+        advanced_pipeline_config: Optional[AdvancedPipelineConfig] = None,
         enable_metadata_cache: bool = True,
     ) -> None:
         super().__init__()
@@ -1034,12 +1034,6 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
         self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
 
-        if gradient_checkpointing_ratio is not None:
-            if gradient_checkpointing_ratio < 0 or gradient_checkpointing_ratio > 1:
-                raise ValueError("gradient_checkpointing_ratio should be in 0% to 100%")
-            warnings.warn(
-                "gradient_checkpointing_ratio is only used in PipelineParallelism, will be ignored in other parallelism"
-            )
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
             pipeline_stage_manager=self.stage_manager,
@@ -1051,7 +1045,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             enable_sequence_parallelism=enable_sequence_parallelism,
             enable_sequence_overlap=enable_sequence_overlap,
             parallel_output=parallel_output,
-            gradient_checkpointing_ratio=gradient_checkpointing_ratio,
+            advanced_pipeline_config=advanced_pipeline_config,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
