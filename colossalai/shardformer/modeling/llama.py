@@ -21,7 +21,6 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.utils import logging
 from transformers.cache_utils import Cache
-
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import (
     all_to_all_comm,
@@ -29,19 +28,9 @@ from colossalai.shardformer.layer._operation import (
     split_forward_gather_backward,
 )
 from colossalai.shardformer.shard import ShardConfig
-
-<<<<<<< HEAD
 from ..layer import ColoAttention, cross_entropy_1d
-=======
-from ..layer import cross_entropy_1d
 from ..layer._operation import gather_forward_split_backward
-
-try:
-    from transformers.models.llama.modeling_llama import _prepare_4d_causal_attention_mask, _prepare_4d_causal_attention_mask_for_sdpa
->>>>>>> llama_model_forward
-
 from transformers.models.llama.modeling_llama import _prepare_4d_causal_attention_mask, _prepare_4d_causal_attention_mask_for_sdpa
-
 
 class LlamaPipelineForwards:
     """
@@ -144,7 +133,6 @@ class LlamaPipelineForwards:
             attention_mask = _prepare_4d_causal_attention_mask(
                 attention_mask, (batch_size, seq_length), hidden_states, past_key_values_length
             )
-
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
