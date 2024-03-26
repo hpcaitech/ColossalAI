@@ -138,13 +138,19 @@ class LlamaPipelineForwards:
         next_decoder_cache = () if use_cache else None
 
         start_idx, end_idx = stage_index[0], stage_index[1]
+        num_ckpt_layers = 0
+        if self.gradient_checkpointing and self.training:
+            num_ckpt_layers = end_idx - start_idx
+            if shard_config.gradient_checkpointing_ratio is not None:
+                num_ckpt_layers = int(shard_config.gradient_checkpointing_ratio * num_ckpt_layers)
+
         for idx, decoder_layer in enumerate(self.layers[start_idx:end_idx], start=start_idx):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
             past_key_value = past_key_values[idx] if past_key_values is not None else None
 
-            if self.gradient_checkpointing and self.training:
+            if idx - start_idx < num_ckpt_layers:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
