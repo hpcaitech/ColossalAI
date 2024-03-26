@@ -179,10 +179,13 @@ def _ring_as_gather(func, input_to_gather=None, input_local=None, process_group=
     # initialization of ring communication
     recv_rank = cur_rank + 1 if cur_rank + 1 < group_size else 0
     send_rank = cur_rank - 1 if cur_rank > 0 else group_size - 1
+    rank_map = list(dist.get_process_group_ranks(process_group))
+    recv_rank = rank_map[recv_rank]
+    send_rank = rank_map[send_rank]
     recv_tensors = {}
     send_tensors = {}
     for k, v in input_to_gather.items():
-        recv_tensors[k] = v.clone()
+        recv_tensors[k] = torch.empty_like(v)
         send_tensors[k] = v.clone()
 
     def communicate_step():
@@ -194,9 +197,7 @@ def _ring_as_gather(func, input_to_gather=None, input_local=None, process_group=
 
     def switch_step():
         for k in recv_tensors:
-            tmp_tensor = send_tensors[k]
-            send_tensors[k] = recv_tensors[k]
-            recv_tensors[k] = tmp_tensor
+            send_tensors[k], recv_tensors[k] = recv_tensors[k], send_tensors[k]
 
     output_tensors = []
 
@@ -259,43 +260,6 @@ class _GatherForwardReduceScatterBackward(torch.autograd.Function):
         return output, None, None
 
 
-class _GatherForwardReduceScatterBackward(torch.autograd.Function):
-    """Gather input from sequence parallel in forward and reduce-scatter gradient in backward
-
-    Args:
-        input_ (`torch.Tensor`): The input tensor from sequence parallel region.
-        process_group (`torch.distributed.ProcessGroup`): The process group used for collective communication.
-        overlap (`bool`): Whther to overlap the all_gather op and gradient calculate in backward.
-
-    """
-
-    @staticmethod
-    def forward(ctx, input_, process_group, dim):
-        ctx.process_group = process_group
-        ctx.dim = dim
-
-        return _gather(input_, dim, process_group)
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        dim = ctx.dim
-        process_group = ctx.process_group
-
-        # do reduce-scatter
-        new_shape = list(grad_output.shape)
-        assert (
-            new_shape[dim] % dist.get_world_size(process_group) == 0
-        ), f"The dimension to split ({new_shape[dim]}) is not a multiple of tensor parallel size ({dist.get_world_size(process_group)}). "
-        new_shape[dim] = new_shape[dim] // dist.get_world_size(process_group)
-        grad_list = [
-            item.contiguous() for item in torch.chunk(grad_output, dist.get_world_size(process_group), dim=dim)
-        ]
-        output = torch.empty(new_shape, dtype=grad_output.dtype, device=grad_output.device)
-        dist.reduce_scatter(output, grad_list, group=process_group)
-
-        return output, None, None
-
-
 class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
     """Gather input from sequence parallel in forward and reduce-scatter gradient in backward
 
@@ -316,10 +280,8 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         ctx.overlap = overlap
 
         if ring is True:
-            input_to_gather = {}
-            input_local = {}
-            input_to_gather["input"] = input_
-            input_local["weight"] = weight
+            input_to_gather = {"input": input_}
+            input_local = {"weight": weight}
 
             output = _ring_as_gather(
                 F.linear,
@@ -452,6 +414,9 @@ def _ring_as_reducescatter(
     # initialization of ring communication
     recv_rank = cur_rank - 1 if cur_rank > 0 else group_size - 1
     send_rank = cur_rank + 1 if cur_rank + 1 < group_size else 0
+    rank_map = list(dist.get_process_group_ranks(process_group))
+    recv_rank = rank_map[recv_rank]
+    send_rank = rank_map[send_rank]
     input_tensors = []
     for _ in range(group_size):
         input_tensors.append({})
@@ -465,7 +430,7 @@ def _ring_as_reducescatter(
     input_tensors.reverse()
 
     output_tensor = func(**input_tensors[0], **input_local)
-    recv_tensor = output_tensor.clone()
+    recv_tensor = torch.empty_like(output_tensor)
     send_tensor = output_tensor.clone()
 
     def communicate_step():
@@ -515,10 +480,8 @@ class _LinearWithReduceScatterForwardGatherBackward(torch.autograd.Function):
         ctx.dim = dim
 
         if ring is True:
-            input_to_reducescatter = {}
-            input_local = {}
-            input_to_reducescatter["input"] = input_
-            input_local["weight"] = weight
+            input_to_reducescatter = {"input": input_}
+            input_local = {"weight": weight}
 
             if bias is not None:
                 input_to_reducescatter["bias"] = bias
@@ -752,10 +715,7 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         if ctx.grad_scale is not None:
-            if ctx.grad_scale == "up":
-                grad_output = grad_output * dist.get_world_size(ctx.process_group)
-            elif ctx.grad_scale == "down":
-                grad_output = grad_output / dist.get_world_size(ctx.process_group)
+            grad_output = grad_output * ctx.grad_scale
         return _gather(grad_output, ctx.dim, ctx.process_group), None, None, None
 
 
@@ -815,10 +775,7 @@ class _GatherForwardSplitBackward(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         if ctx.grad_scale is not None:
-            if ctx.grad_scale == "up":
-                grad_output = grad_output * dist.get_world_size(ctx.process_group)
-            elif ctx.grad_scale == "down":
-                grad_output = grad_output / dist.get_world_size(ctx.process_group)
+            grad_output = grad_output * ctx.grad_scale
         return _split(grad_output, ctx.dim, ctx.process_group), None, None, None
 
 

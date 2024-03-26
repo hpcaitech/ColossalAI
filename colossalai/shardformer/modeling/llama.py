@@ -716,7 +716,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group, zero_stage=
         mask_cond = torch.arange(mask.size(-1) * world_size, device=device)
 
         block_size = tgt_len // world_size
-        idx = dist.get_rank()
+        idx = dist.get_rank(sp_group)
         off = idx * block_size
 
         mask.masked_fill_(mask_cond[off : off + block_size] < (mask_cond + 1).view(mask.size(-1) * world_size, 1), 0)
@@ -828,7 +828,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group, zero_stage=
         if sp_mode in ["ring", "split_gather"]:
             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
         elif sp_mode == "all_to_all":
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 'down')
+            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size)
 
         # TODO use_distributed_mask
         use_distributed_mask = True if sp_mode in ["ring", "all_to_all"] else False
@@ -918,7 +918,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group, zero_stage=
         if sp_mode == "ring" or sp_mode == "split_gather" or (sp_mode == "all_to_all" and zero_stage == 0):
             hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
         elif sp_mode == "all_to_all" and zero_stage in [1, 2]:
-            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale="up")
+            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:

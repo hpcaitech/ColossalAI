@@ -59,7 +59,7 @@ class ShardConfig:
 
         if self.enable_sequence_parallelism:
             self.sequence_parallelism_mode = (
-                "1" if self.sequence_parallelism_mode is None else self.sequence_parallelism_mode
+                "split_gather" if self.sequence_parallelism_mode is None else self.sequence_parallelism_mode
             )
             assert (
                 self.sequence_parallelism_mode in SUPPORT_SP_MODE
