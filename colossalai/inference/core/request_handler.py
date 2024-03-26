@@ -298,8 +298,8 @@ class RequestHandler:
         """
         # do logit processor
         # NOTE: need to decide the granularity to process logits (sequence or batch)
+        config_dict = generation_config.to_dict()
         for type in ["top_k", "top_p", "min_p"]:
-            config_dict = generation_config.to_dict()
             if type in config_dict and config_dict[type] is not None:
                 logits = logit_processor(type, logits, config_dict[type])
 
