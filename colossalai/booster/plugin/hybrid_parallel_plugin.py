@@ -930,6 +930,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         custom_policy (Policy, optional): Custom policy for Shardformer. Defaults to None.
         pp_style (str, optional): The style for pipeline parallelism. Defaults to '1f1b'.
         num_model_chunks (int, optional): The number of model chunks for interleaved pipeline parallelism. Defaults to 1.
+        gradient_checkpointing_ratio (float, optional): The ratio [0, 1] of gradient checkpointing. Defaults to None.
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
     """
 
