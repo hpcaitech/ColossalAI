@@ -1,11 +1,12 @@
 import warnings
-from typing import Dict, Union
+from functools import partial
+from typing import Dict, Union, Callable
 
 import torch.nn as nn
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
 
-from ..modeling.mistral import get_mistral_flash_attention_forward
+from ..modeling.mistral import get_mistral_flash_attention_forward, MistralForwards
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["MistralPolicy", "MistralModelPolicy", "MistralForCausalLMPolicy", "MistralForSequenceClassificationPolicy"]
@@ -128,6 +129,12 @@ class MistralPolicy(Policy):
 
     def postprocess(self):
         return self.model
+    
+    def set_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
+        method_replacement = {
+                "forward": partial(new_forward)
+            }
+        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
 
 class MistralModelPolicy(MistralPolicy):
@@ -135,10 +142,11 @@ class MistralModelPolicy(MistralPolicy):
         super().__init__()
 
     def module_policy(self):
-        if self.pipeline_stage_manager:
-            warnings.warn("Mistral doesn't support pipeline parallelism now.")
+        policy = super().module_policy()
+        from transformers.models.mistral.modeling_mistral import MistralModel
 
-        return super().module_policy()
+        self.set_forward(model_cls=MistralModel, new_forward=MistralForwards.mistral_model_forward, policy=policy)
+        return policy
 
 
 class MistralForCausalLMPolicy(MistralPolicy):
