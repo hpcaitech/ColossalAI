@@ -1124,6 +1124,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
+                is_zero = False
                 if self.precision in ["fp16", "bf16"]:
                     optimizer = HybridParallelAMPOptimizer(
                         optimizer,
@@ -1147,6 +1148,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                         tp_process_group=self.tp_group,
                     )
             else:
+                is_zero = True
                 if self.dp_size == 1:
                     warnings.warn(
                         "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "
@@ -1167,12 +1169,13 @@ class HybridParallelPlugin(PipelinePluginBase):
                     **self.zero_config,
                     **self.amp_config,
                 )
-                # Setup optimizers that require global states
-                if isinstance(optimizer.optim, DistributedOptim):
-                    tp_group = self.__dict__.get("tp_group", None)
-                    dp_group = self.__dict__.get("dp_group", None)
-                    shard_to_param = optimizer._param_store.master_to_working_param
-                    optimizer.optim.setup_distributed(tp_group, dp_group, shard_to_param)
+
+            # Setup optimizers that require global states
+            if isinstance(optimizer.optim, DistributedOptim):
+                tp_group = self.tp_group
+                dp_group = self.dp_group
+                shard_to_param = optimizer.get_master_to_working_map()
+                optimizer.optim.setup_distributed(tp_group, dp_group, shard_to_param, is_zero)
             # inject update_master_params
             model.update_master_params = MethodType(optimizer.update_master_params, model)
         return model, optimizer, criterion, dataloader, lr_scheduler

@@ -62,6 +62,7 @@ class DistributedLamb(DistributedOptim):
         tp_group: Optional[dist.ProcessGroup] = None,
         dp_group: Optional[dist.ProcessGroup] = None,
         shard_to_param: Optional[Dict] = {},
+        is_zero: Optional[bool] = False,
     ):
         """Assign process groups for TP and ZeRO 2.
         Arguments:
@@ -69,6 +70,7 @@ class DistributedLamb(DistributedOptim):
             dp_group (dist.ProcessGroup): ZeRO 2 process group
             shard_to_param (Dict): ZeRO 2 feeds the optimizer a sharded param view to match reduce-scattered grad shape.
                 This maps from id(view) to original params; useful for checking distributed tensor's dist_layout.
+            is_zero (bool): Whether to use ZeRO 2.
         """
         self.tp_group = tp_group
         self.dp_group = dp_group
@@ -77,8 +79,8 @@ class DistributedLamb(DistributedOptim):
         if dp_group is not None:
             self.dp_size = dist.get_world_size(dp_group)
 
-        self.shard_to_param = shard_to_param
-        self.is_zero = len(self.shard_to_param) > 0
+        self.shard_to_param = shard_to_param if shard_to_param is not None else {}
+        self.is_zero = is_zero
 
         # Cache parameter layout
         for group in self.param_groups:
