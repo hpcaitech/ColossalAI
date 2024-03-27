@@ -3,7 +3,7 @@ from typing import Dict, Union
 
 import torch.nn as nn
 
-from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, VocabParallelLMHead1D, PaddingLMHead, Linear1D_Row, VocabParallelEmbedding1D
 
 from ..modeling.mistral import get_mistral_flash_attention_forward
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -16,21 +16,24 @@ class MistralPolicy(Policy):
         pass
 
     def preprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
-            # Resize embedding
-            vocab_size = self.model.config.vocab_size
-            world_size = self.shard_config.tensor_parallel_size
-
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
-
         return self.model
+    
+    def tie_weight_check(self):
+        input_embedding = self.model.get_input_embeddings()
+        output_embedding = self.model.get_output_embeddings()
+        return input_embedding is not None and output_embedding is not None and input_embedding.weight == output_embedding.weight
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         from transformers.models.mistral.modeling_mistral import MistralAttention, MistralDecoderLayer, MistralModel
 
         policy = {}
+
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = VocabParallelEmbedding1D
+        else:
+            if self.tie_weight_check():
+                embedding_cls = PaddingEmbedding
 
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
@@ -80,10 +83,11 @@ class MistralPolicy(Policy):
                 ],
             )
 
+        if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
-                    target_module=VocabParallelEmbedding1D,
+                    target_module=embedding_cls,
                 ),
                 policy=policy,
                 target_key=MistralModel,
@@ -146,6 +150,8 @@ class MistralForCausalLMPolicy(MistralPolicy):
         from transformers import MistralForCausalLM
 
         policy = super().module_policy()
+        if self.pipeline_stage_manager:
+            warnings.warn("Mistral doesn't support pipeline parallelism now.")
 
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
@@ -153,16 +159,23 @@ class MistralForCausalLMPolicy(MistralPolicy):
                 MistralForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=Linear1D_Col, kwargs=dict(gather_output=True)
+                            suffix="lm_head", target_module=VocabParallelLMHead1D, kwargs=dict(gather_output=True, make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by)
+                        )
+                    ]
+                )
+            }
+        else:
+            new_item = {
+                MistralForCausalLM: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="lm_head", target_module=PaddingLMHead, kwargs=dict(make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by)
                         )
                     ]
                 )
             }
 
-            if self.pipeline_stage_manager:
-                warnings.warn("Mistral doesn't support pipeline parallelism now.")
-
-            policy.update(new_item)
+        policy.update(new_item)
 
         return policy
 

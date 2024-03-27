@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
 
-from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, LmHead_Linear_Col, Padding_LmHead_Linear, Linear1D_Row, RMSNorm, VocabParallelEmbedding1D, PaddingEmbedding
+from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, VocabParallelLMHead1D, PaddingLMHead, Linear1D_Row, RMSNorm, VocabParallelEmbedding1D, PaddingEmbedding
 
 from ..modeling.llama import (
     LlamaPipelineForwards,
@@ -22,6 +22,11 @@ class LlamaPolicy(Policy):
     def config_sanity_check(self):
         pass
 
+    def tie_weight_check(self):
+        input_embedding = self.model.get_input_embeddings()
+        output_embedding = self.model.get_output_embeddings()
+        return input_embedding is not None and output_embedding is not None and input_embedding.weight == output_embedding.weight
+
     def preprocess(self):
         return self.model
 
@@ -29,6 +34,13 @@ class LlamaPolicy(Policy):
         from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel
 
         policy = {}
+
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = VocabParallelEmbedding1D
+        else:
+            if self.tie_weight_check():
+                embedding_cls = PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
             norm_cls = FusedRMSNorm
@@ -83,20 +95,11 @@ class LlamaPolicy(Policy):
                 ],
             )
 
+        if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
-                    target_module=VocabParallelEmbedding1D,
-                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
-                ),
-                policy=policy,
-                target_key=LlamaModel,
-            )
-        else:
-            self.append_or_create_submodule_replacement(
-                description=SubModuleReplacementDescription(
-                    suffix="embed_tokens",
-                    target_module=PaddingEmbedding,
+                    target_module=embedding_cls,
                     kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
                 ),
                 policy=policy,
@@ -252,27 +255,24 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
 
         policy = super().module_policy()
 
-        setattr(self.shard_config, "causal_lm", True)
-
         if self.shard_config.enable_tensor_parallelism:
-            # add a new item for casual lm
-            self.shard_config.parallel_output = True
             new_item = {
                 LlamaForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
-                        SubModuleReplacementDescription(suffix="lm_head", target_module=LmHead_Linear_Col, kwargs={"gather_output": not self.shard_config.parallel_output, "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by})
+                        SubModuleReplacementDescription(suffix="lm_head", target_module=VocabParallelLMHead1D, kwargs={"gather_output": not self.shard_config.parallel_output, "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by})
                     ],
-                    method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
+                    method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)}
                 )
             }
         else:
            new_item = {
                 LlamaForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
-                        SubModuleReplacementDescription(suffix="lm_head", target_module=Padding_LmHead_Linear, kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by})
+                        SubModuleReplacementDescription(suffix="lm_head", target_module=PaddingLMHead, kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by})
                     ],
                 )
             }
+
         policy.update(new_item)
 
         if self.pipeline_stage_manager:

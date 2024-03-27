@@ -424,7 +424,7 @@ class Linear1D_Row(ParallelModule):
             return output, self.bias
         
 
-class Padding_LmHead_Linear(PaddingParallelModule):
+class PaddingLMHead(PaddingParallelModule):
     def __init__(
         self,
         in_features: int,
@@ -434,7 +434,7 @@ class Padding_LmHead_Linear(PaddingParallelModule):
         device: torch.device = None,
         weight: Optional[Parameter] = None,
         bias_: Optional[Parameter] = None,
-        make_vocab_size_divisible_by: int = 128,
+        make_vocab_size_divisible_by: int = 64,
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
     ):
@@ -452,16 +452,19 @@ class Padding_LmHead_Linear(PaddingParallelModule):
 
         if bias:
             if bias_ is None:
-                self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))
+                self.bias = Parameter(torch.empty(out_features, **factory_kwargs))
             else:
                 bias_.data = bias_.data.to(device=device, dtype=dtype)
         else:
             bias_ = None
 
+        # resize embeddings
         super().__init__(self.out_features, out_features, weight, bias_)
         if weight.shape[0] < self.out_features:
-            self.resize_token_embeddings()
-        
+            self.resize_embedding_weight()
+        if self.bias is not None and self.bias.shape[0] < self.out_features:
+            self.resize_embedding_bais()
+
         if weight is None:
             self.reset_parameters(weight_initializer, bias_initializer)
 
@@ -485,9 +488,9 @@ class Padding_LmHead_Linear(PaddingParallelModule):
         bias = module.bias is not None
         device = module.weight.device
         # ensure only one process group is passed  
-        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 128)
+        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 64)
 
-        lm_head_linear = Padding_LmHead_Linear(
+        lm_head_linear = PaddingLMHead(
             in_features=in_features,
             out_features=out_features,
             bias=bias,
@@ -500,14 +503,14 @@ class Padding_LmHead_Linear(PaddingParallelModule):
         )
 
         return lm_head_linear
-    
+
     def forward(self, input: Tensor) -> Tensor:
         output = F.linear(input, self.weight, self.bias)
         output = output[..., :self.old_num_embeddings]
         return output
 
 
-class LmHead_Linear_Col(PaddingParallelModule):
+class VocabParallelLMHead1D(PaddingParallelModule, Linear1D_Col):
     r"""Linear layer with column parallelism.
 
     The linear layer is defined as :math:`Y = XA + b`. A is parallelized along
@@ -544,77 +547,48 @@ class LmHead_Linear_Col(PaddingParallelModule):
         dtype: torch.dtype = None,
         device: torch.device = None,
         process_group: ProcessGroup = None,
-        gather_output: bool = False,
-        seq_parallel: bool = False,
-        seq_parallel_dim: int = 1,
-        overlap: torch.cuda.Stream = None,
-        skip_bias_add: bool = False,
         weight: Optional[Parameter] = None,
         bias_: Optional[Parameter] = None,
-        make_vocab_size_divisible_by: int = 128,
-        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+        make_vocab_size_divisible_by: int = 64,
+        *args,
+        **kwargs,
     ):
-        # Keep input parameters
-        self.in_features = in_features
-        self.out_features = out_features
-        self.gather_output = gather_output
-        self.seq_parallel = seq_parallel
-        self.seq_parallel_dim = seq_parallel_dim
-        self.overlap = overlap
-        self.skip_bias_add = skip_bias_add
-        self.device = device
-        self.process_group = process_group
-
-
-        if skip_bias_add and not bias:
-            raise ValueError("cannot skip bias addition if bias is None")
-
-        # offset the seed with randomizer index and rank
-        seed = torch.random.initial_seed()
-        self.randomizer = create_randomizer_with_offset(seed, process_group=self.process_group)
-
-        # sanity check
-        if weight is not None:
-            assert not bias or bias_ is not None, "bias_ must be provided if bias is True when weight is not None"
-        else:
-            assert bias_ is None, "bias_ must be None if weight is None"
-
-        # Parameters.
-        self.tensor_parallel_size = dist.get_world_size(group=self.process_group)
-        multiple = make_vocab_size_divisible_by * self.tensor_parallel_size
-        if out_features % multiple != 0:
-            self.out_features = out_features + multiple - (out_features % multiple)
+        # create weight and bias
         if weight is None:
             factory_kwargs = {"device": device, "dtype": dtype}
             weight = Parameter(torch.empty(out_features, self.in_features, **factory_kwargs))
-        else:
-            weight.data = weight.data.to(device=device, dtype=dtype)
-
-
         if bias:
             if bias_ is None:
-                self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))
-            else:
-                bias_.data = bias_.data.to(device=device, dtype=dtype)
+                self.bias = Parameter(torch.empty(out_features, **factory_kwargs))
         else:
             bias_ = None
 
-        super().__init__(self.out_features, out_features, weight, bias_)
+        # calculate new vocab size
+        self.tensor_parallel_size = dist.get_world_size(group=process_group)
+        new_out_features = out_features
+        multiple = make_vocab_size_divisible_by * self.tensor_parallel_size
+        if out_features % multiple != 0:
+            new_out_features = out_features + multiple - (out_features % multiple)
 
+        # resize vocab size
+        PaddingParallelModule.__init__(self, new_num_embeddings=new_out_features, old_num_embeddings=out_features, weight=weight, bias_=bias_)
         if not is_distributed_tensor(self.weight):
-            self.resize_token_embeddings()
-            sharded_weight = shard_rowwise(self.weight.data, self.process_group)
-            sharded_tensor_to_existing_param(sharded_weight, self.weight)
+            self.resize_embedding_weight()
+        if self.bias is not None and not is_distributed_tensor(self.bias):
+            self.resize_embedding_bais()
 
-        if bias_ is not None:
-            if not is_distributed_tensor(self.bias):
-                sharded_bias = shard_colwise(self.bias.data, self.process_group)
-                sharded_tensor_to_existing_param(sharded_bias, self.bias)
-
-        if weight is None:
-            # init weights
-            self.reset_parameters(weight_initializer, bias_initializer)
+        Linear1D_Col.__init__(
+            self,
+            in_features=in_features,
+            out_features=new_out_features,
+            bias=bias,
+            device=device,
+            process_group=process_group,
+            weight=self.weight,
+            bias_=self.bias,
+            *args,
+            **kwargs,
+        )
 
 
     @staticmethod
@@ -630,18 +604,10 @@ class LmHead_Linear_Col(PaddingParallelModule):
         out_features = module.out_features
         bias = module.bias is not None
         device = module.weight.device
-        # ensure only one process group is passed
-        if isinstance(process_group, (list, tuple)):
-            assert len(process_group) == 1, f"Expected only one process group, got {len(process_group)}."
-            process_group = process_group[0]
-
-        tp_size = dist.get_world_size(process_group)
-        if out_features < tp_size:
-            return module
         
-        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 128)
+        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 64)
 
-        lm_head_linear = LmHead_Linear_Col(
+        lm_head_linear = VocabParallelLMHead1D(
             in_features=in_features,
             out_features=out_features,
             bias=bias,
@@ -656,12 +622,6 @@ class LmHead_Linear_Col(PaddingParallelModule):
 
         return lm_head_linear
 
-    def reset_parameters(self, weight_initializer, bias_initializer) -> None:
-        with self.randomizer.fork_rng(enable_cpu=True):
-            fan_in, fan_out = self.in_features, self.out_features
-            weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
-            if self.bias is not None:
-                bias_initializer(self.bias, fan_in=fan_in)
 
     def forward(self, input_: Tensor) -> Tuple[Tensor, Tensor]:
         assert (
@@ -688,9 +648,15 @@ class LmHead_Linear_Col(PaddingParallelModule):
             output = output[..., :self.old_num_embeddings]
         else:
             output = output_parallel
-            if dist.get_rank(self.process_group) == self.tensor_parallel_size-1:
-                num_valid_embeddings = output.size()[-1] - (self.new_num_embeddings - self.old_num_embeddings)
-                output = output[..., :num_valid_embeddings]
+            rank = dist.get_rank(self.process_group)
+            partition_size = self.new_num_embeddings // dist.get_world_size(self.process_group)
+            if self.old_num_embeddings >= (rank + 1) * partition_size:
+                num_valid_embeddings = partition_size
+            elif self.old_num_embeddings >= rank * partition_size:
+                num_valid_embeddings = self.old_num_embeddings - rank * partition_size
+            else:
+                num_valid_embeddings = 0
+            output = output[..., :num_valid_embeddings]
 
         if self.skip_bias_add:
             return output, self.bias

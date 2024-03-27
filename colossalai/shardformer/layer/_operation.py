@@ -117,7 +117,10 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
         ctx.process_group = process_group
         ctx.async_grad_allreduce = async_grad_allreduce
         if bias is not None:
-            output = F.linear(input_, weight, bias)
+            try:
+                output = F.linear(input_, weight, bias)
+            except Exception as e:
+                raise e
         else:
             output = F.linear(input_, weight)
 
