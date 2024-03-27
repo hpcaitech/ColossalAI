@@ -141,8 +141,14 @@ class LlamaPipelineForwards:
         num_ckpt_layers = 0
         if self.gradient_checkpointing and self.training:
             num_ckpt_layers = end_idx - start_idx
-            if shard_config.gradient_checkpointing_ratio is not None:
-                num_ckpt_layers = int(shard_config.gradient_checkpointing_ratio * num_ckpt_layers)
+            if shard_config.advanced_pipeline_config is not None:
+                advanced_pipeline_config = shard_config.advanced_pipeline_config
+                if advanced_pipeline_config.control_gradient_checkpointing:
+                    num_ckpt_layers = advanced_pipeline_config.get_num_ckpt_layers(
+                        stage_manager.stage,
+                        end_idx - start_idx,
+                        stage_manager.model_chunk_id if stage_manager.is_interleave else 0,
+                    )
 
         for idx, decoder_layer in enumerate(self.layers[start_idx:end_idx], start=start_idx):
             if output_hidden_states:

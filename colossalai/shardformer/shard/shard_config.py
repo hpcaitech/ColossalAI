@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
@@ -62,24 +62,12 @@ class AdvancedPipelineConfig:
         self.num_ckpt_layers_per_stage = num_ckpt_layers_per_stage
         self._sanity_check()
 
-    @property
-    def enable_gradient_checkpointing_ratio(self) -> bool:
-        return self.gradient_checkpointing_ratio is not None
-
-    @property
-    def enable_customized_layers_per_stage(self) -> bool:
-        return self.num_layers_per_stage is not None
-
-    @property
-    def enable_customized_ckpt_layers_per_stage(self) -> bool:
-        return self.num_ckpt_layers_per_stage is not None
-
     def _sanity_check(self):
-        if self.gradient_checkpointing_ratio is not None:
+        if self._enable_gradient_checkpointing_ratio:
             if not (0 <= self.gradient_checkpointing_ratio <= 1):
                 raise ValueError("gradient_checkpointing_ratio should be in 0% to 100%")
 
-        if self.num_layers_per_stage is not None:
+        if self.control_distribute_layers:
             assert (
                 self.num_stages is not None and self.num_model_chunks is not None and self.num_model_layers is not None
             )
@@ -87,7 +75,7 @@ class AdvancedPipelineConfig:
             assert sum(self.num_layers_per_stage) == self.num_model_layers
             assert len(self.num_layers_per_stage) == self.num_stages * self.num_model_chunks
 
-        if self.num_ckpt_layers_per_stage is not None:
+        if self._enable_customized_ckpt_layers_per_stage:
             assert self.num_layers_per_stage is not None
             assert len(self.num_layers_per_stage) == len(self.num_ckpt_layers_per_stage)
             assert all(
@@ -98,19 +86,35 @@ class AdvancedPipelineConfig:
             )
             self.gradient_checkpointing_ratio = sum(self.num_ckpt_layers_per_stage) / sum(self.num_layers_per_stage)
 
+    @property
+    def control_gradient_checkpointing(self) -> bool:
+        return self._enable_gradient_checkpointing_ratio or self._enable_customized_ckpt_layers_per_stage
+
+    @property
+    def control_distribute_layers(self) -> bool:
+        return self.num_layers_per_stage is not None
+
+    @property
+    def _enable_gradient_checkpointing_ratio(self) -> bool:
+        return self.gradient_checkpointing_ratio is not None
+
+    @property
+    def _enable_customized_ckpt_layers_per_stage(self) -> bool:
+        return self.num_ckpt_layers_per_stage is not None
+
     def distribute_layers(self, num_layers: int, num_stages: int) -> List[int]:
-        assert self.enable_customized_layers_per_stage
-        assert num_layers == self.num_model_layers and num_stages == self.num_stages
+        assert self.control_distribute_layers
+        assert num_layers == self.num_model_layers and num_stages == self.num_stages * self.num_model_chunks
         return self.num_layers_per_stage
 
-    def get_num_ckpt_layers(self, stage: int, num_layers: int, model_chunk_id: int = 1) -> int:
-        if self.enable_customized_layers_per_stage:
+    def get_num_ckpt_layers(self, stage: int, num_layers: int, model_chunk_id: int = 0) -> int:
+        if self.control_distribute_layers:
             assert stage <= self.num_stages and model_chunk_id <= self.num_model_chunks
-            assert num_layers == self.num_layers_per_stage[stage]
+            assert num_layers == self.num_layers_per_stage[stage + model_chunk_id * self.num_stages]
 
-        if self.enable_customized_ckpt_layers_per_stage:
-            return self.num_ckpt_layers_per_stage[stage]
-        elif self.enable_gradient_checkpointing_ratio:
+        if self._enable_customized_ckpt_layers_per_stage:
+            return self.num_ckpt_layers_per_stage[stage + model_chunk_id * self.num_stages]
+        elif self._enable_gradient_checkpointing_ratio:
             return int(self.gradient_checkpointing_ratio * num_layers)
         else:
             raise RuntimeError("No checkpointed layers information is provided")
