@@ -185,9 +185,6 @@ class LlamaPolicy(Policy):
                     new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
                 )
             }
-            self.append_or_create_method_replacement(
-                description=method_replacement, policy=policy, target_key=model_cls
-            )
 
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
