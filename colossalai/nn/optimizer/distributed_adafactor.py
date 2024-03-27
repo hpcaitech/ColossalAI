@@ -54,7 +54,7 @@ class DistributedAdaFactor(Optimizer):
         self.shard_to_param = None # Dict{id:shape}, sample {id(param): torch.tensor}
         
         
-    def setup_distribute(self, 
+    def setup_distributed(self, 
                          tensor_parallel_group: dist.ProcessGroup = None, 
                          data_parallel_group: dist.ProcessGroup = None,
                          shard_to_param: Dict = None

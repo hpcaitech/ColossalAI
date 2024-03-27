@@ -205,10 +205,10 @@ def exam_dist_adafactor_base(dtype: torch.dtype):
     
     # col parallel
     optimizer_cp = DistributedAdaFactor([weight_col_shard_flatten, bias_col_flatten])
-    optimizer_cp.setup_distribute(tensor_parallel_group=tp_group, data_parallel_group=None, sharding_spec_dict=col_sharding_spec_dict, param_shape = col_params_shape)
+    optimizer_cp.setup_distributed(tensor_parallel_group=tp_group, data_parallel_group=None, sharding_spec_dict=col_sharding_spec_dict, param_shape = col_params_shape)
     # row parallel
     optimizer_rp = DistributedAdaFactor([weight_row_shard_flatten, bias_row_flatten])
-    optimizer_rp.setup_distribute(tensor_parallel_group=tp_group, data_parallel_group =None, sharding_spec_dict=row_sharding_spec_dict, param_shape = row_params_shape)
+    optimizer_rp.setup_distributed(tensor_parallel_group=tp_group, data_parallel_group =None, sharding_spec_dict=row_sharding_spec_dict, param_shape = row_params_shape)
     
     N_STEPS = 1
     for _ in range(N_STEPS):
@@ -265,7 +265,7 @@ def exam_dist_adafactor_fwd_bwd(dtype: torch.dtype):
     # ==============================
     base_optim = Adafactor(base_param_group)
     dist_optim = DistributedAdaFactor(tp_param_group)
-    dist_optim.setup_distribute(tensor_parallel_group=tp_group, data_parallel_group=None, sharding_spec_dict=tp_shard_spec, param_shape=tp_param_shape)
+    dist_optim.setup_distributed(tensor_parallel_group=tp_group, data_parallel_group=None, sharding_spec_dict=tp_shard_spec, param_shape=tp_param_shape)
     
     # ==============================
     # Correctness Verify
@@ -354,9 +354,9 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
             verbose=True,
         )
         shard_to_param = dist_optim._param_store.master_to_working_param # {id(): param tensor} but flattened
-        dist_optim.optim.setup_distribute(tensor_parallel_group=tp_group, data_parallel_group=dp_group, shard_to_param=shard_to_param)
+        dist_optim.optim.setup_distributed(tensor_parallel_group=tp_group, data_parallel_group=dp_group, shard_to_param=shard_to_param)
     else:
-        dist_optim.setup_distribute(tensor_parallel_group=tp_group, data_parallel_group=dp_group, shard_to_param=shard_to_param)
+        dist_optim.setup_distributed(tensor_parallel_group=tp_group, data_parallel_group=dp_group, shard_to_param=shard_to_param)
     
     # ==============================
     # Correctness Verify
@@ -449,9 +449,9 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
             verbose=True,
         )
         shard_to_param = dist_optim._param_store.master_to_working_param # {id(): param tensor} but flattened
-        dist_optim.optim.setup_distribute(tensor_parallel_group=tp_group, data_parallel_group=dp_group, shard_to_param=shard_to_param)
+        dist_optim.optim.setup_distributed(tensor_parallel_group=tp_group, data_parallel_group=dp_group, shard_to_param=shard_to_param)
     else:
-        dist_optim.setup_distribute(tensor_parallel_group=tp_group, data_parallel_group=dp_group, shard_to_param=shard_to_param)
+        dist_optim.setup_distributed(tensor_parallel_group=tp_group, data_parallel_group=dp_group, shard_to_param=shard_to_param)
     
     
     # ==============================
@@ -510,8 +510,8 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
         
 def run_dist(rank, world_size, port):
     config = {}
-    # colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    init_dist()
+    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    # init_dist()
     # exam_dist_adafactor_base()
     # exam_dist_adafactor_fwd_bwd()
     exam_dist_adafactor_zero()
@@ -521,7 +521,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_dist_adafactor():
-    spawn(run_dist, nprocs=1)
+    spawn(run_dist, nprocs=4)
     
 if __name__ == "__main__":
     test_dist_adafactor()
