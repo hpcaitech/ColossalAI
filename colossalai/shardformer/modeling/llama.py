@@ -15,9 +15,7 @@ from transformers.utils import logging
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
 
-
 from ..layer import ColoAttention, cross_entropy_1d
-
 
 try:
     from transformers.models.llama.modeling_llama import _prepare_4d_causal_attention_mask
