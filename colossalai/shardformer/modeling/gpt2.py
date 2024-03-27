@@ -1302,7 +1302,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
                 shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
             )
 
-
         if not shard_config.parallel_output:
             lm_logits = gather_forward_split_backward(lm_logits, -1, shard_config.tensor_parallel_process_group)
 
