@@ -21,7 +21,7 @@ from transformers.models.bloom.modeling_bloom import (
     BloomModel,
 )
 from transformers.utils import logging
-
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import gather_forward_split_backward, split_forward_gather_backward
 from colossalai.shardformer.shard import ShardConfig
@@ -205,12 +205,13 @@ class BloomPipelineForwards:
         alibi = self.build_alibi_tensor(attention_mask, self.num_heads, dtype=hidden_states.dtype)
 
         # causal_mask is constructed every stage and its input is passed through different stages
-        causal_mask = self._prepare_attn_mask(
+        causal_mask = _prepare_4d_causal_attention_mask(
             attention_mask,
             input_shape=(batch_size, seq_length),
+            inputs_embeds=hidden_states,
             past_key_values_length=past_key_values_length,
         )
-
+        causal_mask = causal_mask.bool()
         # split the input tensor along sequence dimension
         # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
         if shard_config.enable_sequence_parallelism:
@@ -226,21 +227,15 @@ class BloomPipelineForwards:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             if self.gradient_checkpointing and self.training:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, use_cache=use_cache, output_attentions=output_attentions)
-
-                    return custom_forward
-
-                outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                outputs = self._gradient_checkpointing_func(
+                    block.__call__,
                     hidden_states,
                     alibi,
                     causal_mask,
                     layer_past,
                     head_mask[i],
+                    use_cache,
+                    output_attentions,
                 )
             else:
                 outputs = block(
@@ -1000,11 +995,13 @@ def get_bloom_sequence_parallel_forward_fn(shard_config: ShardConfig):
 
         alibi = self.build_alibi_tensor(attention_mask, self.num_heads, dtype=hidden_states.dtype)
 
-        causal_mask = self._prepare_attn_mask(
+        causal_mask = _prepare_4d_causal_attention_mask(
             attention_mask,
             input_shape=(batch_size, seq_length),
+            inputs_embeds=hidden_states,
             past_key_values_length=past_key_values_length,
         )
+        causal_mask = causal_mask.bool()
         # split the input tensor along sequence dimension
         # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
         hidden_states = split_forward_gather_backward(
@@ -1016,21 +1013,15 @@ def get_bloom_sequence_parallel_forward_fn(shard_config: ShardConfig):
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             if self.gradient_checkpointing and self.training:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, use_cache=use_cache, output_attentions=output_attentions)
-
-                    return custom_forward
-
-                outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                outputs = self._gradient_checkpointing_func(
+                    block.__call__,
                     hidden_states,
                     alibi,
                     causal_mask,
                     layer_past,
                     head_mask[i],
+                    use_cache,
+                    output_attentions,
                 )
             else:
                 outputs = block(
