@@ -16,8 +16,11 @@ class DistributedLamb(DistributedOptim):
     r"""Implements the Lamb algorithm, with extra support for ZeRO 2 and Tensor Parallel.
     Proposed in `Large Batch Optimization for Deep Learning: Training BERT in 76 minutes`_.
     Example (4 devices):
-        >>> device_mesh, tp_group, dp_group = DistributedLamb.set_distributed(2, 2)
-        >>> optim = DistributedLamb(model.parameters(), lr=1e-3, device_mesh=device_mesh)
+        >>> optim = DistributedLamb(model.parameters(), lr=1e-3)
+        >>> proc_mesh = ProcessGroupMesh(tp_size, zero_size)
+        >>> tp_group = proc_mesh.get_group_along_axis(0)
+        >>> dp_group = proc_mesh.get_group_along_axis(1)
+        >>> optim.setup_distributed(tp_group, dp_group)
 
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining

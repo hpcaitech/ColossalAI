@@ -158,7 +158,6 @@ def run_dist_lamb_basic(
     clear_layout_converter()  # Ensure correct sharding
     proc_mesh = ProcessGroupMesh(tp_size, zero_size)
     tp_group = proc_mesh.get_group_along_axis(0)
-    proc_mesh.get_group_along_axis(1)
 
     tp_rank = dist.get_rank(tp_group)
     torch.cuda.manual_seed(_SEED)  # Fix model init
