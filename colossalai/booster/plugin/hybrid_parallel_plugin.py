@@ -24,6 +24,7 @@ from colossalai.amp.naive_amp.mixed_precision_optimizer import MixedPrecisionOpt
 from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
+from colossalai.interface.optimizer import DistributedOptimizer
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
@@ -1166,6 +1167,13 @@ class HybridParallelPlugin(PipelinePluginBase):
                     **self.zero_config,
                     **self.amp_config,
                 )
+                # Setup optimizers that require global states
+            if isinstance(optimizer.optim, DistributedOptimizer):
+                tp_group = self.__dict__.get("tp_group", None)
+                dp_group = self.__dict__.get("dp_group", None)
+                master_to_working_map = optimizer.get_master_to_working_map()
+                zero_flag = self.zero_stage > 0
+                optimizer.optim.setup_distributed(master_to_working_map, tp_group, dp_group, zero_flag=zero_flag)
             # inject update_master_params
             model.update_master_params = MethodType(optimizer.update_master_params, model)
         return model, optimizer, criterion, dataloader, lr_scheduler
