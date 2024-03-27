@@ -28,21 +28,13 @@ from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.shardformer.layer._operation import _gather
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.zero import LowLevelZeroOptimizer
-from tests.kit.model_zoo import model_zoo
-from tests.test_shardformer.test_model._utils import (
-    build_model_from_hybrid_plugin,
-    check_weight,
-    run_forward_backward_with_hybrid_plugin,
-    unwrap_model,
-)
-from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.nn.optimizer.adafactor import Adafactor
 from colossalai.nn.optimizer.distributed_adafactor import DistributedAdaFactor
 from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
 
-HEIGHT = 4
-WIDTH = 4
+HEIGHT = 4096
+WIDTH = 4096
 _TP_SPEC = DimSpec([0])
 
 def init_dist():
@@ -329,7 +321,6 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     # ==============================
     # Model Init
     # ==============================
-    # device_mesh = DeviceMesh(torch.Tensor([i for i in range(world_size)]), (1, tensor_parallel_size), init_process_group=True)
     base_model = MlpModel().to(local_rank)
     tp_model = TPModel(copy.deepcopy(base_model.linear1), copy.deepcopy(base_model.linear2), tp_group).to(local_rank)
     
@@ -426,7 +417,6 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
     # ==============================
     # Model Init
     # ==============================
-    # device_mesh = DeviceMesh(torch.Tensor([i for i in range(world_size)]), (1, tensor_parallel_size), init_process_group=True)
     base_model = MlpModel().to(local_rank)
     tp_model = TPModel(copy.deepcopy(base_model.linear1), copy.deepcopy(base_model.linear2), tp_group).to(local_rank)
     
@@ -518,7 +508,6 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
         print(f"Curr Param correct {correctness}")
 
         
-    
 def run_dist(rank, world_size, port):
     config = {}
     # colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
