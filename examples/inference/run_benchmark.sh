@@ -2,7 +2,7 @@ ROOT=$(realpath $(dirname $0))
 echo $ROOT
 PY_SCRIPT=${ROOT}/benchmark_llama.py
 GPU=$(nvidia-smi -L | head -1 | cut -d' ' -f4 | cut -d'-' -f1)
-mode="colossalai"
+mode=$1
 
 mkdir -p logs
 

@@ -4,7 +4,7 @@
 #include "utils/vector_copy_utils.h"
 #include "../common/micros.h"
 
-template<typename scalar_t, int VecSize>
+template<typename scalar_t, bool Aligned, int VecSize>
 __global__ void decode_kv_cache_memcpy_kernel(
     const scalar_t* __restrict__ key,
     const scalar_t* __restrict__ value,
@@ -45,17 +45,19 @@ __global__ void decode_kv_cache_memcpy_kernel(
         copy_vector<scalar_t, VecSize>(value_cache + target_id, value + value_src_id);
     }
 
-    for (; i < hidden_size; ++i ) {
-        const int head_id = i / head_dim;
-        const int head_offset = i % head_dim;
-        const int64_t key_src_id = seq_id * key_stride + i;
-        const int64_t value_src_id = seq_id * value_stride + i;
-        const int64_t target_id = block_id * hidden_size * block_size
-                                    + head_id * block_size * head_dim
-                                    + block_offset * head_dim + head_offset;
+    if (!Aligned) {
+        for (; i < hidden_size; ++i ) {
+            const int head_id = i / head_dim;
+            const int head_offset = i % head_dim;
+            const int64_t key_src_id = seq_id * key_stride + i;
+            const int64_t value_src_id = seq_id * value_stride + i;
+            const int64_t target_id = block_id * hidden_size * block_size
+                                        + head_id * block_size * head_dim
+                                        + block_offset * head_dim + head_offset;
 
-        key_cache[target_id] = key[key_src_id];
-        value_cache[target_id] = value[value_src_id];
+            key_cache[target_id] = key[key_src_id];
+            value_cache[target_id] = value[value_src_id];
+        }
     }
 
 }
@@ -80,70 +82,58 @@ void apply_decode_kv_cache_memcpy(
 
     int vec_size = get_vec_size<scalar_t>(key);
 
+    bool aligned = true;
     if (head_dim % vec_size != 0) {
-        // Disable vectorized loading optimization when head_dim is not divisible by VecSize.
-        vec_size = 1;
+        aligned = false;
     }
 
     int thread_nums = head_num * head_dim / vec_size;
-
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     dim3 grid(num_tokens);
     dim3 block(std::min(thread_nums, 512));
 
-    switch (vec_size) {
-        case 1:
-            decode_kv_cache_memcpy_kernel<scalar_t, 1><<<grid, block, 0, stream>>>(
-                key.data_ptr<scalar_t>(),
-                value.data_ptr<scalar_t>(),
-                key_cache.data_ptr<scalar_t>(),
-                value_cache.data_ptr<scalar_t>(),
-                sequence_lengths.data_ptr<int>(),
-                block_tables.data_ptr<int>(),
-                head_num,
-                head_dim,
-                block_size,
-                key_stride,
-                value_stride,
-                block_table_stride
-            );
-            break;
-        case 2:
-            decode_kv_cache_memcpy_kernel<scalar_t, 2><<<grid, block, 0, stream>>>(
-                key.data_ptr<scalar_t>(),
-                value.data_ptr<scalar_t>(),
-                key_cache.data_ptr<scalar_t>(),
-                value_cache.data_ptr<scalar_t>(),
-                sequence_lengths.data_ptr<int>(),
-                block_tables.data_ptr<int>(),
-                head_num,
-                head_dim,
-                block_size,
-                key_stride,
-                value_stride,
-                block_table_stride
-            );
-            break;
-        case 4:
-            decode_kv_cache_memcpy_kernel<scalar_t, 4><<<grid, block, 0, stream>>>(
-                key.data_ptr<scalar_t>(),
-                value.data_ptr<scalar_t>(),
-                key_cache.data_ptr<scalar_t>(),
-                value_cache.data_ptr<scalar_t>(),
-                sequence_lengths.data_ptr<int>(),
-                block_tables.data_ptr<int>(),
-                head_num,
-                head_dim,
-                block_size,
-                key_stride,
-                value_stride,
-                block_table_stride
-            );
-            break;
-        default:
-            AT_ERROR("Unsupported vectorized size ", vec_size);
-            break;
+#define DECODE_KV_CACHE_MEMCOPY_KERNEL_LAUNCH(__aligned, __vec_size)                                    \
+    do {                                                                                                \
+        decode_kv_cache_memcpy_kernel<scalar_t, __aligned, __vec_size><<<grid, block, 0, stream>>>(     \
+                key.data_ptr<scalar_t>(),                                                               \
+                value.data_ptr<scalar_t>(),                                                             \
+                key_cache.data_ptr<scalar_t>(),                                                         \
+                value_cache.data_ptr<scalar_t>(),                                                       \
+                sequence_lengths.data_ptr<int>(),                                                       \
+                block_tables.data_ptr<int>(),                                                           \
+                head_num,                                                                               \
+                head_dim,                                                                               \
+                block_size,                                                                             \
+                key_stride,                                                                             \
+                value_stride,                                                                           \
+                block_table_stride                                                                      \
+            );                                                                                          \
+    } while(0)
+
+#define DECODE_KV_CACHE_MEMCOPY_KERNEL_LAUNCH_VEC_SIZE_CASE(__aligned, __vec_size)                      \
+    do {                                                                                                \
+        switch (__vec_size) {                                                                           \
+            case 1:                                                                                     \
+                DECODE_KV_CACHE_MEMCOPY_KERNEL_LAUNCH(__aligned, 1);                                    \
+                break;                                                                                  \
+            case 2:                                                                                     \
+                DECODE_KV_CACHE_MEMCOPY_KERNEL_LAUNCH(__aligned, 2);                                    \
+                break;                                                                                  \
+            case 4:                                                                                     \
+                DECODE_KV_CACHE_MEMCOPY_KERNEL_LAUNCH(__aligned, 4);                                    \
+                break;                                                                                  \
+            default:                                                                                    \
+                AT_ERROR("Unsupported vectorized size ", __vec_size);                                   \
+                break;                                                                                  \
+        }                                                                                               \
+    } while(0)
+
+    if (aligned) {
+        DECODE_KV_CACHE_MEMCOPY_KERNEL_LAUNCH_VEC_SIZE_CASE(true, vec_size);
+    }
+    else {
+        DECODE_KV_CACHE_MEMCOPY_KERNEL_LAUNCH_VEC_SIZE_CASE(false, vec_size);
     }
 
     AT_CUDA_CHECK(cudaGetLastError());
