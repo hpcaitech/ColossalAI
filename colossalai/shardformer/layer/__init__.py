@@ -1,3 +1,4 @@
+from .attn import AttnMaskType, ColoAttention
 from .dropout import DropoutForParallelInput, DropoutForReplicatedInput
 from .embedding import Embedding1D, PaddingEmbedding, VocabParallelEmbedding1D
 from .linear import Linear1D_Col, Linear1D_Row, PaddingLMHead, VocabParallelLMHead1D
@@ -26,4 +27,6 @@ __all__ = [
     "PaddingEmbedding",
     "PaddingLMHead",
     "VocabParallelLMHead1D",
+    "AttnMaskType",
+    "ColoAttention",
 ]

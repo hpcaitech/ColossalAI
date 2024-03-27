@@ -18,7 +18,12 @@ from colossalai.shardformer.layer import (
 
 from .._utils import getattr_
 from ..modeling.jit import get_jit_fused_dropout_add_func
-from ..modeling.opt import OPTPipelineForwards, get_jit_fused_opt_decoder_layer_forward, get_opt_flash_attention_forward
+from ..modeling.opt import (
+    OPTPipelineForwards,
+    get_jit_fused_opt_decoder_layer_forward,
+    get_opt_decoder_forward_for_flash_attention,
+    get_opt_flash_attention_forward,
+)
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -36,6 +41,7 @@ class OPTPolicy(Policy):
         import transformers
         from packaging.version import Version
 
+        # TODO: remove this version check when transformers>=4.36.0
         assert Version(transformers.__version__) <= Version(
             "4.33.0"
         ), "The OPT model should run on a transformers version not greater than 4.33.0."
@@ -121,7 +127,9 @@ class OPTPolicy(Policy):
         # optimization configuration
         self.append_or_create_submodule_replacement(
             description=SubModuleReplacementDescription(
-                suffix="final_layer_norm", target_module=norm_cls, ignore_if_not_exist=True
+                suffix="final_layer_norm",
+                target_module=norm_cls,
+                ignore_if_not_exist=True,
             ),
             policy=policy,
             target_key=OPTDecoder,
@@ -129,10 +137,14 @@ class OPTPolicy(Policy):
         self.append_or_create_submodule_replacement(
             description=[
                 SubModuleReplacementDescription(
-                    suffix="self_attn_layer_norm", target_module=norm_cls, ignore_if_not_exist=True
+                    suffix="self_attn_layer_norm",
+                    target_module=norm_cls,
+                    ignore_if_not_exist=True,
                 ),
                 SubModuleReplacementDescription(
-                    suffix="final_layer_norm", target_module=norm_cls, ignore_if_not_exist=True
+                    suffix="final_layer_norm",
+                    target_module=norm_cls,
+                    ignore_if_not_exist=True,
                 ),
             ],
             policy=policy,
@@ -143,11 +155,19 @@ class OPTPolicy(Policy):
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_opt_flash_attention_forward(),
+                    "forward": get_opt_flash_attention_forward(self.shard_config),
                 },
                 policy=policy,
                 target_key=OPTAttention,
             )
+            if not self.shard_config.pipeline_stage_manager:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_opt_decoder_forward_for_flash_attention(self.shard_config),
+                    },
+                    policy=policy,
+                    target_key=OPTDecoder,
+                )
 
         # use jit fused operator
         if self.shard_config.enable_jit_fused:
@@ -200,7 +220,14 @@ class OPTPolicy(Policy):
 
             layers_per_stage = Policy.distribute_layers(len(module.layers), stage_manager.num_stages)
             stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {"forward": partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+            method_replacement = {
+                "forward": partial(
+                    new_forward,
+                    stage_manager=stage_manager,
+                    stage_index=stage_index,
+                    shard_config=self.shard_config,
+                )
+            }
             self.append_or_create_method_replacement(
                 description=method_replacement, policy=policy, target_key=model_cls
             )
@@ -213,7 +240,9 @@ class OPTModelPolicy(OPTPolicy):
         policy = super().module_policy()
         if self.pipeline_stage_manager:
             self.set_pipeline_forward(
-                model_cls=OPTModel, new_forward=OPTPipelineForwards.opt_model_forward, policy=policy
+                model_cls=OPTModel,
+                new_forward=OPTPipelineForwards.opt_model_forward,
+                policy=policy,
             )
         return policy
 
@@ -254,7 +283,9 @@ class OPTForCausalLMPolicy(OPTPolicy):
             )
         if self.pipeline_stage_manager:
             self.set_pipeline_forward(
-                model_cls=OPTForCausalLM, new_forward=OPTPipelineForwards.opt_for_causal_lm_forward, policy=policy
+                model_cls=OPTForCausalLM,
+                new_forward=OPTPipelineForwards.opt_for_causal_lm_forward,
+                policy=policy,
             )
 
         return policy
@@ -270,7 +301,12 @@ class OPTForCausalLMPolicy(OPTPolicy):
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             num_stages = self.pipeline_stage_manager.num_stages
             if id(opt_model.model.decoder.embed_tokens.weight) == id(opt_model.lm_head.weight):
-                return [{0: opt_model.model.decoder.embed_tokens.weight, num_stages - 1: opt_model.lm_head.weight}]
+                return [
+                    {
+                        0: opt_model.model.decoder.embed_tokens.weight,
+                        num_stages - 1: opt_model.lm_head.weight,
+                    }
+                ]
         return []
 
     def postprocess(self):
