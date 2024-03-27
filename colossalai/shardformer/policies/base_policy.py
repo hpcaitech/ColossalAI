@@ -199,9 +199,9 @@ class Policy(ABC):
 
     def distribute_layers(self, num_layers: int, num_stages: int) -> List[int]:
         """Divide layers into stages"""
-        if self.shard_config.advanced_pipeline_config is not None:
+        if self.shard_config is not None:
             advanced_pipeline_config = self.shard_config.advanced_pipeline_config
-            if advanced_pipeline_config.control_distribute_layers:
+            if advanced_pipeline_config is not None and advanced_pipeline_config.control_distribute_layers:
                 return advanced_pipeline_config.distribute_layers(num_layers, num_stages)
 
         quotient = num_layers // num_stages
