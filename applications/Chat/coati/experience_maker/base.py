@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 from coati.models.base import Actor, Critic, RewardModel
@@ -9,51 +8,66 @@ from coati.models.base import Actor, Critic, RewardModel
 @dataclass
 class Experience:
     """Experience is a batch of data.
-    These data should have the sequence length and number of actions.
     Left padding for sequences is applied.
 
-    Shapes of each tensor:
-    sequences: (B, S)
-    action_log_probs: (B, A)
-    values: (B)
-    reward: (B)
-    advantages: (B)
-    attention_mask: (B, S)
-    action_mask: (B, A)
-
+    "B" is the batch size.
+    "S" is the sequence length.
     "A" is the number of actions.
+    "C" is the chunk size.
+    "N" is the number of MDP steps.
+    NOTE: N = A / C, each Experience contains N MDP steps ([s0, a0], [s1, a1], ...),
+        sequences = |pad|prompt|a0|a1|a2|...|pad|,
+        s0 = prompt, s1 = prompt + a0, s2 = prompt + a0 + a1, ...
+    FIXME(cwher): store N steps in a Experience can be computationally efficient,
+        but may be different from uniform sampling (shuffle all steps and sample).
+
+    Shapes of each tensor:
+        sequences: (B, S)
+        attention_mask: (B, S)
+        action_mask: (B, A)
+        step_mask: (B, N)
+        action_log_probs: (B, A)
+        values: (B, N), output of old critic model
+        returns: (B, N), result of GAE
+        advantages: (B, N), result of GAE
+
+    e.g.,
+        sequences = |pad|prompt|response|pad|
+        attention_mask = |0|1|1|0|
+        action_mask = |1|0| (for response)
+
+    NOTE: `Experience` are split into `BufferItem`s when added to buffer.
     """
 
     sequences: torch.Tensor
+    attention_mask: torch.LongTensor
+    action_mask: torch.BoolTensor
+    step_mask: torch.BoolTensor
     action_log_probs: torch.Tensor
     values: torch.Tensor
-    reward: torch.Tensor
+    returns: torch.Tensor
     advantages: torch.Tensor
-    attention_mask: Optional[torch.LongTensor]
-    action_mask: Optional[torch.BoolTensor]
 
     @torch.no_grad()
     def to_device(self, device: torch.device) -> None:
         self.sequences = self.sequences.to(device)
+        self.attention_mask = self.attention_mask.to(device)
+        self.action_mask = self.action_mask.to(device)
+        self.step_mask = self.step_mask.to(device)
         self.action_log_probs = self.action_log_probs.to(device)
         self.values = self.values.to(device)
-        self.reward = self.reward.to(device)
+        self.returns = self.returns.to(device)
         self.advantages = self.advantages.to(device)
-        if self.attention_mask is not None:
-            self.attention_mask = self.attention_mask.to(device)
-        if self.action_mask is not None:
-            self.action_mask = self.action_mask.to(device)
 
     def pin_memory(self):
         self.sequences = self.sequences.pin_memory()
+        self.attention_mask = self.attention_mask.pin_memory()
+        self.action_mask = self.action_mask.pin_memory()
+        self.step_mask = self.step_mask.pin_memory()
         self.action_log_probs = self.action_log_probs.pin_memory()
         self.values = self.values.pin_memory()
-        self.reward = self.reward.pin_memory()
+        self.returns = self.returns.pin_memory()
         self.advantages = self.advantages.pin_memory()
-        if self.attention_mask is not None:
-            self.attention_mask = self.attention_mask.pin_memory()
-        if self.action_mask is not None:
-            self.action_mask = self.action_mask.pin_memory()
         return self
 
 

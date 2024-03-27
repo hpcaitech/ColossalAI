@@ -179,6 +179,7 @@ def main(args):
         ptx_coef=args.ptx_coef,
         train_batch_size=args.train_batch_size,
         max_length=args.max_seq_len,
+        chunk_size=args.seq_chunk_size,
         use_cache=True,
         do_sample=True,
         temperature=1.0,
@@ -243,6 +244,7 @@ if __name__ == "__main__":
     parser.add_argument("--ptx_coef", type=float, default=0.9)
     parser.add_argument("--max_input_len", type=int, default=96)
     parser.add_argument("--max_seq_len", type=int, default=128)
+    parser.add_argument("--seq_chunk_size", type=int, default=8)
     parser.add_argument("--log_dir", default="logs", type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
     args = parser.parse_args()

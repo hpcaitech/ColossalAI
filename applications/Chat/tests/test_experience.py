@@ -5,7 +5,7 @@ import pytest
 import torch
 import torch.distributed as dist
 from coati.experience_buffer import NaiveExperienceBuffer
-from coati.experience_maker import NaiveExperienceMaker
+from coati.experience_maker import ChunkedExperienceMaker
 from coati.models.base import RewardModel
 from coati.models.gpt import GPTActor, GPTCritic
 from coati.trainer.ppo import _set_default_generate_kwargs
@@ -63,7 +63,7 @@ def make_and_consume_experience(strategy):
             self.pad_token_id = 0
 
     tokenizer = MockTokenizer()
-    experience_maker = NaiveExperienceMaker(actor, critic, reward_model, initial_model, tokenizer)
+    experience_maker = ChunkedExperienceMaker(actor, critic, reward_model, initial_model, tokenizer)
     data_buffer = NaiveExperienceBuffer(SAMPLE_BATCH_SIZE, cpu_offload=False)
 
     generate_kwargs = dict(do_sample=True, max_length=16)
@@ -74,14 +74,19 @@ def make_and_consume_experience(strategy):
         data = get_data(EXPERIENCE_BATCH_SIZE)
         assert gather_and_equal(data["input_ids"])
         assert gather_and_equal(data["attention_mask"])
-        experience = experience_maker.make_experience(**data, do_sample=True, max_length=16)
+        experience, _ = experience_maker.make_experience(**data, **generate_kwargs)
+        num_actions = experience.action_log_probs.size(1)
+        chunk_size = experience_maker.chunk_size
+        num_steps = experience.advantages.size(1)
+        assert num_steps == (num_actions + chunk_size - 1) // chunk_size
         assert gather_and_equal(experience.sequences)
+        assert gather_and_equal(experience.attention_mask)
+        assert gather_and_equal(experience.action_mask)
+        assert gather_and_equal(experience.step_mask)
         assert gather_and_equal(experience.action_log_probs)
         assert gather_and_equal(experience.values)
-        assert gather_and_equal(experience.reward)
+        assert gather_and_equal(experience.returns)
         assert gather_and_equal(experience.advantages)
-        assert gather_and_equal(experience.action_mask)
-        assert gather_and_equal(experience.attention_mask)
         data_buffer.append(experience)
 
     # data buffer's data should be the same
@@ -89,12 +94,13 @@ def make_and_consume_experience(strategy):
     assert gather_and_equal(buffer_size)
     for item in data_buffer.items:
         assert gather_and_equal(item.sequences)
+        assert gather_and_equal(item.attention_mask)
+        assert gather_and_equal(item.action_mask)
+        assert gather_and_equal(item.step_mask)
         assert gather_and_equal(item.action_log_probs)
         assert gather_and_equal(item.values)
-        assert gather_and_equal(item.reward)
+        assert gather_and_equal(item.returns)
         assert gather_and_equal(item.advantages)
-        assert gather_and_equal(item.action_mask)
-        assert gather_and_equal(item.attention_mask)
 
     # dataloader of each rank should have the same size and different batch
     dataloader = strategy.setup_dataloader(data_buffer)
@@ -104,7 +110,7 @@ def make_and_consume_experience(strategy):
         assert not gather_and_equal(experience.sequences)
         assert not gather_and_equal(experience.action_log_probs)
         assert not gather_and_equal(experience.values)
-        assert not gather_and_equal(experience.reward)
+        assert not gather_and_equal(experience.returns)
         assert not gather_and_equal(experience.advantages)
         # action mask and attention mask may be same
 

@@ -173,7 +173,11 @@ def test_models(models_maker: Callable[[], Tuple[Actor, Critic, RewardModel]], b
 @pytest.mark.parametrize("batch_size", [16])
 @pytest.mark.parametrize("seq_len", [128])
 @pytest.mark.parametrize("num_labels", [100])
-def test_loss(batch_size: int, seq_len: int, num_labels: int):
+@pytest.mark.parametrize("num_actions", [10])
+@pytest.mark.parametrize("chunk_size", [4])
+def test_loss(batch_size: int, seq_len: int, num_labels: int, num_actions: int, chunk_size: int):
+    num_steps = (num_actions + chunk_size - 1) // chunk_size
+
     loss = GPTLMLoss()
     loss_input = {
         "logits": torch.randn(batch_size, seq_len, num_labels),
@@ -183,31 +187,23 @@ def test_loss(batch_size: int, seq_len: int, num_labels: int):
 
     loss = PolicyLoss()
     loss_input = {
-        "log_probs": torch.randn(
-            batch_size,
-        ),
-        "old_log_probs": torch.randn(
-            batch_size,
-        ),
-        "advantages": torch.randn(
-            batch_size,
-        ),
+        "log_probs": torch.randn(batch_size, num_actions),
+        "old_log_probs": torch.randn(batch_size, num_actions),
+        "advantages": torch.randn(batch_size, num_steps),
+        "action_mask": torch.randint(0, 2, (batch_size, num_actions)),
+        "chunk_size": chunk_size,
     }
-    loss(**loss_input)
+    loss_output = loss(**loss_input)
+    assert loss_output.shape == (batch_size, num_steps)
 
     loss = ValueLoss()
     loss_input = {
-        "values": torch.randn(
-            batch_size,
-        ),
-        "old_values": torch.randn(
-            batch_size,
-        ),
-        "reward": torch.randn(
-            batch_size,
-        ),
+        "values": torch.randn(batch_size, num_steps),
+        "old_values": torch.randn(batch_size, num_steps),
+        "returns": torch.randn(batch_size, num_steps),
     }
-    loss(**loss_input)
+    loss_output = loss(**loss_input)
+    assert loss_output.shape == (batch_size, num_steps)
 
     loss = LogSigLoss()
     loss_input = {

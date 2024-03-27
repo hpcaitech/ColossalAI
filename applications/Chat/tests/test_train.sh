@@ -211,8 +211,8 @@ for model in ${MODELS[@]}; do
                 torchrun --standalone --nproc_per_node=4 $EXAMPLES_DIR/train_prompts.py \
                     --prompt_dataset $PROMPT_DATASET --pretrain_dataset $PRETRAIN_DATASET --max_datasets_size 32 \
                     --strategy $strategy --model $model --tokenizer $MODELS_DIR/$model \
-                    --num_episodes 1 --num_collect_steps 1 --num_update_steps 1 --lr 1e-8 \
-                    --experience_batch_size 2 --train_batch_size 1 --lora_rank $lora_rank \
+                    --num_episodes 1 --num_collect_steps 1 --num_update_steps 1 --seq_chunk_size $((RANDOM % 16 + 1)) \
+                    --experience_batch_size 2 --train_batch_size 1 --lora_rank $lora_rank --lr 1e-8 \
                     --pretrain $EXAMPLES_DIR/rlhf_models/sft_ckpt_${model}_${lora_rank} \
                     $rm_pretrain_model --rm_path $EXAMPLES_DIR/rlhf_models/rm_ckpt_${model}_${lora_rank}.pt \
                     --save_path $EXAMPLES_DIR/rlhf_models/actor_checkpoint_prompts

@@ -1,9 +1,6 @@
-from typing import Optional
-
 import torch
 import torch.nn as nn
-
-from .utils import masked_mean
+import torch.nn.functional as F
 
 
 class GPTLMLoss(nn.Module):
@@ -37,15 +34,19 @@ class PolicyLoss(nn.Module):
         log_probs: torch.Tensor,
         old_log_probs: torch.Tensor,
         advantages: torch.Tensor,
-        action_mask: Optional[torch.Tensor] = None,
+        action_mask: torch.Tensor,
+        chunk_size: int,
     ) -> torch.Tensor:
-        ratio = (log_probs - old_log_probs).exp()
-        surr1 = ratio * advantages
-        surr2 = ratio.clamp(1 - self.clip_eps, 1 + self.clip_eps) * advantages
+        log_ratio = log_probs - old_log_probs
+        num_steps = (log_ratio.size(1) + chunk_size - 1) // chunk_size
+        log_ratio = F.pad(log_ratio, (0, (chunk_size - log_ratio.size(1)) % chunk_size)).view(-1, chunk_size)
+        action_mask = F.pad(action_mask, (0, (chunk_size - action_mask.size(1)) % chunk_size)).view(-1, chunk_size)
+        chunk_ratio = torch.sum(log_ratio * action_mask, dim=1).exp().view(-1, num_steps)
+        surr1 = chunk_ratio * advantages
+        surr2 = chunk_ratio.clamp(1 - self.clip_eps, 1 + self.clip_eps) * advantages
         loss = -torch.min(surr1, surr2)
-        if action_mask is not None:
-            loss = masked_mean(loss, action_mask)
-        loss = loss.mean()
+        # NOTE: loss is likely to be a tensor, not a scalar
+        #  requires further reduction to get the final loss
         return loss
 
 
@@ -62,15 +63,15 @@ class ValueLoss(nn.Module):
         self,
         values: torch.Tensor,
         old_values: torch.Tensor,
-        reward: torch.Tensor,
-        action_mask: Optional[torch.Tensor] = None,
+        returns: torch.Tensor,
     ) -> torch.Tensor:
         values_clipped = old_values + (values - old_values).clamp(-self.clip_eps, self.clip_eps)
-        surr1 = (values_clipped - reward) ** 2
-        surr2 = (values - reward) ** 2
-        loss = torch.max(surr1, surr2)
-        loss = loss.mean()
-        return 0.5 * loss
+        surr1 = (values_clipped - returns) ** 2
+        surr2 = (values - returns) ** 2
+        loss = 0.5 * torch.max(surr1, surr2)
+        # NOTE: loss is likely to be a tensor, not a scalar
+        #  requires further reduction to get the final loss
+        return loss
 
 
 class LogSigLoss(nn.Module):
