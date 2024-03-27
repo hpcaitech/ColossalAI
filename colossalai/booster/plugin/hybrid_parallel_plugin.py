@@ -971,7 +971,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         pp_style: str = "1f1b",
         num_model_chunks: int = 1,
         enable_metadata_cache: bool = True,
-        make_vocab_size_divisible_by: int = 128,
+        make_vocab_size_divisible_by: int = 64,
     ) -> None:
         super().__init__()
         assert (

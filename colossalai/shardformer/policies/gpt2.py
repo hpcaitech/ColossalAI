@@ -33,11 +33,23 @@ class GPT2Policy(Policy):
         Reshape the Embedding layer to make the embedding dimension divisible by world_size
         """
         return self.model
+    
+    def tie_weight_check(self):
+        input_embedding = self.model.get_input_embeddings()
+        output_embedding = self.model.get_output_embeddings()
+        return input_embedding is not None and output_embedding is not None and input_embedding.weight == output_embedding.weight
 
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2Attention, GPT2Block, GPT2Model
 
         policy = {}
+
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = col_nn.VocabParallelEmbedding1D
+        else:
+            if self.tie_weight_check():
+                embedding_cls = col_nn.PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
             norm_cls = col_nn.FusedLayerNorm
@@ -48,11 +60,6 @@ class GPT2Policy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             policy[GPT2Model] = ModulePolicyDescription(
                 sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="wte",
-                        target_module=col_nn.VocabParallelEmbedding1D,
-                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
-                    ),
                     SubModuleReplacementDescription(
                         suffix="drop",
                         target_module=col_nn.DropoutForParallelInput,
@@ -103,12 +110,12 @@ class GPT2Policy(Policy):
                     ),
                 ],
             )
-        else:
+        if embedding_cls is not None:
             # padding vocabulary size when using pp to make it divisible by  shard_config.make_vocab_size_divisible_by
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="wte",
-                    target_module=col_nn.PaddingEmbedding,
+                    target_module=embedding_cls,
                     kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
                 ),
                 policy=policy,
@@ -275,7 +282,7 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
                 GPT2LMHeadModel: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=col_nn.LmHead_Linear_Col, kwargs={"gather_output": False, 
+                            suffix="lm_head", target_module=col_nn.VocabParallelLMHead1D, kwargs={"gather_output": False, 
                                                                                               "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
                         )
                     ],
@@ -287,7 +294,7 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
                 GPT2LMHeadModel: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=col_nn.Padding_LmHead_Linear, kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                            suffix="lm_head", target_module=col_nn.PaddingLMHead, kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
                         )
                     ]
                 )
@@ -331,7 +338,7 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
                 GPT2DoubleHeadsModel: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=col_nn.LmHead_Linear_Col, kwargs={"gather_output": True, "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                            suffix="lm_head", target_module=col_nn.VocabParallelLMHead1D, kwargs={"gather_output": True, "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
                         )
                     ]
                 )
@@ -341,7 +348,7 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
                 GPT2DoubleHeadsModel: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=col_nn.Padding_LmHead_Linear, kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                            suffix="lm_head", target_module=col_nn.PaddingLMHead, kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
                         )
                     ]
                 )

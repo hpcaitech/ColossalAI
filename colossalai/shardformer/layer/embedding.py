@@ -27,7 +27,7 @@ from .utils import create_randomizer_with_offset
 __all__ = ["Embedding1D", "VocabParallelEmbedding1D", "PaddingEmbedding"]
 
 
-class Embedding1D(PaddingParallelModule):
+class Embedding1D(ParallelModule):
     r"""Embedding for 1D parallelism.
 
     Args:
@@ -71,9 +71,12 @@ class Embedding1D(PaddingParallelModule):
         *args,
         **kwargs,
     ):
+        super().__init__()
+
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
         self.process_group = process_group
+
         self.padding_idx = padding_idx
         self.embed_args = args
         self.embed_kwargs = kwargs
@@ -86,12 +89,10 @@ class Embedding1D(PaddingParallelModule):
         # Parameters.
         if weight is None:
             factory_kwargs = {"device": device, "dtype": dtype}
-            weight = nn.Parameter(torch.empty((num_embeddings, embedding_dim), **factory_kwargs))
+            self.weight = nn.Parameter(torch.empty((num_embeddings, self.embedding_dim), **factory_kwargs))
         else:
             weight.data = weight.data.to(device=device, dtype=dtype)
-
-        super(Embedding1D, self).__init__(num_embeddings, num_embeddings, embedding_dim, weight)
-
+            self.weight = weight
         if not is_distributed_tensor(self.weight):
             sharded_weight = shard_colwise(self.weight.data, process_group)
             sharded_tensor_to_existing_param(sharded_weight, self.weight)
@@ -159,7 +160,6 @@ class Embedding1D(PaddingParallelModule):
         else:
             return output_parallel
 
-
 class PaddingEmbedding(PaddingParallelModule):
     def __init__(
         self,
@@ -169,7 +169,7 @@ class PaddingEmbedding(PaddingParallelModule):
         dtype: torch.dtype = None,
         device: torch.device = None,
         weight: Optional[nn.Parameter] = None,
-        make_vocab_size_divisible_by: int = 128,
+        make_vocab_size_divisible_by: int = 64,
         *args,
         **kwargs,
     ):
@@ -189,7 +189,7 @@ class PaddingEmbedding(PaddingParallelModule):
 
         super().__init__(self.num_embeddings, num_embeddings, weight)
 
-        self.resize_token_embeddings()
+        self.resize_embedding_weight()
 
         if weight is None:
             self.reset_parameters()
@@ -207,7 +207,7 @@ class PaddingEmbedding(PaddingParallelModule):
     def forward(self, input: Tensor) -> Tensor:
         return F.embedding(
             input, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
-        
+
     @staticmethod
     def from_native_module(module: nn.Embedding, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs) -> PaddingParallelModule:
         r"""
@@ -219,7 +219,7 @@ class PaddingEmbedding(PaddingParallelModule):
         embedding_dim = module.embedding_dim
         padding_idx = module.padding_idx
         device = module.weight.device
-        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 128)
+        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 64)
 
         # create the parallel module
         padding_embedding = PaddingEmbedding(
@@ -275,7 +275,7 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
         process_group: ProcessGroup = None,
         weight: Optional[nn.Parameter] = None,
         weight_initializer: Callable = init.normal_(),
-        make_vocab_size_divisible_by: int = 128,
+        make_vocab_size_divisible_by: int = 64,
         *args,
         **kwargs,
     ):
@@ -288,10 +288,24 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
         tensor_parallel_size = dist.get_world_size(group=process_group)
         tensor_parallel_rank = dist.get_rank(group=process_group)
 
+        # generate weight and bias
+        if weight is None:
+            factory_kwargs = {"device": device, "dtype": dtype}
+            weight = nn.Parameter(torch.empty((num_embeddings, self.embedding_dim), **factory_kwargs))
+        else:
+            weight.data = weight.data.to(device=device, dtype=dtype)
+
+        # calculate new padding size
         multiple = make_vocab_size_divisible_by * tensor_parallel_size
         if num_embeddings % multiple != 0:
             self.num_embeddings = num_embeddings + multiple - (num_embeddings % multiple)
 
+        # resize vocabulary size
+        super().__init__(self.num_embeddings, num_embeddings, weight)
+        print("self.num_embeddings", self.num_embeddings, "num_embeddings", num_embeddings)
+        self.resize_embedding_weight()
+
+        # deal with tensor parallelism
         self.num_embeddings_per_partition = divide(self.num_embeddings, tensor_parallel_size)
         self.vocab_start_index = tensor_parallel_rank * self.num_embeddings_per_partition
         self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
@@ -302,19 +316,6 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
         # offset the seed with randomizer index and rank
         seed = torch.random.initial_seed()
         self.randomizer = create_randomizer_with_offset(seed, process_group=self.process_group)
-
-        # parameter
-        if weight is None:
-            factory_kwargs = {"device": device, "dtype": dtype}
-            weight = nn.Parameter(torch.empty((num_embeddings, self.embedding_dim), **factory_kwargs))
-        else:
-            weight.data = weight.data.to(device=device, dtype=dtype)
-
-        super().__init__(self.num_embeddings, num_embeddings, weight)
-
-
-        # resize vocabulary size
-        self.resize_token_embeddings()
         
         if not is_distributed_tensor(self.weight):
             sharded_weight = shard_rowwise(self.weight.data, process_group)
@@ -343,7 +344,7 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
             assert len(process_group) == 1, f"Expected only one process group, got {len(process_group)}."
             process_group = process_group[0]
 
-        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 128)
+        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 64)
 
         # create the parallel module
         vocab_embedding_1d = VocabParallelEmbedding1D(

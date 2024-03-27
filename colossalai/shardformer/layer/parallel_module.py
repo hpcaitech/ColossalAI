@@ -179,13 +179,13 @@ class PaddingParallelModule(nn.Module, ABC):
                  new_num_embeddings: int = None,
                  old_num_embeddings: int = None,
                  weight: Optional[nn.Parameter] = None,
-                 bias: Optional[nn.Parameter] = None,
+                 bias_: Optional[nn.Parameter] = None,
                  *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+        nn.Module.__init__(self, *args, **kwargs)
         self.new_num_embeddings = new_num_embeddings
         self.old_num_embeddings = old_num_embeddings
         self.weight = weight
-        self.bias = bias
+        self.bias = bias_
     @abstractmethod
     def from_native_module(
         module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]] = None
@@ -213,11 +213,14 @@ class PaddingParallelModule(nn.Module, ABC):
             prefix (str): the prefix for parameters and buffers used in this
                 module
         """
+        print("_save_from_state_dict")
         for name, param in self._parameters.items():
             if param is not None:
                 param = gather_distributed_param(param, keep_vars=keep_vars)
                 if self.new_num_embeddings > self.old_num_embeddings:
                     destination[prefix + name] = param[:self.old_num_embeddings, ...]
+                else:
+                    destination[prefix + name] = param
 
         for name, buf in self._buffers.items():
             if buf is not None and name not in self._non_persistent_buffers_set:
@@ -339,15 +342,16 @@ class PaddingParallelModule(nn.Module, ABC):
                     input_name = input_name.split(".", 1)[0]  # get the name of param/buffer/child
                     if input_name not in self._modules and input_name not in local_state:
                         unexpected_keys.append(key)
-
-    def resize_token_embeddings(self):
+    
+    def resize_embedding_weight(self):
         num_padding_tokens = self.new_num_embeddings - self.old_num_embeddings
         valid_weight = self.weight.data
         padding_weight = torch.zeros_like(self.weight[:num_padding_tokens, ...])
         # padding to embedding
         self.weight.data = torch.cat((valid_weight, padding_weight), dim=0).contiguous()
-        if self.bias is not None:
-            valid_bias = self.bias.data
-            padding_bias = torch.zeros((num_padding_tokens), device=self.bias.device, dtype=self.bias.dtype)
-            self.bias.data = torch.cat((valid_bias, padding_bias), dim=0).contiguous()
 
+    def resize_embedding_bais(self):
+        num_padding_tokens = self.new_num_embeddings - self.old_num_embeddings
+        valid_bias = self.bias.data
+        padding_bias = torch.zeros((num_padding_tokens), device=self.bias.device, dtype=self.bias.dtype)
+        self.bias.data = torch.cat((valid_bias, padding_bias), dim=0).contiguous()

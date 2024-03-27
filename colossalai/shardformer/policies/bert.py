@@ -36,18 +36,12 @@ class BertPolicy(Policy):
         pass
 
     def preprocess(self):
-        # reshape the embedding layer
-        r"""
-        Reshape the Embedding layer to make the embedding dimension divisible by world_size
-        """
-        # TODO:
-        if self.shard_config.enable_tensor_parallelism:
-            vocab_size = self.model.config.vocab_size
-            world_size = self.shard_config.tensor_parallel_size
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
         return self.model
+    
+    def tie_weight_check(self):
+        input_embedding = self.model.get_input_embeddings()
+        output_embedding = self.model.get_output_embeddings()
+        return input_embedding is not None and output_embedding is not None and input_embedding.weight == output_embedding.weight
 
     def module_policy(self):
         from transformers.models.bert.modeling_bert import (
@@ -60,6 +54,13 @@ class BertPolicy(Policy):
         )
 
         policy = {}
+
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = col_nn.VocabParallelEmbedding1D
+        else:
+            if self.tie_weight_check():
+                embedding_cls = col_nn.PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
             norm_cls = col_nn.FusedLayerNorm
@@ -129,16 +130,24 @@ class BertPolicy(Policy):
             policy[BertEmbeddings] = ModulePolicyDescription(
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
-                        suffix="word_embeddings",
-                        target_module=col_nn.VocabParallelEmbedding1D,
-                    ),
-                    SubModuleReplacementDescription(
                         suffix="dropout",
                         target_module=col_nn.DropoutForReplicatedInput,
                     ),
                 ]
             )
 
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="word_embeddings",
+                        target_module=embedding_cls,
+                    )
+                ],
+                policy=policy,
+                target_key=BertEmbeddings,
+            )
+            
         if use_sequence_parallel:
             self.append_or_create_method_replacement(
                 description={"forward": bert_sequence_parallel_forward_fn(self.shard_config)},
@@ -214,7 +223,15 @@ class BertPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
-                    suffix="decoder", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True}
+                    suffix="decoder", target_module=col_nn.VocabParallelLMHead1D, kwargs={"gather_output": True, "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                ),
+                policy=base_policy,
+                target_key=BertLMPredictionHead,
+            )
+        else:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="decoder", target_module=col_nn.PaddingLMHead, kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
                 ),
                 policy=base_policy,
                 target_key=BertLMPredictionHead,
