@@ -27,8 +27,8 @@ class BloomPolicy(Policy):
         from packaging.version import Version
 
         assert Version(transformers.__version__) <= Version(
-            "4.33.0"
-        ), "The Bloom model should run on a transformers version not greater than 4.33.0."
+            "4.36.0"
+        ), "The Bloom model should run on a transformers version not greater than 4.36.0."
 
     def config_sanity_check(self):
         pass
