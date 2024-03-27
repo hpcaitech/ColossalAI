@@ -167,7 +167,7 @@ class LlamaPolicy(Policy):
             layers_per_stage = self.distribute_layers(
                 len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
             )
-            stage_manager.stage_indices = Policy.get_stage_index(
+            stage_manager.stage_indices = self.get_stage_index(
                 layers_per_stage,
                 stage_manager.stage,
                 num_model_chunks=stage_manager.num_model_chunks,
@@ -178,8 +178,8 @@ class LlamaPolicy(Policy):
             }
 
         else:
-            layers_per_stage = Policy.distribute_layers(len(module.layers), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
+            stage_index = self.get_stage_index(layers_per_stage, stage_manager.stage)
             method_replacement = {
                 "forward": partial(
                     new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
@@ -207,7 +207,7 @@ class LlamaPolicy(Policy):
             layers_per_stage = self.distribute_layers(
                 len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
             )
-            stage_indices = Policy.get_stage_index(
+            stage_indices = self.get_stage_index(
                 layers_per_stage,
                 stage_manager.stage,
                 num_model_chunks=stage_manager.num_model_chunks,
