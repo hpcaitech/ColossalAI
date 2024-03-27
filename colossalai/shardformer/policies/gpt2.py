@@ -8,6 +8,7 @@ import colossalai.shardformer.layer as col_nn
 from ..modeling.gpt2 import (
     GPT2PipelineForwards,
     get_gpt2_flash_attention_forward,
+    get_gpt_model_forward_for_flash_attn,
     get_lm_forward_with_dist_cross_entropy,
     gpt2_sequence_parallel_forward_fn,
 )
@@ -75,7 +76,11 @@ class GPT2Policy(Policy):
                     SubModuleReplacementDescription(
                         suffix="attn.c_attn",
                         target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                        kwargs={"n_fused": 3, "seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        kwargs={
+                            "n_fused": 3,
+                            "seq_parallel": use_sequence_parallel,
+                            "overlap": overlap,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.c_proj",
@@ -87,7 +92,11 @@ class GPT2Policy(Policy):
                     SubModuleReplacementDescription(
                         suffix="mlp.c_fc",
                         target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                        kwargs={"n_fused": 1, "seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        kwargs={
+                            "n_fused": 1,
+                            "seq_parallel": use_sequence_parallel,
+                            "overlap": overlap,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.c_proj",
@@ -150,6 +159,10 @@ class GPT2Policy(Policy):
                 policy=policy,
                 target_key=GPT2Attention,
             )
+            if not self.shard_config.pipeline_stage_manager:
+                policy[GPT2Model].method_replacement = {
+                    "forward": get_gpt_model_forward_for_flash_attn(self.shard_config)
+                }
 
         if self.shard_config.enable_sequence_parallelism:
             policy[GPT2Model].method_replacement = {"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)}
@@ -223,14 +236,21 @@ class GPT2Policy(Policy):
                 num_stages=stage_manager.num_stages,
             )
             method_replacement = {
-                "forward": partial(new_forward, stage_manager=stage_manager, shard_config=self.shard_config)
+                "forward": partial(
+                    new_forward,
+                    stage_manager=stage_manager,
+                    shard_config=self.shard_config,
+                )
             }
         else:
             layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
             stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
             method_replacement = {
                 "forward": partial(
-                    new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
+                    new_forward,
+                    stage_manager=stage_manager,
+                    stage_index=stage_index,
+                    shard_config=self.shard_config,
                 )
             }
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
@@ -245,7 +265,9 @@ class GPT2ModelPolicy(GPT2Policy):
 
         if self.pipeline_stage_manager is not None:
             self.set_pipeline_forward(
-                model_cls=GPT2Model, new_forward=GPT2PipelineForwards.gpt2_model_forward, policy=policy
+                model_cls=GPT2Model,
+                new_forward=GPT2PipelineForwards.gpt2_model_forward,
+                policy=policy,
             )
         return policy
 
@@ -299,7 +321,12 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
         if stage_manager is not None:
             if stage_manager.num_stages > 1 and id(module.transformer.wte.weight) == id(module.lm_head.weight):
                 first_stage, last_stage = 0, stage_manager.num_stages - 1
-                return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
+                return [
+                    {
+                        first_stage: module.transformer.wte.weight,
+                        last_stage: module.lm_head.weight,
+                    }
+                ]
         return []
 
 
@@ -315,7 +342,9 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
                 GPT2DoubleHeadsModel: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True}
+                            suffix="lm_head",
+                            target_module=col_nn.Linear1D_Col,
+                            kwargs={"gather_output": True},
                         )
                     ]
                 )
@@ -350,7 +379,12 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
         if stage_manager is not None:
             if stage_manager.num_stages > 1 and id(module.transformer.wte.weight) == id(module.lm_head.weight):
                 first_stage, last_stage = 0, stage_manager.num_stages - 1
-                return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
+                return [
+                    {
+                        first_stage: module.transformer.wte.weight,
+                        last_stage: module.lm_head.weight,
+                    }
+                ]
         return []
 
 
@@ -392,7 +426,10 @@ class GPT2ForTokenClassificationPolicy(GPT2Policy):
             addon_module = {
                 GPT2ForTokenClassification: ModulePolicyDescription(
                     sub_module_replacement=[
-                        SubModuleReplacementDescription(suffix="dropout", target_module=col_nn.DropoutForParallelInput)
+                        SubModuleReplacementDescription(
+                            suffix="dropout",
+                            target_module=col_nn.DropoutForParallelInput,
+                        )
                     ]
                 )
             }

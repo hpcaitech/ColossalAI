@@ -60,7 +60,7 @@ jobs:
           cd TensorNVMe
           apt update && apt install -y cmake
           pip install -r requirements.txt
-          pip install -v .
+          DISABLE_URING=1 pip install -v .
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}

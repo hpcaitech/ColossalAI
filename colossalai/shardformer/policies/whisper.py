@@ -13,6 +13,7 @@ from ..modeling.whisper import (
     WhisperPipelineForwards,
     get_jit_fused_whisper_decoder_layer_forward,
     get_jit_fused_whisper_encoder_layer_forward,
+    get_whisper_decoder_forward_for_flash_attention,
     get_whisper_flash_attention_forward,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -31,6 +32,7 @@ class WhisperPolicy(Policy):
         import transformers
         from packaging.version import Version
 
+        # TODO: remove this version check when transformers>=4.36.0
         assert Version(transformers.__version__) <= Version(
             "4.33.0"
         ), "The Whisper model should run on a transformers version not greater than 4.33.0."
@@ -240,6 +242,14 @@ class WhisperPolicy(Policy):
                 policy=policy,
                 target_key=WhisperAttention,
             )
+            if not self.shard_config.pipeline_stage_manager:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_whisper_decoder_forward_for_flash_attention(self.shard_config),
+                    },
+                    policy=policy,
+                    target_key=WhisperDecoder,
+                )
 
         # use jit fused operator
         if self.shard_config.enable_jit_fused:
@@ -269,7 +279,9 @@ class WhisperPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
-                    suffix="proj_out", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True}
+                    suffix="proj_out",
+                    target_module=col_nn.Linear1D_Col,
+                    kwargs={"gather_output": True},
                 ),
                 policy=base_policy,
                 target_key=WhisperForConditionalGeneration,
@@ -326,7 +338,10 @@ class WhisperPolicy(Policy):
         if stage < decoder_starting_stage:
             return Policy.get_stage_index(layers_per_stage[:decoder_starting_stage], stage)
         else:
-            return Policy.get_stage_index(layers_per_stage[decoder_starting_stage:], stage - decoder_starting_stage)
+            return Policy.get_stage_index(
+                layers_per_stage[decoder_starting_stage:],
+                stage - decoder_starting_stage,
+            )
 
     def get_held_layers(self) -> List[nn.Module]:
         assert self.pipeline_stage_manager is not None, "pipeline_stage_manager is None"
@@ -422,6 +437,7 @@ class WhisperPolicy(Policy):
                 stage_manager=stage_manager,
                 stage_index=stage_index,
                 decoder_starting_stage=decoder_starting_stage,
+                shard_config=self.shard_config,
             )
         }
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
@@ -436,7 +452,9 @@ class WhisperModelPolicy(WhisperPolicy):
 
         if self.pipeline_stage_manager is not None:
             self.set_pipeline_forward(
-                model_cls=WhisperModel, new_forward=WhisperPipelineForwards.whisper_model_forward, policy=policy
+                model_cls=WhisperModel,
+                new_forward=WhisperPipelineForwards.whisper_model_forward,
+                policy=policy,
             )
 
         return policy
