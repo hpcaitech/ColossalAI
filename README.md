@@ -20,7 +20,7 @@
    [![WeChat badge](https://img.shields.io/badge/微信-加入-green?logo=wechat&amp)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png)
 
 
-   | [English](README.md) | [中文](docs/README-zh-Hans.md) |
+   | [English](README.md) | [中文](docs/README-zh-Hans.md) | [日本語](docs/README-ja-Jp.md)
 
 </div>
 
