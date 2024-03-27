@@ -140,8 +140,9 @@ class DimSpec:
 
 class ShardingSpec:
     """
-    Sharding spec describes how to shard a tensor with dim_size dimensions. The sharding sequence looks like
-    [R, R, S0, S1], which means
+    Sharding spec describes how to shard a tensor with dim_size dimensions. For example for a 3D tensor, the sharding sequence
+    [R, S0, S1] means not sharding the first dim, sharding the 3rd along the 1st device mesh axis (Process group)
+    and sharding the 3th dim along the 2nd device mesh axis. Useful for say, 2D Tensor Parallel.
 
     Argument:
         dim_partition_dict(Dict[int, List[int]], optional): The key is the dimension of tensor to be sharded,

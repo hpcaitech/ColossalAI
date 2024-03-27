@@ -133,3 +133,8 @@ class OptimizerWrapper:
         Unwrap the optimizer for checkpoint saving/loading.
         """
         return self.optim
+
+
+class DistributedOptim(Optimizer):
+    def setup_distributed(self, *args, **kwargs):
+        raise NotImplementedError()

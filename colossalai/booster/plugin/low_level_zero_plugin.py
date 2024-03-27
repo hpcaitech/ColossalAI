@@ -25,6 +25,7 @@ from colossalai.checkpoint_io.utils import (
     sharded_optimizer_loading_epilogue,
 )
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
+from colossalai.interface.optimizer import DistributedOptim
 from colossalai.zero import LowLevelZeroOptimizer
 
 from .dp_plugin_base import DPPluginBase
@@ -325,6 +326,13 @@ class LowLevelZeroPlugin(DPPluginBase):
             )
             # inject update_master_params
             model.update_master_params = MethodType(optimizer.update_master_params, model)
+            # Setup optimizers that require global states
+            if isinstance(optimizer.optim, DistributedOptim):
+                tp_group = self.tp_group
+                dp_group = self.dp_group
+                shard_to_param = optimizer.get_master_to_working_map()
+                is_zero = True
+                optimizer.optim.setup_distributed(tp_group, dp_group, shard_to_param, is_zero)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 
