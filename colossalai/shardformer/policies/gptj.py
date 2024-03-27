@@ -6,7 +6,11 @@ from torch import Tensor, nn
 
 import colossalai.shardformer.layer as col_nn
 
-from ..modeling.gptj import GPTJPipelineForwards, get_gptj_flash_attention_forward
+from ..modeling.gptj import (
+    GPTJPipelineForwards,
+    get_gptj_flash_attention_forward,
+    gptj_model_forward_for_flash_attention,
+)
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -71,17 +75,26 @@ class GPTJPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="attn.k_proj",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        kwargs={
+                            "seq_parallel": use_sequence_parallel,
+                            "overlap": overlap,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.q_proj",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        kwargs={
+                            "seq_parallel": use_sequence_parallel,
+                            "overlap": overlap,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.v_proj",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        kwargs={
+                            "seq_parallel": use_sequence_parallel,
+                            "overlap": overlap,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.out_proj",
@@ -143,6 +156,12 @@ class GPTJPolicy(Policy):
                 policy=policy,
                 target_key=GPTJAttention,
             )
+            if not self.shard_config.pipeline_stage_manager:
+                self.append_or_create_method_replacement(
+                    description={"forward": gptj_model_forward_for_flash_attention(self.shard_config)},
+                    policy=policy,
+                    target_key=GPTJModel,
+                )
 
         return policy
 
@@ -181,11 +200,14 @@ class GPTJPolicy(Policy):
         else:
             module = self.model.transformer
 
-        layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
-        stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+        layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
+        stage_index = self.get_stage_index(layers_per_stage, stage_manager.stage)
         method_replacement = {
             "forward": partial(
-                new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
+                new_forward,
+                stage_manager=stage_manager,
+                stage_index=stage_index,
+                shard_config=self.shard_config,
             )
         }
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
@@ -203,7 +225,9 @@ class GPTJModelPolicy(GPTJPolicy):
 
         if self.pipeline_stage_manager is not None:
             self.set_pipeline_forward(
-                model_cls=GPTJModel, new_forward=GPTJPipelineForwards.gptj_model_forward, policy=policy
+                model_cls=GPTJModel,
+                new_forward=GPTJPipelineForwards.gptj_model_forward,
+                policy=policy,
             )
         return policy
 
@@ -230,7 +254,9 @@ class GPTJForCausalLMPolicy(GPTJPolicy):
                 GPTJForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True}
+                            suffix="lm_head",
+                            target_module=col_nn.Linear1D_Col,
+                            kwargs={"gather_output": True},
                         )
                     ]
                 )
@@ -239,7 +265,9 @@ class GPTJForCausalLMPolicy(GPTJPolicy):
 
         if self.pipeline_stage_manager is not None:
             self.set_pipeline_forward(
-                model_cls=GPTJForCausalLM, new_forward=GPTJPipelineForwards.gptj_causallm_model_forward, policy=policy
+                model_cls=GPTJForCausalLM,
+                new_forward=GPTJPipelineForwards.gptj_causallm_model_forward,
+                policy=policy,
             )
         return policy
 
@@ -256,7 +284,12 @@ class GPTJForCausalLMPolicy(GPTJPolicy):
         if stage_manager is not None:
             if stage_manager.num_stages > 1 and id(module.transformer.wte.weight) == id(module.lm_head.weight):
                 first_stage, last_stage = 0, stage_manager.num_stages - 1
-                return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
+                return [
+                    {
+                        first_stage: module.transformer.wte.weight,
+                        last_stage: module.lm_head.weight,
+                    }
+                ]
         return []
 
 

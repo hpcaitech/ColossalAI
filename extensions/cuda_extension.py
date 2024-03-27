@@ -22,7 +22,7 @@ class _CudaExtension(_CppExtension):
         This function should return a list of nvcc compilation flags for extensions.
         """
 
-    def is_hardware_available(self) -> bool:
+    def is_available(self) -> bool:
         # cuda extension can only be built if cuda is available
         try:
             import torch
@@ -32,7 +32,7 @@ class _CudaExtension(_CppExtension):
             cuda_available = False
         return cuda_available
 
-    def assert_hardware_compatible(self) -> None:
+    def assert_compatible(self) -> None:
         from torch.utils.cpp_extension import CUDA_HOME
 
         if not CUDA_HOME:

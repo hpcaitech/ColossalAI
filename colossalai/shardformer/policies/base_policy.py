@@ -197,8 +197,7 @@ class Policy(ABC):
         """
         return []
 
-    @staticmethod
-    def distribute_layers(num_layers: int, num_stages: int) -> List[int]:
+    def distribute_layers(self, num_layers: int, num_stages: int) -> List[int]:
         """Divide layers into stages"""
         quotient = num_layers // num_stages
         remainder = num_layers % num_stages
@@ -213,8 +212,8 @@ class Policy(ABC):
                 layers_per_stage[i] += 1
         return layers_per_stage
 
-    @staticmethod
     def get_stage_index(
+        self,
         layers_per_stage: List[int],
         stage: int,
         num_model_chunks: int = 1,

@@ -1,36 +1,33 @@
 from ..base_extension import _Extension
 
 
-class FlashAttentionNpuExtension(_Extension):
+class FlashAttentionSdpaCudaExtension(_Extension):
     def __init__(self):
-        super().__init__(name="flash_attention_npu", support_aot=False, support_jit=False)
+        super().__init__(name="flash_attention_sdpa_cuda", support_aot=False, support_jit=False)
 
     def is_available(self) -> bool:
+        # cuda extension can only be built if cuda is available
         try:
-            import torch_npu
+            import torch
 
-            return hasattr(torch_npu, "npu_fusion_attention")
+            cuda_available = torch.cuda.is_available()
         except:
-            return False
+            cuda_available = False
+        return cuda_available
 
     def assert_compatible(self) -> bool:
         pass
 
     def build_aot(self) -> None:
-        raise NotImplementedError(
-            "Flash Attention NPU does not require ahead-of-time compilation. Please use it by installing torch_npu."
-        )
+        raise NotImplementedError("Flash attention SDPA does not require ahead-of-time compilation.")
 
     def build_jit(self) -> None:
-        raise NotImplementedError(
-            "Flash Attention NPU does not require just-in-time compilation. Please use it by installing torch_npu."
-        )
+        raise NotImplementedError("Flash attention SDPA does not require just-in-time compilation.")
 
     def load(self):
         from typing import Optional
 
         import torch
-        import torch_npu
 
         def flash_attention(
             q: torch.Tensor,
@@ -47,16 +44,13 @@ class FlashAttentionNpuExtension(_Extension):
             q_indices: Optional[torch.Tensor] = None,
             kv_indices: Optional[torch.Tensor] = None,
         ):
-            num_heads = q.size(1)
-            return torch_npu.npu_fusion_attention(
+            return torch.nn.functional.scaled_dot_product_attention(
                 q,
                 k,
                 v,
-                num_heads,
-                "BNSD",
-                atten_mask=attention_mask.bool(),
+                attn_mask=attention_mask,
+                dropout_p=dropout_p,
                 scale=scale,
-                keep_prob=1 - dropout_p,
-            )[0]
+            )
 
         return flash_attention

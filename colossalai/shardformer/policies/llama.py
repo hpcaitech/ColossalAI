@@ -11,6 +11,7 @@ from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Ro
 from ..modeling.llama import (
     LlamaPipelineForwards,
     get_llama_flash_attention_forward,
+    get_llama_model_forward_for_flash_attn,
     get_lm_forward_with_dist_cross_entropy,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -135,6 +136,15 @@ class LlamaPolicy(Policy):
                 policy=policy,
                 target_key=LlamaAttention,
             )
+            if self.pipeline_stage_manager is None:
+                # replace llama model forward method
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_llama_model_forward_for_flash_attn(self.shard_config),
+                    },
+                    policy=policy,
+                    target_key=LlamaModel,
+                )
 
         return policy
 
@@ -157,7 +167,7 @@ class LlamaPolicy(Policy):
             layers_per_stage = self.distribute_layers(
                 len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
             )
-            stage_manager.stage_indices = Policy.get_stage_index(
+            stage_manager.stage_indices = self.get_stage_index(
                 layers_per_stage,
                 stage_manager.stage,
                 num_model_chunks=stage_manager.num_model_chunks,
@@ -168,8 +178,8 @@ class LlamaPolicy(Policy):
             }
 
         else:
-            layers_per_stage = Policy.distribute_layers(len(module.layers), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
+            stage_index = self.get_stage_index(layers_per_stage, stage_manager.stage)
             method_replacement = {
                 "forward": partial(
                     new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
@@ -197,7 +207,7 @@ class LlamaPolicy(Policy):
             layers_per_stage = self.distribute_layers(
                 len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
             )
-            stage_indices = Policy.get_stage_index(
+            stage_indices = self.get_stage_index(
                 layers_per_stage,
                 stage_manager.stage,
                 num_model_chunks=stage_manager.num_model_chunks,
@@ -255,12 +265,18 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
             new_item = {
                 LlamaForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
-                        SubModuleReplacementDescription(suffix="lm_head", target_module=Linear1D_Col, kwargs={"gather_output": not self.shard_config.parallel_output})
+                        SubModuleReplacementDescription(
+                            suffix="lm_head",
+                            target_module=Linear1D_Col,
+                            kwargs={"gather_output": not self.shard_config.parallel_output},
+                        )
                     ],
                 )
             }
             if self.shard_config.parallel_output:
-                new_item[LlamaForCausalLM].method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)}
+                new_item[LlamaForCausalLM].method_replacement = {
+                    "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
+                }
             policy.update(new_item)
 
         if self.pipeline_stage_manager:

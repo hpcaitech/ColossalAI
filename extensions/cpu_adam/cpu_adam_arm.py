@@ -7,11 +7,11 @@ class CpuAdamArmExtension(_CppExtension):
     def __init__(self):
         super().__init__(name="cpu_adam_arm")
 
-    def is_hardware_available(self) -> bool:
+    def is_available(self) -> bool:
         # only arm allowed
         return platform.machine() == "aarch64"
 
-    def assert_hardware_compatible(self) -> None:
+    def assert_compatible(self) -> None:
         arch = platform.machine()
         assert (
             arch == "aarch64"

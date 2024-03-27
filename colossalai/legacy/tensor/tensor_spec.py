@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from colossalai.legacy.tensor.distspec import DistPlacementPattern, _DistSpec
@@ -17,5 +17,5 @@ class ColoTensorSpec:
     """
 
     pg: ProcessGroup
-    dist_attr: Optional[_DistSpec] = _DistSpec(DistPlacementPattern.REPLICATE)
+    dist_attr: Optional[_DistSpec] = field(default_factory=lambda: _DistSpec(DistPlacementPattern.REPLICATE))
     compute_attr: Optional[ComputeSpec] = None
