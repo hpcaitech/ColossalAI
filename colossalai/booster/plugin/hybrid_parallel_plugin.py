@@ -1196,8 +1196,8 @@ class HybridParallelPlugin(PipelinePluginBase):
             else:
                 # Here we bind the ZeRO group with sp group when user enable both ZeRO and all_to_all sp.
                 if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
-                    self.zero_dp_size = self.sp_size
-                    self.zero_dp_group = self.sp_group
+                    self.zero_dp_size = self.sp_size * self.dp_size
+                    self.zero_dp_group = self.pg_mesh.create_group_along_axis([DP_AXIS, SP_AXIS])
                 else:
                     self.zero_dp_size = self.dp_size
                     self.zero_dp_group = self.dp_group
