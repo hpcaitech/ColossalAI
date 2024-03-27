@@ -3,6 +3,7 @@ from typing import Union
 import torch
 import torch.nn as nn
 from torch import Tensor
+from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
 
@@ -133,3 +134,26 @@ class OptimizerWrapper:
         Unwrap the optimizer for checkpoint saving/loading.
         """
         return self.optim
+
+
+class DistributedOptimizer(Optimizer):
+    def __init__(
+        self,
+        params,
+        lr=None,
+        eps=(1e-30, 1e-16),
+        clip_threshold=1.0,
+        betas=(0.9, 0.999, 0.9999),
+        weight_decay=0.0,
+    ):
+        defaults = dict(
+            lr=lr,
+            eps=eps,
+            clip_threshold=clip_threshold,
+            betas=betas,
+            weight_decay=weight_decay,
+        )
+        super(DistributedOptimizer, self).__init__(params, defaults)
+
+    def setup_distributed(self, master_to_working_map: dict, tp_group: ProcessGroup, zero_group: ProcessGroup):
+        pass
