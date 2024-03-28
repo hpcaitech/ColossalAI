@@ -81,5 +81,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         "In-place fused Add and RMS Normalization.");
 
   m.def("get_cos_and_sin", &get_cos_and_sin,
-        "Get cos and sin from the cachet.");
+        "Get cos and sin from the cache.");
 }
