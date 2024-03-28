@@ -931,6 +931,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         pp_style (str, optional): The style for pipeline parallelism. Defaults to '1f1b'.
         num_model_chunks (int, optional): The number of model chunks for interleaved pipeline parallelism. Defaults to 1.
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
+        make_vocab_size_divisible_by (int, optional): it's used when padding the vocabulary size, to make it choose an faster kenel. Default to 64.
     """
 
     def __init__(
@@ -970,6 +971,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         pp_style: str = "1f1b",
         num_model_chunks: int = 1,
         enable_metadata_cache: bool = True,
+        make_vocab_size_divisible_by: int = 64,
     ) -> None:
         super().__init__()
         assert (
@@ -1043,6 +1045,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             enable_sequence_parallelism=enable_sequence_parallelism,
             enable_sequence_overlap=enable_sequence_overlap,
             parallel_output=parallel_output,
+            make_vocab_size_divisible_by=make_vocab_size_divisible_by,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,

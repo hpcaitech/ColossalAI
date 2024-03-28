@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
 
-from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, RMSNorm, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, VocabParallelLMHead1D, PaddingLMHead, Linear1D_Row, RMSNorm, VocabParallelEmbedding1D, PaddingEmbedding
 
 from ..modeling.llama import (
     LlamaPipelineForwards,
@@ -22,22 +22,25 @@ class LlamaPolicy(Policy):
     def config_sanity_check(self):
         pass
 
+    def tie_weight_check(self):
+        input_embedding = self.model.get_input_embeddings()
+        output_embedding = self.model.get_output_embeddings()
+        return input_embedding is not None and output_embedding is not None and id(input_embedding.weight) == id(output_embedding.weight)
+
     def preprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
-            # Resize embedding
-            vocab_size = self.model.config.vocab_size
-            world_size = self.shard_config.tensor_parallel_size
-
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
-
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel
 
         policy = {}
+
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = VocabParallelEmbedding1D
+        else:
+            if self.tie_weight_check():
+                embedding_cls = PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
             norm_cls = FusedRMSNorm
@@ -92,14 +95,16 @@ class LlamaPolicy(Policy):
                 ],
             )
 
+        if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
-                    target_module=VocabParallelEmbedding1D,
+                    target_module=embedding_cls,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
                 ),
                 policy=policy,
                 target_key=LlamaModel,
-            )
+            )           
 
         # optimization configuration
         self.append_or_create_submodule_replacement(
@@ -250,19 +255,25 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
 
         policy = super().module_policy()
 
-        setattr(self.shard_config, "causal_lm", True)
-
         if self.shard_config.enable_tensor_parallelism:
-            # add a new item for casual lm
             new_item = {
                 LlamaForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
-                        SubModuleReplacementDescription(suffix="lm_head", target_module=Linear1D_Col)
+                        SubModuleReplacementDescription(suffix="lm_head", target_module=VocabParallelLMHead1D, kwargs={"gather_output": not self.shard_config.parallel_output, "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by})
                     ],
-                    method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
+                    method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)}
                 )
             }
-            policy.update(new_item)
+        else:
+           new_item = {
+                LlamaForCausalLM: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(suffix="lm_head", target_module=PaddingLMHead, kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by})
+                    ],
+                )
+            }
+        print("new_item", new_item)
+        policy.update(new_item)
 
         if self.pipeline_stage_manager:
             # set None as default

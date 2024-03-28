@@ -243,7 +243,7 @@ def check_weight(
         if verbose and dist.get_rank() == 0:
             print(f"'{suffix}' weight: {org_weight}, {sharded_weight}")
 
-        assert_close(org_weight.float(), sharded_weight.float(), atol=atol, rtol=rtol)
+        assert_close(org_weight.float(), sharded_weight[:org_weight.shape[0]].float(), atol=atol, rtol=rtol)
 
 
 def get_grad_tensors_for_check(
