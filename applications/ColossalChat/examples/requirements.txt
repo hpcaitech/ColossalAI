@@ -1,0 +1,4 @@
+pandas>=1.4.1
+sentencepiece
+colossalai
+prompt_toolkit

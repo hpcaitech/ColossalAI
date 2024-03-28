@@ -1,0 +1,4 @@
+Model=Opt-125m; lora_rank=0; plugin=zero2
+Max CUDA memory usage: 26123.16 MB
+Model=Opt-125m; lora_rank=0; plugin=zero2
+Max CUDA memory usage: 26123.91 MB

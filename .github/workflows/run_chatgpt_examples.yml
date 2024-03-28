@@ -19,8 +19,8 @@ jobs:
     runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
-      options: --gpus all --rm -v /data/scratch/github_actions/chat:/data/scratch/github_actions/chat --shm-size=10.24gb
-    timeout-minutes: 30
+      options: --gpus all --rm -v /data/scratch/examples-data:/data/scratch/examples-data --shm-size=10.24gb
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -28,26 +28,35 @@ jobs:
       - name: Checkout ColossalAI
         uses: actions/checkout@v2
 
+      - name: Install Colossal-AI
+        run: |
+          BUILD_EXT=1 pip install -v -e .
+
       - name: Install ChatGPT
         run: |
-          cd applications/Chat
+          cd applications/ColossalChat
           pip install -v .
+          export BUILD_EXT=1
           pip install -r examples/requirements.txt
 
       - name: Install Transformers
         run: |
-          pip install transformers==4.30.2
+          pip install transformers==4.34.1
 
       - name: Execute Examples
         run: |
-          cd applications/Chat
+          cd applications/ColossalChat
           rm -rf ~/.cache/colossalai
-          ./tests/test_inference.sh
-          ./tests/test_benchmarks.sh
+          mkdir models
+          mkdir sft_data
+          mkdir prompt_data
+          mkdir preference_data
+          ./tests/test_data_preparation.sh
           ./tests/test_train.sh
         env:
           NCCL_SHM_DISABLE: 1
           MAX_JOBS: 8
-          SFT_DATASET: /data/scratch/github_actions/chat/data.json
-          PROMPT_DATASET: /data/scratch/github_actions/chat/prompts_en.jsonl
-          PRETRAIN_DATASET: /data/scratch/github_actions/chat/alpaca_data.json
+          PRETRAINED_MODEL_PATH: ./models
+          SFT_DATASET: ./sft_data
+          PROMPT_DATASET: ./prompt_data
+          PREFERENCE_DATASET: ./preference_data
