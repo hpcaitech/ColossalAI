@@ -56,21 +56,14 @@
       AT_ERROR(#NAME, " not implemented for '", toString(TYPE), "'"); \
   }
 
-#define DISPATCH_FLOAT_HALF_AND_BFLOAT_WITH_HIGH_PRECISION(HIGH_PRECISION,    \
-                                                           TYPE, NAME, ...)   \
-  switch (HIGH_PRECISION) {                                                   \
-    case false: {                                                             \
-      const bool high_precision = false;                                      \
-      DISPATCH_FLOAT_HALF_AND_BFLOAT(TYPE, NAME, __VA_ARGS__);                \
-      break;                                                                  \
-    }                                                                         \
-    case true: {                                                              \
-      const bool high_precision = true;                                       \
-      DISPATCH_FLOAT_HALF_AND_BFLOAT(TYPE, NAME, __VA_ARGS__);                \
-      break;                                                                  \
-    }                                                                         \
-    default:                                                                  \
-      AT_ERROR("HIGH_PRECISION must be bool, but get ", HIGH_PRECISION, "."); \
+#define DISPATCH_FLOAT_HALF_AND_BFLOAT_WITH_HIGH_PRECISION(HIGH_PRECISION,  \
+                                                           TYPE, NAME, ...) \
+  if (HIGH_PRECISION) {                                                     \
+    const bool high_precision = true;                                       \
+    DISPATCH_FLOAT_HALF_AND_BFLOAT(TYPE, NAME, __VA_ARGS__);                \
+  } else {                                                                  \
+    const bool high_precision = false;                                      \
+    DISPATCH_FLOAT_HALF_AND_BFLOAT(TYPE, NAME, __VA_ARGS__);                \
   }
 
 #define DISPATCH_FLOAT_HALF_AND_BFLOAT_INOUT_TYPES(TYPEIN, TYPEOUT, NAME, ...) \
