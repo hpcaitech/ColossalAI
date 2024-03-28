@@ -21,7 +21,7 @@ from colossalai.tensor.d_tensor.api import (
 )
 
 from ._operation import gather_forward_split_backward, reduce_forward
-from .parallel_module import ParallelModule, PaddingParallelModule
+from .parallel_module import PaddingParallelModule, ParallelModule
 from .utils import create_randomizer_with_offset
 
 __all__ = ["Embedding1D", "VocabParallelEmbedding1D", "PaddingEmbedding"]
@@ -160,6 +160,7 @@ class Embedding1D(ParallelModule):
         else:
             return output_parallel
 
+
 class PaddingEmbedding(PaddingParallelModule):
     def __init__(
         self,
@@ -179,8 +180,10 @@ class PaddingEmbedding(PaddingParallelModule):
         self.embed_kwargs = kwargs
         self.padding_idx = padding_idx
         if num_embeddings % make_vocab_size_divisible_by != 0:
-            self.num_embeddings = num_embeddings + make_vocab_size_divisible_by - (num_embeddings % make_vocab_size_divisible_by)
-        # parameter
+            self.num_embeddings = (
+                num_embeddings + make_vocab_size_divisible_by - (num_embeddings % make_vocab_size_divisible_by)
+            )
+        # create weight and bias
         if weight is None:
             factory_kwargs = {"device": device, "dtype": dtype}
             weight = nn.Parameter(torch.empty((num_embeddings, self.embedding_dim), **factory_kwargs))
@@ -204,11 +207,12 @@ class PaddingEmbedding(PaddingParallelModule):
                 self.weight[self.padding_idx].fill_(0)
 
     def forward(self, input: Tensor) -> Tensor:
-        return F.embedding(
-            input, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
+        return F.embedding(input, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
 
     @staticmethod
-    def from_native_module(module: nn.Embedding, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs) -> PaddingParallelModule:
+    def from_native_module(
+        module: nn.Embedding, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
+    ) -> PaddingParallelModule:
         r"""
         Convert a native pytorch embedding module to a parallel module.
         """
@@ -233,7 +237,8 @@ class PaddingEmbedding(PaddingParallelModule):
         )
 
         return padding_embedding
-    
+
+
 class VocabParallelEmbedding1D(PaddingParallelModule):
     r"""Embedding parallelized in the vocabulary dimension.
 
@@ -314,14 +319,13 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
         # offset the seed with randomizer index and rank
         seed = torch.random.initial_seed()
         self.randomizer = create_randomizer_with_offset(seed, process_group=self.process_group)
-        
+
         if not is_distributed_tensor(self.weight):
             sharded_weight = shard_rowwise(self.weight.data, process_group)
             sharded_tensor_to_existing_param(sharded_weight, self.weight)
 
         if weight is None:
             self.reset_parameters(weight_initializer)
-
 
     @staticmethod
     def from_native_module(
