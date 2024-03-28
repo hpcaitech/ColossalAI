@@ -53,6 +53,8 @@ class GPT2Policy(Policy):
             norm_cls = col_nn.LayerNorm
 
         sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        sp_size = self.shard_config.sequence_parallel_size
+        sp_group = self.shard_config.sequence_parallel_process_group
         overlap = self.shard_config.enable_sequence_overlap
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
         use_flash_attention = self.shard_config.enable_flash_attention
@@ -62,8 +64,16 @@ class GPT2Policy(Policy):
                 warnings.warn(
                     f"Sequence parallelism mode {sp_mode} cannot be used with FlashAttention, will disable FlashAttention automatically."
                 )
-                self.shard_config.enable_flash_attention = False
                 use_flash_attention = False
+
+        if sp_mode == "all_to_all":
+            decoder_attribute_replacement = {
+                "num_heads": self.model.config.num_attention_heads // sp_size,
+            }
+            policy[GPT2Attention] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+            )
+
         if self.shard_config.enable_tensor_parallelism:
             policy[GPT2Model] = ModulePolicyDescription(
                 sub_module_replacement=[
@@ -168,7 +178,7 @@ class GPT2Policy(Policy):
         if use_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_gpt2_flash_attention_forward(),
+                    "forward": get_gpt2_flash_attention_forward(sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
                 target_key=GPT2Attention,
@@ -179,7 +189,9 @@ class GPT2Policy(Policy):
                 }
 
         if sp_mode is not None:
-            policy[GPT2Model].method_replacement = {"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)}
+            policy[GPT2Model].method_replacement = {
+                "forward": gpt2_sequence_parallel_forward_fn(sp_mode, sp_size, sp_group)
+            }
 
         return policy
 
@@ -202,7 +214,7 @@ class GPT2Policy(Policy):
             layers_per_stage = self.distribute_layers(
                 len(module.h), stage_manager.num_stages * stage_manager.num_model_chunks
             )
-            stage_indices = self.get_stage_index(
+            stage_indices = Policy.get_stage_index(
                 layers_per_stage,
                 stage_manager.stage,
                 num_model_chunks=stage_manager.num_model_chunks,
@@ -243,7 +255,7 @@ class GPT2Policy(Policy):
             layers_per_stage = self.distribute_layers(
                 len(module.h), stage_manager.num_stages * stage_manager.num_model_chunks
             )
-            stage_manager.stage_indices = self.get_stage_index(
+            stage_manager.stage_indices = Policy.get_stage_index(
                 layers_per_stage,
                 stage_manager.stage,
                 num_model_chunks=stage_manager.num_model_chunks,
@@ -257,8 +269,8 @@ class GPT2Policy(Policy):
                 )
             }
         else:
-            layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
-            stage_index = self.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
+            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
             method_replacement = {
                 "forward": partial(
                     new_forward,
