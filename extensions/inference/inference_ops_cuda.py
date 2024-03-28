@@ -16,6 +16,7 @@ class InferenceOpsCudaExtension(_CudaExtension):
                 "cuda/fused_rotary_emb_and_cache_kernel.cu",
                 "cuda/activation_kernel.cu",
                 "cuda/rms_layernorm_kernel.cu",
+                "cuda/get_cos_and_sin_kernel.cu",
             ]
         ]
         return ret
