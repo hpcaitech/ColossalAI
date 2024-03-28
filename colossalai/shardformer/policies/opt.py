@@ -208,8 +208,8 @@ class OPTPolicy(Policy):
             else:
                 module = self.model.model.decoder
 
-            layers_per_stage = Policy.distribute_layers(len(module.layers), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
+            stage_index = self.get_stage_index(layers_per_stage, stage_manager.stage)
             method_replacement = {
                 "forward": partial(
                     new_forward,
