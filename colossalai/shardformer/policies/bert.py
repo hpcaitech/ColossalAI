@@ -37,11 +37,15 @@ class BertPolicy(Policy):
 
     def preprocess(self):
         return self.model
-    
+
     def tie_weight_check(self):
         input_embedding = self.model.get_input_embeddings()
         output_embedding = self.model.get_output_embeddings()
-        return input_embedding is not None and output_embedding is not None and id(input_embedding.weight) == id(output_embedding.weight)
+        return (
+            input_embedding is not None
+            and output_embedding is not None
+            and id(input_embedding.weight) == id(output_embedding.weight)
+        )
 
     def module_policy(self):
         from transformers.models.bert.modeling_bert import (
@@ -142,13 +146,13 @@ class BertPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="word_embeddings",
                         target_module=embedding_cls,
-                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                     )
                 ],
                 policy=policy,
                 target_key=BertEmbeddings,
             )
-            
+
         if use_sequence_parallel:
             self.append_or_create_method_replacement(
                 description={"forward": bert_sequence_parallel_forward_fn(self.shard_config)},
@@ -224,7 +228,12 @@ class BertPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
-                    suffix="decoder", target_module=col_nn.VocabParallelLMHead1D, kwargs={"gather_output": True, "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                    suffix="decoder",
+                    target_module=col_nn.VocabParallelLMHead1D,
+                    kwargs={
+                        "gather_output": True,
+                        "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                    },
                 ),
                 policy=base_policy,
                 target_key=BertLMPredictionHead,
@@ -232,7 +241,9 @@ class BertPolicy(Policy):
         else:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
-                    suffix="decoder", target_module=col_nn.PaddingLMHead, kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                    suffix="decoder",
+                    target_module=col_nn.PaddingLMHead,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                 ),
                 policy=base_policy,
                 target_key=BertLMPredictionHead,
