@@ -6,17 +6,18 @@ from torch.distributed import ProcessGroup
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
-__all__ = ["ShardConfig", "AdvancedPipelineConfig"]
+__all__ = ["ShardConfig", "PipelineGradientConfig"]
 
 
-class AdvancedPipelineConfig:
+class PipelineGradientConfig:
     r"""
-    The advanced pipeline config is designed to provide more flexibility for users to customize the pipeline parallelism.
+    The pipeline gradient config is designed to provide more flexibility for users to control gradient checkpoint in pipeline parallelism.
+    Combined with PipelineStageManager.set_distribution_config, user can fully control the distribution of layers and checkpointed layers in pipeline parallelism.
     Refer to https://github.com/hpcaitech/ColossalAI/issues/5509 for more details.
 
     It provides the following features:
         1. `gradient_checkpointing_ratio`: This is used to control gradient checkpointing more precisely, e.g., set 50% of the layers to use gradient checkpointing.
-        2. Customize # layers and # ckpt layers assigned to each stage. This takes precedence over `gradient_checkpointing_ratio`.
+        2. Customize # ckpt layers assigned to each stage. This takes precedence over `gradient_checkpointing_ratio`.
 
     """
 
@@ -26,7 +27,6 @@ class AdvancedPipelineConfig:
         num_stages: Optional[int] = None,
         num_model_chunks: Optional[int] = None,
         num_model_layers: Optional[int] = None,
-        num_layers_per_stage: Optional[List[int]] = None,
         num_ckpt_layers_per_stage: Optional[List[int]] = None,
     ) -> None:
         """
@@ -35,7 +35,6 @@ class AdvancedPipelineConfig:
             num_stages (Optional[int]): Number of stages in the pipeline. Defaults to None. For sanity check.
             num_model_chunks (Optional[int]): Number of model chunks (1F1B or Interleaved). Defaults to None. For sanity check.
             num_model_layers (Optional[int]): Number of model layers. Defaults to None. For sanity check.
-            num_layers_per_stage (Optional[List[int]]): Number of layers for each stage. Defaults to None.
             num_ckpt_layers_per_stage (Optional[List[int]]): Number of checkpointed layers for each stage. Defaults to None.
 
         Example 1:
@@ -58,7 +57,6 @@ class AdvancedPipelineConfig:
         self.num_stages = num_stages
         self.num_model_chunks = num_model_chunks
         self.num_model_layers = num_model_layers
-        self.num_layers_per_stage = num_layers_per_stage
         self.num_ckpt_layers_per_stage = num_ckpt_layers_per_stage
         self._sanity_check()
 
@@ -67,32 +65,19 @@ class AdvancedPipelineConfig:
             if not (0 <= self.gradient_checkpointing_ratio <= 1):
                 raise ValueError("gradient_checkpointing_ratio should be in 0% to 100%")
 
-        if self.control_distribute_layers:
+        if self._enable_customized_ckpt_layers_per_stage:
             assert (
                 self.num_stages is not None and self.num_model_chunks is not None and self.num_model_layers is not None
             )
-            assert all([0 < num_layers < self.num_model_layers for num_layers in self.num_layers_per_stage])
-            assert sum(self.num_layers_per_stage) == self.num_model_layers
-            assert len(self.num_layers_per_stage) == self.num_stages * self.num_model_chunks
-
-        if self._enable_customized_ckpt_layers_per_stage:
-            assert self.num_layers_per_stage is not None
-            assert len(self.num_layers_per_stage) == len(self.num_ckpt_layers_per_stage)
+            assert len(self.num_ckpt_layers_per_stage) == self.num_stages * self.num_model_chunks
             assert all(
-                [
-                    0 <= num_ckpt_layers <= num_layers
-                    for num_ckpt_layers, num_layers in zip(self.num_ckpt_layers_per_stage, self.num_layers_per_stage)
-                ]
+                [0 <= num_ckpt_layers < self.num_model_layers for num_ckpt_layers in self.num_ckpt_layers_per_stage]
             )
-            self.gradient_checkpointing_ratio = sum(self.num_ckpt_layers_per_stage) / sum(self.num_layers_per_stage)
+            self.gradient_checkpointing_ratio = sum(self.num_ckpt_layers_per_stage) / self.num_model_layers
 
     @property
     def control_gradient_checkpointing(self) -> bool:
         return self._enable_gradient_checkpointing_ratio or self._enable_customized_ckpt_layers_per_stage
-
-    @property
-    def control_distribute_layers(self) -> bool:
-        return self.num_layers_per_stage is not None
 
     @property
     def _enable_gradient_checkpointing_ratio(self) -> bool:
@@ -102,22 +87,19 @@ class AdvancedPipelineConfig:
     def _enable_customized_ckpt_layers_per_stage(self) -> bool:
         return self.num_ckpt_layers_per_stage is not None
 
-    def distribute_layers(self, num_layers: int, num_stages: int) -> List[int]:
-        assert self.control_distribute_layers
-        assert num_layers == self.num_model_layers and num_stages == self.num_stages * self.num_model_chunks
-        return self.num_layers_per_stage
-
     def get_num_ckpt_layers(self, stage: int, num_layers: int, model_chunk_id: int = 0) -> int:
-        if self.control_distribute_layers:
-            assert stage <= self.num_stages and model_chunk_id <= self.num_model_chunks
-            assert num_layers == self.num_layers_per_stage[stage + model_chunk_id * self.num_stages]
+        if not self.control_gradient_checkpointing:
+            raise RuntimeError("No checkpointed layers information is provided")
 
         if self._enable_customized_ckpt_layers_per_stage:
-            return self.num_ckpt_layers_per_stage[stage + model_chunk_id * self.num_stages]
+            assert stage <= self.num_stages and model_chunk_id <= self.num_model_chunks
+            num_ckpt_layers = self.num_ckpt_layers_per_stage[stage + model_chunk_id * self.num_stages]
+            assert num_ckpt_layers <= num_layers
+            return num_ckpt_layers
         elif self._enable_gradient_checkpointing_ratio:
             return int(self.gradient_checkpointing_ratio * num_layers)
         else:
-            raise RuntimeError("No checkpointed layers information is provided")
+            raise NotImplementedError()
 
 
 @dataclass
@@ -134,7 +116,7 @@ class ShardConfig:
         enable_jit_fused (bool, optional): Whether to switch on JIT fused operators. Defaults to False.
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism, which partitions non-tensor-parallel regions along the sequence dimension. Defaults to False.
         enable_sequence_overlap (bool): Whether to turn on sequence overlap, which overlap the computation and communication in sequence parallelism. It can only be used when enable_sequence_parallelism is True. Defaults to False.
-        advanced_pipeline_config (Optional[AdvancedPipelineConfig]): The advanced pipeline config for more flexibility in pipeline parallelism. Defaults to None.
+        pipeline_gradient_config (Optional[PipelineGradientConfig]): The pipeline gradient config for more flexibility in pipeline parallelism. Defaults to None.
         enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalization', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
     """
     tensor_parallel_process_group: Optional[ProcessGroup] = None
@@ -147,7 +129,7 @@ class ShardConfig:
     enable_sequence_parallelism: bool = False
     enable_sequence_overlap: bool = False
     parallel_output: bool = True
-    advanced_pipeline_config: Optional[AdvancedPipelineConfig] = None
+    pipeline_gradient_config: Optional[PipelineGradientConfig] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
     # TODO padding vocab
     # make_vocab_size_divisible_by: int = 128
