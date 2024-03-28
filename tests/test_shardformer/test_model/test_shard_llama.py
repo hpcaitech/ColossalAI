@@ -5,7 +5,7 @@ import torch
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
-from colossalai.shardformer import AdvancedPipelineConfig
+from colossalai.shardformer import PipelineGradientConfig
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
@@ -107,7 +107,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "fp16",
             "initial_scale": 1,
             "enable_gradient_checkpointing": True,
-            "advanced_pipeline_config": AdvancedPipelineConfig(gradient_checkpointing_ratio=0.5),
+            "pipeline_gradient_config": PipelineGradientConfig(gradient_checkpointing_ratio=0.5),
         },
         {
             "tp_size": 1,
@@ -116,8 +116,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "use_lazy_init": False,
             "precision": "fp32",
             "enable_gradient_checkpointing": True,
-            "advanced_pipeline_config": AdvancedPipelineConfig(
-                num_stages=2, num_model_chunks=1, num_model_layers=8, num_layers_per_stage=[5, 3]
+            "pipeline_gradient_config": PipelineGradientConfig(
+                num_stages=2, num_model_chunks=1, num_model_layers=8, num_ckpt_layers_per_stage=[4, 0]
             ),
         },
         {
@@ -201,12 +201,11 @@ def run_llama_test(test_config):
             "zero_stage": 1,
             "initial_scale": 1,
             "enable_gradient_checkpointing": True,
-            "advanced_pipeline_config": AdvancedPipelineConfig(
+            "pipeline_gradient_config": PipelineGradientConfig(
                 num_stages=2,
                 num_model_chunks=2,
                 num_model_layers=8,
-                num_layers_per_stage=[3, 3, 1, 1],
-                num_ckpt_layers_per_stage=[0, 0, 1, 1],
+                num_ckpt_layers_per_stage=[0, 1, 2, 2],
             ),
         },
     ],
