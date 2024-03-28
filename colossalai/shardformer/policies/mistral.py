@@ -3,7 +3,7 @@ from typing import Dict, Union
 
 import torch.nn as nn
 
-from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, VocabParallelLMHead1D, PaddingLMHead, Linear1D_Row, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, VocabParallelLMHead1D, PaddingLMHead, Linear1D_Row, VocabParallelEmbedding1D, PaddingEmbedding
 
 from ..modeling.mistral import get_mistral_flash_attention_forward
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -21,7 +21,7 @@ class MistralPolicy(Policy):
     def tie_weight_check(self):
         input_embedding = self.model.get_input_embeddings()
         output_embedding = self.model.get_output_embeddings()
-        return input_embedding is not None and output_embedding is not None and input_embedding.weight == output_embedding.weight
+        return input_embedding is not None and output_embedding is not None and id(input_embedding.weight) == id(output_embedding.weight)
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         from transformers.models.mistral.modeling_mistral import MistralAttention, MistralDecoderLayer, MistralModel
@@ -88,6 +88,7 @@ class MistralPolicy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
                     target_module=embedding_cls,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
                 ),
                 policy=policy,
                 target_key=MistralModel,

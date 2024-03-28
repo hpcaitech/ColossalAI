@@ -48,7 +48,7 @@ class WhisperPolicy(Policy):
     def tie_weight_check(self):
         input_embedding = self.model.get_input_embeddings()
         output_embedding = self.model.get_output_embeddings()
-        return input_embedding is not None and output_embedding is not None and input_embedding.weight == output_embedding.weight
+        return input_embedding is not None and output_embedding is not None and id(input_embedding.weight) == id(output_embedding.weight)
 
     def module_policy(self):
         from transformers.models.whisper.modeling_whisper import (
@@ -172,21 +172,13 @@ class WhisperPolicy(Policy):
                 ],
             )
 
-            # policy[WhisperDecoder] = ModulePolicyDescription(
-            #     sub_module_replacement=[
-            #         SubModuleReplacementDescription(
-            #             suffix="embed_tokens",
-            #             target_module=col_nn.VocabParallelEmbedding1D,
-            #         ),
-            #     ]
-            # )
-
         if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=[
                     SubModuleReplacementDescription(
                         suffix="embed_tokens",
                         target_module=embedding_cls,
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
                     ),
                 ],
                 policy=policy,
@@ -296,7 +288,7 @@ class WhisperPolicy(Policy):
         else:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
-                    suffix="proj_out", target_module=col_nn.PaddingLMHead, kwargs={"gather_output": True, "make_vocab_size_divisible_by":self.shard_config.make_vocab_size_divisible_by}
+                    suffix="proj_out", target_module=col_nn.PaddingLMHead, kwargs={"make_vocab_size_divisible_by":self.shard_config.make_vocab_size_divisible_by}
                 ),
                 policy=base_policy,
                 target_key=WhisperForConditionalGeneration,

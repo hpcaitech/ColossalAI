@@ -35,7 +35,7 @@ class ChatGLMPolicy(Policy):
     def tie_weight_check(self):
         input_embedding = self.model.get_input_embeddings()
         output_embedding = self.model.get_output_embeddings()
-        return input_embedding is not None and output_embedding is not None and input_embedding.weight == output_embedding.weight
+        return input_embedding is not None and output_embedding is not None and id(input_embedding.weight) == id(output_embedding.weight)
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMModel, CoreAttention, GLMBlock
@@ -105,6 +105,7 @@ class ChatGLMPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="embedding.word_embeddings",
                         target_module=embedding_cls,
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
                     ),
                 ],
                 policy=policy,

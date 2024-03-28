@@ -194,7 +194,6 @@ class PaddingEmbedding(PaddingParallelModule):
         if weight is None:
             self.reset_parameters()
 
-
     def reset_parameters(self) -> None:
         init.normal_(self.weight)
         self._fill_padding_idx_with_zero()
@@ -302,7 +301,6 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
 
         # resize vocabulary size
         super().__init__(self.num_embeddings, num_embeddings, weight)
-        print("self.num_embeddings", self.num_embeddings, "num_embeddings", num_embeddings)
         self.resize_embedding_weight()
 
         # deal with tensor parallelism

@@ -213,7 +213,6 @@ class PaddingParallelModule(nn.Module, ABC):
             prefix (str): the prefix for parameters and buffers used in this
                 module
         """
-        print("_save_from_state_dict")
         for name, param in self._parameters.items():
             if param is not None:
                 param = gather_distributed_param(param, keep_vars=keep_vars)

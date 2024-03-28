@@ -222,11 +222,11 @@ def test_llama():
     spawn(check_llama, 4)
 
 
-# @pytest.mark.largedist
-# @rerun_if_address_is_in_use()
-# @clear_cache_before_run()
-# def test_llama_3d():
-#     spawn(check_llama_3d, 8)
+@pytest.mark.largedist
+@rerun_if_address_is_in_use()
+@clear_cache_before_run()
+def test_llama_3d():
+    spawn(check_llama_3d, 8)
 
 
 if __name__ == "__main__":

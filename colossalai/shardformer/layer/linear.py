@@ -508,8 +508,7 @@ class PaddingLMHead(PaddingParallelModule):
         output = F.linear(input, self.weight, self.bias)
         output = output[..., :self.old_num_embeddings]
         return output
-
-
+    
 class VocabParallelLMHead1D(PaddingParallelModule, Linear1D_Col):
     r"""Linear layer with column parallelism.
 

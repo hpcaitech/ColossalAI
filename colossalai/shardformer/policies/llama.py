@@ -25,7 +25,7 @@ class LlamaPolicy(Policy):
     def tie_weight_check(self):
         input_embedding = self.model.get_input_embeddings()
         output_embedding = self.model.get_output_embeddings()
-        return input_embedding is not None and output_embedding is not None and input_embedding.weight == output_embedding.weight
+        return input_embedding is not None and output_embedding is not None and id(input_embedding.weight) == id(output_embedding.weight)
 
     def preprocess(self):
         return self.model
@@ -272,7 +272,7 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                     ],
                 )
             }
-
+        print("new_item", new_item)
         policy.update(new_item)
 
         if self.pipeline_stage_manager:
