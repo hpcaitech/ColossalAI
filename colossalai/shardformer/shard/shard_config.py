@@ -38,7 +38,7 @@ class ShardConfig:
     make_vocab_size_divisible_by: int = 64
 
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
-    make_vocab_size_divisible_by: int = 128
+    make_vocab_size_divisible_by: int = 64
     # pipeline_parallel_size: int
     # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']

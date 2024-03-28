@@ -26,8 +26,6 @@ def check_vocab_embedding_1d(lazy_init: bool):
     assert embedding_copy.weight is dist_embedding_1d.weight
 
     # ensure state dict is reversibly loadable
-    print(type(dist_embedding_1d))
-    print("dist_embedding_1d.state_dict()", dist_embedding_1d.state_dict())
     embedding.load_state_dict(dist_embedding_1d.state_dict())
     dist_embedding_1d.load_state_dict(embedding.state_dict())
 

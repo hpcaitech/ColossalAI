@@ -40,7 +40,7 @@ class OPTPolicy(Policy):
     def tie_weight_check(self):
         input_embedding = self.model.get_input_embeddings()
         output_embedding = self.model.get_output_embeddings()
-        return input_embedding is not None and output_embedding is not None and input_embedding.weight == output_embedding.weight
+        return input_embedding is not None and output_embedding is not None and id(input_embedding.weight) == id(output_embedding.weight)
 
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer
@@ -51,8 +51,8 @@ class OPTPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = VocabParallelEmbedding1D
         else:
-            if self.tie_weight_check():
-                embedding_cls = PaddingEmbedding
+            # TODO when not tie weight and not pad the vocab size
+            embedding_cls = PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
             norm_cls = FusedLayerNorm
@@ -64,14 +64,6 @@ class OPTPolicy(Policy):
             warnings.warn("OPT doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
-            # policy[OPTDecoder] = ModulePolicyDescription(
-            #     sub_module_replacement=[
-            #         SubModuleReplacementDescription(
-            #             suffix="embed_tokens",
-            #             target_module=VocabParallelEmbedding1D,
-            #         )
-            #     ]
-            # )
             policy[OPTDecoderLayer] = ModulePolicyDescription(
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
@@ -113,7 +105,8 @@ class OPTPolicy(Policy):
         if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
-                    suffix="embed_tokens", target_module=embedding_cls, ignore_if_not_exist=True
+                    suffix="embed_tokens", target_module=embedding_cls,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
                 ),
                 policy=policy,
                 target_key=OPTDecoder,
@@ -242,7 +235,7 @@ class OPTForCausalLMPolicy(OPTPolicy):
         else:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
-                    suffix="lm_head", target_module=PaddingLMHead, kwargs=dict(gather_output=True, make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by)
+                    suffix="lm_head", target_module=PaddingLMHead, kwargs=dict(make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by)
                 ),
                 policy=policy,
                 target_key=OPTForCausalLM,

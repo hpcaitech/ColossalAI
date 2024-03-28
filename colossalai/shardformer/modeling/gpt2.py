@@ -329,7 +329,7 @@ class GPT2PipelineForwards:
             loss_fct = CrossEntropyLoss()
             shift_logits = shift_logits.view(-1, shift_logits.size(-1))
             shift_labels = shift_labels.view(-1)
-            if shard_config.parallel_output:
+            if shard_config.enable_tensor_parallelism and shard_config.parallel_output:
                 loss = cross_entropy_1d(
                     shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group, vocab_size=self.lm_head.out_features
                 )

@@ -278,7 +278,7 @@ class LlamaPipelineForwards:
                 shift_labels = shift_labels.view(-1)
                 # Enable model parallelism
                 shift_labels = shift_labels.to(shift_logits.device)
-                if shard_config.parallel_output:
+                if shard_config.enable_tensor_parallelism and shard_config.parallel_output:
                     new_vocab_size = logits.shape[-1]
                     shift_logits = shift_logits.view(-1, new_vocab_size)
                     loss = cross_entropy_1d(
@@ -567,7 +567,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             logits = torch.cat(logits, dim=-1)
         else:
             logits = self.lm_head(hidden_states)
-            logits = logits.float()
+        logits = logits.float()
 
         loss = None
         if labels is not None:

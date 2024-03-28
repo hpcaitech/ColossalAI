@@ -198,12 +198,11 @@ class ModelSharder(object):
                     native_sub_module, process_group=self.shard_config.tensor_parallel_process_group, **kwargs
                 )
             except Exception as e:
-                # raise RuntimeError(
-                #     f"Failed to replace {suffix} of type {native_sub_module.__class__.__qualname__}"
-                #     f" with {target_module.__qualname__} with the exception: {e}. "
-                #     "Please check your model configuration or sharding policy, you can set up an issue for us to help you as well."
-                # )
-                raise e
+                raise RuntimeError(
+                    f"Failed to replace {suffix} of type {native_sub_module.__class__.__qualname__}"
+                    f" with {target_module.__qualname__} with the exception: {e}. "
+                    "Please check your model configuration or sharding policy, you can set up an issue for us to help you as well."
+                )
 
             setattr_(org_layer, suffix, replace_layer)
 
