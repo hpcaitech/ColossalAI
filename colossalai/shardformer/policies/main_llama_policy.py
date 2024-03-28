@@ -12,8 +12,6 @@ from ..modeling.llama import (
     LlamaPipelineForwards,
     get_llama_flash_attention_forward,
     get_llama_model_forward_for_flash_attn,
-    get_llama_seq_parallel_attention_forward,
-    get_llama_seq_parallel_model_forward,
     get_lm_forward_with_dist_cross_entropy,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -47,92 +45,9 @@ class LlamaPolicy(Policy):
         else:
             norm_cls = RMSNorm
 
-        if self.pipeline_stage_manager is not None:
+        if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
-            self.shard_config.enable_sequence_overlap = False
-            self.shard_config.sequence_parallelism_mode = None
-            warnings.warn(
-                f"For llama, sequence parallelism is currently not compatible with pipeline parallelism, set to be False"
-            )
-        zero_stage = self.shard_config.zero_stage
-        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
-        sp_size = self.shard_config.sequence_parallel_size if self.shard_config.enable_sequence_parallelism else None
-        sp_group = (
-            self.shard_config.sequence_parallel_process_group if self.shard_config.enable_sequence_parallelism else None
-        )
-        sp_partial_derived = sp_mode in ["split_gather", "ring"]
-
-        use_flash_attention = self.shard_config.enable_flash_attention
-        # Currently sp cannot to be used with flashattention
-        if sp_mode in ["split_gather", "ring", "all_to_all"]:
-            if use_flash_attention:
-                warnings.warn(
-                    f"Sequence parallelism mode {sp_mode} need to be used with FlashAttention, will disable FlashAttention automatically."
-                )
-                use_flash_attention = False
-
-        if sp_mode in ["split_gather", "ring"]:
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_llama_seq_parallel_model_forward(
-                        sp_mode=sp_mode, sp_size=sp_size, sp_group=sp_group, use_flash_attention=use_flash_attention
-                    ),
-                },
-                policy=policy,
-                target_key=LlamaModel,
-            )
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group),
-                },
-                policy=policy,
-                target_key=LlamaAttention,
-            )
-        # elif sp_mode == "ring":
-        #     self.append_or_create_method_replacement(
-        #         description={
-        #             "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group),
-        #         },
-        #         policy=policy,
-        #         target_key=LlamaAttention,
-        #     )
-        #     self.append_or_create_method_replacement(
-        #         description={
-        #             "forward": get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group),
-        #         },
-        #         policy=policy,
-        #         target_key=LlamaModel,
-        #     )
-        elif sp_mode == "all_to_all":
-            decoder_attribute_replacement = {
-                "num_heads": self.model.config.num_attention_heads // sp_size,
-            }
-            if getattr(self.model.config, "num_key_value_heads", False):
-                decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
-
-            policy[LlamaAttention] = ModulePolicyDescription(
-                attribute_replacement=decoder_attribute_replacement,
-            )
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group),
-                },
-                policy=policy,
-                target_key=LlamaAttention,
-            )
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_llama_seq_parallel_model_forward(
-                        sp_mode=sp_mode,
-                        sp_size=sp_size,
-                        sp_group=sp_group,
-                        use_flash_attention=use_flash_attention,
-                        zero_stage=zero_stage,
-                    ),
-                },
-                policy=policy,
-                target_key=LlamaModel,
-            )
+            warnings.warn("Llama doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             decoder_attribute_replacement = {
@@ -150,37 +65,30 @@ class LlamaPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.gate_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.up_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.down_proj",
                         target_module=Linear1D_Row,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                 ],
             )
@@ -200,12 +108,10 @@ class LlamaPolicy(Policy):
                 SubModuleReplacementDescription(
                     suffix="input_layernorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 SubModuleReplacementDescription(
                     suffix="post_attention_layernorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
             ],
             policy=policy,
@@ -216,17 +122,16 @@ class LlamaPolicy(Policy):
             description=SubModuleReplacementDescription(
                 suffix="norm",
                 target_module=norm_cls,
-                kwargs={"sp_partial_derived": sp_partial_derived},
             ),
             policy=policy,
             target_key=LlamaModel,
         )
 
         # use flash attention
-        if use_flash_attention:
+        if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_group, sp_size),
+                    "forward": get_llama_flash_attention_forward(self.shard_config),
                 },
                 policy=policy,
                 target_key=LlamaAttention,
@@ -355,7 +260,7 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
 
         policy = super().module_policy()
 
-        if self.shard_config.enable_tensor_parallelism and not self.shard_config.enable_sequence_parallelism:
+        if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
             new_item = {
                 LlamaForCausalLM: ModulePolicyDescription(

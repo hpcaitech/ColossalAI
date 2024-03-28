@@ -18,8 +18,23 @@ def data_gen():
     # tokenized_input = tokenizer(input, return_tensors='pt')
     # input_ids = tokenized_input['input_ids']
     # attention_mask = tokenized_input['attention_mask']
-    input_ids = torch.tensor([[15496, 11, 616, 3290, 318, 13779, 318, 13779]], dtype=torch.int64)
-    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
+    # input_ids = torch.tensor([[15496, 11, 616, 3290, 318, 13779, 318, 13779]], dtype=torch.int64)
+    # attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
+    input_ids = torch.tensor(
+        [
+            [15496, 11, 616, 3290, 318, 13779, 318, 13779, 15496, 11, 616, 3290, 318, 13779, 318, 13779],
+            [15496, 11, 616, 3290, 318, 13779, 318, 13779, 15496, 11, 616, 3290, 318, 13779, 318, 13779],
+        ],
+        dtype=torch.int64,
+    )
+    attention_mask = torch.tensor(
+        [
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        ],
+        dtype=torch.int64,
+    )
+
     return dict(input_ids=input_ids, attention_mask=attention_mask)
 
 
@@ -35,9 +50,9 @@ def data_gen_for_question_answering():
     # question answering data gen
     # `labels` is the type not the token id for token classification, 0 or 1
     data = data_gen()
-    start_positions = torch.tensor([0], dtype=torch.int64)
+    start_positions = torch.tensor([[0], [0]], dtype=torch.int64)
     data["start_positions"] = start_positions
-    end_positions = torch.tensor([1], dtype=torch.int64)
+    end_positions = torch.tensor([[1], [1]], dtype=torch.int64)
     data["end_positions"] = end_positions
     return data
 
@@ -46,14 +61,20 @@ def data_gen_for_token_classification():
     # token classification data gen
     # `labels` is the type not the token id for token classification, 0 or 1
     data = data_gen()
-    data["labels"] = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 1]], dtype=torch.int64)
+    data["labels"] = torch.tensor(
+        [
+            [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1],
+            [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1],
+        ],
+        dtype=torch.int64,
+    )
     return data
 
 
 def data_gen_for_sequence_classification():
     # sequence classification data gen
     data = data_gen()
-    data["labels"] = torch.tensor([1], dtype=torch.int64)
+    data["labels"] = torch.tensor([[1], [1]], dtype=torch.int64)
     return data
 
 
@@ -61,12 +82,18 @@ def date_gen_for_double_heads():
     num_choices = 2
     batch_size = 2
     input_ids = torch.tensor(
-        [[15496, 11, 616, 3290, 318, 13779, 318, 13779], [15496, 11, 616, 3290, 318, 13779, 318, 13779]],
+        [
+            [15496, 11, 616, 3290, 318, 13779, 318, 13779, 15496, 11, 616, 3290, 318, 13779, 318, 13779],
+            [15496, 11, 616, 3290, 318, 13779, 318, 13779, 15496, 11, 616, 3290, 318, 13779, 318, 13779],
+        ],
         dtype=torch.int64,
     )
-    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
-    mc_labels = torch.zeros(input_ids.shape[0], dtype=torch.int64)
+    attention_mask = torch.tensor(
+        [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]],
+        dtype=torch.int64,
+    )
 
+    mc_labels = torch.zeros(input_ids.shape[0], dtype=torch.int64)
     mc_token_ids = torch.arange(0, num_choices, dtype=torch.int64)
     mc_token_ids = mc_token_ids.expand((batch_size, num_choices))
     multiple_choice_inputs_ids = input_ids.unsqueeze(1).expand(-1, num_choices, -1).contiguous()
@@ -103,6 +130,7 @@ config = transformers.GPT2Config(
     hidden_dropout=0,
     problem_type="single_label_classification",
     pad_token_id=50256,
+    tie_word_embeddings=False,
 )
 
 config_for_token_classification = copy.deepcopy(config)

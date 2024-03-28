@@ -1,5 +1,4 @@
 import copy
-import math
 from contextlib import nullcontext
 from typing import Any, Callable, Dict, List, Optional
 
@@ -123,7 +122,6 @@ def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_c
         sharded_model = copy.deepcopy(org_model)
     if use_lazy_init:
         ctx.materialize(org_model)
-
     org_model = org_model.cuda()
     org_optimizer = Adam(org_model.parameters(), lr=1e-3)
     sharded_optimizer = Adam(sharded_model.parameters(), lr=1e-3)
@@ -162,24 +160,22 @@ def run_forward_backward_with_hybrid_plugin(
 
     data = data_gen_fn()
 
-    if booster.plugin.shard_config.enable_sequence_parallelism and booster.plugin.tp_size != 0:
-        seq_len = data["input_ids"].shape[-1]
-        lcm = booster.plugin.tp_size * seq_len // math.gcd(booster.plugin.tp_size, seq_len)
-        times = lcm // seq_len
-        input_shape = data["input_ids"].shape
-        for k, v in data.items():
-            if v.shape == input_shape:
-                data[k] = v.repeat((1,) * (v.dim() - 1) + (times,))
+    shard_test_data = {}
+    for k, v in data.items():
+        shard_test_data[k] = data[k].clone()
+    unshard_test_data = {}
+    for k, v in data.items():
+        unshard_test_data[k] = data[k].clone()
 
     sharded_model.train()
     if booster.plugin.stage_manager is not None:
-        for k, v in data.items():
+        for k, v in shard_test_data.items():
             if torch.is_tensor(v) or "Tensor" in v.__class__.__name__:
                 new_shape = [1] * v.dim()
                 new_shape[0] = 4
-                data[k] = v.to("cuda").repeat(*new_shape)
+                shard_test_data[k] = v.to("cuda").repeat(*new_shape)
 
-        data_iter = iter([data])
+        data_iter = iter([shard_test_data])
         sharded_output = booster.execute_pipeline(
             data_iter,
             sharded_model,
@@ -189,17 +185,22 @@ def run_forward_backward_with_hybrid_plugin(
             return_outputs=True,
         )
         sharded_loss = sharded_output["loss"]
-    else:
-        data = {k: v.cuda() for k, v in data.items()}
-        sharded_output = sharded_model(**data)
 
+    else:
+        shard_test_data = {k: v.cuda() for k, v in shard_test_data.items()}
+        sharded_output = sharded_model(**shard_test_data)
         sharded_loss = criterion(sharded_output)
         sharded_optimizer.backward(sharded_loss)
 
     org_model.train()
-    data = {k: v.cuda() for k, v in data.items()}
-    org_output = org_model(**data)
-
+    if booster.plugin.stage_manager is not None:
+        for k, v in unshard_test_data.items():
+            if torch.is_tensor(v) or "Tensor" in v.__class__.__name__:
+                new_shape = [1] * v.dim()
+                new_shape[0] = 4
+                unshard_test_data[k] = v.to("cuda").repeat(*new_shape)
+    unshard_test_data = {k: v.cuda() for k, v in unshard_test_data.items()}
+    org_output = org_model(**unshard_test_data)
     org_loss = criterion(org_output)
     org_loss.backward()
 
@@ -212,7 +213,6 @@ def check_output_hidden_state(
     stage_manager: Optional[PipelineStageManager] = None,
     atol: float = 1e-5,
     rtol: float = 1e-3,
-    dim: int = 0,
 ):
     org_hidden_state = org_output.last_hidden_state
 
