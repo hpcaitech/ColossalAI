@@ -28,7 +28,7 @@ if __name__ == "__main__":
     booster = Booster(plugin=plugin)
     torch.set_default_dtype(torch.bfloat16)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.pretrained)
+    tokenizer = AutoTokenizer.from_pretrained(args.pretrained, trust_remote_code=True)
 
     with LazyInitContext(default_device=get_current_device()):
         model = AutoModelForCausalLM.from_pretrained(

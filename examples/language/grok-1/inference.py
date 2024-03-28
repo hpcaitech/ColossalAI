@@ -10,7 +10,7 @@ if __name__ == "__main__":
     start = time.time()
     torch.set_default_dtype(torch.bfloat16)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.pretrained)
+    tokenizer = AutoTokenizer.from_pretrained(args.pretrained, trust_remote_code=True)
 
     model = AutoModelForCausalLM.from_pretrained(
         args.pretrained,
