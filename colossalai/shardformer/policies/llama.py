@@ -164,30 +164,20 @@ class LlamaPolicy(Policy):
             module = self.model.model
 
         if stage_manager.is_interleave:
-            layers_per_stage = self.distribute_layers(
-                len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
-            )
-            stage_manager.stage_indices = self.get_stage_index(
-                layers_per_stage,
-                stage_manager.stage,
-                num_model_chunks=stage_manager.num_model_chunks,
-                num_stages=stage_manager.num_stages,
-            )
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            stage_manager.stage_indices = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(new_forward, stage_manager=stage_manager, shard_config=self.shard_config)
             }
 
         else:
-            layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
-            stage_index = self.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(
                     new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
                 )
             }
-            self.append_or_create_method_replacement(
-                description=method_replacement, policy=policy, target_key=model_cls
-            )
 
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
@@ -204,15 +194,8 @@ class LlamaPolicy(Policy):
         held_layers = []
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
-            layers_per_stage = self.distribute_layers(
-                len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
-            )
-            stage_indices = self.get_stage_index(
-                layers_per_stage,
-                stage_manager.stage,
-                num_model_chunks=stage_manager.num_model_chunks,
-                num_stages=stage_manager.num_stages,
-            )
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            stage_indices = stage_manager.get_stage_index(layers_per_stage)
             if stage_manager.is_first_stage(ignore_chunk=True):
                 held_layers.append(module.embed_tokens)
             for start_idx, end_idx in stage_indices:
@@ -221,10 +204,10 @@ class LlamaPolicy(Policy):
                 held_layers.append(module.norm)
 
         else:
-            layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
             if stage_manager.is_first_stage():
                 held_layers.append(module.embed_tokens)
-            start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+            start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
             held_layers.extend(module.layers[start_idx:end_idx])
             if stage_manager.is_last_stage():
                 held_layers.append(module.norm)

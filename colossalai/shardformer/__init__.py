@@ -1,1 +1,1 @@
-from .shard import ShardConfig, ShardFormer
+from .shard import PipelineGradientConfig, ShardConfig, ShardFormer
