@@ -100,7 +100,7 @@ void apply_get_cos_and_sin(
     if (is_prompts) {
         block_size_y = batch_size;
         block_size_x = max_seq_len_in_batch;
-        // TODO: The cumsum operation can be fused into the kernel later on.
+        // TODO: The cumsum operation can be fused into get_cos_and_sin kernel later on.
         comsum_lengths = torch::cumsum(sequence_lengths, 0, torch::kInt32);
     }
     else{
