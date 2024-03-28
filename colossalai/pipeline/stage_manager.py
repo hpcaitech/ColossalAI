@@ -1,6 +1,7 @@
 import contextlib
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
@@ -28,6 +29,8 @@ class PipelineStageManager:
         num_model_chunks: int = 1,
     ) -> None:
         assert enable_interleave or num_model_chunks == 1, "num_model_chunks must be 1 when enable_interleave is False"
+
+        self.num_layers_per_stage = None
 
         self.pg_mesh = pg_mesh
         self.pipeline_axis = pipeline_axis
@@ -68,6 +71,70 @@ class PipelineStageManager:
             self.stage_indices: List[Tuple[int, int]]
             # for shardformer, hold model chunk id
             self.model_chunk_id: Optional[int] = None
+
+    @property
+    def control_distribute_layers(self) -> bool:
+        return self.num_layers_per_stage is not None
+
+    def set_distribution_config(self, num_model_layers: int, num_layers_per_stage: List[int]) -> None:
+        """Set the distribution configuration.
+
+        Args:
+            num_model_layers (int): Number of layers in the model.
+            num_layers_per_stage (List[int]): Number of layers for each stage.
+        """
+        assert all([0 < num_layers < num_model_layers for num_layers in num_layers_per_stage])
+        assert sum(num_layers_per_stage) == num_model_layers
+        assert len(num_layers_per_stage) == self.num_stages * (self.num_model_chunks if self.is_interleave else 1)
+        self.num_model_layers = num_model_layers
+        self.num_layers_per_stage = num_layers_per_stage
+
+    def distribute_layers(self, num_layers: int) -> List[int]:
+        """Divide layers into stages"""
+        if self.control_distribute_layers:
+            assert num_layers == self.num_model_layers
+            return self.num_layers_per_stage
+
+        else:
+            quotient = num_layers // self.num_stages
+            remainder = num_layers % self.num_stages
+
+            # calculate the num_layers per stage
+            layers_per_stage = [quotient] * self.num_stages
+
+            # deal with the rest layers
+            if remainder > 0:
+                start_position = self.num_stages // 2 - remainder // 2
+                for i in range(start_position, start_position + remainder):
+                    layers_per_stage[i] += 1
+            return layers_per_stage
+
+    def get_stage_index(
+        self,
+        layers_per_stage: List[int],
+    ) -> Union[Tuple[int, int], List[Tuple[int, int]]]:
+        """
+        Get the start index and end index of layers for each stage.
+
+        Args:
+            layers_per_stage (List[int]): number of layers for each stage
+            stage (int): the stage index
+
+        Returns:
+            - Tuple[int, int]: the start index and end index of this stage
+            - List[Tuple[int, int]]: the start index and end index of this stage for each model chunk
+
+        """
+        num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
+
+        stage_indices = []
+        num_model_chunks = self.num_model_chunks if self.is_interleave else 1
+        for model_chunk in range(num_model_chunks):
+            start_idx = num_layers_per_stage_accumulated[self.stage + model_chunk * self.num_stages]
+            end_idx = num_layers_per_stage_accumulated[self.stage + model_chunk * self.num_stages + 1]
+            stage_indices.append([start_idx, end_idx])
+
+        return stage_indices[0] if num_model_chunks == 1 else stage_indices
 
     def is_first_stage(self, ignore_chunk: bool = False) -> bool:
         """Is the current stage the first stage.
