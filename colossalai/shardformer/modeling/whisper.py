@@ -19,7 +19,7 @@ from transformers.models.whisper.modeling_whisper import (
     WhisperModel,
 )
 from transformers.utils import logging
-
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask, _prepare_4d_causal_attention_mask_for_sdpa
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
 
@@ -369,18 +369,12 @@ class WhisperPipelineForwards:
                 layer_outputs = (None, None)
             else:
                 if self.gradient_checkpointing and self.training:
-
-                    def create_custom_forward(module):
-                        def custom_forward(*inputs):
-                            return module(*inputs, output_attentions)
-
-                        return custom_forward
-
-                    layer_outputs = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(encoder_layer),
+                    layer_outputs = self._gradient_checkpointing_func(
+                        encoder_layer.__call__,
                         hidden_states,
                         None,
                         (head_mask[idx] if head_mask is not None else None),
+                        output_attentions,
                     )
                 else:
                     layer_outputs = encoder_layer(
@@ -528,16 +522,26 @@ class WhisperPipelineForwards:
 
             if inputs_embeds is None:
                 inputs_embeds = self.embed_tokens(input_ids)
+                
+            if self._use_flash_attention_2:
+                # 2d mask is passed through the layers
+                attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
+            elif self._use_sdpa and head_mask is None and not output_attentions:
+                # output_attentions=True & head_mask can not be supported when using SDPA.
+                attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
+                    attention_mask, input_shape, inputs_embeds, past_key_values_length
+                )
+            else:
+                # 4d mask is passed through the layers
+                attention_mask = _prepare_4d_causal_attention_mask(
+                    attention_mask, input_shape, inputs_embeds, past_key_values_length
+                )
 
             # embed positions
             if input_ids is not None:
                 positions = self.embed_positions(input_ids, past_key_values_length=past_key_values_length)
             else:
                 positions = self.embed_positions(inputs_embeds, past_key_values_length=past_key_values_length)
-
-            attention_mask = self._prepare_decoder_attention_mask(
-                attention_mask, input_shape, inputs_embeds, past_key_values_length
-            )
 
             hidden_states = inputs_embeds + positions
             hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
@@ -575,16 +579,8 @@ class WhisperPipelineForwards:
             past_key_value = past_key_values[idx] if past_key_values is not None else None
 
             if self.gradient_checkpointing and self.training:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, output_attentions, use_cache)
-
-                    return custom_forward
-
-                layer_outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(decoder_layer),
+                layer_outputs = self._gradient_checkpointing_func(
+                    decoder_layer.__call__,
                     hidden_states,
                     attention_mask,
                     encoder_hidden_states,
@@ -592,6 +588,8 @@ class WhisperPipelineForwards:
                     head_mask[idx] if head_mask is not None else None,
                     cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None,
                     None,  # past_key_value
+                    output_attentions,
+                    use_cache,
                 )
             else:
                 layer_outputs = decoder_layer(
