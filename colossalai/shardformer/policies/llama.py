@@ -297,7 +297,6 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                     ],
                 )
             }
-        print("new_item", new_item)
         policy.update(new_item)
 
         if self.pipeline_stage_manager:

@@ -39,7 +39,6 @@ class ModelSharder(object):
         self._preprocess()
         # get shared params before release unheld layers, this avoid misjudgment of shared params (None is None)
         shared_params = self.policy.get_shared_params()
-        print("shared_params", shared_params)
         held_layers = self._release_unheld_layers()
         self._replace_module(include=held_layers)
         self._materialize()

@@ -203,16 +203,14 @@ def check_t5_3d(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_t5_3d_test()
 
-# TODO padding the vocab size in VocabParallelEmbedding1D
-@pytest.mark.skip("padding the vocab size in VocabParallelEmbedding1D")
+
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_t5():
     spawn(check_t5, 4)
 
-# TODO padding the vocab size in VocabParallelEmbedding1D
-@pytest.mark.skip("padding the vocab size in VocabParallelEmbedding1D")
+
 @pytest.mark.largedist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()

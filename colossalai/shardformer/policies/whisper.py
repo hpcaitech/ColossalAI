@@ -540,9 +540,6 @@ class WhisperForConditionalGenerationPolicy(WhisperPolicy):
 
 # WhisperForAudioClassification
 class WhisperForAudioClassificationPolicy(WhisperPolicy):
-    def preprocess(self):
-        return self.model
-
     def module_policy(self):
         from transformers import WhisperForAudioClassification
 

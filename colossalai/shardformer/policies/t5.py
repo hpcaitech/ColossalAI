@@ -11,6 +11,8 @@ from colossalai.shardformer.layer import (
     FusedRMSNorm,
     Linear1D_Col,
     Linear1D_Row,
+    PaddingEmbedding,
+    PaddingLMHead,
     RMSNorm,
     VocabParallelEmbedding1D,
     VocabParallelLMHead1D,
@@ -35,21 +37,17 @@ class T5BasePolicy(Policy):
         pass
 
     def preprocess(self):
-        # reshape the embedding layer
-        r"""
-        Reshape the Embedding layer to make the embedding dimension divisible by world_size
-        """
-        # TODO padding the vocab size in VocabParallelEmbedding1D
-        # vocab_size = self.model.config.vocab_size
-        # if self.shard_config.enable_tensor_parallelism:
-        #     world_size = self.shard_config.tensor_parallel_size
-        #     multiple = world_size * self.shard_config.make_vocab_size_divisible_by
-        # else:
-        #     multiple = self.shard_config.make_vocab_size_divisible_by
-        # if vocab_size % multiple != 0:
-        #     new_vocab_size = vocab_size + multiple - vocab_size % multiple
-        #     self.model.resize_token_embeddings(new_vocab_size)
+        self.tie_weight = self.tie_weight_check()
         return self.model
+
+    def tie_weight_check(self):
+        input_embedding = self.model.get_input_embeddings()
+        output_embedding = self.model.get_output_embeddings()
+        return (
+            input_embedding is not None
+            and output_embedding is not None
+            and id(input_embedding.weight) == id(output_embedding.weight)
+        )
 
     def module_policy(self):
         from transformers.models.t5.modeling_t5 import (
@@ -63,6 +61,13 @@ class T5BasePolicy(Policy):
         )
 
         policy = {}
+
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
             norm_cls = FusedRMSNorm
@@ -79,11 +84,6 @@ class T5BasePolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="dropout",
                         target_module=DropoutForParallelInput,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="embed_tokens",
-                        target_module=VocabParallelEmbedding1D,
-                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                     ),
                 ]
             )
@@ -178,6 +178,17 @@ class T5BasePolicy(Policy):
                         target_module=DropoutForParallelInput,
                     ),
                 ]
+            )
+
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="embed_tokens",
+                    target_module=embedding_cls,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                ),
+                policy=policy,
+                target_key=T5Stack,
             )
 
         # optimization configuration
@@ -371,11 +382,18 @@ class T5ModelPolicy(T5BasePolicy):
 
         policy = super().module_policy()
 
+        embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = PaddingEmbedding
+
+        if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="shared",
-                    target_module=VocabParallelEmbedding1D,
+                    target_module=embedding_cls,
                     kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                 ),
                 policy=policy,
@@ -408,23 +426,44 @@ class T5ForConditionalGenerationPolicy(T5BasePolicy):
 
         policy = super().module_policy()
 
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = PaddingEmbedding
+
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="shared",
+                    target_module=embedding_cls,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                ),
+                policy=policy,
+                target_key=T5ForConditionalGeneration,
+            )
+
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="shared",
-                        target_module=VocabParallelEmbedding1D,
-                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="lm_head",
-                        target_module=VocabParallelLMHead1D,
-                        kwargs=dict(
-                            gather_output=True,
-                            make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by,
-                        ),
-                    ),
-                ],
+                description=SubModuleReplacementDescription(
+                    suffix="lm_head",
+                    target_module=VocabParallelLMHead1D,
+                    kwargs={
+                        "gather_output": True,
+                        "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                    },
+                ),
+                policy=policy,
+                target_key=T5ForConditionalGeneration,
+            )
+        else:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="lm_head",
+                    target_module=PaddingLMHead,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                ),
                 policy=policy,
                 target_key=T5ForConditionalGeneration,
             )
@@ -475,11 +514,18 @@ class T5EncoderPolicy(T5BasePolicy):
 
         policy = super().module_policy()
 
+        embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = PaddingEmbedding
+
+        if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="shared",
-                    target_module=VocabParallelEmbedding1D,
+                    target_module=embedding_cls,
                     kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                 ),
                 policy=policy,

@@ -60,7 +60,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     # optimizer executes step
     org_optimizer.step()
-    # sharded_optimizer.step()
+    sharded_optimizer.step()
 
     # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():

@@ -65,7 +65,6 @@ class OPTPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = VocabParallelEmbedding1D
         else:
-            # TODO when not tie weight and not pad the vocab size
             if self.tie_weight:
                 embedding_cls = PaddingEmbedding
 
