@@ -27,7 +27,9 @@ class _CudaExtension(_CppExtension):
         try:
             import torch
 
-            cuda_available = torch.cuda.is_available()
+            # torch.cuda.is_available requires a device to exist, allow building with cuda extension on build nodes without a device
+            # but where cuda is actually available.
+            cuda_available = torch.cuda.is_available() or bool(os.environ.get('FORCE_CUDA', 0))
         except:
             cuda_available = False
         return cuda_available
