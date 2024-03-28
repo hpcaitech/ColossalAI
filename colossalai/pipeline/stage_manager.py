@@ -78,6 +78,7 @@ class PipelineStageManager:
 
     def set_distribution_config(self, num_model_layers: int, num_layers_per_stage: List[int]) -> None:
         """Set the distribution configuration.
+        This allows user to customize the number of layers for each stage.
 
         Args:
             num_model_layers (int): Number of layers in the model.
@@ -96,15 +97,16 @@ class PipelineStageManager:
             return self.num_layers_per_stage
 
         else:
-            quotient = num_layers // self.num_stages
-            remainder = num_layers % self.num_stages
+            num_model_chunk = self.num_model_chunks if self.is_interleave else 1
+            quotient = num_layers // (self.num_stages * num_model_chunk)
+            remainder = num_layers % (self.num_stages * num_model_chunk)
 
             # calculate the num_layers per stage
-            layers_per_stage = [quotient] * self.num_stages
+            layers_per_stage = [quotient] * self.num_stages * num_model_chunk
 
             # deal with the rest layers
             if remainder > 0:
-                start_position = self.num_stages // 2 - remainder // 2
+                start_position = (self.num_stages * num_model_chunk) // 2 - remainder // 2
                 for i in range(start_position, start_position + remainder):
                     layers_per_stage[i] += 1
             return layers_per_stage
