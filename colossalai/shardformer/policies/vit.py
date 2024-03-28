@@ -149,8 +149,8 @@ class ViTPolicy(Policy):
             else:
                 module = self.model.vit
 
-            layers_per_stage = Policy.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = self.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
+            stage_index = self.get_stage_index(layers_per_stage, stage_manager.stage)
             method_replacement = {"forward": pipeline_forward(stage_manager=stage_manager, stage_index=stage_index)}
             self.append_or_create_method_replacement(
                 description=method_replacement, policy=policy, target_key=model_cls

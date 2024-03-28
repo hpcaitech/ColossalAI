@@ -440,7 +440,10 @@ class LayoutConverter(metaclass=SingletonMeta):
         total_steps = 0
         transform_path = []
         comm_action_sequence: List[CommSpec] = []
-        spec_pairs = (str(source_spec.sharding_sequence), str(target_spec.sharding_sequence))
+
+        src_shape = source_layout.get_sharded_shape_per_device()
+        dst_shape = target_layout.get_sharded_shape_per_device()
+        spec_pairs = ((str(source_spec.sharding_sequence), src_shape), (str(target_spec.sharding_sequence), dst_shape))
 
         if spec_pairs in self.cached_solution:
             # Solution Cache hit

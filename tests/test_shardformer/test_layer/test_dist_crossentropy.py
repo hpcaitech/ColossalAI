@@ -38,9 +38,10 @@ def check_dist_crossentropy(rank, world_size, port, ignore_index):
         org_loss, dist_loss, atol=1e-5
     ), f"dist cross entropy loss is not equal to orgin loss\n{org_loss}\n{dist_loss}"
 
-
     target_grad = torch.chunk(pred.grad, world_size, dim=-1)[rank]
-    assert torch.allclose(target_grad, dist_pred.grad), f"dist grad is not equal to orgin grad\n{target_grad}\n{dist_pred.grad}"
+    assert torch.allclose(
+        target_grad, dist_pred.grad
+    ), f"dist grad is not equal to orgin grad\n{target_grad}\n{dist_pred.grad}"
 
 
 @pytest.mark.dist

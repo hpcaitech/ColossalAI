@@ -6,7 +6,7 @@ from .extensions import (
     CpuAdamX86Extension,
     FlashAttentionDaoCudaExtension,
     FlashAttentionNpuExtension,
-    FlashAttentionXformersCudaExtension,
+    FlashAttentionSdpaCudaExtension,
     FusedOptimizerCudaExtension,
     LayerNormCudaExtension,
     MoeCudaExtension,
@@ -65,9 +65,9 @@ class KernelLoader:
         else:
             usable_exts = []
             for ext in exts:
-                if ext.is_hardware_available():
+                if ext.is_available():
                     # make sure the machine is compatible during kernel loading
-                    ext.assert_hardware_compatible()
+                    ext.assert_compatible()
                     usable_exts.append(ext)
 
         assert len(usable_exts) != 0, f"No usable kernel found for {self.__class__.__name__} on the current machine."
@@ -106,4 +106,20 @@ class ScaledUpperTriangleMaskedSoftmaxLoader(KernelLoader):
 
 
 class FlashAttentionLoader(KernelLoader):
-    REGISTRY = [FlashAttentionNpuExtension, FlashAttentionDaoCudaExtension, FlashAttentionXformersCudaExtension]
+    REGISTRY = [
+        FlashAttentionNpuExtension,
+        FlashAttentionDaoCudaExtension,
+        FlashAttentionSdpaCudaExtension,
+    ]
+
+
+class FlashAttentionWithPaddingMaskLoader(KernelLoader):
+    REGISTRY = [FlashAttentionNpuExtension, FlashAttentionDaoCudaExtension]
+
+
+class FlashAttentionWithCustomMaskLoader(KernelLoader):
+    REGISTRY = [FlashAttentionNpuExtension, FlashAttentionSdpaCudaExtension]
+
+
+class FlashAttentionForFloatAndCustomMaskLoader(KernelLoader):
+    REGISTRY = [FlashAttentionSdpaCudaExtension]

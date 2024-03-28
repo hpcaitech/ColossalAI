@@ -31,6 +31,7 @@ def build_model(
     enable_jit_fused=False,
     enable_sequence_parallelism=False,
     use_lazy_init: bool = False,
+    dtype=torch.float32,
 ):
     # create new model
     ctx = LazyInitContext() if use_lazy_init else nullcontext()
@@ -51,7 +52,7 @@ def build_model(
     model_copy = copy.deepcopy(org_model)
     shard_former = ShardFormer(shard_config=shard_config)
     sharded_model, shared_params = shard_former.optimize(model_copy)
-    return org_model.cuda(), sharded_model.cuda()
+    return org_model.cuda().to(dtype), sharded_model.cuda().to(dtype)
 
 
 def build_pipeline_model(
@@ -132,7 +133,14 @@ def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_c
     booster = Booster(plugin=plugin)
 
     sharded_model, sharded_optimizer, criterion, _, _ = booster.boost(sharded_model, sharded_optimizer, criterion)
-    return org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster
+    return (
+        org_model,
+        org_optimizer,
+        sharded_model,
+        sharded_optimizer,
+        criterion,
+        booster,
+    )
 
 
 def run_forward_backward_with_hybrid_plugin(
@@ -173,7 +181,12 @@ def run_forward_backward_with_hybrid_plugin(
 
         data_iter = iter([data])
         sharded_output = booster.execute_pipeline(
-            data_iter, sharded_model, _criterion, sharded_optimizer, return_loss=True, return_outputs=True
+            data_iter,
+            sharded_model,
+            _criterion,
+            sharded_optimizer,
+            return_loss=True,
+            return_outputs=True,
         )
         sharded_loss = sharded_output["loss"]
     else:
@@ -313,7 +326,9 @@ def check_grad(
 
 
 def unwrap_model(
-    module: Module, base_model_class_name: Optional[str] = None, base_model_attribute_name: Optional[str] = None
+    module: Module,
+    base_model_class_name: Optional[str] = None,
+    base_model_attribute_name: Optional[str] = None,
 ):
     if isinstance(module, HybridParallelModule):
         module = module.unwrap()

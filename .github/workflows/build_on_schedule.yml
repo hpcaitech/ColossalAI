@@ -44,7 +44,7 @@ jobs:
           cd TensorNVMe
           conda install cmake
           pip install -r requirements.txt
-          pip install -v .
+          DISABLE_URING=1 pip install -v .
 
       - uses: actions/checkout@v2
         if: steps.check-avai.outputs.avai == 'true'

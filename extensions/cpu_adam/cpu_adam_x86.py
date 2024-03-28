@@ -8,15 +8,15 @@ class CpuAdamX86Extension(_CudaExtension):
     def __init__(self):
         super().__init__(name="cpu_adam_x86")
 
-    def is_hardware_available(self) -> bool:
-        return platform.machine() == "x86_64" and super().is_hardware_available()
+    def is_available(self) -> bool:
+        return platform.machine() == "x86_64" and super().is_available()
 
-    def assert_hardware_compatible(self) -> None:
+    def assert_compatible(self) -> None:
         arch = platform.machine()
         assert (
             arch == "x86_64"
         ), f"[extension] The {self.name} kernel requires the CPU architecture to be x86_64 but got {arch}"
-        super().assert_hardware_compatible()
+        super().assert_compatible()
 
     # necessary 4 functions
     def sources_files(self):

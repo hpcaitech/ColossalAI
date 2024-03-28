@@ -1,3 +1,4 @@
+from .attn import AttnMaskType, ColoAttention
 from .dropout import DropoutForParallelInput, DropoutForReplicatedInput
 from .embedding import Embedding1D, VocabParallelEmbedding1D
 from .linear import Linear1D_Col, Linear1D_Row
@@ -23,4 +24,6 @@ __all__ = [
     "FusedRMSNorm",
     "FusedLinear1D_Col",
     "ParallelModule",
+    "AttnMaskType",
+    "ColoAttention",
 ]
