@@ -1,1 +1,1 @@
-from .shard import GradCkptCollection, ModelSharder, PipelineGradCkptConfig, ShardConfig, ShardFormer
+from .shard import GradientCheckpointConfig, ModelSharder, PipelineGradientCheckpointConfig, ShardConfig, ShardFormer

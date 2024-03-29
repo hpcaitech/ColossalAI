@@ -1,43 +1,22 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional
 
 
 @dataclass
-class GradCkptConfig:
+class GradientCheckpointConfig:
     # TODO: for future use
     _dummy_value: Optional[float] = None
 
-    def __post_init__(self):
-        raise NotImplementedError()
-
     @property
     def control_gradient_checkpointing(self) -> bool:
-        raise NotImplementedError()
+        return False
 
     def get_num_ckpt_layers(self, *args, **kwargs) -> int:
         raise NotImplementedError()
 
 
 @dataclass
-class GradCkptCollection:
-    gradient_ckpt_configs: List[GradCkptConfig] = field(default_factory=list)
-
-    def __post_init__(self):
-        assert all([isinstance(config, GradCkptConfig) for config in self.gradient_ckpt_configs])
-
-    @property
-    def control_gradient_checkpointing(self) -> bool:
-        return any([config.control_gradient_checkpointing for config in self.gradient_ckpt_configs])
-
-    def get_num_ckpt_layers(self, *args, **kwargs) -> int:
-        for config in self.gradient_ckpt_configs:
-            if config.control_gradient_checkpointing:
-                return config.get_num_ckpt_layers(*args, **kwargs)
-        raise RuntimeError("No checkpointed layers information is provided")
-
-
-@dataclass
-class PipelineGradCkptConfig(GradCkptConfig):
+class PipelineGradientCheckpointConfig(GradientCheckpointConfig):
     r"""
     The pipeline gradient config is designed to provide more flexibility for users to control gradient checkpoint in pipeline parallelism.
     Combined with PipelineStageManager.set_distribution_config, user can fully control the distribution of layers and checkpointed layers in pipeline parallelism.

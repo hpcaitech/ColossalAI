@@ -6,7 +6,7 @@ from torch.distributed import ProcessGroup
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
-from .grad_ckpt_config import GradCkptCollection
+from .grad_ckpt_config import GradientCheckpointConfig
 
 __all__ = ["ShardConfig"]
 
@@ -25,7 +25,7 @@ class ShardConfig:
         enable_jit_fused (bool, optional): Whether to switch on JIT fused operators. Defaults to False.
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism, which partitions non-tensor-parallel regions along the sequence dimension. Defaults to False.
         enable_sequence_overlap (bool): Whether to turn on sequence overlap, which overlap the computation and communication in sequence parallelism. It can only be used when enable_sequence_parallelism is True. Defaults to False.
-        gradient_ckpt_collection (Optional[GradCkptCollection]): The gradient checkpointing configs. Defaults to None.
+        gradient_checkpoint_config (Optional[GradientCheckpointConfig]): The gradient checkpoint config. Defaults to None.
         enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalization', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
     """
     tensor_parallel_process_group: Optional[ProcessGroup] = None
@@ -38,7 +38,7 @@ class ShardConfig:
     enable_sequence_parallelism: bool = False
     enable_sequence_overlap: bool = False
     parallel_output: bool = True
-    gradient_ckpt_collection: Optional[GradCkptCollection] = None
+    gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
     # TODO padding vocab
     # make_vocab_size_divisible_by: int = 128
