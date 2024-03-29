@@ -185,15 +185,8 @@ class GPT2Policy(Policy):
         held_layers = []
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
-            layers_per_stage = self.distribute_layers(
-                len(module.h), stage_manager.num_stages * stage_manager.num_model_chunks
-            )
-            stage_indices = self.get_stage_index(
-                layers_per_stage,
-                stage_manager.stage,
-                num_model_chunks=stage_manager.num_model_chunks,
-                num_stages=stage_manager.num_stages,
-            )
+            layers_per_stage = stage_manager.distribute_layers(len(module.h))
+            stage_indices = stage_manager.get_stage_index(layers_per_stage)
             if stage_manager.is_first_stage(ignore_chunk=True):
                 held_layers.append(module.wte)
                 held_layers.append(module.wpe)
@@ -203,12 +196,12 @@ class GPT2Policy(Policy):
             if stage_manager.is_last_stage(ignore_chunk=True):
                 held_layers.append(module.ln_f)
         else:
-            layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
+            layers_per_stage = stage_manager.distribute_layers(len(module.h))
             if stage_manager.is_first_stage():
                 held_layers.append(module.wte)
                 held_layers.append(module.wpe)
                 held_layers.append(module.drop)
-            start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+            start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
             held_layers.extend(module.h[start_idx:end_idx])
             if stage_manager.is_last_stage():
                 held_layers.append(module.ln_f)
@@ -226,15 +219,8 @@ class GPT2Policy(Policy):
             module = self.model.transformer
 
         if stage_manager.is_interleave:
-            layers_per_stage = self.distribute_layers(
-                len(module.h), stage_manager.num_stages * stage_manager.num_model_chunks
-            )
-            stage_manager.stage_indices = self.get_stage_index(
-                layers_per_stage,
-                stage_manager.stage,
-                num_model_chunks=stage_manager.num_model_chunks,
-                num_stages=stage_manager.num_stages,
-            )
+            layers_per_stage = stage_manager.distribute_layers(len(module.h))
+            stage_manager.stage_indices = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(
                     new_forward,
@@ -243,8 +229,8 @@ class GPT2Policy(Policy):
                 )
             }
         else:
-            layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
-            stage_index = self.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = stage_manager.distribute_layers(len(module.h))
+            stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(
                     new_forward,
