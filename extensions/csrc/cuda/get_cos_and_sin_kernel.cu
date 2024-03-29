@@ -6,6 +6,33 @@
 #include "stdio.h"
 
 template <typename scalar_t, bool Aligned, int VecSize>
+__device__ void apply_cos_and_sin_memcopy(
+    scalar_t* __restrict__ cos,
+    scalar_t* __restrict__ sin,
+    const scalar_t* __restrict__ cos_cache_ptr,
+    const scalar_t* __restrict__ sin_cache_ptr,
+    const int* __restrict__ sequence_lengths,
+    const int head_dim,
+    const int dest_offset_id,
+    const int src_offset_id
+ ) {
+
+    int begin_id = threadIdx.x * VecSize;
+
+    for (; begin_id <= head_dim - VecSize; begin_id += blockDim.x){
+        copy_vector<scalar_t, VecSize>(cos + dest_offset_id + begin_id, cos_cache_ptr + src_offset_id + begin_id);
+        copy_vector<scalar_t, VecSize>(sin + dest_offset_id + begin_id, sin_cache_ptr + src_offset_id + begin_id);
+    }
+
+    if (!Aligned) {
+        for (; begin_id < head_dim; ++begin_id ) {
+            cos[dest_offset_id + begin_id] = cos_cache_ptr[src_offset_id + begin_id];
+            sin[dest_offset_id + begin_id] = sin_cache_ptr[src_offset_id + begin_id];
+        }
+    }
+}
+
+template <typename scalar_t, bool Aligned, int VecSize>
 __global__ void apply_get_context_cos_and_sin_kernel(
     scalar_t* __restrict__ cos,
     scalar_t* __restrict__ sin,
@@ -21,7 +48,6 @@ __global__ void apply_get_context_cos_and_sin_kernel(
         return ;
     }
 
-    int begin_id = threadIdx.x * VecSize;
     int src_offset_id = token_id * head_dim;
     int dest_offset_id = src_offset_id;
 
@@ -29,17 +55,16 @@ __global__ void apply_get_context_cos_and_sin_kernel(
         dest_offset_id += comsum_lengths[blockIdx.y - 1] * head_dim;
     }
 
-    for (; begin_id <= head_dim - VecSize; begin_id += blockDim.x){
-        copy_vector<scalar_t, VecSize>(cos + dest_offset_id + begin_id, cos_cache_ptr + src_offset_id + begin_id);
-        copy_vector<scalar_t, VecSize>(sin + dest_offset_id + begin_id, sin_cache_ptr + src_offset_id + begin_id);
-    }
-
-    if (!Aligned) {
-        for (; begin_id < head_dim; ++begin_id ) {
-            cos[dest_offset_id + begin_id] = cos_cache_ptr[src_offset_id + begin_id];
-            sin[dest_offset_id + begin_id] = sin_cache_ptr[src_offset_id + begin_id];
-        }
-    }
+    apply_cos_and_sin_memcopy<scalar_t, Aligned, VecSize>(
+        cos,
+        sin,
+        cos_cache_ptr,
+        sin_cache_ptr,
+        sequence_lengths,
+        head_dim,
+        dest_offset_id,
+        src_offset_id
+    );
 
 }
 
@@ -53,21 +78,19 @@ __global__ void apply_get_decode_cos_and_sin_kernel(
     const int batch_size,
     const int head_dim
 ) {
-    int begin_id = threadIdx.x * VecSize;
     int src_offset_id = ( sequence_lengths[blockIdx.y] - 1 ) * head_dim;
     int dest_offset_id = blockIdx.y * head_dim;
 
-    for (; begin_id <= head_dim - VecSize; begin_id += blockDim.x){
-        copy_vector<scalar_t, VecSize>(cos + dest_offset_id + begin_id, cos_cache_ptr + src_offset_id + begin_id);
-        copy_vector<scalar_t, VecSize>(sin + dest_offset_id + begin_id, sin_cache_ptr + src_offset_id + begin_id);
-    }
-
-    if (!Aligned) {
-        for (; begin_id < head_dim; ++begin_id ) {
-            cos[dest_offset_id + begin_id] = cos_cache_ptr[src_offset_id + begin_id];
-            sin[dest_offset_id + begin_id] = sin_cache_ptr[src_offset_id + begin_id];
-        }
-    }
+    apply_cos_and_sin_memcopy<scalar_t, Aligned, VecSize>(
+        cos,
+        sin,
+        cos_cache_ptr,
+        sin_cache_ptr,
+        sequence_lengths,
+        head_dim,
+        dest_offset_id,
+        src_offset_id
+    );
 }
 
 template<typename scalar_t>
@@ -121,10 +144,10 @@ void apply_get_cos_and_sin(
                 sin.data_ptr<scalar_t>(),                                                                           \
                 cos_cache.data_ptr<scalar_t>(),                                                                     \
                 sin_cache.data_ptr<scalar_t>(),                                                                     \
-                sequence_lengths.data_ptr<int>(),                                                                \
-                comsum_lengths.data_ptr<int>(),                                                                \
+                sequence_lengths.data_ptr<int>(),                                                                   \
+                comsum_lengths.data_ptr<int>(),                                                                     \
                 batch_size,                                                                                         \
-                head_dim                                                                                         \
+                head_dim                                                                                            \
             );                                                                                                      \
         }                                                                                                           \
         else {                                                                                                      \
