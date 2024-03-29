@@ -90,23 +90,29 @@ class PipelineStageManager:
         self.num_model_layers = num_model_layers
         self.num_layers_per_stage = num_layers_per_stage
 
-    def distribute_layers(self, num_layers: int) -> List[int]:
+    def distribute_layers(
+        self, num_layers: int, num_stages: Optional[int] = None, num_model_chunks: Optional[int] = None
+    ) -> List[int]:
         """Divide layers into stages"""
+        num_stages = self.num_stages if num_stages is None else num_stages
+        num_model_chunks = (
+            (self.num_model_chunks if self.is_interleave else 1) if num_model_chunks is None else num_model_chunks
+        )
+
         if self.control_distribute_layers:
             assert num_layers == self.num_model_layers
             return self.num_layers_per_stage
 
         else:
-            num_model_chunk = self.num_model_chunks if self.is_interleave else 1
-            quotient = num_layers // (self.num_stages * num_model_chunk)
-            remainder = num_layers % (self.num_stages * num_model_chunk)
+            quotient = num_layers // (num_stages * num_model_chunks)
+            remainder = num_layers % (num_stages * num_model_chunks)
 
             # calculate the num_layers per stage
-            layers_per_stage = [quotient] * self.num_stages * num_model_chunk
+            layers_per_stage = [quotient] * num_stages * num_model_chunks
 
             # deal with the rest layers
             if remainder > 0:
-                start_position = (self.num_stages * num_model_chunk) // 2 - remainder // 2
+                start_position = (num_stages * num_model_chunks) // 2 - remainder // 2
                 for i in range(start_position, start_position + remainder):
                     layers_per_stage[i] += 1
             return layers_per_stage
@@ -114,6 +120,9 @@ class PipelineStageManager:
     def get_stage_index(
         self,
         layers_per_stage: List[int],
+        stage: Optional[int] = None,
+        num_model_chunks: Optional[int] = None,
+        num_stages: Optional[int] = None,
     ) -> Union[Tuple[int, int], List[Tuple[int, int]]]:
         """
         Get the start index and end index of layers for each stage.
@@ -121,19 +130,26 @@ class PipelineStageManager:
         Args:
             layers_per_stage (List[int]): number of layers for each stage
             stage (int): the stage index
+            num_stages (int): number of stages
+            num_model_chunks (int): number of model chunks
 
         Returns:
             - Tuple[int, int]: the start index and end index of this stage
             - List[Tuple[int, int]]: the start index and end index of this stage for each model chunk
 
         """
+        stage = self.stage if stage is None else stage
+        num_model_chunks = (
+            (self.num_model_chunks if self.is_interleave else 1) if num_model_chunks is None else num_model_chunks
+        )
+        num_stages = self.num_stages if num_stages is None else num_stages
+
         num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
 
         stage_indices = []
-        num_model_chunks = self.num_model_chunks if self.is_interleave else 1
         for model_chunk in range(num_model_chunks):
-            start_idx = num_layers_per_stage_accumulated[self.stage + model_chunk * self.num_stages]
-            end_idx = num_layers_per_stage_accumulated[self.stage + model_chunk * self.num_stages + 1]
+            start_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages]
+            end_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages + 1]
             stage_indices.append([start_idx, end_idx])
 
         return stage_indices[0] if num_model_chunks == 1 else stage_indices
