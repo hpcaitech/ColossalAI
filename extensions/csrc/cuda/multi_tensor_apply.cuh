@@ -104,7 +104,7 @@ void multi_tensor_apply(
       if (tensors_full || blocks_full || last_chunk) {
         // using accscalar_t = acc_type<scalar_t, true>;
         multi_tensor_apply_kernel<<<loc_block_info, block_size, 0, stream>>>(
-            chunk_size, noop_flag.DATA_PTR<int>(), tl, callable, args...);
+            chunk_size, noop_flag.data_ptr<int>(), tl, callable, args...);
 
         AT_CUDA_CHECK(cudaGetLastError());
 

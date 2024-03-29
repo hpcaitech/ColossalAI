@@ -77,7 +77,7 @@ __global__ void rms_layernorm_kernel(
     float v2 = cuda_cast<float>(x_local[cnt].y);
     variance += v1 * v1 + v2 * v2;
   }
-  variance = blockReduceSum<float>(variance);
+  colossalAI::cuda::utils::block_reduce<float, colossalAI::cuda::utils::ReduceType::kSum,1>(&variance);
   if (threadIdx.x == 0) {
     s_variance = rsqrtf(variance / hidden_size + epsilon);
   }
@@ -111,7 +111,7 @@ __global__ void general_rms_layernorm_kernel(
     x_local[cnt] = (float) input[id];
     variance += x_local[cnt] * x_local[cnt];
   }
-  variance = blockReduceSum<float>(variance);
+  colossalAI::cuda::utils::block_reduce<float, colossalAI::cuda::utils::ReduceType::kSum,1>(&variance);
   if (threadIdx.x == 0) {
     s_variance = rsqrtf(variance / hidden_size + epsilon);
   }
@@ -154,7 +154,7 @@ __global__ void fused_add_rms_layernorm_kernel(
     variance += v1 * v1 + v2 * v2;
     residual_ptr[id] = x_local[cnt];
   }
-  variance = blockReduceSum<float>(variance);
+  colossalAI::cuda::utils::block_reduce<float, colossalAI::cuda::utils::ReduceType::kSum,1>(&variance);
   if (threadIdx.x == 0) {
     s_variance = rsqrtf(variance / hidden_size + epsilon);
   }
@@ -190,7 +190,7 @@ __global__ void general_fused_add_rms_layernorm_kernel(
     variance += x_local[cnt] * x_local[cnt];
     residual[id] = (scalar_t) x_local[cnt];
   }
-  variance = blockReduceSum<float>(variance);
+  colossalAI::cuda::utils::block_reduce<float, colossalAI::cuda::utils::ReduceType::kSum,1>(&variance);
   if (threadIdx.x == 0) {
     s_variance = rsqrtf(variance / hidden_size + epsilon);
   }

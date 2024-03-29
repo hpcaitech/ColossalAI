@@ -89,7 +89,7 @@ struct L2NormFunctor {
     float val = 0.f;
     for (int i = 0; i < ILP; i++) val += vals[i];
 
-    float final = reduce_block_into_lanes(s_vals, val);
+    float final = colossalAI::cuda::utils::reduce_block_into_lanes(s_vals, val);
 
     if (threadIdx.x == 0) {
       if (!isfinite(final))
@@ -165,7 +165,7 @@ struct MaxNormFunctor {
     float val = 0.f;
     for (int i = 0; i < ILP; i++) val = fmaxf(fabsf(val), fabsf(vals[i]));
 
-    float final = reduce_block_into_lanes_max_op(s_vals, val);
+    float final = colossalAI::cuda::utils::reduce_block_into_lanes_max_op(s_vals, val);
 
     if (threadIdx.x == 0) {
       if (!isfinite(final))
@@ -189,7 +189,7 @@ __global__ void cleanup(float *output, float *output_per_tensor, float *ret,
     float val = 0;
     if (threadIdx.x < 320) val = output[threadIdx.x];
 
-    float final = reduce_block_into_lanes(vals, val);
+    float final = colossalAI::cuda::utils::reduce_block_into_lanes(vals, val);
 
     if (threadIdx.x == 0) *ret = sqrt(final);
   }
@@ -202,7 +202,7 @@ __global__ void cleanup(float *output, float *output_per_tensor, float *ret,
     for (int i = threadIdx.x; i < max_chunks_per_tensor; i += blockDim.x)
       val += output_this_tensor[i];
 
-    float final = reduce_block_into_lanes(vals, val);
+    float final = colossalAI::cuda::utils::reduce_block_into_lanes(vals, val);
 
     if (threadIdx.x == 0) ret_per_tensor[blockIdx.x] = sqrt(final);
   }
@@ -219,10 +219,10 @@ __global__ void cleanup_v2(float *output, float *output_per_tensor, float *ret,
     if (threadIdx.x < 320) val = output[threadIdx.x];
 
     if (norm_type == 0) {
-      float final = reduce_block_into_lanes_max_op(vals, val);
+      float final = colossalAI::cuda::utils::reduce_block_into_lanes_max_op(vals, val);
       if (threadIdx.x == 0) *ret = alpha * (*ret) + beta * final;
     } else {
-      float final = reduce_block_into_lanes(vals, val);
+      float final = colossalAI::cuda::utils::reduce_block_into_lanes(vals, val);
       if (threadIdx.x == 0) *ret = sqrt(alpha * (*ret) * (*ret) + beta * final);
     }
   }
@@ -236,7 +236,7 @@ __global__ void cleanup_v2(float *output, float *output_per_tensor, float *ret,
       for (int i = threadIdx.x; i < max_chunks_per_tensor; i += blockDim.x)
         val = fmaxf(fabsf(val), fabsf(output_this_tensor[i]));
 
-      float final = reduce_block_into_lanes_max_op(vals, val);
+      float final = colossalAI::cuda::utils::reduce_block_into_lanes_max_op(vals, val);
 
       if (threadIdx.x == 0)
         ret_per_tensor[blockIdx.x] =
@@ -246,7 +246,7 @@ __global__ void cleanup_v2(float *output, float *output_per_tensor, float *ret,
       for (int i = threadIdx.x; i < max_chunks_per_tensor; i += blockDim.x)
         val += output_this_tensor[i];
 
-      float final = reduce_block_into_lanes(vals, val);
+      float final = colossalAI::cuda::utils::reduce_block_into_lanes(vals, val);
 
       if (threadIdx.x == 0)
         ret_per_tensor[blockIdx.x] = sqrt(alpha * ret_per_tensor[blockIdx.x] *
@@ -290,8 +290,8 @@ std::tuple<at::Tensor, at::Tensor> multi_tensor_l2norm_cuda(
       tensor_lists[0][0].scalar_type(), 0, "multi_tensor_l2norm_cuda",
       multi_tensor_apply<1>(
           BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
-          L2NormFunctor<scalar_t_0>(), output.DATA_PTR<float>(),
-          per_tensor ? output_per_tensor.DATA_PTR<float>() : nullptr,
+          L2NormFunctor<scalar_t_0>(), output.data_ptr<float>(),
+          per_tensor ? output_per_tensor.data_ptr<float>() : nullptr,
           per_tensor, max_chunks_per_tensor);)
 
   AT_CUDA_CHECK(cudaGetLastError());
@@ -304,10 +304,10 @@ std::tuple<at::Tensor, at::Tensor> multi_tensor_l2norm_cuda(
   const at::cuda::OptionalCUDAGuard device_guard(device_of(output));
   auto stream = at::cuda::getCurrentCUDAStream();
   cleanup<<<per_tensor ? ntensors : 1, 512, 0, stream>>>(
-      output.DATA_PTR<float>(),
-      per_tensor ? output_per_tensor.DATA_PTR<float>() : nullptr,
-      ret.DATA_PTR<float>(),
-      per_tensor ? ret_per_tensor.DATA_PTR<float>() : nullptr, per_tensor,
+      output.data_ptr<float>(),
+      per_tensor ? output_per_tensor.data_ptr<float>() : nullptr,
+      ret.data_ptr<float>(),
+      per_tensor ? ret_per_tensor.data_ptr<float>() : nullptr, per_tensor,
       max_chunks_per_tensor);
 
   return std::tuple<at::Tensor, at::Tensor>(ret, ret_per_tensor);
@@ -350,15 +350,15 @@ void multi_tensor_norm_out_cuda(
         tensor_lists[0][0].scalar_type(), 0, "multi_tensor_maxnorm_cuda",
         multi_tensor_apply<1>(
             BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
-            MaxNormFunctor<scalar_t_0>(), output.DATA_PTR<float>(),
-            output_per_tensor.DATA_PTR<float>(), true, max_chunks_per_tensor);)
+            MaxNormFunctor<scalar_t_0>(), output.data_ptr<float>(),
+            output_per_tensor.data_ptr<float>(), true, max_chunks_per_tensor);)
   } else {
     DISPATCH_FLOAT_AND_HALF(
         tensor_lists[0][0].scalar_type(), 0, "multi_tensor_l2norm_cuda",
         multi_tensor_apply<1>(
             BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
-            L2NormFunctor<scalar_t_0>(), output.DATA_PTR<float>(),
-            output_per_tensor.DATA_PTR<float>(), true, max_chunks_per_tensor);)
+            L2NormFunctor<scalar_t_0>(), output.data_ptr<float>(),
+            output_per_tensor.data_ptr<float>(), true, max_chunks_per_tensor);)
   }
   AT_CUDA_CHECK(cudaGetLastError());
 
@@ -375,8 +375,8 @@ void multi_tensor_norm_out_cuda(
   const at::cuda::OptionalCUDAGuard device_guard(device_of(output));
   auto stream = at::cuda::getCurrentCUDAStream();
   cleanup_v2<<<ntensors, 512, 0, stream>>>(
-      output.DATA_PTR<float>(), output_per_tensor.DATA_PTR<float>(),
-      ret.DATA_PTR<float>(), out.DATA_PTR<float>(), true, max_chunks_per_tensor,
+      output.data_ptr<float>(), output_per_tensor.data_ptr<float>(),
+      ret.data_ptr<float>(), out.data_ptr<float>(), true, max_chunks_per_tensor,
       norm_type, alpha, beta);
 
   return;
