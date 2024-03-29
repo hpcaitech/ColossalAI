@@ -4,15 +4,11 @@ from typing import List, Optional
 
 @dataclass
 class GradientCheckpointConfig:
-    # TODO: for future use
-    _dummy_value: Optional[float] = None
-
-    @property
-    def control_gradient_checkpointing(self) -> bool:
-        return False
+    gradient_checkpointing_ratio: float = 0.0
 
     def get_num_ckpt_layers(self, *args, **kwargs) -> int:
-        raise NotImplementedError()
+        assert self.gradient_checkpointing_ratio == 0.0, "This function should be overridden in derived class"
+        return 0
 
 
 @dataclass
@@ -55,7 +51,6 @@ class PipelineGradientCheckpointConfig(GradientCheckpointConfig):
     num_model_chunks: Optional[int] = None
     num_model_layers: Optional[int] = None
     num_ckpt_layers_per_stage: Optional[List[int]] = None
-    gradient_checkpointing_ratio: Optional[float] = None
 
     def __post_init__(self):
         if self._enable_gradient_checkpointing_ratio:
@@ -73,10 +68,6 @@ class PipelineGradientCheckpointConfig(GradientCheckpointConfig):
             self.gradient_checkpointing_ratio = sum(self.num_ckpt_layers_per_stage) / self.num_model_layers
 
     @property
-    def control_gradient_checkpointing(self) -> bool:
-        return self._enable_gradient_checkpointing_ratio or self._enable_customized_ckpt_layers_per_stage
-
-    @property
     def _enable_gradient_checkpointing_ratio(self) -> bool:
         return self.gradient_checkpointing_ratio is not None
 
@@ -85,7 +76,7 @@ class PipelineGradientCheckpointConfig(GradientCheckpointConfig):
         return self.num_ckpt_layers_per_stage is not None
 
     def get_num_ckpt_layers(self, stage: int, num_layers: int, model_chunk_id: int = 0) -> int:
-        if not self.control_gradient_checkpointing:
+        if not self._enable_gradient_checkpointing_ratio and not self._enable_customized_ckpt_layers_per_stage:
             raise RuntimeError("No checkpointed layers information is provided")
 
         if self._enable_customized_ckpt_layers_per_stage:
@@ -93,7 +84,5 @@ class PipelineGradientCheckpointConfig(GradientCheckpointConfig):
             num_ckpt_layers = self.num_ckpt_layers_per_stage[stage + model_chunk_id * self.num_stages]
             assert num_ckpt_layers <= num_layers
             return num_ckpt_layers
-        elif self._enable_gradient_checkpointing_ratio:
-            return int(self.gradient_checkpointing_ratio * num_layers)
         else:
-            raise NotImplementedError()
+            return int(self.gradient_checkpointing_ratio * num_layers)

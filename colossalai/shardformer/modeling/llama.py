@@ -143,13 +143,11 @@ class LlamaPipelineForwards:
             num_ckpt_layers = end_idx - start_idx
             # TODO: We can replace `gradient_checkpointing_enable` fn and initialize a gradient_checkpointing (List[bool]) for each layer
             if shard_config.gradient_checkpoint_config is not None:
-                gradient_checkpoint_config = shard_config.gradient_checkpoint_config
-                if gradient_checkpoint_config.control_gradient_checkpointing:
-                    num_ckpt_layers = gradient_checkpoint_config.get_num_ckpt_layers(
-                        stage=stage_manager.stage,
-                        num_layers=end_idx - start_idx,
-                        model_chunk_id=stage_manager.model_chunk_id if stage_manager.is_interleave else 0,
-                    )
+                num_ckpt_layers = shard_config.gradient_checkpoint_config.get_num_ckpt_layers(
+                    stage=stage_manager.stage,
+                    num_layers=end_idx - start_idx,
+                    model_chunk_id=stage_manager.model_chunk_id if stage_manager.is_interleave else 0,
+                )
             assert num_ckpt_layers <= end_idx - start_idx
 
         for idx, decoder_layer in enumerate(self.layers[start_idx:end_idx], start=start_idx):
