@@ -3,7 +3,15 @@ from typing import Dict, Union
 
 import torch.nn as nn
 
-from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, VocabParallelLMHead1D, PaddingLMHead, Linear1D_Row, VocabParallelEmbedding1D, PaddingEmbedding
+from colossalai.shardformer.layer import (
+    FusedRMSNorm,
+    Linear1D_Col,
+    Linear1D_Row,
+    PaddingEmbedding,
+    PaddingLMHead,
+    VocabParallelEmbedding1D,
+    VocabParallelLMHead1D,
+)
 
 from ..modeling.mistral import get_mistral_flash_attention_forward
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -16,12 +24,17 @@ class MistralPolicy(Policy):
         pass
 
     def preprocess(self):
+        self.tie_weight = self.tie_weight_check()
         return self.model
-    
+
     def tie_weight_check(self):
         input_embedding = self.model.get_input_embeddings()
         output_embedding = self.model.get_output_embeddings()
-        return input_embedding is not None and output_embedding is not None and id(input_embedding.weight) == id(output_embedding.weight)
+        return (
+            input_embedding is not None
+            and output_embedding is not None
+            and id(input_embedding.weight) == id(output_embedding.weight)
+        )
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         from transformers.models.mistral.modeling_mistral import MistralAttention, MistralDecoderLayer, MistralModel
@@ -32,7 +45,7 @@ class MistralPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = VocabParallelEmbedding1D
         else:
-            if self.tie_weight_check():
+            if self.tie_weight:
                 embedding_cls = PaddingEmbedding
 
         if self.shard_config.enable_sequence_parallelism:
@@ -88,7 +101,7 @@ class MistralPolicy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
                     target_module=embedding_cls,
-                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                 ),
                 policy=policy,
                 target_key=MistralModel,
@@ -160,7 +173,12 @@ class MistralForCausalLMPolicy(MistralPolicy):
                 MistralForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=VocabParallelLMHead1D, kwargs=dict(gather_output=True, make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by)
+                            suffix="lm_head",
+                            target_module=VocabParallelLMHead1D,
+                            kwargs=dict(
+                                gather_output=True,
+                                make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by,
+                            ),
                         )
                     ]
                 )
@@ -170,7 +188,9 @@ class MistralForCausalLMPolicy(MistralPolicy):
                 MistralForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=PaddingLMHead, kwargs=dict(make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by)
+                            suffix="lm_head",
+                            target_module=PaddingLMHead,
+                            kwargs=dict(make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by),
                         )
                     ]
                 )

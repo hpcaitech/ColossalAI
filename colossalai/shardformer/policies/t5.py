@@ -13,7 +13,7 @@ from colossalai.shardformer.layer import (
     Linear1D_Row,
     RMSNorm,
     VocabParallelEmbedding1D,
-    VocabParallelLMHead1D
+    VocabParallelLMHead1D,
 )
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription
 
@@ -40,15 +40,15 @@ class T5BasePolicy(Policy):
         Reshape the Embedding layer to make the embedding dimension divisible by world_size
         """
         # TODO padding the vocab size in VocabParallelEmbedding1D
-        vocab_size = self.model.config.vocab_size
-        if self.shard_config.enable_tensor_parallelism:
-            world_size = self.shard_config.tensor_parallel_size
-            multiple = world_size * self.shard_config.make_vocab_size_divisible_by
-        else:
-            multiple = self.shard_config.make_vocab_size_divisible_by
-        if vocab_size % multiple != 0:
-            new_vocab_size = vocab_size + multiple - vocab_size % multiple
-            self.model.resize_token_embeddings(new_vocab_size)
+        # vocab_size = self.model.config.vocab_size
+        # if self.shard_config.enable_tensor_parallelism:
+        #     world_size = self.shard_config.tensor_parallel_size
+        #     multiple = world_size * self.shard_config.make_vocab_size_divisible_by
+        # else:
+        #     multiple = self.shard_config.make_vocab_size_divisible_by
+        # if vocab_size % multiple != 0:
+        #     new_vocab_size = vocab_size + multiple - vocab_size % multiple
+        #     self.model.resize_token_embeddings(new_vocab_size)
         return self.model
 
     def module_policy(self):
@@ -83,6 +83,7 @@ class T5BasePolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="embed_tokens",
                         target_module=VocabParallelEmbedding1D,
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                     ),
                 ]
             )
@@ -375,6 +376,7 @@ class T5ModelPolicy(T5BasePolicy):
                 description=SubModuleReplacementDescription(
                     suffix="shared",
                     target_module=VocabParallelEmbedding1D,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                 ),
                 policy=policy,
                 target_key=T5Model,
@@ -412,9 +414,15 @@ class T5ForConditionalGenerationPolicy(T5BasePolicy):
                     SubModuleReplacementDescription(
                         suffix="shared",
                         target_module=VocabParallelEmbedding1D,
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                     ),
                     SubModuleReplacementDescription(
-                        suffix="lm_head", target_module=Linear1D_Col, kwargs=dict(gather_output=True)
+                        suffix="lm_head",
+                        target_module=VocabParallelLMHead1D,
+                        kwargs=dict(
+                            gather_output=True,
+                            make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by,
+                        ),
                     ),
                 ],
                 policy=policy,
@@ -472,6 +480,7 @@ class T5EncoderPolicy(T5BasePolicy):
                 description=SubModuleReplacementDescription(
                     suffix="shared",
                     target_module=VocabParallelEmbedding1D,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                 ),
                 policy=policy,
                 target_key=T5EncoderModel,

@@ -36,6 +36,7 @@ class BertPolicy(Policy):
         pass
 
     def preprocess(self):
+        self.tie_weight = self.tie_weight_check()
         return self.model
 
     def tie_weight_check(self):
@@ -63,7 +64,7 @@ class BertPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = col_nn.VocabParallelEmbedding1D
         else:
-            if self.tie_weight_check():
+            if self.tie_weight:
                 embedding_cls = col_nn.PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:

@@ -17,12 +17,17 @@ class BlipPolicy(Policy):
         pass
 
     def preprocess(self):
+        self.tie_weight = self.tie_weight_check()
         return self.model
-    
+
     def tie_weight_check(self):
         input_embedding = self.model.get_input_embeddings()
         output_embedding = self.model.get_output_embeddings()
-        return input_embedding is not None and output_embedding is not None and id(input_embedding.weight) == id(output_embedding.weight)
+        return (
+            input_embedding is not None
+            and output_embedding is not None
+            and id(input_embedding.weight) == id(output_embedding.weight)
+        )
 
     def module_policy(self):
         from transformers.models.blip_2.modeling_blip_2 import (
@@ -42,8 +47,7 @@ class BlipPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = col_nn.VocabParallelEmbedding1D
         else:
-            tie_weight = self.tie_weight_check()
-            if self.tie_weight_check():
+            if self.tie_weight:
                 embedding_cls = col_nn.PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
@@ -213,7 +217,7 @@ class BlipPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="model.decoder.embed_tokens",
                         target_module=embedding_cls,
-                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                     ),
                 ],
                 policy=policy,
@@ -226,7 +230,10 @@ class BlipPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="lm_head",
                         target_module=col_nn.VocabParallelLMHead1D,
-                        kwargs={"gather_output": True, "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                        kwargs={
+                            "gather_output": True,
+                            "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                        },
                     ),
                 ],
                 policy=policy,
@@ -238,7 +245,7 @@ class BlipPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="lm_head",
                         target_module=col_nn.PaddingLMHead,
-                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                     ),
                 ],
                 policy=policy,

@@ -29,13 +29,17 @@ class ChatGLMPolicy(Policy):
             bsz_dim = 1
             setattr(self.model, "batch_size_dim", bsz_dim)
 
+        self.tie_weight = self.tie_weight_check()
         return self.model
-    
-    
+
     def tie_weight_check(self):
         input_embedding = self.model.get_input_embeddings()
         output_embedding = self.model.get_output_embeddings()
-        return input_embedding is not None and output_embedding is not None and id(input_embedding.weight) == id(output_embedding.weight)
+        return (
+            input_embedding is not None
+            and output_embedding is not None
+            and id(input_embedding.weight) == id(output_embedding.weight)
+        )
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMModel, CoreAttention, GLMBlock
@@ -46,7 +50,7 @@ class ChatGLMPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = col_nn.VocabParallelEmbedding1D
         else:
-            if self.tie_weight_check():
+            if self.tie_weight:
                 embedding_cls = col_nn.PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
@@ -105,7 +109,7 @@ class ChatGLMPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="embedding.word_embeddings",
                         target_module=embedding_cls,
-                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                     ),
                 ],
                 policy=policy,
