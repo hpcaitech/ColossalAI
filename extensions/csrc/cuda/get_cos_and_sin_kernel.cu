@@ -39,7 +39,7 @@ __global__ void apply_get_context_cos_and_sin_kernel(
     const scalar_t* __restrict__ cos_cache_ptr,
     const scalar_t* __restrict__ sin_cache_ptr,
     const int* __restrict__ sequence_lengths,
-    const int* __restrict__ comsum_lengths,
+    const int* __restrict__ cumsum_lengths,
     const int batch_size,
     const int head_dim
 ) {
@@ -52,7 +52,7 @@ __global__ void apply_get_context_cos_and_sin_kernel(
     int dest_offset_id = src_offset_id;
 
     if (blockIdx.y > 0) {
-        dest_offset_id += comsum_lengths[blockIdx.y - 1] * head_dim;
+        dest_offset_id += cumsum_lengths[blockIdx.y - 1] * head_dim;
     }
 
     apply_cos_and_sin_memcopy<scalar_t, Aligned, VecSize>(
@@ -107,7 +107,7 @@ void apply_get_cos_and_sin(
     int head_dim = cos.size(1);
     int batch_size = sequence_lengths.size(0);
 
-    at::Tensor comsum_lengths;
+    at::Tensor cumsum_lengths;
 
     int vec_size = get_vec_size<scalar_t>(cos);
 
@@ -124,7 +124,7 @@ void apply_get_cos_and_sin(
         block_size_y = batch_size;
         block_size_x = max_seq_len_in_batch;
         // TODO: The cumsum operation can be fused into get_cos_and_sin kernel later on.
-        comsum_lengths = torch::cumsum(sequence_lengths, 0, torch::kInt32);
+        cumsum_lengths = torch::cumsum(sequence_lengths, 0, torch::kInt32);
     }
     else{
         block_size_y = batch_size;
@@ -145,7 +145,7 @@ void apply_get_cos_and_sin(
                 cos_cache.data_ptr<scalar_t>(),                                                                     \
                 sin_cache.data_ptr<scalar_t>(),                                                                     \
                 sequence_lengths.data_ptr<int>(),                                                                   \
-                comsum_lengths.data_ptr<int>(),                                                                     \
+                cumsum_lengths.data_ptr<int>(),                                                                     \
                 batch_size,                                                                                         \
                 head_dim                                                                                            \
             );                                                                                                      \
