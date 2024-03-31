@@ -102,7 +102,6 @@ class ChatServing:
 
         result = await result_generator
         assert result is not None
-
         role = self.get_chat_request_role(request, request_dict)
         choice_data = ChatMessage(role=role, content=result.output)
         echo = request_dict.get("echo", "false").lower()

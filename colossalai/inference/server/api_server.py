@@ -11,7 +11,6 @@ Doc:
          -d '{"prompt":"hello, who are you? ","stream":"False"}'`
 """
 
-
 import argparse
 import json
 
@@ -28,9 +27,13 @@ from colossalai.inference.server.utils import id_generator
 from colossalai.inference.core.async_engine import AsyncInferenceEngine, InferenceEngine  # noqa
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds.
-app = FastAPI()
 supported_models_dict = {"Llama_Models": ("llama2-7b",)}
 prompt_template_choices = ["llama", "vicuna"]
+async_engine = None
+chat_serving = None
+completion_serving = None
+
+app = FastAPI()
 
 
 @app.get("/v0/models")
@@ -208,7 +211,6 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-
     inference_config = InferenceConfig.from_dict(vars(args))
     model = AutoModelForCausalLM.from_pretrained(args.model)
     tokenizer = AutoTokenizer.from_pretrained(args.model)
