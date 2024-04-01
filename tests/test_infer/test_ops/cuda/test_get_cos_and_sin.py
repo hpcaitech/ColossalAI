@@ -12,13 +12,13 @@ def numpy_equal(x, y):
     x_numpy = x.detach().cpu().numpy()
     y_numpy = y.detach().cpu().numpy()
 
-    np.testing.assert_allclose(x_numpy, y_numpy)
+    np.testing.assert_equal(x_numpy, y_numpy)
 
 
 @pytest.mark.parametrize("BATCH_SIZE", [4])
 @pytest.mark.parametrize("MAX_SEQ_LEN", [64])
 @pytest.mark.parametrize("HEAD_DIM", [64])
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_get_cos_and_sin(BATCH_SIZE, MAX_SEQ_LEN, HEAD_DIM, dtype):
     MAX_TOTAL_TOKENS = BATCH_SIZE * MAX_SEQ_LEN
     cos_cache = torch.randn((MAX_TOTAL_TOKENS, HEAD_DIM), dtype=dtype, device="cuda")
