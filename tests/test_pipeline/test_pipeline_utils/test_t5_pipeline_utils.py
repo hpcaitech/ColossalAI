@@ -1,4 +1,23 @@
+import random
+
+from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.policies.t5 import T5BasePolicy
+from colossalai.shardformer.shard.shard_config import ShardConfig
+
+
+class _ShardConfig(ShardConfig):
+    def __post_init__(self):
+        pass
+
+
+class _PipelineStageManager(PipelineStageManager):
+    def __init__(self):
+        self.is_interleave = False
+        self.num_layers_per_stage = None
+
+    @property
+    def num_stages(self):
+        return random.randint(5, 10)
 
 
 def test_t5_pipeline_distribution():
@@ -10,7 +29,10 @@ def test_t5_pipeline_distribution():
         "decoder_starting_stage": [1, 1, 2, 2, 3, 1, 5, 2],
     }
 
+    stage_manager = _PipelineStageManager()
+    shard_config = _ShardConfig(pipeline_stage_manager=stage_manager)
     policy = T5BasePolicy()
+    policy.set_shard_config(shard_config)
     for i in range(num_test_cases):
         _, decoder_starting_stage = policy.distribute_t5_layers(
             test_dict["num_encoder_layers"][i],
@@ -35,7 +57,10 @@ def test_t5_pipeline_layers():
     }
 
     for i in range(num_test_cases):
+        stage_manager = _PipelineStageManager()
+        shard_config = _ShardConfig(pipeline_stage_manager=stage_manager)
         policy = T5BasePolicy()
+        policy.set_shard_config(shard_config)
         layers_per_stage, decoder_starting_stage = policy.distribute_t5_layers(
             test_dict["num_encoder_layers"][i],
             test_dict["num_decoder_layers"][i],

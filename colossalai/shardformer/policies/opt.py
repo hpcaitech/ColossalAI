@@ -186,12 +186,12 @@ class OPTPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
+        layers_per_stage = stage_manager.distribute_layers(len(module.layers))
         if stage_manager.is_first_stage():
             held_layers.append(module.embed_tokens)
             held_layers.append(module.embed_positions)
             held_layers.append(module.project_in)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
         held_layers.extend(module.layers[start_idx:end_idx])
         if stage_manager.is_last_stage():
             held_layers.append(module.final_layer_norm)
@@ -208,8 +208,8 @@ class OPTPolicy(Policy):
             else:
                 module = self.model.model.decoder
 
-            layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
-            stage_index = self.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(
                     new_forward,

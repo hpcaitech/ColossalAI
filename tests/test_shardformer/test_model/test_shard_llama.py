@@ -5,6 +5,7 @@ import torch
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
+from colossalai.shardformer import PipelineGradientCheckpointConfig
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
@@ -24,9 +25,13 @@ os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 
 
 def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
+    enable_gradient_checkpointing = test_config.pop("enable_gradient_checkpointing", False)
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
         model_fn, loss_fn, test_config
     )
+    if enable_gradient_checkpointing:
+        org_model.gradient_checkpointing_enable()
+        sharded_model.unwrap().gradient_checkpointing_enable()
 
     org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
         org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
@@ -101,6 +106,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "use_lazy_init": True,
             "precision": "fp16",
             "initial_scale": 1,
+            "enable_gradient_checkpointing": True,
+            "gradient_checkpoint_config": PipelineGradientCheckpointConfig(gradient_checkpointing_ratio=0.5),
         },
         {
             "tp_size": 1,
@@ -108,6 +115,10 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "num_microbatches": 4,
             "use_lazy_init": False,
             "precision": "fp32",
+            "enable_gradient_checkpointing": True,
+            "gradient_checkpoint_config": PipelineGradientCheckpointConfig(
+                num_stages=2, num_model_chunks=1, num_model_layers=8, num_ckpt_layers_per_stage=[4, 0]
+            ),
         },
         {
             "tp_size": 4,
@@ -189,6 +200,13 @@ def run_llama_test(test_config):
             "precision": "fp16",
             "zero_stage": 1,
             "initial_scale": 1,
+            "enable_gradient_checkpointing": True,
+            "gradient_checkpoint_config": PipelineGradientCheckpointConfig(
+                num_stages=2,
+                num_model_chunks=2,
+                num_model_layers=8,
+                num_ckpt_layers_per_stage=[0, 1, 2, 2],
+            ),
         },
     ],
 )

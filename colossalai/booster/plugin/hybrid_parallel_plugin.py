@@ -26,7 +26,7 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.shardformer import GradientCheckpointConfig, ShardConfig, ShardFormer
 from colossalai.shardformer.layer.utils import SeqParallelUtils
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.tensor.d_tensor.api import is_distributed_tensor
@@ -930,6 +930,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         custom_policy (Policy, optional): Custom policy for Shardformer. Defaults to None.
         pp_style (str, optional): The style for pipeline parallelism. Defaults to '1f1b'.
         num_model_chunks (int, optional): The number of model chunks for interleaved pipeline parallelism. Defaults to 1.
+        gradient_checkpoint_config (GradientCheckpointConfig, optional): Configuration for gradient checkpointing. Defaults to None.
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
     """
 
@@ -969,6 +970,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         custom_policy: Policy = None,
         pp_style: str = "1f1b",
         num_model_chunks: int = 1,
+        gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None,
         enable_metadata_cache: bool = True,
     ) -> None:
         super().__init__()
@@ -1043,6 +1045,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             enable_sequence_parallelism=enable_sequence_parallelism,
             enable_sequence_overlap=enable_sequence_overlap,
             parallel_output=parallel_output,
+            gradient_checkpoint_config=gradient_checkpoint_config,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
