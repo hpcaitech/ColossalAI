@@ -189,7 +189,6 @@ class InferenceEngine:
                 device=self.device,
                 dtype=self.dtype,
             )
-            # self.use_glide = use_glide_drafter
 
             # check if the provided drafter model is compatible with GLIDE structure
             # when `use_glide_drafter` is set to True
