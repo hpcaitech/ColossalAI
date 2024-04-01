@@ -87,21 +87,13 @@ class Drafter:
         token_ids = []
 
         for _ in range(n_spec_tokens):
-            if glide_input is not None:
-                outputs = self._drafter_model(
-                    input_ids,
-                    return_dict=True,
-                    use_cache=True,
-                    past_key_values=past_key_values,
-                    glide_input=glide_input,
-                )
-            else:
-                outputs = self._drafter_model(
-                    input_ids,
-                    return_dict=True,
-                    use_cache=True,
-                    past_key_values=past_key_values,
-                )
+            outputs = self._drafter_model(
+                input_ids,
+                return_dict=True,
+                use_cache=True,
+                past_key_values=past_key_values,
+                glide_input=glide_input,
+            )
             next_token_logits = outputs.logits[:, -1, :]
 
             # NOTE Only use greedy search for speculating.

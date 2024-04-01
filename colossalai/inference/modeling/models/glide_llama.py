@@ -1,6 +1,7 @@
 # This is modified from huggingface transformers
 # https://github.com/huggingface/transformers/blob/v4.36.2/src/transformers/models/llama/modeling_llama.py
 import warnings
+from types import MethodType
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -247,11 +248,9 @@ class GlideLlamaConfig(LlamaConfig):
         self,
         large_hidden_size=4096,
         large_num_attention_heads=32,
-        use_remap=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.use_remap = use_remap
         self.large_hidden_size = large_hidden_size
         self.large_num_attention_heads = large_num_attention_heads
 
@@ -283,10 +282,6 @@ class LlamaCrossAttention(nn.Module):
         self.q_proj = nn.Linear(self.hidden_size, self.large_num_heads * self.large_head_dim, bias=False)
         self.o_proj = nn.Linear(self.large_num_heads * self.large_head_dim, self.hidden_size, bias=False)
         self._init_rope()
-        self.use_remap = config.use_remap
-        if self.use_remap:
-            self.remap_k = nn.Linear(self.large_head_dim, self.large_head_dim)
-            self.remap_v = nn.Linear(self.large_head_dim, self.large_head_dim)
 
     def _init_rope(self):
         if self.config.rope_scaling is None:
@@ -463,3 +458,18 @@ class GlideLlamaDecoderLayer(nn.Module):
             outputs += (present_key_value,)
 
         return outputs
+
+
+class GlideLlamaForCausalLM(LlamaForCausalLM):
+    def __init__(self, config: GlideLlamaConfig):
+        super().__init__(config)
+        self.config = config
+        bound_method = MethodType(glide_llama_causal_lm_forward, self)
+        setattr(self, "forward", bound_method)
+        bound_method = MethodType(glide_llama_model_forward, self.model)
+        model = getattr(self, "model")
+        setattr(model, "forward", bound_method)
+        replaced_layers = nn.ModuleList(
+            [GlideLlamaDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
+        )
+        setattr(model, "layers", replaced_layers)
