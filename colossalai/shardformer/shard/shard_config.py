@@ -40,6 +40,7 @@ class ShardConfig:
     zero_stage: int = 0
     enable_sequence_overlap: bool = False
     parallel_output: bool = True
+    extra_kwargs: Dict[str, Any] = field(default_factory=dict)
     # TODO padding vocab
     # make_vocab_size_divisible_by: int = 128
     # pipeline_parallel_size: int

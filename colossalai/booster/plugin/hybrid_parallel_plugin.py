@@ -1169,11 +1169,15 @@ class HybridParallelPlugin(PipelinePluginBase):
         param_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
+            if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
+                dp_group = self.pg_mesh.create_group_along_axis([DP_AXIS, SP_AXIS])
+            else:
+                dp_group = self.dp_group
             model = HybridParallelModule(
                 model,
                 precision=self.precision,
                 shard_config=self.shard_config,
-                dp_group=self.dp_group,
+                dp_group=dp_group,
                 tp_group=self.tp_group,
                 sp_group=self.sp_group,
                 use_ddp=use_ddp,

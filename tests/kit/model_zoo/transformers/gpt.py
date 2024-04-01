@@ -130,7 +130,7 @@ config = transformers.GPT2Config(
     hidden_dropout=0,
     problem_type="single_label_classification",
     pad_token_id=50256,
-    tie_word_embeddings=False,
+    tie_word_embeddings=True,
 )
 
 config_for_token_classification = copy.deepcopy(config)

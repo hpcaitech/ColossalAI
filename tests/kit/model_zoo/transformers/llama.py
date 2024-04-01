@@ -60,9 +60,9 @@ if HAS_LLAMA:
 
     config = LlamaConfig(
         num_hidden_layers=8,
-        hidden_size=64,
-        intermediate_size=256,
-        num_attention_heads=8,
+        hidden_size=32,
+        intermediate_size=64,
+        num_attention_heads=4,
         max_position_embeddings=128,
         num_labels=16,
     )

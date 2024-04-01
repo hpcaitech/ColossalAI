@@ -75,7 +75,7 @@ class LlamaPolicy(Policy):
             self.append_or_create_method_replacement(
                 description={
                     "forward": get_llama_seq_parallel_model_forward(
-                        sp_mode=sp_mode, sp_size=sp_size, sp_group=sp_group, use_flash_attention=use_flash_attention
+                        sp_mode=sp_mode, sp_size=sp_size, sp_group=sp_group
                     ),
                 },
                 policy=policy,
@@ -126,7 +126,6 @@ class LlamaPolicy(Policy):
                         sp_mode=sp_mode,
                         sp_size=sp_size,
                         sp_group=sp_group,
-                        use_flash_attention=use_flash_attention,
                         zero_stage=zero_stage,
                     ),
                 },

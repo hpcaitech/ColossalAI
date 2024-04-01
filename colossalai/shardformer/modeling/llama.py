@@ -13,12 +13,17 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithPast,
     SequenceClassifierOutputWithPast,
 )
-from transformers.models.llama.modeling_llama import LlamaForCausalLM, LlamaForSequenceClassification, LlamaModel
+from transformers.models.llama.modeling_llama import (
+    LlamaForCausalLM,
+    LlamaForSequenceClassification,
+    LlamaModel,
+    apply_rotary_pos_emb,
+    repeat_kv,
+)
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import (
-    _gather,
     all_to_all_comm,
     gather_forward_split_backward,
     split_forward_gather_backward,
@@ -499,31 +504,6 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_group, sp_size):
         attn_output = ColoAttention.attention(query_states, key_states, value_states, **attention_mask)
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
-        # me_input_shape = (bsz, q_len, self.num_heads, self.head_dim)
-        # query_states = query_states.transpose(1, 2).contiguous().view(*me_input_shape)
-        # key_states = key_states.transpose(1, 2).contiguous().view(*me_input_shape)
-        # value_states = value_states.transpose(1, 2).contiguous().view(*me_input_shape)
-
-        # flash_attention_mask = None
-        # attn_mask_type = AttnMaskType.causal
-        # if not getattr(shard_config, "causal_lm", False) and attention_mask != None:
-        #     if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-        #         raise ValueError(
-        #             f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
-        #         )
-        #     flash_attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool)).contiguous()
-        #     attn_mask_type = AttnMaskType.paddedcausal
-        # hidden_size = self.hidden_size // sp_size if sp_mode == "3" else self.hidden_size
-
-        # attention = ColoAttention(embed_dim=hidden_size, num_heads=self.num_heads)
-        # attn_output = attention(
-        #     query_states,
-        #     key_states,
-        #     value_states,
-        #     attn_mask=flash_attention_mask,
-        #     attn_mask_type=attn_mask_type,
-        #     origin_attn_mask=attention_mask,
-        # )
 
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
@@ -767,33 +747,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
 
 
 def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
-    def rotate_half(x):
-        """Rotates half the hidden dims of the input."""
-        x1 = x[..., : x.shape[-1] // 2]
-        x2 = x[..., x.shape[-1] // 2 :]
-        return torch.cat((-x2, x1), dim=-1)
-
-    def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
-        # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
-        cos = cos.squeeze(1).squeeze(0)  # [seq_len, dim]
-        sin = sin.squeeze(1).squeeze(0)  # [seq_len, dim]
-        cos = cos[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
-        sin = sin[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
-        q_embed = (q * cos) + (rotate_half(q) * sin)
-        k_embed = (k * cos) + (rotate_half(k) * sin)
-        return q_embed, k_embed
-
-    def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
-        """
-        This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
-        num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
-        """
-        batch, num_key_value_heads, slen, head_dim = hidden_states.shape
-        if n_rep == 1:
-            return hidden_states
-        hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
-        return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -857,49 +810,24 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        # TODO (linshengjie) Block attention with ring
-        ####
-        block_wise = False
-        seq_len = query_states.shape[2]
-        seq_block = 1024
-        if block_wise and seq_len > seq_block:
-            assert query_states.shape[2] % seq_block == 0
-            block_num = query_states.shape[2] // seq_block
+        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
-            query_states_chunks = query_states.chunk(block_num, dim=2)
-            if attention_mask is not None:
-                attention_mask_chunks = attention_mask.chunk(block_num, dim=2)
-            attn_output_chunks = []
+        if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+            raise ValueError(
+                f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+                f" {attn_weights.size()}"
+            )
 
-            for i in range(block_num):
-                attn_weights = torch.matmul(query_states_chunks[i], key_states.transpose(2, 3)) / math.sqrt(
-                    self.head_dim
-                )
-                if attention_mask is not None:
-                    attn_weights = attn_weights + attention_mask_chunks[i]
-                attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-                attn_output_chunks.append(torch.matmul(attn_weights, value_states))
-            attn_output = torch.cat(attn_output_chunks, dim=2)
-
-        else:
-            attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
-
-            if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+        if attention_mask is not None:
+            if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                 raise ValueError(
-                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-                    f" {attn_weights.size()}"
+                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
                 )
+            attn_weights = attn_weights + attention_mask
 
-            if attention_mask is not None:
-                if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-                    raise ValueError(
-                        f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
-                    )
-                attn_weights = attn_weights + attention_mask
-
-            # upcast attention to fp32
-            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-            attn_output = torch.matmul(attn_weights, value_states)
+        # upcast attention to fp32
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+        attn_output = torch.matmul(attn_weights, value_states)
         ####
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
@@ -930,7 +858,7 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
     return forward
 
 
-def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group, use_flash_attention=False, zero_stage=0):
+def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group, zero_stage=0):
     logger = logging.get_logger(__name__)
 
     # Copied from transformers.models.bart.modeling_bart._make_causal_mask
@@ -1066,29 +994,14 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group, use_flash_a
         elif sp_mode == "all_to_all":
             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size)
 
-        use_distributed_mask = True if sp_mode in ["ring", "all_to_all"] and use_flash_attention else False
-
-        # embed positions
-        if sp_mode is None or use_distributed_mask is False:
-            if attention_mask is None:
-                attention_mask = torch.ones(
-                    (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
-                )
-
-            attention_mask = self._prepare_decoder_attention_mask(
-                attention_mask, attention_mask.shape, inputs_embeds, past_key_values_length
-            )
-        else:
-            world_size = dist.get_world_size(sp_group)
-            assert seq_length_with_past % world_size == 0
+        if attention_mask is None:
             attention_mask = torch.ones(
-                (batch_size, seq_length_with_past // world_size), dtype=torch.bool, device=inputs_embeds.device
+                (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
             )
-            attention_mask = _prepare_decoder_attention_mask_partial(
-                attention_mask, attention_mask.shape, inputs_embeds, past_key_values_length, sp_group
-            )
-            attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool)).contiguous()
-            attention_mask = _gather(attention_mask, 1, sp_group)
+
+        attention_mask = self._prepare_decoder_attention_mask(
+            attention_mask, attention_mask.shape, inputs_embeds, past_key_values_length
+        )
 
         hidden_states = inputs_embeds
 
@@ -1146,7 +1059,6 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group, use_flash_a
 
         hidden_states = self.norm(hidden_states)
 
-        # Todo: Maybe this line can be optimized
         if sp_mode == "ring" or sp_mode == "split_gather" or (sp_mode == "all_to_all" and zero_stage == 0):
             hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
         elif sp_mode == "all_to_all" and zero_stage in [1, 2]:
