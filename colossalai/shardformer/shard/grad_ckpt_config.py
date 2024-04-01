@@ -6,9 +6,8 @@ from typing import List, Optional
 class GradientCheckpointConfig:
     gradient_checkpointing_ratio: float = 0.0
 
-    def get_num_ckpt_layers(self, *args, **kwargs) -> int:
-        assert self.gradient_checkpointing_ratio == 0.0, "This function should be overridden in derived class"
-        return 0
+    def get_num_ckpt_layers(self, num_layers: int) -> int:
+        return int(self.gradient_checkpointing_ratio * num_layers)
 
 
 @dataclass
