@@ -17,6 +17,10 @@
 #define BLOCK_SIZE 512
 #define ILP 4
 
+using colossalAI::cuda::utils::block_reduce;
+using colossalAI::cuda::utils::reduce_block_into_lanes;
+using colossalAI::cuda::utils::reduce_block_into_lanes_max_op;
+
 template <typename T>
 __device__ __forceinline__ bool is_aligned(T *p) {
   return ((uint64_t)p) % (ILP * sizeof(T)) == 0;
@@ -290,8 +294,8 @@ std::tuple<at::Tensor, at::Tensor> multi_tensor_l2norm_cuda(
       tensor_lists[0][0].scalar_type(), 0, "multi_tensor_l2norm_cuda",
       multi_tensor_apply<1>(
           BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
-          L2NormFunctor<scalar_t_0>(), output.DATA_PTR<float>(),
-          per_tensor ? output_per_tensor.DATA_PTR<float>() : nullptr,
+          L2NormFunctor<scalar_t_0>(), output.data_ptr<float>(),
+          per_tensor ? output_per_tensor.data_ptr<float>() : nullptr,
           per_tensor, max_chunks_per_tensor);)
 
   AT_CUDA_CHECK(cudaGetLastError());
@@ -304,10 +308,10 @@ std::tuple<at::Tensor, at::Tensor> multi_tensor_l2norm_cuda(
   const at::cuda::OptionalCUDAGuard device_guard(device_of(output));
   auto stream = at::cuda::getCurrentCUDAStream();
   cleanup<<<per_tensor ? ntensors : 1, 512, 0, stream>>>(
-      output.DATA_PTR<float>(),
-      per_tensor ? output_per_tensor.DATA_PTR<float>() : nullptr,
-      ret.DATA_PTR<float>(),
-      per_tensor ? ret_per_tensor.DATA_PTR<float>() : nullptr, per_tensor,
+      output.data_ptr<float>(),
+      per_tensor ? output_per_tensor.data_ptr<float>() : nullptr,
+      ret.data_ptr<float>(),
+      per_tensor ? ret_per_tensor.data_ptr<float>() : nullptr, per_tensor,
       max_chunks_per_tensor);
 
   return std::tuple<at::Tensor, at::Tensor>(ret, ret_per_tensor);
@@ -350,15 +354,15 @@ void multi_tensor_norm_out_cuda(
         tensor_lists[0][0].scalar_type(), 0, "multi_tensor_maxnorm_cuda",
         multi_tensor_apply<1>(
             BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
-            MaxNormFunctor<scalar_t_0>(), output.DATA_PTR<float>(),
-            output_per_tensor.DATA_PTR<float>(), true, max_chunks_per_tensor);)
+            MaxNormFunctor<scalar_t_0>(), output.data_ptr<float>(),
+            output_per_tensor.data_ptr<float>(), true, max_chunks_per_tensor);)
   } else {
     DISPATCH_FLOAT_AND_HALF(
         tensor_lists[0][0].scalar_type(), 0, "multi_tensor_l2norm_cuda",
         multi_tensor_apply<1>(
             BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
-            L2NormFunctor<scalar_t_0>(), output.DATA_PTR<float>(),
-            output_per_tensor.DATA_PTR<float>(), true, max_chunks_per_tensor);)
+            L2NormFunctor<scalar_t_0>(), output.data_ptr<float>(),
+            output_per_tensor.data_ptr<float>(), true, max_chunks_per_tensor);)
   }
   AT_CUDA_CHECK(cudaGetLastError());
 
@@ -375,8 +379,8 @@ void multi_tensor_norm_out_cuda(
   const at::cuda::OptionalCUDAGuard device_guard(device_of(output));
   auto stream = at::cuda::getCurrentCUDAStream();
   cleanup_v2<<<ntensors, 512, 0, stream>>>(
-      output.DATA_PTR<float>(), output_per_tensor.DATA_PTR<float>(),
-      ret.DATA_PTR<float>(), out.DATA_PTR<float>(), true, max_chunks_per_tensor,
+      output.data_ptr<float>(), output_per_tensor.data_ptr<float>(),
+      ret.data_ptr<float>(), out.data_ptr<float>(), true, max_chunks_per_tensor,
       norm_type, alpha, beta);
 
   return;

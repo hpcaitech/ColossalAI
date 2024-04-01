@@ -6,6 +6,10 @@
 
 #include "block_reduce.h"
 
+
+using colossalAI::cuda::utils::block_reduce;
+using colossalAI::cuda::utils::ReduceType;
+
 template <typename T, int block_size, int pack_size>
 __device__ void moe_dpch_one_fwd(T *src_row, T *dst_row, const int cols) {
   assert(cols % pack_size == 0);
@@ -157,8 +161,7 @@ __device__ void moe_cb_one_bwd(T *src_row, T *dst_row, T *tks_row,
 
     BlockStore(ts_store).Store(src_row + idx, grad);
   }
-
-  blockReduce<ReduceType::kSum, 1>(&thread_sum);
+  block_reduce<float, ReduceType::kSum, 1>(&thread_sum);
 
   if (threadIdx.x == 0) *weight_grad = static_cast<T>(thread_sum);
 }
@@ -230,7 +233,7 @@ __device__ void moe_cb_two_bwd(T *src_row1, T *src_row2, T *dst_row,
     BlockStore(ts_store).Store(src_row2 + idx, sgrad2);
   }
 
-  blockReduce<ReduceType::kSum, 2>(thread_sum);
+  block_reduce<float, ReduceType::kSum, 2>(thread_sum);
 
   if (threadIdx.x == 0)
     *weight_grad1 = static_cast<T>(thread_sum[0]);
@@ -566,10 +569,10 @@ torch::Tensor moe_dispatch_cuda_forward(int s, int ec, int h,
   DISPATCH_FLOAT_AND_HALF(
       batch_tokens.scalar_type(), "moe dispatch forward",
       moe_dpch_fwd_launch<scalar_t>(
-          batch_tokens.data<scalar_t>(), res.data<scalar_t>(),
-          mask[0].data<int>(), k == 1 ? nullptr : mask[1].data<int>(),
-          dest_idx[0].data<int>(),
-          k == 1 ? dest_idx[0].data<int>() : dest_idx[1].data<int>(), s, h));
+          batch_tokens.data_ptr<scalar_t>(), res.data_ptr<scalar_t>(),
+          mask[0].data_ptr<int>(), k == 1 ? nullptr : mask[1].data_ptr<int>(),
+          dest_idx[0].data_ptr<int>(),
+          k == 1 ? dest_idx[0].data_ptr<int>() : dest_idx[1].data_ptr<int>(), s, h));
 
   return res;
 }
@@ -586,10 +589,10 @@ torch::Tensor moe_dispatch_cuda_backward(int s, int ec, int h,
   DISPATCH_FLOAT_AND_HALF(
       expert_grad.scalar_type(), "moe dispatch backward",
       moe_dpch_bwd_launch<scalar_t>(
-          res.data<scalar_t>(), expert_grad.data<scalar_t>(),
-          mask[0].data<int>(), k == 1 ? nullptr : mask[1].data<int>(),
-          dest_idx[0].data<int>(),
-          k == 1 ? dest_idx[0].data<int>() : dest_idx[1].data<int>(), s, h));
+          res.data_ptr<scalar_t>(), expert_grad.data_ptr<scalar_t>(),
+          mask[0].data_ptr<int>(), k == 1 ? nullptr : mask[1].data_ptr<int>(),
+          dest_idx[0].data_ptr<int>(),
+          k == 1 ? dest_idx[0].data_ptr<int>() : dest_idx[1].data_ptr<int>(), s, h));
 
   return res;
 }
@@ -609,10 +612,10 @@ torch::Tensor moe_combine_cuda_forward(int s, int e, int c, int h,
   DISPATCH_FLOAT_AND_HALF(
       expert_tokens.scalar_type(), "moe combine forward",
       moe_cb_fwd_launch<scalar_t>(
-          expert_tokens.data<scalar_t>(), res.data<scalar_t>(),
-          logits.data<scalar_t>(), mask[0].data<int>(),
-          k == 1 ? nullptr : mask[1].data<int>(), dest_idx[0].data<int>(),
-          k == 1 ? dest_idx[0].data<int>() : dest_idx[1].data<int>(), s, e, c,
+          expert_tokens.data_ptr<scalar_t>(), res.data_ptr<scalar_t>(),
+          logits.data_ptr<scalar_t>(), mask[0].data_ptr<int>(),
+          k == 1 ? nullptr : mask[1].data_ptr<int>(), dest_idx[0].data_ptr<int>(),
+          k == 1 ? dest_idx[0].data_ptr<int>() : dest_idx[1].data_ptr<int>(), s, e, c,
           h));
 
   return res;
@@ -636,11 +639,11 @@ std::vector<torch::Tensor> moe_combine_cuda_backward(
   DISPATCH_FLOAT_AND_HALF(
       tokens_grad.scalar_type(), "moe combine backward",
       moe_cb_bwd_launch<scalar_t>(
-          tokens_grad.data<scalar_t>(), egrad.data<scalar_t>(),
-          expert_tokens.data<scalar_t>(), logits.data<scalar_t>(),
-          wgrad.data<scalar_t>(), mask[0].data<int>(),
-          k == 1 ? nullptr : mask[1].data<int>(), dest_idx[0].data<int>(),
-          k == 1 ? dest_idx[0].data<int>() : dest_idx[1].data<int>(), s, e, c,
+          tokens_grad.data_ptr<scalar_t>(), egrad.data_ptr<scalar_t>(),
+          expert_tokens.data_ptr<scalar_t>(), logits.data_ptr<scalar_t>(),
+          wgrad.data_ptr<scalar_t>(), mask[0].data_ptr<int>(),
+          k == 1 ? nullptr : mask[1].data_ptr<int>(), dest_idx[0].data_ptr<int>(),
+          k == 1 ? dest_idx[0].data_ptr<int>() : dest_idx[1].data_ptr<int>(), s, e, c,
           h));
 
   return {egrad, wgrad};
@@ -653,7 +656,7 @@ torch::Tensor cumsum_sub_one_in_dim0(torch::Tensor mask) {
   const int s = mask.size(0), e = mask.size(1);
   auto res =
       torch::empty({s, e}, torch::dtype(torch::kInt32).device(mask.device()));
-  cumsum_launch(mask.data<int>(), res.data<int>(), s, e);
+  cumsum_launch(mask.data_ptr<int>(), res.data_ptr<int>(), s, e);
 
   return res;
 }
