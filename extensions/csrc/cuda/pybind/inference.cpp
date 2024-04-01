@@ -51,6 +51,13 @@ void fused_add_rms_layernorm(torch::Tensor& input,     // [..., hidden_size]
                              torch::Tensor& weight,    // [hidden_size]
                              float epsilon);
 
+void get_cos_and_sin(at::Tensor& cos_cache,  // [max_rotary_position, head_dim]
+                     at::Tensor& sin_cache,  // [max_rotary_position, head_dim]
+                     at::Tensor& cos,        // [num_tokens, head_dim]
+                     at::Tensor& sin,        // [num_tokens, head_dim]
+                     at::Tensor& sequence_lengths,  // [batch_size]
+                     int max_seq_len_in_batch, bool is_prompts);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("decode_kv_cache_memcpy", &decode_kv_cache_memcpy,
         "Copy the GPU memory of kvcache during the decode stage.");
@@ -60,10 +67,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
   m.def(
       "rotary_embedding_and_cache_copy", &rotary_embedding_and_cache_copy,
-      "performing Rotary Embedding-related calculations and KVCache Memcopy.");
+      "Performing Rotary Embedding-related calculations and KVCache Memcopy.");
 
   m.def("rotary_embedding", &rotary_embedding,
-        "performing Rotary Embedding-related calculations.");
+        "Performing Rotary Embedding-related calculations.");
 
   m.def("silu_and_mul", &silu_and_mul, "Silu with a following multiply");
 
@@ -72,4 +79,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
   m.def("fused_add_rms_layernorm", &fused_add_rms_layernorm,
         "In-place fused Add and RMS Normalization.");
+
+  m.def("get_cos_and_sin", &get_cos_and_sin,
+        "Get cos and sin from the cache.");
 }
