@@ -31,15 +31,6 @@ class LlamaPolicy(Policy):
     def config_sanity_check(self):
         pass
 
-    def tie_weight_check(self):
-        input_embedding = self.model.get_input_embeddings()
-        output_embedding = self.model.get_output_embeddings()
-        return (
-            input_embedding is not None
-            and output_embedding is not None
-            and id(input_embedding.weight) == id(output_embedding.weight)
-        )
-
     def preprocess(self):
         self.tie_weight = self.tie_weight_check()
         return self.model

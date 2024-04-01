@@ -192,9 +192,6 @@ class PaddingEmbedding(PaddingParallelModule):
 
         super().__init__(self.num_embeddings, num_embeddings, weight)
 
-        if weight.shape[0] < self.num_embeddings:
-            self.resize_embedding_weight()
-
         if weight is None:
             self.reset_parameters()
 
@@ -307,8 +304,6 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
 
         # resize vocabulary size
         super().__init__(self.num_embeddings, num_embeddings, weight)
-        if not is_distributed_tensor(self.weight):
-            self.resize_embedding_weight()
 
         # deal with tensor parallelism
         self.num_embeddings_per_partition = divide(self.num_embeddings, tensor_parallel_size)

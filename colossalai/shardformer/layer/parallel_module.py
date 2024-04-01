@@ -3,7 +3,7 @@
 
 import itertools
 from abc import ABC, abstractmethod
-from typing import List, Union, Optional
+from typing import List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -173,19 +173,30 @@ class ParallelModule(nn.Module, ABC):
                         unexpected_keys.append(key)
 
 
-
 class PaddingParallelModule(nn.Module, ABC):
-    def __init__(self, 
-                 new_num_embeddings: int = None,
-                 old_num_embeddings: int = None,
-                 weight: Optional[nn.Parameter] = None,
-                 bias_: Optional[nn.Parameter] = None,
-                 *args, **kwargs) -> None:
-        nn.Module.__init__(self, *args, **kwargs)
+    def __init__(
+        self,
+        new_num_embeddings: int = None,
+        old_num_embeddings: int = None,
+        weight_A: Optional[nn.Parameter] = None,
+        bias_A: Optional[nn.Parameter] = None,
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
         self.new_num_embeddings = new_num_embeddings
         self.old_num_embeddings = old_num_embeddings
-        self.weight = weight
-        self.bias = bias_
+        self.weight = weight_A
+        self.bias = bias_A
+
+        if not (is_distributed_tensor(self.weight) or self.weight.shape[0] == self.new_num_embeddings):
+            self.resize_embedding_weight()
+
+        if self.bias is not None and not (
+            is_distributed_tensor(self.bias) or self.bias.shape[0] == self.new_num_embeddings
+        ):
+            self.resize_embedding_bias()
+
     @abstractmethod
     def from_native_module(
         module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]] = None
@@ -199,6 +210,7 @@ class PaddingParallelModule(nn.Module, ABC):
                 If this is a list, the process group at the ith index of the list will correspond to the process group
                 in the ith axis of the device mesh. Defaults to None, which means the global process group.
         """
+        raise NotImplementedError
 
     def _save_to_state_dict(self, destination, prefix, keep_vars):
         r"""Saves module state to `destination` dictionary, containing a state
@@ -217,7 +229,7 @@ class PaddingParallelModule(nn.Module, ABC):
             if param is not None:
                 param = gather_distributed_param(param, keep_vars=keep_vars)
                 if self.new_num_embeddings > self.old_num_embeddings:
-                    destination[prefix + name] = param[:self.old_num_embeddings, ...]
+                    destination[prefix + name] = param[: self.old_num_embeddings, ...]
                 else:
                     destination[prefix + name] = param
 
@@ -341,7 +353,7 @@ class PaddingParallelModule(nn.Module, ABC):
                     input_name = input_name.split(".", 1)[0]  # get the name of param/buffer/child
                     if input_name not in self._modules and input_name not in local_state:
                         unexpected_keys.append(key)
-    
+
     def resize_embedding_weight(self):
         num_padding_tokens = self.new_num_embeddings - self.old_num_embeddings
         valid_weight = self.weight.data
@@ -349,7 +361,7 @@ class PaddingParallelModule(nn.Module, ABC):
         # padding to embedding
         self.weight.data = torch.cat((valid_weight, padding_weight), dim=0).contiguous()
 
-    def resize_embedding_bais(self):
+    def resize_embedding_bias(self):
         num_padding_tokens = self.new_num_embeddings - self.old_num_embeddings
         valid_bias = self.bias.data
         padding_bias = torch.zeros((num_padding_tokens), device=self.bias.device, dtype=self.bias.dtype)

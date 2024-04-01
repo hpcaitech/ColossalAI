@@ -28,15 +28,6 @@ class GPTJPolicy(Policy):
         self.tie_weight = self.tie_weight_check()
         return self.model
 
-    def tie_weight_check(self):
-        input_embedding = self.model.get_input_embeddings()
-        output_embedding = self.model.get_output_embeddings()
-        return (
-            input_embedding is not None
-            and output_embedding is not None
-            and id(input_embedding.weight) == id(output_embedding.weight)
-        )
-
     def module_policy(self):
         from transformers.models.gptj.modeling_gptj import GPTJAttention, GPTJBlock, GPTJModel
 
