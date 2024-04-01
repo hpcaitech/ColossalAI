@@ -1,4 +1,4 @@
 from .drafter import Drafter
-from .struct import DrafterOutput
+from .struct import DrafterOutput, GlideInput
 
-__all__ = ["Drafter", "DrafterOutput"]
+__all__ = ["Drafter", "DrafterOutput", "GlideInput"]
