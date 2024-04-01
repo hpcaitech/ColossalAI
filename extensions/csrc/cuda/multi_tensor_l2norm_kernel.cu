@@ -17,6 +17,10 @@
 #define BLOCK_SIZE 512
 #define ILP 4
 
+using colossalAI::cuda::utils::block_reduce;
+using colossalAI::cuda::utils::reduce_block_into_lanes;
+using colossalAI::cuda::utils::reduce_block_into_lanes_max_op;
+
 template <typename T>
 __device__ __forceinline__ bool is_aligned(T *p) {
   return ((uint64_t)p) % (ILP * sizeof(T)) == 0;
@@ -89,7 +93,7 @@ struct L2NormFunctor {
     float val = 0.f;
     for (int i = 0; i < ILP; i++) val += vals[i];
 
-    float final = colossalAI::cuda::utils::reduce_block_into_lanes(s_vals, val);
+    float final = reduce_block_into_lanes(s_vals, val);
 
     if (threadIdx.x == 0) {
       if (!isfinite(final))
@@ -165,7 +169,7 @@ struct MaxNormFunctor {
     float val = 0.f;
     for (int i = 0; i < ILP; i++) val = fmaxf(fabsf(val), fabsf(vals[i]));
 
-    float final = colossalAI::cuda::utils::reduce_block_into_lanes_max_op(s_vals, val);
+    float final = reduce_block_into_lanes_max_op(s_vals, val);
 
     if (threadIdx.x == 0) {
       if (!isfinite(final))
@@ -189,7 +193,7 @@ __global__ void cleanup(float *output, float *output_per_tensor, float *ret,
     float val = 0;
     if (threadIdx.x < 320) val = output[threadIdx.x];
 
-    float final = colossalAI::cuda::utils::reduce_block_into_lanes(vals, val);
+    float final = reduce_block_into_lanes(vals, val);
 
     if (threadIdx.x == 0) *ret = sqrt(final);
   }
@@ -202,7 +206,7 @@ __global__ void cleanup(float *output, float *output_per_tensor, float *ret,
     for (int i = threadIdx.x; i < max_chunks_per_tensor; i += blockDim.x)
       val += output_this_tensor[i];
 
-    float final = colossalAI::cuda::utils::reduce_block_into_lanes(vals, val);
+    float final = reduce_block_into_lanes(vals, val);
 
     if (threadIdx.x == 0) ret_per_tensor[blockIdx.x] = sqrt(final);
   }
@@ -219,10 +223,10 @@ __global__ void cleanup_v2(float *output, float *output_per_tensor, float *ret,
     if (threadIdx.x < 320) val = output[threadIdx.x];
 
     if (norm_type == 0) {
-      float final = colossalAI::cuda::utils::reduce_block_into_lanes_max_op(vals, val);
+      float final = reduce_block_into_lanes_max_op(vals, val);
       if (threadIdx.x == 0) *ret = alpha * (*ret) + beta * final;
     } else {
-      float final = colossalAI::cuda::utils::reduce_block_into_lanes(vals, val);
+      float final = reduce_block_into_lanes(vals, val);
       if (threadIdx.x == 0) *ret = sqrt(alpha * (*ret) * (*ret) + beta * final);
     }
   }
@@ -236,7 +240,7 @@ __global__ void cleanup_v2(float *output, float *output_per_tensor, float *ret,
       for (int i = threadIdx.x; i < max_chunks_per_tensor; i += blockDim.x)
         val = fmaxf(fabsf(val), fabsf(output_this_tensor[i]));
 
-      float final = colossalAI::cuda::utils::reduce_block_into_lanes_max_op(vals, val);
+      float final = reduce_block_into_lanes_max_op(vals, val);
 
       if (threadIdx.x == 0)
         ret_per_tensor[blockIdx.x] =
@@ -246,7 +250,7 @@ __global__ void cleanup_v2(float *output, float *output_per_tensor, float *ret,
       for (int i = threadIdx.x; i < max_chunks_per_tensor; i += blockDim.x)
         val += output_this_tensor[i];
 
-      float final = colossalAI::cuda::utils::reduce_block_into_lanes(vals, val);
+      float final = reduce_block_into_lanes(vals, val);
 
       if (threadIdx.x == 0)
         ret_per_tensor[blockIdx.x] = sqrt(alpha * ret_per_tensor[blockIdx.x] *

@@ -6,6 +6,10 @@
 
 #include "block_reduce.h"
 
+
+using colossalAI::cuda::utils::block_reduce;
+using colossalAI::cuda::utils::ReduceType;
+
 template <typename T, int block_size, int pack_size>
 __device__ void moe_dpch_one_fwd(T *src_row, T *dst_row, const int cols) {
   assert(cols % pack_size == 0);
@@ -157,7 +161,7 @@ __device__ void moe_cb_one_bwd(T *src_row, T *dst_row, T *tks_row,
 
     BlockStore(ts_store).Store(src_row + idx, grad);
   }
-  colossalAI::cuda::utils::block_reduce<float, colossalAI::cuda::utils::ReduceType::kSum, 1>(&thread_sum);
+  block_reduce<float, ReduceType::kSum, 1>(&thread_sum);
 
   if (threadIdx.x == 0) *weight_grad = static_cast<T>(thread_sum);
 }
@@ -229,7 +233,7 @@ __device__ void moe_cb_two_bwd(T *src_row1, T *src_row2, T *dst_row,
     BlockStore(ts_store).Store(src_row2 + idx, sgrad2);
   }
 
-  colossalAI::cuda::utils::block_reduce<float, colossalAI::cuda::utils::ReduceType::kSum, 2>(thread_sum);
+  block_reduce<float, ReduceType::kSum, 2>(thread_sum);
 
   if (threadIdx.x == 0)
     *weight_grad1 = static_cast<T>(thread_sum[0]);
