@@ -86,14 +86,16 @@ class Drafter:
         logits = []
         token_ids = []
 
+        kwargs = {"return_dict": True, "use_cache": True}
+        if glide_input:
+            # required only when using glide model
+            kwargs["glide_input"] = glide_input
+
         for _ in range(n_spec_tokens):
-            outputs = self._drafter_model(
-                input_ids,
-                return_dict=True,
-                use_cache=True,
-                past_key_values=past_key_values,
-                glide_input=glide_input,
-            )
+            # update past key values
+            kwargs["past_key_values"] = past_key_values
+
+            outputs = self._drafter_model(input_ids, **kwargs)
             next_token_logits = outputs.logits[:, -1, :]
 
             # NOTE Only use greedy search for speculating.
@@ -104,12 +106,12 @@ class Drafter:
             logits.append(next_token_logits)
             token_ids.append(next_token_ids)
             if next_token_ids.item() == self._tokenizer.eos_token_id:
-                # TODO support bsz > 1
+                # TODO(yuanheng-zhao) support bsz > 1
                 break
             input_ids = next_token_ids[:, None]
             past_key_values = outputs.past_key_values
 
-        speculated_length = len(token_ids)  # TODO For now, only support bsz 1
+        speculated_length = len(token_ids)  # For now, only support bsz 1
         logits = torch.concat(logits, dim=0)
         token_ids = torch.concat(token_ids, dim=-1)
 

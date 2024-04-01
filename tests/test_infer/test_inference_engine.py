@@ -9,7 +9,7 @@ import colossalai
 from colossalai.inference.config import _DEFAULT_PROMPT_TEMPLATES, InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
-from colossalai.inference.modeling.models.glide_llama import GlideLlamaConfig
+from colossalai.inference.modeling.models.glide_llama import GlideLlamaConfig, GlideLlamaForCausalLM
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 
@@ -137,16 +137,14 @@ def check_spec_dec(num_layers, max_length):
     assert len(out) == 1
     assert len(out_token_ids) == 1 and len(out_token_ids[0]) == max_length
 
+    # test GLIDE model
     glide_config = GlideLlamaConfig(
         intermediate_size=8192,
         large_hidden_size=4096,
         large_num_attention_heads=32,
         num_hidden_layers=num_layers,
     )
-    drafter_model = LlamaForCausalLM(glide_config)
-    # dummy state dict
-    glide_model = engine.convert_to_glide_model(drafter_model, drafter_model.state_dict(), strict=False)
-
+    glide_model = GlideLlamaForCausalLM(glide_config)
     engine.enable_spec_dec(glide_model, use_glide_drafter=True)
 
     out, out_token_ids = engine.generate(
