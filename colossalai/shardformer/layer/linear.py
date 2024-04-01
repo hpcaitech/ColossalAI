@@ -576,7 +576,6 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
             new_num_embeddings=new_out_features,
             old_num_embeddings=out_features,
         )
-
         # get the length of valid embeddings
         tp_rank = dist.get_rank(process_group)
         partition_size = self.new_num_embeddings // dist.get_world_size(process_group)
