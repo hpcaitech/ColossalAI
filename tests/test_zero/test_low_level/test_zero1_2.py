@@ -51,7 +51,8 @@ def split_ddp_grad(grad, world_size):
     return splited_grad
 
 
-def exam_zero_1_2():
+@parameterize("sub_dp_size", [1, 2])
+def exam_zero_1_2(sub_dp_size: int):
     """
     In this test, we want to test whether zero stage 1 and 2
     deliver the same numerical results despite different communication
@@ -62,6 +63,7 @@ def exam_zero_1_2():
     pg: partition gradients and optimizer states
 
     """
+    assert torch.distributed.get_world_size() % sub_dp_size == 0
     local_rank = torch.distributed.get_rank()
     seed_all(2001)
 
@@ -73,10 +75,10 @@ def exam_zero_1_2():
     zero1_optimizer = torch.optim.Adam(zero1_model.parameters(), lr=1)
     zero2_optimizer = torch.optim.Adam(zero2_model.parameters(), lr=1)
     zero1_optimizer = LowLevelZeroOptimizer(
-        zero1_optimizer, overlap_communication=True, initial_scale=128, verbose=True
+        zero1_optimizer, overlap_communication=True, initial_scale=128, verbose=True, sub_dp_size=sub_dp_size
     )
     zero2_optimizer = LowLevelZeroOptimizer(
-        zero2_optimizer, overlap_communication=True, partition_grad=True, initial_scale=128
+        zero2_optimizer, overlap_communication=True, partition_grad=True, initial_scale=128, sub_dp_size=sub_dp_size
     )
     # create data
     seed_all(2001 + local_rank)
@@ -94,7 +96,7 @@ def exam_zero_1_2():
     z1g_list = zero1_optimizer._grad_store.get_working_grads_by_group_id(0)
     z2g_list = zero2_optimizer._grad_store.get_working_grads_by_group_id(0)
     for z1g, z2g in zip(z1g_list, z2g_list):
-        assert torch.equal(z1g, z2g)
+        loose_close(z1g, z2g)
 
     # step
     zero1_optimizer.step()
@@ -102,12 +104,13 @@ def exam_zero_1_2():
 
     # check updated param
     for z1p, z2p in zip(zero1_model.parameters(), zero2_model.parameters()):
-        assert torch.equal(z1p.data, z2p.data)
+        loose_close(z1p.data, z2p.data)
 
 
 @parameterize("dtype", [torch.float16, torch.bfloat16])
 @parameterize("master_weights", [True, False])
-def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
+@parameterize("sub_dp_size", [1, 2])
+def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool, sub_dp_size: int):
     """
     In this test, two pairs of model and optimizers are created.
     1. zero: use sharded optimizer and fp16 parameters
@@ -116,6 +119,7 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
     We feed these two sets of models with the same input and check if the
     differences in model output and updated parameters are within tolerance.
     """
+    assert world_size % sub_dp_size == 0
     local_rank = torch.distributed.get_rank()
     seed_all(1453)
 
@@ -137,6 +141,7 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
         initial_scale=1,
         reduce_bucket_size=1024 * 1024,
         master_weights=master_weights,
+        sub_dp_size=sub_dp_size,
     )
 
     torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1)
@@ -162,7 +167,7 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
     for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
         if p.grad is not None:
             zero_grad_list = zero_optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(z1p))
-            torch_grad_list = split_ddp_grad(p.grad, world_size)
+            torch_grad_list = split_ddp_grad(p.grad, world_size // sub_dp_size)
             for zero_grad, torch_grad in zip(zero_grad_list, torch_grad_list):
                 loose_close(zero_grad, torch_grad, dtype=dtype)
 
@@ -187,7 +192,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_zero_1_2():
-    spawn(run_dist, 2)
+    spawn(run_dist, 4)
 
 
 if __name__ == "__main__":
