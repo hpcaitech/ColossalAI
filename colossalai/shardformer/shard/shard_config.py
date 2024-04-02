@@ -74,8 +74,10 @@ class ShardConfig:
         self.enable_fused_normalization = True
         self.enable_flash_attention = True
         self.enable_jit_fused = True
-        self.enable_sequence_parallelism = True
-        self.enable_sequence_overlap = True
+        # This can cause non-in-place param sharding when used without ZeRO.
+        # It may also slow down training when seq len is small. Plz enable manually.
+        # self.enable_sequence_parallelism = True
+        # self.enable_sequence_overlap = True
 
     def _infer(self):
         """
