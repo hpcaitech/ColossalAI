@@ -1059,9 +1059,9 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group, zero_stage=
 
         hidden_states = self.norm(hidden_states)
 
-        if sp_mode == "ring" or sp_mode == "split_gather" or (sp_mode == "all_to_all" and zero_stage == 0):
+        if sp_mode == "ring" or sp_mode == "split_gather":
             hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
-        elif sp_mode == "all_to_all" and zero_stage in [1, 2]:
+        elif sp_mode == "all_to_all":
             hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
 
         # add hidden states from the last decoder layer

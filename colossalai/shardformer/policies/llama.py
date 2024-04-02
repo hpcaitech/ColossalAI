@@ -54,7 +54,6 @@ class LlamaPolicy(Policy):
             warnings.warn(
                 f"For llama, sequence parallelism is currently not compatible with pipeline parallelism, set to be False"
             )
-        zero_stage = self.shard_config.zero_stage
         sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
         sp_size = self.shard_config.sequence_parallel_size if self.shard_config.enable_sequence_parallelism else None
         sp_group = (
@@ -126,7 +125,6 @@ class LlamaPolicy(Policy):
                         sp_mode=sp_mode,
                         sp_size=sp_size,
                         sp_group=sp_group,
-                        zero_stage=zero_stage,
                     ),
                 },
                 policy=policy,

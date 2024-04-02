@@ -182,7 +182,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
                 # If sequence parallelism is enabled and mode is all_to_all, gradients are synchronized
                 # across the sequence parallelism group.
                 group = self.sp_group
-                only_sp_partial = False
+                only_sp_partial = True
             else:
                 raise ValueError(f"Unknown sequence parallelism mode: {self.shard_config.sequence_parallelism_mode}")
 
@@ -1100,7 +1100,6 @@ class HybridParallelPlugin(PipelinePluginBase):
             sequence_parallelism_mode=sequence_parallelism_mode,
             enable_sequence_overlap=enable_sequence_overlap,
             parallel_output=parallel_output,
-            zero_stage=zero_stage,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
@@ -1168,7 +1167,8 @@ class HybridParallelPlugin(PipelinePluginBase):
     ) -> Tuple[Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         param_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
-            use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
+            use_ddp = (self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0) or \
+                (self.dp_size == 1 and self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all")
             if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
                 dp_group = self.pg_mesh.create_group_along_axis([DP_AXIS, SP_AXIS])
             else:
