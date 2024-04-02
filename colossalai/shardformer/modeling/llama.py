@@ -858,7 +858,7 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
     return forward
 
 
-def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group, zero_stage=0):
+def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
     logger = logging.get_logger(__name__)
 
     # Copied from transformers.models.bart.modeling_bart._make_causal_mask

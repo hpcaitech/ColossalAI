@@ -173,29 +173,22 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         """
 
         if self.shard_config.enable_sequence_parallelism:
+            if self.shard_config.sequence_parallelism_mode == "all_to_all":
+                return
+
             if self.shard_config.sequence_parallelism_mode in ["split_gather", "ring"]:
                 # If sequence parallelism is enabled and mode is split_gather or ring, gradients are synchronized
                 # across the tensor parallelism group.
                 group = self.tp_group
-                only_sp_partial = True
-            elif self.shard_config.sequence_parallelism_mode == "all_to_all":
-                # If sequence parallelism is enabled and mode is all_to_all, gradients are synchronized
-                # across the sequence parallelism group.
-                group = self.sp_group
-                only_sp_partial = True
             else:
                 raise ValueError(f"Unknown sequence parallelism mode: {self.shard_config.sequence_parallelism_mode}")
 
             if grads is not None:
                 # Synchronize provided gradient tensors across the tensor parallelism group.
-                SeqParallelUtils.allreduce_partial_data_grad(
-                    process_group=group, grads=grads, only_sp_partial=only_sp_partial
-                )
+                SeqParallelUtils.allreduce_partial_data_grad(process_group=group, grads=grads)
             else:
                 # Synchronize gradients from the model across the tensor parallelism group.
-                SeqParallelUtils.allreduce_partial_data_grad(
-                    process_group=group, model=self.module, only_sp_partial=only_sp_partial
-                )
+                SeqParallelUtils.allreduce_partial_data_grad(process_group=group, model=self.module)
 
     def forward(self, *args, **kwargs):
         if self.convert_fn is not None:
@@ -1167,8 +1160,11 @@ class HybridParallelPlugin(PipelinePluginBase):
     ) -> Tuple[Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         param_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
-            use_ddp = (self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0) or \
-                (self.dp_size == 1 and self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all")
+            use_ddp = (self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0) or (
+                self.dp_size == 1
+                and self.enable_sequence_parallelism
+                and self.sequence_parallelism_mode == "all_to_all"
+            )
             if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
                 dp_group = self.pg_mesh.create_group_along_axis([DP_AXIS, SP_AXIS])
             else:

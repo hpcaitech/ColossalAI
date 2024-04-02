@@ -39,7 +39,6 @@ class SeqParallelUtils:
         process_group: ProcessGroup,
         model: nn.Module = None,
         grads: List[torch.Tensor] = None,
-        only_sp_partial: bool = True,
     ):
         """
         Allreduce partial derived gradients across the specified process group.
@@ -70,7 +69,7 @@ class SeqParallelUtils:
 
             for p in model.parameters():
                 if p.grad is not None:
-                    if only_sp_partial and SeqParallelUtils.is_sp_partial_derived_param(p) or not only_sp_partial:
+                    if SeqParallelUtils.is_sp_partial_derived_param(p):
                         grads.append(p.grad.data)
 
             # Flatten and reduce the gradients using the specified process group.
