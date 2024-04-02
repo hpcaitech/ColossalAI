@@ -1,5 +1,3 @@
-from functools import partial
-
 from torch.nn import Parameter
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaForCausalLM, LlamaModel, LlamaRMSNorm
 
@@ -43,25 +41,18 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy):
             ]
         )
 
-        infer_forward = llama_causal_lm_forward
-        method_replacement = {"forward": partial(infer_forward)}
         self.append_or_create_method_replacement(
-            description=method_replacement, policy=policy, target_key=LlamaForCausalLM
+            description={"forward": llama_causal_lm_forward}, policy=policy, target_key=LlamaForCausalLM
         )
-
-        infer_forward = llama_model_forward
-        method_replacement = {"forward": partial(infer_forward)}
-        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=LlamaModel)
-
-        infer_forward = llama_decoder_layer_forward
-        method_replacement = {"forward": partial(infer_forward)}
         self.append_or_create_method_replacement(
-            description=method_replacement, policy=policy, target_key=LlamaDecoderLayer
+            description={"forward": llama_model_forward}, policy=policy, target_key=LlamaModel
         )
-
-        infer_forward = llama_rmsnorm_forward
-        method_replacement = {"forward": partial(infer_forward)}
-        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=LlamaRMSNorm)
+        self.append_or_create_method_replacement(
+            description={"forward": llama_decoder_layer_forward}, policy=policy, target_key=LlamaDecoderLayer
+        )
+        self.append_or_create_method_replacement(
+            description={"forward": llama_rmsnorm_forward}, policy=policy, target_key=LlamaRMSNorm
+        )
 
         return policy
 
