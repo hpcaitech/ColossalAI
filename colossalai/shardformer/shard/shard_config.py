@@ -36,8 +36,6 @@ class ShardConfig:
     enable_sequence_overlap: bool = False
     parallel_output = True
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
-    # pipeline_parallel_size: int
-    # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']
 
     @property
@@ -70,9 +68,3 @@ class ShardConfig:
         self.enable_jit_fused = True
         self.enable_sequence_parallelism = True
         self.enable_sequence_overlap = True
-
-    def _infer(self):
-        """
-        Set default params for inference.
-        """
-        # assert self.pipeline_stage_manager is None, "pipeline parallelism is not supported in inference for now"

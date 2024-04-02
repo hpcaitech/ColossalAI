@@ -13,8 +13,6 @@ from colossalai.inference.modeling.models.nopadding_llama import (
 )
 from colossalai.inference.utils import init_to_get_rotary
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
-
-# import colossalai
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
 
 
@@ -44,8 +42,6 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy):
                 ),
             ]
         )
-
-        self.shard_config._infer()
 
         infer_forward = llama_causal_lm_forward
         method_replacement = {"forward": partial(infer_forward)}
