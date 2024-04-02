@@ -25,6 +25,9 @@ __all__ = ["ParallelModule"]
 
 
 class ParallelModule(nn.Module, ABC):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
     @abstractmethod
     def from_native_module(
         module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]] = None

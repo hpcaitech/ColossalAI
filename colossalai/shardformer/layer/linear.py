@@ -82,8 +82,10 @@ class Linear1D_Col(ParallelModule):
         bias_: Optional[Parameter] = None,
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+        *args,
+        **kwargs,
     ):
-        super().__init__()
+        super().__init__(*args, **kwargs)
 
         # Keep input parameters
         self.in_features = in_features
@@ -509,7 +511,7 @@ class PaddingLMHead(PaddingParallelModule):
         return output
 
 
-class VocabParallelLMHead1D(PaddingParallelModule, Linear1D_Col):
+class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
     r"""Linear layer with column parallelism.
 
     The linear layer is defined as :math:`Y = XA + b`. A is parallelized along
@@ -570,10 +572,6 @@ class VocabParallelLMHead1D(PaddingParallelModule, Linear1D_Col):
             new_out_features = out_features + multiple - (out_features % multiple)
 
         super().__init__(
-            new_num_embeddings=new_out_features,
-            old_num_embeddings=out_features,
-            weight_A=weight,
-            bias_A=bias_,
             in_features=in_features,
             out_features=new_out_features,
             bias=bias,
@@ -583,7 +581,12 @@ class VocabParallelLMHead1D(PaddingParallelModule, Linear1D_Col):
             bias_=bias_,
             *args,
             **kwargs,
+            new_num_embeddings=new_out_features,
+            old_num_embeddings=out_features,
+            weight_A=weight,
+            bias_A=bias_,
         )
+
         # get the length of valid embeddings
         tp_rank = dist.get_rank(process_group)
         partition_size = self.new_num_embeddings // dist.get_world_size(process_group)
