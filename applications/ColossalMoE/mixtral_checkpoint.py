@@ -5,6 +5,7 @@ from pathlib import Path
 from shutil import rmtree
 from typing import Dict, Iterator, Optional, OrderedDict, Tuple
 
+from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -27,7 +28,7 @@ from colossalai.checkpoint_io.utils import (
     sharded_optimizer_loading_epilogue,
 )
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.moe import MOE_MANAGER
+# from colossalai.moe import MOE_MANAGER
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 
 try:
@@ -46,19 +47,19 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
         verbose: bool = True,
     ) -> None:
         super().__init__(dp_group, pp_group, tp_group, zero_stage, verbose)
-        moe_info = MOE_MANAGER.parallel_info_dict[MOE_MANAGER.ep_size]
-        self.ep_group = moe_info.ep_group
-        self.ep_size = moe_info.ep_size
-        self.ep_rank = moe_info.ep_rank
-        self.real_dp_rank = moe_info.dp_rank
+        # moe_info = MOE_MANAGER.parallel_info_dict[MOE_MANAGER.ep_size]
+        # self.ep_group = moe_info.ep_group
+        # self.ep_size = moe_info.ep_size
+        # self.ep_rank = moe_info.ep_rank
+        # self.real_dp_rank = moe_info.dp_rank
         
-        # self.moe_info = None
-        # self.ep_group = None
-        # self.ep_size = None
-        # self.ep_rank = None
-        # self.real_dp_rank = None
+        self.moe_info = None
+        self.ep_group = None
+        self.ep_size = None
+        self.ep_rank = None
+        self.real_dp_rank = None
     
-    def setup(self, moe_info):
+    def setup(self, moe_info: MoeParallelInfo):
         self.moe_info = moe_info
         self.ep_group = self.moe_info.ep_group
         self.ep_size = self.moe_info.ep_size

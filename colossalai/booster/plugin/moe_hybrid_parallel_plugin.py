@@ -199,19 +199,19 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             dist.get_world_size() % (tp_size * pp_size * ep_size) == 0
         ), f"world size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size} * ep_size {ep_size}"
         self.real_dp_size = dist.get_world_size() // (tp_size * pp_size * ep_size)
-        MOE_MANAGER.setup(
-            parallel="EP",
-            mode="fixed",
-            fixed_dp_size=self.real_dp_size,
-            fixed_ep_size=ep_size,
-            fixed_pp_size=pp_size,
-            use_ep_inside=use_ep_inside,
-        )
+        # MOE_MANAGER.setup(
+        #     parallel="EP",
+        #     mode="fixed",
+        #     fixed_dp_size=self.real_dp_size,
+        #     fixed_ep_size=ep_size,
+        #     fixed_pp_size=pp_size,
+        #     use_ep_inside=use_ep_inside,
+        # )
         self.tp_size = tp_size
         self.pp_size = pp_size
         self.dp_size = dist.get_world_size() // (tp_size * pp_size)
         self.ep_size = ep_size
-        self.moe_info = MOE_MANAGER.get_info(0)[1]
+        # self.moe_info = MOE_MANAGER.get_info(0)[1]
         self.precision = precision
         self.zero_stage = zero_stage
         self.cpu_offload = cpu_offload
@@ -391,6 +391,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             self.checkpoint_io = MoECheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
         else:
             self.checkpoint_io = self.checkpoint_io(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
+            if hasattr(self.checkpoint_io, 'moe_info'):
+                self.checkpoint_io.moe_info = self.moe_info
         return self.checkpoint_io
 
     def configure(
