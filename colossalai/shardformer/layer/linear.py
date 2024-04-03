@@ -82,10 +82,9 @@ class Linear1D_Col(ParallelModule):
         bias_: Optional[Parameter] = None,
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
-        *args,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(weight=weight, bias_=bias_, **kwargs)
 
         # Keep input parameters
         self.in_features = in_features
@@ -141,7 +140,7 @@ class Linear1D_Col(ParallelModule):
 
     @staticmethod
     def from_native_module(
-        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
+        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], **kwargs
     ) -> ParallelModule:
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
@@ -174,7 +173,6 @@ class Linear1D_Col(ParallelModule):
             process_group=process_group,
             weight=module.weight,
             bias_=module.bias,
-            *args,
             **kwargs,
         )
 
@@ -316,7 +314,7 @@ class Linear1D_Row(ParallelModule):
 
     @staticmethod
     def from_native_module(
-        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
+        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], **kwargs
     ) -> ParallelModule:
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
@@ -350,7 +348,6 @@ class Linear1D_Row(ParallelModule):
             process_group=process_group,
             weight=module.weight,
             bias_=module.bias,
-            *args,
             **kwargs,
         )
 
@@ -477,7 +474,7 @@ class PaddingLMHead(PaddingParallelModule):
 
     @staticmethod
     def from_native_module(
-        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
+        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], **kwargs
     ) -> PaddingParallelModule:
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
@@ -489,7 +486,6 @@ class PaddingLMHead(PaddingParallelModule):
         bias = module.bias is not None
         device = module.weight.device
         # ensure only one process group is passed
-        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 64)
 
         lm_head_linear = PaddingLMHead(
             in_features=in_features,
@@ -498,8 +494,6 @@ class PaddingLMHead(PaddingParallelModule):
             device=device,
             weight=module.weight,
             bias_=module.bias,
-            make_vocab_size_divisible_by=make_vocab_size_divisible_by,
-            *args,
             **kwargs,
         )
 
@@ -551,7 +545,6 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
         weight: Optional[Parameter] = None,
         bias_: Optional[Parameter] = None,
         make_vocab_size_divisible_by: int = 64,
-        *args,
         **kwargs,
     ):
         # create weight and bias
@@ -579,12 +572,9 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
             process_group=process_group,
             weight=weight,
             bias_=bias_,
-            *args,
             **kwargs,
             new_num_embeddings=new_out_features,
             old_num_embeddings=out_features,
-            weight_A=weight,
-            bias_A=bias_,
         )
 
         # get the length of valid embeddings
@@ -599,7 +589,7 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
 
     @staticmethod
     def from_native_module(
-        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
+        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], **kwargs
     ) -> PaddingParallelModule:
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
@@ -611,8 +601,6 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
         bias = module.bias is not None
         device = module.weight.device
 
-        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 64)
-
         lm_head_linear = VocabParallelLMHead1D(
             in_features=in_features,
             out_features=out_features,
@@ -621,41 +609,18 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
             process_group=process_group,
             weight=module.weight,
             bias_=module.bias,
-            make_vocab_size_divisible_by=make_vocab_size_divisible_by,
-            *args,
             **kwargs,
         )
 
         return lm_head_linear
 
     def forward(self, input_: Tensor) -> Tuple[Tensor, Tensor]:
-        assert (
-            input_.shape[-1] == self.weight.shape[-1]
-        ), "Invalid shapes in Linear1D_Col forward: input={}, weight={}. Expected last dim of input {}.".format(
-            input_.shape, self.weight.shape, self.weight.shape[-1]
-        )
-
-        # Set up backprop all-reduce.
-        input_parallel = input_
-
-        # Matrix multiply.
-        bias = self.bias if not self.skip_bias_add else None
-        if self.seq_parallel:
-            output_parallel = linear_gather_forward_reducescatter_backward(
-                input_parallel, self.weight, bias, self.process_group, True, self.seq_parallel_dim, self.overlap
-            )
+        if self.skip_bias_add:
+            output, _ = super().forward(input_)
         else:
-            output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, True)
-
+            output = super().forward(input_)
         if self.gather_output:
-            # All-gather across the partitions.
-            output = gather_forward_split_backward(output_parallel, dim=-1, process_group=self.process_group)
             output = output[..., : self.old_num_embeddings]
         else:
-            output = output_parallel
             output = output[..., : self.num_valid_embeddings_local]
-
-        if self.skip_bias_add:
-            return output, self.bias
-        else:
-            return output
+        return output

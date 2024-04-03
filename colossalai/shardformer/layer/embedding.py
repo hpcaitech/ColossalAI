@@ -220,7 +220,6 @@ class PaddingEmbedding(PaddingParallelModule):
         embedding_dim = module.embedding_dim
         padding_idx = module.padding_idx
         device = module.weight.device
-        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 64)
 
         # create the parallel module
         padding_embedding = PaddingEmbedding(
@@ -229,7 +228,6 @@ class PaddingEmbedding(PaddingParallelModule):
             padding_idx=padding_idx,
             device=device,
             weight=module.weight,
-            make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             *args,
             **kwargs,
         )
@@ -343,8 +341,6 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
             assert len(process_group) == 1, f"Expected only one process group, got {len(process_group)}."
             process_group = process_group[0]
 
-        make_vocab_size_divisible_by = kwargs.pop("make_vocab_size_divisible_by", 64)
-
         # create the parallel module
         vocab_embedding_1d = VocabParallelEmbedding1D(
             num_embeddings=num_embeddings,
@@ -353,7 +349,6 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
             device=device,
             process_group=process_group,
             weight=module.weight,
-            make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             *args,
             **kwargs,
         )

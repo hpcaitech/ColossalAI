@@ -25,8 +25,8 @@ __all__ = ["ParallelModule"]
 
 
 class ParallelModule(nn.Module, ABC):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__()
 
     @abstractmethod
     def from_native_module(
@@ -176,21 +176,20 @@ class ParallelModule(nn.Module, ABC):
                         unexpected_keys.append(key)
 
 
-class PaddingParallelModule(nn.Module, ABC):
+class PaddingParallelModule(ParallelModule):
     def __init__(
         self,
-        new_num_embeddings: int = None,
-        old_num_embeddings: int = None,
-        weight_A: Optional[nn.Parameter] = None,
-        bias_A: Optional[nn.Parameter] = None,
-        *args,
+        new_num_embeddings: int,
+        old_num_embeddings: int,
+        weight: Optional[nn.Parameter],
+        bias_: Optional[nn.Parameter] = None,
         **kwargs,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
         self.new_num_embeddings = new_num_embeddings
         self.old_num_embeddings = old_num_embeddings
-        self.weight = weight_A
-        self.bias = bias_A
+        self.weight = weight
+        self.bias = bias_
 
         if not (is_distributed_tensor(self.weight) or self.weight.shape[0] == self.new_num_embeddings):
             self.resize_embedding_weight()
