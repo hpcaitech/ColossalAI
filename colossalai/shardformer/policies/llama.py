@@ -87,21 +87,6 @@ class LlamaPolicy(Policy):
                 policy=policy,
                 target_key=LlamaAttention,
             )
-        # elif sp_mode == "ring":
-        #     self.append_or_create_method_replacement(
-        #         description={
-        #             "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group),
-        #         },
-        #         policy=policy,
-        #         target_key=LlamaAttention,
-        #     )
-        #     self.append_or_create_method_replacement(
-        #         description={
-        #             "forward": get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group),
-        #         },
-        #         policy=policy,
-        #         target_key=LlamaModel,
-        #     )
         elif sp_mode == "all_to_all":
             decoder_attribute_replacement = {
                 "num_heads": self.model.config.num_attention_heads // sp_size,
