@@ -109,12 +109,10 @@ class ShardConfig:
         self.enable_fused_normalization = True
         self.enable_flash_attention = True
         self.enable_jit_fused = True
-        if self.enable_tensor_parallelism:
-            self.enable_sequence_parallelism = True
-            self.enable_sequence_overlap = True
-            # todo modify default sequence parallelism mode and process group
-            self.sequence_parallelism_mode = "split_gather"
-            self.sequence_parallel_process_group = self.tensor_parallel_process_group
+        # This can cause non-in-place param sharding when used without ZeRO.
+        # It may also slow down training when seq len is small. Plz enable manually.
+        # self.enable_sequence_parallelism = True
+        # self.enable_sequence_overlap = True
 
     def _infer(self):
         """
