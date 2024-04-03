@@ -2,13 +2,12 @@ import argparse
 
 import torch
 import torch.distributed as dist
-from colossal_moe.models.mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
-from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
-from colossal_moe.utils import load_checkpoint, move_to_cuda, save_checkpoint
+from mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
 from transformers.models.mixtral import MixtralForCausalLM
+from utils import load_checkpoint, move_to_cuda, save_checkpoint
 
 import colossalai
 from colossalai.booster import Booster
@@ -155,7 +154,6 @@ def main():
             pp_size=args.pp_size,
             ep_size=args.ep_size,
             microbatch_size=args.microbatch_size,
-            custom_policy=MixtralForCausalLMPolicy(),
             enable_fused_normalization=args.use_layernorm_kernel,
             enable_jit_fused=args.use_kernel,
             precision=args.precision,
@@ -259,14 +257,6 @@ def main():
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
-                # Apply load balance
-                # if (
-                #     args.load_balance
-                #     and args.load_balance_interval > 0
-                #     and (step + 1) % args.load_balance_interval == 0
-                # ):
-                #     coordinator.print_on_master(f"Apply load balance")
-                #     apply_load_balance(model, optimizer)
                 # save ckeckpoint
                 if (step + 1) % args.save_interval == 0:
                     coordinator.print_on_master(f"Saving model checkpoint to {args.output_path}")

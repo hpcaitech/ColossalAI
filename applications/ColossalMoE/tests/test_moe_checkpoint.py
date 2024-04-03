@@ -3,8 +3,7 @@ from copy import deepcopy
 import pytest
 import torch
 import torch.distributed as dist
-from colossal_moe.models.mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
-from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
+from mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
 from torch.optim import Adam
 from transformers.models.mixtral.configuration_mixtral import MixtralConfig
 from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
@@ -81,7 +80,6 @@ def check_mixtral_moe_layer():
         tp_size=1,
         pp_size=2,
         ep_size=2,
-        custom_policy=MixtralForCausalLMPolicy(),
         checkpoint_io=MixtralMoEHybridParallelCheckpointIO,
         microbatch_size=1,
         zero_stage=1,
