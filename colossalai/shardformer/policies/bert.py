@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List
 
@@ -66,8 +67,17 @@ class BertPolicy(Policy):
         else:
             norm_cls = col_nn.LayerNorm
 
-        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
+        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        assert sp_mode != "all_to_all", "all_to_all sequence parallelism is not supported for Bert"
+        if sp_mode == "ring":
+            warnings.warn(
+                f"For Bert, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
+            )
+            sp_mode = "split_gather"
+
         overlap = self.shard_config.enable_sequence_overlap
+        sp_partial_derived = sp_mode == "split_gather"
+
         if self.shard_config.enable_tensor_parallelism:
             policy[BertLayer] = ModulePolicyDescription(
                 attribute_replacement={
@@ -85,7 +95,7 @@ class BertPolicy(Policy):
                         suffix="attention.self.query",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                         },
                     ),
@@ -93,7 +103,7 @@ class BertPolicy(Policy):
                         suffix="attention.self.key",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                         },
                     ),
@@ -101,7 +111,7 @@ class BertPolicy(Policy):
                         suffix="attention.self.value",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                         },
                     ),
@@ -112,7 +122,7 @@ class BertPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="attention.output.dense",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                     SubModuleReplacementDescription(
                         suffix="attention.output.dropout",
@@ -122,14 +132,14 @@ class BertPolicy(Policy):
                         suffix="intermediate.dense",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                         },
                     ),
                     SubModuleReplacementDescription(
                         suffix="output.dense",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                     SubModuleReplacementDescription(
                         suffix="output.dropout",
@@ -151,7 +161,7 @@ class BertPolicy(Policy):
                 ]
             )
 
-        if use_sequence_parallel:
+        if sp_mode == "split_gather":
             self.append_or_create_method_replacement(
                 description={"forward": bert_sequence_parallel_forward_fn(self.shard_config)},
                 policy=policy,
@@ -165,12 +175,12 @@ class BertPolicy(Policy):
                 SubModuleReplacementDescription(
                     suffix="attention.output.LayerNorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 SubModuleReplacementDescription(
                     suffix="output.LayerNorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
             ],
             policy=policy,

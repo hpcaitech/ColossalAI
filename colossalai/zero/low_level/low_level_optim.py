@@ -79,6 +79,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         master_weights: bool = True,  # master weights
     ):
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
+
         self._dtype = self.optim.param_groups[0]["params"][0].dtype
         self._logger = get_dist_logger()
         self._verbose = verbose
@@ -494,7 +495,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # clear reduced grads
         if self._overlap_communication:
             get_accelerator().synchronize()
-
         self.zero_grad()
 
     def backward_by_grad(self, tensor, grad):

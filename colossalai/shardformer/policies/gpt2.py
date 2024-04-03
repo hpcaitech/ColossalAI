@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List
 
@@ -50,8 +51,25 @@ class GPT2Policy(Policy):
             norm_cls = col_nn.FusedLayerNorm
         else:
             norm_cls = col_nn.LayerNorm
-        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
+
+        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        assert sp_mode != "all_to_all", "all_to_all sequence parallelism is not supported for GPT2"
+        if sp_mode == "ring":
+            warnings.warn(
+                f"For GPT2, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
+            )
+            sp_mode = "split_gather"
         overlap = self.shard_config.enable_sequence_overlap
+        sp_partial_derived = sp_mode in ["split_gather", "ring"]
+        use_flash_attention = self.shard_config.enable_flash_attention
+        # todo: currently sp cannot be used with flashattention
+        if sp_mode in ["split_gather", "ring", "all_to_all"]:
+            if use_flash_attention:
+                warnings.warn(
+                    f"Sequence parallelism mode {sp_mode} cannot be used with FlashAttention, will disable FlashAttention automatically."
+                )
+                self.shard_config.enable_flash_attention = False
+                use_flash_attention = False
         if self.shard_config.enable_tensor_parallelism:
             policy[GPT2Model] = ModulePolicyDescription(
                 sub_module_replacement=[
@@ -78,7 +96,7 @@ class GPT2Policy(Policy):
                         target_module=col_nn.GPT2FusedLinearConv1D_Col,
                         kwargs={
                             "n_fused": 3,
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                         },
                     ),
@@ -86,7 +104,7 @@ class GPT2Policy(Policy):
                         suffix="attn.c_proj",
                         target_module=col_nn.GPT2FusedLinearConv1D_Row,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -94,14 +112,16 @@ class GPT2Policy(Policy):
                         target_module=col_nn.GPT2FusedLinearConv1D_Col,
                         kwargs={
                             "n_fused": 1,
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                         },
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.c_proj",
                         target_module=col_nn.GPT2FusedLinearConv1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={
+                            "seq_parallel_mode": sp_mode,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.attn_dropout",
@@ -133,25 +153,25 @@ class GPT2Policy(Policy):
                 SubModuleReplacementDescription(
                     suffix="ln_1",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 SubModuleReplacementDescription(
                     suffix="ln_2",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 SubModuleReplacementDescription(
                     suffix="ln_cross_attn",
                     target_module=norm_cls,
                     ignore_if_not_exist=True,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
             ],
             policy=policy,
             target_key=GPT2Block,
         )
 
-        if self.shard_config.enable_flash_attention:
+        if use_flash_attention:
             self.append_or_create_method_replacement(
                 description={
                     "forward": get_gpt2_flash_attention_forward(),
@@ -164,7 +184,7 @@ class GPT2Policy(Policy):
                     "forward": get_gpt_model_forward_for_flash_attn(self.shard_config)
                 }
 
-        if self.shard_config.enable_sequence_parallelism:
+        if sp_mode is not None:
             policy[GPT2Model].method_replacement = {"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)}
 
         return policy
