@@ -2,10 +2,10 @@ import time
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils import get_defualt_parser, inference, print_output
+from utils import get_default_parser, inference, print_output
 
 if __name__ == "__main__":
-    parser = get_defualt_parser()
+    parser = get_default_parser()
     args = parser.parse_args()
     start = time.time()
     torch.set_default_dtype(torch.bfloat16)
