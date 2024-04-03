@@ -15,7 +15,7 @@ __all__ = ["DistributedLamb"]
 class DistributedLamb(DistributedOptim):
     r"""Implements the Lamb algorithm, with extra support for ZeRO 2 and Tensor Parallel.
     Proposed in `Large Batch Optimization for Deep Learning: Training BERT in 76 minutes`_.
-    It's recommended to use this with HybridParallelPlugin/ZeRO plugin and booster, 
+    It's recommended to use this with HybridParallelPlugin/ZeRO plugin and booster,
     which will take care of setup_distributed.
     Example with 4 devices:
         >>> optim = DistributedLamb(model.parameters(), lr=1e-3)
@@ -86,11 +86,11 @@ class DistributedLamb(DistributedOptim):
 
         self.shard_to_param = shard_to_param if shard_to_param is not None else {}
         self.is_zero = is_zero
-
+        self.is_dist = {}
         # Cache parameter layout
         for group in self.param_groups:
             for p in group["params"]:
-                self.state[p]["is_dist"] = (
+                self.is_dist[p] = (
                     is_distributed_tensor(p)
                     if self.dp_size <= 1
                     else is_distributed_tensor(self.shard_to_param.get(id(p), None))
@@ -117,7 +117,7 @@ class DistributedLamb(DistributedOptim):
 
                 state = self.state[p]
                 # State initialization
-                if "step" not in state:
+                if len(state) == 0:
                     state["step"] = 0
                     # Exponential moving average of gradient values
                     state["exp_avg"] = torch.zeros_like(p.data)
@@ -149,7 +149,7 @@ class DistributedLamb(DistributedOptim):
                     update.add_(p.data, alpha=group["weight_decay"])
 
                 # Compute global layer-wise trust ratio
-                if state["is_dist"]:
+                if self.is_dist[p]:
                     p_local = p
                     g_sum = (update**2).sum()
                     if self.dp_size > 1 and self.is_zero:
@@ -170,10 +170,6 @@ class DistributedLamb(DistributedOptim):
                     g_norm = torch.norm(update)
 
                 trust_ratio = torch.where(w_norm > 0 and g_norm > 0, (w_norm / g_norm), 1.0).item()
-
-                state["weight_norm"] = w_norm
-                state["adam_norm"] = g_norm
-                state["trust_ratio"] = trust_ratio
 
                 scaled_lr *= trust_ratio
                 p.data.add_(update, alpha=-scaled_lr)

@@ -102,9 +102,7 @@ class Lamb(Optimizer):
                     trust_ratio = 1
                 else:
                     trust_ratio = weight_norm / adam_norm
-                state["weight_norm"] = weight_norm
-                state["adam_norm"] = adam_norm
-                state["trust_ratio"] = trust_ratio
+
                 if self.adam:
                     trust_ratio = 1
 

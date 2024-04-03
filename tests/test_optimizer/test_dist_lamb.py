@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 import pytest
 import torch
 import torch.distributed as dist
@@ -10,13 +8,13 @@ import colossalai
 from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
 from colossalai.nn.optimizer import DistributedLamb, Lamb
-from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.tensor.d_tensor.sharding_spec import DimSpec
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.zero import LowLevelZeroOptimizer
-from tests.test_optimizer._utils import run_bert_test
+from tests.kit.model_zoo import model_zoo
+from tests.test_optimizer._utils import check_optim_states, run_bert_test
 
 _ALLOWED_P_G_TYPES = [
     (torch.float, torch.float),  # pure fp32
@@ -26,12 +24,14 @@ _ALLOWED_P_G_TYPES = [
 
 # Identifiers for Tensor Parallel linear layers
 _SHARD_DIM = DimSpec([0])
-_BS = 16
-_N_STEP = 3
 _IN_DIM = 32
 _HID_DIM = 128
+_N_STEP = 3
 _SEED = 1024
 _COORD = None
+
+Net, data_gen, *_ = next(iter(model_zoo.get_sub_registry("simple_mlp").values()))
+TPNet, *_ = next(iter(model_zoo.get_sub_registry("simple_tp_mlp").values()))
 
 
 def get_split_dim(p):
@@ -74,38 +74,10 @@ def setup_param_groups(bert_model: nn.Module) -> list:
     return optimizer_grouped_parameters
 
 
-class Net(nn.Module):
-    def __init__(self, identity=False):
-        super().__init__()
-        if identity:
-            self.fc0 = nn.Identity()
-        else:
-            self.fc0 = nn.Linear(_IN_DIM, _IN_DIM)
-
-        self.fc1 = nn.Linear(_IN_DIM, _HID_DIM)
-        self.fc2 = nn.Linear(_HID_DIM, _IN_DIM)
-
-    def forward(self, x):
-        return self.fc2(self.fc1(self.fc0(x)))
-
-
-class TPNet(nn.Module):
-    def __init__(self, fc0, fc1, fc2, tp_group=None):
-        super().__init__()
-        self.fc0 = deepcopy(fc0)
-        self.fc1 = Linear1D_Col.from_native_module(
-            deepcopy(fc1), process_group=tp_group, gather_output=False, overlap=True
-        )
-        self.fc2 = Linear1D_Row.from_native_module(deepcopy(fc2), process_group=tp_group, parallel_input=True)
-
-    def forward(self, x):
-        return self.fc2(self.fc1(self.fc0(x)))
-
-
 def force_assign_grad(p, g_dtype, grad=None):
     """avoid inconsistent grad and param dtype error"""
     orig_p = p.data
-    p.data = torch.randn_like(p, device="cuda", dtype=g_dtype) if grad == None else grad
+    p.data = torch.randn_like(p, device=orig_p.device, dtype=g_dtype) if grad == None else grad
     p.grad = p.data
     p.data = orig_p
 
@@ -129,7 +101,7 @@ def set_dist_grad(
             # avoid inconsistent grad and param dtype error
             force_assign_grad(torch_p, g_dtype)
         else:
-            torch_p.grad += torch.randn_like(torch_p, device="cuda", dtype=g_dtype)
+            torch_p.grad += torch.randn_like(torch_p, device=torch_p.device, dtype=g_dtype)
 
         if p.grad is None:
             force_assign_grad(p, g_dtype)
@@ -161,7 +133,7 @@ def run_dist_lamb_basic(
 
     tp_rank = dist.get_rank(tp_group)
     torch.cuda.manual_seed(_SEED)  # Fix model init
-    torch_model = Net(identity=True).to(rank)
+    torch_model = Net(in_dim=_IN_DIM, hid_dim=_HID_DIM, identity=True).to(rank)
     tp_model = TPNet(torch_model.fc0, torch_model.fc1, torch_model.fc2, tp_group).to(rank)
     # Ensure equal weight init
     assert_close(
@@ -230,7 +202,7 @@ def run_dist_lamb_fwd_bwd(
 
     torch.cuda.manual_seed(_SEED)
     clear_layout_converter()  # Ensure correct sharding
-    torch_model = Net().to(rank)
+    torch_model = Net(_IN_DIM, _HID_DIM).to(rank)
     tp_model = TPNet(torch_model.fc0, torch_model.fc1, torch_model.fc2, tp_group).to(rank)
 
     assert_close(
@@ -287,7 +259,8 @@ def run_dist_lamb_fwd_bwd(
         rtol, atol = 2e-4, 2e-4
 
     torch.cuda.manual_seed(_SEED)  # NOTE: having only one manual_seed above doesn't work?
-    x = torch.randn(_BS, _IN_DIM, dtype=p_dtype, device=rank)
+    x = data_gen()
+    x = x.cuda().to(dtype=p_dtype)
 
     out_tp = tp_model(x)
     out = torch_model(x)
@@ -312,6 +285,7 @@ def run_dist_lamb_fwd_bwd(
     optim.zero_grad()
     try:
         assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group)
+        check_optim_states(getattr(torch_optim, "optim", torch_optim), getattr(optim, "optim", optim))
     except Exception as e:
         _COORD.print_on_master(
             f"bias_correction: {bias_correction}, p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}"
