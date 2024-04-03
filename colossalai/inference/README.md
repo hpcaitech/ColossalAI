@@ -131,7 +131,7 @@ We offer 3 main sampling strategies now (i.e. `greedy sample`, `multinomial samp
 
 | Model |  KV Cache | Paged Attention | Kernels | Tensor Parallelism | Speculative Decoding |
 | - | - | - | - | - | - |
-| Llama |  ✅ | ✅ | ✅ | 🔜 | 🔜 |
+| Llama |  ✅ | ✅ | ✅ | 🔜 | ✅ |
 
 
 Notations:
@@ -146,7 +146,7 @@ Notations:
 - [x] High-Performance Kernels
 - [x] Llama Modelling
 - [x] User Documentation
-- [ ] Speculative Decoding
+- [x] Speculative Decoding
 - [ ] Tensor Parallelism
 - [ ] Beam Search
 - [ ] Early stopping
