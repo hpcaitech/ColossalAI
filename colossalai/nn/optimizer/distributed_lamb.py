@@ -15,7 +15,9 @@ __all__ = ["DistributedLamb"]
 class DistributedLamb(DistributedOptim):
     r"""Implements the Lamb algorithm, with extra support for ZeRO 2 and Tensor Parallel.
     Proposed in `Large Batch Optimization for Deep Learning: Training BERT in 76 minutes`_.
-    Example (4 devices):
+    It's recommended to use this with HybridParallelPlugin/ZeRO plugin and booster, 
+    which will take care of setup_distributed.
+    Example with 4 devices:
         >>> optim = DistributedLamb(model.parameters(), lr=1e-3)
         >>> proc_mesh = ProcessGroupMesh(tp_size, zero_size)
         >>> tp_group = proc_mesh.get_group_along_axis(0)
