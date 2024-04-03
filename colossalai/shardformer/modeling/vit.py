@@ -20,8 +20,6 @@ def _encoder_forward(
     stage_manager: PipelineStageManager = None,
 ) -> Union[tuple, BaseModelOutput]:
     for i in range(start_idx, end_idx):
-        if output_hidden_states:
-                all_hidden_states = all_hidden_states + (hidden_states,)
         layer_module = encoder.layer[i]
 
         layer_head_mask = head_mask[i] if head_mask is not None else None
