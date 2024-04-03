@@ -3,7 +3,6 @@ import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
-import torch.distributed as dist
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
@@ -860,83 +859,6 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
 
 def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
     logger = logging.get_logger(__name__)
-
-    # Copied from transformers.models.bart.modeling_bart._make_causal_mask
-    def _make_causal_mask_partial(
-        input_ids_shape: torch.Size,
-        dtype: torch.dtype,
-        device: torch.device,
-        past_key_values_length: int = 0,
-        sp_group=None,
-    ):
-        """
-        Make causal mask used for bi-directional self-attention.
-        """
-        bsz, tgt_len = input_ids_shape
-        world_size = dist.get_world_size(sp_group)
-        tgt_len *= world_size
-
-        mask = torch.full((tgt_len, tgt_len // world_size), torch.finfo(dtype).min, device=device)
-        mask_cond = torch.arange(mask.size(-1) * world_size, device=device)
-
-        block_size = tgt_len // world_size
-        idx = dist.get_rank(sp_group)
-        off = idx * block_size
-
-        mask.masked_fill_(mask_cond[off : off + block_size] < (mask_cond + 1).view(mask.size(-1) * world_size, 1), 0)
-        mask = mask.to(dtype)
-
-        if past_key_values_length > 0:
-            mask = torch.cat(
-                [torch.zeros(tgt_len // world_size, past_key_values_length, dtype=dtype, device=device), mask], dim=-1
-            )
-        return mask[None, None, :, :].expand(bsz, 1, tgt_len, (tgt_len + past_key_values_length) // world_size)
-
-    # Copied from transformers.models.bart.modeling_bart._expand_mask
-    def _expand_mask_partial(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None, sp_group=None):
-        """
-        Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`.
-        """
-        bsz, src_len = mask.size()
-        tgt_len = tgt_len if tgt_len is not None else src_len
-
-        world_size = dist.get_world_size(sp_group)
-
-        expanded_mask = mask[:, None, None, :].expand(bsz, 1, tgt_len * world_size, src_len).to(dtype)
-
-        # inverted_mask = 1.0 - expanded_mask
-        inverted_mask = expanded_mask.mul_(-1).add_(1.0)
-
-        return inverted_mask.masked_fill_(inverted_mask.to(torch.bool), torch.finfo(dtype).min)
-
-    # Copied from transformers.models.bart.modeling_bart.BartDecoder._prepare_decoder_attention_mask
-    def _prepare_decoder_attention_mask_partial(
-        attention_mask, input_shape, inputs_embeds, past_key_values_length, sp_group=None
-    ):
-        # create causal mask
-        # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-        combined_attention_mask = None
-        if input_shape[-1] > 1:
-            combined_attention_mask = _make_causal_mask_partial(
-                input_shape,
-                inputs_embeds.dtype,
-                device=inputs_embeds.device,
-                past_key_values_length=past_key_values_length,
-                sp_group=sp_group,
-            )
-
-        if attention_mask is not None:
-            # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-            expanded_attn_mask = _expand_mask_partial(
-                attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1], sp_group=sp_group
-            ).to(inputs_embeds.device)
-            combined_attention_mask = (
-                expanded_attn_mask
-                if combined_attention_mask is None
-                else expanded_attn_mask.add_(combined_attention_mask)
-            )
-
-        return combined_attention_mask
 
     def forward(
         self,

@@ -1162,6 +1162,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         if not isinstance(model, ModelWrapper):
             use_ddp = (self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0) or (
                 self.dp_size == 1
+                and self.pp_size == 1
                 and self.enable_sequence_parallelism
                 and self.sequence_parallelism_mode == "all_to_all"
             )
@@ -1205,14 +1206,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                         tp_process_group=self.tp_group,
                     )
             else:
-                # Here we bind the ZeRO group with sp group when user enable both ZeRO and all_to_all sp.
-                if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
-                    self.zero_dp_size = self.sp_size * self.dp_size
-                    self.zero_dp_group = self.pg_mesh.create_group_along_axis([DP_AXIS, SP_AXIS])
-                else:
-                    self.zero_dp_size = self.dp_size
-                    self.zero_dp_group = self.dp_group
-                if self.zero_dp_size == 1:
+                zero_dp_size = dist.get_world_size(dp_group)
+                if zero_dp_size == 1:
                     warnings.warn(
                         "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "
                         "If you are not intended to use cpu_offload, please consider set zero_stage=0."
@@ -1224,7 +1219,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     model,
                     use_pipeline=self.enable_pipeline_parallelism,
                     param_info=param_info,
-                    dp_process_group=self.zero_dp_group,
+                    dp_process_group=dp_group,
                     tp_process_group=self.tp_group,
                     pp_process_group=self.pp_group,
                     verbose=True,
