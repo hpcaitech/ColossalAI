@@ -51,6 +51,19 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
         self.ep_size = moe_info.ep_size
         self.ep_rank = moe_info.ep_rank
         self.real_dp_rank = moe_info.dp_rank
+        
+        # self.moe_info = None
+        # self.ep_group = None
+        # self.ep_size = None
+        # self.ep_rank = None
+        # self.real_dp_rank = None
+    
+    def setup(self, moe_info):
+        self.moe_info = moe_info
+        self.ep_group = self.moe_info.ep_group
+        self.ep_size = self.moe_info.ep_size
+        self.ep_rank = self.moe_info.ep_rank
+        self.real_dp_rank = self.moe_info.dp_rank
 
     @staticmethod
     def _model_sharder(

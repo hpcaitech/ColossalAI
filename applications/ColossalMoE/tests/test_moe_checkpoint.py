@@ -85,6 +85,8 @@ def check_mixtral_moe_layer():
         zero_stage=1,
     )
     booster = Booster(plugin=plugin)
+    if isinstance(booster.checkpoint_io, MixtralMoEHybridParallelCheckpointIO):
+        booster.checkpoint_io.setup(moe_info=plugin.moe_info)
     model, optimizer, *_ = booster.boost(model=model, optimizer=optimizer)
     # initialize grads
     data_iter = iter(
