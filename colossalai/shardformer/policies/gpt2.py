@@ -53,6 +53,12 @@ class GPT2Policy(Policy):
             norm_cls = col_nn.LayerNorm
 
         sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        assert sp_mode != "all_to_all", "all_to_all sequence parallelism is not supported for GPT2"
+        if sp_mode == "ring":
+            warnings.warn(
+                f"For GPT2, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
+            )
+            sp_mode = "split_gather"
         overlap = self.shard_config.enable_sequence_overlap
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
         use_flash_attention = self.shard_config.enable_flash_attention

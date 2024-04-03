@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List
 
@@ -57,6 +58,13 @@ class BloomPolicy(Policy):
             norm_cls = col_nn.LayerNorm
 
         sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        assert sp_mode != "all_to_all", "all_to_all sequence parallelism is not supported for BLOOM"
+        if sp_mode == "ring":
+            warnings.warn(
+                f"For BLOOM, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
+            )
+            sp_mode = "split_gather"
+
         overlap = self.shard_config.enable_sequence_overlap
         sp_partial_derived = sp_mode == "split_gather"
 
