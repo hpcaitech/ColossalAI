@@ -12,3 +12,7 @@
       throw std::runtime_error(cudaGetErrorString(status)); \
     }                                                       \
   }
+
+#define HOST __host__
+#define DEVICE __device__
+#define HOSTDEVICE __host__ __device__

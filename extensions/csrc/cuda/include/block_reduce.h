@@ -22,12 +22,12 @@ struct GetOpForReduceType;
 
 template <typename T>
 struct GetOpForReduceType<T, ReduceType::kMax> {
-  using Op = funcs::BinaryOpFunctor<T, funcs::BinaryOpType::kMax>;
+  using Op = funcs::BinaryOpFunctor<T, T, T, funcs::BinaryOpType::kMax>;
 };
 
 template <typename T>
 struct GetOpForReduceType<T, ReduceType::kSum> {
-  using Op = funcs::BinaryOpFunctor<T, funcs::BinaryOpType::kAdd>;
+  using Op = funcs::BinaryOpFunctor<T, T, T, funcs::BinaryOpType::kAdd>;
 };
 
 #define COLOSSAL_SHFL_FUNCTION(MASK, VAL_PTR, DELTA, WIDTH, OP, LANES) \
