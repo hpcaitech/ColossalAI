@@ -1,6 +1,5 @@
 import random
 from typing import List, Optional, Tuple, Union
-
 import torch
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
@@ -17,7 +16,7 @@ from transformers.models.opt.modeling_opt import (
     OPTModel,
 )
 from transformers.utils import logging
-
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import ColoAttention
 from colossalai.shardformer.shard import ShardConfig
@@ -57,6 +56,20 @@ class OPTPipelineForwards:
     This class serves as a micro library for forward function substitution of OPT models
     under pipeline setting.
     """
+    
+    @staticmethod
+    def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
+        """
+        Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`.
+        """
+        bsz, src_len = mask.size()
+        tgt_len = tgt_len if tgt_len is not None else src_len
+
+        expanded_mask = mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(dtype)
+
+        inverted_mask = 1.0 - expanded_mask
+
+        return inverted_mask.masked_fill(inverted_mask.to(torch.bool), torch.finfo(dtype).min)
 
     @staticmethod
     def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
