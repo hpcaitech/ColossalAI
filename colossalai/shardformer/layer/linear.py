@@ -591,11 +591,11 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
         tp_rank = dist.get_rank(process_group)
         partition_size = self.new_num_embeddings // dist.get_world_size(process_group)
         if self.old_num_embeddings >= (tp_rank + 1) * partition_size:
-            self.num_valid_embeddings = partition_size
+            self.num_valid_embeddings_local = partition_size
         elif self.old_num_embeddings >= tp_rank * partition_size:
-            self.num_valid_embeddings = self.old_num_embeddings - tp_rank * partition_size
+            self.num_valid_embeddings_local = self.old_num_embeddings - tp_rank * partition_size
         else:
-            self.num_valid_embeddings = 0
+            self.num_valid_embeddings_local = 0
 
     @staticmethod
     def from_native_module(
@@ -653,7 +653,7 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
             output = output[..., : self.old_num_embeddings]
         else:
             output = output_parallel
-            output = output[..., : self.num_valid_embeddings]
+            output = output[..., : self.num_valid_embeddings_local]
 
         if self.skip_bias_add:
             return output, self.bias
