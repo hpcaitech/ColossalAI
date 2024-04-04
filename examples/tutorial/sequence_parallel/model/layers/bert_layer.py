@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from colossalai.kernel.cuda_native import LayerNorm
+from colossalai.nn.layer.layernorm import MixedFusedLayerNorm as LayerNorm
 from colossalai.kernel.jit import bias_dropout_add_fused_inference, bias_dropout_add_fused_train
 from colossalai.legacy.nn.layer.parallel_sequence import TransformerSelfAttentionRing
 
