@@ -18,7 +18,6 @@ class Bcolors:
 def print_output(text, output):
     print(f"-----\n{Bcolors.OKBLUE}{text}{Bcolors.ENDC}{output[len(text):]}")
 
-
 @torch.no_grad()
 def inference(model, tokenizer, text, **generate_kwargs):
     input_ids = tokenizer(text, return_tensors="pt").input_ids
