@@ -97,6 +97,7 @@ class ModelSharder(object):
             method_replacement (Dict[str, Callable]):  Key is the method name, value is the method for replacement
             sub_module_replacement ((List[SubModuleReplacementDescription]): The function list to get sub module shard information in policy
             include (Set[nn.Module], optional): The set of modules to keep on current device when pipeline parallel is enabled. Defaults to None
+            skip_replaced_modules (bool, optional): Whether to skip or raise an exception when the module has been replaced. Defaults to False
         """
         if (isinstance(origin_cls, str) and origin_cls == module.__class__.__name__) or (
             module.__class__ == origin_cls
@@ -175,6 +176,7 @@ class ModelSharder(object):
             org_layer (torch.nn.Module): The origin layer object to shard
             sub_module_replacement (List[SubModuleReplacementDescription]): The sub module replacement description list
             include (Set[nn.Module], optional): The set of modules to keep on current device when pipeline parallel is enabled. Defaults to None
+            skip_replaced_modules (bool, optional): Whether to skip or raise an exception when the module has been replaced. Defaults to False
         """
         for description in sub_module_replacement:
             suffix = description.suffix
