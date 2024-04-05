@@ -71,9 +71,10 @@ class Policy(ABC):
     If you want to define your own policy, you can inherit from this class and overwrite the methods you want to modify.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, skip_replaced_modules: bool = False) -> None:
         self.shard_config: Optional[ShardConfig] = None
         self.model: Optional[Module] = None
+        self.skip_replaced_modules = skip_replaced_modules
 
     def set_model(self, model: nn.Module) -> None:
         r"""

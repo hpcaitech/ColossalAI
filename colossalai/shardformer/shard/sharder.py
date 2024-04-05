@@ -72,6 +72,7 @@ class ModelSharder(object):
                 method_replacement,
                 sub_module_replacement,
                 include=include,
+                skip_replaced_modules=self.policy.skip_replaced_modules,
             )
 
     def _recursive_replace_layer(
@@ -83,6 +84,7 @@ class ModelSharder(object):
         method_replacement: Dict[str, Callable],
         sub_module_replacement: List[SubModuleReplacementDescription],
         include: Optional[Set[nn.Module]] = None,
+        skip_replaced_modules: bool = False,
     ) -> None:
         r"""
         Reverse the replace layer operation
@@ -109,7 +111,7 @@ class ModelSharder(object):
                 self._replace_method(module, method_replacement)
 
             if sub_module_replacement is not None:
-                self._replace_sub_module(module, sub_module_replacement, include)
+                self._replace_sub_module(module, sub_module_replacement, include, skip_replaced_modules)
 
         for name, child in module.named_children():
             self._recursive_replace_layer(
@@ -120,6 +122,7 @@ class ModelSharder(object):
                 method_replacement,
                 sub_module_replacement,
                 include=include,
+                skip_replaced_modules=skip_replaced_modules,
             )
 
     def _replace_attr(
@@ -163,6 +166,7 @@ class ModelSharder(object):
         org_layer: nn.Module,
         sub_module_replacement: List[SubModuleReplacementDescription],
         include: Optional[Set[nn.Module]] = None,
+        skip_replaced_modules: bool = False,
     ) -> None:
         r"""
         Shard one layer according to the policy, the layer should be the same class as the key in policy's argument_policy return dict
@@ -184,9 +188,13 @@ class ModelSharder(object):
             if (include is not None) and (native_sub_module is not None) and (native_sub_module not in include):
                 continue
 
-            assert not isinstance(
-                native_sub_module, target_module
-            ), f"The module with suffix {suffix} has been replaced, please check the policy"
+            if isinstance(native_sub_module, target_module):
+                if skip_replaced_modules:
+                    continue
+                else:
+                    raise RuntimeError(
+                        f"The module with suffix {suffix} has been replaced, please check the policy"
+                    )
 
             # if it is None and we are allowed to ignore this module
             # just skip
