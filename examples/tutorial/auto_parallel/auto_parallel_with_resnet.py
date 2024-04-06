@@ -17,7 +17,7 @@ def synthesize_data():
 
 
 def main():
-    colossalai.launch_from_torch(config="./config.py")
+    colossalai.legacy.launch_from_torch(config="./config.py")
 
     logger = get_dist_logger()
 

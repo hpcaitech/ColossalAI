@@ -237,7 +237,7 @@ class ColoTracer(Tracer):
         # override the tracer to support custom modules and checkpointing
         if self.trace_act_ckpt:
             orig_ckpt_func_apply = torch.utils.checkpoint.CheckpointFunction.apply
-            orig_ckpt_func_without_reentrant = torch.utils.checkpoint._checkpoint_without_reentrant
+            orig_ckpt_func_without_reentrant = torch.utils.checkpoint._checkpoint_without_reentrant_generator
 
             def checkpoint(run_function, preserve_rng_state=False, *args):
                 self.ckpt_regions.append(self.ckpt_idx)
