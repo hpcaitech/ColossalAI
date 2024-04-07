@@ -13,7 +13,7 @@ _HID_DIM = 128
 
 
 class Net(nn.Module):
-    def __init__(self, in_dim, hid_dim, identity=False):
+    def __init__(self, in_dim=_IN_DIM, hid_dim=_HID_DIM, identity=False):
         super().__init__()
         if identity:
             self.fc0 = nn.Identity()
