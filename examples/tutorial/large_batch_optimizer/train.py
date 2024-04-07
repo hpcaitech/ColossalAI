@@ -37,14 +37,14 @@ class DummyDataloader:
 
 def main():
     # initialize distributed setting
-    parser = colossalai.get_default_parser()
+    parser = colossalai.legacy.get_default_parser()
     parser.add_argument(
         "--optimizer", choices=["lars", "lamb"], help="Choose your large-batch optimizer", required=True
     )
     args = parser.parse_args()
 
     # launch from torch
-    colossalai.launch_from_torch(config=args.config)
+    colossalai.legacy.launch_from_torch(config=args.config)
 
     # get logger
     logger = get_dist_logger()
@@ -73,7 +73,7 @@ def main():
     )
 
     # initialize
-    engine, train_dataloader, test_dataloader, _ = colossalai.initialize(
+    engine, train_dataloader, test_dataloader, _ = colossalai.legacy.initialize(
         model=model,
         optimizer=optimizer,
         criterion=criterion,
