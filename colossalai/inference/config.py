@@ -46,6 +46,8 @@ class InputMetaData:
     head_dim (int, optional): Head dimension. Defaults to 32.
     high_precision(bool, optional): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, Defaults to False.
     dtype (torch.dtype, optional): The computation type of tensor, Defaults to torch.float32.
+    use_spec_dec (bool): Indicate whether to use speculative decoding.
+    num_tokens_to_verify (int): The number of tokens to verify in speculative decoding. Only valid when `use_spec_dec` is set to True.
     """
 
     block_tables: torch.Tensor = None
@@ -59,9 +61,22 @@ class InputMetaData:
     head_dim: int = 32
     high_precision: bool = False
     dtype: torch.dtype = torch.float32
+    use_spec_dec: bool = False
+    num_tokens_to_verify: int = 0
 
     def __repr__(self) -> str:
-        return f"InputMetaData(block_tables={self.block_tables}, sequence_lengths={self.sequence_lengths}, fd_inter_tensor={self.fd_inter_tensor}, batch_size={self.batch_size}, is_prompts={self.is_prompts}, use_cuda_graph={self.use_cuda_graph}, kv_seq_len={self.kv_seq_len}, head_dim={self.head_dim})"
+        return (
+            f"InputMetaData(block_tables={self.block_tables}, "
+            f"sequence_lengths={self.sequence_lengths}, "
+            f"fd_inter_tensor={self.fd_inter_tensor}, "
+            f"batch_size={self.batch_size}, "
+            f"is_prompts={self.is_prompts}, "
+            f"use_cuda_kernel={self.use_cuda_kernel}, "
+            f"use_cuda_graph={self.use_cuda_graph}, "
+            f"kv_seq_len={self.kv_seq_len}, "
+            f"use_spec_dec={self.use_spec_dec}, "
+            f"num_tokens_to_verify={self.num_tokens_to_verify})"
+        )
 
 
 @dataclass
