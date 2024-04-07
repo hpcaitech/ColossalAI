@@ -2,7 +2,6 @@ import pytest
 import torch
 from packaging import version
 
-from colossalai.inference.modeling.layers.attention import copy_to_cache
 from colossalai.kernel.triton import copy_k_to_blocked_cache, copy_kv_to_blocked_cache
 from colossalai.utils import get_current_device
 from tests.test_infer.test_ops.triton.kernel_utils import generate_caches_and_block_tables_v2, mock_alloc_single_token
@@ -28,8 +27,8 @@ def prepare_data(
     max_num_blocks_per_seq,
     same_context_len,
     max_seq_len,
-    n,
-    device,
+    n=1,
+    device="cuda",
     dtype=torch.float16,
 ):
     assert max_seq_len > n, "max_seq_len must be greater than n"

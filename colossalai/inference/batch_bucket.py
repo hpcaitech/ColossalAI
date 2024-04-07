@@ -97,7 +97,6 @@ class BatchBucket:
 
     @property
     def num_tokens_to_verify(self) -> int:
-        assert self.use_spec_dec and self._num_tokens_to_verify is not None
         return self._num_tokens_to_verify
 
     def set_use_spec_dec(self, num_tokens_to_verify: int = 5) -> None:

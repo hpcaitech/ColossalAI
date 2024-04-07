@@ -138,5 +138,6 @@ def test_flash_decoding(
     assert out_torch.shape == out_triton.shape
     assert torch.allclose(out_torch, out_triton, atol=1e-3, rtol=1e-4)
 
+
 if __name__ == "__main__":
     test_flash_decoding(16, 32, 32, 16, 1, True)
