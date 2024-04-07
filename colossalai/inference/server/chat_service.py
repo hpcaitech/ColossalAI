@@ -77,9 +77,6 @@ class ChatServing:
                     data = choice_data.model_dump_json(exclude_unset=True)
                     yield f"data: {data}\n\n"
 
-        # Send response for each token for each request.n (index)
-        [""] * n
-        [0] * n
         result = await result_generator
         choice_data = DeltaMessage(content=result.output)
         data = choice_data.model_dump_json(exclude_unset=True, exclude_none=True)
