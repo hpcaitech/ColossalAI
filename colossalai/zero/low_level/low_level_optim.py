@@ -130,7 +130,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             self._dtype = forced_dtype
 
         # check argument conflict
-        self._sanity_checks()
+        #self._sanity_checks()
 
         # ParameterStore will manage the tensor buffers used for zero
         # it will not manage the tensors used by mixed precision training
@@ -225,7 +225,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         return len(self._working_param_groups)
 
     def _sanity_checks(self):
-        return
         assert get_accelerator().name in ["cuda", "npu"], "device is required"
         for param_group in self.optim.param_groups:
             group_params = param_group["params"]

@@ -48,7 +48,22 @@ class GPTJPolicy(Policy):
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn("GPTJ doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
-        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
+        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        assert sp_mode != "all_to_all", "all_to_all sequence parallelism is not supported for GPTJ"
+        if sp_mode == "ring":
+            warnings.warn(
+                f"For GPTJ, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
+            )
+            sp_mode = "split_gather"
+        sp_partial_derived = sp_mode in ["split_gather", "ring"]
+        use_flash_attention = self.shard_config.enable_flash_attention
+        if sp_mode in ["split_gather", "ring", "all_to_all"]:
+            if use_flash_attention:
+                warnings.warn(
+                    f"Sequence parallelism mode {sp_mode} cannot be used with FlashAttention, will disable FlashAttention automatically."
+                )
+                self.shard_config.enable_flash_attention = False
+                use_flash_attention = False
 
         overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
@@ -76,7 +91,7 @@ class GPTJPolicy(Policy):
                         suffix="attn.k_proj",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                         },
                     ),
@@ -84,7 +99,7 @@ class GPTJPolicy(Policy):
                         suffix="attn.q_proj",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                         },
                     ),
@@ -92,24 +107,24 @@ class GPTJPolicy(Policy):
                         suffix="attn.v_proj",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                         },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.out_proj",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.fc_in",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.fc_out",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.attn_dropout",
