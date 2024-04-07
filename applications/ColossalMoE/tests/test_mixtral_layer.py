@@ -8,9 +8,9 @@ from transformers.models.mixtral.configuration_mixtral import MixtralConfig
 from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
 
 import colossalai
-from colossalai.moe import MOE_MANAGER
 from colossalai.shardformer.modeling.mixtral import EPMixtralSparseMoeBlock
 from colossalai.testing.utils import spawn
+from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 
 tokens, n_experts = 7, 4
 hidden_size = 8
@@ -19,8 +19,11 @@ top_k = 2
 
 def check_mixtral_moe_layer():
     torch.cuda.set_device(dist.get_rank())
-    MOE_MANAGER.setup(
-        parallel="EP", mode="fixed", fixed_dp_size=1, fixed_ep_size=dist.get_world_size(), fixed_pp_size=1
+    plugin = MoeHybridParallelPlugin(
+        precision="bf16",
+        tp_size=1,
+        pp_size=1,
+        ep_size=dist.get_world_size(),
     )
     config = MixtralConfig(
         hidden_size=hidden_size,
@@ -33,7 +36,7 @@ def check_mixtral_moe_layer():
     x = torch.rand(1, tokens, hidden_size, requires_grad=True).cuda()
     orig_output, orig_logits = orig_model(x)
     model = deepcopy(orig_model)
-    model = EPMixtralSparseMoeBlock.from_native_module(model)
+    model = EPMixtralSparseMoeBlock.from_native_module(model, plugin.moe_info)
     ep_output, ep_logits = model(x)
     assert_close(orig_logits, ep_logits)
     assert_close(orig_output, ep_output)
