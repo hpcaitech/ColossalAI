@@ -165,12 +165,13 @@ class Sequence:
     def __repr__(self) -> str:
         return (
             f"(request_id={self.request_id}, "
-            f"prompt={self.prompt}, "
-            f"output_token_id={self.output_token_id},"
-            f"status={self.status.name}, "
-            f"sample_params={self.sample_params}, "
-            f"input_len={self.input_len},"
-            f"output_len={self.output_len})"
+            f"prompt={self.prompt},\n"
+            f"output_token_id={self.output_token_id},\n"
+            f"output={self.output},\n"
+            f"status={self.status.name},\n"
+            f"sample_params={self.sample_params},\n"
+            f"input_len={self.input_len},\n"
+            f"output_len={self.output_len})\n"
         )
 
 
