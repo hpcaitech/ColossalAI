@@ -1,10 +1,10 @@
+from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
 
 from colossalai.lazy import LazyInitContext
-from colossalai.moe import MOE_MANAGER
 from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler, all_to_all_uneven
 from colossalai.shardformer.shard.utils import set_tensors_to_none
 from colossalai.tensor.moe_tensor.api import set_moe_tensor_info
@@ -12,11 +12,11 @@ from colossalai.tensor.moe_tensor.api import set_moe_tensor_info
 
 class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
     def __init__(self, config):
+        self.moe_info=None
         super().__init__(config)
-        self.setup_ep()
 
-    def setup_ep(self):
-        _, moe_info = MOE_MANAGER.get_info(self.num_experts)
+    def setup_ep(self, moe_info:MoeParallelInfo):
+        self.moe_info = moe_info
         ep_group = moe_info.ep_group
         self.ep_size = dist.get_world_size(ep_group) if ep_group is not None else 1
         self.ep_rank = dist.get_rank(ep_group) if ep_group is not None else 0
@@ -30,10 +30,10 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
             set_moe_tensor_info(p, moe_info)
 
     @staticmethod
-    def from_native_module(module: MixtralSparseMoeBlock, *args, **kwargs) -> "EPMixtralSparseMoeBlock":
+    def from_native_module(module: MixtralSparseMoeBlock, moe_info:MoeParallelInfo, *args, **kwargs) -> "EPMixtralSparseMoeBlock":
         LazyInitContext.materialize(module)
         module.__class__ = EPMixtralSparseMoeBlock
-        module.setup_ep()
+        module.setup_ep(moe_info)
         return module
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:

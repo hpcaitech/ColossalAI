@@ -2,6 +2,7 @@ import random
 from types import MethodType
 from typing import Callable, Optional, OrderedDict, Tuple
 
+from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -22,12 +23,13 @@ from colossalai.booster.plugin.hybrid_parallel_plugin import (
 )
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.moe import MOE_MANAGER, MoECheckpointIO
+from colossalai.moe import MoECheckpointIO
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.zero.low_level import LowLevelZeroOptimizer
+from colossalai.tensor.moe_tensor.api import get_moe_info
 
 PP_AXIS, DP_AXIS, TP_AXIS = 0, 1, 2
 
@@ -197,19 +199,19 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             dist.get_world_size() % (tp_size * pp_size * ep_size) == 0
         ), f"world size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size} * ep_size {ep_size}"
         self.real_dp_size = dist.get_world_size() // (tp_size * pp_size * ep_size)
-        MOE_MANAGER.setup(
-            parallel="EP",
-            mode="fixed",
-            fixed_dp_size=self.real_dp_size,
-            fixed_ep_size=ep_size,
-            fixed_pp_size=pp_size,
-            use_ep_inside=use_ep_inside,
-        )
+        # MOE_MANAGER.setup(
+        #     parallel="EP",
+        #     mode="fixed",
+        #     fixed_dp_size=self.real_dp_size,
+        #     fixed_ep_size=ep_size,
+        #     fixed_pp_size=pp_size,
+        #     use_ep_inside=use_ep_inside,
+        # )
         self.tp_size = tp_size
         self.pp_size = pp_size
         self.dp_size = dist.get_world_size() // (tp_size * pp_size)
         self.ep_size = ep_size
-        self.moe_info = MOE_MANAGER.get_info(0)[1]
+        # self.moe_info = MOE_MANAGER.get_info(0)[1]
         self.precision = precision
         self.zero_stage = zero_stage
         self.cpu_offload = cpu_offload
@@ -221,6 +223,15 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.checkpoint_io = checkpoint_io
         # we change pg mesh to (pp, dp, tp) for better moe performance
         self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size)
+        
+        # ==============================
+        # Remove dependency on MOE_MANAGER
+        # ==============================
+        # Variables updated by setup
+        self.parallel_info_dict = dict()
+        self.use_ep_inside = use_ep_inside
+        self.moe_info = get_moe_info(self.ep_size, self.real_dp_size, self.pp_size, ep_inside=self.use_ep_inside)
+        
 
         # sync moe in outer dp group, and sync other param in global dp group
         if extra_dp_size > 1:
@@ -293,6 +304,40 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         )
 
         self.max_norm = max_norm
+    
+    # ==============================
+    # Migration from MOE_MANAGER.get_info
+    # ==============================
+    def get_info(self, num_experts: int, use_tp: bool = False) -> Tuple[int, MoeParallelInfo]:
+        """Calculate the Data Parallel Group and Expert Parallel Group.
+
+        Parameters
+        ----------
+        num_experts : int
+            The number experts
+
+        Returns
+        -------
+        int, MoeParallelInfo
+            number of local experts, the MoeParallelInfo of the current ep_size
+        """
+        
+        dp_size = self.dp_size
+        ep_size = self.ep_size
+        pp_size = self.pp_size
+        
+        # Calculate the number of experts for each GPU
+        num_local_experts = num_experts // ep_size
+        
+        if not (ep_size in self.parallel_info_dict):
+            self.parallel_info_dict[ep_size] = get_moe_info(ep_size, dp_size, pp_size, ep_inside=self.use_ep_inside)
+            if dist.get_rank() == 0:
+                if self.use_ep_inside:
+                    print(f"MoE Parallel: pp {pp_size}, dp {dp_size}, ep {ep_size}")
+                else:
+                    print(f"MoE Parallel: pp {pp_size}, ep {ep_size}, dp {dp_size}")
+
+        return num_local_experts, self.parallel_info_dict[ep_size]
 
     def prepare_dataloader(
         self, dataset, batch_size, shuffle=False, seed=1024, drop_last=False, pin_memory=False, num_workers=0, **kwargs
@@ -346,6 +391,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             self.checkpoint_io = MoECheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
         else:
             self.checkpoint_io = self.checkpoint_io(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
+            if hasattr(self.checkpoint_io, 'moe_info'):
+                self.checkpoint_io.moe_info = self.moe_info
         return self.checkpoint_io
 
     def configure(
