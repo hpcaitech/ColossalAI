@@ -1,3 +1,5 @@
+# adapted from Hugging Face accelerate/utils/bnb.py accelerate/utils/modeling.py
+
 import logging
 
 import torch
@@ -21,34 +23,14 @@ def quantize_model(
     bnb_quantization_config: BnbQuantizationConfig,
 ):
     """
-    This function will quantize the input model with the associated config passed in `bnb_quantization_config`. If the
-    model is in the meta device, we will load and dispatch the weights according to the `device_map` passed. If the
-    model is already loaded, we will quantize the model and put the model on the GPU,
+    This function will quantize the input loaded model with the associated config passed in `bnb_quantization_config`.
+    We will quantize the model and put the model on the GPU.
 
     Args:
         model (`torch.nn.Module`):
-            Input model. The model can be already loaded or on the meta device
+            Input model. The model already loaded
         bnb_quantization_config (`BnbQuantizationConfig`):
             The bitsandbytes quantization parameters
-        weights_location (`str` or `os.PathLike`):
-            The folder weights_location to load. It can be:
-            - a path to a file containing a whole model state dict
-            - a path to a `.json` file containing the index to a sharded checkpoint
-            - a path to a folder containing a unique `.index.json` file and the shards of a checkpoint.
-            - a path to a folder containing a unique pytorch_model.bin file.
-        device_map (`Dict[str, Union[int, str, torch.device]]`, *optional*):
-            A map that specifies where each submodule should go. It doesn't need to be refined to each parameter/buffer
-            name, once a given module name is inside, every submodule of it will be sent to the same device.
-        no_split_module_classes (`List[str]`, *optional*):
-            A list of layer class names that should never be split across device (for instance any layer that has a
-            residual connection).
-        max_memory (`Dict`, *optional*):
-            A dictionary device identifier to maximum memory. Will default to the maximum memory available if unset.
-        offload_folder (`str` or `os.PathLike`, *optional*):
-            If the `device_map` contains any value `"disk"`, the folder where we will offload weights.
-        offload_state_dict (`bool`, *optional*, defaults to `False`):
-            If `True`, will temporarily offload the CPU state dict on the hard drive to avoid getting out of CPU RAM if
-            the weight of the CPU state dict + the biggest shard does not fit.
 
     Returns:
         `torch.nn.Module`: The quantized model
@@ -69,23 +51,17 @@ def quantize_model(
             "make sure you have the latest version of `bitsandbytes` installed."
         )
 
-    modules_on_cpu = []
-    # custom device map
-
     # We keep some modules such as the lm_head in their original dtype for numerical stability reasons
     if bnb_quantization_config.skip_modules is None:
         bnb_quantization_config.skip_modules = get_keys_to_not_convert(model)
 
     # add cpu modules to skip modules only for 4-bit modules
-    #if load_in_4bit:
-    #    bnb_quantization_config.skip_modules.extend(modules_on_cpu)
     modules_to_not_convert = bnb_quantization_config.skip_modules
 
     # We add the modules we want to keep in full precision
     if bnb_quantization_config.keep_in_fp32_modules is None:
         bnb_quantization_config.keep_in_fp32_modules = []
     keep_in_fp32_modules = bnb_quantization_config.keep_in_fp32_modules
-    #modules_to_not_convert.extend(keep_in_fp32_modules)
 
     # compatibility with peft
     model.is_loaded_in_4bit = load_in_4bit
@@ -121,6 +97,7 @@ def quantize_model(
     else:
         raise RuntimeError("No GPU found. A GPU is needed for quantization.")
     return model
+
 
 def replace_with_bnb_layers(model, bnb_quantization_config, modules_to_not_convert=None, current_key_name=None):
     """
