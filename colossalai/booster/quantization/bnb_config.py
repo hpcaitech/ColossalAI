@@ -1,3 +1,5 @@
+# adapted from Hugging Face accelerate/utils/dataclasses.py
+
 import warnings
 from dataclasses import field, dataclass
 from typing import List
