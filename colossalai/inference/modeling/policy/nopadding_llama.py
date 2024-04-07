@@ -26,7 +26,7 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy):
         policy = super().module_policy()
 
         decoder_attribute_replacement = {
-            "lm_head.weight": Parameter(self.model.lm_head.weight.transpose(0, 1), requires_grad=False),
+            "lm_head.weight": Parameter(self.model.lm_head.weight.transpose(0, 1)),
         }
         policy[LlamaForCausalLM] = ModulePolicyDescription(
             attribute_replacement=decoder_attribute_replacement,

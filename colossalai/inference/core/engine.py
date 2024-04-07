@@ -1,18 +1,24 @@
+import re
 import time
 from itertools import count
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
-from transformers import GenerationConfig, PreTrainedTokenizer, PreTrainedTokenizerFast
+from torch import distributed as dist
+from transformers import AutoConfig, GenerationConfig, PreTrainedTokenizer, PreTrainedTokenizerFast
+from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
+from colossalai.accelerator import get_accelerator
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.batch_bucket import BatchBucket
 from colossalai.inference.config import InferenceConfig, InputMetaData
 from colossalai.inference.graph_runner import CUDAGraphRunner
 from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.struct import Sequence
+from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
@@ -24,9 +30,9 @@ __all__ = ["InferenceEngine"]
 
 PP_AXIS, TP_AXIS = 0, 1
 
-_supported_models = [
-    "LlamaForCausalLM",
-]
+_supported_models = {
+    "LlamaForCausalLM": LlamaForCausalLM,
+}
 
 _BATCH_SIZES_TO_CAPTURE = [1, 2, 4] + [8 * i for i in range(1, 33)]
 
@@ -37,7 +43,7 @@ class InferenceEngine:
     InferenceEngine which manages the inference process..
 
     Args:
-        model (nn.Module): Path or nn.Module of this model.
+        model_or_path (nn.Module or str): Path or nn.Module of this model.
         tokenizer Optional[(Union[PreTrainedTokenizer, PreTrainedTokenizerFast])]: Path of the tokenizer to use.
         inference_config (Optional[InferenceConfig], optional): Store the configuration information related to inference.
         verbose (bool): Determine whether or not to log the generation process.
@@ -46,7 +52,7 @@ class InferenceEngine:
 
     def __init__(
         self,
-        model: nn.Module,
+        model_or_path: Union[nn.Module, str],
         tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
         inference_config: InferenceConfig,
         verbose: bool = False,
@@ -55,36 +61,25 @@ class InferenceEngine:
         assert inference_config, "Please provide inference_config."
         assert tokenizer, "Please provide a tokenizer, either a defined one or str"
         self.inference_config = inference_config
-        self.model_config = model.config
-        self.device = torch.device("cuda")
+
         self.dtype = inference_config.dtype
-        self.tokenizer = tokenizer
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.generation_config = inference_config.to_generation_config(self.model_config)
+        torch.set_default_dtype(self.dtype)
         self.high_precision = inference_config.high_precision
-        model = model.eval()
-        model = model.cuda()
-        model.to(self.dtype)
-
-        if model_policy is None:
-            if self.inference_config.pad_input:
-                model_type = "padding_" + self.model_config.model_type
-            else:
-                model_type = "nopadding_" + self.model_config.model_type
-            model_policy = model_policy_map[model_type]()
-
-        pg_mesh = ProcessGroupMesh(inference_config.pp_size, inference_config.tp_size)
-
-        self.model = self._shardformer(
-            model,
-            model_policy,
-            None,
-            pg_mesh.get_group_along_axis(TP_AXIS) if inference_config.pp_size * inference_config.tp_size > 1 else None,
-        )
 
         self.verbose = verbose
         if verbose:
             self.logger = get_dist_logger(__name__)
+
+        # enable memory history, which will
+        # add tracebacks and event history to snapshots
+        # torch.cuda.memory._record_memory_history()
+        self.init_model(model_or_path, model_policy)
+        # torch.cuda.memory._dump_snapshot(f"my_snapshot_rank_{dist.get_rank()}.pickle")
+
+        self.generation_config = inference_config.to_generation_config(self.model_config)
+
+        self.tokenizer = tokenizer
+        self.tokenizer.pad_token = self.tokenizer.eos_token
 
         self.request_handler = RequestHandler(self.inference_config, self.model_config)
         self.k_cache, self.v_cache = self.request_handler.get_kvcache()
@@ -100,6 +95,133 @@ class InferenceEngine:
                 self.logger.info("Colossal AI CUDA Graph Capture on")
 
             self.capture_model(self.k_cache, self.v_cache)
+
+    def init_model(self, model_or_path: Union[nn.Module, str], model_policy: Policy = None):
+        """
+        Shard model or/and Load weight
+
+        Args:
+            model_or_path Union[nn.Module, str]: path to the checkpoint or model of transformer format.
+            model_policy (Policy): the policy to replace the model
+        """
+
+        if isinstance(model_or_path, str):
+            hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
+            arch = getattr(hf_config, "architectures", [])[0]
+            model = _supported_models[arch](hf_config)
+        else:
+            model = model_or_path
+
+        self.model_config = model.config
+
+        torch.cuda.empty_cache()
+        init_gpu_memory = torch.cuda.mem_get_info()[0]
+
+        self.device = get_accelerator().get_current_device()
+        if self.verbose:
+            self.logger.info(f"the device is {self.device}")
+
+        model = model.eval()
+
+        if self.verbose:
+            # self.logger.info(f"Before the shard, the model: {model}, model size: {self.get_model_size(model)}")
+            self.logger.info(
+                f"Before the shard, Rank: [{dist.get_rank()}], model size: {self.get_model_size(model)} GB, model's device is: {model.device}"
+            )
+
+        if model_policy is None:
+            if self.inference_config.pad_input:
+                model_type = "padding_" + self.model_config.model_type
+            else:
+                # if self.inference_config.tp_size > 1:
+                #     model_type = "tp_" + self.model_config.model_type
+                # else:
+                # model_type = "nopadding_" + self.model_config.model_type
+                model_type = "tp_" + self.model_config.model_type
+            model_policy = model_policy_map[model_type]()
+
+        pg_mesh = ProcessGroupMesh(self.inference_config.pp_size, self.inference_config.tp_size)
+        tp_group = pg_mesh.get_group_along_axis(TP_AXIS)
+
+        self.model = self._shardformer(
+            model,
+            model_policy,
+            None,
+            tp_group=tp_group,
+        )
+
+        self.model = ModelWrapper(model).to(self.device)
+
+        if self.verbose:
+            # self.logger.info(f"the model: {self.model}, model size: {self.get_model_size(self.model)}")
+            self.logger.info(
+                f"After the shard, Rank: [{dist.get_rank()}], model size: {self.get_model_size(self.model)} GB, model's device is: {model.device}"
+            )
+
+        if isinstance(model_or_path, str):
+            from colossalai.inference.core.plugin import TPChekpoint_io
+
+            cpt_io = TPChekpoint_io()
+            if_has_index_file, model_index_file = self.has_index_file(model_or_path)
+            assert if_has_index_file, "the model path is invalid"
+            cpt_io.load_model(self.model, model_index_file)
+
+        torch.cuda.set_device(self.device)
+        free_gpu_memory, total_gpu_memory = torch.cuda.mem_get_info()
+        peak_memory = init_gpu_memory - free_gpu_memory
+        if self.verbose:
+            self.logger.info(
+                f"Rank [{dist.get_rank()}], Model Weight Max Occupy {peak_memory / (1024 ** 3)} GB, Model size: {self.get_model_size(self.model)} GB"
+            )
+
+    def has_index_file(self, checkpoint_path: str) -> Tuple[bool, Optional[Path]]:
+        """
+        Check whether the checkpoint has an index file.
+
+        Args:
+            checkpoint_path (str): path to the checkpoint.
+
+        Returns:
+            Tuple[bool, Optional[Path]]: a tuple of (has_index_file, index_file_path)
+        """
+        checkpoint_path = Path(checkpoint_path)
+        if checkpoint_path.is_file():
+            # check if it is .index.json
+            reg = re.compile("(.*?).index((\..*)?).json")
+            if reg.fullmatch(checkpoint_path.name) is not None:
+                return True, checkpoint_path
+            else:
+                return False, None
+        elif checkpoint_path.is_dir():
+            index_files = list(checkpoint_path.glob("*.index.*json"))
+
+            for index_file in index_files:
+                if "safetensors" in index_file.__str__():
+                    return True, index_file.__str__()  # return the safetensors file first
+
+            if len(index_files) == 1:
+                return True, index_files[0]
+            else:
+                assert (
+                    len(index_files) == 1
+                ), f"Expected to find one .index.json file in {checkpoint_path}, but found {len(index_files)}"
+                return False, None
+        else:
+            raise RuntimeError(f"Invalid checkpoint path {checkpoint_path}. Expected a file or a directory.")
+
+    def get_model_size(self, model: nn.Module):
+        """Calculates the total size of the model weights (including biases) in bytes.
+
+        Args:
+            model: The PyTorch model to analyze.
+
+        Returns:
+            The total size of the model weights in bytes.
+        """
+        total_size = 0
+        for key, param in model.named_parameters():
+            total_size += param.element_size() * param.numel()
+        return total_size / (1024**3)
 
     @torch.inference_mode()
     def capture_model(self, k_cache: List[torch.Tensor], v_cache: List[torch.Tensor]):
@@ -187,7 +309,7 @@ class InferenceEngine:
                 f"the tokenizer type must be PreTrainedTokenizer or PreTrainedTokenizerFast, but got {type(self.tokenizer)}"
             )
         assert (
-            self.model.__class__.__name__ in _supported_models
+            self.model.__class__.__name__ in _supported_models.keys()
         ), f"Model {self.model.__class__.__name__} is not supported."
 
     def _shardformer(
