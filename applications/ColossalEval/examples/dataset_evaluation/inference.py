@@ -3,7 +3,6 @@ import copy
 import os
 from typing import Dict, List
 
-import torch
 import torch.distributed as dist
 from colossal_eval import dataset, models, utils
 

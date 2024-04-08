@@ -128,7 +128,10 @@ def distribute_tensor(tensor: torch.Tensor, device_mesh: DeviceMesh, sharding_sp
 
     return sharded_tensor
 
-def init_as_dtensor(tensor: torch.Tensor, device_mesh: DeviceMesh, sharding_spec: ShardingSpec, global_shape: torch.Size) -> torch.Tensor:
+
+def init_as_dtensor(
+    tensor: torch.Tensor, device_mesh: DeviceMesh, sharding_spec: ShardingSpec, global_shape: torch.Size
+) -> torch.Tensor:
     assert not is_distributed_tensor(tensor), "The input tensor is already a distributed tensor."
     dist_layout = Layout(device_mesh=device_mesh, sharding_spec=sharding_spec, global_shape=global_shape)
 
@@ -139,6 +142,7 @@ def init_as_dtensor(tensor: torch.Tensor, device_mesh: DeviceMesh, sharding_spec
     _hijack_detach_and_clone(tensor)
 
     return tensor
+
 
 def redistribute(dtensor: torch.Tensor, device_mesh: DeviceMesh, sharding_spec: ShardingSpec) -> None:
     """
@@ -467,7 +471,6 @@ def init_tensor_as_customization_distributed(tensor: torch.Tensor, shard_fn, gat
     assert callable(shard_fn), "The shard_fn must be callable."
     assert callable(gather_fn), "The gather_fn must be callable."
     assert not is_distributed_tensor(tensor), "The input tensor is already a distributed tensor."
-
 
     # set the shard_fn and gather_fn as attributes of the distributed tensor
     tensor.shard_fn = shard_fn

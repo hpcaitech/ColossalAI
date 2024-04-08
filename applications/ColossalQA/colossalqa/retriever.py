@@ -99,13 +99,7 @@ class CustomRetriever(BaseRetriever):
     def clear_documents(self):
         """Clear all document vectors from database"""
         for source in self.vector_stores:
-            index(
-                [],
-                self.record_managers[source],
-                self.vector_stores[source],
-                cleanup="full",
-                source_id_key="source"
-            )
+            index([], self.record_managers[source], self.vector_stores[source], cleanup="full", source_id_key="source")
         self.vector_stores = {}
         self.sql_index_database = {}
         self.record_managers = {}
