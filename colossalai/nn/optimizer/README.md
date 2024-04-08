@@ -81,3 +81,47 @@ If you wish to add an optimizer for a specific application, please follow the st
 
 
 If your PR is accepted, we may invite you to put up a tutorial or blog in [ColossalAI Documentation](https://colossalai.org/).
+
+
+## Optimizer
+
+A series of optimizers have been optimized and integrated.
+
+### Distributed Adafactor
+
+Distributed Adafactor supports tensor parallelism and ZerO optimization. Here is a brief flowchart of how adafactor implements the tensor parallel:
+
+[[Tensor Parallel Strategy in Distributed Adafactor]](adafactor_strategy.png)
+
+### Performance
+|            Version              |    iter    | Float Percision |      Device Nums     | weight shape  | Avg runtime(ms)  | Avg Speed Up Rate | Best Speed Up Rate  |
+| :-----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :--------------: | :-----------------: | :---------------: |
+|           AdaFactor             |     50     |     float32     |          2           | [4096 , 4096] |        0.58      |           -         |          -        |
+|    DistAdaFactor(Col Parallel)  |     50     |     float32     |          2           | [4096 , 4096] |        0.41      |         1.39        |        56.91      |
+|    DistAdaFactor(Col Parallel)  |     50     |     float32     |          2           | [4096 , 4096] |        0.61      |         0.96        |        18.69      |
+|           AdaFactor             |     50     |     float16     |          2           | [4096 , 4096] |        0.72      |           -         |          -        |
+|    DistAdaFactor(Col Parallel)  |     50     |     float16     |          2           | [4096 , 4096] |        0.54      |         1.33        |        26.03      |
+|    DistAdaFactor(Row Parallel)  |     50     |     float16     |          2           | [4096 , 4096] |        0.67      |         1.08        |        20.55      |
+|           AdaFactor             |     50     |     bfloat16    |          2           | [4096 , 4096] |        0.72      |           -         |          -        |
+|    DistAdaFactor(Col Parallel)  |     50     |     bfloat16    |          2           | [4096 , 4096] |        0.55      |         1.31        |        26.11      |
+|    DistAdaFactor(Row Parallel)  |     50     |     bfloat16    |          2           | [4096 , 4096] |        0.67      |         1.07        |        21.86      |
+| :-----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :--------------: | :-----------------: | :---------------: |
+|           AdaFactor             |     50     |     float32     |          4           | [4096 , 4096] |        0.57      |           -         |          -        |
+|    DistAdaFactor(Col Parallel)  |     50     |     float32     |          4           | [4096 , 4096] |        0.38      |         1.48        |        53.99      |
+|    DistAdaFactor(Col Parallel)  |     50     |     float32     |          4           | [4096 , 4096] |        0.60      |         0.95        |        16.53      |
+|           AdaFactor             |     50     |     float16     |          4           | [4096 , 4096] |        0.70      |           -         |          -        |
+|    DistAdaFactor(Col Parallel)  |     50     |     float16     |          4           | [4096 , 4096] |        0.50      |         1.44        |        21.98      |
+|    DistAdaFactor(Row Parallel)  |     50     |     float16     |          4           | [4096 , 4096] |        0.64      |         1.12        |        15.35      |
+|           AdaFactor             |     50     |     bfloat16    |          4           | [4096 , 4096] |        0.72      |           -         |          -        |
+|    DistAdaFactor(Col Parallel)  |     50     |     bfloat16    |          4           | [4096 , 4096] |        0.56      |         1.29        |        25.63      |
+|    DistAdaFactor(Row Parallel)  |     50     |     bfloat16    |          4           | [4096 , 4096] |        0.71      |         1.09        |        21.52      |
+| :-----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :--------------: | :-----------------: | :---------------: |
+|           AdaFactor             |     50     |     float32     |          8           | [4096 , 4096] |        0.56      |           -         |          -        |
+|    DistAdaFactor(Col Parallel)  |     50     |     float32     |          8           | [4096 , 4096] |        0.38      |         1.50        |        54.51      |
+|    DistAdaFactor(Col Parallel)  |     50     |     float32     |          8           | [4096 , 4096] |        0.91      |         0.67        |        15.68      |
+|           AdaFactor             |     50     |     float16     |          8           | [4096 , 4096] |        0.74      |           -         |          -        |
+|    DistAdaFactor(Col Parallel)  |     50     |     float16     |          8           | [4096 , 4096] |        0.84      |         0.87        |         9.21      |
+|    DistAdaFactor(Row Parallel)  |     50     |     float16     |          8           | [4096 , 4096] |        1.03      |         0.75        |        16.12      |
+|           AdaFactor             |     50     |     bfloat16    |          8           | [4096 , 4096] |        0.71      |           -         |          -        |
+|    DistAdaFactor(Col Parallel)  |     50     |     bfloat16    |          8           | [4096 , 4096] |        0.54      |         1.31        |        27.28      |
+|    DistAdaFactor(Row Parallel)  |     50     |     bfloat16    |          8           | [4096 , 4096] |        0.73      |         1.03        |        25.01      |
