@@ -28,7 +28,13 @@ class Net(nn.Module):
 
 
 class TPNet(nn.Module):
-    def __init__(self, fc0, fc1, fc2, tp_group=None):
+    def __init__(
+        self,
+        fc0=nn.Linear(_IN_DIM, _IN_DIM),
+        fc1=nn.Linear(_IN_DIM, _HID_DIM),
+        fc2=nn.Linear(_HID_DIM, _IN_DIM),
+        tp_group=None,
+    ):
         super().__init__()
         self.fc0 = deepcopy(fc0)
         self.fc1 = Linear1D_Col.from_native_module(

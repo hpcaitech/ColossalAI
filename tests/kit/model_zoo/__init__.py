@@ -10,8 +10,6 @@ COMMON_MODELS = [
     "custom_nested_model",
     "custom_repeated_computed_layers",
     "custom_simple_net",
-    "simple_mlp",
-    "simple_tp_mlp",
     "diffusers_clip_text_model",
     "diffusers_auto_encoder_kl",
     "diffusers_unet2d_model",

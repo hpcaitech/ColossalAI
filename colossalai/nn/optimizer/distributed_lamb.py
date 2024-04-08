@@ -149,7 +149,7 @@ class DistributedLamb(DistributedOptim):
                     update.add_(p.data, alpha=group["weight_decay"])
 
                 # Compute global layer-wise trust ratio
-                if self.is_dist[p]:
+                if self.is_dist[p] or self.is_zero:
                     p_local = p
                     g_sum = (update**2).sum()
                     if self.dp_size > 1 and self.is_zero:
