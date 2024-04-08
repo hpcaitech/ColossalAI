@@ -52,7 +52,7 @@ class DocumentLoader:
     def load_data(self, path: str) -> None:
         """
         Load data. Please refer to https://python.langchain.com/docs/modules/data_connection/document_loaders/
-            for sepcific format requirements.
+            for specific format requirements.
         Args:
             path: path to a file
                 To load files with glob path, here are some examples.
@@ -126,7 +126,7 @@ class DocumentLoader:
             else:
                 # May ba a directory, we strictly follow the glob path and will not load files in subdirectories
                 pass
-    
+
     def clear(self):
         """
         Clear loaded data.

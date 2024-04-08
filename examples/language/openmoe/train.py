@@ -190,13 +190,13 @@ def parse_args():
     parser.add_argument(
         "--comm_overlap",
         action="store_true",
-        help="Use communication overlap for MoE. Recommended to enable for muiti-node training.",
+        help="Use communication overlap for MoE. Recommended to enable for multi-node training.",
     )
     # hierarchical all-to-all
     parser.add_argument(
         "--hierarchical_alltoall",
         action="store_true",
-        help="Use hierarchical all-to-all for MoE. Recommended to enable for muiti-node training.",
+        help="Use hierarchical all-to-all for MoE. Recommended to enable for multi-node training.",
     )
 
     args = parser.parse_args()
@@ -269,12 +269,12 @@ def main():
 
     # Build OpenMoe model
     if test_mode:
-        config = LlamaConfig.from_pretrained("hpcaitech/openmoe-base")
+        config = LlamaConfig.from_pretrained("hpcai-tech/openmoe-base")
         config.hidden_size = 128
         config.intermediate_size = 256
         config.vocab_size = 32000
     else:
-        repo_name = "hpcaitech/openmoe-" + args.model_name
+        repo_name = "hpcai-tech/openmoe-" + args.model_name
         config = LlamaConfig.from_pretrained(repo_name)
     set_openmoe_args(
         config,
@@ -340,7 +340,6 @@ def main():
                         lambda x, y: x.loss,
                         optimizer,
                         return_loss=True,
-                        return_outputs=True,
                     )
                     # Backward and optimize
                     if is_pp_last_stage:
@@ -367,7 +366,7 @@ def main():
                 ):
                     coordinator.print_on_master(f"Apply load balance")
                     apply_load_balance(model, optimizer)
-                # save ckeckpoint
+                # save checkpoint
                 if (step + 1) % args.save_interval == 0:
                     coordinator.print_on_master(f"Saving model checkpoint to {args.output_path}")
                     booster.save_model(model, args.output_path, shard=True)

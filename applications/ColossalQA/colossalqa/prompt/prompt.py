@@ -4,7 +4,6 @@ All custom prompt templates are defined here.
 
 from langchain.prompts.prompt import PromptTemplate
 
-
 # Below are Chinese retrieval qa prompts
 
 _CUSTOM_SUMMARIZER_TEMPLATE_ZH = """请递进式地总结所提供的当前对话，将当前对话的摘要内容添加到先前已有的摘要上，返回一个融合了当前对话的新的摘要。
@@ -75,7 +74,7 @@ Assistant: 我认识一个叫张三的人
 # Below are English retrieval qa prompts
 
 _EN_RETRIEVAL_QA_PROMPT = """[INST] <<SYS>>Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist content.
-If the answer cannot be infered based on the given context, please say "I cannot answer the question based on the information given.".<</SYS>>
+If the answer cannot be inferred based on the given context, please say "I cannot answer the question based on the information given.".<</SYS>>
 Use the context and chat history to answer the question.
 
 context:
@@ -97,8 +96,8 @@ Chat history:
 Human: I have a friend, Mike. Do you know him?
 Assistant: Yes, I know a person named Mike
 
-sentence: What's his favorate food?
-disambiguated sentence: What's Mike's favorate food?
+sentence: What's his favorite food?
+disambiguated sentence: What's Mike's favorite food?
 [/INST]
 Chat history:
 {chat_history}

@@ -15,7 +15,7 @@ def load_model(model_path, device="cuda", **kwargs):
     model.to(device)
 
     try:
-        tokenizer = AutoTokenizer.from_pretrained(model_path, padding_side='left')
+        tokenizer = AutoTokenizer.from_pretrained(model_path, padding_side="left")
     except OSError:
         raise ImportError("Tokenizer not found. Please check if the tokenizer exists or the model path is correct.")
 

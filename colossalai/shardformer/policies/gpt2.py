@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List
 
@@ -5,7 +6,13 @@ from torch import Tensor, nn
 
 import colossalai.shardformer.layer as col_nn
 
-from ..modeling.gpt2 import GPT2PipelineForwards, get_gpt2_flash_attention_forward, gpt2_sequence_parallel_forward_fn
+from ..modeling.gpt2 import (
+    GPT2PipelineForwards,
+    get_gpt2_flash_attention_forward,
+    get_gpt_model_forward_for_flash_attn,
+    get_lm_forward_with_dist_cross_entropy,
+    gpt2_sequence_parallel_forward_fn,
+)
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -44,8 +51,25 @@ class GPT2Policy(Policy):
             norm_cls = col_nn.FusedLayerNorm
         else:
             norm_cls = col_nn.LayerNorm
-        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
+
+        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        assert sp_mode != "all_to_all", "all_to_all sequence parallelism is not supported for GPT2"
+        if sp_mode == "ring":
+            warnings.warn(
+                f"For GPT2, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
+            )
+            sp_mode = "split_gather"
         overlap = self.shard_config.enable_sequence_overlap
+        sp_partial_derived = sp_mode in ["split_gather", "ring"]
+        use_flash_attention = self.shard_config.enable_flash_attention
+        # todo: currently sp cannot be used with flashattention
+        if sp_mode in ["split_gather", "ring", "all_to_all"]:
+            if use_flash_attention:
+                warnings.warn(
+                    f"Sequence parallelism mode {sp_mode} cannot be used with FlashAttention, will disable FlashAttention automatically."
+                )
+                self.shard_config.enable_flash_attention = False
+                use_flash_attention = False
         if self.shard_config.enable_tensor_parallelism:
             policy[GPT2Model] = ModulePolicyDescription(
                 sub_module_replacement=[
@@ -70,25 +94,33 @@ class GPT2Policy(Policy):
                     SubModuleReplacementDescription(
                         suffix="attn.c_attn",
                         target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                        kwargs={"n_fused": 3, "seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        kwargs={
+                            "n_fused": 3,
+                            "seq_parallel_mode": sp_mode,
+                            "overlap": overlap,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.c_proj",
                         target_module=col_nn.GPT2FusedLinearConv1D_Row,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                         },
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.c_fc",
                         target_module=col_nn.GPT2FusedLinearConv1D_Col,
-                        kwargs={"n_fused": 1, "seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        kwargs={
+                            "n_fused": 1,
+                            "seq_parallel_mode": sp_mode,
+                            "overlap": overlap,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.c_proj",
                         target_module=col_nn.GPT2FusedLinearConv1D_Row,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -121,25 +153,25 @@ class GPT2Policy(Policy):
                 SubModuleReplacementDescription(
                     suffix="ln_1",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 SubModuleReplacementDescription(
                     suffix="ln_2",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 SubModuleReplacementDescription(
                     suffix="ln_cross_attn",
                     target_module=norm_cls,
                     ignore_if_not_exist=True,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
             ],
             policy=policy,
             target_key=GPT2Block,
         )
 
-        if self.shard_config.enable_flash_attention:
+        if use_flash_attention:
             self.append_or_create_method_replacement(
                 description={
                     "forward": get_gpt2_flash_attention_forward(),
@@ -147,8 +179,12 @@ class GPT2Policy(Policy):
                 policy=policy,
                 target_key=GPT2Attention,
             )
+            if not self.shard_config.pipeline_stage_manager:
+                policy[GPT2Model].method_replacement = {
+                    "forward": get_gpt_model_forward_for_flash_attn(self.shard_config)
+                }
 
-        if self.shard_config.enable_sequence_parallelism:
+        if sp_mode is not None:
             policy[GPT2Model].method_replacement = {"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)}
 
         return policy
@@ -167,15 +203,28 @@ class GPT2Policy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
-        if stage_manager.is_first_stage():
-            held_layers.append(module.wte)
-            held_layers.append(module.wpe)
-            held_layers.append(module.drop)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
-        held_layers.extend(module.h[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            held_layers.append(module.ln_f)
+        if stage_manager.is_interleave:
+            assert stage_manager.num_model_chunks is not None
+            layers_per_stage = stage_manager.distribute_layers(len(module.h))
+            stage_indices = stage_manager.get_stage_index(layers_per_stage)
+            if stage_manager.is_first_stage(ignore_chunk=True):
+                held_layers.append(module.wte)
+                held_layers.append(module.wpe)
+                held_layers.append(module.drop)
+            for start_idx, end_idx in stage_indices:
+                held_layers.extend(module.h[start_idx:end_idx])
+            if stage_manager.is_last_stage(ignore_chunk=True):
+                held_layers.append(module.ln_f)
+        else:
+            layers_per_stage = stage_manager.distribute_layers(len(module.h))
+            if stage_manager.is_first_stage():
+                held_layers.append(module.wte)
+                held_layers.append(module.wpe)
+                held_layers.append(module.drop)
+            start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
+            held_layers.extend(module.h[start_idx:end_idx])
+            if stage_manager.is_last_stage():
+                held_layers.append(module.ln_f)
         return held_layers
 
     def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
@@ -189,13 +238,27 @@ class GPT2Policy(Policy):
         else:
             module = self.model.transformer
 
-        layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
-        stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-        method_replacement = {
-            "forward": partial(
-                new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
-            )
-        }
+        if stage_manager.is_interleave:
+            layers_per_stage = stage_manager.distribute_layers(len(module.h))
+            stage_manager.stage_indices = stage_manager.get_stage_index(layers_per_stage)
+            method_replacement = {
+                "forward": partial(
+                    new_forward,
+                    stage_manager=stage_manager,
+                    shard_config=self.shard_config,
+                )
+            }
+        else:
+            layers_per_stage = stage_manager.distribute_layers(len(module.h))
+            stage_index = stage_manager.get_stage_index(layers_per_stage)
+            method_replacement = {
+                "forward": partial(
+                    new_forward,
+                    stage_manager=stage_manager,
+                    stage_index=stage_index,
+                    shard_config=self.shard_config,
+                )
+            }
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
 
@@ -208,7 +271,9 @@ class GPT2ModelPolicy(GPT2Policy):
 
         if self.pipeline_stage_manager is not None:
             self.set_pipeline_forward(
-                model_cls=GPT2Model, new_forward=GPT2PipelineForwards.gpt2_model_forward, policy=policy
+                model_cls=GPT2Model,
+                new_forward=GPT2PipelineForwards.gpt2_model_forward,
+                policy=policy,
             )
         return policy
 
@@ -232,11 +297,17 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
                 GPT2LMHeadModel: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True}
+                            suffix="lm_head",
+                            target_module=col_nn.Linear1D_Col,
+                            kwargs={"gather_output": not self.shard_config.parallel_output},
                         )
-                    ]
+                    ],
                 )
             }
+            if self.shard_config.parallel_output:
+                addon_module[GPT2LMHeadModel].method_replacement = {
+                    "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
+                }
             module_policy.update(addon_module)
 
         if self.pipeline_stage_manager is not None:
@@ -249,7 +320,7 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
 
     def get_held_layers(self) -> List[nn.Module]:
         held_layers = super().get_held_layers()
-        if self.pipeline_stage_manager.is_last_stage():
+        if self.pipeline_stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.lm_head)
         return held_layers
 
@@ -260,7 +331,12 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
         if stage_manager is not None:
             if stage_manager.num_stages > 1 and id(module.transformer.wte.weight) == id(module.lm_head.weight):
                 first_stage, last_stage = 0, stage_manager.num_stages - 1
-                return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
+                return [
+                    {
+                        first_stage: module.transformer.wte.weight,
+                        last_stage: module.lm_head.weight,
+                    }
+                ]
         return []
 
 
@@ -276,7 +352,9 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
                 GPT2DoubleHeadsModel: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True}
+                            suffix="lm_head",
+                            target_module=col_nn.Linear1D_Col,
+                            kwargs={"gather_output": True},
                         )
                     ]
                 )
@@ -311,7 +389,12 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
         if stage_manager is not None:
             if stage_manager.num_stages > 1 and id(module.transformer.wte.weight) == id(module.lm_head.weight):
                 first_stage, last_stage = 0, stage_manager.num_stages - 1
-                return [{first_stage: module.transformer.wte.weight, last_stage: module.lm_head.weight}]
+                return [
+                    {
+                        first_stage: module.transformer.wte.weight,
+                        last_stage: module.lm_head.weight,
+                    }
+                ]
         return []
 
 
@@ -353,7 +436,10 @@ class GPT2ForTokenClassificationPolicy(GPT2Policy):
             addon_module = {
                 GPT2ForTokenClassification: ModulePolicyDescription(
                     sub_module_replacement=[
-                        SubModuleReplacementDescription(suffix="dropout", target_module=col_nn.DropoutForParallelInput)
+                        SubModuleReplacementDescription(
+                            suffix="dropout",
+                            target_module=col_nn.DropoutForParallelInput,
+                        )
                     ]
                 )
             }

@@ -38,7 +38,7 @@ ARG VERSION=main
 RUN git clone -b ${VERSION} https://github.com/hpcaitech/ColossalAI.git && \
     cd ./ColossalAI && \
     git checkout 3e05c07bb8921f2a8f9736b6f6673d4e9f1697d0 && \
-    CUDA_EXT=1 pip install -v --no-cache-dir .
+    BUILD_EXT=1 pip install -v --no-cache-dir .
 
 # install titans
 RUN pip install --no-cache-dir titans

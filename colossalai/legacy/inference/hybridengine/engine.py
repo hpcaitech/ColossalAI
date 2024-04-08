@@ -46,7 +46,7 @@ class CaiInferEngine:
 
     model = LlamaForCausalLM.from_pretrained("your_path_to_model")
     tokenizer = LlamaTokenizer.from_pretrained("/home/lczyh/share/models/llama-7b-hf")
-    # assume the model is infered with 2 pipeline stages
+    # assume the model is inferred with 2 pipeline stages
     inferengine = CaiInferEngine(pp_size=2, model=model, model_policy=LlamaModelInferPolicy())
 
     input = ["Introduce a landmark in China ","Introduce a landmark in China "]
@@ -70,7 +70,7 @@ class CaiInferEngine:
         max_input_len: int = 32,
         max_output_len: int = 32,
         verbose: bool = False,
-        # TODO: implement early_stopping, and various gerneration options
+        # TODO: implement early_stopping, and various generation options
         early_stopping: bool = False,
         do_sample: bool = False,
         num_beams: int = 1,

@@ -77,7 +77,7 @@ class T5PipelineForwards:
         if in_decoder != (stage >= decoder_starting_stage):
             raise ValueError("Config in T5Stack is not aligned with pipeline setting.")
 
-        # at_first_stage: current stage is the first stage of encoder/decoder, taking input_ids/input_embedds
+        # at_first_stage: current stage is the first stage of encoder/decoder, taking input_ids/input_embeds
         # at_last_stage: current stage is the last stage of encoder/decoder, making outputs the same form as huggingface
         at_first_stage = (stage == 0) or (stage == decoder_starting_stage)
         at_last_stage = (stage == decoder_starting_stage - 1) or (stage == stage_manager.num_stages - 1)

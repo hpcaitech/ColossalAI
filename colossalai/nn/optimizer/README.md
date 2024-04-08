@@ -47,7 +47,7 @@ be optimized jointly to further speed up training.
 
 2. Model Accuracy
     - Communication Efficiency
-      - Reduce Volumn of Comm.
+      - Reduce Volume of Comm.
       - Reduce Frequency of Comm.
     - Memory Efficiency
       - Mix-Precision Training

@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
@@ -55,8 +56,17 @@ class ChatGLMPolicy(Policy):
                 norm_cls = col_nn.RMSNorm
             else:
                 norm_cls = col_nn.LayerNorm
-        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
+
+        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        assert sp_mode != "all_to_all", "all_to_all sequence parallelism is not supported for ChatGLM2"
+        if sp_mode == "ring":
+            warnings.warn(
+                f"For ChatGLM2, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
+            )
+            sp_mode = "split_gather"
         overlap = self.shard_config.enable_sequence_overlap
+        sp_partial_derived = sp_mode == "split_gather"
+
         if self.shard_config.enable_tensor_parallelism:
             policy[ChatGLMModel] = ModulePolicyDescription(
                 attribute_replacement={},
@@ -91,12 +101,12 @@ class ChatGLMPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attention.query_key_value",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel, "seq_parallel_dim": 0, "overlap": overlap},
+                        kwargs={"seq_parallel_mode": sp_mode, "seq_parallel_dim": 0, "overlap": overlap},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.dense",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel, "seq_parallel_dim": 0},
+                        kwargs={"seq_parallel_mode": sp_mode, "seq_parallel_dim": 0},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.core_attention.attention_dropout",
@@ -110,12 +120,12 @@ class ChatGLMPolicy(Policy):
                 SubModuleReplacementDescription(
                     suffix="input_layernorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 SubModuleReplacementDescription(
                     suffix="post_attention_layernorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
             ],
             policy=policy,
@@ -145,7 +155,7 @@ class ChatGLMPolicy(Policy):
             )
 
         # use sequence parallel
-        if use_sequence_parallel:
+        if sp_mode == "split_gather":
             self.append_or_create_method_replacement(
                 description={"forward": get_chatglm_sequence_parallel_forward_fn(self.shard_config)},
                 policy=policy,
@@ -179,10 +189,10 @@ class ChatGLMPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(module.num_layers, stage_manager.num_stages)
+        layers_per_stage = stage_manager.distribute_layers(module.num_layers)
         if stage_manager.is_first_stage():
             held_layers.append(module.embedding)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
         held_layers.extend(module.encoder.layers[start_idx:end_idx])
         if stage_manager.is_last_stage():
             if module.encoder.post_layer_norm:
@@ -204,8 +214,8 @@ class ChatGLMPolicy(Policy):
         else:
             module = self.model.transformer
 
-        layers_per_stage = Policy.distribute_layers(module.num_layers, stage_manager.num_stages)
-        stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+        layers_per_stage = stage_manager.distribute_layers(module.num_layers)
+        stage_index = stage_manager.get_stage_index(layers_per_stage)
         method_replacement = {
             "forward": partial(
                 new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config

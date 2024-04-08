@@ -7,7 +7,7 @@ import torch.nn as nn
 
 from colossalai.lazy import LazyInitContext
 
-from ._operation import hook_paramter_in_backward
+from ._operation import hook_parameter_in_backward
 from .utils import SeqParallelUtils
 
 __all__ = ["FusedLayerNorm", "FusedRMSNorm", "LayerNorm", "RMSNorm", "BaseLayerNorm"]
@@ -29,7 +29,7 @@ try:
 
         def forward(self, input):
             output = super().forward(input)
-            output = hook_paramter_in_backward(output, self.weight, self.bias)
+            output = hook_parameter_in_backward(output, self.weight, self.bias)
             return output
 
     class FusedRMSNormWithHook(ApexFusedRMSNorm):
@@ -38,7 +38,7 @@ try:
 
         def forward(self, input):
             output = super().forward(input)
-            output = hook_paramter_in_backward(output, self.weight)
+            output = hook_parameter_in_backward(output, self.weight)
             return output
 
 except ImportError:
@@ -79,7 +79,7 @@ if EnableFastLayerNorm:
 
         def forward(self, input):
             output = super().forward(input)
-            output = hook_paramter_in_backward(output, self.weight, self.bias)
+            output = hook_parameter_in_backward(output, self.weight, self.bias)
             return output
 
 

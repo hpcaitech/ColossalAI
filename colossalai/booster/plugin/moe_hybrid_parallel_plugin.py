@@ -22,7 +22,7 @@ from colossalai.booster.plugin.hybrid_parallel_plugin import (
 )
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.moe import MOE_MANAGER, MoECheckpintIO
+from colossalai.moe import MOE_MANAGER, MoECheckpointIO
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
@@ -182,7 +182,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         overlap_communication: bool = True,
         use_ep_inside: bool = True,
         custom_policy: Policy = None,
-        checkpoint_io: Optional[MoECheckpintIO] = None,
+        checkpoint_io: Optional[MoECheckpointIO] = None,
     ) -> None:
         assert (
             dist.get_world_size() % (tp_size * pp_size) == 0
@@ -254,6 +254,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
         self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
         self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
+        # TODO: Currently moe only support partially sequence parallel
+        self.sp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
+
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
             pipeline_stage_manager=self.stage_manager,
@@ -341,9 +344,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             **_kwargs,
         )
 
-    def get_checkpoint_io(self) -> MoECheckpintIO:
+    def get_checkpoint_io(self) -> MoECheckpointIO:
         if self.checkpoint_io is None:
-            self.checkpoint_io = MoECheckpintIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
+            self.checkpoint_io = MoECheckpointIO(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
         else:
             self.checkpoint_io = self.checkpoint_io(self.dp_group, self.pp_group, self.tp_group, self.zero_stage)
         return self.checkpoint_io
@@ -365,6 +368,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 shard_config=self.shard_config,
                 dp_group=self.dp_group,
                 tp_group=self.tp_group,
+                sp_group=self.sp_group,
                 use_ddp=use_ddp,
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,

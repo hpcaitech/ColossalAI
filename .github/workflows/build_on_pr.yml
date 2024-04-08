@@ -117,7 +117,7 @@ jobs:
           cd TensorNVMe
           conda install cmake
           pip install -r requirements.txt
-          pip install -v .
+          DISABLE_URING=1 pip install -v .
 
       - name: Store TensorNVMe Cache
         run: |
