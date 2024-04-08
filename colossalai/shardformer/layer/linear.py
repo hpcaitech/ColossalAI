@@ -615,12 +615,19 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
         return lm_head_linear
 
     def forward(self, input_: Tensor) -> Tuple[Tensor, Tensor]:
+        # get forward output
         if self.skip_bias_add:
-            output, _ = super().forward(input_)
+            output, bias = super().forward(input_)
         else:
             output = super().forward(input_)
+
+        # delete the padding of output
         if self.gather_output:
             output = output[..., : self.old_num_embeddings]
         else:
             output = output[..., : self.num_valid_embeddings_local]
+
+        # return
+        if self.skip_bias_add:
+            return output, bias
         return output
