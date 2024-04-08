@@ -100,7 +100,7 @@ def examine_pp(num_microbatch: int, batch_size: int):
     torch_loss = criterion(torch_output)
     torch_loss.backward()
     pp_ret = schedule.forward_backward_step(
-        sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True, return_outputs=True
+        sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True
     )
 
     # check loss
@@ -130,7 +130,7 @@ def examine_pp(num_microbatch: int, batch_size: int):
         torch_loss = criterion(torch_output)
 
         pp_ret = schedule.forward_backward_step(
-            sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True, return_outputs=True
+            sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True
         )
         if stage_manager.is_last_stage():
             assert torch.allclose(torch_loss, pp_ret["loss"])

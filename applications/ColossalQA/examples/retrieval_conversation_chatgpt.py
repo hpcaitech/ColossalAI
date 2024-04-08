@@ -61,7 +61,7 @@ if __name__ == "__main__":
     information_retriever.add_documents(docs=documents, cleanup="incremental", mode="by_source", embedding=embedding)
 
     prompt_template = """Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.
-    If the answer cannot be infered based on the given context, please don't share false information.
+    If the answer cannot be inferred based on the given context, please don't share false information.
     Use the context and chat history to respond to the human's input at the end or carry on the conversation. You should generate one response only. No following up is needed.
 
     context:

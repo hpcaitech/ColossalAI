@@ -207,7 +207,7 @@ def main():
     coordinator.print_on_master(f"Set plugin as {plugin}")
 
     # Build OpenMoe model
-    repo_name = "hpcaitech/openmoe-" + args.model_name
+    repo_name = "hpcai-tech/openmoe-" + args.model_name
     config = LlamaConfig.from_pretrained(repo_name)
     set_openmoe_args(
         config,
@@ -270,7 +270,6 @@ def main():
                     lambda x, y: x.loss,
                     optimizer,
                     return_loss=True,
-                    return_outputs=True,
                 )
                 # Backward and optimize
                 if is_pp_last_stage:

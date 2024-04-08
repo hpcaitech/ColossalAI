@@ -45,19 +45,51 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
         "qformer.encoder.layer[0].attention.output.dense",
         "language_model.model.decoder.layers[0].self_attn.out_proj",
     ]
-    check_grad(blip2, sharded_blip2, col_layer_for_check, atol=1e-6, rtol=1e-5, dim=0, verbose=False)
-    check_grad(blip2, sharded_blip2, row_layer_for_check, atol=1e-6, rtol=1e-5, dim=1, verbose=False)
+    check_grad(
+        blip2,
+        sharded_blip2,
+        col_layer_for_check,
+        atol=1e-6,
+        rtol=1e-5,
+        dim=0,
+        verbose=False,
+    )
+    check_grad(
+        blip2,
+        sharded_blip2,
+        row_layer_for_check,
+        atol=1e-6,
+        rtol=1e-5,
+        dim=1,
+        verbose=False,
+    )
 
 
 @parameterize("enable_fused_normalization", [True, False])
 @parameterize("enable_tensor_parallelism", [True, False])
 @parameterize("enable_flash_attention", [True, False])
 @parameterize("enable_jit_fused", [True, False])
-def run_blip2_test(enable_fused_normalization, enable_tensor_parallelism, enable_flash_attention, enable_jit_fused):
+def run_blip2_test(
+    enable_fused_normalization,
+    enable_tensor_parallelism,
+    enable_flash_attention,
+    enable_jit_fused,
+):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_blip2")
-    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+    for name, (
+        model_fn,
+        data_gen_fn,
+        output_transform_fn,
+        loss_fn,
+        _,
+    ) in sub_model_zoo.items():
         org_model, sharded_model = build_model(
-            model_fn, enable_fused_normalization, enable_tensor_parallelism, enable_flash_attention, enable_jit_fused
+            model_fn,
+            enable_fused_normalization,
+            enable_tensor_parallelism,
+            enable_flash_attention,
+            enable_jit_fused,
+            dtype=torch.float,
         )
         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
 
@@ -66,7 +98,14 @@ def run_blip2_test(enable_fused_normalization, enable_tensor_parallelism, enable
 
 def check_blip2(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(
+        config={},
+        rank=rank,
+        world_size=world_size,
+        host="localhost",
+        port=port,
+        backend="nccl",
+    )
     run_blip2_test()
 
 

@@ -185,7 +185,7 @@ def main():
             microbatch_size=1,
             enable_jit_fused=False,
             zero_stage=0,
-            precision="fp32",
+            precision=args.mixed_precision,
             initial_scale=1,
         )
     else:
@@ -286,7 +286,7 @@ def main():
             for step in pbar:
                 if use_pipeline:
                     outputs = booster.execute_pipeline(
-                        dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
+                        dataloader_iter, model, _criterion, optimizer, return_loss=True
                     )
                     loss = outputs["loss"]
                 else:

@@ -38,7 +38,7 @@ jobs:
       matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
     container:
       image: ${{ matrix.container }}
-      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
+      options: --gpus all --rm -v /dev/shm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
     timeout-minutes: 120
     steps:
       - name: Install dependencies
@@ -56,7 +56,7 @@ jobs:
           cd TensorNVMe
           apt update && apt install -y cmake
           pip install -r requirements.txt
-          pip install -v .
+          DISABLE_URING=1 pip install -v .
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
@@ -75,15 +75,14 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
-          CUDA_EXT=1 pip install -v .
+          BUILD_EXT=1 pip install -v .
           pip install -r requirements/requirements-test.txt
 
       - name: Unit Testing
         run: |
-          PYTHONPATH=$PWD pytest tests
+          PYTHONPATH=$PWD pytest --durations=0 tests
         env:
           DATA: /data/scratch/cifar-10
-          NCCL_SHM_DISABLE: 1
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
           LLAMA_PATH: /data/scratch/llama-tiny
 

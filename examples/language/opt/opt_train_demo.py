@@ -42,7 +42,7 @@ def train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, dataloader, b
         for _ in pbar:
             if use_pipeline:
                 outputs = booster.execute_pipeline(
-                    dataloader, model, _criterion, optimizer, return_loss=True, return_outputs=True
+                    dataloader, model, _criterion, optimizer, return_loss=True
                 )
                 # Backward and optimize
                 if is_pp_last_stage:

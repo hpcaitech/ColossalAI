@@ -70,7 +70,7 @@ def get_version() -> str:
 if BUILD_EXT:
     if not TORCH_AVAILABLE:
         raise ModuleNotFoundError(
-            "[extension] PyTorch is not found while CUDA_EXT=1. You need to install PyTorch first in order to build CUDA extensions"
+            "[extension] PyTorch is not found while BUILD_EXT=1. You need to install PyTorch first in order to build CUDA extensions"
         )
 
     from extensions import ALL_EXTENSIONS
@@ -80,8 +80,8 @@ if BUILD_EXT:
 
     for ext_cls in ALL_EXTENSIONS:
         ext = ext_cls()
-        if ext.support_aot and ext.is_hardware_available():
-            ext.assert_hardware_compatible()
+        if ext.support_aot and ext.is_available():
+            ext.assert_compatible()
             op_names.append(ext.name)
             ext_modules.append(ext.build_aot())
 

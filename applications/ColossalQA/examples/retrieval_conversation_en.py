@@ -67,7 +67,7 @@ if __name__ == "__main__":
             break
         data_name = input("Enter a short description of the data:")
         separator = input(
-            "Enter a separator to force separating text into chunks, if no separator is given, the defaut separator is '\\n\\n'. Note that"
+            "Enter a separator to force separating text into chunks, if no separator is given, the default separator is '\\n\\n'. Note that"
             + "we use neural text spliter to split texts into chunks, the seperator only serves as a delimiter to force split long passage into"
             + " chunks before passing to the neural network. Press ENTER directly to skip:"
         )
@@ -112,7 +112,7 @@ if __name__ == "__main__":
         agent_response = retrieval_chain.run(
             query=user_input,
             stop=["Human: "],
-            rejection_trigger_keywrods=EN_RETRIEVAL_QA_TRIGGER_KEYWORDS,
+            rejection_trigger_keywords=EN_RETRIEVAL_QA_TRIGGER_KEYWORDS,
             rejection_answer=EN_RETRIEVAL_QA_REJECTION_ANSWER,
         )
         agent_response = agent_response.split("\n")[0]
