@@ -7,6 +7,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 
+from colossalai.booster.quantization import quantize_model, BnbQuantizationConfig
 from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
@@ -238,15 +239,12 @@ class TorchDDPPlugin(DPPluginBase):
         return model.module.no_sync()
 
     def enable_lora(
-        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None, bnb_quantization_config: Optional[BnbQuantizationConfig] = None
     ) -> nn.Module:
         from peft import PeftModel, get_peft_model
-        from ..quantization import quantize_model, BnbQuantizationConfig
-        #from accelerate.utils import load_and_quantize_model, BnbQuantizationConfig
 
-        bnb_quantization_config = BnbQuantizationConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
-        model = quantize_model(model, bnb_quantization_config)
-        #model = load_and_quantize_model(model, bnb_quantization_config)
+        if bnb_quantization_config is not None:
+            model = quantize_model(model, bnb_quantization_config)
 
         assert not isinstance(model, TorchDDPModel), "Lora should be enabled before boosting the model."
         if pretrained_dir is None:

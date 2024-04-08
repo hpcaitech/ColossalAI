@@ -181,8 +181,10 @@ def _replace_with_bnb_layers(
                 else:
                     raise ValueError("load_in_8bit and load_in_4bit can't be both False")
                 bnb_module.weight.data = module.weight.data
+                bnb_module.weight.skip_zero_check = True
                 if module.bias is not None:
                     bnb_module.bias.data = module.bias.data
+                    bnb_module.bias.skip_zero_check = True
                 bnb_module.requires_grad_(False)
                 setattr(model, name, bnb_module)
                 has_been_replaced = True

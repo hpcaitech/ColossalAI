@@ -1,5 +1,6 @@
 import copy
 import os
+from itertools import product
 
 import torch
 from peft import LoraConfig
@@ -25,13 +26,23 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
     lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
 
     test_plugins = [TorchDDPPlugin(), LowLevelZeroPlugin()]
-    for plugin in test_plugins:
+    test_configs = [
+        {
+            "lora_config" : lora_config,
+            "quantize" : False,
+        },
+        {
+            "lora_config" : lora_config,
+            "quantize" : True,
+        },
+    ]
+    for plugin, test_config in product(test_plugins, test_configs):
 
         test_model = copy.deepcopy(model)
         
         booster = Booster(plugin=plugin)
 
-        test_model = booster.enable_lora(test_model, lora_config=lora_config)
+        test_model = booster.enable_lora(test_model, **test_config)
         model_copy = copy.deepcopy(test_model)
 
         optimizer = AdamW(test_model.parameters(), lr=0.001)
@@ -65,13 +76,23 @@ def check_checkpoint(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_t
     lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
 
     test_plugins = [TorchDDPPlugin(), LowLevelZeroPlugin()]
-    for plugin in test_plugins:
+    test_configs = [
+        {
+            "lora_config" : lora_config,
+            "quantize" : False,
+        },
+        {
+            "lora_config" : lora_config,
+            "quantize" : True,
+        },
+    ]
+    for plugin, test_config in product(test_plugins, test_configs):
 
         model_save = model_fn()
         model_load = copy.deepcopy(model_save)
 
         booster = Booster(plugin=plugin)
-        model_save = booster.enable_lora(model_save, lora_config=lora_config)
+        model_save = booster.enable_lora(model_save, **test_config)
         model_save, _, _, _, _ = booster.boost(model_save)
 
         with shared_tempdir() as tempdir:
@@ -83,7 +104,7 @@ def check_checkpoint(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_t
             checkpoint_size_mb = os.path.getsize(os.path.join(lora_ckpt_path, "adapter_model.bin")) / (1024 * 1024)
             assert checkpoint_size_mb < 1
 
-            model_load = booster.enable_lora(model_load, pretrained_dir=lora_ckpt_path)
+            model_load = booster.enable_lora(model_load, pretrained_dir=lora_ckpt_path, **test_config)
             model_load, _, _, _, _ = booster.boost(model_load)
 
             check_state_dict_equal(model_save.state_dict(), model_load.state_dict())

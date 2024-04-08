@@ -16,6 +16,7 @@ from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 
 from colossalai.accelerator import get_accelerator
+from colossalai.booster.quantization import quantize_model, BnbQuantizationConfig
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO
 from colossalai.checkpoint_io.utils import (
     get_optimizer_base_filenames,
@@ -336,18 +337,15 @@ class LowLevelZeroPlugin(DPPluginBase):
         return True
 
     def enable_lora(
-        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None, bnb_quantization_config: Optional[BnbQuantizationConfig] = None
     ) -> nn.Module:
         from peft import PeftModel, get_peft_model
         assert not isinstance(model, LowLevelZeroModel), "Lora should be enabled before boosting the model."
         self.lora_enabled = True
         warnings.warn("You have enabled LoRa training. Please check the hyperparameters such as lr")
-        from ..quantization import quantize_model, BnbQuantizationConfig
-        #from accelerate.utils import load_and_quantize_model, BnbQuantizationConfig
 
-        bnb_quantization_config = BnbQuantizationConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
-        model = quantize_model(model, bnb_quantization_config)
-        #model = load_and_quantize_model(model, bnb_quantization_config)
+        if bnb_quantization_config is not None:
+            model = quantize_model(model, bnb_quantization_config)
 
         if pretrained_dir is None:
             peft_model = get_peft_model(model, lora_config)
