@@ -1169,8 +1169,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                 )
                 # Setup optimizers that require global states
             if isinstance(optimizer.optim, DistributedOptimizer):
-                self.tp_group = self.__dict__.get("tp_group", None)
-                self.dp_group = self.__dict__.get("dp_group", None)
+                self.tp_group = self.__dict__.get("tp_group")
+                self.dp_group = self.__dict__.get("dp_group")
                 master_to_working_map = optimizer.get_master_to_working_map()
                 zero_flag = self.zero_stage > 0
                 optimizer.optim.setup_distributed(
