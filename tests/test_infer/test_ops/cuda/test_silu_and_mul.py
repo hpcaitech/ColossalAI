@@ -20,7 +20,8 @@ def test_silu_and_mul(SHAPE_X, SHAPE_Y, SHAPE_Z, dtype):
     act_out = torch.nn.functional.silu(ref_input[0], inplace=True)
     ref_out = act_out * ref_input[1]
 
-    origin_out = inference_ops.silu_and_mul(origin_input)
+    origin_out = torch.empty_like(ref_out)
+    inference_ops.silu_and_mul(origin_input, origin_out)
 
     if dtype == torch.float32:
         assert torch.allclose(origin_out, ref_out, atol=1e-5, rtol=1e-5)

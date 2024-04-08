@@ -297,11 +297,13 @@ class RequestHandler:
         Sample tokens for finished requests.
         """
         # do logit processor
-        # NOTE: need to decide the granularity to process logits (sequence or batch)
-        config_dict = generation_config.to_dict()
-        for type in ["top_k", "top_p", "min_p"]:
-            if type in config_dict and config_dict[type] is not None:
-                logits = logit_processor(type, logits, config_dict[type])
+        top_p = generation_config.top_p
+        top_k = generation_config.top_k
+
+        if top_k:
+            logits = logit_processor("top_k", logits, top_k)
+        if top_p:
+            logits = logit_processor("top_p", logits, top_p)
 
         # calculate probs
         probs = torch.softmax(logits, dim=-1, dtype=torch.float)

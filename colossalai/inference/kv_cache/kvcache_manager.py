@@ -138,7 +138,7 @@ class KVCacheManager:
         """Get the key and value pointers of physical caches (of specific layer) corresponding to logical cache blocks indicated by the block table."""
         k_ptrs = []
         v_ptrs = []
-        for block_id in block_table:
+        for block_id in block_table.tolist():
             if block_id >= 0:
                 block: CacheBlock = self._cache_blocks[block_id]
                 k_ptrs.append(block.k_ptrs[layer_id])
@@ -223,46 +223,58 @@ class KVCacheManager:
             self._block_states_cum[:-num_blocks_required],
             out=self._block_finder[num_blocks_required - 1 :],
         )
+
         end_indexes = torch.nonzero(self._block_finder == num_blocks_required, as_tuple=False).view(-1)
+
+        block_tables_list = block_tables.tolist()
+        blocks_required_list = blocks_required.tolist()
+
         if end_indexes.numel() > 0:
             # contiguous cache exists
             end_idx = end_indexes[0].item() + 1  # open interval
             start_idx = end_idx - num_blocks_required  # closed interval
-            alloc_block_ids = torch.arange(start_idx, end_idx)
+            alloc_block_ids = torch.arange(start_idx, end_idx, device=block_tables.device)
+
             for i in range(bsz):
-                curr_required = blocks_required[i]
-                block_tables[i, :curr_required] = torch.arange(
-                    start_idx, start_idx + curr_required, device=block_tables.device
-                )
+                curr_required = blocks_required_list[i]
+                for j in range(curr_required):
+                    block_tables_list[i][j] = start_idx + j
                 start_idx += curr_required
         else:
             # non-contiguous cache
             available_block_ids = torch.nonzero(self._block_states > 0).view(-1)
             alloc_block_ids = available_block_ids[:num_blocks_required]
             alloc_block_ids = alloc_block_ids.to(dtype=block_tables.dtype, device=block_tables.device)
+            alloc_block_ids_list = alloc_block_ids.tolist()
             start_idx = 0
             for i in range(bsz):
-                curr_required = blocks_required[i]
-                block_tables[i, :curr_required] = alloc_block_ids[start_idx, start_idx + curr_required]
+                curr_required = blocks_required_list[i]
+                for j in range(curr_required):
+                    block_tables_list[i][j] = alloc_block_ids_list[start_idx + j]
                 start_idx += curr_required
+
+        block_tables.copy_(torch.tensor(block_tables_list))
 
         # Update cache blocks
         self._block_states[alloc_block_ids] = 0
         self._available_blocks -= num_blocks_required
         last_block_locs = torch.cumsum(blocks_required, dim=0) - 1
-        last_block_locs = last_block_locs.to(device=alloc_block_ids.device)
 
-        for i, block_id in enumerate(alloc_block_ids[last_block_locs]):
+        last_block_ids = alloc_block_ids[last_block_locs].tolist()
+        alloc_block_ids = alloc_block_ids.tolist()
+        context_lengths = context_lengths.tolist()
+
+        for i, block_id in enumerate(last_block_ids):
             block: CacheBlock = self._cache_blocks[block_id]
             block.add_ref()
             self._allocate_on_block(
                 block,
                 block.block_size
                 if context_lengths[i] % block.block_size == 0
-                else context_lengths[i].item() % block.block_size,
+                else context_lengths[i] % block.block_size,
             )
         for block_id in alloc_block_ids:
-            if block_id in alloc_block_ids[last_block_locs]:
+            if block_id in last_block_ids:
                 continue
             block: CacheBlock = self._cache_blocks[block_id]
             block.add_ref()
@@ -336,7 +348,7 @@ class KVCacheManager:
                 dtype=block_tables.dtype, device=block_tables.device
             )
 
-            for block_id in alloc_block_ids:
+            for block_id in alloc_block_ids.tolist():
                 block: CacheBlock = self._cache_blocks[block_id]
                 block.add_ref()
                 self._block_states[block_id] = 0
@@ -344,7 +356,7 @@ class KVCacheManager:
             block_tables[seqs_req_new_blocks, alloc_local_block_indexes[seqs_req_new_blocks]] = alloc_block_ids
             block_global_ids = block_tables[torch.arange(0, bsz), alloc_local_block_indexes]
 
-        for block_id in block_global_ids:
+        for block_id in block_global_ids.tolist():
             self._allocate_on_block(self._cache_blocks[block_id], 1)
 
         return seqs_to_recycle

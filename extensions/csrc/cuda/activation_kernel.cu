@@ -34,18 +34,8 @@ __global__ void act_and_mul_kernel(
 
 // Note(LiuYang):This func is designed for calculation mode like
 // silu(x[:half_1stdim]) * (x[half_1stdim:])
-torch::Tensor silu_and_mul(const torch::Tensor& ins)
+void silu_and_mul(const torch::Tensor& ins, torch::Tensor& outs)
 {
-    // Note(LiuYang): According to torch doc, vec() may cost a lot, but I did't find a better api
-    // to manipulate ins_shape which is IntArrayRef
-    auto ins_shape = ins.sizes().vec();
-
-    ins_shape[0] = ins_shape[0]/2;
-    if (ins_shape[0] == 1) {
-      ins_shape.erase(ins_shape.begin());
-    }
-    auto outs = torch::zeros(ins_shape,ins.options());
-
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     // Note(Liuyang): numel of ins must be divisible by 2
@@ -71,5 +61,4 @@ torch::Tensor silu_and_mul(const torch::Tensor& ins)
         );)
 
     AT_CUDA_CHECK(cudaGetLastError());
-    return outs;
 }

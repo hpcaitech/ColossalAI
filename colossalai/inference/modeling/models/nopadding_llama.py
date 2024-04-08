@@ -121,6 +121,9 @@ def llama_model_forward(
     sm_scale = 1.0 / (inputmetadata.head_dim**0.5)
 
     norm_output = torch.empty_like(hidden_states)
+    silu_and_mul_output = torch.empty(
+        hidden_states.size(0), self.config.intermediate_size, dtype=hidden_states.dtype, device=hidden_states.device
+    )
     residual = None
 
     for layer_id, decoder_layer in enumerate(self.layers):
@@ -137,6 +140,7 @@ def llama_model_forward(
             kv_seq_len=kv_seq_len,
             output_tensor=output_tensor,
             norm_output=norm_output,
+            silu_and_mul_output=silu_and_mul_output,
             sm_scale=sm_scale,
             use_cuda_kernel=use_cuda_kernel,
             cu_seqlens=cu_seqlens,
@@ -167,6 +171,7 @@ def llama_decoder_layer_forward(
     kv_seq_len: int = 0,
     output_tensor: torch.Tensor = None,
     norm_output: torch.Tensor = None,
+    silu_and_mul_output: torch.Tensor = None,
     sm_scale: int = None,
     use_cuda_kernel: bool = True,
     cu_seqlens: torch.Tensor = None,
@@ -216,7 +221,7 @@ def llama_decoder_layer_forward(
 
     # Fully Connected
     hidden_states, residual = self.post_attention_layernorm(hidden_states, norm_output, residual, use_cuda_kernel)
-    hidden_states = self.mlp(hidden_states)
+    hidden_states = self.mlp(hidden_states, silu_and_mul_output)
 
     return hidden_states, residual
 
@@ -481,12 +486,12 @@ class NopadLlamaMLP(LlamaMLP):
 
         return mlp_layer
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, silu_and_mul_output: torch.Tensor) -> torch.Tensor:
         """
         Args:
             hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
         """
         hidden_states = hidden_states.expand(2, -1, -1)
         gate_up_proj_out = torch.bmm(hidden_states, self.gate_up_weight)
-        act_out = inference_ops.silu_and_mul(gate_up_proj_out)
-        return torch.mm(act_out, self.down_proj_weight)
+        inference_ops.silu_and_mul(gate_up_proj_out, silu_and_mul_output)
+        return torch.mm(silu_and_mul_output, self.down_proj_weight)

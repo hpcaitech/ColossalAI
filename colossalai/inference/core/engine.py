@@ -125,7 +125,7 @@ class InferenceEngine:
             0, max_num_blocks
         )  # NOTE this is a hack to insure cuda grpah could capture the fixed cuda kernel grid in flash decoding, to make the first seqlen as the max_seq_len
         block_tables = torch.from_numpy(self.graph_block_tables).cuda()
-        output_tensor = torch.zeros(
+        output_tensor = torch.empty(
             (max_batch_size, self.model_config.num_attention_heads * head_dim), dtype=self.dtype, device=self.device
         )
         fd_inter_tensor = self.request_handler.running_bb.fd_inter_tensor
@@ -371,13 +371,13 @@ class InferenceEngine:
 
         sequence_lengths = batch.get_sequence_lengths()
         if batch.is_prompts:
-            output_tensor = torch.zeros(
-                (sequence_lengths.sum().item(), batch.num_heads * batch.head_dim),
+            output_tensor = torch.empty(
+                (input_ids.size(0), batch.num_heads * batch.head_dim),
                 dtype=batch.dtype,
                 device=batch.device,
             )
         else:
-            output_tensor = torch.zeros(
+            output_tensor = torch.empty(
                 (batch.current_batch_size, batch.num_heads * batch.head_dim), dtype=batch.dtype, device=batch.device
             )
 

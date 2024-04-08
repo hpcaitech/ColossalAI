@@ -39,7 +39,7 @@ void rotary_embedding_and_cache_copy(
     torch::Tensor& block_tables,      // [batch_size, max_seq_len]
     bool high_precision);
 
-torch::Tensor silu_and_mul(const torch::Tensor& ins);
+void silu_and_mul(const torch::Tensor& ins, torch::Tensor& outs);
 
 void rms_layernorm(torch::Tensor& out,     // [..., hidden_size]
                    torch::Tensor& input,   // [..., hidden_size]

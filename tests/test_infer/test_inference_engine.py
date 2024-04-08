@@ -40,7 +40,9 @@ def check_inference_engine(use_engine=False, prompt_template=None):
     top_k = 50
 
     if use_engine:
-        inference_config = InferenceConfig(max_output_len=output_len, prompt_template=prompt_template, dtype="fp32")
+        inference_config = InferenceConfig(
+            max_output_len=output_len, prompt_template=prompt_template, use_cuda_kernel=True, dtype="fp32"
+        )
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         assert inference_engine.generation_config.max_new_tokens == output_len
         inference_engine.add_request(prompts=inputs)
