@@ -3,6 +3,7 @@ import time
 
 import pytest
 import torch
+from model_zoo import GPTLMLoss, get_gpt2_components
 from torch.utils._pytree import tree_map
 
 import colossalai
@@ -13,7 +14,6 @@ from colossalai.auto_parallel.offload.solver import NOT_NVML
 from colossalai.fx.profiler import parameter_size
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import spawn
-from model_zoo import GPTLMLoss, get_gpt2_components
 
 
 def parse_args():
