@@ -171,6 +171,7 @@ def run_dist(rank, world_size, port):
     # exam_lazy_from_pretrained()
 
 
+
 # TODO to fix resized embedding checkpoint
 # @pytest.mark.dist
 # @pytest.mark.skip(reason="to fix resized embedding checkpoint")
