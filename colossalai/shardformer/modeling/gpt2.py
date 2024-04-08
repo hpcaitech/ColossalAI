@@ -331,7 +331,10 @@ class GPT2PipelineForwards:
             shift_labels = shift_labels.view(-1)
             if shard_config.enable_tensor_parallelism and shard_config.parallel_output:
                 loss = cross_entropy_1d(
-                    shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group, vocab_size=self.lm_head.out_features
+                    shift_logits,
+                    shift_labels,
+                    process_group=shard_config.tensor_parallel_process_group,
+                    vocab_size=self.lm_head.out_features,
                 )
             else:
                 loss = loss_fct(shift_logits, shift_labels)
@@ -1078,7 +1081,10 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             shift_labels = shift_labels.view(-1)
             if shard_config.parallel_output:
                 loss = cross_entropy_1d(
-                    shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group, vocab_size=self.lm_head.out_features
+                    shift_logits,
+                    shift_labels,
+                    process_group=shard_config.tensor_parallel_process_group,
+                    vocab_size=self.lm_head.out_features,
                 )
             else:
                 loss = loss_fct(shift_logits, shift_labels)

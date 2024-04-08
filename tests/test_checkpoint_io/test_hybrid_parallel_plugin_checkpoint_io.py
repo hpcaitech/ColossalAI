@@ -142,6 +142,7 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
 
+
 # TODO to fix resized embedding checkpoint
 # @pytest.mark.dist
 @pytest.mark.skip(reason="to fix resized embedding checkpoint")

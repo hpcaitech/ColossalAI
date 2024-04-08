@@ -15,7 +15,14 @@ class DistCrossEntropy(Function):
     """
 
     @staticmethod
-    def forward(ctx, vocab_logits: torch.Tensor, target: torch.Tensor, ignore_index: int, process_group: ProcessGroup, vocab_size: int):
+    def forward(
+        ctx,
+        vocab_logits: torch.Tensor,
+        target: torch.Tensor,
+        ignore_index: int,
+        process_group: ProcessGroup,
+        vocab_size: int,
+    ):
         r"""
         Calculate the cross entropy loss before gather, the origin loss function is as follows:
         loss = -log(exp(x[class])/sum(exp(x[i]))
@@ -115,6 +122,10 @@ class DistCrossEntropy(Function):
 
 
 def cross_entropy_1d(
-    vocab_logits: torch.Tensor, labels: torch.Tensor, ignore_index: int = -100, process_group: ProcessGroup = None, vocab_size: int = None,
+    vocab_logits: torch.Tensor,
+    labels: torch.Tensor,
+    ignore_index: int = -100,
+    process_group: ProcessGroup = None,
+    vocab_size: int = None,
 ) -> torch.Tensor:
     return DistCrossEntropy.apply(vocab_logits, labels, ignore_index, process_group, vocab_size)

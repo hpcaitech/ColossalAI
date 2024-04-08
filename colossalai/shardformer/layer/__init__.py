@@ -1,5 +1,5 @@
 from .dropout import DropoutForParallelInput, DropoutForReplicatedInput
-from .embedding import Embedding1D, VocabParallelEmbedding1D, PaddingEmbedding
+from .embedding import Embedding1D, PaddingEmbedding, VocabParallelEmbedding1D
 from .linear import Linear1D_Col, Linear1D_Row, PaddingLMHead, VocabParallelLMHead1D
 from .loss import cross_entropy_1d
 from .normalization import FusedLayerNorm, FusedRMSNorm, LayerNorm, RMSNorm

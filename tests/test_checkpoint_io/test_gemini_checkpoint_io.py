@@ -162,12 +162,14 @@ def exam_lazy_from_pretrained():
         state_dict = torch.load(save_path, map_location="cpu")
         check_state_dict_equal(state_dict, orig_state_dict, False, ignore_dtype=True)
 
+
 def run_dist(rank, world_size, port):
     config = {}
     colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
     exam_state_dict_with_origin()
     exam_lazy_from_pretrained()
+
 
 # TODO to fix resized embedding checkpoint
 # @pytest.mark.dist

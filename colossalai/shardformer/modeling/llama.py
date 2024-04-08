@@ -282,7 +282,10 @@ class LlamaPipelineForwards:
                     new_vocab_size = logits.shape[-1]
                     shift_logits = shift_logits.view(-1, new_vocab_size)
                     loss = cross_entropy_1d(
-                        shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group, vocab_size=self.lm_head.out_features
+                        shift_logits,
+                        shift_labels,
+                        process_group=shard_config.tensor_parallel_process_group,
+                        vocab_size=self.lm_head.out_features,
                     )
                 else:
                     shift_logits = shift_logits.view(-1, self.config.vocab_size)
@@ -583,7 +586,10 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
                 new_vocab_size = logits.shape[-1]
                 shift_logits = shift_logits.view(-1, new_vocab_size)
                 loss = cross_entropy_1d(
-                    shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group, vocab_size=self.lm_head.out_features
+                    shift_logits,
+                    shift_labels,
+                    process_group=shard_config.tensor_parallel_process_group,
+                    vocab_size=self.lm_head.out_features,
                 )
             else:
                 shift_logits = shift_logits.view(-1, self.config.vocab_size)
