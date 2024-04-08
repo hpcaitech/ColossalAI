@@ -10,10 +10,15 @@
 
 #include "block_reduce.h"
 #include "../common/micros.h"
-#include "utils/cuda_type_utils.h"
+#include "funcs/cast_functor.h"
+#include "funcs/op_functor.h"
 
 using colossalAI::cuda::utils::block_reduce;
 using colossalAI::cuda::utils::ReduceType;
+using colossalAI::cuda::funcs::TypeConverter;
+using colossalAI::cuda::funcs::CastFunctor;
+using colossalAI::cuda::funcs::BinaryOpFunctor;
+using colossalAI::cuda::funcs::BinaryOpType;
 
 #define DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(DATA_SIZE, TYPE, NAME, ...)  \
   if (DATA_SIZE == 2) {                                                     \
@@ -53,6 +58,7 @@ __global__ void rms_layernorm_kernel(
   const int num_tokens,
   const int hidden_size) {
   using scalar2_t = typename TypeConverter<scalar_t>::Type;
+  BinaryOpFunctor<scalar2_t, scalar2_t, scalar2_t, BinaryOpType::kMul> mul_scalar2t;
   __shared__ float s_variance;
 
   /*
@@ -72,12 +78,13 @@ __global__ void rms_layernorm_kernel(
   float variance = 0.0f;
   int row_offset = blockIdx.x * hidden_size / 2;
 
+
 #pragma unroll unroll_factor
   for (int idx = threadIdx.x, cnt = 0; idx < hidden_size / 2; idx += blockDim.x, cnt++) {
     int id = row_offset + idx;
     x_local[cnt] = input_ptr[id];
-    float v1 = cuda_cast<float>(x_local[cnt].x);
-    float v2 = cuda_cast<float>(x_local[cnt].y);
+    float v1 = CastFunctor<scalar_t,float>()(x_local[cnt].x);
+    float v2 = CastFunctor<scalar_t,float>()(x_local[cnt].y);
     variance += v1 * v1 + v2 * v2;
   }
   block_reduce<float, ReduceType::kSum,1>(&variance);
@@ -86,11 +93,11 @@ __global__ void rms_layernorm_kernel(
   }
   __syncthreads();
 
-  scalar2_t s_variance_2 = cuda_cast<scalar2_t>(s_variance);
+  scalar2_t s_variance_2 = CastFunctor<float,scalar2_t>()(s_variance);
 #pragma unroll unroll_factor
   for (int idx = threadIdx.x, cnt = 0; idx < hidden_size / 2; idx += blockDim.x, cnt++) {
     int id = row_offset + idx;
-    out_ptr[id] = mul(x_local[cnt], s_variance_2, weight_ptr[idx]);
+    out_ptr[id] = mul_scalar2t(mul_scalar2t(x_local[cnt], s_variance_2), weight_ptr[idx]);
   }
 }
 
@@ -137,6 +144,9 @@ __global__ void fused_add_rms_layernorm_kernel(
   const int num_tokens,
   const int hidden_size) {
   using scalar2_t = typename TypeConverter<scalar_t>::Type;
+  BinaryOpFunctor<scalar2_t, scalar2_t, scalar2_t, BinaryOpType::kAdd> add_scalar2t;
+  BinaryOpFunctor<scalar2_t, scalar2_t, scalar2_t, BinaryOpType::kMul> mul_scalar2t;
+
   __shared__ float s_variance;
   scalar2_t x_local[4];
 
@@ -151,9 +161,9 @@ __global__ void fused_add_rms_layernorm_kernel(
   for (int idx = threadIdx.x, cnt = 0; idx < hidden_size / 2; idx += blockDim.x, cnt++) {
     int id = row_offset + idx;
     x_local[cnt] = input_ptr[id];
-    x_local[cnt] = add(x_local[cnt], residual_ptr[id]);
-    float v1 = cuda_cast<float>(x_local[cnt].x);
-    float v2 = cuda_cast<float>(x_local[cnt].y);
+    x_local[cnt] = add_scalar2t(x_local[cnt], residual_ptr[id]);
+    float v1 = CastFunctor<scalar_t,float>()(x_local[cnt].x);
+    float v2 = CastFunctor<scalar_t,float>()(x_local[cnt].y);
     variance += v1 * v1 + v2 * v2;
     residual_ptr[id] = x_local[cnt];
   }
@@ -163,11 +173,12 @@ __global__ void fused_add_rms_layernorm_kernel(
   }
   __syncthreads();
 
-  scalar2_t s_variance_2 = cuda_cast<scalar2_t>(s_variance);
+  scalar2_t s_variance_2 = CastFunctor<float, scalar2_t>()(s_variance);
+
 #pragma unroll unroll_factor
   for (int idx = threadIdx.x, cnt = 0; idx < hidden_size / 2; idx += blockDim.x, cnt++) {
     int id = row_offset + idx;
-    input_ptr[id] = mul(x_local[cnt], s_variance_2, weight_ptr[idx]);
+    input_ptr[id] = mul_scalar2t(mul_scalar2t(x_local[cnt], s_variance_2), weight_ptr[idx]);
   }
 }
 
