@@ -54,7 +54,7 @@ class ParallelModule(nn.Module, ABC):
         """
         for name, param in self._parameters.items():
             if param is not None:
-                destination[prefix + name] = gather_distributed_param(param, keep_vars=keep_vars)
+                destination[prefix + name] = gather_distributed_param(param, keep_vars=keep_vars).data
 
         for name, buf in self._buffers.items():
             if buf is not None and name not in self._non_persistent_buffers_set:

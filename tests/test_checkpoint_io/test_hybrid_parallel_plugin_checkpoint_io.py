@@ -1,7 +1,6 @@
 import pytest
 import torch
 import torch.distributed as dist
-from packaging.version import Version
 from torch.optim import Adam
 from utils import shared_tempdir
 
@@ -20,22 +19,16 @@ from colossalai.testing import (
 )
 from tests.kit.model_zoo import model_zoo
 
-if Version(torch.__version__) < Version("2.0.0"):
-    TEST_CONFIGS = [
-        {
-            "tp_size": 4,
-            "pp_size": 1,
-            "precision": "fp32",
-        },
-        {"tp_size": 2, "pp_size": 2, "num_microbatches": 4, "precision": "fp16", "initial_scale": 1},
-        {"tp_size": 2, "pp_size": 1, "zero_stage": 2, "precision": "fp16", "initial_scale": 1},
-        {"tp_size": 1, "pp_size": 2, "num_microbatches": 4, "zero_stage": 1, "precision": "fp16", "initial_scale": 1},
-    ]
-else:
-    TEST_CONFIGS = [
-        # TODO(ver217): other configs lead to hang
-        {"tp_size": 1, "pp_size": 2, "num_microbatches": 4, "zero_stage": 1, "precision": "fp16", "initial_scale": 1},
-    ]
+TEST_CONFIGS = [
+    {
+        "tp_size": 4,
+        "pp_size": 1,
+        "precision": "fp32",
+    },
+    {"tp_size": 2, "pp_size": 2, "num_microbatches": 4, "precision": "fp16", "initial_scale": 1},
+    {"tp_size": 2, "pp_size": 1, "zero_stage": 2, "precision": "fp16", "initial_scale": 1},
+    {"tp_size": 1, "pp_size": 2, "num_microbatches": 4, "zero_stage": 1, "precision": "fp16", "initial_scale": 1},
+]
 
 
 @parameterize("shard", [True, False])
@@ -103,6 +96,7 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
         dist.barrier()
 
     # Check whether the loaded model & optimizer works smoothly.
+    optimizer.zero_grad()
     model.train()
     new_model.train()
     data_for_shard = data_gen_fn()
