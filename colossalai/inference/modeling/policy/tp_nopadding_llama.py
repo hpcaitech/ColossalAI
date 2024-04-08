@@ -89,11 +89,18 @@ class TPNoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy):
 
         self.shard_config._infer()
 
-        infer_forward = llama_causal_lm_forward
-        method_replacement = {"forward": partial(infer_forward)}
-        self.append_or_create_method_replacement(
-            description=method_replacement, policy=policy, target_key=LlamaForCausalLM
-        )
+        # add a new item for casual lm
+        new_item = {
+            LlamaForCausalLM: ModulePolicyDescription(
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="lm_head", target_module=Linear1D_Col, kwargs={"gather_output": True}
+                    )
+                ],
+                method_replacement={"forward": partial(llama_causal_lm_forward)},
+            )
+        }
+        policy.update(new_item)
 
         infer_forward = llama_model_forward
         method_replacement = {"forward": partial(infer_forward)}
