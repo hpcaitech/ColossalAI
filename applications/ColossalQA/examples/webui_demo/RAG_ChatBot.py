@@ -5,13 +5,7 @@ from colossalqa.chain.retrieval_qa.base import RetrievalQA
 from colossalqa.data_loader.document_loader import DocumentLoader
 from colossalqa.memory import ConversationBufferWithSummary
 from colossalqa.mylogging import get_logger
-from colossalqa.prompt.prompt import (
-    PROMPT_DISAMBIGUATE_ZH,
-    PROMPT_RETRIEVAL_QA_ZH,
-    SUMMARY_PROMPT_ZH,
-    ZH_RETRIEVAL_QA_REJECTION_ANSWER,
-    ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS,
-)
+from colossalqa.prompt.prompt import ZH_RETRIEVAL_QA_REJECTION_ANSWER, ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS
 from colossalqa.retriever import CustomRetriever
 from langchain import LLMChain
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -116,13 +110,13 @@ class RAG_ChatBot:
     def split_docs(self, documents):
         doc_splits = self.text_splitter.split_documents(documents)
         return doc_splits
-    
+
     def clear_docs(self, **kwargs):
         self.documents = []
         self.docs_names = []
         self.info_retriever.clear_documents()
         self.memory.initiate_document_retrieval_chain(self.llm, kwargs["gen_qa_prompt"], self.info_retriever)
-        
+
     def reset_config(self, rag_config):
         self.rag_config = rag_config
         self.set_embed_model(**self.rag_config["embed"])

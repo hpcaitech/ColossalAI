@@ -1,11 +1,10 @@
-import pytest
 import torch
 from torch.testing import assert_close
 
 import colossalai
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
-from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import parameterize, spawn
 from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
@@ -13,6 +12,15 @@ from tests.test_shardformer.test_model._utils import (
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
+
+
+def check_optim_states(org_optim, sharded_optim):
+    for group in org_optim.param_groups:
+        for p in group["params"]:
+            sharded_state = sharded_optim.state[p]
+            state = org_optim.state[p]
+            for key in sharded_state:
+                assert_close(state[key], sharded_state[key], rtol=1e-5, atol=1e-5)
 
 
 def check_bert_fwd_bwd(
@@ -46,12 +54,7 @@ def check_bert_fwd_bwd(
         check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
 
     # check optim states
-    for group in org_optimizer.param_groups:
-        for p in group["params"]:
-            sharded_state = sharded_optimizer.optim.state[p]
-            state = org_optimizer.state[p]
-            for key in sharded_state:
-                assert_close(state[key], sharded_state[key], rtol=1e-5, atol=1e-5)
+    check_optim_states(org_optimizer, sharded_optimizer.optim)
     torch.cuda.empty_cache()
 
 
@@ -94,6 +97,18 @@ def check_bert_fwd_bwd(
             "zero_stage": 2,
             "precision": "fp16",
         },
+        {
+            "tp_size": 2,
+            "num_microbatches": 4,
+            "zero_stage": 1,
+            "precision": "bf16",
+        },
+        {
+            "tp_size": 2,
+            "num_microbatches": 4,
+            "zero_stage": 0,
+            "precision": "bf16",
+        },
     ],
 )
 def run_bert_test(test_config, optim_class, sharded_optim_class):
@@ -118,8 +133,5 @@ def _run_bert_test(rank, world_size, port, optim_class, sharded_optim_class):
     run_bert_test(optim_class, sharded_optim_class)
 
 
-@pytest.mark.dist
-@rerun_if_address_is_in_use()
-@clear_cache_before_run()
 def check_optim_on_bert(optim_class, sharded_optim_class):
     spawn(_run_bert_test, 4, optim_class, sharded_optim_class)

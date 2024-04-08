@@ -7,7 +7,7 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
-from colossalai.nn.optimizer import DistributedLamb, Lamb
+from colossalai.nn.optimizer import DistributedGalore, GaLoreAdamW8bit
 from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.tensor.d_tensor.sharding_spec import DimSpec
@@ -117,11 +117,8 @@ def set_dist_grad(
 
 
 @parameterize("p_g_dtype", _ALLOWED_P_G_TYPES)
-@parameterize("bias_correction", [False, True])
 @parameterize("tp_zero_size", [(1, 4), (4, 1), (2, 2)])
-def run_dist_lamb_basic(
-    bias_correction: bool, p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_size: tuple[int, int]
-) -> None:
+def run_dist_galore_basic(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_size: tuple[int, int]) -> None:
     """Test without forward"""
     p_dtype, g_dtype = p_g_dtype
     tp_size, zero_size = tp_zero_size
@@ -150,15 +147,12 @@ def run_dist_lamb_basic(
     lr = 1e-3
     beta1, beta2 = 0.9, 0.999
     eps = 1e-8
-    torch_optim = Lamb(
-        setup_param_groups(torch_model), lr=lr, betas=(beta1, beta2), eps=eps, bias_correction=bias_correction
-    )
-    optim = DistributedLamb(
+    torch_optim = GaLoreAdamW8bit(setup_param_groups(torch_model), lr=lr, betas=(beta1, beta2), eps=eps)
+    optim = DistributedGalore(
         setup_param_groups(tp_model),
         lr=lr,
         betas=(beta1, beta2),
         eps=eps,
-        bias_correction=bias_correction,
     )
     optim.setup_distributed(tp_group)
 
@@ -179,18 +173,13 @@ def run_dist_lamb_basic(
         try:
             assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group)
         except Exception as e:
-            _COORD.print_on_master(
-                f"step {i + 1}: bias_correction: {bias_correction}, p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}"
-            )
+            _COORD.print_on_master(f"step {i + 1}: p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}")
             raise e
 
 
 @parameterize("p_g_dtype", _ALLOWED_P_G_TYPES)
-@parameterize("bias_correction", [False, True])
 @parameterize("tp_zero_size", [(2, 2), (4, 1), (1, 4)])
-def run_dist_lamb_fwd_bwd(
-    bias_correction: bool, p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_size: tuple[int, int]
-) -> None:
+def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_size: tuple[int, int]) -> None:
     p_dtype, g_dtype = p_g_dtype
     tp_size, zero_size = tp_zero_size
 
@@ -219,15 +208,12 @@ def run_dist_lamb_fwd_bwd(
     lr = 1e-3
     beta1, beta2 = 0.9, 0.999
     eps = 1e-8
-    torch_optim = Lamb(
-        setup_param_groups(torch_model), lr=lr, betas=(beta1, beta2), eps=eps, bias_correction=bias_correction
-    )
-    optim = DistributedLamb(
+    torch_optim = GaLoreAdamW8bit(setup_param_groups(torch_model), lr=lr, betas=(beta1, beta2), eps=eps)
+    optim = DistributedGalore(
         setup_param_groups(tp_model),
         lr=lr,
         betas=(beta1, beta2),
         eps=eps,
-        bias_correction=bias_correction,
     )
 
     # Setup distributed optimizer
@@ -268,9 +254,7 @@ def run_dist_lamb_fwd_bwd(
     try:
         assert_close(out, out_tp, rtol=rtol, atol=atol)
     except Exception as e:
-        _COORD.print_on_master(
-            f"bias_correction: {bias_correction}, p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}"
-        )
+        _COORD.print_on_master(f"p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}")
         raise e
 
     if zero_size > 1:
@@ -288,9 +272,7 @@ def run_dist_lamb_fwd_bwd(
         assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group)
         check_optim_states(getattr(torch_optim, "optim", torch_optim), getattr(optim, "optim", optim))
     except Exception as e:
-        _COORD.print_on_master(
-            f"bias_correction: {bias_correction}, p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}"
-        )
+        _COORD.print_on_master(f"p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}")
         raise e
 
 
@@ -300,13 +282,13 @@ def check_dist_lamb(rank, world_size, port):
     global _COORD
     _COORD = DistCoordinator()
 
-    run_dist_lamb_basic()
+    run_dist_galore_basic()
     _COORD.print_on_master("Basic tests passed")
 
-    run_dist_lamb_fwd_bwd()
+    run_dist_galore_fwd_bwd()
     _COORD.print_on_master("Forward-backward tests passed")
 
-    run_bert_test(optim_class=Lamb, sharded_optim_class=DistributedLamb)
+    run_bert_test(optim_class=GaLoreAdamW8bit, sharded_optim_class=DistributedGalore)
     print(f"rank {rank} tests passed :)")
 
 

@@ -100,12 +100,12 @@ class DistributedGalore(DistributedOptim, Optimizer2State):
         for group in self.param_groups:
             for p in group["params"]:
                 if id(p) not in self.shard_to_working_param:
-                    # No ZeRO; master param == working param
+                    # No ZeRO; master param = working param
                     self.shard_to_working_param[id(p)] = p
 
-                # ZeRO or TP
                 self.is_dist[id(p)] = is_distributed_tensor(self.shard_to_working_param[id(p)])
-                self.shard_dim[id(p)] = get_shard_dim(self.shard_to_working_param[id(p)])
+                if is_distributed_tensor(self.shard_to_working_param[id(p)]):
+                    self.shard_dim[id(p)] = get_shard_dim(self.shard_to_working_param[id(p)])
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -171,7 +171,7 @@ class DistributedGalore(DistributedOptim, Optimizer2State):
                             working_shape[0] /= split_factor
                             grad = grad.reshape(working_shape)
 
-                        if self.tp_size > 1 and state["step"] % group["update_proj_gap"] == 0:
+                        if self.is_dist[id(p)] and state["step"] % group["update_proj_gap"] == 0:
                             all_grads = [
                                 torch.empty_like(grad, dtype=p.grad.dtype, device=p.grad.device)
                                 for _ in range(self.tp_size)
@@ -185,7 +185,7 @@ class DistributedGalore(DistributedOptim, Optimizer2State):
 
                         # Post-projection sharding to master shape
                         if self.distributed_on:
-                            if self.tp_size > 1 and state["step"] % group["update_proj_gap"] == 0:
+                            if self.is_dist[id(p)] and state["step"] % group["update_proj_gap"] == 0:
                                 grad = grad.chunk(self.tp_size, dim=self.shard_dim[id(p)])[dist.get_rank(self.tp_group)]
 
                             if self.dp_size > 1 and self.is_zero:

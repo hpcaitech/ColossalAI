@@ -92,7 +92,7 @@ class GaLoreProjector:
             raise ValueError("type should be left, right or full")
 
 
-class GaloreAdamW8bit(Optimizer2State):
+class GaLoreAdamW8bit(Optimizer2State):
     r"""Implements Galore, a optimizer-agonistic gradient compression technique on 8-bit Adam.
     Proposed in `GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection`
     https://arxiv.org/abs/2403.03507

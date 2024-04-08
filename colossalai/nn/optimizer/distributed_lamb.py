@@ -15,7 +15,9 @@ __all__ = ["DistributedLamb"]
 class DistributedLamb(DistributedOptim):
     r"""Implements the Lamb algorithm, with extra support for ZeRO 2 and Tensor Parallel.
     Proposed in `Large Batch Optimization for Deep Learning: Training BERT in 76 minutes`_.
-    Example (4 devices):
+    It's recommended to use this with HybridParallelPlugin/ZeRO plugin and booster,
+    which will take care of setup_distributed.
+    Example with 4 devices:
         >>> optim = DistributedLamb(model.parameters(), lr=1e-3)
         >>> proc_mesh = ProcessGroupMesh(tp_size, zero_size)
         >>> tp_group = proc_mesh.get_group_along_axis(0)
@@ -54,7 +56,7 @@ class DistributedLamb(DistributedOptim):
             raise ValueError("Invalid beta parameter at index 1: {}".format(betas[1]))
 
         # self.setup_distributed(tp_group, dp_group)
-        self.shard_to_param = {}
+        self.shard_to_working_param = {}
         self.tp_size = self.dp_size = 1
         self.is_zero = False
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
@@ -64,15 +66,15 @@ class DistributedLamb(DistributedOptim):
         self,
         tp_group: Optional[dist.ProcessGroup] = None,
         dp_group: Optional[dist.ProcessGroup] = None,
-        shard_to_param: Optional[Dict] = {},
+        shard_to_working_param: Optional[Dict] = {},
         is_zero: Optional[bool] = False,
     ):
         """Assign process groups for TP and ZeRO 2.
         Arguments:
             tp_group (dist.ProcessGroup): Tensor Parallel process group
             dp_group (dist.ProcessGroup): ZeRO 2 process group
-            shard_to_param (Dict): ZeRO 2 feeds the optimizer a sharded param view to match reduce-scattered grad shape.
-                This maps from id(view) to original params; useful for checking distributed tensor's dist_layout.
+            shard_to_working_param (Dict): ZeRO 2 feeds the optimizer a sharded param view to match grad shape.
+                This maps from id(view) to model params used in forward & backward.
             is_zero (bool): Whether to use ZeRO 2.
         """
         self.tp_group = tp_group
@@ -82,16 +84,16 @@ class DistributedLamb(DistributedOptim):
         if dp_group is not None:
             self.dp_size = dist.get_world_size(dp_group)
 
-        self.shard_to_param = shard_to_param if shard_to_param is not None else {}
+        self.shard_to_working_param = shard_to_working_param if shard_to_working_param is not None else {}
         self.is_zero = is_zero
-
+        self.is_dist = {}
         # Cache parameter layout
         for group in self.param_groups:
             for p in group["params"]:
-                self.state[p]["is_dist"] = (
+                self.is_dist[p] = (
                     is_distributed_tensor(p)
                     if self.dp_size <= 1
-                    else is_distributed_tensor(self.shard_to_param.get(id(p), None))
+                    else is_distributed_tensor(self.shard_to_working_param.get(id(p), None))
                 )
 
     @torch.no_grad()
@@ -115,7 +117,7 @@ class DistributedLamb(DistributedOptim):
 
                 state = self.state[p]
                 # State initialization
-                if "step" not in state:
+                if len(state) == 0:
                     state["step"] = 0
                     # Exponential moving average of gradient values
                     state["exp_avg"] = torch.zeros_like(p.data)
@@ -147,13 +149,13 @@ class DistributedLamb(DistributedOptim):
                     update.add_(p.data, alpha=group["weight_decay"])
 
                 # Compute global layer-wise trust ratio
-                if state["is_dist"]:
+                if self.is_dist[p] or self.is_zero:
                     p_local = p
                     g_sum = (update**2).sum()
                     if self.dp_size > 1 and self.is_zero:
                         # ZeRO 2 doesn't shard param. Compute full param norm w/o communication.
                         dist.all_reduce(g_sum, group=self.dp_group)
-                        p_local = self.shard_to_param[id(p)]
+                        p_local = self.shard_to_working_param[id(p)]
 
                     w_sum = (p_local**2).sum()
                     sums = torch.stack([w_sum, g_sum])
@@ -168,10 +170,6 @@ class DistributedLamb(DistributedOptim):
                     g_norm = torch.norm(update)
 
                 trust_ratio = torch.where(w_norm > 0 and g_norm > 0, (w_norm / g_norm), 1.0).item()
-
-                state["weight_norm"] = w_norm
-                state["adam_norm"] = g_norm
-                state["trust_ratio"] = trust_ratio
 
                 scaled_lr *= trust_ratio
                 p.data.add_(update, alpha=-scaled_lr)
