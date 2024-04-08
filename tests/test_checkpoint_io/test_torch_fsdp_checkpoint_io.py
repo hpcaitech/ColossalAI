@@ -113,6 +113,7 @@ def check_torch_fsdp_ckpt():
         full_osd = FSDP.full_optim_state_dict(optimizer.unwrap_model().unwrap(), optim=optimizer)
 
         import copy
+
         sharded_osd = copy.deepcopy(full_osd)
 
         run_model()
