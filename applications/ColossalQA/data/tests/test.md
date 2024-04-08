@@ -34,9 +34,9 @@ python api_server.py --host localhost --port $PORT_NUMBER --model $PATH_TO_MODEL
 ### Collect your data
 
 For ChatGPT based Agent we support document retrieval and simple sql search.
-If you want to run the demo locally, we provided document retrieval based conversation system built upon langchain. It accept a wide range of documents. 
+If you want to run the demo locally, we provided document retrieval based conversation system built upon langchain. It accept a wide range of documents.
 
-Read comments under ./colossalqa/data_loader for more detail 
+Read comments under ./colossalqa/data_loader for more detail
 
 ### Serving
 Currently use vllm will replace with colossal inference when ready. Please refer class VllmLLM.

@@ -1,26 +1,17 @@
 import argparse
-import os
 from typing import List, Union
 
-
-from colossalqa.local.llm import ColossalAPI, ColossalLLM
-from colossalqa.data_loader.document_loader import DocumentLoader
-from colossalqa.mylogging import get_logger
-from colossalqa.retrieval_conversation_zh import ChineseRetrievalConversation
-from colossalqa.retriever import CustomRetriever
-from enum import Enum
-from fastapi import FastAPI, Request
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from pydantic import BaseModel, Field
-import uvicorn
-
 import config
+import uvicorn
+from colossalqa.local.llm import ColossalAPI, ColossalLLM
+from colossalqa.mylogging import get_logger
+from fastapi import FastAPI, Request
+from pydantic import BaseModel
 from RAG_ChatBot import RAG_ChatBot
 from utils import DocAction
 
-
 logger = get_logger()
+
 
 def parseArgs():
     parser = argparse.ArgumentParser()
@@ -36,6 +27,7 @@ class DocUpdateReq(BaseModel):
     doc_files: Union[List[str], str, None] = None
     action: DocAction = DocAction.ADD
 
+
 class GenerationTaskReq(BaseModel):
     user_input: str
 
@@ -45,7 +37,7 @@ def update_docs(data: DocUpdateReq, request: Request):
     if data.action == "add":
         if isinstance(data.doc_files, str):
             data.doc_files = [data.doc_files]
-        chatbot.load_doc_from_files(files = data.doc_files)
+        chatbot.load_doc_from_files(files=data.doc_files)
         all_docs = ""
         for doc in chatbot.docs_names:
             all_docs += f"\t{doc}\n\n"
@@ -79,17 +71,18 @@ if __name__ == "__main__":
     elif all_config["model"]["mode"] == "api":
         if model_name == "pangu_api":
             from colossalqa.local.pangu_llm import Pangu
-            
+
             gen_config = {
                 "user": "User",
                 "max_tokens": all_config["chain"]["disambig_llm_kwargs"]["max_new_tokens"],
                 "temperature": all_config["chain"]["disambig_llm_kwargs"]["temperature"],
-                "n": 1   # the number of responses generated
+                "n": 1,  # the number of responses generated
             }
             llm = Pangu(gen_config=gen_config)
             llm.set_auth_config()  # verify user's auth info here
         elif model_name == "chatgpt_api":
             from langchain.llms import OpenAI
+
             llm = OpenAI()
     else:
         raise ValueError("Unsupported mode.")

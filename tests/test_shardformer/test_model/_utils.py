@@ -111,7 +111,9 @@ def check_state_dict(org_model: Module, sharded_model: Module, name: str = ""):
         assert torch.equal(v, shard_v), f"{name} {k} value mismatch"
 
 
-def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_config: Dict[str, Any]):
+def build_model_from_hybrid_plugin(
+    model_fn: Callable, loss_fn: Callable, test_config: Dict[str, Any], optim_class=Adam, sharded_optim_class=Adam
+):
     use_lazy_init = False
     if "use_lazy_init" in test_config:
         use_lazy_init = test_config.pop("use_lazy_init")
@@ -124,8 +126,8 @@ def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_c
         ctx.materialize(org_model)
 
     org_model = org_model.cuda()
-    org_optimizer = Adam(org_model.parameters(), lr=1e-3)
-    sharded_optimizer = Adam(sharded_model.parameters(), lr=1e-3)
+    org_optimizer = optim_class(org_model.parameters(), lr=1e-3)
+    sharded_optimizer = sharded_optim_class(sharded_model.parameters(), lr=1e-3)
     criterion = loss_fn
 
     plugin = HybridParallelPlugin(**test_config)

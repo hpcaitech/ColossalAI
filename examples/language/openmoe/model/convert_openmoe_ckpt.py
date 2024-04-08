@@ -172,9 +172,9 @@ def make_state_dict(converted_params):
 def load_t5x_weights_in_t5(model, config, t5x_checkpoint_path):
     """Replaces the params in model witht the T5X converted params."""
     variables = checkpoints.load_t5x_checkpoint(t5x_checkpoint_path)
-    converted = convert_t5x_to_pytorch(variables,
-                                       num_layers=config.num_hidden_layers,
-                                       moe_interval=config.moe_layer_interval)
+    converted = convert_t5x_to_pytorch(
+        variables, num_layers=config.num_hidden_layers, moe_interval=config.moe_layer_interval
+    )
     state_dict = make_state_dict(converted)
     model.load_state_dict(state_dict, strict=True)
 
@@ -203,11 +203,9 @@ def convert_t5x_checkpoint_to_pytorch(t5x_checkpoint_path, config_file, pytorch_
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Converts a native T5X checkpoint into a PyTorch checkpoint.")
     # Required parameters
-    parser.add_argument("--t5x_checkpoint_path",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="Path to the T5X checkpoint.")
+    parser.add_argument(
+        "--t5x_checkpoint_path", default=None, type=str, required=True, help="Path to the T5X checkpoint."
+    )
     parser.add_argument(
         "--config_file",
         default=None,
@@ -215,10 +213,8 @@ if __name__ == "__main__":
         required=True,
         help="The config json file corresponding to the pre-trained T5 model.\nThis specifies the model architecture.",
     )
-    parser.add_argument("--pytorch_dump_path",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="Path to the output PyTorch model.")
+    parser.add_argument(
+        "--pytorch_dump_path", default=None, type=str, required=True, help="Path to the output PyTorch model."
+    )
     args = parser.parse_args()
     convert_t5x_checkpoint_to_pytorch(args.t5x_checkpoint_path, args.config_file, args.pytorch_dump_path)
