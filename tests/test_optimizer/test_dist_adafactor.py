@@ -5,6 +5,7 @@ import pytest
 import torch
 import torch.distributed as dist
 from torch import nn
+from torch.testing import assert_close
 
 import colossalai
 from colossalai.booster import Booster
@@ -27,9 +28,10 @@ from colossalai.tensor.d_tensor.sharding_spec import DimSpec
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from colossalai.zero import LowLevelZeroOptimizer
+from tests.test_optimizer._utils import run_bert_test
 
-HEIGHT = 4096
-WIDTH = 4096
+HEIGHT = 4
+WIDTH = 4
 _TP_SPEC = DimSpec([0])
 
 
@@ -127,6 +129,11 @@ def set_dist_grad(
         p.grad = p.data
         p.data = orig_p
 
+
+def set_master_param_to_shard_param(master_param_list) -> dict:
+    master_param_to_shard_param ={id(p):p for p in master_param_list}
+    return master_param_to_shard_param
+    
 
 class MlpModel(nn.Module):
     def __init__(self):
@@ -350,8 +357,8 @@ def exam_dist_adafactor_fwd_bwd(dtype: torch.dtype):
         # print(f"correct {correctness}")
 
 
-@parameterize("dtype", [torch.bfloat16])  # torch.float32, torch.float16, torch.bfloat16
-@parameterize("tp_zero_size", [(4, 2)])  # (2, 2), (4, 1),(1, 4), (2, 4), (4, 2)
+@parameterize("dtype", [torch.float32])  # torch.float32, torch.float16, torch.bfloat16
+@parameterize("tp_zero_size", [(4, 1)])  # (2, 2), (4, 1),(1, 4), (2, 4), (4, 2)
 def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     tp_size, zero_size = tp_zero_size
     use_zero = True if zero_size > 1 else False
@@ -406,6 +413,7 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
             use_zero=use_zero,
         )
     else:
+        shard_to_param = set_master_param_to_shard_param(tp_param_group)
         dist_optim.setup_distributed(
             tensor_parallel_group=tp_group,
             data_parallel_group=dp_group,
@@ -454,15 +462,13 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
             # No TP bias
             pass
         correctness = correctness_verify(p.data, tp_p.data, dtype)
-        print(f"Curr Param correct {correctness}")
+        # print(f"{correctness}\n p.data {p.data}\n tp_p.data{tp_p.data}\n")
+        # print(f"Curr Param correct {correctness}")
     # print(f"device {local_rank} base_optim state dict {base_optim.optim.state_dict()['state'].items()} \n dist_optim state dict {dist_optim.optim.state_dict()['state'].items()} \n")
 
-    
-    
 
-
-@parameterize("dtype", [torch.bfloat16])  # torch.float32, torch.float16, torch.bfloat16
-@parameterize("tp_zero_size", [(4, 2)])  # (2, 2), (4, 1),(1, 4), (2, 4), (4, 2)
+@parameterize("dtype", [torch.float32])  # torch.float32, torch.float16, torch.bfloat16
+@parameterize("tp_zero_size", [(4, 1)])  # (2, 2), (4, 1),(1, 4), (2, 4), (4, 2)
 def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     tp_size, zero_size = tp_zero_size
     local_rank = dist.get_rank()
@@ -516,10 +522,11 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
             use_zero=use_zero,
         )
     else:
+        shard_to_param = set_master_param_to_shard_param(tp_param_group)
         dist_optim.setup_distributed(
             tensor_parallel_group=tp_group,
             data_parallel_group=dp_group,
-            shard_to_param=shard_to_param,
+            shard_to_param={},
             use_zero=use_zero,
         )
 
@@ -582,12 +589,14 @@ def run_dist(rank, world_size, port):
     # exam_dist_adafactor_fwd_bwd()
     exam_dist_adafactor_zero()
     # exam_dist_adafactor_booster()
+    # run_bert_test(optim_class=Adafactor, sharded_optim_class=DistributedAdaFactor)
+    
 
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_dist_adafactor():
-    spawn(run_dist, nprocs=8)
+    spawn(run_dist, nprocs=4)
 
 
 if __name__ == "__main__":

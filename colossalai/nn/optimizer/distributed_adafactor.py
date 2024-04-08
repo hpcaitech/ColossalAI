@@ -53,6 +53,7 @@ class DistributedAdaFactor(Optimizer):
         self.factored = None  # bool
         self.use_first_moment = None  # bool
         self.use_zero = True
+        self.is_dist = {}
 
     def setup_distributed(
         self,
@@ -78,8 +79,9 @@ class DistributedAdaFactor(Optimizer):
             self.tensor_parallel_size = dist.get_world_size(self.tensor_parallel_group)
         if self.data_parallel_group is not None:
             self.data_parallel_size = dist.get_world_size(self.data_parallel_group)
-        self.shard_to_param = shard_to_param
         self.use_zero = use_zero
+        
+        self.shard_to_param = shard_to_param if shard_to_param is not None else {}
 
     @staticmethod
     def _get_lr(param_group, param_state):
@@ -227,7 +229,10 @@ class DistributedAdaFactor(Optimizer):
                         update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
                         update_reshape.mul_(grad_reshape)
                         # update = update_reshape.view(update_reshape.shape[0]*update_reshape.shape[1])
-                        update = update_reshape.view(-1)
+                        if self.use_zero:
+                            update = update_reshape.view(-1)
+                        else:
+                            update = update_reshape
                     # ==============================
                     # Last Dim is R, First Dim is S{} means split dim 0  --->
                     # Row Parallel ---> sq_col need Do (row) Reduce
@@ -250,7 +255,10 @@ class DistributedAdaFactor(Optimizer):
                         update_reshape = self._approx_sq_grad_row_parallel(exp_avg_sq_row, exp_avg_sq_col, sq_row_meam)
                         update_reshape.mul_(grad_reshape)
                         # update = update_reshape.view(update_reshape.shape[0]*update_reshape.shape[1])
-                        update = update_reshape.view(-1)
+                        if self.use_zero:
+                            update = update_reshape.view(-1)
+                        else:
+                            update = update_reshape
                 else:
                     exp_avg_sq = state["exp_avg_sq"]
                     exp_avg_sq.mul_(beta2t).add_(update, alpha=(1.0 - beta2t))
@@ -267,7 +275,8 @@ class DistributedAdaFactor(Optimizer):
                 if group["weight_decay"] != 0:
                     p_data_fp32.add_(p_data_fp32, alpha=(-group["weight_decay"] * lr))
 
-                p_data_fp32.add_(-update).flatten()
+                p_data_fp32.add_(-update)
+                
 
                 if p.dtype in {torch.float16, torch.bfloat16}:
                     p.copy_(p_data_fp32)
