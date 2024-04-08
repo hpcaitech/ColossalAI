@@ -89,9 +89,7 @@ A series of optimizers have been optimized and integrated.
 
 ### Distributed Adafactor
 
-Distributed Adafactor supports tensor parallelism and ZerO optimization. Here is a brief flowchart of how adafactor implements the tensor parallel:
-
-[[Tensor Parallel Strategy in Distributed Adafactor]](adafactor_strategy.png)
+Distributed Adafactor supports tensor parallelism and ZerO optimization. 
 
 ### Performance
 |            Version              |    iter    | Float Percision |      Device Nums     | weight shape  | Avg runtime(ms)  | Avg Speed Up Rate | Best Speed Up Rate  |
