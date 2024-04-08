@@ -12,6 +12,7 @@ from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.tensor.d_tensor.sharding_spec import DimSpec
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing.random import seed_all
 from colossalai.zero import LowLevelZeroOptimizer
 from tests.kit.model_zoo import model_zoo
 from tests.test_optimizer._utils import check_optim_states, run_bert_test
@@ -132,7 +133,7 @@ def run_dist_lamb_basic(
     tp_group = proc_mesh.get_group_along_axis(0)
 
     tp_rank = dist.get_rank(tp_group)
-    torch.cuda.manual_seed(_SEED)  # Fix model init
+    seed_all(_SEED)  # Fix model init
     torch_model = Net(in_dim=_IN_DIM, hid_dim=_HID_DIM, identity=True).to(rank)
     tp_model = TPNet(torch_model.fc0, torch_model.fc1, torch_model.fc2, tp_group).to(rank)
     # Ensure equal weight init
@@ -168,7 +169,7 @@ def run_dist_lamb_basic(
         rtol, atol = 4e-4, 4e-4
 
     for i in range(_N_STEP):
-        torch.cuda.manual_seed(_SEED)  # NOTE: having only one manual_seed above doesn't work?
+        seed_all(_SEED + i)  # NOTE: having only one manual_seed above doesn't work?
         set_dist_grad(tp_model, torch_model, g_dtype, tp_group)
 
         torch_optim.step()
@@ -200,7 +201,7 @@ def run_dist_lamb_fwd_bwd(
     dp_group = proc_mesh.get_group_along_axis(1)
     tp_rank = dist.get_rank(tp_group)
 
-    torch.cuda.manual_seed(_SEED)
+    seed_all(_SEED)
     clear_layout_converter()  # Ensure correct sharding
     torch_model = Net(_IN_DIM, _HID_DIM).to(rank)
     tp_model = TPNet(torch_model.fc0, torch_model.fc1, torch_model.fc2, tp_group).to(rank)
@@ -258,7 +259,7 @@ def run_dist_lamb_fwd_bwd(
     if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
         rtol, atol = 2e-4, 2e-4
 
-    torch.cuda.manual_seed(_SEED)  # NOTE: having only one manual_seed above doesn't work?
+    seed_all(_SEED)  # NOTE: having only one manual_seed above doesn't work?
     x = data_gen()
     x = x.cuda().to(dtype=p_dtype)
 
