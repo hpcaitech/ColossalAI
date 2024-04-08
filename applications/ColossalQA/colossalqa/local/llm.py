@@ -193,4 +193,3 @@ class VllmLLM(LLM):
     def _identifying_params(self) -> Mapping[str, int]:
         """Get the identifying parameters."""
         return {"n": self.n}
-

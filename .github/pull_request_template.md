@@ -3,6 +3,7 @@
 - [ ] I have created an issue for this PR for traceability
 - [ ] The title follows the standard format: `[doc/gemini/tensor/...]: A concise description`
 - [ ] I have added relevant tags if possible for us to better distinguish different PRs
+- [ ] I have installed pre-commit: `pip install pre-commit && pre-commit install`
 
 
 ## 🚨 Issue number
