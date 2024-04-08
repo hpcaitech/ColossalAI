@@ -3,7 +3,6 @@ from typing import Union
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
 
@@ -136,8 +135,6 @@ class OptimizerWrapper:
         return self.optim
 
 
-class DistributedOptimizer(Optimizer):
-    def setup_distributed(
-        self, master_to_working_map: dict, tp_group: ProcessGroup, dp_group: ProcessGroup, zero_group: ProcessGroup
-    ):
-        pass
+class DistributedOptim(Optimizer):
+    def setup_distributed(self, *args, **kwargs):
+        raise NotImplementedError()

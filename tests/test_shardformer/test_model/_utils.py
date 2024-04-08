@@ -15,7 +15,6 @@ from torch.testing import assert_close
 from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.booster.plugin.hybrid_parallel_plugin import HybridParallelModule
-from colossalai.interface.optimizer import DistributedOptimizer
 from colossalai.lazy import LazyInitContext
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
@@ -113,11 +112,7 @@ def check_state_dict(org_model: Module, sharded_model: Module, name: str = ""):
 
 
 def build_model_from_hybrid_plugin(
-    model_fn: Callable,
-    loss_fn: Callable,
-    test_config: Dict[str, Any],
-    optim_class: Optimizer = Adam,
-    sharded_optim_class: DistributedOptimizer = Adam,
+    model_fn: Callable, loss_fn: Callable, test_config: Dict[str, Any], optim_class=Adam, sharded_optim_class=Adam
 ):
     use_lazy_init = False
     if "use_lazy_init" in test_config:
@@ -149,10 +144,8 @@ def build_model_from_hybrid_plugin(
     #         param.requires_grad = False
 
     org_model = org_model.cuda()
-    org_optimizer = optim_class([param for param in org_model.parameters() if param.requires_grad], lr=1e-3)
-    sharded_optimizer = sharded_optim_class(
-        [param for param in sharded_model.parameters() if param.requires_grad], lr=1e-3
-    )
+    org_optimizer = Adam(org_model.parameters(), lr=1e-3)
+    sharded_optimizer = Adam(sharded_model.parameters(), lr=1e-3)
     criterion = loss_fn
 
     plugin = HybridParallelPlugin(**test_config)
