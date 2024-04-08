@@ -4,7 +4,6 @@ All custom prompt templates are defined here.
 
 from langchain.prompts.prompt import PromptTemplate
 
-
 # Below are Chinese retrieval qa prompts
 
 _CUSTOM_SUMMARIZER_TEMPLATE_ZH = """请递进式地总结所提供的当前对话，将当前对话的摘要内容添加到先前已有的摘要上，返回一个融合了当前对话的新的摘要。

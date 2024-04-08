@@ -1,5 +1,5 @@
-from .initialize import launch, launch_from_openmpi, launch_from_slurm, launch_from_torch
 from . import accelerator
+from .initialize import launch, launch_from_openmpi, launch_from_slurm, launch_from_torch
 
 try:
     # .version will be created by setup.py

@@ -55,7 +55,7 @@ class GPTJPolicy(Policy):
                 f"For GPTJ, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
             )
             sp_mode = "split_gather"
-        sp_partial_derived = sp_mode in ["split_gather", "ring"]
+        sp_mode in ["split_gather", "ring"]
         use_flash_attention = self.shard_config.enable_flash_attention
         if sp_mode in ["split_gather", "ring", "all_to_all"]:
             if use_flash_attention:

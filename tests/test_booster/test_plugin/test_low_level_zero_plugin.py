@@ -2,8 +2,8 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
-from torch.optim import Adam
 from peft import LoraConfig
+from torch.optim import Adam
 
 import colossalai
 from colossalai.accelerator import get_accelerator
@@ -30,7 +30,7 @@ def run_fn(stage, model_fn, data_gen_fn, output_transform_fn, lora_config=None) 
         booster = Booster(plugin=plugin)
         model = model_fn()
         optimizer = Adam(model.parameters(), lr=1e-3)
-        #optimizer = HybridAdam(model.parameters(), lr=1e-3)
+        # optimizer = HybridAdam(model.parameters(), lr=1e-3)
 
         if lora_config is not None:
             model = booster.enable_lora(model, lora_config=lora_config)
@@ -55,7 +55,6 @@ def run_fn(stage, model_fn, data_gen_fn, output_transform_fn, lora_config=None) 
     except Exception as e:
         return repr(e)
         # raise e
-
 
 
 @parameterize("stage", [2])
@@ -128,6 +127,7 @@ def check_low_level_zero_lora(stage, model_name, early_stop: bool = True):
         print(f"Passed models({len(passed_models)}): {passed_models}\n\n")
         print(f"Failed models({len(failed_info)}): {list(failed_info.keys())}\n\n")
     assert len(failed_info) == 0, "\n".join([f"{k}: {v}" for k, v in failed_info.items()])
+
 
 def run_dist(rank, world_size, port, early_stop: bool = True):
     # init dist env

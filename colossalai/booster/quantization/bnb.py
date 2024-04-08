@@ -9,6 +9,7 @@ from .bnb_config import BnbQuantizationConfig
 
 try:
     import bitsandbytes as bnb
+
     IS_4BIT_BNB_AVAILABLE = bnb.__version__ >= "0.39.0"
     IS_8BIT_BNB_AVAILABLE = bnb.__version__ >= "0.37.2"
 except ImportError:
@@ -35,7 +36,6 @@ def quantize_model(
     Returns:
         `torch.nn.Module`: The quantized model
     """
-
 
     load_in_4bit = bnb_quantization_config.load_in_4bit
     load_in_8bit = bnb_quantization_config.load_in_8bit
@@ -210,7 +210,7 @@ def get_keys_to_not_convert(model):
         Input model
     """
     # Create a copy of the model
-    #with init_empty_weights():
+    # with init_empty_weights():
     #    tied_model = deepcopy(model)  # this has 0 cost since it is done inside `init_empty_weights` context manager`
     tied_model = model
 
@@ -321,4 +321,3 @@ class FindTiedParametersResult(list):
     def values(self):
         # TODO: at the next Transformers release (4.28.0) issue a deprecation warning here.
         return sum([x[1:] for x in self], [])
-

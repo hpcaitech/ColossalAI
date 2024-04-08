@@ -4,10 +4,11 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import torch
 import torch.nn as nn
-from colossalai.booster.quantization import BnbQuantizationConfig
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
+
+from colossalai.booster.quantization import BnbQuantizationConfig
 
 SUPPORT_PEFT = False
 try:
@@ -231,7 +232,12 @@ class Booster:
         return self.plugin.no_sync(model, optimizer)
 
     def enable_lora(
-        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: "peft.LoraConfig" = None, bnb_quantization_config: Optional[BnbQuantizationConfig] = None, quantize = False
+        self,
+        model: nn.Module,
+        pretrained_dir: Optional[str] = None,
+        lora_config: "peft.LoraConfig" = None,
+        bnb_quantization_config: Optional[BnbQuantizationConfig] = None,
+        quantize=False,
     ) -> nn.Module:
         """
         Wrap the passed in model with LoRA modules for training. If pretrained directory is provided, lora configs and weights are loaded from that directory.
@@ -262,9 +268,16 @@ class Booster:
             ), "Please provide pretrained directory path if not passing in lora configuration."
         if quantize is True:
             if bnb_quantization_config is not None:
-                warnings.warn("User defined BnbQuantizationConfig is not fully tested in ColossalAI. Use it at your own risk.")
+                warnings.warn(
+                    "User defined BnbQuantizationConfig is not fully tested in ColossalAI. Use it at your own risk."
+                )
             else:
-                bnb_quantization_config = BnbQuantizationConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
+                bnb_quantization_config = BnbQuantizationConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                )
 
         return self.plugin.enable_lora(model, pretrained_dir, lora_config, bnb_quantization_config)
 
