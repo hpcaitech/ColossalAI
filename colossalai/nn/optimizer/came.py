@@ -75,8 +75,8 @@ class CAME(torch.optim.Optimizer):
                 if p.grad is None:
                     continue
                 grad = p.grad.data
-                if grad.dtype in {torch.float16, torch.bfloat16}:
-                    grad = grad.float()
+                # if grad.dtype in {torch.float16, torch.bfloat16}:
+                #     grad = grad.float()
                 if grad.is_sparse:
                     raise RuntimeError("CAME does not support sparse gradients.")
 
@@ -90,13 +90,17 @@ class CAME(torch.optim.Optimizer):
 
                     state["exp_avg"] = torch.zeros_like(grad)
                     if factored:
-                        state["exp_avg_sq_row"] = torch.zeros(grad_shape[:-1]).type_as(grad)
-                        state["exp_avg_sq_col"] = torch.zeros(grad_shape[:-2] + grad_shape[-1:]).type_as(grad)
+                        state["exp_avg_sq_row"] = torch.zeros(grad_shape[:-1], dtype=p.dtype, device=p.device)
+                        state["exp_avg_sq_col"] = torch.zeros(
+                            grad_shape[:-2] + grad_shape[-1:], dtype=p.dtype, device=p.device
+                        ).type_as(grad)
 
-                        state["exp_avg_res_row"] = torch.zeros(grad_shape[:-1]).type_as(grad)
-                        state["exp_avg_res_col"] = torch.zeros(grad_shape[:-2] + grad_shape[-1:]).type_as(grad)
+                        state["exp_avg_res_row"] = torch.zeros(grad_shape[:-1], dtype=p.dtype, device=p.device)
+                        state["exp_avg_res_col"] = torch.zeros(
+                            grad_shape[:-2] + grad_shape[-1:], dtype=p.dtype, device=p.device
+                        )
                     else:
-                        state["exp_avg_sq"] = torch.zeros_like(grad)
+                        state["exp_avg_sq"] = torch.zeros_like(p)
 
                     state["RMS"] = 0
 

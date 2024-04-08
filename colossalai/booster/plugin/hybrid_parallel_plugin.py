@@ -1169,11 +1169,13 @@ class HybridParallelPlugin(PipelinePluginBase):
                 )
                 # Setup optimizers that require global states
             if isinstance(optimizer.optim, DistributedOptimizer):
-                tp_group = self.__dict__.get("tp_group", None)
-                dp_group = self.__dict__.get("dp_group", None)
+                self.tp_group = self.__dict__.get("tp_group", None)
+                self.dp_group = self.__dict__.get("dp_group", None)
                 master_to_working_map = optimizer.get_master_to_working_map()
                 zero_flag = self.zero_stage > 0
-                optimizer.optim.setup_distributed(master_to_working_map, tp_group, dp_group, zero_flag=zero_flag)
+                optimizer.optim.setup_distributed(
+                    master_to_working_map, self.tp_group, self.dp_group, zero_flag=zero_flag
+                )
             # inject update_master_params
             model.update_master_params = MethodType(optimizer.update_master_params, model)
         return model, optimizer, criterion, dataloader, lr_scheduler

@@ -137,23 +137,7 @@ class OptimizerWrapper:
 
 
 class DistributedOptimizer(Optimizer):
-    def __init__(
-        self,
-        params,
-        lr=None,
-        eps=(1e-30, 1e-16),
-        clip_threshold=1.0,
-        betas=(0.9, 0.999, 0.9999),
-        weight_decay=0.0,
+    def setup_distributed(
+        self, master_to_working_map: dict, tp_group: ProcessGroup, dp_group: ProcessGroup, zero_group: ProcessGroup
     ):
-        defaults = dict(
-            lr=lr,
-            eps=eps,
-            clip_threshold=clip_threshold,
-            betas=betas,
-            weight_decay=weight_decay,
-        )
-        super(DistributedOptimizer, self).__init__(params, defaults)
-
-    def setup_distributed(self, master_to_working_map: dict, tp_group: ProcessGroup, zero_group: ProcessGroup):
         pass

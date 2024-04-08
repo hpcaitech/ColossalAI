@@ -110,18 +110,18 @@ def check_bert_fwd_bwd(
         #     "zero_stage": 2,
         #     "precision": "bf16",
         # },
-        # {
-        #     "tp_size": 1,
-        #     "num_microbatches": 4,
-        #     "zero_stage": 2,
-        #     "precision": "fp16",
-        # },
-        # {
-        #     "tp_size": 2,
-        #     "num_microbatches": 4,
-        #     "zero_stage": 2,
-        #     "precision": "fp16",
-        # },
+        {
+            "tp_size": 2,
+            "num_microbatches": 0,
+            "zero_stage": 2,
+            "precision": "fp16",
+        },
+        {
+            "tp_size": 2,
+            "num_microbatches": 0,
+            "zero_stage": 1,
+            "precision": "fp16",
+        },
         {
             "tp_size": 4,
             "num_microbatches": 0,

@@ -1,5 +1,4 @@
 import copy
-import os
 
 import torch
 import torch.distributed as dist
@@ -16,14 +15,6 @@ from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor import api
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.zero.low_level.low_level_optim import LowLevelZeroOptimizer
-
-
-def init_distribute():
-    rank = int(os.environ["RANK"])
-    local_rank = int(os.environ["LOCAL_RANK"])
-    world_size = int(os.environ["WORLD_SIZE"])
-    dist.init_process_group(world_size=world_size, rank=rank, init_method="env://", backend="nccl")
-    torch.cuda.set_device(local_rank)
 
 
 def check_dist_1d(seq_parallel, tp_size, zero_size, col, zero_stage):
@@ -83,9 +74,9 @@ def check_dist_1d(seq_parallel, tp_size, zero_size, col, zero_stage):
     )
     True if isinstance(dist_optim, LowLevelZeroOptimizer) else False
     if isinstance(dist_optim, LowLevelZeroOptimizer):
-        dist_optim.optim.setup_distributed(master_to_working_map, tp_group, dp_group)
+        dist_optim.optim.setup_distributed(master_to_working_map, tp_group, dp_group, True)
     else:
-        dist_optim.setup_distributed(master_to_working_map, tp_group, dp_group)
+        dist_optim.setup_distributed(master_to_working_map, tp_group, dp_group, False)
 
     ori_model.weight.grad = torch.randn(out_features, in_features).cuda()
     ori_model.bias.grad = torch.randn(out_features).cuda()
@@ -140,10 +131,18 @@ def check_dist_1d(seq_parallel, tp_size, zero_size, col, zero_stage):
     assert not torch.allclose(ori_dist_weight, shard_model.weight)
     assert_close(target_weight, shard_model.weight)
     assert_close(target_bias, shard_model.bias)
+    if zero_size <= 1:
+        for group in optim.param_groups:
+            for p in group["params"]:
+                sharded_state = dist_optim.state[p]
+                state = optim.state[p]
+                for key in sharded_state:
+                    assert_close(state[key], sharded_state[key], rtol=1e-5, atol=1e-5)
+    torch.cuda.empty_cache()
 
 
 @parameterize("seq_parallel", [False])
-@parameterize("tp_size", [4])
+@parameterize("tp_size", [4, 2, 1])
 @parameterize("zero_size", [0])  # zero parallel size, 0 means world_size // tp_size
 @parameterize("col", [True, False])
 @parameterize("zero_stage", [2])
