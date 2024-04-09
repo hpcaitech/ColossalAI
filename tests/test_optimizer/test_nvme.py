@@ -1,5 +1,5 @@
-import pytest
 import torch
+import pytest
 
 from colossalai.nn.optimizer import CPUAdam, HybridAdam
 from colossalai.testing import clear_cache_before_run, parameterize
