@@ -32,32 +32,6 @@ def check_bert_fwd_bwd(
     stage_manager = booster.plugin.stage_manager
     tp_group = booster.plugin.tp_group
 
-    # assign grad
-    # for (name1, ori_param), (name2, dist_param) in zip(org_model.named_parameters(), sharded_model.named_parameters()):
-    #     if ori_param.requires_grad:
-    #         try:
-    #             sharding_spec = api.get_sharding_spec(dist_param)
-    #             clip_dim = 0 if 0 in sharding_spec.dim_partition_dict.keys() else 1
-    #         except:
-    #             clip_dim = -1
-    #         # 为原始参数生成随机梯度
-    #         random_grad = torch.randn_like(dist_param.data)
-    #         dist_param.grad = random_grad.clone()
-
-    #         # 根据进程排名和总进程数分片梯度
-    #         if clip_dim == -1:
-    #             grad_chunk = random_grad
-    #         else:
-    #             shard_grad_list = [torch.zeros_like(random_grad).to("cuda") for _ in range(dist.get_world_size(tp_group))]
-    #             dist.all_gather(shard_grad_list, random_grad, tp_group)
-    #             full_grad = torch.cat(shard_grad_list, dim=clip_dim)
-    #         if dist.get_rank() == 0:
-    #             print(dist.get_rank(), full_grad.data.shape, random_grad.shape)
-    #         try:
-    #             ori_param.grad = full_grad.clone()
-    #         except:
-    #             ori_param.grad = torch.zeros_like(ori_param.data)
-
     bert = unwrap_model(org_model, "BertModel", "bert")
     sharded_bert = unwrap_model(sharded_model, "BertModel", "bert")
     weight_layer_for_check = [

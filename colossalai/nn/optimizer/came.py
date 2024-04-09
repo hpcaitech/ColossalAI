@@ -146,7 +146,7 @@ class CAME(torch.optim.Optimizer):
                     res_approx = self._approx_sq_grad(exp_avg_res_row, exp_avg_res_col)
                     update = res_approx.mul_(exp_avg)
                 else:
-                    update = exp_avg.clone()
+                    update = exp_avg
 
                 if group["weight_decay"] != 0:
                     p.data.add_(p.data, alpha=-group["weight_decay"] * group["lr"])

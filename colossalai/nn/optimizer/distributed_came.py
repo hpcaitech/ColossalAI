@@ -2,11 +2,11 @@ import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
-from colossalai.interface.optimizer import DistributedOptimizer
+from colossalai.interface.optimizer import DistributedOptim
 from colossalai.tensor.d_tensor import api
 
 
-class DistributedCAME(DistributedOptimizer):
+class DistributedCAME(DistributedOptim):
     """Implements CAME algorithm.
     This implementation is based on:
     `CAME: Confidence-guided Adaptive Memory Efficient Optimization`
@@ -69,7 +69,7 @@ class DistributedCAME(DistributedOptimizer):
         return False
 
     def setup_distributed(
-        self, master_to_working_map: dict, tp_group: ProcessGroup, zero_group: ProcessGroup, zero_flag: bool = False
+        self, tp_group: ProcessGroup, zero_group: ProcessGroup, master_to_working_map: dict, zero_flag: bool = False
     ):
         self.tensor_parallel_group = tp_group
         self.zero_parallel_group = zero_group
@@ -80,10 +80,10 @@ class DistributedCAME(DistributedOptimizer):
                 # if no zero, working param == master param
                 working_param = master_to_working_map[id(p)] if master_to_working_map else p
                 self.ori_shape[id(p)] = self.ori_shape[id(working_param)]
-                self.working_shape[id(p)] = working_param.data.shape
+                self.working_shape[id(p)] = working_param.size()
                 self.gather_before_compute[id(p)] = False
                 try:
-                    api.get_device_mesh(working_param)
+                    # api.get_device_mesh(working_param)
                     sharding_spec = api.get_sharding_spec(working_param)
                     self.clip_method[id(p)] = "col" if 0 in sharding_spec.dim_partition_dict.keys() else "row"
                     # if dist.get_rank() == 0:
@@ -91,7 +91,7 @@ class DistributedCAME(DistributedOptimizer):
                 except:
                     self.clip_method[id(p)] = None
 
-        self.zero = True if master_to_working_map and zero_flag else False
+        self.zero = True if zero_flag else False
         self.distributed = True
         # print(self.distributed, self.zero, dist.get_world_size(zero_group))
 
@@ -104,22 +104,20 @@ class DistributedCAME(DistributedOptimizer):
             return tensor.norm(2) / (tensor.numel() ** 0.5)
         # return tensor.norm(2) / (tensor.numel() ** 0.5)
         # Calculate the sum of the squares of the tensors on the current device
-        local_sum_sq = tensor.pow(2).sum()
+        sum_sq = tensor.pow(2).sum()
 
         # Summing up the sum of squares across all devices
-        global_sum_sq = local_sum_sq.clone()
-        dist.all_reduce(global_sum_sq, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
+        dist.all_reduce(sum_sq, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
 
         # Summarize the total number of elements across all devices
-        local_numel = torch.tensor(tensor.numel(), device=tensor.device)
-        global_numel = local_numel.clone()
-        dist.all_reduce(global_numel, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
+        numel = torch.tensor(tensor.numel(), device=tensor.device)
+        dist.all_reduce(numel, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
         if self.zero and not self.gather_before_compute[id(param)]:
-            dist.all_reduce(global_sum_sq, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
-            dist.all_reduce(global_numel, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
+            dist.all_reduce(sum_sq, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
+            dist.all_reduce(numel, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
 
         # RMS
-        rms = (global_sum_sq / global_numel).sqrt()
+        rms = (sum_sq / numel).sqrt()
         return rms
 
     def _approx_sq_grad(self, exp_avg_sq_row, exp_avg_sq_col, param):
@@ -149,15 +147,14 @@ class DistributedCAME(DistributedOptimizer):
         The grad of master param can not have shape [1.5, 4], So in this situation the grad is gathered of shape [3, 4] before compute.
         """
         ori_shape = self.ori_shape[id(param)]
-        self.working_shape[id(param)]
         # return param.grad.data.reshape(*working_shape)
-        if not (len(ori_shape) >= 2 and len(param.grad.data.shape) == 1):
+        if not (len(ori_shape) >= 2 and len(param.size()) == 1):
             return param.grad.data
         remaining_dims = ori_shape[1:]
-        if param.grad.data.shape[0] % torch.prod(torch.tensor(remaining_dims)) != 0:
+        if param.size()[0] % torch.prod(torch.tensor(remaining_dims)) != 0:
             self.gather_before_compute[id(param)] = True
             gathered_grad = [
-                torch.zeros_like(param.grad.data) for _ in range(dist.get_world_size(group=self.zero_parallel_group))
+                torch.zeros_like(param) for _ in range(dist.get_world_size(group=self.zero_parallel_group))
             ]
             dist.all_gather(gathered_grad, param.grad.data, group=self.zero_parallel_group)
             gathered_grad = torch.cat(gathered_grad, dim=-1).reshape(*ori_shape)
@@ -173,11 +170,11 @@ class DistributedCAME(DistributedOptimizer):
         self.working_shape[id(param)]
         # return tensor.reshape(*working_shape)
         ori_shape = self.ori_shape[id(param)]
-        if not (len(ori_shape) >= 2 and len(param.grad.data.shape) == 1):
+        if not (len(ori_shape) >= 2 and len(param.size()) == 1):
             return tensor
         if self.gather_before_compute[id(param)]:
             rank = dist.get_rank(group=self.zero_parallel_group)
-            length = param.data.shape[0]
+            length = param.size()[0]
             return torch.flatten(tensor)[rank * length : (rank + 1) * length]
         return torch.flatten(tensor)
 
@@ -224,10 +221,8 @@ class DistributedCAME(DistributedOptimizer):
                     else:
                         state["exp_avg_sq"] = torch.zeros_like(p)
 
-                    state["RMS"] = 0
-
                 state["step"] += 1
-                state["RMS"] = self._rms(p.data, p)
+                self._rms(p.data, p)
 
                 update = (grad**2) + group["eps"][0]
                 if factored:
@@ -288,8 +283,7 @@ class DistributedCAME(DistributedOptimizer):
                         elif self.clip_method[id(p)] == "col":
                             dist.all_reduce(res_mean_col, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
                             res_mean_col /= dist.get_world_size(group=self.tensor_parallel_group)
-                        else:
-                            pass
+
                         if self.zero and not self.gather_before_compute[id(p)]:
                             dist.all_reduce(res_mean_col, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
                             res_mean_col /= dist.get_world_size(group=self.zero_parallel_group)
@@ -301,7 +295,7 @@ class DistributedCAME(DistributedOptimizer):
                     res_approx = self._approx_sq_grad(exp_avg_res_row, exp_avg_res_col, p)
                     update = res_approx.mul_(exp_avg)
                 else:
-                    update = exp_avg.clone()
+                    update = exp_avg
 
                 if group["weight_decay"] != 0:
                     p.data.add_(p.data, alpha=-group["weight_decay"] * group["lr"])

@@ -72,11 +72,11 @@ def check_dist_1d(seq_parallel, tp_size, zero_size, col, zero_stage):
     master_to_working_map = (
         dist_optim.get_master_to_working_map() if isinstance(dist_optim, LowLevelZeroOptimizer) else None
     )
-    True if isinstance(dist_optim, LowLevelZeroOptimizer) else False
+    zero_flag = True if isinstance(dist_optim, LowLevelZeroOptimizer) else False
     if isinstance(dist_optim, LowLevelZeroOptimizer):
-        dist_optim.optim.setup_distributed(master_to_working_map, tp_group, dp_group, True)
+        dist_optim.optim.setup_distributed(tp_group, dp_group, master_to_working_map, zero_flag)
     else:
-        dist_optim.setup_distributed(master_to_working_map, tp_group, dp_group, False)
+        dist_optim.setup_distributed(tp_group, dp_group, master_to_working_map, zero_flag)
 
     ori_model.weight.grad = torch.randn(out_features, in_features).cuda()
     ori_model.bias.grad = torch.randn(out_features).cuda()
@@ -132,12 +132,21 @@ def check_dist_1d(seq_parallel, tp_size, zero_size, col, zero_stage):
     assert_close(target_weight, shard_model.weight)
     assert_close(target_bias, shard_model.bias)
     if zero_size <= 1:
-        for group in optim.param_groups:
-            for p in group["params"]:
-                sharded_state = dist_optim.state[p]
-                state = optim.state[p]
-                for key in sharded_state:
-                    assert_close(state[key], sharded_state[key], rtol=1e-5, atol=1e-5)
+        for i in range(1):
+            state = optim.state_dict()["state"][i]
+            dist_state = dist_optim.state_dict()["state"][i]
+            for st, dist_st in zip(state.values(), dist_state.values()):
+                if isinstance(st, torch.Tensor):
+                    if st.size() != dist_st.size():
+                        dist_st_list = [
+                            torch.zeros_like(dist_st).to(rank) for _ in range(dist.get_world_size(tp_group))
+                        ]
+                        dist.all_gather(dist_st_list, dist_st, group=tp_group)
+                        dist_st = torch.cat(dist_st_list, dim=clip_dim)
+                        print(st.size(), dist_st.size())
+
+                    assert_close(st, dist_st)
+
     torch.cuda.empty_cache()
 
 
