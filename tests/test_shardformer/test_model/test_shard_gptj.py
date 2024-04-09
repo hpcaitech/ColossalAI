@@ -207,6 +207,7 @@ def check_gptj_3d(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_gptj_3d_test()
 
+
 @pytest.mark.skip("TODO check_gptj has something wrong.")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
