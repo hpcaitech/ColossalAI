@@ -199,12 +199,7 @@ def get_param_info(optim: Optimizer):
 
     if optim is None:
         return {}
-    param_info = {
-        "param_groups": [],
-        "param2id": {},
-        "id2param": {},
-        "param2shape": {}
-    }
+    param_info = {"param_groups": [], "param2id": {}, "id2param": {}, "param2shape": {}}
     start_index = 0
     for group in optim.param_groups:
         packed_group = {k: v for k, v in group.items() if k != "params"}
