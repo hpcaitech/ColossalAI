@@ -58,13 +58,13 @@ class _Extension(ABC):
         return cache_directory
 
     @abstractmethod
-    def is_hardware_available(self) -> bool:
+    def is_available(self) -> bool:
         """
         Check if the hardware required by the kernel is available.
         """
 
     @abstractmethod
-    def assert_hardware_compatible(self) -> None:
+    def assert_compatible(self) -> None:
         """
         Check if the hardware required by the kernel is compatible.
         """

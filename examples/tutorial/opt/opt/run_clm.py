@@ -72,7 +72,7 @@ def get_time_stamp():
 
 
 def parse_args():
-    parser = colossalai.get_default_parser()
+    parser = colossalai.legacy.get_default_parser()
     parser.add_argument("-s", "--synthetic", action="store_true")
     parser.add_argument(
         "--dataset_name",
@@ -289,7 +289,7 @@ class DummyDataloader:
 def main():
     args = parse_args()
     disable_existing_loggers()
-    colossalai.launch_from_torch(config=dict())
+    colossalai.legacy.launch_from_torch(config=dict())
     logger = get_dist_logger()
     is_main_process = dist.get_rank() == 0
 

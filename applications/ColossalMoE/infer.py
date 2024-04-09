@@ -106,6 +106,5 @@ def main():
     print(f"[{coordinator.rank}] {outputs}")
 
 
-
 if __name__ == "__main__":
     main()

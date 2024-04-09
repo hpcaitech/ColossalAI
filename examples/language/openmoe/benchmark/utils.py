@@ -50,7 +50,6 @@ def all_reduce_mean(x: float, world_size: int) -> float:
 
 
 class Timer:
-
     def __init__(self) -> None:
         self.start_time: Optional[float] = None
         self.duration: float = 0.0
@@ -112,7 +111,7 @@ class PerformanceEvaluator:
         batch_size, seq_len = input_ids.shape
 
         self.num_samples += batch_size
-        self.flop += (batch_size * seq_len * self.model_numel * 2 * (3 + int(self.enable_grad_checkpoint)))
+        self.flop += batch_size * seq_len * self.model_numel * 2 * (3 + int(self.enable_grad_checkpoint))
 
     def on_fit_end(self) -> None:
         avg_duration = all_reduce_mean(self.timer.duration, self.world_size)
@@ -122,5 +121,6 @@ class PerformanceEvaluator:
         if dist.get_rank() == 0:
             print(
                 f"num_samples: {self.num_samples}, dp_world_size: {self.dp_world_size}, flop: {self.flop}, avg_duration: {avg_duration}, "
-                f"avg_throughput: {avg_throughput}")
+                f"avg_throughput: {avg_throughput}"
+            )
             print(f"Throughput: {avg_throughput:.2f} samples/sec, TFLOPS per GPU: {avg_tflops_per_gpu:.2f}")

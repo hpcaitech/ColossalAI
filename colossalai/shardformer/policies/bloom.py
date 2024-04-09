@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List
 
@@ -55,8 +56,18 @@ class BloomPolicy(Policy):
             norm_cls = col_nn.FusedLayerNorm
         else:
             norm_cls = col_nn.LayerNorm
-        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
+
+        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        assert sp_mode != "all_to_all", "all_to_all sequence parallelism is not supported for BLOOM"
+        if sp_mode == "ring":
+            warnings.warn(
+                f"For BLOOM, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
+            )
+            sp_mode = "split_gather"
+
         overlap = self.shard_config.enable_sequence_overlap
+        sp_partial_derived = sp_mode == "split_gather"
+
         if self.shard_config.enable_tensor_parallelism:
             policy[BloomBlock] = ModulePolicyDescription(
                 attribute_replacement={
@@ -70,12 +81,12 @@ class BloomPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attention.query_key_value",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        kwargs={"seq_parallel_mode": sp_mode, "overlap": overlap},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.dense",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.attention_dropout",
@@ -84,12 +95,12 @@ class BloomPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="mlp.dense_h_to_4h",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        kwargs={"seq_parallel_mode": sp_mode, "overlap": overlap},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.dense_4h_to_h",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                 ],
             )
@@ -132,19 +143,19 @@ class BloomPolicy(Policy):
                 SubModuleReplacementDescription(
                     suffix="input_layernorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 SubModuleReplacementDescription(
                     suffix="post_attention_layernorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
             ],
             policy=policy,
             target_key=BloomBlock,
         )
 
-        if use_sequence_parallel:
+        if sp_mode == "split_gather":
             self.append_or_create_method_replacement(
                 description={"forward": get_bloom_sequence_parallel_forward_fn(self.shard_config)},
                 policy=policy,
@@ -203,8 +214,8 @@ class BloomPolicy(Policy):
             else:
                 module = self.model.transformer
 
-            layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = stage_manager.distribute_layers(len(module.h))
+            stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(
                     new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
@@ -226,11 +237,11 @@ class BloomPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
+        layers_per_stage = stage_manager.distribute_layers(len(module.h))
         if stage_manager.is_first_stage():
             held_layers.append(module.word_embeddings)
             held_layers.append(module.word_embeddings_layernorm)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
         held_layers.extend(module.h[start_idx:end_idx])
         if stage_manager.is_last_stage():
             held_layers.append(module.ln_f)
