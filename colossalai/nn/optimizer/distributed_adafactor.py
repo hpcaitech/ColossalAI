@@ -189,7 +189,7 @@ class DistributedAdaFactor(DistributedOptim):
                             )  # [W/TP]
 
                         if self.shard_spec.sharding_sequence[-1] == "R":  # Row Parallel
-                            # Row Residual situation
+                            # Row indivisible shape situation
                             if self.grad_shape[0] % self.data_parallel_size != 0:
                                 state["exp_avg_sq_row"] = torch.zeros(
                                 self.grad_shape[0], device=p.device, dtype=p.dtype

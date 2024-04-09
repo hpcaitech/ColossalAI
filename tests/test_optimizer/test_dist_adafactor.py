@@ -653,35 +653,34 @@ def exam_bert_test(test_config):
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         
-        if name == "transformers_bert":
-            org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
-                model_fn, loss_fn, test_config, Adafactor, DistributedAdaFactor
-            )
+        org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
+            model_fn, loss_fn, test_config, Adafactor, DistributedAdaFactor
+        )
             
-            org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
-                org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
-            )
+        org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
+            org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
+        )
             
             
-            stage_manager = booster.plugin.stage_manager
-            tp_group = booster.plugin.tp_group
+        stage_manager = booster.plugin.stage_manager
+        tp_group = booster.plugin.tp_group
 
-            bert = unwrap_model(org_model, "BertModel", "bert")
-            sharded_bert = unwrap_model(sharded_model, "BertModel", "bert")
-            weight_layer_for_check = ["encoder.layer[0].output.dense", "encoder.layer[1].output.dense"]
+        bert = unwrap_model(org_model, "BertModel", "bert")
+        sharded_bert = unwrap_model(sharded_model, "BertModel", "bert")
+        weight_layer_for_check = ["encoder.layer[0].output.dense", "encoder.layer[1].output.dense"]
             
-            org_optimizer.step()
-            sharded_optimizer.step()
+        org_optimizer.step()
+        sharded_optimizer.step()
             
-            # check weights
-            if test_config["precision"] == "bf16":
-                atol, rtol = 5e-4, 1e-4
-            else:
-                atol, rtol = 5e-4, 5e-4
-            if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
-                check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
-        clear_layout_converter()
-        torch.cuda.empty_cache()
+        # check weights
+        if test_config["precision"] == "bf16":
+            atol, rtol = 5e-4, 1e-4
+        else:
+            atol, rtol = 5e-4, 5e-4
+        if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
+            check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
+    clear_layout_converter()
+    torch.cuda.empty_cache()
 
 
 
