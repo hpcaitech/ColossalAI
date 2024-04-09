@@ -44,7 +44,7 @@ class Qwen2PipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
-    )-> Union[Tuple, BaseModelOutputWithPast]:
+    ) -> Union[Tuple, BaseModelOutputWithPast]:
         logger = logging.get_logger(__name__)
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -306,7 +306,7 @@ class Qwen2PipelineForwards:
         else:
             hidden_states = outputs.get("hidden_states")
             return {"hidden_states": hidden_states}
-    
+
     @staticmethod
     def qwen2_for_sequence_classification_forward(
         self: Qwen2ForSequenceClassification,
