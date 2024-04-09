@@ -29,13 +29,17 @@ except:
 
 try:
     from colossalai.kernel.triton.flash_decoding import token_flash_decoding
+
     HAS_TRITON_FLASH_DECODING_KERNEL = True
 except:
-    print("no triton flash decoding support, please install lightllm from https://github.com/ModelTC/lightllm/blob/ece7b43f8a6dfa74027adc77c2c176cff28c76c8")
+    print(
+        "no triton flash decoding support, please install lightllm from https://github.com/ModelTC/lightllm/blob/ece7b43f8a6dfa74027adc77c2c176cff28c76c8"
+    )
     HAS_TRITON_FLASH_DECODING_KERNEL = False
-    
+
 try:
     from flash_attn import flash_attn_with_kvcache
+
     HAS_FLASH_KERNEL = True
 except:
     HAS_FLASH_KERNEL = False
@@ -47,6 +51,7 @@ def rotate_half(x):
     x1 = x[..., : x.shape[-1] // 2]
     x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1)
+
 
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
@@ -96,17 +101,22 @@ def llama_triton_context_attention(
             infer_state.max_len_in_batch,
         )
 
-def llama_triton_token_attention(query_states, attn_output, infer_state, num_key_value_groups=1, q_head_num = -1, head_dim = -1):
+
+def llama_triton_token_attention(
+    query_states, attn_output, infer_state, num_key_value_groups=1, q_head_num=-1, head_dim=-1
+):
     if HAS_TRITON_FLASH_DECODING_KERNEL and q_head_num != -1 and head_dim != -1:
-        token_flash_decoding(q = query_states, 
-                                o_tensor = attn_output, 
-                                infer_state = infer_state, 
-                                q_head_num = q_head_num, 
-                                head_dim = head_dim, 
-                                cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id], 
-                                cache_v = infer_state.cache_manager.value_buffer[infer_state.decode_layer_id])
-        return 
-    
+        token_flash_decoding(
+            q=query_states,
+            o_tensor=attn_output,
+            infer_state=infer_state,
+            q_head_num=q_head_num,
+            head_dim=head_dim,
+            cache_k=infer_state.cache_manager.key_buffer[infer_state.decode_layer_id],
+            cache_v=infer_state.cache_manager.value_buffer[infer_state.decode_layer_id],
+        )
+        return
+
     if num_key_value_groups == 1:
         token_attention_fwd(
             query_states,
@@ -459,14 +469,15 @@ class LlamaInferenceForwards:
                 )
 
             if HAS_LIGHTLLM_KERNEL:
-                
                 attn_output = torch.empty_like(query_states)
-                llama_triton_token_attention(query_states = query_states, 
-                                             attn_output = attn_output, 
-                                             infer_state = infer_state, 
-                                             num_key_value_groups = self.num_key_value_groups, 
-                                             q_head_num = q_len * self.num_heads, 
-                                             head_dim = self.head_dim)
+                llama_triton_token_attention(
+                    query_states=query_states,
+                    attn_output=attn_output,
+                    infer_state=infer_state,
+                    num_key_value_groups=self.num_key_value_groups,
+                    q_head_num=q_len * self.num_heads,
+                    head_dim=self.head_dim,
+                )
             else:
                 self.num_heads // self.num_key_value_heads
                 cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id]

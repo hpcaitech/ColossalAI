@@ -126,7 +126,7 @@ class DocumentLoader:
             else:
                 # May ba a directory, we strictly follow the glob path and will not load files in subdirectories
                 pass
-    
+
     def clear(self):
         """
         Clear loaded data.

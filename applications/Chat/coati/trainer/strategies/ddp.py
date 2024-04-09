@@ -101,15 +101,16 @@ class DDPStrategy(Strategy):
 
         model_path = os.path.join(path, "pytorch_model.bin")
         self.save_model(model, model_path, shard=shard)
+
         def _replace_keys(model_path: str, replace_fn: Callable):
             state_dict = torch.load(model_path, map_location="cpu")
             state_dict = {replace_fn(k): v for k, v in state_dict.items()}
             torch.save(state_dict, model_path)
+
         # FIXME: save_model would add "model." prefix to keys of pytorch_model.bin
         # HACK: rename keys of pytorch_model.bin
         if dist.get_rank() == 0:
             _replace_keys(model_path, lambda k: k.replace("model.", "", 1))
-
 
     def get_model_state_dict_shard(self, model: nn.Module, **config):
         # TODO: implement sharding on naive strategy
