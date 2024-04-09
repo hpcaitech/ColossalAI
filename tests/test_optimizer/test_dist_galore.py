@@ -7,7 +7,8 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
-from colossalai.nn.optimizer import DistributedGalore, GaLoreAdamW8bit
+from colossalai.nn.optimizer import DistGaloreAwamW8bit, GaLoreAdamW8bit
+from colossalai.nn.optimizer.galore import get_galore_param_groups
 from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.tensor.d_tensor.sharding_spec import DimSpec
@@ -58,21 +59,6 @@ def assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group):
         except AssertionError as e:
             print(f"grad mismatch in {name}")
             raise e
-
-
-def setup_param_groups(bert_model: nn.Module) -> list:
-    no_decay = ["bias", "LayerNorm.weight"]
-    optimizer_grouped_parameters = [
-        {
-            "params": [p for n, p in bert_model.named_parameters() if not any(nd in n for nd in no_decay)],
-            "weight_decay": 0.1,
-        },
-        {
-            "params": [p for n, p in bert_model.named_parameters() if any(nd in n for nd in no_decay)],
-            "weight_decay": 0.0,
-        },
-    ]
-    return optimizer_grouped_parameters
 
 
 def force_assign_grad(p, g_dtype, grad=None):
@@ -147,9 +133,9 @@ def run_dist_galore_basic(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_si
     lr = 1e-3
     beta1, beta2 = 0.9, 0.999
     eps = 1e-8
-    torch_optim = GaLoreAdamW8bit(setup_param_groups(torch_model), lr=lr, betas=(beta1, beta2), eps=eps)
-    optim = DistributedGalore(
-        setup_param_groups(tp_model),
+    torch_optim = GaLoreAdamW8bit(get_galore_param_groups(torch_model), lr=lr, betas=(beta1, beta2), eps=eps)
+    optim = DistGaloreAwamW8bit(
+        get_galore_param_groups(tp_model),
         lr=lr,
         betas=(beta1, beta2),
         eps=eps,
@@ -173,7 +159,7 @@ def run_dist_galore_basic(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_si
         try:
             assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group)
         except Exception as e:
-            _COORD.print_on_master(f"step {i + 1}: p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}")
+            _COORD.print_on_master(f"step {i}: p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}")
             raise e
 
 
@@ -208,9 +194,9 @@ def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_
     lr = 1e-3
     beta1, beta2 = 0.9, 0.999
     eps = 1e-8
-    torch_optim = GaLoreAdamW8bit(setup_param_groups(torch_model), lr=lr, betas=(beta1, beta2), eps=eps)
-    optim = DistributedGalore(
-        setup_param_groups(tp_model),
+    torch_optim = GaLoreAdamW8bit(get_galore_param_groups(torch_model), lr=lr, betas=(beta1, beta2), eps=eps)
+    optim = DistGaloreAwamW8bit(
+        get_galore_param_groups(tp_model),
         lr=lr,
         betas=(beta1, beta2),
         eps=eps,
@@ -235,7 +221,9 @@ def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_
             dp_process_group=dp_group,
             verbose=True,
         )
-        optim.optim.setup_distributed(tp_group, dp_group, shard_to_param)
+        optim.optim.setup_distributed(
+            tp_group, dp_group, shard_to_param, padding_map=optim.get_param_padding_map(), is_zero=True
+        )
     else:
         optim.setup_distributed(tp_group)
 
@@ -288,7 +276,7 @@ def check_dist_lamb(rank, world_size, port):
     run_dist_galore_fwd_bwd()
     _COORD.print_on_master("Forward-backward tests passed")
 
-    run_bert_test(optim_class=GaLoreAdamW8bit, sharded_optim_class=DistributedGalore)
+    run_bert_test(optim_class=GaLoreAdamW8bit, sharded_optim_class=DistGaloreAwamW8bit)
     print(f"rank {rank} tests passed :)")
 
 

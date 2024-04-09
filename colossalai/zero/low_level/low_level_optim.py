@@ -924,3 +924,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if hasattr(self, "moe_master_to_working_map"):
             return {**self._param_store.master_to_working_param, **self.moe_master_to_working_map}
         return self._param_store.master_to_working_param
+
+    def get_param_padding_map(self) -> Dict[int, torch.Tensor]:
+        return self._param_store.get_padding_map()

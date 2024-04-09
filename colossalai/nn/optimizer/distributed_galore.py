@@ -24,11 +24,28 @@ def get_shard_dim(p):
     return sharding.index(_SHARD_DIM)
 
 
-class DistributedGalore(DistributedOptim, Optimizer2State):
-    r"""Implements Galore, a optimizer-agonistic gradient compression technique on 8-bit Adam.
+class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
+    r"""Implements Galore, a optimizer-agonistic gradient compression technique on 8-bit AdamW.
+    It largely compresses gradient via low-rank projection and is claimed to be insensitive to hyperparams like lr.
     Supports Tensor Parallel and ZeRO stage 1 and 2 via setup_distributed inside booster and plugin.
     Proposed in `GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection`
     https://arxiv.org/abs/2403.03507
+
+    Arguments:
+        params (iterable): iterable of parameters to optimize or dicts defining
+            parameter groups.
+        lr (float, optional): learning rate. (default: 1e-3)
+        betas (Tuple[float, float], optional): coefficients used for computing
+            running averages of gradient and its norm. (default: (0.9, 0.999))
+        eps (float, optional): term added to the denominator to improve
+            numerical stability. (default: 1e-6)
+        weight_decay (float, optional): weight decay (L2 penalty) (default: 0.01)
+    Example:
+        >>> optim = DistributedLamb(model.parameters(), lr=1e-3)
+        >>> proc_mesh = ProcessGroupMesh(tp_size, zero_size)
+        >>> tp_group = proc_mesh.get_group_along_axis(0)
+        >>> dp_group = proc_mesh.get_group_along_axis(1)
+        >>> optim.setup_distributed(tp_group, dp_group)
     """
 
     def __init__(
@@ -61,6 +78,19 @@ class DistributedGalore(DistributedOptim, Optimizer2State):
         self.tp_size = 0
         self.dp_size = 0
         self.is_dist = {}
+        proj_none = all(["rank" not in group for group in self.param_groups])
+        if proj_none:
+            print(
+                "Will not apply GaLore as no rank is specified. Or did you forget to?\
+                Try get_galore_param_groups(model)"
+            )
+
+        # Default from the paper
+        for group in self.param_groups:
+            if "rank" in group:
+                group["update_proj_gap"] = group.get("update_proj_gap", 200)
+                group["proj_type"] = group.get("proj_type", "std")
+                group["scale"] = group.get("scale", 0.25)
 
     def setup_distributed(
         self,
@@ -79,7 +109,8 @@ class DistributedGalore(DistributedOptim, Optimizer2State):
             padding_map (Dict): Padding size of each param from ZeRO's param store. Required if ZeRO is used.
             is_zero (bool): Whether to use ZeRO 2.
         """
-        assert padding_map is not None
+        assert dist.is_initialized(), "You forgot to initialized distributed backend..."
+
         self.tp_group = tp_group
         self.dp_group = dp_group
         if tp_group is not None:
@@ -92,10 +123,9 @@ class DistributedGalore(DistributedOptim, Optimizer2State):
         if is_zero:
             assert padding_map is not defaultdict(0), "We can't do SVD without knowing ZeRO's per-param padding size"
         self.padding_map = padding_map
-
         self.distributed_on = self.tp_size > 0 or self.dp_size > 0
 
-        # Cache parameter layout
+        # Cache working param layout
         self.shard_dim = {}
         for group in self.param_groups:
             for p in group["params"]:
@@ -138,7 +168,10 @@ class DistributedGalore(DistributedOptim, Optimizer2State):
                 if "rank" in group:
                     if "projector" not in state:
                         state["projector"] = GaLoreProjector(
-                            group["rank"], scale=group["scale"], proj_type=group["proj_type"]
+                            group["rank"],
+                            scale=group["scale"],
+                            update_proj_gap=group["update_proj_gap"],
+                            proj_type=group["proj_type"],
                         )
 
                     if "weight_decay" in group and group["weight_decay"] > 0:
@@ -181,7 +214,7 @@ class DistributedGalore(DistributedOptim, Optimizer2State):
 
                         # Compute SVD. Will adaptively use a subset of singular
                         # vectors during update_proj_gap when grads are not gathered.
-                        grad = state["projector"].project(grad)
+                        grad = state["projector"].project(grad, state["step"])
 
                         # Post-projection sharding to master shape
                         if self.distributed_on:
@@ -216,7 +249,7 @@ class DistributedGalore(DistributedOptim, Optimizer2State):
                     data = torch.pad(data, [0, self.padding_map[id(p)]])
                     p.data = p.saved_data.add_(data)
 
-                    # apply weight decay
+                    # apply decoupled weight decay
                     if "weight_decay_saved" in group:
                         p.data.add_(p.data, alpha=-group["lr"] * group["weight_decay_saved"])
                         group["weight_decay"] = group["weight_decay_saved"]

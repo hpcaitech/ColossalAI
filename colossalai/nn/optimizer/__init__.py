@@ -1,5 +1,5 @@
 from .cpu_adam import CPUAdam
-from .distributed_galore import DistributedGalore
+from .distributed_galore import DistGaloreAwamW8bit
 from .distributed_lamb import DistributedLamb
 from .fused_adam import FusedAdam
 from .fused_lamb import FusedLAMB
@@ -18,7 +18,7 @@ __all__ = [
     "CPUAdam",
     "HybridAdam",
     "DistributedLamb",
-    "DistributedGalore",
+    "DistGaloreAwamW8bit",
     "GaLoreAdamW",
     "GaLoreAdafactor",
     "GaLoreAdamW8bit",

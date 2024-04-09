@@ -249,7 +249,7 @@ def run_dist_lamb_fwd_bwd(
             dp_process_group=dp_group,
             verbose=True,
         )
-        optim.optim.setup_distributed(tp_group, dp_group, shard_to_param)
+        optim.optim.setup_distributed(tp_group, dp_group, shard_to_param, is_zero=True)
     else:
         optim.setup_distributed(tp_group)
 

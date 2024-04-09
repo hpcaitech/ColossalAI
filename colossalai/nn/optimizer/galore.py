@@ -1,6 +1,43 @@
 # adapted from https://github.com/jiaweizzhao/GaLore/blob/master/galore_torch/adamw8bit.py
+from typing import List
+
 import torch
+import torch.nn as nn
 from bitsandbytes.optim.optimizer import Optimizer2State
+from torch._C import _LinAlgError
+
+
+def get_galore_param_groups(model: nn.Module, rank=256, update_proj_gap=200, scale=0.25, proj_type="std") -> List[dict]:
+    """
+    It's advised to use this instead of manually specifying which param groups
+    to apply GaLore on.
+    """
+    galore_params = []
+    non_galore = []
+    galore_names = []  # Directly checking if tensor in list throws shape mismatch comparison error
+    for name, module in model.named_modules():
+        # Only make sense to do SVD on 2d gradient matrices
+        # Do NOT apply on Vocab Embedding, which is already highly rank deficient
+        if isinstance(module, nn.Linear):
+            galore_params.append(module.weight)
+            galore_names.append(name + ".weight")
+
+    for name, param in model.named_parameters():
+        if name not in galore_names:
+            non_galore.append(param)
+
+    param_groups = [
+        {
+            "params": galore_params,
+            "rank": rank,
+            "update_proj_gap": update_proj_gap,
+            "scale": scale,
+            "proj_type": proj_type,
+        },
+        {"params": non_galore},
+    ]
+
+    return param_groups
 
 
 class GaLoreProjector:
@@ -13,6 +50,9 @@ class GaLoreProjector:
         self.proj_type = proj_type
 
     def project(self, full_rank_grad, iter):
+        if full_rank_grad.dim() == 1:
+            return full_rank_grad
+
         m, n = full_rank_grad.shape  # For ZeRO sharded grads
         if self.proj_type == "std":
             if full_rank_grad.shape[0] >= full_rank_grad.shape[1]:
@@ -60,12 +100,16 @@ class GaLoreProjector:
         else:
             float_data = True
             matrix = module_params.data
+
+        # TODO: redo SVD in the next step.
+        if matrix.isnan().any():
+            print(f"{__file__}: skipping SVD due to NaN matrix")
+            return self.ortho_matrix
         try:
             U, s, Vh = torch.linalg.svd(matrix, full_matrices=False)
-        except:
-            print(matrix)
-            print(matrix.mean())
-            exit(1)
+        except _LinAlgError as e:
+            print(f"{__file__}: skipping SVD due to {e}")
+            return self.ortho_matrix
 
         # make the smaller matrix always to be orthogonal matrix
         if type == "right":
@@ -93,15 +137,29 @@ class GaLoreProjector:
 
 
 class GaLoreAdamW8bit(Optimizer2State):
-    r"""Implements Galore, a optimizer-agonistic gradient compression technique on 8-bit Adam.
-    Proposed in `GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection`
+    r"""Implements Galore, a optimizer-agonistic gradient compression technique on 8-bit AdamW.
+    Proposed in `GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection`. It compresses
+    gradient via low-rank projection and is claimed to be insensitive to hyperparams like lr.
     https://arxiv.org/abs/2403.03507
+
+    Arguments:
+        params (iterable): iterable of parameters to optimize or dicts defining
+            parameter groups.
+        lr (float, optional): learning rate. (default: 1e-3)
+        betas (Tuple[float, float], optional): coefficients used for computing
+            running averages of gradient and its norm. (default: (0.9, 0.999))
+        eps (float, optional): term added to the denominator to improve
+            numerical stability. (default: 1e-6)
+        weight_decay (float, optional): weight decay (L2 penalty) (default: 0.01)
+
+    Example:
+
     """
 
     def __init__(
         self,
         params,
-        lr=1e-3,
+        lr=1e-2,
         betas=(0.9, 0.999),
         eps=1e-8,
         weight_decay=1e-2,
@@ -125,6 +183,20 @@ class GaLoreAdamW8bit(Optimizer2State):
             block_wise,
             is_paged=is_paged,
         )
+
+        proj_none = all(["rank" not in group for group in self.param_groups])
+        if proj_none:
+            print(
+                "Will not apply GaLore as no rank is specified. Or did you forget to?\
+                Try get_galore_param_groups(model)"
+            )
+
+        # Defaults from the paper
+        for group in self.param_groups:
+            if "rank" in group:
+                group["update_proj_gap"] = group.get("update_proj_gap", 200)
+                group["proj_type"] = group.get("proj_type", "std")
+                group["scale"] = group.get("scale", 0.25)
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -157,7 +229,10 @@ class GaLoreAdamW8bit(Optimizer2State):
                 if "rank" in group:
                     if "projector" not in state:
                         state["projector"] = GaLoreProjector(
-                            group["rank"], scale=group["scale"], proj_type=group["proj_type"]
+                            group["rank"],
+                            scale=group["scale"],
+                            update_proj_gap=group["update_proj_gap"],
+                            proj_type=group["proj_type"],
                         )
 
                     if "weight_decay" in group and group["weight_decay"] > 0:
@@ -165,8 +240,7 @@ class GaLoreAdamW8bit(Optimizer2State):
                         group["weight_decay_saved"] = group["weight_decay"]
                         group["weight_decay"] = 0
 
-                    if state["step"] % group["update_proj_gap"] == 0:
-                        grad = state["projector"].project(p.grad)
+                    grad = state["projector"].project(p.grad, state["step"])
 
                     # suboptimal implementation
                     p.saved_data = p.data.clone()
@@ -183,6 +257,8 @@ class GaLoreAdamW8bit(Optimizer2State):
 
                 # GaLore Projection Back
                 if "rank" in group:
+                    if p.dim() == 1:
+                        pass
                     p.data = p.saved_data.add_(state["projector"].project_back(p.data))
 
                     # apply weight decay
