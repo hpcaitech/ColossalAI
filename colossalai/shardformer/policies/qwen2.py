@@ -151,10 +151,10 @@ class Qwen2Policy(Policy):
             module = self.model.model
 
         if stage_manager.is_interleave:
-            layers_per_stage = self.distribute_layers(
+            layers_per_stage = stage_manager.distribute_layers(
                 len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
             )
-            stage_manager.stage_indices = Policy.get_stage_index(
+            stage_manager.stage_indices = stage_manager.get_stage_index(
                 layers_per_stage,
                 stage_manager.stage,
                 num_model_chunks=stage_manager.num_model_chunks,
@@ -165,8 +165,8 @@ class Qwen2Policy(Policy):
             }
 
         else:
-            layers_per_stage = Policy.distribute_layers(len(module.layers), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers), stage_manager.num_stages)
+            stage_index = stage_manager.get_stage_index(layers_per_stage, stage_manager.stage)
             method_replacement = {
                 "forward": partial(
                     new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
@@ -192,10 +192,10 @@ class Qwen2Policy(Policy):
         held_layers = []
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
-            layers_per_stage = self.distribute_layers(
+            layers_per_stage = stage_manager.distribute_layers(
                 len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
             )
-            stage_indices = Policy.get_stage_index(
+            stage_indices = stage_manager.get_stage_index(
                 layers_per_stage,
                 stage_manager.stage,
                 num_model_chunks=stage_manager.num_model_chunks,
@@ -209,10 +209,10 @@ class Qwen2Policy(Policy):
                 held_layers.append(module.norm)
 
         else:
-            layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers), stage_manager.num_stages)
             if stage_manager.is_first_stage():
                 held_layers.append(module.embed_tokens)
-            start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+            start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage, stage_manager.stage)
             held_layers.extend(module.layers[start_idx:end_idx])
             if stage_manager.is_last_stage():
                 held_layers.append(module.norm)
