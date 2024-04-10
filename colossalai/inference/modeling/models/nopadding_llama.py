@@ -101,6 +101,12 @@ def llama_model_forward(
     if batch_size >= 32 and kv_seq_len > 512:
         use_cuda_kernel = False
 
+    # NOTE (yuanheng-zhao): fow now, only triton kernels support speculative-decoding
+    # We will expicitly disable `use_cuda_kernel` here when speculative-decoding is enabled
+    if inputmetadata.use_spec_dec and use_cuda_kernel:
+        use_cuda_kernel = False
+        logger.warning("CUDA kernel is disabled for speculative-decoding.")
+
     hidden_states = self.embed_tokens(input_tokens_ids)
     cu_seqlens = None
 
