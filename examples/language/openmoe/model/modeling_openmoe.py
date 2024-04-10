@@ -96,7 +96,7 @@ def set_openmoe_args(
         load_balance_beam_width (int, optional): Expert load balance search's beam width. Defaults to 8.
         load_balance_group_swap_factor (float, optional): Expert load balance group swap factor. Longer value encourages less swap. Defaults to 0.4.
         enable_kernel (bool, optional): Use kernel optimization. Defaults to False.
-        enable_comm_overlap (bool, optional): Use communication overlap for MoE. Recommended to enable for muiti-node training. Defaults to False.
+        enable_comm_overlap (bool, optional): Use communication overlap for MoE. Recommended to enable for multi-node training. Defaults to False.
         enable_hierarchical_alltoall (bool, optional): Use hierarchical alltoall for MoE. Defaults to False.
     """
     moe_args = dict(

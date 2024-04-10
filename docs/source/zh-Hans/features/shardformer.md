@@ -264,7 +264,7 @@ elif args.plugin == "hybrid_parallel":
 3. 通过调用`Booster.execute_pipeline` 方法来执行前向和后向传递:
     ```python
     outputs = booster.execute_pipeline(
-        train_dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
+        train_dataloader_iter, model, _criterion, optimizer, return_loss=True
     )
     ```
     该方法会自动执行后向传递，所以在执行该方法后不需要再调用 `loss.backward()`方法。

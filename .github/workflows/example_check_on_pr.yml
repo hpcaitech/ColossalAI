@@ -78,7 +78,7 @@ jobs:
       matrix: ${{fromJson(needs.detect-changed-example.outputs.matrix)}}
     container:
       image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
-      options: --gpus all --rm -v /data/scratch/examples-data:/data/
+      options: --gpus all --rm -v /data/scratch/examples-data:/data/ -v /dev/shm
     timeout-minutes: 20
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-run-example-${{ matrix.directory }}
@@ -95,5 +95,3 @@ jobs:
           example_dir=${{ matrix.directory }}
           cd "${PWD}/examples/${example_dir}"
           bash test_ci.sh
-        env:
-          NCCL_SHM_DISABLE: 1

@@ -2,9 +2,8 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
@@ -196,50 +195,3 @@ class Policy(ABC):
             List[Dict[int, Tensor]]: List of parameters that should be shared across stages. E.g. [{0: module.model.embed_tokens.weight, 3: module.lm_head.weight}]
         """
         return []
-
-    @staticmethod
-    def distribute_layers(num_layers: int, num_stages: int) -> List[int]:
-        """Divide layers into stages"""
-        quotient = num_layers // num_stages
-        remainder = num_layers % num_stages
-
-        # calculate the num_layers per stage
-        layers_per_stage = [quotient] * num_stages
-
-        # deal with the rest layers
-        if remainder > 0:
-            start_position = num_stages // 2 - remainder // 2
-            for i in range(start_position, start_position + remainder):
-                layers_per_stage[i] += 1
-        return layers_per_stage
-
-    @staticmethod
-    def get_stage_index(
-        layers_per_stage: List[int],
-        stage: int,
-        num_model_chunks: int = 1,
-        num_stages: int = 0,
-    ) -> Union[Tuple[int, int], List[Tuple[int, int]]]:
-        """
-        Get the start index and end index of layers for each stage.
-
-        Args:
-            layers_per_stage (List[int]): number of layers for each stage
-            stage (int): the stage index
-            num_stages (int): number of stages
-            num_model_chunks (int): number of model chunks
-
-        Returns:
-            - Tuple[int, int]: the start index and end index of this stage
-            - List[Tuple[int, int]]: the start index and end index of this stage for each model chunk
-
-        """
-        num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
-
-        stage_indices = []
-        for model_chunk in range(num_model_chunks):
-            start_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages]
-            end_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages + 1]
-            stage_indices.append([start_idx, end_idx])
-
-        return stage_indices[0] if num_model_chunks == 1 else stage_indices

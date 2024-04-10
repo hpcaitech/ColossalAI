@@ -35,6 +35,7 @@ jobs:
       matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
     container:
       image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
+      options: --gpus all --rm -v /data/scratch/examples-data:/data/ -v /dev/shm
     timeout-minutes: 10
     steps:
       - name: 📚 Checkout
@@ -50,8 +51,6 @@ jobs:
           echo "Testing ${example_dir} now"
           cd "${PWD}/examples/${example_dir}"
           bash test_ci.sh
-        env:
-          NCCL_SHM_DISABLE: 1
 
       - name: Notify Lark
         id: message-preparation

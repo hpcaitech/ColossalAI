@@ -40,7 +40,12 @@ def assert_equal_in_group(tensor: Tensor, process_group: ProcessGroup = None):
         assert torch.all(a == b), f"expected tensors on rank {i} and {i + 1} to be equal but they are not, {a} vs {b}"
 
 
-def check_state_dict_equal(d1: OrderedDict, d2: OrderedDict, ignore_device: bool = True, ignore_dtype: bool = False):
+def check_state_dict_equal(
+    d1: OrderedDict,
+    d2: OrderedDict,
+    ignore_device: bool = True,
+    ignore_dtype: bool = False,
+):
     assert len(list(d1.keys())) == len(
         list(d2.keys())
     ), f"Number of keys unequal: {len(list(d1.keys()))} vs {len(list(d2.keys()))}"
@@ -94,7 +99,12 @@ def check_state_dict_equal_pytree(d1: OrderedDict, d2: OrderedDict, ignore_devic
 
 
 def assert_hf_output_close(
-    out1: Any, out2: Any, ignore_keys: List[str] = None, track_name: str = "", atol=1e-5, rtol=1e-5
+    out1: Any,
+    out2: Any,
+    ignore_keys: List[str] = None,
+    track_name: str = "",
+    atol=1e-5,
+    rtol=1e-5,
 ):
     """
     Check if two outputs from huggingface are equal.
@@ -113,7 +123,12 @@ def assert_hf_output_close(
             if ignore_keys is not None and k in ignore_keys:
                 continue
             assert_hf_output_close(
-                out1[k], out2[k], track_name=f"{track_name}.{k}", ignore_keys=ignore_keys, atol=atol, rtol=rtol
+                out1[k],
+                out2[k],
+                track_name=f"{track_name}.{k}",
+                ignore_keys=ignore_keys,
+                atol=atol,
+                rtol=rtol,
             )
     elif isinstance(out1, (list, tuple)) and isinstance(out2, (list, tuple)):
         # if two values are list
@@ -121,12 +136,17 @@ def assert_hf_output_close(
         assert len(out1) == len(out2)
         for i in range(len(out1)):
             assert_hf_output_close(
-                out1[i], out2[i], track_name=f"{track_name}.{i}", ignore_keys=ignore_keys, atol=atol, rtol=rtol
+                out1[i],
+                out2[i],
+                track_name=f"{track_name}.{i}",
+                ignore_keys=ignore_keys,
+                atol=atol,
+                rtol=rtol,
             )
     elif isinstance(out1, Tensor) and isinstance(out2, Tensor):
         if out1.shape != out2.shape:
             raise AssertionError(f"{track_name}: shape mismatch: {out1.shape} vs {out2.shape}")
-        assert torch.allclose(
+        assert_close(
             out1, out2, atol=atol, rtol=rtol
         ), f"{track_name}: tensor value mismatch\nvalue 1: {out1}\nvalue 2: {out2}, \nmean error: {torch.abs(out1 - out2).mean()}"
     else:
