@@ -253,7 +253,6 @@ class DistributedAdaFactor(DistributedOptim):
                             )
                             # view update to origin[tp] shape
                             update_reshape = update.view(-1, self.grad_shape[1])
-                            
                             # gather grad[flatten] along dp group then reshape to [H/tp, W]
                             grad = _gather(
                                 input_=grad, dim=-1, process_group=self.data_parallel_group

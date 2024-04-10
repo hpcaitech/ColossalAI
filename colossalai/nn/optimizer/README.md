@@ -89,7 +89,9 @@ A series of optimizers have been optimized and integrated.
 
 ### Distributed Adafactor
 
-Distributed Adafactor supports tensor parallelism and ZerO optimization. 
+Distributed Adafactor is an optimiser that supports hybrid optimisation, including 1D tensor parallelism as well as ZerO. It makes full use of computational resources through reasonable task parallelism, improves training efficiency and speed, and reduces space pressure on single card storage. It has a wide range of applications and currently supports a range of Transformer based models, see [tests.kit.model_zoo](https://github.com/hpcaitech/ColossalAI/tree/main/tests/kit/model_zoo) for details.  
+
+### Distributed Adafactor API
 
 ### Performance
 |            Version              |    iter    | Float Percision |      Device Nums     | weight shape  | Avg runtime(ms)  | Avg Speed Up Rate | Best Speed Up Rate  |
