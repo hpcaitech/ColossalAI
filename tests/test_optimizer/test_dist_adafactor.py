@@ -31,13 +31,14 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from colossalai.zero import LowLevelZeroOptimizer
 from tests.kit.model_zoo import model_zoo
-from tests.test_optimizer._utils import run_bert_test
+from tests.test_optimizer._utils import run_bert_test, check_optim_states
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
     check_weight,
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
+
 
 HEIGHT = 4
 WIDTH = 4
@@ -679,6 +680,11 @@ def exam_bert_test(test_config):
             atol, rtol = 5e-4, 5e-4
         if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
             check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
+        
+        # check optim states
+        check_optim_states(org_optimizer, sharded_optimizer.optim)
+    
+    
     clear_layout_converter()
     torch.cuda.empty_cache()
 

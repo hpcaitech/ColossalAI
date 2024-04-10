@@ -27,7 +27,7 @@ class DistributedAdaFactor(DistributedOptim):
         relative_step=True,
         warmup_init=False,
     ):
-        lr=None
+        lr = None
         if lr is not None and relative_step:
             raise ValueError("Cannot combine manual `lr` and `relative_step=True` options")
         if warmup_init and not relative_step:
@@ -162,17 +162,14 @@ class DistributedAdaFactor(DistributedOptim):
                 grad = p.grad
                 if grad.is_sparse:
                     raise RuntimeError("Adafactor does not support sparse gradients.")
+                
                 state = self.state[p]
                 self.grad_shape = grad.shape  # 1 dim shape
-                
-                # print(f"self.shard_to_param {self.shard_to_param}")
-                
                 param_is_dtensor = is_distributed_tensor(self.shard_to_param.get(id(p)))
-
                 if param_is_dtensor:
                     self.grad_shape = self.shard_to_param.get(id(p)).shape  # tp shape (2 dim)
-
                 self.factored, self.use_first_moment = self._get_options(group, self.grad_shape)
+                
                 if len(state) == 0:
                     state["step"] = 0
                     if self.use_first_moment:

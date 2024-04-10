@@ -91,7 +91,31 @@ A series of optimizers have been optimized and integrated.
 
 Distributed Adafactor is an optimiser that supports hybrid optimisation, including 1D tensor parallelism as well as ZerO. It makes full use of computational resources through reasonable task parallelism, improves training efficiency and speed, and reduces space pressure on single card storage. It has a wide range of applications and currently supports a range of Transformer based models, see [tests.kit.model_zoo](https://github.com/hpcaitech/ColossalAI/tree/main/tests/kit/model_zoo) for details.  
 
-### Distributed Adafactor API
+### API Reference
+
+{{ autodoc:colossalai.nn.optimizer.distributed_adafactor.DistributedAdaFactor }}
+
+### Sample: Init with booster
+
+```python
+# ==============================
+# Model Init
+# ==============================
+tp_model = TPModel()
+
+# ==============================
+# Optimizer Init
+# ==============================
+dist_optim = DistributedAdaFactor([p for n, p in tp_model.named_parameters()])
+
+# ==============================
+# Booster Init
+# ==============================
+plugin = TorchDDPPlugin()
+booster = Booster(plugin=plugin)
+criterion = lambda x: x.mean()
+tp_model, dist_optim, criterion, _, _ = booster.boost(tp_model, dist_optim, criterion)
+```
 
 ### Performance
 |            Version              |    iter    | Float Percision |      Device Nums     | weight shape  | Avg runtime(ms)  | Avg Speed Up Rate | Best Speed Up Rate  |
