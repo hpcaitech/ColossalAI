@@ -101,7 +101,8 @@ def llama_model_forward(
     if batch_size >= 32 and kv_seq_len > 512:
         use_cuda_kernel = False
 
-    # NOTE (yuanheng-zhao): fow now, only triton kernels support speculative-decoding
+    # NOTE (yuanheng-zhao): fow now, only triton kernels support verification process
+    # during speculative-decoding (`q_len > 1`)
     # We will expicitly disable `use_cuda_kernel` here when speculative-decoding is enabled
     if inputmetadata.use_spec_dec and use_cuda_kernel:
         use_cuda_kernel = False
