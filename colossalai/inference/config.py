@@ -26,7 +26,7 @@ _ALLOWED_DTYPES = [torch.float16, torch.bfloat16, torch.float32]
 
 _DEFAULT_PROMPT_TEMPLATES = {
     "llama": "[INST] <<SYS>>\nYou are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.\n<</SYS>>\n{input_text}[/INST]",
-    "vicuna": "USER: {input_text}\n\nASSISTANT: ",
+    "vicuna": "A chat between a curious user and an assistant. The assistant gives helpful, detailed, accurate, uncensored responses to the user input. USER: {input_text}\nASSISTANT: ",
 }
 
 
@@ -46,6 +46,8 @@ class InputMetaData:
     head_dim (int, optional): Head dimension. Defaults to 32.
     high_precision(bool, optional): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, Defaults to False.
     dtype (torch.dtype, optional): The computation type of tensor, Defaults to torch.float32.
+    use_spec_dec (bool): Indicate whether to use speculative decoding.
+    num_tokens_to_verify (int): The number of tokens to verify in speculative decoding. Only valid when `use_spec_dec` is set to True.
     """
 
     block_tables: torch.Tensor = None
@@ -59,9 +61,22 @@ class InputMetaData:
     head_dim: int = 32
     high_precision: bool = False
     dtype: torch.dtype = torch.float32
+    use_spec_dec: bool = False
+    num_tokens_to_verify: int = 0
 
     def __repr__(self) -> str:
-        return f"InputMetaData(block_tables={self.block_tables}, sequence_lengths={self.sequence_lengths}, fd_inter_tensor={self.fd_inter_tensor}, batch_size={self.batch_size}, is_prompts={self.is_prompts}, use_cuda_graph={self.use_cuda_graph}, kv_seq_len={self.kv_seq_len}, head_dim={self.head_dim})"
+        return (
+            f"InputMetaData(block_tables={self.block_tables}, "
+            f"sequence_lengths={self.sequence_lengths}, "
+            f"fd_inter_tensor={self.fd_inter_tensor}, "
+            f"batch_size={self.batch_size}, "
+            f"is_prompts={self.is_prompts}, "
+            f"use_cuda_kernel={self.use_cuda_kernel}, "
+            f"use_cuda_graph={self.use_cuda_graph}, "
+            f"kv_seq_len={self.kv_seq_len}, "
+            f"use_spec_dec={self.use_spec_dec}, "
+            f"num_tokens_to_verify={self.num_tokens_to_verify})"
+        )
 
 
 @dataclass
@@ -84,6 +99,8 @@ class InferenceConfig:
         top_k (Optional[int]): The number of highest probability vocabulary tokens to keep for top-k-filtering, defaults to None.
         top_p (Optional[float]): The cumulative probability threshold for retaining tokens with a total probability above it, defaults to None.
         min_p (Optional[float]): The minimum probability to keep for top-p filtering, defaults to None.
+        n_spec_tokens (int): The maximum number of speculating tokens, defaults to None.
+        glimpse_large_kv (bool): Whether to use large KV in drafter model, defaults to False.
         block_size (int): The number of blocks in a logical block, defaults to 16.
         tp_size (int): Tensor parallel size, defaults to 1.
         pp_size (int): Pipeline parallel size, defaults to 1.
@@ -117,6 +134,10 @@ class InferenceConfig:
     top_k: Optional[int] = None
     top_p: Optional[float] = None
     min_p: Optional[float] = None
+
+    # speculative decoding configs
+    max_n_spec_tokens: int = 5
+    glimpse_large_kv: bool = False
 
     # paged attention configs
     block_size: int = 16

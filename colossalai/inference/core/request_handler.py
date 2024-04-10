@@ -134,8 +134,12 @@ class RequestHandler:
         if fd_inter_tensor._tensors_initialized:
             fd_inter_tensor._reset()
 
+        # For Spec-Dec, process the speculated tokens plus the token in the last step for each seq
+        max_n_tokens = self.max_batch_size
+        max_n_tokens *= self.inference_config.max_n_spec_tokens + 1
+
         fd_inter_tensor.initialize(
-            max_batch_size=self.max_batch_size,
+            max_batch_size=max_n_tokens,
             num_attn_heads=model_config.num_attention_heads,
             kv_max_split_num=kv_max_split_num,
             head_dim=head_dim,
@@ -177,6 +181,14 @@ class RequestHandler:
     def get_kvcache(self):
         return self.cache_manager.get_kv_cache()
 
+    def set_spec_dec_mode(self, n_spec_tokens: int):
+        self.prefill_bb.set_use_spec_dec(n_spec_tokens)
+        self.running_bb.set_use_spec_dec(n_spec_tokens)
+
+    def unset_spec_dec_mode(self):
+        self.prefill_bb.reset_use_spec_dec()
+        self.running_bb.reset_use_spec_dec()
+
     def schedule(self):
         """
         The main logic of request handler.
@@ -204,7 +216,11 @@ class RequestHandler:
                         lst.remove(seq)
 
         if self.running_list.ready_for_prefill():
-            num_seqs_to_add = min(self.running_list.prefill_seq_num, self.running_bb.available_batch_size)
+            num_seqs_to_add = min(self.running_list.prefill_seq_num, self.prefill_bb.available_batch_size)
+            # overwrite the number of sequences to add to 1 if use_spec_dec is enabled
+            # TODO (zhaoyuanheng): support speculative decoding for batch size > 1
+            if self.prefill_bb.use_spec_dec:
+                num_seqs_to_add = 1
 
             for seq in self.running_list.prefill[:num_seqs_to_add]:
                 seq.mark_running()
@@ -229,6 +245,13 @@ class RequestHandler:
                     # the recycled sequences are handled with highest priority.
 
         return self.running_bb
+
+    def allocate_batch_spec_dec(self, batch: BatchBucket, n: int):
+        assert batch.use_spec_dec
+        if n > 0:
+            self.cache_manager.allocate_n_tokens_from_block_tables(
+                batch.block_tables, batch.seq_lengths, batch.current_batch_size, n=n
+            )
 
     def add_sequence(self, req: Sequence):
         """
@@ -282,12 +305,20 @@ class RequestHandler:
 
         return sample_tokens
 
-    def mark_finished(self, sequence: Sequence, generation_config: GenerationConfig):
+    def update_seq_finished(self, sequence: Sequence, generation_config: GenerationConfig):
         if (
-            sequence.output_token_id[-1] == generation_config.eos_id
-            or sequence.output_len >= generation_config.max_output_len
+            sequence.output_token_id[-1] == generation_config.eos_token_id
+            or sequence.output_len >= generation_config.max_length
         ):
             sequence.mark_finished()
+
+    def update_batch_finished(self, batch: BatchBucket, generation_config: GenerationConfig):
+        for seq in batch.seqs_li:
+            if (
+                seq.output_token_id[-1] == generation_config.eos_token_id
+                or seq.output_len >= generation_config.max_length
+            ):
+                seq.mark_finished()
 
     def check_unfinished_seqs(self) -> bool:
         return self._has_waiting() or not self.running_list.is_empty()
@@ -309,9 +340,20 @@ class RequestHandler:
 
         # sample the next tokens
         sample_tokens = self._sample(probs, logprobs, generation_config)
+        return sample_tokens
+
+    def append_next_tokens(self, sample_tokens: torch.Tensor):
+        assert sample_tokens.dim() == 1
+        n_elements = sample_tokens.size(0)
         if not self.prefill_bb.is_empty:
+            assert (
+                self.prefill_bb.current_batch_size == n_elements
+            ), f"Incompatible size: {n_elements} tokens to append while prefill batch size {self.prefill_bb.current_batch_size}"
             self.prefill_bb.append_batch_tokens(sample_tokens)
         else:
+            assert (
+                self.running_bb.current_batch_size == n_elements
+            ), f"Incompatible size: {n_elements} tokens to append while running batch size {self.running_bb.current_batch_size}"
             self.running_bb.append_batch_tokens(sample_tokens)
 
     def update(self):
