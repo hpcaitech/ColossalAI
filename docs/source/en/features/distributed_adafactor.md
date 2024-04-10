@@ -140,7 +140,6 @@ tp_model, dist_optim, criterion, _, _ = booster.boost(tp_model, dist_optim, crit
 |           AdaFactor             |     50     |     bfloat16    |          2           | [4096 , 4096] |        0.72      |           -         |          -        |
 |    DistAdaFactor(Col Parallel)  |     50     |     bfloat16    |          2           | [4096 , 4096] |        0.55      |         1.31        |        26.11      |
 |    DistAdaFactor(Row Parallel)  |     50     |     bfloat16    |          2           | [4096 , 4096] |        0.67      |         1.07        |        21.86      |
-| :-----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :--------------: | :-----------------: | :---------------: |
 |           AdaFactor             |     50     |     float32     |          4           | [4096 , 4096] |        0.57      |           -         |          -        |
 |    DistAdaFactor(Col Parallel)  |     50     |     float32     |          4           | [4096 , 4096] |        0.38      |         1.48        |        53.99      |
 |    DistAdaFactor(Col Parallel)  |     50     |     float32     |          4           | [4096 , 4096] |        0.60      |         0.95        |        16.53      |
@@ -150,7 +149,6 @@ tp_model, dist_optim, criterion, _, _ = booster.boost(tp_model, dist_optim, crit
 |           AdaFactor             |     50     |     bfloat16    |          4           | [4096 , 4096] |        0.72      |           -         |          -        |
 |    DistAdaFactor(Col Parallel)  |     50     |     bfloat16    |          4           | [4096 , 4096] |        0.56      |         1.29        |        25.63      |
 |    DistAdaFactor(Row Parallel)  |     50     |     bfloat16    |          4           | [4096 , 4096] |        0.71      |         1.09        |        21.52      |
-| :-----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :--------------: | :-----------------: | :---------------: |
 |           AdaFactor             |     50     |     float32     |          8           | [4096 , 4096] |        0.56      |           -         |          -        |
 |    DistAdaFactor(Col Parallel)  |     50     |     float32     |          8           | [4096 , 4096] |        0.38      |         1.50        |        54.51      |
 |    DistAdaFactor(Col Parallel)  |     50     |     float32     |          8           | [4096 , 4096] |        0.91      |         0.67        |        15.68      |
