@@ -120,8 +120,6 @@ class Adafactor(Optimizer):
                 # grad shape is same as weigh / bias
                 """
                 grad = p.grad
-                if grad.dtype in {torch.float16, torch.bfloat16}:
-                    grad = grad.float()
                 if grad.is_sparse:
                     raise RuntimeError("Adafactor does not support sparse gradients.")
 
@@ -168,10 +166,6 @@ class Adafactor(Optimizer):
                     else:
                         state["exp_avg_sq"] = state["exp_avg_sq"].to(grad)
 
-                p_data_fp32 = p
-                if p.dtype in {torch.float16, torch.bfloat16}:
-                    p_data_fp32 = p_data_fp32.float()
-
                 state["step"] += 1
                 # state["RMS"] = self._rms(p_data_fp32)
                 lr = self._get_lr(group, state)
@@ -201,9 +195,8 @@ class Adafactor(Optimizer):
                     update = exp_avg
 
                 if group["weight_decay"] != 0:
-                    p_data_fp32.add_(p_data_fp32, alpha=(-group["weight_decay"] * lr))
-                p_data_fp32.add_(-update)
-                if p.dtype in {torch.float16, torch.bfloat16}:
-                    p.copy_(p_data_fp32)
+                    p.add_(p, alpha=(-group["weight_decay"] * lr))
+                p.add_(-update)
+
 
         return loss

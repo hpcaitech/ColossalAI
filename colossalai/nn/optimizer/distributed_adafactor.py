@@ -49,11 +49,13 @@ class DistributedAdaFactor(DistributedOptim):
         self.data_parallel_size = 1
         self.data_parallel_group = None
         self.shard_to_param = None  # Dict{id:shape}, sample {id(param): torch.tensor}
-        self.shard_spec = None
-        self.grad_shape = None
-        self.factored = None  # bool
-        self.use_first_moment = None  # bool
         self.use_zero = True
+        
+        self.param_is_dtensor_dict = {} # {id(p): True/False}
+        self.grad_shape_dict = {} # {id(p): master param shape}
+        self.factored_dict = {} # {id(p): True/False}
+        self.use_first_moment_dict = {}  # {id(p): True/False}
+        self.shard_spec_dict = {}  # {id(p): ShardSpec}
         super().__init__(params, defaults)
         
 
@@ -84,8 +86,21 @@ class DistributedAdaFactor(DistributedOptim):
         self.use_zero = use_zero
         
         self.shard_to_param = shard_to_param if shard_to_param is not None else {}
-        
-
+        # grad is None, cause we dont setup now
+        for group in self.param_groups:
+            for p in group["params"]:
+                self.param_is_dtensor_dict[id(p)] = is_distributed_tensor(self.shard_to_param.get(id(p)))
+                if self.param_is_dtensor_dict[id(p)]:
+                    self.grad_shape_dict[id(p)] = self.shard_to_param.get(id(p)).shape 
+                else:
+                    self.grad_shape_dict[id(p)] = p.shape
+                self.factored_dict[id(p)], self.use_first_moment_dict[id(p)] = self._get_options(group, self.grad_shape_dict[id(p)])
+                # if self.factored_dict[id(p)]:
+                if self.param_is_dtensor_dict[id(p)]:
+                    self.shard_spec_dict[id(p)] = get_sharding_spec(self.shard_to_param.get(id(p)))
+                else:
+                    self.shard_spec_dict[id(p)] = None
+                
     @staticmethod
     def _get_lr(param_group, param_state):
         rel_step_sz = param_group["lr"]
@@ -164,48 +179,47 @@ class DistributedAdaFactor(DistributedOptim):
                     raise RuntimeError("Adafactor does not support sparse gradients.")
                 
                 state = self.state[p]
-                self.grad_shape = grad.shape  # 1 dim shape
-                param_is_dtensor = is_distributed_tensor(self.shard_to_param.get(id(p)))
+                grad_shape = self.grad_shape_dict[id(p)]
+                param_is_dtensor = self.param_is_dtensor_dict[id(p)]
                 if param_is_dtensor:
-                    self.grad_shape = self.shard_to_param.get(id(p)).shape  # tp shape (2 dim)
-                self.factored, self.use_first_moment = self._get_options(group, self.grad_shape)
-                
+                    grad_shape = self.shard_to_param.get(id(p)).shape  # tp shape (2 dim)
+                factored, use_first_moment = self.factored_dict[id(p)], self.use_first_moment_dict[id(p)]
+                shard_spec = self.shard_spec_dict[id(p)]
                 if len(state) == 0:
                     state["step"] = 0
-                    if self.use_first_moment:
+                    if use_first_moment:
                         # Exponential moving average of gradient values
                         state["exp_avg"] = torch.zeros_like(p)
-                    if self.factored:
-                        self.shard_spec = get_sharding_spec(self.shard_to_param.get(id(p)))
-                        if self.shard_spec.sharding_sequence[0] == "R":  # Col Parallel
+                    if factored and param_is_dtensor:
+                        if shard_spec.sharding_sequence[0] == "R":  # Col Parallel
                             state["exp_avg_sq_row"] = torch.zeros(
-                                self.grad_shape[0] // self.data_parallel_size, device=p.device, dtype=p.dtype
+                                grad_shape[0] // self.data_parallel_size, device=p.device, dtype=p.dtype
                             )  # [H/dp]
                             state["exp_avg_sq_col"] = torch.zeros(
-                                self.grad_shape[1], device=p.device, dtype=p.dtype
+                                grad_shape[1], device=p.device, dtype=p.dtype
                             )  # [W/TP]
 
-                        if self.shard_spec.sharding_sequence[-1] == "R":  # Row Parallel
+                        if shard_spec.sharding_sequence[-1] == "R":  # Row Parallel
                             # Row indivisible shape situation
-                            if self.grad_shape[0] % self.data_parallel_size != 0:
+                            if grad_shape[0] % self.data_parallel_size != 0:
                                 state["exp_avg_sq_row"] = torch.zeros(
-                                self.grad_shape[0], device=p.device, dtype=p.dtype
+                                grad_shape[0], device=p.device, dtype=p.dtype
                                 )  # [H/dp/Tp]
                             else:
                                 state["exp_avg_sq_row"] = torch.zeros(
-                                self.grad_shape[0] // self.data_parallel_size, device=p.device, dtype=p.dtype
+                                grad_shape[0] // self.data_parallel_size, device=p.device, dtype=p.dtype
                                 )  # [H/dp/Tp]
                             
                             state["exp_avg_sq_col"] = torch.zeros(
-                                self.grad_shape[1], device=p.device, dtype=p.dtype
+                                grad_shape[1], device=p.device, dtype=p.dtype
                             )  # [W]
                     else:
                         state["exp_avg_sq"] = torch.zeros_like(p)
                     state["RMS"] = 0
                 else:
-                    if self.use_first_moment:
+                    if use_first_moment:
                         state["exp_avg"] = state["exp_avg"].to(grad)
-                    if self.factored:
+                    if factored:
                         state["exp_avg_sq_row"] = state["exp_avg_sq_row"].to(grad)
                         state["exp_avg_sq_col"] = state["exp_avg_sq_col"].to(grad)
                     else:
@@ -216,15 +230,14 @@ class DistributedAdaFactor(DistributedOptim):
                 beta2t = 1.0 - math.pow(state["step"], group["decay_rate"])
                 update = (grad**2) + group["eps"][0]
 
-                if self.factored:
+                if factored and param_is_dtensor:
                     # ==============================
                     # First Dim is R, Last Dim is S{} means split dim -1  --->
                     # Coloum Parallel ---> sq_row need Do (col) Reduce
                     # ==============================
-                    self.shard_spec = get_sharding_spec(self.shard_to_param.get(id(p)))
-                    if self.shard_spec.sharding_sequence[0] == "R":
-                        update_reshape = update.view(-1, self.grad_shape[1])
-                        grad_reshape = grad.view(-1, self.grad_shape[1])
+                    if shard_spec.sharding_sequence[0] == "R":
+                        update_reshape = update.view(-1, grad_shape[1])
+                        grad_reshape = grad.view(-1, grad_shape[1])
                         exp_avg_sq_row = state["exp_avg_sq_row"]  # [H/dp]
                         exp_avg_sq_col = state["exp_avg_sq_col"]  # [W/tp]
                         exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
@@ -241,20 +254,20 @@ class DistributedAdaFactor(DistributedOptim):
                     # Last Dim is R, First Dim is S{} means split dim 0  --->
                     # Row Parallel ---> sq_col need Do (row) Reduce
                     # ==============================
-                    elif self.shard_spec.sharding_sequence[-1] == "R":
+                    elif shard_spec.sharding_sequence[-1] == "R":
                         # Row Residual situation
-                        if self.grad_shape[0] % self.data_parallel_size != 0:
+                        if grad_shape[0] % self.data_parallel_size != 0:
                             # gather update[flatten] along dp group then reshape to [H/tp, W]
                             update = _gather(
                                 input_=update, dim=-1, process_group=self.data_parallel_group
                             )
                             # view update to origin[tp] shape
-                            update_reshape = update.view(-1, self.grad_shape[1])
+                            update_reshape = update.view(-1, grad_shape[1])
                             # gather grad[flatten] along dp group then reshape to [H/tp, W]
                             grad = _gather(
                                 input_=grad, dim=-1, process_group=self.data_parallel_group
                             ) 
-                            grad_reshape = grad.view(-1, self.grad_shape[1])
+                            grad_reshape = grad.view(-1, grad_shape[1])
                             exp_avg_sq_row = state["exp_avg_sq_row"]  # [H/tp]
                             exp_avg_sq_col = state["exp_avg_sq_col"]  # [W]
                             exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
@@ -269,8 +282,8 @@ class DistributedAdaFactor(DistributedOptim):
                             else:
                                 update = update_reshape
                         else:
-                            update_reshape = update.view(-1, self.grad_shape[1])
-                            grad_reshape = grad.view(-1, self.grad_shape[1])
+                            update_reshape = update.view(-1, grad_shape[1])
+                            grad_reshape = grad.view(-1, grad_shape[1])
                             exp_avg_sq_row = state["exp_avg_sq_row"]  # [H/dp/tp]
                             exp_avg_sq_col = state["exp_avg_sq_col"]  # [W]
                             exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
@@ -297,7 +310,7 @@ class DistributedAdaFactor(DistributedOptim):
                 # (Line No.8) RMS
                 # update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
                 update.mul_(lr)
-                if self.use_first_moment:
+                if use_first_moment:
                     exp_avg = state["exp_avg"]
                     exp_avg.mul_(group["beta1"]).add_(update, alpha=(1 - group["beta1"]))
                     update = exp_avg

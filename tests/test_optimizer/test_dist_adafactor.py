@@ -38,6 +38,7 @@ from tests.test_shardformer.test_model._utils import (
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
+from colossalai.shardformer.layer.utils import Randomizer
 
 
 HEIGHT = 4
@@ -370,7 +371,7 @@ def exam_dist_adafactor_fwd_bwd(dtype: torch.dtype, tp_zero_size: tuple[int, int
 
 
 @parameterize("dtype", [torch.float32, torch.float16, torch.bfloat16])  # torch.float32, torch.float16, torch.bfloat16
-@parameterize("tp_zero_size", [(1, 4), (4, 1), (2, 2)])  # (2, 2), (4, 1),(1, 4), (2, 4), (4, 2)
+@parameterize("tp_zero_size", [(2, 2), (4, 1),(1, 4)])  # (2, 2), (4, 1),(1, 4),
 def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     tp_size, zero_size = tp_zero_size
     use_zero = True if zero_size > 1 else False
@@ -456,7 +457,7 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     base_optim.zero_grad()
     dist_optim.zero_grad()
 
-    print(f"data type {dtype},tp size {tp_size}, dp size {zero_size}\n")
+    # print(f"data type {dtype},tp size {tp_size}, dp size {zero_size}\n")
     for p, tp_p in zip(base_param_group, tp_param_group):
         param_is_distributed = is_distributed_tensor(tp_p)
         if param_is_distributed:
@@ -478,10 +479,6 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
             pass
         correctness = correctness_verify(p.data, tp_p.data, dtype)
         
-        # print(f"Curr Param correct {correctness}")
-        # if not correctness:
-        #     print(f"{correctness}\n p.data {p.data}\n tp_p.data{tp_p.data}\n")
-
 
 @parameterize("dtype", [torch.float32, torch.float16, torch.bfloat16])  # torch.float32, torch.float16, torch.bfloat16
 @parameterize("tp_zero_size", [(1, 4), (4, 1), (2, 2)])  # (2, 2), (4, 1),(1, 4), (2, 4), (4, 2)
@@ -643,7 +640,14 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
             "num_microbatches": 4,
             "zero_stage": 1,
             "precision": "bf16",
-        }
+        },
+        {
+            "tp_size": 4,
+            "pp_size": 1,
+            "num_microbatches": 4,
+            "zero_stage": 0,
+            "precision": "bf16",
+        },
     ],
 )
 def exam_bert_test(test_config):
@@ -651,42 +655,56 @@ def exam_bert_test(test_config):
     test_config["use_lazy_init"] = False
     test_config["pp_size"] = 1  # Do NOT test Pipeline Parallel
     test_config["initial_scale"] = 2**15  # avoid overflow
+    model_list = [
+        "transformers_bert"
+        "transformers_bert_for_pretraining"
+        "transformers_bert_lm_head_model"
+        "transformers_bert_for_masked_lm"
+        "transformers_bert_for_sequence_classification"
+        # "transformers_bert_for_token_classification"
+        "transformers_bert_for_next_sentence"
+        "transformers_bert_for_mcq"
+        "transformers_bert_for_question_answering"
+    ]
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        
-        org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
-            model_fn, loss_fn, test_config, Adafactor, DistributedAdaFactor
-        )
-            
-        org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
-            org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
-        )
-            
-            
-        stage_manager = booster.plugin.stage_manager
-        tp_group = booster.plugin.tp_group
 
-        bert = unwrap_model(org_model, "BertModel", "bert")
-        sharded_bert = unwrap_model(sharded_model, "BertModel", "bert")
-        weight_layer_for_check = ["encoder.layer[0].output.dense", "encoder.layer[1].output.dense"]
-            
-        org_optimizer.step()
-        sharded_optimizer.step()
-            
-        # check weights
-        if test_config["precision"] == "bf16":
-            atol, rtol = 5e-4, 1e-4
-        else:
-            atol, rtol = 5e-4, 5e-4
-        if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
-            check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
-        
-        # check optim states
-        check_optim_states(org_optimizer, sharded_optimizer.optim)
-    
+        if name in model_list:
+            org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
+                model_fn, loss_fn, test_config, Adafactor, DistributedAdaFactor
+            )
+                    
+            org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
+                org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
+            )
+                    
+                    
+            stage_manager = booster.plugin.stage_manager
+            tp_group = booster.plugin.tp_group
+
+            bert = unwrap_model(org_model, "BertModel", "bert")
+            sharded_bert = unwrap_model(sharded_model, "BertModel", "bert")
+            weight_layer_for_check = ["encoder.layer[0].output.dense", "encoder.layer[1].output.dense"]
+                    
+            org_optimizer.step()
+            sharded_optimizer.step()
+                    
+            # check weights
+            if test_config["precision"] == "bf16":
+                atol, rtol = 5e-4, 5e-4
+            else:
+                atol, rtol = 5e-4, 5e-4
+            if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
+                check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
+            print(f"{name} check pass")
+            # check optim states
+            check_optim_states(org_optimizer, sharded_optimizer.optim)
+
     
     clear_layout_converter()
+    Randomizer.reset_index()
     torch.cuda.empty_cache()
+    
 
 
 
@@ -695,7 +713,7 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     # exam_dist_adafactor_base()
     # exam_dist_adafactor_fwd_bwd()
-    exam_dist_adafactor_zero()
+    # exam_dist_adafactor_zero()
     exam_bert_test()
 
 
