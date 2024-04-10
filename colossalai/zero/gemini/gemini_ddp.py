@@ -518,12 +518,15 @@ class GeminiDDP(ModelWrapper):
             p_mapping = param_to_save_data
         for name, param in self.name2param.items():
             if param is not None:
-                origin_shape = self.params_info["name2shape"][prefix + name]
                 if is_ddp_ignored(param):
                     # deal with ddp ignored parameters
                     destination[prefix + name] = param if keep_vars else param.detach()
                 else:
-                    destination[prefix + name] = p_mapping[param][: origin_shape[0], ...]
+                    if self.params_info is not None:
+                        origin_shape = self.params_info["name2shape"][name]
+                        destination[prefix + name] = p_mapping[param][: origin_shape[0], ...]
+                    else:
+                        destination[prefix + name] = p_mapping[param]
         del p_mapping
         del param_to_save_data
 
@@ -890,9 +893,11 @@ class GeminiDDP(ModelWrapper):
                         chunk = self.chunk_manager.get_chunk(param_to_save)
                         gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0))
                     gathered_param = gathered_param_buffer.pop(param_to_save)
-                print('self.params_info["name2shape"]', self.params_info["name2shape"])
-                origin_shape = self.params_info["name2shape"][prefix + name]
-                gathered_param = gathered_param[: origin_shape[0], ...]
+
+                if self.params_info is not None:
+                    origin_shape = self.params_info["name2shape"][name]
+                    gathered_param = gathered_param[: origin_shape[0], ...]
+
                 block, block_size = sharder.append_param(prefix + name, gathered_param)
                 if block is not None:
                     yield block, block_size

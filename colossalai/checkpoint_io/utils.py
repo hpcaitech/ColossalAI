@@ -108,14 +108,14 @@ def search_tp_partition_dim(current_shape: torch.Size, original_shape: torch.Siz
     """
     partition_dim = None
     for dim, length in enumerate(original_shape):
-        if length != current_shape[dim]:
+        if length > current_shape[dim]:
             partition_dim = dim
             break
-    # if partition_dim is not None:
-    #     assert (
-    #         original_shape[partition_dim] == tp_size * current_shape[partition_dim]
-    #     ), f"The parameter isn't evenly distributed among tensor parallel group: \
-    #             shape before sharding {original_shape}, shape after sharding {current_shape}"
+    if partition_dim is not None:
+        assert (
+            original_shape[partition_dim] == tp_size * current_shape[partition_dim]
+        ), f"The parameter isn't evenly distributed among tensor parallel group: \
+                shape before sharding {original_shape}, shape after sharding {current_shape}"
 
     return partition_dim
 

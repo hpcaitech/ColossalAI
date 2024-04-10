@@ -52,11 +52,12 @@ class BertPolicy(Policy):
 
         policy = {}
 
+        embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
-            col_nn.VocabParallelEmbedding1D
+            embedding_cls = col_nn.VocabParallelEmbedding1D
         else:
             if self.tie_weight:
-                col_nn.PaddingEmbedding
+                embedding_cls = col_nn.PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
             norm_cls = col_nn.FusedLayerNorm
@@ -158,6 +159,18 @@ class BertPolicy(Policy):
                 description={"forward": bert_sequence_parallel_forward_fn(self.shard_config)},
                 policy=policy,
                 target_key=BertModel,
+            )
+
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="word_embeddings",
+                        target_module=embedding_cls,
+                    )
+                ],
+                policy=policy,
+                target_key=BertEmbeddings,
             )
 
         # optimization configuration

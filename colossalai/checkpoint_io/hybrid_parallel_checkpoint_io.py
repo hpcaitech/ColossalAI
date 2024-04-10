@@ -234,15 +234,15 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         # Devices along the same dp_group share the same copies of model.
         # So only let the device with dp_rank == 0 save the model.
-        # if self.dp_rank != 0:
-        #     return
+        if self.dp_rank != 0:
+            return
 
         # Then collect the sharded parameters & buffers along tp_group.
         # Only devices with tp_rank == 0 are responsible for model saving.
         state_dict_shard = HybridParallelCheckpointIO._model_sharder(model, size_per_shard=size_per_shard)
         weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint)
-        control_saving = self.tp_rank == 0 and self.dp_rank == 0
+        control_saving = self.tp_rank == 0
 
         if self.pp_size == 1:
             # When pipeline is not used, save the model shards as in general checkpointIO
@@ -288,7 +288,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 use_safetensors=use_safetensors,
                 use_pp_format=True,
             )
-            dist.barrier(self.pp_group)
+
             if control_saving:
                 assert (
                     self.dp_rank == 0 and self.tp_rank == 0
@@ -297,6 +297,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 index_file.write_index_file(save_index_file)
             else:
                 return
+
+            dist.barrier(self.pp_group)
 
             # The global master rank integrates the index files and clean the folder.
             if self.pp_rank == 0:
@@ -682,14 +684,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         else:
             # When pipeline is used, first collect state_dict from every pipeline stage, then save the complete state_dict.
             state_dict_list = [None for _ in range(self.pp_size)]
-            print(
-                "barrier state dicts",
-                (
-                    torch.distributed.get_rank(self.dp_group),
-                    torch.distributed.get_rank(self.pp_group),
-                    torch.distributed.get_rank(self.tp_group),
-                ),
-            )
             dist.barrier(self.pp_group)
             dist.all_gather_object(state_dict_list, state_dict, self.pp_group)
 
@@ -698,14 +692,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 complete_state_dict = dict()
                 for _state_dict in state_dict_list:
                     complete_state_dict.update(_state_dict)
-                print(
-                    "before save_state_dict",
-                    (
-                        torch.distributed.get_rank(self.dp_group),
-                        torch.distributed.get_rank(self.pp_group),
-                        torch.distributed.get_rank(self.tp_group),
-                    ),
-                )
                 save_state_dict(complete_state_dict, checkpoint, use_safetensors)
 
     def load_unsharded_model(self, model: ModelWrapper, checkpoint: str, strict: bool = False):

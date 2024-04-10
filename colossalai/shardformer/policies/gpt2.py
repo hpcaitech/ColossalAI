@@ -10,6 +10,7 @@ from ..modeling.gpt2 import (
     GPT2PipelineForwards,
     get_gpt2_flash_attention_forward,
     get_gpt_model_forward_for_flash_attn,
+    get_lm_forward_with_dist_cross_entropy,
     gpt2_sequence_parallel_forward_fn,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -315,6 +316,10 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
                     ],
                 )
             }
+            if self.shard_config.parallel_output:
+                addon_module[GPT2LMHeadModel].method_replacement = {
+                    "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
+                }
         else:
             addon_module = {
                 GPT2LMHeadModel: ModulePolicyDescription(

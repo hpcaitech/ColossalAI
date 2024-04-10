@@ -248,11 +248,11 @@ def test_bert():
     spawn(check_bert, 4)
 
 
-# @pytest.mark.largedist
-# @rerun_if_address_is_in_use()
-# @clear_cache_before_run()
-# def test_bert_3d():
-#     spawn(check_bert_3d, 8)
+@pytest.mark.largedist
+@rerun_if_address_is_in_use()
+@clear_cache_before_run()
+def test_bert_3d():
+    spawn(check_bert_3d, 8)
 
 
 if __name__ == "__main__":

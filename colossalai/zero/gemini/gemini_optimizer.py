@@ -462,7 +462,6 @@ class GeminiOptimizer(OptimizerWrapper):
         device_mesh = get_device_mesh(param) if is_dtensor else None
         global_shape = self.params_info["id2shape"][param_id]
         origin_shape = global_shape
-        print("global_shape", global_shape)
 
         # If the chunk is kept gathered,
         # the parameters are treated the same as that of those in strict DDP during training.
