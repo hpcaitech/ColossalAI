@@ -162,11 +162,11 @@ def run_dist_lamb_basic(
     )
     optim.setup_distributed(tp_group)
 
-    rtol, atol = 8e-5, 8e-5
+    rtol, atol = 8e-7, 8e-7
     if p_dtype is torch.float16 or g_dtype is torch.float16:
-        rtol, atol = 2e-4, 2e-4
+        rtol, atol = 1e-6, 1e-6
     if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
-        rtol, atol = 4e-4, 4e-4
+        rtol, atol = 2e-6, 2e-6
 
     for i in range(_N_STEP):
         seed_all(_SEED + i)  # NOTE: having only one manual_seed above doesn't work?
@@ -241,23 +241,15 @@ def run_dist_lamb_fwd_bwd(
             verbose=True,
         )
         shard_to_param = optim._param_store.master_to_working_param
-        torch_optim = LowLevelZeroOptimizer(
-            torch_optim,
-            overlap_communication=True,
-            initial_scale=128,
-            partition_grad=True,
-            dp_process_group=dp_group,
-            verbose=True,
-        )
-        optim.optim.setup_distributed(tp_group, dp_group, shard_to_param)
+        optim.optim.setup_distributed(tp_group, dp_group, shard_to_param, is_zero=True)
     else:
         optim.setup_distributed(tp_group)
 
-    rtol, atol = 3e-5, 3e-5
+    rtol, atol = 8e-7, 8e-7
     if p_dtype is torch.float16 or g_dtype is torch.float16:
-        rtol, atol = 1e-4, 1e-4
+        rtol, atol = 1e-6, 1e-6
     if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
-        rtol, atol = 2e-4, 2e-4
+        rtol, atol = 2e-6, 2e-6
 
     seed_all(_SEED)  # NOTE: having only one manual_seed above doesn't work?
     x = data_gen()
@@ -275,13 +267,14 @@ def run_dist_lamb_fwd_bwd(
 
     if zero_size > 1:
         optim.backward(out_tp.sum())
-        torch_optim.backward(out.sum())
+        out.sum().backward()
     else:
         out_tp.sum().backward()
         out.sum().backward()
 
     torch_optim.step()
     optim.step()
+    dist.barrier()
     torch_optim.zero_grad()
     optim.zero_grad()
     try:
