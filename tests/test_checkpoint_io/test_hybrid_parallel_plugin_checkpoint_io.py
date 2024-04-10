@@ -11,7 +11,6 @@ from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import (
-    assert_close_loose,
     check_state_dict_equal,
     clear_cache_before_run,
     parameterize,
@@ -34,16 +33,25 @@ if Version(torch.__version__) < Version("2.0.0"):
 else:
     TEST_CONFIGS = [
         # TODO(ver217): other configs lead to hang
+        {
+            "tp_size": 4,
+            "pp_size": 1,
+            "precision": "fp32",
+        },
+        {"tp_size": 2, "pp_size": 2, "num_microbatches": 4, "precision": "fp16", "initial_scale": 1},
+        {"tp_size": 2, "pp_size": 1, "zero_stage": 2, "precision": "fp16", "initial_scale": 1},
         {"tp_size": 1, "pp_size": 2, "num_microbatches": 4, "zero_stage": 1, "precision": "fp16", "initial_scale": 1},
     ]
 
 
 @parameterize("shard", [True, False])
-@parameterize("model_name", ["transformers_llama_for_casual_lm"])
+# "transformers_llama_for_casual_lm"
+@parameterize("model_name", ["transformers_gpt_lm"])
 @parameterize("size_per_shard", [32])
 @parameterize("test_config", TEST_CONFIGS)
 @clear_cache_before_run()
 def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_config: dict):
+    print("test_config", test_config)
     (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) = next(
         iter(model_zoo.get_sub_registry(model_name).values())
     )
@@ -83,11 +91,15 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
         optimizer.backward(loss)
 
     optimizer.step()
-    for group in optimizer.param_groups:
-        group["lr"] = 0.1
+    # for group in optimizer.param_groups:
+    #     group["lr"] = 0.1
     with shared_tempdir() as tempdir:
-        model_ckpt_path = f"{tempdir}/model"
-        optimizer_ckpt_path = f"{tempdir}/optimizer"
+        tempdir = "/home/jiangmingyan/workspace/ColossalAI/tests/test_checkpoint_io/ckp_tmp/"
+        model_ckpt_path = f"{tempdir}/model/"
+        optimizer_ckpt_path = f"{tempdir}/optimizer/"
+        if not shard:
+            model_ckpt_path = model_ckpt_path + "model.pt"
+            optimizer_ckpt_path = optimizer_ckpt_path + "optimizer.pt"
         booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
         dist.barrier()
@@ -103,15 +115,17 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
         dist.barrier()
 
     # Check whether the loaded model & optimizer works smoothly.
+    # optimizer.zero_grad()
     model.train()
     new_model.train()
     data_for_shard = data_gen_fn()
     data_for_origin = data_gen_fn()
     if booster.plugin.stage_manager is not None:
-        booster.execute_pipeline(
+        output = booster.execute_pipeline(
             _preprocess_data(data_for_shard), model, _criterion, optimizer, return_loss=True, return_outputs=False
         )
-        booster.execute_pipeline(
+        print("old_model_loss", output["loss"])
+        new_output = booster.execute_pipeline(
             _preprocess_data(data_for_origin),
             new_model,
             _criterion,
@@ -119,18 +133,33 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
             return_loss=True,
             return_outputs=False,
         )
+        print("new_model_loss", new_output["loss"])
     else:
         old_model_loss = criterion(model(**_preprocess_data(data_for_shard)))
+        print("old_model_loss", old_model_loss)
         optimizer.backward(old_model_loss)
         new_model_loss = criterion(new_model(**_preprocess_data(data_for_origin)))
+        print("new_model_loss", new_model_loss)
         new_optimizer.backward(new_model_loss)
 
+    check_state_dict_equal(optimizer.unwrap().state_dict(), new_optimizer.unwrap().state_dict(), False)
+    print("weights are identical")
+    check_state_dict_equal(model.unwrap().state_dict(), new_model.unwrap().state_dict(), False)
+    print("optimizer states are identical")
     optimizer.step()
     new_optimizer.step()
 
     # Check updated weights.
     for p1, p2 in zip(model.unwrap().parameters(), new_model.unwrap().parameters()):
-        assert_close_loose(p1, p2, atol=5e-3, rtol=5e-3)
+        try:
+            # assert_close_loose(p1, p2, atol=5e-3, rtol=5e-3)
+            from torch.testing import assert_close
+
+            assert_close(p1, p2, atol=5e-3, rtol=5e-3)
+        except Exception as e:
+            if dist.get_rank() == 0:
+                print(p1.shape, p2.shape)
+            raise e
 
     dist.barrier()
     Randomizer.reset_index()
@@ -145,7 +174,7 @@ def run_dist(rank, world_size, port):
 
 # TODO to fix resized embedding checkpoint
 # @pytest.mark.dist
-@pytest.mark.skip(reason="to fix resized embedding checkpoint")
+# @pytest.mark.skip(reason="to fix resized embedding checkpoint")
 @pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
 def test_hybrid_ckpIO(world_size):

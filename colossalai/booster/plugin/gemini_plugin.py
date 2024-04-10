@@ -41,13 +41,13 @@ PRECISION_STR_TO_DTYPE = {"fp16": torch.half, "bf16": torch.bfloat16}
 ZERO_AXIS, DP_AXIS, TP_AXIS = 0, 1, 2
 
 
-def get_param_info(optim: Optimizer):
+def get_param_info(model: nn.Module, optim: Optimizer):
     # Get a backup of necessary information of parameters for future use, which includes:
     # 1. A mapping from integer param_id to param32 shape.
 
     if optim is None:
         return {}
-    param_info = {"id2shape": {}}
+    param_info = {"id2shape": {}, "name2shape": {}}
     start_index = 0
     for group in optim.param_groups:
         for param_id, param in enumerate(group["params"], start_index):
@@ -55,6 +55,10 @@ def get_param_info(optim: Optimizer):
             param_info["id2shape"][param_id] = original_shape
 
         start_index += len(group["params"])
+    for name, param in model.named_parameters():
+        original_shape = param.shape if isinstance(param, torch.Tensor) else None
+        param_info["name2shape"][name] = original_shape
+        print("original_shape", original_shape)
 
     return param_info
 
@@ -527,7 +531,7 @@ class GeminiPlugin(DPPluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
-        optimizer_params_info = get_param_info(optimizer)
+        params_info = get_param_info(model, optimizer)
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
             # FIXME(ver217): gemini does not support sync bn
@@ -549,6 +553,7 @@ class GeminiPlugin(DPPluginBase):
                 zero_group=self.zero_group,
                 extra_dp_group=self.extra_dp_group,
                 verbose=self.verbose,
+                params_info=params_info,
             )
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
@@ -558,7 +563,7 @@ class GeminiPlugin(DPPluginBase):
                 **self.zero_optim_config,
                 **self.optim_kwargs,
                 tp_group=self.tp_group,
-                optimizer_params_info=optimizer_params_info,
+                params_info=params_info,
                 verbose=self.verbose,
             )
 

@@ -4,7 +4,7 @@ import os
 from functools import reduce
 from pathlib import Path
 from shutil import rmtree
-from typing import Dict, Iterator, Optional, OrderedDict, Tuple
+from typing import Dict, Iterator, Optional, OrderedDict, Set, Tuple
 
 import torch
 import torch.distributed as dist
@@ -77,6 +77,40 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         self.coordinator = DistCoordinator()
 
     @staticmethod
+    def _named_modules(
+        module: nn.Module, memo: Optional[Set[nn.Module]] = None, prefix: str = "", remove_duplicate: bool = True
+    ):
+        r"""Returns an iterator over all leaf modules in the network, yielding
+        both the name of the module as well as the module itself.
+
+        Args:
+            memo: a memo to store the set of modules already added to the result
+            prefix: a prefix that will be added to the name of the module
+            remove_duplicate: whether to remove the duplicated module instances in the result
+                or not
+
+        Yields:
+            (str, Module): Tuple of name and module
+
+        Note:
+            Duplicate modules are returned only once. In the following
+            example, ``l`` will be returned only once.
+        """
+        if memo is None:
+            memo = set()
+
+        if module not in memo:
+            sub_modules = [(name, subm) for (name, subm) in module._modules.items() if subm is not None]
+            if len(sub_modules) == 0:
+                if remove_duplicate:
+                    memo.add(module)
+                yield prefix, module
+            else:
+                for name, subm in sub_modules:
+                    submodule_prefix = prefix + ("." if prefix else "") + name
+                    yield from HybridParallelCheckpointIO._named_modules(subm, memo, submodule_prefix, remove_duplicate)
+
+    @staticmethod
     def _model_sharder(
         model: nn.Module, prefix: str = "", keep_vars: bool = False, size_per_shard: int = 1024
     ) -> Iterator[Tuple[OrderedDict, int]]:
@@ -85,14 +119,18 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         state_dict_sharder = StateDictSharder(size_per_shard)
 
         # Save parameters.
-        for name, param in model.named_parameters():
-            if param is None:
-                continue
-            # Gather tensor pieces when using tensor parallel.
-            param_ = gather_distributed_param(param, keep_vars=False)
-            block, block_size = state_dict_sharder.append_param(prefix + name, param_)
-            if block is not None:
-                yield block, block_size
+        for module_name, module in HybridParallelCheckpointIO._named_modules(model):
+            state_dicts = module.state_dict()
+            for name, param in state_dicts.items():
+                if param is None:
+                    continue
+                # Gather tensor pieces when using tensor parallel.
+                param_ = gather_distributed_param(param, keep_vars=False)
+                if module_name != "":
+                    module_name = module_name + "."
+                block, block_size = state_dict_sharder.append_param(module_name + name, param_)
+                if block is not None:
+                    yield block, block_size
 
         # Save buffers.
         for name, buf in model.named_buffers():
@@ -196,15 +234,15 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         # Devices along the same dp_group share the same copies of model.
         # So only let the device with dp_rank == 0 save the model.
-        if self.dp_rank != 0:
-            return
+        # if self.dp_rank != 0:
+        #     return
 
         # Then collect the sharded parameters & buffers along tp_group.
         # Only devices with tp_rank == 0 are responsible for model saving.
         state_dict_shard = HybridParallelCheckpointIO._model_sharder(model, size_per_shard=size_per_shard)
         weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint)
-        control_saving = self.tp_rank == 0
+        control_saving = self.tp_rank == 0 and self.dp_rank == 0
 
         if self.pp_size == 1:
             # When pipeline is not used, save the model shards as in general checkpointIO
@@ -231,7 +269,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             # When pipeline is used, each stage produces its own shard files and index files.
             # Index files belonging to each stage are saved under a temporary folder ./tmp_index_files/
             # After all the state_dicts have been saved, the master rank integrates all the index files into one final index file and deletes the tmp folder.
-
             final_index_file_path = copy.deepcopy(save_index_file)
             tmp_index_file_folder = os.path.join(checkpoint, "tmp_index_files")
             Path(tmp_index_file_folder).mkdir(parents=True, exist_ok=True)
@@ -251,6 +288,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 use_safetensors=use_safetensors,
                 use_pp_format=True,
             )
+            dist.barrier(self.pp_group)
             if control_saving:
                 assert (
                     self.dp_rank == 0 and self.tp_rank == 0
@@ -259,8 +297,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 index_file.write_index_file(save_index_file)
             else:
                 return
-
-            dist.barrier(self.pp_group)
 
             # The global master rank integrates the index files and clean the folder.
             if self.pp_rank == 0:
@@ -646,6 +682,14 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         else:
             # When pipeline is used, first collect state_dict from every pipeline stage, then save the complete state_dict.
             state_dict_list = [None for _ in range(self.pp_size)]
+            print(
+                "barrier state dicts",
+                (
+                    torch.distributed.get_rank(self.dp_group),
+                    torch.distributed.get_rank(self.pp_group),
+                    torch.distributed.get_rank(self.tp_group),
+                ),
+            )
             dist.barrier(self.pp_group)
             dist.all_gather_object(state_dict_list, state_dict, self.pp_group)
 
@@ -654,6 +698,14 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 complete_state_dict = dict()
                 for _state_dict in state_dict_list:
                     complete_state_dict.update(_state_dict)
+                print(
+                    "before save_state_dict",
+                    (
+                        torch.distributed.get_rank(self.dp_group),
+                        torch.distributed.get_rank(self.pp_group),
+                        torch.distributed.get_rank(self.tp_group),
+                    ),
+                )
                 save_state_dict(complete_state_dict, checkpoint, use_safetensors)
 
     def load_unsharded_model(self, model: ModelWrapper, checkpoint: str, strict: bool = False):
@@ -867,7 +919,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     dist.all_gather(gather_tensor, v, group=tp_group)
                     v = torch.cat(gather_tensor, dim=partition_dim)
 
-                state_[k] = v.detach().clone().to(device)
+                state_[k] = v.detach().clone()[: original_shape[0], ...].to(device)
 
         return state_
 
@@ -901,6 +953,12 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 partition_dim = search_tp_partition_dim(current_shape, original_shape, self.tp_size)
                 if partition_dim is not None:
                     slice_size = current_shape[partition_dim]
+                    # pad embedding params
+                    if partition_dim == 0:
+                        padding_size = current_shape[0] * self.tp_size - original_shape[0]
+                        if padding_size > 0:
+                            padding_data = torch.zeros_like(v[:padding_size, ...])
+                            v = torch.cat((v, padding_data), dim=0).contiguous()
                     v = v.split(slice_size, dim=partition_dim)[self.tp_rank]
 
                 # Shard state along data parallel group when using Zero.

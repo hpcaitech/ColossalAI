@@ -57,7 +57,7 @@ class ParallelModule(nn.Module, ABC):
         """
         for name, param in self._parameters.items():
             if param is not None:
-                destination[prefix + name] = gather_distributed_param(param, keep_vars=keep_vars)
+                destination[prefix + name] = gather_distributed_param(param, keep_vars=keep_vars).data
 
         for name, buf in self._buffers.items():
             if buf is not None and name not in self._non_persistent_buffers_set:
@@ -231,9 +231,9 @@ class PaddingParallelModule(ParallelModule):
             if param is not None:
                 param = gather_distributed_param(param, keep_vars=keep_vars)
                 if self.new_num_embeddings > self.old_num_embeddings:
-                    destination[prefix + name] = param[: self.old_num_embeddings, ...]
+                    destination[prefix + name] = param[: self.old_num_embeddings, ...].data
                 else:
-                    destination[prefix + name] = param
+                    destination[prefix + name] = param.data
 
         for name, buf in self._buffers.items():
             if buf is not None and name not in self._non_persistent_buffers_set:

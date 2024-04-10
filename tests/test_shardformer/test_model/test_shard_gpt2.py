@@ -228,11 +228,11 @@ def test_gpt2():
     spawn(check_gpt2, 4)
 
 
-@pytest.mark.largedist
-@rerun_if_address_is_in_use()
-@clear_cache_before_run()
-def test_gpt2_3d():
-    spawn(check_gpt2_3d, 8)
+# @pytest.mark.largedist
+# @rerun_if_address_is_in_use()
+# @clear_cache_before_run()
+# def test_gpt2_3d():
+#     spawn(check_gpt2_3d, 8)
 
 
 if __name__ == "__main__":

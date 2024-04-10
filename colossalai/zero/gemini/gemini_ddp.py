@@ -89,6 +89,7 @@ class GeminiDDP(ModelWrapper):
         memstats: Optional[MemStats] = None,  # genimi memory stats
         master_weights: bool = True,
         extra_dp_group: Optional[ProcessGroup] = None,
+        params_info: OrderedDict = None,
         verbose: bool = False,
     ) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
@@ -130,6 +131,7 @@ class GeminiDDP(ModelWrapper):
         self.mixed_precision = mixed_precision
         self.zero_group = zero_group or _get_default_group()
         self.extra_dp_group = extra_dp_group
+        self.params_info = params_info
 
         self.reuse_fp16_chunk = master_weights
         self.master_weights = master_weights
@@ -516,11 +518,12 @@ class GeminiDDP(ModelWrapper):
             p_mapping = param_to_save_data
         for name, param in self.name2param.items():
             if param is not None:
+                origin_shape = self.params_info["name2shape"][prefix + name]
                 if is_ddp_ignored(param):
                     # deal with ddp ignored parameters
                     destination[prefix + name] = param if keep_vars else param.detach()
                 else:
-                    destination[prefix + name] = p_mapping[param]
+                    destination[prefix + name] = p_mapping[param][: origin_shape[0], ...]
         del p_mapping
         del param_to_save_data
 
@@ -648,6 +651,11 @@ class GeminiDDP(ModelWrapper):
                 input_param = state_dict[state_key]
 
                 if source_device_mesh is not None and source_sharding_spec is not None:
+                    global_shape = get_global_shape(dest_tensor)
+                    padding_num = global_shape[0] - input_param.shape[0]
+                    if padding_num > 0:
+                        padding_data = torch.zeros_like(input_param[:padding_num, ...])
+                        input_param = torch.cat((input_param, padding_data), dim=0)
                     input_param = distribute_tensor(input_param, source_device_mesh, source_sharding_spec)
                 elif shard_fn is not None and gather_fn is not None:
                     input_param = distribute_tensor_with_customization(
@@ -882,7 +890,9 @@ class GeminiDDP(ModelWrapper):
                         chunk = self.chunk_manager.get_chunk(param_to_save)
                         gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0))
                     gathered_param = gathered_param_buffer.pop(param_to_save)
-
+                print('self.params_info["name2shape"]', self.params_info["name2shape"])
+                origin_shape = self.params_info["name2shape"][prefix + name]
+                gathered_param = gathered_param[: origin_shape[0], ...]
                 block, block_size = sharder.append_param(prefix + name, gathered_param)
                 if block is not None:
                     yield block, block_size
