@@ -150,7 +150,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self,
         tp_size: int,
         pp_size: int,
-        ep_size: int = 1,
+        ep_size: int,
         extra_dp_size: int = 1,
         precision: str = "fp16",
         zero_stage: int = 0,
