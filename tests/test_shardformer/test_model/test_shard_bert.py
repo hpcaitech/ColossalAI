@@ -101,6 +101,28 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     "test_config",
     [
         {
+            "tp_size": 4,
+            "pp_size": 1,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "ring",
+            "enable_flash_attention": False,
+            "use_lazy_init": True,
+            "precision": "fp32",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 4,
+            "pp_size": 1,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "split_gather",
+            "enable_flash_attention": False,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
             "tp_size": 2,
             "pp_size": 1,
             "enable_all_optimization": True,
@@ -154,7 +176,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 )
 def run_bert_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_bert")
-
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 

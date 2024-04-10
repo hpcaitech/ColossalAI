@@ -2,9 +2,8 @@ import time
 
 import torch
 from grok1_policy import Grok1ForCausalLMPolicy
-from sentencepiece import SentencePieceProcessor
-from transformers import AutoModelForCausalLM
-from utils import get_defualt_parser, inference, print_output
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from utils import get_default_parser, inference, print_output
 
 import colossalai
 from colossalai.booster import Booster
@@ -14,7 +13,7 @@ from colossalai.lazy import LazyInitContext
 from colossalai.utils import get_current_device
 
 if __name__ == "__main__":
-    parser = get_defualt_parser()
+    parser = get_default_parser()
     args = parser.parse_args()
     start = time.time()
     colossalai.launch_from_torch({})
@@ -28,16 +27,21 @@ if __name__ == "__main__":
     )
     booster = Booster(plugin=plugin)
     torch.set_default_dtype(torch.bfloat16)
+
+    tokenizer = AutoTokenizer.from_pretrained(args.pretrained, trust_remote_code=True)
+
     with LazyInitContext(default_device=get_current_device()):
         model = AutoModelForCausalLM.from_pretrained(
             args.pretrained, trust_remote_code=True, torch_dtype=torch.bfloat16
         )
     model, *_ = booster.boost(model)
-    sp = SentencePieceProcessor(model_file=args.tokenizer)
+    model.eval()
+    init_time = time.time() - start
+
     for text in args.text:
         output = inference(
             model.unwrap(),
-            sp,
+            tokenizer,
             text,
             max_new_tokens=args.max_new_tokens,
             do_sample=args.do_sample,
@@ -46,5 +50,14 @@ if __name__ == "__main__":
             top_p=args.top_p,
         )
         if coordinator.is_master():
-            print_output(text, sp.decode(output))
-    coordinator.print_on_master(f"Overall time: {time.time() - start} seconds.")
+            print_output(text, tokenizer.decode(output))
+
+    overall_time = time.time() - start
+    gen_latency = overall_time - init_time
+    avg_gen_latency = gen_latency / len(args.text)
+    coordinator.print_on_master(
+        f"Initializing time: {init_time:.2f} seconds.\n"
+        f"Overall time: {overall_time:.2f} seconds. \n"
+        f"Generation latency: {gen_latency:.2f} seconds. \n"
+        f"Average generation latency: {avg_gen_latency:.2f} seconds. \n"
+    )

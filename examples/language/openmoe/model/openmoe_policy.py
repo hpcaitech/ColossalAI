@@ -96,8 +96,8 @@ class OpenMoePolicy(Policy):
             else:
                 module = self.model.model
 
-            layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {"forward": partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
             self.append_or_create_method_replacement(
                 description=method_replacement, policy=policy, target_key=model_cls
@@ -116,18 +116,17 @@ class OpenMoePolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
+        layers_per_stage = stage_manager.distribute_layers(len(module.layers))
         if stage_manager.is_first_stage():
             held_layers.append(module.embed_tokens)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
         held_layers.extend(module.layers[start_idx:end_idx])
         if stage_manager.is_last_stage():
             held_layers.append(module.norm)
 
         return held_layers
 
-    @staticmethod
-    def distribute_layers(num_layers: int, num_stages: int) -> List[int]:
+    def distribute_layers(self, num_layers: int, num_stages: int) -> List[int]:
         """Divide layers into stages"""
         if num_layers == 24 and num_stages == 4:
             return [7, 7, 7, 3]
@@ -139,7 +138,7 @@ class OpenMoePolicy(Policy):
             return [8, 4]
         else:
             print(f"num_layers: {num_layers}, num_stages: {num_stages} not optimized, use origin pp policy")
-            return Policy.distribute_layers(num_layers, num_stages)
+            return super().distribute_layers(num_layers, num_stages)
 
 
 class OpenMoeModelPolicy(OpenMoePolicy):
