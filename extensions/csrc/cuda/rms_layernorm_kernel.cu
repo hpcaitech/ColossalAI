@@ -11,42 +11,33 @@
 #include "block_reduce.h"
 #include "../common/micros.h"
 #include "funcs/cast_functor.h"
-#include "funcs/op_functor.h"
+#include "funcs/binary_functor.h"
 
 using colossalAI::cuda::utils::block_reduce;
 using colossalAI::cuda::utils::ReduceType;
-using colossalAI::cuda::funcs::TypeConverter;
 using colossalAI::cuda::funcs::CastFunctor;
 using colossalAI::cuda::funcs::BinaryOpFunctor;
 using colossalAI::cuda::funcs::BinaryOpType;
 
-#define DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(DATA_SIZE, TYPE, NAME, ...)  \
-  if (DATA_SIZE == 2) {                                                     \
-    switch (TYPE) {                                                         \
-      case at::ScalarType::Half: {                                          \
-        using scalar_t = at::Half;                                          \
-        __VA_ARGS__;                                                        \
-        break;                                                              \
-      }                                                                     \
-      case at::ScalarType::BFloat16: {                                      \
-        using scalar_t = at::BFloat16;                                      \
-        __VA_ARGS__;                                                        \
-        break;                                                              \
-      }                                                                     \
-      default:                                                              \
-        AT_ERROR(#NAME, " not implemented for '", toString(TYPE), "'");     \
-    }                                                                       \
-  } else {                                                                  \
-    switch (TYPE) {                                                         \
-      case at::ScalarType::Float: {                                         \
-        using scalar_t = float;                                             \
-        general_##__VA_ARGS__;                                              \
-        break;                                                              \
-      }                                                                     \
-      default:                                                              \
-        AT_ERROR(#NAME, " not implemented for '", toString(TYPE), "'");     \
-    }                                                                       \
-  }                                                                         \
+
+// Get type2 from type or vice versa (applied to half and bfloat16)
+template <typename T>
+struct TypeConverter {
+  using Type = half2;
+};
+
+#define TYPE_CONVERTER_SPECIALIZATION(FROM, TO)  \
+  template <>                                    \
+  struct TypeConverter<FROM> {                   \
+    using Type = TO;                             \
+  };
+
+TYPE_CONVERTER_SPECIALIZATION(half2, at::Half)
+TYPE_CONVERTER_SPECIALIZATION(at::Half, half2)
+TYPE_CONVERTER_SPECIALIZATION(__nv_bfloat162, at::BFloat16)
+TYPE_CONVERTER_SPECIALIZATION(at::BFloat16, __nv_bfloat162)
+
+#undef TYPE_CONVERTER_SPECIALIZATION
 
 // optimized for half and bf16
 template<typename scalar_t, int unroll_factor>
@@ -216,6 +207,36 @@ __global__ void general_fused_add_rms_layernorm_kernel(
     input[id] = ((scalar_t) (x_local[cnt] * s_variance)) * weight[idx];
   }
 }
+
+
+#define DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT(DATA_SIZE, TYPE, NAME, ...)  \
+  if (DATA_SIZE == 2) {                                                     \
+    switch (TYPE) {                                                         \
+      case at::ScalarType::Half: {                                          \
+        using scalar_t = at::Half;                                          \
+        __VA_ARGS__;                                                        \
+        break;                                                              \
+      }                                                                     \
+      case at::ScalarType::BFloat16: {                                      \
+        using scalar_t = at::BFloat16;                                      \
+        __VA_ARGS__;                                                        \
+        break;                                                              \
+      }                                                                     \
+      default:                                                              \
+        AT_ERROR(#NAME, " not implemented for '", toString(TYPE), "'");     \
+    }                                                                       \
+  } else {                                                                  \
+    switch (TYPE) {                                                         \
+      case at::ScalarType::Float: {                                         \
+        using scalar_t = float;                                             \
+        general_##__VA_ARGS__;                                              \
+        break;                                                              \
+      }                                                                     \
+      default:                                                              \
+        AT_ERROR(#NAME, " not implemented for '", toString(TYPE), "'");     \
+    }                                                                       \
+  }                                                                         \
+
 
 void rms_layernorm(
   torch::Tensor& out,      // [..., hidden_size]
@@ -424,3 +445,5 @@ void fused_add_rms_layernorm(
     }
   }
 }
+
+#undef DISPATCH_RMSNORM_FLOAT_HALF_AND_BFLOAT
