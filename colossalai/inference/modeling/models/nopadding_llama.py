@@ -415,6 +415,8 @@ class NopadLlamaAttention(LlamaAttention):
                     sm_scale=sm_scale,
                 )
         else:
+            q_len = tokens_to_verify + 1 if is_verifier else 1
+
             if use_cuda_kernel:
                 inference_ops.rotary_embedding_and_cache_copy(
                     query_states,
@@ -429,7 +431,6 @@ class NopadLlamaAttention(LlamaAttention):
                     high_precision,
                 )
             else:
-                q_len = tokens_to_verify + 1 if is_verifier else 1
                 if is_verifier:
                     rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
                     copy_k_to_blocked_cache(
