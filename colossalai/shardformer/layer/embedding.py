@@ -21,10 +21,10 @@ from colossalai.tensor.d_tensor.api import (
 )
 
 from ._operation import gather_forward_split_backward, reduce_forward
-from .parallel_module import PaddingParallelModule, ParallelModule
+from .parallel_module import PaddingParallelModule
 from .utils import create_randomizer_with_offset
-from colossalai.checkpoint_io.utils import gather_distributed_param
-_EXTRA_STATE_KEY_SUFFIX = '_extra_state'
+
+_EXTRA_STATE_KEY_SUFFIX = "_extra_state"
 
 __all__ = ["Embedding1D", "VocabParallelEmbedding1D", "PaddingEmbedding"]
 
@@ -191,7 +191,6 @@ class PaddingEmbedding(PaddingParallelModule):
         else:
             weight.data = weight.data.to(device=device, dtype=dtype)
 
-
         super().__init__(self.num_embeddings, num_embeddings, weight)
 
         if weight is None:
@@ -234,6 +233,7 @@ class PaddingEmbedding(PaddingParallelModule):
         )
 
         return padding_embedding
+
 
 class VocabParallelEmbedding1D(PaddingParallelModule):
     r"""Embedding parallelized in the vocabulary dimension.
@@ -322,8 +322,10 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
         if weight is None:
             self.reset_parameters(weight_initializer)
 
-        print(f"embedding self.weight{self.num_embeddings} {self.old_num_embeddings}{dist.get_rank(self.process_group)}, bias{self.bias}", self.weight.shape)
-
+        print(
+            f"embedding self.weight{self.num_embeddings} {self.old_num_embeddings}{dist.get_rank(self.process_group)}, bias{self.bias}",
+            self.weight.shape,
+        )
 
     @staticmethod
     def from_native_module(

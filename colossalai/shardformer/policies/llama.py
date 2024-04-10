@@ -1,5 +1,4 @@
 import warnings
-import math
 from functools import partial
 from typing import Callable, Dict, List, Union
 
@@ -24,7 +23,6 @@ from ..modeling.llama import (
     get_llama_model_forward_for_flash_attn,
     get_llama_seq_parallel_attention_forward,
     get_llama_seq_parallel_model_forward,
-    get_lm_forward_with_dist_cross_entropy,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -191,11 +189,11 @@ class LlamaPolicy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
                     target_module=PaddingEmbedding,
-                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                 ),
                 policy=policy,
                 target_key=LlamaModel,
-            )           
+            )
 
         # optimization configuration
         self.append_or_create_submodule_replacement(

@@ -52,12 +52,11 @@ class BertPolicy(Policy):
 
         policy = {}
 
-        embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
-            embedding_cls = col_nn.VocabParallelEmbedding1D
+            col_nn.VocabParallelEmbedding1D
         else:
             if self.tie_weight:
-                embedding_cls = col_nn.PaddingEmbedding
+                col_nn.PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
             norm_cls = col_nn.FusedLayerNorm
