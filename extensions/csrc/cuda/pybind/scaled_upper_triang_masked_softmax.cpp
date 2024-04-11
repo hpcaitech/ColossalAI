@@ -6,10 +6,6 @@
 
 #include <vector>
 
-namespace multihead_attn {
-namespace fused_softmax {
-namespace scaled_upper_triang_masked_softmax {
-
 torch::Tensor fwd_cuda(torch::Tensor const& input, float scale_factor);
 
 torch::Tensor bwd_cuda(torch::Tensor const& output_grads,
@@ -40,15 +36,9 @@ torch::Tensor bwd(torch::Tensor const& output_grads,
   return bwd_cuda(output_grads, softmax_results, scale_factor);
 }
 
-}  // end namespace scaled_upper_triang_masked_softmax
-}  // end namespace fused_softmax
-}  // end namespace multihead_attn
-
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("forward",
-        &multihead_attn::fused_softmax::scaled_upper_triang_masked_softmax::fwd,
+  m.def("forward", &fwd,
         "Self Multihead Attention scaled, time masked softmax -- Forward.");
-  m.def("backward",
-        &multihead_attn::fused_softmax::scaled_upper_triang_masked_softmax::bwd,
+  m.def("backward", &bwd,
         "Self Multihead Attention scaled, time masked softmax -- Backward.");
 }

@@ -16,32 +16,6 @@ namespace colossalAI {
 namespace cuda {
 namespace funcs {
 
-// Get type2 from type or vice versa (applied to half and bfloat16)
-template <typename T>
-struct TypeConverter {
-  using Type = half2;
-};  // keep for generality
-
-template <>
-struct TypeConverter<half2> {
-  using Type = at::Half;
-};
-
-template <>
-struct TypeConverter<at::Half> {
-  using Type = half2;
-};
-
-template <>
-struct TypeConverter<__nv_bfloat162> {
-  using Type = at::BFloat16;
-};
-
-template <>
-struct TypeConverter<at::BFloat16> {
-  using Type = __nv_bfloat162;
-};
-
 template <typename From, typename To>
 struct CastFunctor : public std::unary_function<From, To> {
   HOSTDEVICE To operator()(From val) { return static_cast<To>(val); }

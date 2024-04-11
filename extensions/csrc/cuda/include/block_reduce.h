@@ -4,7 +4,7 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
-#include "../funcs/op_functor.h"
+#include "../funcs/binary_functor.h"
 
 namespace colossalAI {
 namespace cuda {
@@ -12,7 +12,6 @@ namespace utils {
 
 const float kReduceFloatInfNeg = -100000000.f;
 const float kReduceFloatInfPos = 100000000.f;
-const int kWarpSize = 32;
 const unsigned int kWarpReduceMask = 0xffffffff;
 
 enum class ReduceType { kMax = 0, kSum };
@@ -31,44 +30,42 @@ struct GetOpForReduceType<T, ReduceType::kSum> {
 };
 
 #define COLOSSAL_SHFL_FUNCTION(MASK, VAL_PTR, DELTA, WIDTH, OP, LANES) \
-  for (int offset = 0; offset < LANES; ++offset) {                     \
+  _Pragma("unroll") for (int offset = 0; offset < LANES; ++offset) {   \
     *(VAL_PTR + offset) =                                              \
         OP(*(VAL_PTR + offset),                                        \
            __shfl_xor_sync(MASK, *(VAL_PTR + offset), DELTA, WIDTH));  \
   }
 
-#define COLOSSAL_WARP_REDUCE_IMPL(MASK, VAL_PTR, OP, LANES) \
-  COLOSSAL_SHFL_FUNCTION(MASK, VAL_PTR, 16, 32, OP, LANES)  \
-  COLOSSAL_SHFL_FUNCTION(MASK, VAL_PTR, 8, 32, OP, LANES)   \
-  COLOSSAL_SHFL_FUNCTION(MASK, VAL_PTR, 4, 32, OP, LANES)   \
-  COLOSSAL_SHFL_FUNCTION(MASK, VAL_PTR, 2, 32, OP, LANES)   \
-  COLOSSAL_SHFL_FUNCTION(MASK, VAL_PTR, 1, 32, OP, LANES)
+#define COLOSSAL_WARP_REDUCE_IMPL(MASK, VAL_PTR, WIDTH, OP, LANES)           \
+  _Pragma("unroll") for (int DELTA = (WIDTH >> 1); DELTA > 0; DELTA >>= 1) { \
+    COLOSSAL_SHFL_FUNCTION(MASK, VAL_PTR, DELTA, WIDTH, OP, LANES)           \
+  }
 
-#define COLOSSAL_BLOCK_REDUCE_IMPL(DTYPE, MASK, VAL_PTR, OP, LANES, \
-                                   DEFAULT_VALUE, REDUCE_TYPE)      \
-  __shared__ T shm[LANES][32];                                      \
-  int lane_id = threadIdx.x & 0x1f;                                 \
-  int warp_id = threadIdx.x >> 5;                                   \
-                                                                    \
-  warp_reduce<DTYPE, REDUCE_TYPE, LANES>(VAL_PTR);                  \
-  if (lane_id == 0) {                                               \
-    for (int offset = 0; offset < LANES; ++offset) {                \
-      shm[offset][warp_id] = *(VAL_PTR + offset);                   \
-    }                                                               \
-  }                                                                 \
-  __syncthreads();                                                  \
-                                                                    \
-  for (int offset = 0; offset < LANES; ++offset) {                  \
-    *(VAL_PTR + offset) = (threadIdx.x < (blockDim.x >> 5))         \
-                              ? shm[offset][lane_id]                \
-                              : static_cast<T>(DEFAULT_VALUE);      \
-  }                                                                 \
+#define COLOSSAL_BLOCK_REDUCE_IMPL(DTYPE, VAL_PTR, OP, LANES, DEFAULT_VALUE, \
+                                   REDUCE_TYPE)                              \
+  __shared__ T shm[LANES][32];                                               \
+  int lane_id = threadIdx.x & 0x1f;                                          \
+  int warp_id = threadIdx.x >> 5;                                            \
+                                                                             \
+  warp_reduce<DTYPE, REDUCE_TYPE, LANES>(VAL_PTR);                           \
+  if (lane_id == 0) {                                                        \
+    for (int offset = 0; offset < LANES; ++offset) {                         \
+      shm[offset][warp_id] = *(VAL_PTR + offset);                            \
+    }                                                                        \
+  }                                                                          \
+  __syncthreads();                                                           \
+                                                                             \
+  _Pragma("unroll") for (int offset = 0; offset < LANES; ++offset) {         \
+    *(VAL_PTR + offset) = (threadIdx.x < (blockDim.x >> 5))                  \
+                              ? shm[offset][lane_id]                         \
+                              : static_cast<T>(DEFAULT_VALUE);               \
+  }                                                                          \
   warp_reduce<DTYPE, REDUCE_TYPE, LANES>(VAL_PTR);
 
-template <typename T, ReduceType rtype, int lanes>
+template <typename T, ReduceType rtype, int lanes, int width = 32>
 __forceinline__ __device__ void warp_reduce(T* pval) {
   typename GetOpForReduceType<T, rtype>::Op op;
-  COLOSSAL_WARP_REDUCE_IMPL(kWarpReduceMask, pval, op, lanes);
+  COLOSSAL_WARP_REDUCE_IMPL(kWarpReduceMask, pval, width, op, lanes);
 }
 
 template <typename T, ReduceType rtype>
@@ -84,8 +81,7 @@ template <typename T, ReduceType rtype, int lanes>
 __forceinline__ __device__ void block_reduce(T* pval) {
   constexpr T kDefaultValue = GetDefaultValueForBlockReduce<T, rtype>();
   typename GetOpForReduceType<T, rtype>::Op op;
-  COLOSSAL_BLOCK_REDUCE_IMPL(T, kWarpReduceMask, pval, op, lanes, kDefaultValue,
-                             rtype);
+  COLOSSAL_BLOCK_REDUCE_IMPL(T, pval, op, lanes, kDefaultValue, rtype);
 }
 
 #undef COLOSSAL_SHFL_FUNCTION
