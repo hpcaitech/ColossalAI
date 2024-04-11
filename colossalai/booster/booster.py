@@ -231,7 +231,12 @@ class Booster:
         return self.plugin.no_sync(model, optimizer)
 
     def enable_lora(
-        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: "peft.LoraConfig" = None, bnb_quantization_config: Optional[BnbQuantizationConfig] = None, quantize = False
+        self,
+        model: nn.Module,
+        pretrained_dir: Optional[str] = None,
+        lora_config: "peft.LoraConfig" = None,
+        bnb_quantization_config: Optional[BnbQuantizationConfig] = None,
+        quantize=False,
     ) -> nn.Module:
         """
         Wrap the passed in model with LoRA modules for training. If pretrained directory is provided, lora configs and weights are loaded from that directory.
