@@ -1,7 +1,9 @@
 import random
 from typing import List, Optional, Tuple, Union
+
 import torch
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
@@ -15,7 +17,7 @@ from transformers.models.opt.modeling_opt import (
     OPTModel,
 )
 from transformers.utils import logging
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
+
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import ColoAttention
 from colossalai.shardformer.shard import ShardConfig
@@ -110,7 +112,7 @@ class OPTPipelineForwards:
             if decoder.project_in is not None:
                 inputs_embeds = decoder.project_in(inputs_embeds)
             device = input_ids.device if input_ids is not None else inputs_embeds.device
-            _dtype = inputs_embeds.dtype
+            inputs_embeds.dtype
             hidden_states = inputs_embeds
 
         else:
