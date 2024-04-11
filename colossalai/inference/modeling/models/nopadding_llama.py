@@ -385,7 +385,6 @@ class NopadLlamaAttention(ParallelModule):
             attn_qproj_w (torch.Tensor, optional): The transposed q_proj weight. Defaults to None.
             attn_kproj_w (torch.Tensor, optional): The transposed k_proj weight. Defaults to None.
             attn_vproj_w (torch.Tensor, optional): The transposed v_proj weight. Defaults to None.
-            attn_oproj_w (torch.Tensor, optional): The transposed o_proj weight. Defaults to None.
             attn_oproj (torch.Tensor, optional): The transposed o_proj weight. Defaults to None.
         """
         super().__init__()
