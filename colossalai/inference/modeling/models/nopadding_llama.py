@@ -530,7 +530,6 @@ class NopadLlamaAttention(ParallelModule):
                 attn_output = attn_output.view(token_nums, -1)
             else:
                 rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
-                # logger.info(f"query shape: {query_states.shape}, key shape: {key_states.shape}")
                 attn_output = context_attention_unpadded(
                     q=query_states,
                     k=key_states,

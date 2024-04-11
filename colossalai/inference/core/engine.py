@@ -162,7 +162,6 @@ class InferenceEngine:
             assert if_has_index_file, "the model path is invalid"
             cpt_io.load_model(self.model, model_index_file)
 
-        torch.cuda.set_device(self.device)
         free_gpu_memory, total_gpu_memory = torch.cuda.mem_get_info()
         peak_memory = init_gpu_memory - free_gpu_memory
         if self.verbose:
