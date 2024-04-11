@@ -15,6 +15,7 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 
+from colossalai.booster.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO
 from colossalai.checkpoint_io.utils import (
     get_optimizer_base_filenames,
@@ -336,12 +337,16 @@ class LowLevelZeroPlugin(DPPluginBase):
         return True
 
     def enable_lora(
-        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None, bnb_quantization_config: Optional[BnbQuantizationConfig] = None
     ) -> nn.Module:
         from peft import PeftModel, get_peft_model
+
         assert not isinstance(model, LowLevelZeroModel), "Lora should be enabled before boosting the model."
         self.lora_enabled = True
         warnings.warn("You have enabled LoRa training. Please check the hyperparameters such as lr")
+
+        if bnb_quantization_config is not None:
+            model = quantize_model(model, bnb_quantization_config)
 
         if pretrained_dir is None:
             peft_model = get_peft_model(model, lora_config)
