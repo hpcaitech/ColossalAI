@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
@@ -16,12 +17,12 @@ from transformers.models.llama.modeling_llama import (
     LlamaForCausalLM,
     LlamaForSequenceClassification,
     LlamaModel,
+    _prepare_4d_causal_attention_mask,
+    _prepare_4d_causal_attention_mask_for_sdpa,
     apply_rotary_pos_emb,
     repeat_kv,
 )
 from transformers.utils import logging
-from transformers.cache_utils import Cache
-from transformers.cache_utils import Cache
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import (
@@ -32,9 +33,6 @@ from colossalai.shardformer.layer._operation import (
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import ColoAttention, cross_entropy_1d
-
-from transformers.models.llama.modeling_llama import _prepare_4d_causal_attention_mask, _prepare_4d_causal_attention_mask_for_sdpa
-
 
 
 class LlamaPipelineForwards:
@@ -116,7 +114,7 @@ class LlamaPipelineForwards:
                 past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
             )
             position_ids = position_ids.unsqueeze(0)
-            
+
         if self._use_flash_attention_2:
             # 2d mask is passed through the layers
             attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
@@ -165,7 +163,6 @@ class LlamaPipelineForwards:
                 all_hidden_states += (hidden_states,)
 
             if idx - start_idx < num_ckpt_layers:
-
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
@@ -447,12 +444,10 @@ class LlamaPipelineForwards:
 def get_llama_flash_attention_forward(shard_config, sp_mode, sp_group, sp_size):
     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
-    llama_version = 2
     try:
         from transformers.models.llama.modeling_llama import repeat_kv
     except:
         warnings.warn("using llamav1, llamav1 hasn't repeat_kv function")
-        llama_version = 1
 
     def forward(
         self: LlamaAttention,
@@ -495,15 +490,15 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_group, sp_size):
                 raise ValueError(
                     f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
-                    "with a layer index."        
-                )        
+                    "with a layer index."
+                )
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
             if self.layer_idx is None:
                 raise ValueError(
                     f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
-                    "with a layer index."        
-                )        
+                    "with a layer index."
+                )
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)

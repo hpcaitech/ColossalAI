@@ -1,9 +1,12 @@
-from typing import List, Optional, Tuple, Union
 import math
+import warnings
+from typing import List, Optional, Tuple, Union
+
 import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from torch.nn import functional as F
 from transformers.modeling_attn_mask_utils import (
     AttentionMaskConverter,
     _prepare_4d_causal_attention_mask,
@@ -22,14 +25,13 @@ from transformers.models.falcon.modeling_falcon import (
     FalconForSequenceClassification,
     FalconForTokenClassification,
     FalconModel,
-    build_alibi_tensor,
     apply_rotary_pos_emb,
+    build_alibi_tensor,
 )
 from transformers.utils import logging
-import warnings
+
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
-from torch.nn import functional as F
 
 
 def build_falcon_alibi_tensor_fn(process_group: ProcessGroup) -> torch.Tensor:
@@ -171,7 +173,7 @@ def get_tp_falcon_decoder_layer_forward():
 
 def get_falcon_flash_attention_forward():
     try:
-        from xformers.ops import memory_efficient_attention as me_attention
+        pass
     except:
         raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
     from transformers.models.falcon.modeling_falcon import FalconAttention
@@ -347,7 +349,7 @@ class FalconPipelineForwards:
             past_key_values = None
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        
+
         # case: First stage of training
         if stage_manager.is_first_stage():
             if input_ids is not None and inputs_embeds is not None:
@@ -449,7 +451,7 @@ class FalconPipelineForwards:
             attention_mask = _prepare_4d_causal_attention_mask(
                 attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
             )
-            
+
         # Prepare head mask if needed
         # 1.0 in head_mask indicate we keep the head
         # attention_probs has shape batch_size x num_heads x N x N
