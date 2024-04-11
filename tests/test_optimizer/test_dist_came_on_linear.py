@@ -143,7 +143,7 @@ def check_dist_1d(seq_parallel, tp_size, zero_size, col, zero_stage):
                         ]
                         dist.all_gather(dist_st_list, dist_st, group=tp_group)
                         dist_st = torch.cat(dist_st_list, dim=clip_dim)
-                        print(st.size(), dist_st.size())
+                        # print(st.size(), dist_st.size())
 
                     assert_close(st, dist_st)
 

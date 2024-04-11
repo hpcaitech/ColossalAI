@@ -1,3 +1,5 @@
+from functools import reduce
+
 import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
@@ -53,9 +55,7 @@ class DistributedCAME(DistributedOptim):
         # record working parameter original shape (Before TP)
         for group in self.param_groups:
             for p in group["params"]:
-                if hasattr(p, "data"):
-                    self.ori_shape[id(p)] = p.data.shape
-                elif hasattr(p, "shape"):
+                if hasattr(p, "shape"):
                     self.ori_shape[id(p)] = p.shape
                 else:
                     self.ori_shape[id(p)] = p.size()
@@ -83,17 +83,14 @@ class DistributedCAME(DistributedOptim):
                 self.working_shape[id(p)] = working_param.size()
                 self.gather_before_compute[id(p)] = False
                 try:
-                    # api.get_device_mesh(working_param)
                     sharding_spec = api.get_sharding_spec(working_param)
                     self.clip_method[id(p)] = "col" if 0 in sharding_spec.dim_partition_dict.keys() else "row"
-                    # if dist.get_rank() == 0:
-                    #     print(self.ori_shape[id(p)], p.data.shape, sharding_spec.dim_partition_dict, self.clip_method[id(p)])
+
                 except:
                     self.clip_method[id(p)] = None
 
         self.zero = True if zero_flag else False
         self.distributed = True
-        # print(self.distributed, self.zero, dist.get_world_size(zero_group))
 
     def _get_options(self, param_shape):
         factored = len(param_shape) >= 2
@@ -110,11 +107,13 @@ class DistributedCAME(DistributedOptim):
         dist.all_reduce(sum_sq, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
 
         # Summarize the total number of elements across all devices
-        numel = torch.tensor(tensor.numel(), device=tensor.device)
-        dist.all_reduce(numel, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
+        # use working param shape to calculate numel instead of high cost allreduce
+        numel = torch.tensor(reduce(lambda x, y: x * y, self.ori_shape[id(param)]), device=tensor.device)
+        if self.tensor_parallel_group and not (len(param.size()) == 1 and self.clip_method[id(param)] == "row"):
+            numel *= dist.get_world_size(group=self.tensor_parallel_group)
+
         if self.zero and not self.gather_before_compute[id(param)]:
             dist.all_reduce(sum_sq, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
-            dist.all_reduce(numel, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
 
         # RMS
         rms = (sum_sq / numel).sqrt()
@@ -222,7 +221,6 @@ class DistributedCAME(DistributedOptim):
                         state["exp_avg_sq"] = torch.zeros_like(p)
 
                 state["step"] += 1
-                self._rms(p.data, p)
 
                 update = (grad**2) + group["eps"][0]
                 if factored:
@@ -257,11 +255,6 @@ class DistributedCAME(DistributedOptim):
                     exp_avg_sq = state["exp_avg_sq"]
                     exp_avg_sq.mul_(group["betas"][1]).add_(update, alpha=1.0 - group["betas"][1])
                     update = exp_avg_sq.rsqrt().mul_(grad)
-                # shard_grad_list = [torch.zeros_like(grad).to("cuda") for _ in range(dist.get_world_size(self.tensor_parallel_group))]
-                # dist.all_gather(shard_grad_list, grad, self.tensor_parallel_group)
-                # shard_grad = torch.cat(shard_grad_list, dim=1)
-                # if dist.get_rank() == 0:
-                #     print("dist: ", torch.sum(shard_grad), shard_grad)
 
                 update.div_((self._rms(update, p) / group["clip_threshold"]).clamp_(min=1.0))
                 exp_avg = state["exp_avg"]

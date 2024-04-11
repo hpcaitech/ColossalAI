@@ -1,3 +1,4 @@
+# Copied from https://github.com/yangluo7/CAME/blob/master/came_pytorch/CAME.py
 import torch
 import torch.optim
 
@@ -75,8 +76,6 @@ class CAME(torch.optim.Optimizer):
                 if p.grad is None:
                     continue
                 grad = p.grad.data
-                # if grad.dtype in {torch.float16, torch.bfloat16}:
-                #     grad = grad.float()
                 if grad.is_sparse:
                     raise RuntimeError("CAME does not support sparse gradients.")
 
@@ -105,7 +104,7 @@ class CAME(torch.optim.Optimizer):
                     state["RMS"] = 0
 
                 state["step"] += 1
-                state["RMS"] = self._rms(p.data)
+                # state["RMS"] = self._rms(p.data)
 
                 update = (grad**2) + group["eps"][0]
                 if factored:
@@ -123,8 +122,6 @@ class CAME(torch.optim.Optimizer):
 
                     exp_avg_sq.mul_(group["betas"][1]).add_(update, alpha=1.0 - group["betas"][1])
                     update = exp_avg_sq.rsqrt().mul_(grad)
-                # if dist.get_rank() == 0:
-                #     print("came: ", torch.sum(grad), grad)
 
                 update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
 
