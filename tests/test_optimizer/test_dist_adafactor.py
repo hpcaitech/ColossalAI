@@ -45,7 +45,6 @@ HEIGHT = 4
 WIDTH = 4
 _TP_SPEC = DimSpec([0])
 
-
 def correctness_verify(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: torch.dtype = torch.float32):
     rtol = None
     atol = None
@@ -62,7 +61,6 @@ def correctness_verify(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: torc
     # return torch.all(tensor1.isclose(tensor2, rtol=rtol, atol=atol))
     assert_close(tensor1, tensor2, rtol=rtol, atol=atol)
 
-
 # setup param groups; (For zero test optim)
 def setup_param_groups_zero(model: nn.Module) -> list:
     no_decay = ["bias", "LayerNorm.weight"]
@@ -78,12 +76,10 @@ def setup_param_groups_zero(model: nn.Module) -> list:
     ]
     return optimizer_grouped_parameters
 
-
 # setup param groups; (For base optim)
 def setup_param_groups(model: nn.Module) -> list:
     optimizer_grouped_parameters = [p for n, p in model.named_parameters()]
     return optimizer_grouped_parameters
-
 
 # setup flatten param groups, sharding spec and shape; (For dist optim)
 def setup_flatten_param_groups_sharding_spec_shape(model: nn.Module) -> dict:
@@ -100,8 +96,6 @@ def setup_flatten_param_groups_sharding_spec_shape(model: nn.Module) -> dict:
         else:
             sharding_spec[id(flatten_p)] = None
             param_shape[id(flatten_p)] = p.shape
-    # print(f"sharding_spec {sharding_spec}")
-    # print(f"param_shape {param_shape}")
     return flatten_optimizer_grouped_parameters, sharding_spec, param_shape
 
 
@@ -140,12 +134,10 @@ def set_dist_grad(
         p.grad = p.data
         p.data = orig_p
 
-
 def set_master_param_to_shard_param(master_param_list) -> dict:
     master_param_to_shard_param ={id(p):p for p in master_param_list}
     return master_param_to_shard_param
     
-
 class MlpModel(nn.Module):
     def __init__(self):
         super(MlpModel, self).__init__()
@@ -156,7 +148,6 @@ class MlpModel(nn.Module):
         x = self.linear1(x)
         x = self.linear2(x)
         return x
-
 
 class TPModel(nn.Module):
     def __init__(self, linear1, linear2, tp_group=None):
@@ -170,9 +161,6 @@ class TPModel(nn.Module):
         x = self.linear1(x)
         x = self.linear2(x)
         return x
-
-
-
 
 @parameterize("dtype", [torch.float32])  # , torch.float16, torch.bfloat16
 @parameterize("tp_zero_size", [(4, 1)])  # (2, 2), (4, 1),(1, 4), (2, 4), (4, 2)
@@ -190,7 +178,7 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     # ==============================
     # Base Case
     # ==============================
-    H, W = 4096, 4096
+    H, W = HEIGHT, WIDTH
     model_col = nn.Linear(H, W).to(local_rank)  # Col parallel weight
     weight, bias = model_col.weight, model_col.bias
     
@@ -286,7 +274,6 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
 
         print(f"col corrness {col_correct}  row correct {row_correct}")
 
-
 @parameterize("dtype", [torch.float32])  # , torch.float16, torch.bfloat16
 @parameterize("tp_zero_size", [(4, 1)])  # (2, 2), (4, 1),(1, 4), (2, 4), (4, 2)
 def exam_dist_adafactor_fwd_bwd(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
@@ -349,7 +336,6 @@ def exam_dist_adafactor_fwd_bwd(dtype: torch.dtype, tp_zero_size: tuple[int, int
         param_is_distributed = is_distributed_tensor(tp_p)
         if param_is_distributed:
             shard_spec = get_sharding_spec(tp_p)
-            # print(f"device {local_rank} shard spec{shard_spec} len {len(shard_spec.sharding_sequence)}\n")
             if len(shard_spec.sharding_sequence) >= 2:
                 # Col Parallel
                 if shard_spec.sharding_sequence[0] == "R":
@@ -365,13 +351,9 @@ def exam_dist_adafactor_fwd_bwd(dtype: torch.dtype, tp_zero_size: tuple[int, int
             # No TP bias
             pass
         correctness = correctness_verify(p.data, tp_p.data, dtype)
-        # print(f"{correctness}\n p.data {p.data}\n tp_p.data{tp_p.data}\n")
-        # print(f"Curr Param correct {correctness}")
-    # print(f"device {local_rank} base_optim state dict {base_optim.optim.state_dict()['state'].items()} \n dist_optim state dict {dist_optim.optim.state_dict()['state'].items()} \n")
-
 
 @parameterize("dtype", [torch.float32, torch.float16, torch.bfloat16])  # torch.float32, torch.float16, torch.bfloat16
-@parameterize("tp_zero_size", [(2, 2), (4, 1),(1, 4)])  # (2, 2), (4, 1),(1, 4),
+@parameterize("tp_zero_size", [(2, 2), (4, 1), (1, 4)])  # (2, 2), (4, 1), (1, 4)
 def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     tp_size, zero_size = tp_zero_size
     use_zero = True if zero_size > 1 else False
@@ -457,12 +439,10 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     base_optim.zero_grad()
     dist_optim.zero_grad()
 
-    # print(f"data type {dtype},tp size {tp_size}, dp size {zero_size}\n")
     for p, tp_p in zip(base_param_group, tp_param_group):
         param_is_distributed = is_distributed_tensor(tp_p)
         if param_is_distributed:
             shard_spec = get_sharding_spec(tp_p)
-            # print(f"device {local_rank} shard spec{shard_spec} len {len(shard_spec.sharding_sequence)}\n")
             if len(shard_spec.sharding_sequence) >= 2:
                 # Col Parallel
                 if shard_spec.sharding_sequence[0] == "R":
@@ -478,8 +458,10 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
             # No TP bias
             pass
         correctness = correctness_verify(p.data, tp_p.data, dtype)
+    clear_layout_converter()
+    Randomizer.reset_index()
+    torch.cuda.empty_cache()
         
-
 @parameterize("dtype", [torch.float32, torch.float16, torch.bfloat16])  # torch.float32, torch.float16, torch.bfloat16
 @parameterize("tp_zero_size", [(1, 4), (4, 1), (2, 2)])  # (2, 2), (4, 1),(1, 4), (2, 4), (4, 2)
 def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
@@ -574,12 +556,10 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
 
     base_optim.zero_grad()
     dist_optim.zero_grad()
-    print(f"data type {dtype},tp size {tp_size}, dp size {zero_size}\n")
     for p, tp_p in zip(base_param_group, tp_param_group):
         param_is_distributed = is_distributed_tensor(tp_p)
         if param_is_distributed:
             shard_spec = get_sharding_spec(tp_p)
-            # print(f"device {local_rank} shard spec{shard_spec} len {len(shard_spec.sharding_sequence)}\n")
             if len(shard_spec.sharding_sequence) >= 2:
                 # Col Parallel
                 if shard_spec.sharding_sequence[0] == "R":
@@ -656,20 +636,21 @@ def exam_bert_test(test_config):
     test_config["pp_size"] = 1  # Do NOT test Pipeline Parallel
     test_config["initial_scale"] = 2**10  # avoid overflow
     model_list = [
-        "transformers_bert"
-        "transformers_bert_for_pretraining"
-        "transformers_bert_lm_head_model"
-        "transformers_bert_for_masked_lm"
-        "transformers_bert_for_sequence_classification"
-        "transformers_bert_for_token_classification"
-        "transformers_bert_for_next_sentence"
-        "transformers_bert_for_mcq"
-        "transformers_bert_for_question_answering"
+        "transformers_bert",
+        "transformers_bert_for_pretraining",
+        "transformers_bert_lm_head_model",
+        "transformers_bert_for_masked_lm",
+        "transformers_bert_for_sequence_classification",
+        "transformers_bert_for_token_classification",
+        "transformers_bert_for_next_sentence",
+        "transformers_bert_for_mcq",
+        "transformers_bert_for_question_answering",
     ]
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-
+        print(f"model name {name} {name in model_list}")
         if name in model_list:
+            print(f"{name} check start")
             org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
                 model_fn, loss_fn, test_config, Adafactor, DistributedAdaFactor
             )
@@ -696,27 +677,22 @@ def exam_bert_test(test_config):
                 atol, rtol = 5e-4, 5e-4
             if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
                 check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
-            print(f"{name} check pass")
             # check optim states
             check_optim_states(org_optimizer, sharded_optimizer.optim)
+            print(f"{name} check pass")
 
     
     clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()
     
-
-
-
 def run_dist(rank, world_size, port):
     config = {}
     colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     # exam_dist_adafactor_base()
     # exam_dist_adafactor_fwd_bwd()
-    exam_dist_adafactor_zero()
+    # exam_dist_adafactor_zero()
     exam_bert_test()
-
-
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()

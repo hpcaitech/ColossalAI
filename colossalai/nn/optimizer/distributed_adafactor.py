@@ -306,9 +306,23 @@ class DistributedAdaFactor(DistributedOptim):
                     exp_avg_sq = state["exp_avg_sq"]
                     exp_avg_sq.mul_(beta2t).add_(update, alpha=(1.0 - beta2t))
                     update = exp_avg_sq.rsqrt().mul_(grad)
-
+                    
                 # (Line No.8) RMS
-                # update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
+                # perform a sum on each device
+                update_sum = update.pow(2).sum()
+                num_of_element = update.numel()
+                # reduce sum on tp group if exist
+                if self.tensor_parallel_size > 1 and param_is_dtensor:
+                    dist.all_reduce(update_sum, group=self.tensor_parallel_group)
+                    num_of_element = num_of_element * self.tensor_parallel_size
+                # reduce sum on dp group if exist
+                if self.data_parallel_size > 1 and param_is_dtensor:
+                    dist.all_reduce(update_sum, group=self.data_parallel_group)
+                    num_of_element = num_of_element * self.data_parallel_size
+                # div num of element 
+                rms = (update_sum / num_of_element).sqrt()
+                update.div_((rms / group["clip_threshold"]).clamp_(min=1.0))
+                
                 update.mul_(lr)
                 if use_first_moment:
                     exp_avg = state["exp_avg"]
@@ -319,6 +333,6 @@ class DistributedAdaFactor(DistributedOptim):
                     p.add_(p, alpha=(-group["weight_decay"] * lr))
                     
                 p.add_(-update)
-
+                
 
         return loss

@@ -186,7 +186,7 @@ class Adafactor(Optimizer):
                     exp_avg_sq.mul_(beta2t).add_(update, alpha=(1.0 - beta2t))
                     update = exp_avg_sq.rsqrt().mul_(grad)
                 # RMS
-                # update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
+                update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
                 update.mul_(lr)
 
                 if use_first_moment:
@@ -197,6 +197,5 @@ class Adafactor(Optimizer):
                 if group["weight_decay"] != 0:
                     p.add_(p, alpha=(-group["weight_decay"] * lr))
                 p.add_(-update)
-
 
         return loss
