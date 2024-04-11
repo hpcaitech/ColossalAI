@@ -32,6 +32,7 @@ from .utils import (
     save_param_groups,
     save_state_dict,
     save_state_dict_shards,
+    search_padding_dim,
     search_tp_partition_dim,
     sharded_optimizer_loading_epilogue,
 )
@@ -937,14 +938,29 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if isinstance(v, torch.Tensor) and k != "step":
                 # Shard state along tensor parallel group.
                 partition_dim = search_tp_partition_dim(current_shape, original_shape, self.tp_size)
+                global_shape = current_shape
+                if partition_dim is not None:
+                    # pad embedding params
+                    global_shape = (
+                        *current_shape[:partition_dim],
+                        current_shape[partition_dim] * self.tp_size,
+                        *current_shape[partition_dim + 1 :],
+                    )
+
+                padding_dim = search_padding_dim(global_shape, original_shape)
+                if padding_dim is not None:
+                    padding_size = global_shape[padding_dim] - original_shape[padding_dim]
+                    padding_data = torch.zeros(
+                        *v.shape[:padding_dim],
+                        padding_size,
+                        *v.shape[padding_dim + 1 :],
+                        device=v.device,
+                        dtype=v.dtype,
+                    )
+                    v = torch.cat((v, padding_data), dim=padding_dim).contiguous()
+
                 if partition_dim is not None:
                     slice_size = current_shape[partition_dim]
-                    # pad embedding params
-                    if partition_dim == 0:
-                        padding_size = current_shape[0] * self.tp_size - original_shape[0]
-                        if padding_size > 0:
-                            padding_data = torch.zeros_like(v[:padding_size, ...])
-                            v = torch.cat((v, padding_data), dim=0).contiguous()
                     v = v.split(slice_size, dim=partition_dim)[self.tp_rank]
 
                 # Shard state along data parallel group when using Zero.

@@ -13,7 +13,7 @@ from torch.optim import Optimizer
 
 from colossalai.accelerator import get_accelerator
 from colossalai.amp.naive_amp.mixed_precision_mixin import BF16MixedPrecisionMixin, FP16MixedPrecisionMixin
-from colossalai.checkpoint_io.utils import StateDictSharder, gather_distributed_param
+from colossalai.checkpoint_io.utils import StateDictSharder, gather_distributed_param, search_padding_dim
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import CPUAdam, FusedAdam, HybridAdam
@@ -705,7 +705,7 @@ class GeminiOptimizer(OptimizerWrapper):
         Load saved optimizer states into parameter with given id.
         """
 
-        def cast(param, state_range, value, global_shape, key=None):
+        def cast(param, state_range, value, global_shape, origin_shape, key=None):
             """
             Make a copy of the needed segment of value and cast it to device of param.
             """
@@ -722,11 +722,21 @@ class GeminiOptimizer(OptimizerWrapper):
 
                 if is_dtensor:
                     global_shape = get_global_shape(real_param)
-                    padding_num = global_shape[0] - origin_shape[0]
+
+                padding_dim = search_padding_dim(global_shape, origin_shape)
+                if padding_dim is not None:
+                    padding_num = global_shape[padding_dim] - origin_shape[padding_dim]
                     value = torch.reshape(value, origin_shape)
-                    if padding_num > 0:
-                        padding_data = torch.zeros_like(value[:padding_num, ...])
-                        value = torch.cat((value, padding_data), dim=0).contiguous()
+                    padding_data = torch.zeros(
+                        *value.shape[:padding_dim],
+                        padding_num,
+                        *value.shape[padding_dim + 1 :],
+                        device=value.device,
+                        dtype=value.dtype,
+                    )
+                    value = torch.cat((value, padding_data), dim=padding_dim).contiguous()
+
+                if is_dtensor:
                     value = distribute_tensor(value, sharding_spec=shard_spec, device_mesh=device_mesh)
                 elif is_customized_distributed:
                     value = torch.reshape(value, global_shape)
@@ -753,7 +763,7 @@ class GeminiOptimizer(OptimizerWrapper):
         origin_shape = global_shape
 
         for k, v in saved_states.items():
-            updated_states[k] = cast(fake_param, state_range, v, global_shape, k)
+            updated_states[k] = cast(fake_param, state_range, v, global_shape, origin_shape, k)
             del v  # clean loaded states
         self.optim.state[fake_param].update(updated_states)
 

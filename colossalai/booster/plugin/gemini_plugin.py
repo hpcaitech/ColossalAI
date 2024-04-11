@@ -46,11 +46,8 @@ def get_param_info(model: nn.Module, optim: Optimizer):
     # 1. A mapping from integer param_id to param32 shape.
 
     param_info = {"id2shape": {}, "name2shape": {}}
-    for m_name, m_var in model.named_modules():
-        for p_name, p_var in m_var.named_parameters(recurse=False):
-            param_name = m_name + "." + p_name if m_name else p_name
-            original_shape = p_var.shape if isinstance(p_var, torch.Tensor) else None
-            param_info["name2shape"][param_name] = original_shape
+    for p_name, param in model.named_parameters(remove_duplicate=False):
+        param_info["name2shape"][p_name] = param.shape
 
     if optim is None:
         return param_info

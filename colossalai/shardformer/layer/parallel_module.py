@@ -298,7 +298,9 @@ class PaddingParallelModule(ParallelModule):
 
                 if self.new_num_embeddings > self.old_num_embeddings:
                     num_padding_tokens = self.new_num_embeddings - self.old_num_embeddings
-                    padding_embeddings = torch.zeros_like(input_param[:num_padding_tokens, ...])
+                    padding_embeddings = torch.zeros(
+                        num_padding_tokens, *input_param.shape[1:], device=input_param.device, dtype=input_param.dtype
+                    )
                     input_param.data = torch.cat((input_param.data, padding_embeddings), dim=0).contiguous()
 
                 if is_distributed_tensor(param):
@@ -359,7 +361,9 @@ class PaddingParallelModule(ParallelModule):
     def resize_embedding_weight(self):
         num_padding_tokens = self.new_num_embeddings - self.old_num_embeddings
         valid_weight = self.weight.data
-        padding_weight = torch.zeros_like(self.weight[:num_padding_tokens, ...])
+        padding_weight = torch.zeros(
+            num_padding_tokens, *self.weight.shape[1:], device=self.weight.device, dtype=self.weight.dtype
+        )
         # padding to embedding
         self.weight.data = torch.cat((valid_weight, padding_weight), dim=0).contiguous()
 

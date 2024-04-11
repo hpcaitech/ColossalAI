@@ -11,7 +11,7 @@ from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import _get_default_group
 
 from colossalai.accelerator import get_accelerator
-from colossalai.checkpoint_io.utils import StateDictSharder, gather_distributed_param
+from colossalai.checkpoint_io.utils import StateDictSharder, gather_distributed_param, search_padding_dim
 from colossalai.interface import ModelWrapper
 from colossalai.lazy import LazyTensor
 from colossalai.logging import get_dist_logger
@@ -524,7 +524,13 @@ class GeminiDDP(ModelWrapper):
                 else:
                     if self.params_info is not None:
                         origin_shape = self.params_info["name2shape"][name]
-                        destination[prefix + name] = p_mapping[param][: origin_shape[0], ...]
+                        padding_dim = search_padding_dim(p_mapping[param].shape, origin_shape)
+                        if padding_dim is not None:
+                            unpadding_slices = [slice(None)] * p_mapping[param].dim()
+                            unpadding_slices[padding_dim] = slice(None, origin_shape[0])
+                            destination[prefix + name] = p_mapping[param][tuple(unpadding_slices)]
+                        else:
+                            destination[prefix + name] = p_mapping[param]
                     else:
                         destination[prefix + name] = p_mapping[param]
         del p_mapping
@@ -653,12 +659,23 @@ class GeminiDDP(ModelWrapper):
             if state_key in state_dict:
                 input_param = state_dict[state_key]
 
+                global_shape = dest_tensor.shape
                 if source_device_mesh is not None and source_sharding_spec is not None:
                     global_shape = get_global_shape(dest_tensor)
-                    padding_num = global_shape[0] - input_param.shape[0]
-                    if padding_num > 0:
-                        padding_data = torch.zeros_like(input_param[:padding_num, ...])
-                        input_param = torch.cat((input_param, padding_data), dim=0)
+
+                padding_dim = search_padding_dim(global_shape, input_param.shape)
+                if padding_dim is not None:
+                    padding_num = global_shape[padding_dim] - input_param.shape[padding_dim]
+                    padding_data = torch.zeros(
+                        *input_param.shape[:padding_dim],
+                        padding_num,
+                        *input_param.shape[padding_dim + 1 :],
+                        device=input_param.device,
+                        dtype=input_param.dtype,
+                    )
+                    input_param = torch.cat((input_param, padding_data), dim=padding_dim)
+
+                if source_device_mesh is not None and source_sharding_spec is not None:
                     input_param = distribute_tensor(input_param, source_device_mesh, source_sharding_spec)
                 elif shard_fn is not None and gather_fn is not None:
                     input_param = distribute_tensor_with_customization(
@@ -896,7 +913,11 @@ class GeminiDDP(ModelWrapper):
 
                 if self.params_info is not None:
                     origin_shape = self.params_info["name2shape"][name]
-                    gathered_param = gathered_param[: origin_shape[0], ...]
+                    padding_dim = search_padding_dim(gathered_param.shape, origin_shape)
+                    if padding_dim is not None:
+                        unpadding_slices = [slice(None)] * gathered_param.dim()
+                        unpadding_slices[padding_dim] = slice(None, origin_shape[0])
+                        gathered_param = gathered_param[tuple(unpadding_slices)]
 
                 block, block_size = sharder.append_param(prefix + name, gathered_param)
                 if block is not None:
