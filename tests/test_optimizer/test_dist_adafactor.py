@@ -654,14 +654,14 @@ def exam_bert_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_bert")
     test_config["use_lazy_init"] = False
     test_config["pp_size"] = 1  # Do NOT test Pipeline Parallel
-    test_config["initial_scale"] = 2**15  # avoid overflow
+    test_config["initial_scale"] = 2**10  # avoid overflow
     model_list = [
         "transformers_bert"
         "transformers_bert_for_pretraining"
         "transformers_bert_lm_head_model"
         "transformers_bert_for_masked_lm"
         "transformers_bert_for_sequence_classification"
-        # "transformers_bert_for_token_classification"
+        "transformers_bert_for_token_classification"
         "transformers_bert_for_next_sentence"
         "transformers_bert_for_mcq"
         "transformers_bert_for_question_answering"
@@ -713,7 +713,7 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     # exam_dist_adafactor_base()
     # exam_dist_adafactor_fwd_bwd()
-    # exam_dist_adafactor_zero()
+    exam_dist_adafactor_zero()
     exam_bert_test()
 
 
