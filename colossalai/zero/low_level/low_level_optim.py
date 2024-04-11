@@ -235,9 +235,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for param_group in self.optim.param_groups:
             group_params = param_group["params"]
             for param in group_params:
-                assert (
-                    param.dtype == self._dtype
-                ), f"Parameters are expected to have the same dtype `{self._dtype}`, but got `{param.dtype}`"
+                if not hasattr(param, "skip_zero_check") or param.skip_zero_check is False:
+                    assert (
+                        param.dtype == self._dtype
+                    ), f"Parameters are expected to have the same dtype `{self._dtype}`, but got `{param.dtype}`"
 
     def _create_master_param_current_rank(self, param_list):
         # split each param evenly by world size
