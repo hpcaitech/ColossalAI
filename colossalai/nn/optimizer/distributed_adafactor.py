@@ -95,7 +95,6 @@ class DistributedAdaFactor(DistributedOptim):
                 else:
                     self.grad_shape_dict[id(p)] = p.shape
                 self.factored_dict[id(p)], self.use_first_moment_dict[id(p)] = self._get_options(group, self.grad_shape_dict[id(p)])
-                # if self.factored_dict[id(p)]:
                 if self.param_is_dtensor_dict[id(p)]:
                     self.shard_spec_dict[id(p)] = get_sharding_spec(self.shard_to_param.get(id(p)))
                 else:
