@@ -248,7 +248,6 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
             he initializer of weight, defaults to normal initializer.
 
     The ``args`` and ``kwargs`` used in :class:``torch.nn.functional.embedding`` should contain:
-    ::
 
         max_norm (float, optional): If given, each embedding vector with norm larger than max_norm is
                     renormalized to have norm max_norm. Note: this will modify weight in-place.

@@ -1,6 +1,6 @@
 import time
 from itertools import count
-from typing import Dict, List, Optional, Tuple, Union, Iterable
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
