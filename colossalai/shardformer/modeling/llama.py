@@ -21,6 +21,7 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.utils import logging
 from transformers.cache_utils import Cache
+from transformers.cache_utils import Cache
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import (
@@ -73,11 +74,15 @@ class LlamaPipelineForwards:
         if stage_manager.is_first_stage():
             if input_ids is not None and inputs_embeds is not None:
                 raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+                raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
             elif input_ids is not None:
+                batch_size, seq_length = input_ids.shape[:2]
                 batch_size, seq_length = input_ids.shape[:2]
             elif inputs_embeds is not None:
                 batch_size, seq_length, _ = inputs_embeds.shape[:2]
+                batch_size, seq_length, _ = inputs_embeds.shape[:2]
             else:
+                raise ValueError("You have to specify either input_ids or inputs_embeds")
                 raise ValueError("You have to specify either input_ids or inputs_embeds")
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             if inputs_embeds is None:
@@ -111,15 +116,7 @@ class LlamaPipelineForwards:
                 past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
             )
             position_ids = position_ids.unsqueeze(0)
-
-        # embed positions, for the first stage, hidden_states is the input embeddings,
-        # for the other stages, hidden_states is the output of the previous stage
-        if shard_config.enable_flash_attention:
-            # in this case, attention_mask is a dict rather than a tensor
-            mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
-            attention_mask = ColoAttention.prepare_attn_kwargs(
-                mask_shape, hidden_states.dtype, hidden_states.device, q_padding_mask=attention_mask, is_causal=True
-            )
+            
         if self._use_flash_attention_2:
             # 2d mask is passed through the layers
             attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
@@ -148,7 +145,7 @@ class LlamaPipelineForwards:
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        next_decoder_cache = () if use_cache else None
+        next_decoder_cache = None
 
         start_idx, end_idx = stage_index[0], stage_index[1]
         num_ckpt_layers = 0
@@ -177,6 +174,9 @@ class LlamaPipelineForwards:
                     past_key_values,
                     output_attentions,
                     use_cache,
+                    past_key_values,
+                    output_attentions,
+                    use_cache,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -191,7 +191,7 @@ class LlamaPipelineForwards:
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
+                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
 
@@ -491,6 +491,13 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_group, sp_size):
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
+            if self.layer_idx is None:
+                raise ValueError(
+                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
+                    "with a layer index."        
+                )        
+            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
             if self.layer_idx is None:
                 raise ValueError(
                     f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "

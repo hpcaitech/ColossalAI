@@ -716,12 +716,8 @@ class WhisperPipelineForwards:
             else:
                 positions = self.embed_positions(inputs_embeds, past_key_values_length=past_key_values_length)
 
-            attention_mask = _get_attention_mask(
-                self,
-                shard_config,
-                inputs_embeds,
-                past_key_values_length,
-                attention_mask,
+            attention_mask = self._prepare_decoder_attention_mask(
+                attention_mask, input_shape, inputs_embeds, past_key_values_length
             )
 
             hidden_states = inputs_embeds + positions
