@@ -3,8 +3,9 @@
 
 import os
 from dataclasses import dataclass
-from typing import Dict, Iterator, List, Optional, Sequence, Union
+from typing import Callable, Dict, Iterator, List, Optional, Sequence, Union
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from datasets import Dataset as HFDataset

@@ -1,4 +1,4 @@
-from typing import Callable, Iterator, List, Tuple, Union, Dict
+from typing import Callable, Dict, Iterator, List, Tuple, Union
 
 import torch
 import torch.distributed as dist
