@@ -64,7 +64,7 @@ vllm
 flash-attention
 
 # install lightllm since we depend on lightllm triton kernels
-git clone https://github.com/ModelTC/lightllm 
+git clone https://github.com/ModelTC/lightllm
 git checkout 28c1267cfca536b7b4f28e921e03de735b003039
 cd lightllm
 pip3 install -e .
@@ -84,7 +84,7 @@ cd /path/to/CollossalAI
 pip install -e .
 
 # install lightllm
-git clone https://github.com/ModelTC/lightllm 
+git clone https://github.com/ModelTC/lightllm
 git checkout 28c1267cfca536b7b4f28e921e03de735b003039
 cd lightllm
 pip3 install -e .

@@ -5,6 +5,7 @@ import torch
 
 from .kvcache_manager import MemoryManager
 
+
 # adapted from: lightllm/server/router/model_infer/infer_batch.py
 @dataclass
 class BatchInferState:

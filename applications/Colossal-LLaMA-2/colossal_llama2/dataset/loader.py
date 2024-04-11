@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import numpy as np
 import os
 import random
 from dataclasses import dataclass
-from typing import Dict, List, Union, Sequence, Optional, Iterator, Callable
+from typing import Callable, Dict, Iterator, List, Optional, Sequence, Union
 
+import numpy as np
 import torch
-from datasets import dataset_dict, load_from_disk
+import torch.nn.functional as F
 from datasets import Dataset as HFDataset
+from datasets import dataset_dict, load_from_disk
 from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import _get_default_group
-from torch.utils.data import ConcatDataset, Dataset, DataLoader, DistributedSampler
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, DistributedSampler
 from transformers.tokenization_utils import PreTrainedTokenizer
-import torch.nn.functional as F
 
 DatasetType = Union[Dataset, ConcatDataset, dataset_dict.Dataset]
 PathType = Union[str, os.PathLike]

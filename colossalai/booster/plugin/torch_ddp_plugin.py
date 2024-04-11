@@ -238,7 +238,11 @@ class TorchDDPPlugin(DPPluginBase):
         return model.module.no_sync()
 
     def enable_lora(
-        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None, bnb_quantization_config: Optional[BnbQuantizationConfig] = None
+        self,
+        model: nn.Module,
+        pretrained_dir: Optional[str] = None,
+        lora_config: Optional[Dict] = None,
+        bnb_quantization_config: Optional[BnbQuantizationConfig] = None,
     ) -> nn.Module:
         from peft import PeftModel, get_peft_model
 

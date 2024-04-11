@@ -7,6 +7,7 @@ from .bnb_config import BnbQuantizationConfig
 
 try:
     import bitsandbytes as bnb
+
     IS_4BIT_BNB_AVAILABLE = bnb.__version__ >= "0.39.0"
     IS_8BIT_BNB_AVAILABLE = bnb.__version__ >= "0.37.2"
 except ImportError:
@@ -54,7 +55,6 @@ def quantize_model(
         `torch.nn.Module`: The quantized model
     """
 
-
     load_in_4bit = bnb_quantization_config.load_in_4bit
     load_in_8bit = bnb_quantization_config.load_in_8bit
 
@@ -69,7 +69,6 @@ def quantize_model(
             "make sure you have the latest version of `bitsandbytes` installed."
         )
 
-    modules_on_cpu = []
     # custom device map
 
     # We keep some modules such as the lm_head in their original dtype for numerical stability reasons
@@ -77,7 +76,7 @@ def quantize_model(
         bnb_quantization_config.skip_modules = get_keys_to_not_convert(model)
 
     # add cpu modules to skip modules only for 4-bit modules
-    #if load_in_4bit:
+    # if load_in_4bit:
     #    bnb_quantization_config.skip_modules.extend(modules_on_cpu)
     modules_to_not_convert = bnb_quantization_config.skip_modules
 
@@ -85,7 +84,7 @@ def quantize_model(
     if bnb_quantization_config.keep_in_fp32_modules is None:
         bnb_quantization_config.keep_in_fp32_modules = []
     keep_in_fp32_modules = bnb_quantization_config.keep_in_fp32_modules
-    #modules_to_not_convert.extend(keep_in_fp32_modules)
+    # modules_to_not_convert.extend(keep_in_fp32_modules)
 
     # compatibility with peft
     model.is_loaded_in_4bit = load_in_4bit
@@ -121,6 +120,7 @@ def quantize_model(
     else:
         raise RuntimeError("No GPU found. A GPU is needed for quantization.")
     return model
+
 
 def replace_with_bnb_layers(model, bnb_quantization_config, modules_to_not_convert=None, current_key_name=None):
     """
@@ -231,7 +231,7 @@ def get_keys_to_not_convert(model):
         Input model
     """
     # Create a copy of the model
-    #with init_empty_weights():
+    # with init_empty_weights():
     #    tied_model = deepcopy(model)  # this has 0 cost since it is done inside `init_empty_weights` context manager`
     tied_model = model
 
@@ -342,4 +342,3 @@ class FindTiedParametersResult(list):
     def values(self):
         # TODO: at the next Transformers release (4.28.0) issue a deprecation warning here.
         return sum([x[1:] for x in self], [])
-

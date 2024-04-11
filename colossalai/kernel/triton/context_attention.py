@@ -238,5 +238,5 @@ if HAS_TRITON:
             num_warps=num_warps,
             num_stages=1,
         )
-        
+
         return

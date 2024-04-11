@@ -149,7 +149,7 @@ model, optimizer, _criterion, _, lr_scheduler = booster.boost(
 
 ## Training GPT-2 using hybrid parallelism
 
-In the previous tutorial, We've explained how to inject various parallelism features into the model and its training components using the Booster and `HybridParallelPlugin`. Now we can start model training. 
+In the previous tutorial, We've explained how to inject various parallelism features into the model and its training components using the Booster and `HybridParallelPlugin`. Now we can start model training.
 Define a training function. When pipeline parallelism is used, you need to call `booster.execute_pipeline` to schedule the stages of model training.
 ```python
 def train_epoch(

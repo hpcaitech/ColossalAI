@@ -1,5 +1,5 @@
 import warnings
-from dataclasses import field, dataclass
+from dataclasses import dataclass, field
 from typing import List
 
 import torch
@@ -62,7 +62,6 @@ class BnbQuantizationConfig:
     )
 
     def __post_init__(self):
-
         if isinstance(self.bnb_4bit_compute_dtype, str):
             if self.bnb_4bit_compute_dtype == "fp32":
                 self.bnb_4bit_compute_dtype = torch.float32

@@ -8,13 +8,8 @@ from torch.optim import AdamW
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import TorchDDPPlugin, LowLevelZeroPlugin
-from colossalai.testing import (
-    check_state_dict_equal,
-    clear_cache_before_run,
-    rerun_if_address_is_in_use,
-    spawn,
-)
+from colossalai.booster.plugin import LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.testing import check_state_dict_equal, clear_cache_before_run, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 from tests.test_checkpoint_io.utils import shared_tempdir
 
@@ -26,9 +21,8 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
 
     test_plugins = [TorchDDPPlugin(), LowLevelZeroPlugin()]
     for plugin in test_plugins:
-
         test_model = copy.deepcopy(model)
-        
+
         booster = Booster(plugin=plugin)
 
         test_model = booster.enable_lora(test_model, lora_config=lora_config)
@@ -40,7 +34,9 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
         test_model, optimizer, criterion, _, _ = booster.boost(test_model, optimizer, criterion)
 
         data = data_gen_fn()
-        data = {k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
+        data = {
+            k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
+        }
 
         output = test_model(**data)
         output = output_transform_fn(output)
@@ -66,7 +62,6 @@ def check_checkpoint(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_t
 
     test_plugins = [TorchDDPPlugin(), LowLevelZeroPlugin()]
     for plugin in test_plugins:
-
         model_save = model_fn()
         model_load = copy.deepcopy(model_save)
 
