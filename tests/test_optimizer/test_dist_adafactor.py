@@ -691,7 +691,7 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     # exam_dist_adafactor_base()
     # exam_dist_adafactor_fwd_bwd()
-    # exam_dist_adafactor_zero()
+    exam_dist_adafactor_zero()
     exam_bert_test()
 
 @pytest.mark.dist
