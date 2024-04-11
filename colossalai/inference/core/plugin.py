@@ -2,6 +2,7 @@ import logging
 import os
 from functools import reduce
 from pathlib import Path
+from typing import Optional
 
 import torch
 
@@ -17,7 +18,7 @@ except ImportError:
     _EXTRA_STATE_KEY_SUFFIX = "_extra_state"
 
 
-class TPChekpoint_io(GeneralCheckpointIO):
+class InferCheckpoint_io(GeneralCheckpointIO):
     def __init__(
         self,
         verbose: bool = True,
@@ -98,9 +99,6 @@ class TPChekpoint_io(GeneralCheckpointIO):
         ):
             _load(extra_state_key)
 
-        # Update master params if mixed-precision training is enabled.
-        # model_before_wrapping.update_master_params()
-
         if self.verbose and self.coordinator.is_master():
             logging.info(f"The model has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
 
@@ -124,3 +122,14 @@ class TPChekpoint_io(GeneralCheckpointIO):
             else:
                 if self.coordinator.is_master():
                     logging.info(f"The following keys are not loaded from checkpoint: {remain_keys}")
+
+    def save_sharded_model(
+        self,
+        model: ModelWrapper,
+        checkpoint: str,
+        gather_dtensor: bool = True,
+        prefix: Optional[str] = None,
+        size_per_shard: int = 1024,
+        use_safetensors: bool = False,
+    ) -> None:
+        return NotImplementedError

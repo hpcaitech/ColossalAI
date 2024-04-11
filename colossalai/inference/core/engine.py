@@ -1,7 +1,5 @@
-import re
 import time
 from itertools import count
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -18,6 +16,7 @@ from colossalai.inference.config import InferenceConfig, InputMetaData
 from colossalai.inference.graph_runner import CUDAGraphRunner
 from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.struct import Sequence
+from colossalai.inference.utils import has_index_file
 from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -124,7 +123,6 @@ class InferenceEngine:
         model = model.eval()
 
         if self.verbose:
-            # self.logger.info(f"Before the shard, the model: {model}, model size: {self.get_model_size(model)}")
             self.logger.info(
                 f"Before the shard, Rank: [{dist.get_rank()}], model size: {self.get_model_size(model)} GB, model's device is: {model.device}"
             )
@@ -133,11 +131,7 @@ class InferenceEngine:
             if self.inference_config.pad_input:
                 model_type = "padding_" + self.model_config.model_type
             else:
-                # if self.inference_config.tp_size > 1:
-                #     model_type = "tp_" + self.model_config.model_type
-                # else:
-                # model_type = "nopadding_" + self.model_config.model_type
-                model_type = "tp_" + self.model_config.model_type
+                model_type = "nopadding_" + self.model_config.model_type
             model_policy = model_policy_map[model_type]()
 
         pg_mesh = ProcessGroupMesh(self.inference_config.pp_size, self.inference_config.tp_size)
@@ -153,16 +147,18 @@ class InferenceEngine:
         self.model = ModelWrapper(model).to(self.device)
 
         if self.verbose:
-            # self.logger.info(f"the model: {self.model}, model size: {self.get_model_size(self.model)}")
             self.logger.info(
                 f"After the shard, Rank: [{dist.get_rank()}], model size: {self.get_model_size(self.model)} GB, model's device is: {model.device}"
             )
 
         if isinstance(model_or_path, str):
-            from colossalai.inference.core.plugin import TPChekpoint_io
+            from colossalai.inference.core.plugin import InferCheckpoint_io
 
-            cpt_io = TPChekpoint_io()
-            if_has_index_file, model_index_file = self.has_index_file(model_or_path)
+            # from colossalai.checkpoint_io.hybrid_parallel_checkpoint_io import HybridParallelCheckpointIO
+
+            cpt_io = InferCheckpoint_io()
+            # cpt_io = HybridParallelCheckpointIO(dp_group=None, pp_group=None, tp_group=pg_mesh.get_group_along_axis(TP_AXIS), zero_stage=0, verbose=True)
+            if_has_index_file, model_index_file = has_index_file(model_or_path)
             assert if_has_index_file, "the model path is invalid"
             cpt_io.load_model(self.model, model_index_file)
 
@@ -173,41 +169,6 @@ class InferenceEngine:
             self.logger.info(
                 f"Rank [{dist.get_rank()}], Model Weight Max Occupy {peak_memory / (1024 ** 3)} GB, Model size: {self.get_model_size(self.model)} GB"
             )
-
-    def has_index_file(self, checkpoint_path: str) -> Tuple[bool, Optional[Path]]:
-        """
-        Check whether the checkpoint has an index file.
-
-        Args:
-            checkpoint_path (str): path to the checkpoint.
-
-        Returns:
-            Tuple[bool, Optional[Path]]: a tuple of (has_index_file, index_file_path)
-        """
-        checkpoint_path = Path(checkpoint_path)
-        if checkpoint_path.is_file():
-            # check if it is .index.json
-            reg = re.compile("(.*?).index((\..*)?).json")
-            if reg.fullmatch(checkpoint_path.name) is not None:
-                return True, checkpoint_path
-            else:
-                return False, None
-        elif checkpoint_path.is_dir():
-            index_files = list(checkpoint_path.glob("*.index.*json"))
-
-            for index_file in index_files:
-                if "safetensors" in index_file.__str__():
-                    return True, index_file.__str__()  # return the safetensors file first
-
-            if len(index_files) == 1:
-                return True, index_files[0]
-            else:
-                assert (
-                    len(index_files) == 1
-                ), f"Expected to find one .index.json file in {checkpoint_path}, but found {len(index_files)}"
-                return False, None
-        else:
-            raise RuntimeError(f"Invalid checkpoint path {checkpoint_path}. Expected a file or a directory.")
 
     def get_model_size(self, model: nn.Module):
         """Calculates the total size of the model weights (including biases) in bytes.
