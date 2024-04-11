@@ -1,11 +1,11 @@
-import logging
-import warnings
 import enum
+import logging
 import os
+import warnings
 from functools import partial
 from pathlib import Path
 from types import MethodType
-from typing import Callable, Dict, Iterator, List, Optional, Tuple, Dict
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -44,6 +44,7 @@ def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
 
 
 SUPPORTED_PRECISION = ["fp16", "bf16", "fp32"]
+
 
 class OptimizerParamCheckState(enum.Enum):
     ORIGIN_PARAM_FINDED = 0
@@ -222,6 +223,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
             logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
             return
         from peft import PeftModel
+
         assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
         peft_model = model.unwrap()
         assert isinstance(
@@ -332,12 +334,15 @@ class LowLevelZeroPlugin(DPPluginBase):
     def supported_devices(self) -> List[str]:
         return ["cuda"]
 
-
     def support_lora(self) -> bool:
         return True
 
     def enable_lora(
-        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None, bnb_quantization_config: Optional[BnbQuantizationConfig] = None
+        self,
+        model: nn.Module,
+        pretrained_dir: Optional[str] = None,
+        lora_config: Optional[Dict] = None,
+        bnb_quantization_config: Optional[BnbQuantizationConfig] = None,
     ) -> nn.Module:
         from peft import PeftModel, get_peft_model
 
@@ -353,21 +358,21 @@ class LowLevelZeroPlugin(DPPluginBase):
         else:
             peft_model = PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)
         return peft_model
-    
+
     def get_param_group_id(self, optimizer: Optimizer, origin_param: Parameter):
         origin_param_id = id(origin_param)
         for group_id, param_group in enumerate(optimizer.param_groups):
-            for p in param_group['params']:
+            for p in param_group["params"]:
                 if id(p) == origin_param_id:
                     return group_id
         return -1
-    
+
     def get_param_group_id(self, optimizer: Optimizer, origin_param: Parameter, lora_param: Parameter):
         origin_param_id = id(origin_param)
         lora_param_id = id(lora_param)
         target_group_id = None
         for group_id, param_group in enumerate(optimizer.param_groups):
-            for p in param_group['params']:
+            for p in param_group["params"]:
                 if id(p) == lora_param_id:
                     # check if the lora parameter exists.
                     return target_group_id, OptimizerParamCheckState.LORA_PARM_EXISTED
@@ -377,25 +382,31 @@ class LowLevelZeroPlugin(DPPluginBase):
             return target_group_id, OptimizerParamCheckState.ORIGIN_PARAM_FINDED
         else:
             return target_group_id, OptimizerParamCheckState.ORIGIN_PARAM_NOT_FIND
-    
+
     def add_lora_params_to_optimizer(self, model, optimizer):
-        """ add lora parameters to optimizer """
-        name2param= {}
+        """add lora parameters to optimizer"""
+        name2param = {}
         for name, param in model.named_parameters():
             name2param[name] = param
 
         for name, param in name2param.items():
-            if 'lora_A' in name or 'lora_B' in name:
+            if "lora_A" in name or "lora_B" in name:
                 origin_key = name.replace("lora_A.", "")
                 origin_key = origin_key.replace("lora_B.", "")
                 origin_key = origin_key.replace(f"{model.active_adapter}", "base_layer")
                 origin_param = name2param[origin_key]
                 group_id, check_state = self.get_param_group_id(optimizer, origin_param, param)
                 if check_state == OptimizerParamCheckState.ORIGIN_PARAM_NOT_FIND:
-                    warnings.warn("Origin parameter {origin_key} related to {name} doesn't exist in optimizer param_groups.")
-                elif check_state == OptimizerParamCheckState.ORIGIN_PARAM_FINDED and group_id is not None and group_id >= 0:
-                    optimizer.param_groups[group_id]['params'].append(param)
-    
+                    warnings.warn(
+                        "Origin parameter {origin_key} related to {name} doesn't exist in optimizer param_groups."
+                    )
+                elif (
+                    check_state == OptimizerParamCheckState.ORIGIN_PARAM_FINDED
+                    and group_id is not None
+                    and group_id >= 0
+                ):
+                    optimizer.param_groups[group_id]["params"].append(param)
+
     def configure(
         self,
         model: nn.Module,
@@ -406,10 +417,12 @@ class LowLevelZeroPlugin(DPPluginBase):
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         if self.lora_enabled:
             from peft import PeftModel
-            assert isinstance(model, PeftModel), "The model should have been wrapped as a PeftModel when self.lora_enabled is True"
+
+            assert isinstance(
+                model, PeftModel
+            ), "The model should have been wrapped as a PeftModel when self.lora_enabled is True"
             if optimizer is not None:
                 self.add_lora_params_to_optimizer(model, optimizer)
-
 
         if not isinstance(model, ModelWrapper):
             model = LowLevelZeroModel(model, self.precision)

@@ -6,12 +6,12 @@ Initialize new tokenizer for continual pre-training
 """
 
 import argparse
-import os
 import json
+import os
 from typing import List, Union
 
-from transformers.models.llama.tokenization_llama import LlamaTokenizer
 from sentencepiece import sentencepiece_model_pb2 as sp_pb2_model
+from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
 from colossalai.logging import get_dist_logger
 

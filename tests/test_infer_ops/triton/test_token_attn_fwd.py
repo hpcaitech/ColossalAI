@@ -4,6 +4,7 @@ from packaging import version
 
 try:
     from colossalai.kernel.triton.token_attention_kernel import token_attention_fwd
+
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False

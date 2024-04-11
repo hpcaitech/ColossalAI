@@ -130,8 +130,8 @@ from modelscope import AutoModelForCausalLM, AutoTokenizer, snapshot_download
 model_dir = snapshot_download('colossalai/Colossal-LLaMA-2-7b-base', revision='v1.0.1')
 tokenizer = AutoTokenizer.from_pretrained(model_dir, device_map="auto", trust_remote_code=True)
 model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="auto", trust_remote_code=True).eval()
-generation_kwargs = {"max_new_tokens": 256, 
-                     "top_p": 0.95, 
+generation_kwargs = {"max_new_tokens": 256,
+                     "top_p": 0.95,
                      "temperature": 0.3
                     }
 input = '离离原上草，'

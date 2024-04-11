@@ -190,6 +190,7 @@ def calculate_global_norm_from_list(norm_list):
         total_norm += norm**2.0
     return math.sqrt(total_norm)
 
+
 def sync_tensor(flat_tensor, tensor_list):
     """
     Synchronize the flattened tensor and unflattened tensor list. When

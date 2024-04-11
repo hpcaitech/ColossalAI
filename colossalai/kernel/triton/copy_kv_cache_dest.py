@@ -10,7 +10,6 @@ except ImportError:
     print("please install triton from https://github.com/openai/triton")
 
 if HAS_TRITON:
-
     # adapted from https://github.com/ModelTC/lightllm/blob/5c559dd7981ed67679a08a1e09a88fb4c1550b3a/lightllm/common/triton_kernel/destindex_copy_kv.py
     @triton.jit
     def _fwd_copy_kv_cache_dest(

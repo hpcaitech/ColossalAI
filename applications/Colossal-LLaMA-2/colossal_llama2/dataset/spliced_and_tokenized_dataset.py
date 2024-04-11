@@ -7,9 +7,9 @@ Splicing multiple pre-tokenized sequence data points
 import random
 import warnings
 from copy import deepcopy
-from datasets import dataset_dict
-from typing import Any, Callable, Dict, Iterable, List, Union, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Tuple, Union
 
+from datasets import dataset_dict
 from torch.utils.data import ConcatDataset, Dataset, IterableDataset
 from transformers.models.llama.tokenization_llama import LlamaTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
@@ -169,12 +169,7 @@ class ClosedToConstantLengthSplicedDataset(IterableDataset):
                     spliced_labels.extend(seq_labels)
             # For residual spliced data point at the end of the data set
             if self.infinite is False and more_data_points is False and len(spliced_input_ids) > 0:
-                examples.append(
-                    {
-                        self.input_ids_field: spliced_input_ids,
-                        self.labels_field: spliced_labels
-                    }
-                )
+                examples.append({self.input_ids_field: spliced_input_ids, self.labels_field: spliced_labels})
             if self.shuffle:
                 random.shuffle(examples)
             for spliced_data_point in examples:
