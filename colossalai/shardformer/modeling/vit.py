@@ -26,11 +26,11 @@ def _encoder_forward(
 
         if encoder.gradient_checkpointing and encoder.training:
             layer_outputs = encoder._gradient_checkpointing_func(
-                    layer_module.__call__,
-                    hidden_states,
-                    layer_head_mask,
-                    output_attentions,
-                )
+                layer_module.__call__,
+                hidden_states,
+                layer_head_mask,
+                output_attentions,
+            )
         else:
             layer_outputs = layer_module(hidden_states, layer_head_mask, output_attentions)
 
