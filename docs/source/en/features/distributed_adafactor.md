@@ -14,7 +14,7 @@ Distributed Adafactor is an optimiser that supports hybrid optimisation, includi
 {{ autodoc:colossalai.nn.optimizer.distributed_adafactor.DistributedAdaFactor }}
 
 ## Hands-On Practice
-We now demonstrate how to use Distributed Adafactor.  
+We now demonstrate how to start Distributed Adafactor with booster API.  
 ### step 1. Import libraries
 
 ```python
@@ -86,7 +86,15 @@ dist_optim.setup_distributed(
 )
 ```
 
-### step 5. Perform a forward and backward propagation for model and step the gradient
+### step 5.Init Booster
+
+```python
+plugin = LowLevelZeroPlugin()
+booster = Booster(plugin=plugin)
+criterion = lambda x: x.mean()
+tp_model, dist_optim, criterion, _, _ = booster.boost(tp_model, dist_optim, criterion) 
+```
+### step 6.Perform a forward and backward propagation for model and step the gradient
 
 ```python
 # Random initialise dataset
@@ -104,60 +112,36 @@ dist_optim.step()
 dist_optim.zero_grad()
 ```
 
-## Run with booster
-We highly recommend users to use booster, a simple, easy to use, and efficient interface. The Code Below is the Distributed Adafactor launched with booster.
-
-```python
-# ==============================
-# Model Init
-# ==============================
-tp_model = TPModel()
-
-# ==============================
-# Optimizer Init
-# ==============================
-dist_optim = DistributedAdaFactor([p for n, p in tp_model.named_parameters()])
-
-# ==============================
-# Booster Init
-# ==============================
-plugin = TorchDDPPlugin()
-booster = Booster(plugin=plugin)
-criterion = lambda x: x.mean()
-tp_model, dist_optim, criterion, _, _ = booster.boost(tp_model, dist_optim, criterion)
-```
-
-## Performance
-
-|        Parallel strategy        |    iter    | Float Percision |      Device Nums     | weight shape  | Avg runtime(ms)  | Avg Speed Up Rate | Best Speed Up Rate  |
-| :-----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :--------------: | :-----------------: | :---------------: |
-|           AdaFactor             |     50     |     float32     |          2           | [4096 , 4096] |        0.58      |           -         |          -        |
-|    DistAdaFactor(Col Parallel)  |     50     |     float32     |          2           | [4096 , 4096] |        0.41      |         1.39        |        56.91      |
-|    DistAdaFactor(Col Parallel)  |     50     |     float32     |          2           | [4096 , 4096] |        0.61      |         0.96        |        18.69      |
-|           AdaFactor             |     50     |     float16     |          2           | [4096 , 4096] |        0.72      |           -         |          -        |
-|    DistAdaFactor(Col Parallel)  |     50     |     float16     |          2           | [4096 , 4096] |        0.54      |         1.33        |        26.03      |
-|    DistAdaFactor(Row Parallel)  |     50     |     float16     |          2           | [4096 , 4096] |        0.67      |         1.08        |        20.55      |
-|           AdaFactor             |     50     |     bfloat16    |          2           | [4096 , 4096] |        0.72      |           -         |          -        |
-|    DistAdaFactor(Col Parallel)  |     50     |     bfloat16    |          2           | [4096 , 4096] |        0.55      |         1.31        |        26.11      |
-|    DistAdaFactor(Row Parallel)  |     50     |     bfloat16    |          2           | [4096 , 4096] |        0.67      |         1.07        |        21.86      |
-|           AdaFactor             |     50     |     float32     |          4           | [4096 , 4096] |        0.57      |           -         |          -        |
-|    DistAdaFactor(Col Parallel)  |     50     |     float32     |          4           | [4096 , 4096] |        0.38      |         1.48        |        53.99      |
-|    DistAdaFactor(Col Parallel)  |     50     |     float32     |          4           | [4096 , 4096] |        0.60      |         0.95        |        16.53      |
-|           AdaFactor             |     50     |     float16     |          4           | [4096 , 4096] |        0.70      |           -         |          -        |
-|    DistAdaFactor(Col Parallel)  |     50     |     float16     |          4           | [4096 , 4096] |        0.50      |         1.44        |        21.98      |
-|    DistAdaFactor(Row Parallel)  |     50     |     float16     |          4           | [4096 , 4096] |        0.64      |         1.12        |        15.35      |
-|           AdaFactor             |     50     |     bfloat16    |          4           | [4096 , 4096] |        0.72      |           -         |          -        |
-|    DistAdaFactor(Col Parallel)  |     50     |     bfloat16    |          4           | [4096 , 4096] |        0.56      |         1.29        |        25.63      |
-|    DistAdaFactor(Row Parallel)  |     50     |     bfloat16    |          4           | [4096 , 4096] |        0.71      |         1.09        |        21.52      |
-|           AdaFactor             |     50     |     float32     |          8           | [4096 , 4096] |        0.56      |           -         |          -        |
-|    DistAdaFactor(Col Parallel)  |     50     |     float32     |          8           | [4096 , 4096] |        0.38      |         1.50        |        54.51      |
-|    DistAdaFactor(Col Parallel)  |     50     |     float32     |          8           | [4096 , 4096] |        0.91      |         0.67        |        15.68      |
-|           AdaFactor             |     50     |     float16     |          8           | [4096 , 4096] |        0.74      |           -         |          -        |
-|    DistAdaFactor(Col Parallel)  |     50     |     float16     |          8           | [4096 , 4096] |        0.84      |         0.87        |         9.21      |
-|    DistAdaFactor(Row Parallel)  |     50     |     float16     |          8           | [4096 , 4096] |        1.03      |         0.75        |        16.12      |
-|           AdaFactor             |     50     |     bfloat16    |          8           | [4096 , 4096] |        0.71      |           -         |          -        |
-|    DistAdaFactor(Col Parallel)  |     50     |     bfloat16    |          8           | [4096 , 4096] |        0.54      |         1.31        |        27.28      |
-|    DistAdaFactor(Row Parallel)  |     50     |     bfloat16    |          8           | [4096 , 4096] |        0.73      |         1.03        |        25.01      |
-
-
+## Supporting Information
+Model/Feature Compatibility Matrix:
+<table>
+  <tr>
+    <th nowrap="nowrap">Model/Feature</th>
+    <th nowrap="nowrap" title="Transformers Bert">Transformers<br />Bert</th>
+    <th nowrap="nowrap" align="center" title="Transformers Bert For Pretraining">Transformers Bert<br />For Pretraining</th>
+    <th nowrap="nowrap" align="center" title="Transformers Bert Lm Head Model">Transformers Bert<br />Lm Head Model</th>
+    <th nowrap="nowrap" align="center" title="Transformers Bert For Masked Lm">Transformers Bert<br />For Masked Lm</th>
+    <th nowrap="nowrap" align="center" title="Transformers Bert For Sequence Classification">Transformers Bert<br />For Sequence Classification</th>
+    <th nowrap="nowrap" align="center" title="Transformers Bert For Token Classification">Transformers Bert<br />For Token Classification</th>
+    <th nowrap="nowrap" align="center" title="Transformers Bert For Next Sentence">Transformers Bert<br />For Next Sentence</th>
+    <th nowrap="nowrap" align="center" title="Transformers Bert For Multiple-choice Question">Transformers Bert<br />For Multiple-choice Question</th>
+    <th nowrap="nowrap" align="center" title="Transformers Bert For Question Answering">Transformers Bert<br />For Question Answering</th>
+  </tr>
+  <tr>
+    <td nowrap="nowrap">Distributedt<br />Adafactor</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+  </tr>
+  
+  <tr>
+    <td colspan="39"></td>
+  </tr>
+</table>
 <!-- doc-test-command: echo  -->

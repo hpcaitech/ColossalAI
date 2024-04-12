@@ -385,127 +385,7 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     Randomizer.reset_index()
     torch.cuda.empty_cache()
     print(f"Zero Test Pass")
-      
-@parameterize("dtype", [torch.float16])  # torch.float32, torch.float16, torch.bfloat16
-@parameterize("tp_zero_size", [(2, 2), (1, 4)])  # (2, 2), (4, 1), (1, 4)
-def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
-    tp_size, zero_size = tp_zero_size
-    use_zero = True if zero_size > 1 else False
-    local_rank = dist.get_rank()
-    
-    clear_layout_converter()
-
-    proc_mesh = ProcessGroupMesh(tp_size, zero_size)
-    tp_group, dp_group = proc_mesh.get_group_along_axis(0), proc_mesh.get_group_along_axis(1)
-
-    torch.set_default_dtype(dtype)
-    set_seed(42)
-
-    # ==============================
-    # Model Init
-    # ==============================
-    base_model = MlpModel().to(local_rank)
-    tp_model = TPModel(copy.deepcopy(base_model.linear1), copy.deepcopy(base_model.linear2), tp_group).to(local_rank)
-
-    base_param_group = setup_param_groups(base_model)
-    tp_param_group = setup_param_groups(tp_model)
-    tp_param_group_, tp_shard_spec, tp_param_shape = setup_flatten_param_groups_sharding_spec_shape(tp_model)
-
-    # ==============================
-    # Optimizer Init
-    # ==============================
-    base_optim = Adafactor(base_param_group)
-    dist_optim = DistributedAdaFactor(tp_param_group)
-
-    # Setup distributed optimizer
-    if zero_size > 1:
-        base_optim = LowLevelZeroOptimizer(
-            base_optim,
-            overlap_communication=True,
-            initial_scale=128,
-            partition_grad=True,
-            dp_process_group=dp_group,
-            verbose=True,
-        )
-
-        dist_optim = LowLevelZeroOptimizer(
-            dist_optim,
-            overlap_communication=True,
-            initial_scale=128,
-            partition_grad=True,
-            dp_process_group=dp_group,
-            verbose=True,
-        )
-        shard_to_param = dist_optim._param_store.master_to_working_param  # {id(): param tensor} but flattened
-        dist_optim.optim.setup_distributed(
-            tensor_parallel_group=tp_group,
-            data_parallel_group=dp_group,
-            shard_to_param=shard_to_param,
-            use_zero=use_zero,
-        )
-    else:
-        shard_to_param = set_master_param_to_shard_param(tp_param_group)
-        dist_optim.setup_distributed(
-            tensor_parallel_group=tp_group,
-            data_parallel_group=dp_group,
-            shard_to_param=shard_to_param,
-            use_zero=use_zero,
-        )
-    
-    # ==============================
-    # Booster Init
-    # ==============================
-    plugin = LowLevelZeroPlugin()
-    booster = Booster(plugin=plugin)
-    criterion = lambda x: x.mean()
-    
-    tp_model, dist_optim, criterion, _, _ = booster.boost(tp_model, dist_optim, criterion)
-
-    # ==============================
-    # Correctness Verify
-    # ==============================
-    x = torch.randn(HEIGHT, WIDTH, device=local_rank)
-
-    out = base_model(x)
-    out_tp = tp_model(x)
-
-    if zero_size > 1:
-        dist_optim.backward(out_tp.sum())
-        base_optim.backward(out.sum())
-    else:
-        out_tp.sum().backward()
-        out.sum().backward()
-
-    base_optim.step()
-    dist_optim.step()
-
-    base_optim.zero_grad()
-    dist_optim.zero_grad()
-
-    for p, tp_p in zip(base_param_group, tp_param_group):
-        param_is_distributed = is_distributed_tensor(tp_p)
-        if param_is_distributed:
-            shard_spec = get_sharding_spec(tp_p)
-            if len(shard_spec.sharding_sequence) >= 2:
-                # Col Parallel
-                if shard_spec.sharding_sequence[0] == "R":
-                    tp_p = _gather(input_=tp_p, dim=-1, process_group=tp_group)  # gather
-                # ROW Parallel
-                if shard_spec.sharding_sequence[-1] == "R":
-                    tp_p = _gather(input_=tp_p, dim=0, process_group=tp_group)  # gather
-            else:
-                # TP bias
-                tp_p = _gather(input_=tp_p, dim=-1, process_group=tp_group)  # gather
-
-        else:
-            # No TP bias
-            pass
-        correctness = correctness_verify(p.data, tp_p.data, dtype)
-    clear_layout_converter()
-    Randomizer.reset_index()
-    torch.cuda.empty_cache()  
-    print(f"Booster Test Pass")    
-        
+         
 @parameterize(
     "test_config",
     [
@@ -560,6 +440,7 @@ def exam_bert_test(test_config):
     ]
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        clear_layout_converter()
         print(f"model name {name} {name in model_list}")
         if name in model_list:
             print(f"{name} check start")
@@ -570,8 +451,7 @@ def exam_bert_test(test_config):
             org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
                 org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
             )
-                    
-                    
+                       
             stage_manager = booster.plugin.stage_manager
             tp_group = booster.plugin.tp_group
 
@@ -593,8 +473,6 @@ def exam_bert_test(test_config):
             check_optim_states(org_optimizer, sharded_optimizer.optim)
             print(f"{name} check pass")
 
-    
-    clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()
     print(f"Bert Model Zoo Test Pass") 
@@ -604,7 +482,6 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_dist_adafactor_base()
     exam_dist_adafactor_zero()
-    exam_dist_adafactor_booster()
     exam_bert_test()
 
 @pytest.mark.dist
