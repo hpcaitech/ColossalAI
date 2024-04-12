@@ -42,6 +42,9 @@ class BatchBucket:
         self.device = device or get_current_device()
         self.dtype = dtype
 
+        self._use_spec_dec = False
+        self._num_tokens_to_verify = None
+
         self._current_batch_size = 0
         self._sequences_dict = dict()
         self._sequences_indexes = dict()  # deque(maxlen=self.max_batch_size)
@@ -87,6 +90,27 @@ class BatchBucket:
             == torch.nonzero(self._sequence_lengths).view(-1).numel()
             == torch.nonzero(self._block_tables[:, 0] >= 0).numel()
         )
+
+    @property
+    def use_spec_dec(self) -> bool:
+        return self._use_spec_dec
+
+    @property
+    def num_tokens_to_verify(self) -> int:
+        return self._num_tokens_to_verify
+
+    def set_use_spec_dec(self, num_tokens_to_verify: int = 5) -> None:
+        """Set batch bucket to use speculatvie decoding.
+        This will notify the adjust the lengths of inputs during modeling,
+        and let the main model verifies tokens in parallel.
+        """
+        self._use_spec_dec = True
+        self._num_tokens_to_verify = num_tokens_to_verify
+
+    def reset_use_spec_dec(self) -> None:
+        """Reset the usage of speculative decoding for the batch bucket"""
+        self._use_spec_dec = False
+        self._num_tokens_to_verify = None
 
     def _make_compact(self) -> None:
         # Clean and Compress the batch based on its sequences dict.
@@ -347,6 +371,23 @@ class BatchBucket:
                 seq.check_finish()
             self._sequence_lengths[: self.current_batch_size] += 1
 
+    def revoke_batch_tokens(self, n_tokens: int, n_seqs: int = 1) -> None:
+        """Revoke the last n output tokens of the sequences in the batch
+
+        Args:
+            n_tokens (int): The number of output tokens to revoke from each sequence.
+                It does not count in the context tokens (input tokens).
+            n_seqs (int): The first n sequences to revoke tokens from. Defaults to 1.
+                For now, speculative decoding only supports batch size 1.
+        """
+        if n_tokens >= 1:
+            seqs_iter = iter(self._sequences_dict.items())
+            for _ in range(n_seqs):
+                seq_id, seq = next(seqs_iter)
+                assert seq.output_len >= n_tokens, "Revoking len exceeds the current output len of the sequence"
+                seq.output_token_id = seq.output_token_id[:-n_tokens]
+                self._sequence_lengths[self._sequences_indexes[seq_id]] -= n_tokens
+
     def clear(self, free_block_tables_fn: Optional[Callable[[torch.Tensor], None]]) -> List[int]:
         """Clear all the sequences in the batch.
 
@@ -401,6 +442,21 @@ class BatchBucket:
             return True
         return False
 
+    def get_1D_inputs_spec_dec(self, n: int) -> torch.Tensor:
+        # Used for main model verification in **Decoding Stage**
+        # `n` is the number of tokens to be verified,
+        # and so that prepare the last `n` tokens of each sequence as the inputs
+        assert len(self._sequences_dict) > 0, "No sequence in the batch"
+        assert all(
+            seq.output_len >= n for seq in self._sequences_dict.values()
+        ), "Sequence output tokens must be greater than or equal to the number of tokens to be verified."
+        out_li = []
+        seq_ids = sorted(self._sequences_indexes.keys(), key=lambda x: self._sequences_indexes[x])
+        for seq_id in seq_ids:
+            seq: Sequence = self._sequences_dict[seq_id]
+            out_li.extend(seq.output_token_id[-n:])
+        return torch.tensor(out_li, dtype=torch.long, device=self.device)
+
     # For compatibility
     def get_1D_inputs(self) -> torch.Tensor:
         assert len(self._sequences_dict) > 0, "No sequence in the batch"
@@ -411,8 +467,6 @@ class BatchBucket:
                 seq.output_len == 0 for seq in self._sequences_dict.values()
             ), "Sequence stage (Prefill/Decoding) must be the same in the batch"
             out_li = []
-            num_tokens = torch.sum(self._sequence_lengths)
-            out = torch.empty([num_tokens], dtype=torch.long)
             seq_ids = sorted(self._sequences_indexes.keys(), key=lambda x: self._sequences_indexes[x])
             for seq_id in seq_ids:
                 seq: Sequence = self._sequences_dict[seq_id]
@@ -420,6 +474,10 @@ class BatchBucket:
             return torch.tensor(out_li, dtype=torch.long, device=self.device)
         else:
             # Assume decoding stage
+            if self.use_spec_dec:
+                # For Speculative Decoding
+                # the number of tokens to be verified in parallel plus the correct token in the last step
+                return self.get_1D_inputs_spec_dec(self.num_tokens_to_verify + 1)
             assert all(
                 seq.output_len > 0 for seq in self._sequences_dict.values()
             ), "Sequence stage (Prefill/Decoding) must be the same in the batch"

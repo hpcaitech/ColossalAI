@@ -2,7 +2,7 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
 
-#include "utils/vector_copy_utils.h"
+#include "utils/vec_copy.h"
 #include "../common/micros.h"
 #include "../common/mp_type_traits.h"
 
