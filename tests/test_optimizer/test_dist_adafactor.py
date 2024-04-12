@@ -415,7 +415,6 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
         },
         {
             "tp_size": 4,
-            "pp_size": 1,
             "num_microbatches": 4,
             "zero_stage": 0,
             "precision": "bf16",
@@ -441,9 +440,7 @@ def exam_bert_test(test_config):
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         clear_layout_converter()
-        print(f"model name {name} {name in model_list}")
         if name in model_list:
-            print(f"{name} check start")
             org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
                 model_fn, loss_fn, test_config, Adafactor, DistributedAdaFactor
             )

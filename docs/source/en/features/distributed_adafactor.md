@@ -128,7 +128,7 @@ Model/Feature Compatibility Matrix:
     <th nowrap="nowrap" align="center" title="Transformers Bert For Question Answering">Transformers Bert<br />For Question Answering</th>
   </tr>
   <tr>
-    <td nowrap="nowrap">Distributedt<br />Adafactor</td>
+    <td nowrap="nowrap">Distributed<br />Adafactor</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
