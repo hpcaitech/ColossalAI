@@ -10,7 +10,7 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin, HybridParallelPlugin, LowLevelZeroPlugin
-
+from colossalai.logging import disable_existing_loggers
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.nn.optimizer.adafactor import Adafactor
@@ -386,6 +386,126 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     torch.cuda.empty_cache()
     print(f"Zero Test Pass")
          
+@parameterize("dtype", [torch.float16])
+@parameterize("tp_zero_size", [(2, 2), (1, 4)])
+def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
+    tp_size, zero_size = tp_zero_size
+    use_zero = True if zero_size > 1 else False
+    local_rank = dist.get_rank()
+    
+    clear_layout_converter()
+
+    proc_mesh = ProcessGroupMesh(tp_size, zero_size)
+    tp_group, dp_group = proc_mesh.get_group_along_axis(0), proc_mesh.get_group_along_axis(1)
+
+    torch.set_default_dtype(dtype)
+    set_seed(42)
+
+    # ==============================
+    # Model Init
+    # ==============================
+    base_model = MlpModel().to(local_rank)
+    tp_model = TPModel(copy.deepcopy(base_model.linear1), copy.deepcopy(base_model.linear2), tp_group).to(local_rank)
+
+    base_param_group = setup_param_groups(base_model)
+    tp_param_group = setup_param_groups(tp_model)
+    tp_param_group_, tp_shard_spec, tp_param_shape = setup_flatten_param_groups_sharding_spec_shape(tp_model)
+
+    # ==============================
+    # Optimizer Init
+    # ==============================
+    base_optim = Adafactor(base_param_group)
+    dist_optim = DistributedAdaFactor(tp_param_group)
+
+    # Setup distributed optimizer
+    if zero_size > 1:
+        base_optim = LowLevelZeroOptimizer(
+            base_optim,
+            overlap_communication=True,
+            initial_scale=128,
+            partition_grad=True,
+            dp_process_group=dp_group,
+            verbose=True,
+        )
+
+        dist_optim = LowLevelZeroOptimizer(
+            dist_optim,
+            overlap_communication=True,
+            initial_scale=128,
+            partition_grad=True,
+            dp_process_group=dp_group,
+            verbose=True,
+        )
+        shard_to_param = dist_optim._param_store.master_to_working_param  # {id(): param tensor} but flattened
+        dist_optim.optim.setup_distributed(
+            tensor_parallel_group=tp_group,
+            data_parallel_group=dp_group,
+            shard_to_param=shard_to_param,
+            use_zero=use_zero,
+        )
+    else:
+        shard_to_param = set_master_param_to_shard_param(tp_param_group)
+        dist_optim.setup_distributed(
+            tensor_parallel_group=tp_group,
+            data_parallel_group=dp_group,
+            shard_to_param=shard_to_param,
+            use_zero=use_zero,
+        )
+    
+    # ==============================
+    # Booster Init
+    # ==============================
+    plugin = LowLevelZeroPlugin()
+    booster = Booster(plugin=plugin)
+    criterion = lambda x: x.mean()
+    
+    tp_model, dist_optim, criterion, _, _ = booster.boost(tp_model, dist_optim, criterion)
+
+    # ==============================
+    # Correctness Verify
+    # ==============================
+    x = torch.randn(HEIGHT, WIDTH, device=local_rank)
+
+    out = base_model(x)
+    out_tp = tp_model(x)
+
+    if zero_size > 1:
+        dist_optim.backward(out_tp.sum())
+        base_optim.backward(out.sum())
+    else:
+        out_tp.sum().backward()
+        out.sum().backward()
+
+    base_optim.step()
+    dist_optim.step()
+
+    base_optim.zero_grad()
+    dist_optim.zero_grad()
+
+    for p, tp_p in zip(base_param_group, tp_param_group):
+        param_is_distributed = is_distributed_tensor(tp_p)
+        if param_is_distributed:
+            shard_spec = get_sharding_spec(tp_p)
+            if len(shard_spec.sharding_sequence) >= 2:
+                # Col Parallel
+                if shard_spec.sharding_sequence[0] == "R":
+                    tp_p = _gather(input_=tp_p, dim=-1, process_group=tp_group)  # gather
+                # ROW Parallel
+                if shard_spec.sharding_sequence[-1] == "R":
+                    tp_p = _gather(input_=tp_p, dim=0, process_group=tp_group)  # gather
+            else:
+                # TP bias
+                tp_p = _gather(input_=tp_p, dim=-1, process_group=tp_group)  # gather
+
+        else:
+            # No TP bias
+            pass
+        correctness = correctness_verify(p.data, tp_p.data, dtype)
+    Randomizer.reset_index()
+    torch.cuda.empty_cache()  
+    print(f"Booster Test Pass")    
+                 
+         
 @parameterize(
     "test_config",
     [
@@ -425,7 +545,7 @@ def exam_bert_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_bert")
     test_config["use_lazy_init"] = False
     test_config["pp_size"] = 1  # Do NOT test Pipeline Parallel
-    test_config["initial_scale"] = 2**10  # avoid overflow
+    test_config["initial_scale"] = 2**16  # avoid overflow
     model_list = [
         "transformers_bert",
         "transformers_bert_for_pretraining",
@@ -437,9 +557,8 @@ def exam_bert_test(test_config):
         "transformers_bert_for_mcq",
         "transformers_bert_for_question_answering",
     ]
-
+    clear_layout_converter()
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        clear_layout_converter()
         if name in model_list:
             org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
                 model_fn, loss_fn, test_config, Adafactor, DistributedAdaFactor
@@ -475,11 +594,13 @@ def exam_bert_test(test_config):
     print(f"Bert Model Zoo Test Pass") 
     
 def run_dist(rank, world_size, port):
+    disable_existing_loggers()
     config = {}
     colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_dist_adafactor_base()
     exam_dist_adafactor_zero()
     exam_bert_test()
+    exam_dist_adafactor_booster()
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
