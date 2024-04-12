@@ -27,6 +27,7 @@ PP_AXIS, TP_AXIS = 0, 1
 
 _supported_models = [
     "LlamaForCausalLM",
+    "BaichuanForCausalLM",
 ]
 
 _BATCH_SIZES_TO_CAPTURE = [1, 2, 4] + [8 * i for i in range(1, 33)]

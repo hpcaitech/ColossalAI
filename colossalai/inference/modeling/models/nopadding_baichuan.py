@@ -5,15 +5,13 @@ import torch
 import torch.nn as nn
 
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
-from colossalai.inference.modeling.models.nopadding_llama import llama_base_attn_forward
+from colossalai.inference.modeling.models.nopadding_llama import NopadLlamaAttention
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.logging import get_dist_logger
 
 inference_ops = InferenceOpsLoader().load()
 
 logger = get_dist_logger(__name__)
-
-# def get_alibi_slopes(n_head):
 
 
 class NopadBaiChuanAttention(nn.Module):
@@ -85,6 +83,8 @@ class NopadBaiChuanAttention(nn.Module):
         cos_sin: Tuple[torch.Tensor],
         fd_inter_tensor: FDIntermTensors,
         is_prompts: bool = True,
+        is_verifier: bool = False,
+        tokens_to_verify: int = None,
         kv_seq_len: int = 0,
         output_tensor: torch.Tensor = None,
         sm_scale: int = None,
@@ -112,7 +112,7 @@ class NopadBaiChuanAttention(nn.Module):
             high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
         """
 
-        return llama_base_attn_forward(
+        return NopadLlamaAttention.forward(
             self,
             hidden_states=hidden_states,
             block_tables=block_tables,
@@ -122,6 +122,8 @@ class NopadBaiChuanAttention(nn.Module):
             cos_sin=cos_sin,
             fd_inter_tensor=fd_inter_tensor,
             is_prompts=is_prompts,
+            is_verifier=is_verifier,
+            tokens_to_verify=tokens_to_verify,
             kv_seq_len=kv_seq_len,
             output_tensor=output_tensor,
             sm_scale=sm_scale,
@@ -139,7 +141,7 @@ class NopadBaichuanMLP(nn.Module):
         mlp_uproj_w: torch.Tensor = None,
         mlp_dproj_w: torch.Tensor = None,
     ):
-        """This layer will replace the LlamaAttention.
+        """This layer will replace the BaiChuanAttention.
 
         Args:
             mlp_gproj_w (torch.Tensor, optional): The transposed gate_proj weight. Defaults to None.
