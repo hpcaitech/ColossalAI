@@ -19,6 +19,14 @@ __all__ = ["Qwen2Policy", "Qwen2ForCausalLMPolicy", "Qwen2ForSequenceClassificat
 
 
 class Qwen2Policy(Policy):
+    def __init__() -> None:
+        super().__init__()
+        import transformers
+        from packaging.version import Version
+        assert Version(transformers.__version__) <= Version(
+             "4.39.3"
+         ), "The Qwen2 model should run on a transformers version of 4.39.3."
+        
     def config_sanity_check(self):
         pass
 
