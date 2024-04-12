@@ -1,6 +1,6 @@
 import warnings
 from functools import partial
-from typing import Dict, Union, Callable
+from typing import Callable, Dict, Union
 
 import torch.nn as nn
 
@@ -138,11 +138,9 @@ class MistralPolicy(Policy):
 
     def postprocess(self):
         return self.model
-    
+
     def set_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
-        method_replacement = {
-                "forward": partial(new_forward)
-            }
+        method_replacement = {"forward": partial(new_forward)}
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
     def set_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:

@@ -25,7 +25,7 @@ from transformers.models.whisper.modeling_whisper import (
     shift_tokens_right,
 )
 from transformers.utils import logging
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask, _prepare_4d_causal_attention_mask_for_sdpa
+
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import ColoAttention
 from colossalai.shardformer.shard import ShardConfig
@@ -699,7 +699,7 @@ class WhisperPipelineForwards:
 
             if inputs_embeds is None:
                 inputs_embeds = self.embed_tokens(input_ids)
-                
+
             if self._use_flash_attention_2:
                 # 2d mask is passed through the layers
                 attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None

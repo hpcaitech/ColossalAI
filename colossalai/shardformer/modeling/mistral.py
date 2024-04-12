@@ -2,21 +2,19 @@ import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
-from transformers.modeling_outputs import BaseModelOutputWithPast
-from typing import List, Optional, Tuple, Union
-import warnings
-from transformers.models.mistral.modeling_mistral import MistralModel
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
-from transformers.utils import logging
 from transformers.cache_utils import Cache
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
+from transformers.modeling_outputs import BaseModelOutputWithPast
+from transformers.models.mistral.modeling_mistral import MistralModel
+from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
 
+
 class MistralForwards:
-    
     @staticmethod
     def mistral_model_forward(
-        self:MistralModel,
+        self: MistralModel,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -95,7 +93,6 @@ class MistralForwards:
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        next_decoder_cache = None
 
         for decoder_layer in self.layers:
             if output_hidden_states:
@@ -124,7 +121,7 @@ class MistralForwards:
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
+                layer_outputs[2 if output_attentions else 1]
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
@@ -145,6 +142,7 @@ class MistralForwards:
             hidden_states=all_hidden_states,
             attentions=all_self_attns,
         )
+
 
 def get_mistral_flash_attention_forward():
     from transformers.models.mistral.modeling_mistral import MistralAttention, apply_rotary_pos_emb, repeat_kv
@@ -219,7 +217,7 @@ def get_mistral_flash_attention_forward():
 
         if not output_attentions:
             attn_weights = None
-            
+
         return attn_output, attn_weights, past_key_value
 
     return forward
