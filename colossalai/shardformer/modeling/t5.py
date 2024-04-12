@@ -3,7 +3,6 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from torch.nn import CrossEntropyLoss
-from torch.utils.checkpoint import checkpoint
 from transformers.modeling_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
@@ -121,7 +120,7 @@ class T5PipelineForwards:
         # initialize past_key_values with `None` if past does not exist
         if past_key_values is None:
             past_key_values = [None] * len(self.block)
-            
+
         if attention_mask is None:
             attention_mask = torch.ones(batch_size, mask_seq_length, device=device)
 
@@ -135,9 +134,7 @@ class T5PipelineForwards:
             encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states.size()
             encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
             if encoder_attention_mask is None:
-                encoder_attention_mask = torch.ones(
-                    encoder_hidden_shape, device=inputs_embeds.device, dtype=torch.long
-                )
+                encoder_attention_mask = torch.ones(encoder_hidden_shape, device=inputs_embeds.device, dtype=torch.long)
             encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
         else:
             encoder_extended_attention_mask = None
