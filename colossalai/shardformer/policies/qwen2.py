@@ -35,7 +35,16 @@ class Qwen2Policy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.qwen2.modeling_qwen2 import Qwen2Attention, Qwen2DecoderLayer, Qwen2Model
+        try:
+            from transformers.models.qwen2.modeling_qwen2 import (
+                Qwen2Attention,
+                Qwen2DecoderLayer,
+                Qwen2Model,
+            )
+        except ImportError:
+            Qwen2Attention = "Qwen2Attention"
+            Qwen2DecoderLayer = "Qwen2DecoderLayer"    
+            Qwen2Model = "Qwen2Model"
 
         policy = {}
 
