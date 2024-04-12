@@ -159,12 +159,12 @@ class Adafactor(Optimizer):
                     state["RMS"] = 0
                 else:
                     if use_first_moment:
-                        state["exp_avg"] = state["exp_avg"].to(grad)
+                        state["exp_avg"] = state["exp_avg"]
                     if factored:
-                        state["exp_avg_sq_row"] = state["exp_avg_sq_row"].to(grad)
-                        state["exp_avg_sq_col"] = state["exp_avg_sq_col"].to(grad)
+                        state["exp_avg_sq_row"] = state["exp_avg_sq_row"]
+                        state["exp_avg_sq_col"] = state["exp_avg_sq_col"]
                     else:
-                        state["exp_avg_sq"] = state["exp_avg_sq"].to(grad)
+                        state["exp_avg_sq"] = state["exp_avg_sq"]
 
                 state["step"] += 1
                 # state["RMS"] = self._rms(p_data_fp32)
