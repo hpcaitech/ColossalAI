@@ -1,4 +1,5 @@
 from typing import List, Optional, Tuple, Union
+
 import torch
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.modeling_outputs import (
@@ -6,20 +7,19 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithPast,
     SequenceClassifierOutputWithPast,
 )
+
 try:
-    from transformers.models.qwen2.modeling_qwen2 import (
-        Qwen2ForCausalLM,
-        Qwen2ForSequenceClassification,
-        Qwen2Model,
-    )
+    from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM, Qwen2ForSequenceClassification, Qwen2Model
 except ImportError:
     Qwen2Model = "Qwen2Model"
-    Qwen2ForSequenceClassification = "Qwen2ForSequenceClassification"    
+    Qwen2ForSequenceClassification = "Qwen2ForSequenceClassification"
     Qwen2ForCausalLM = "Qwen2ForCausalLM"
-    
+
 from transformers.utils import logging
+
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
+
 from ..layer import cross_entropy_1d
 
 
@@ -118,7 +118,7 @@ class Qwen2PipelineForwards:
             # output_attentions=True can not be supported when using SDPA, and we fall back on
             # the manual implementation that requires a 4D causal mask in all cases.
             from transformers.models.qwen2.modeling_qwen2 import _prepare_4d_causal_attention_mask_for_sdpa
-            
+
             attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
                 attention_mask,
                 (batch_size, seq_length),
@@ -128,7 +128,7 @@ class Qwen2PipelineForwards:
         else:
             # 4d mask is passed through the layers
             from transformers.models.qwen2.modeling_qwen2 import _prepare_4d_causal_attention_mask
-            
+
             attention_mask = _prepare_4d_causal_attention_mask(
                 attention_mask,
                 (batch_size, seq_length),
@@ -501,7 +501,6 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig):
 
 
 def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
-
     def forward(
         self: Qwen2ForCausalLM,
         input_ids: torch.LongTensor = None,

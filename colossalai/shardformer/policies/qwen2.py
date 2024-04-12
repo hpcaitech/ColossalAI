@@ -23,10 +23,11 @@ class Qwen2Policy(Policy):
         super().__init__()
         import transformers
         from packaging.version import Version
+
         assert Version(transformers.__version__) <= Version(
-             "4.39.3"
-         ), "The Qwen2 model should run on a transformers version of 4.39.3."
-        
+            "4.39.3"
+        ), "The Qwen2 model should run on a transformers version of 4.39.3."
+
     def config_sanity_check(self):
         pass
 
@@ -44,14 +45,10 @@ class Qwen2Policy(Policy):
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         try:
-            from transformers.models.qwen2.modeling_qwen2 import (
-                Qwen2Attention,
-                Qwen2DecoderLayer,
-                Qwen2Model,
-            )
+            from transformers.models.qwen2.modeling_qwen2 import Qwen2Attention, Qwen2DecoderLayer, Qwen2Model
         except ImportError:
             Qwen2Attention = "Qwen2Attention"
-            Qwen2DecoderLayer = "Qwen2DecoderLayer"    
+            Qwen2DecoderLayer = "Qwen2DecoderLayer"
             Qwen2Model = "Qwen2Model"
 
         policy = {}
