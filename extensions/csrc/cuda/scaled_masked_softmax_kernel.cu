@@ -16,13 +16,14 @@
 
 #include "../common/micros.h"
 #include "utils/vec_copy.h"
-#include "include/block_reduce.h"
+#include "funcs/reduce_function.h"
 #include "funcs/unary_functor.h"
 
 using colossalAI::cuda::funcs::UnaryOpFunctor;
 using colossalAI::cuda::funcs::UnaryOpType;
-using colossalAI::cuda::utils::warp_reduce;
-using colossalAI::cuda::utils::ReduceType;
+using colossalAI::cuda::funcs::warp_reduce;
+using colossalAI::cuda::funcs::ReduceType;
+using colossalAI::cuda::utils::copy_vector;
 
 
 /*

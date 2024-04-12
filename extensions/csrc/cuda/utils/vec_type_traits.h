@@ -1,8 +1,9 @@
 #pragma once
 
-#include <c10/macros/Macros.h>
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <stdint.h>
+#include <torch/extension.h>
 
 #include <cfloat>
 
@@ -20,12 +21,14 @@ struct VecTypeTrait {};
   };
 
 VEC_TYPE_TRAITS_SPECIALIZATION(T, 1, T, typename T)
-VEC_TYPE_TRAITS_SPECIALIZATION(c10::BFloat16, 2, float)
-VEC_TYPE_TRAITS_SPECIALIZATION(c10::BFloat16, 4, float2)
-VEC_TYPE_TRAITS_SPECIALIZATION(c10::BFloat16, 8, float4)
-VEC_TYPE_TRAITS_SPECIALIZATION(c10::Half, 2, float)
-VEC_TYPE_TRAITS_SPECIALIZATION(c10::Half, 4, float2)
-VEC_TYPE_TRAITS_SPECIALIZATION(c10::Half, 8, float4)
+VEC_TYPE_TRAITS_SPECIALIZATION(at::BFloat16, 1, __nv_bfloat16)
+VEC_TYPE_TRAITS_SPECIALIZATION(at::BFloat16, 2, __nv_bfloat162)
+VEC_TYPE_TRAITS_SPECIALIZATION(at::BFloat16, 4, float2)
+VEC_TYPE_TRAITS_SPECIALIZATION(at::BFloat16, 8, float4)
+VEC_TYPE_TRAITS_SPECIALIZATION(at::Half, 1, half)
+VEC_TYPE_TRAITS_SPECIALIZATION(at::Half, 2, half2)
+VEC_TYPE_TRAITS_SPECIALIZATION(at::Half, 4, float2)
+VEC_TYPE_TRAITS_SPECIALIZATION(at::Half, 8, float4)
 VEC_TYPE_TRAITS_SPECIALIZATION(float, 2, float2)
 VEC_TYPE_TRAITS_SPECIALIZATION(float, 4, float4)
 VEC_TYPE_TRAITS_SPECIALIZATION(float, 8, float4)

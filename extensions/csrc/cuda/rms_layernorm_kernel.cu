@@ -5,39 +5,20 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
 #include <c10/cuda/CUDAGuard.h>
-#include <stdio.h>
 
 
-#include "block_reduce.h"
 #include "../common/micros.h"
 #include "funcs/cast_functor.h"
 #include "funcs/binary_functor.h"
+#include "funcs/reduce_function.h"
+#include "utils/vec_type_traits.h"
 
-using colossalAI::cuda::utils::block_reduce;
-using colossalAI::cuda::utils::ReduceType;
+using colossalAI::cuda::funcs::block_reduce;
+using colossalAI::cuda::funcs::ReduceType;
 using colossalAI::cuda::funcs::CastFunctor;
 using colossalAI::cuda::funcs::BinaryOpFunctor;
 using colossalAI::cuda::funcs::BinaryOpType;
-
-
-// Get type2 from type or vice versa (applied to half and bfloat16)
-template <typename T>
-struct TypeConverter {
-  using Type = half2;
-};
-
-#define TYPE_CONVERTER_SPECIALIZATION(FROM, TO)  \
-  template <>                                    \
-  struct TypeConverter<FROM> {                   \
-    using Type = TO;                             \
-  };
-
-TYPE_CONVERTER_SPECIALIZATION(half2, at::Half)
-TYPE_CONVERTER_SPECIALIZATION(at::Half, half2)
-TYPE_CONVERTER_SPECIALIZATION(__nv_bfloat162, at::BFloat16)
-TYPE_CONVERTER_SPECIALIZATION(at::BFloat16, __nv_bfloat162)
-
-#undef TYPE_CONVERTER_SPECIALIZATION
+using colossalAI::cuda::utils::VecTypeTrait;
 
 // optimized for half and bf16
 template<typename scalar_t, int unroll_factor>
@@ -48,7 +29,7 @@ __global__ void rms_layernorm_kernel(
   const float epsilon,
   const int num_tokens,
   const int hidden_size) {
-  using scalar2_t = typename TypeConverter<scalar_t>::Type;
+  using scalar2_t = typename VecTypeTrait<scalar_t, 2>::Type;
   BinaryOpFunctor<scalar2_t, scalar2_t, scalar2_t, BinaryOpType::kMul> mul_scalar2t;
   __shared__ float s_variance;
 
@@ -134,7 +115,7 @@ __global__ void fused_add_rms_layernorm_kernel(
   const float epsilon,
   const int num_tokens,
   const int hidden_size) {
-  using scalar2_t = typename TypeConverter<scalar_t>::Type;
+  using scalar2_t = typename VecTypeTrait<scalar_t, 2>::Type;
   BinaryOpFunctor<scalar2_t, scalar2_t, scalar2_t, BinaryOpType::kAdd> add_scalar2t;
   BinaryOpFunctor<scalar2_t, scalar2_t, scalar2_t, BinaryOpType::kMul> mul_scalar2t;
 

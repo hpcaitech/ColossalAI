@@ -6,6 +6,9 @@
 #include "../common/micros.h"
 #include "../common/mp_type_traits.h"
 
+using colossalAI::cuda::utils::copy_vector;
+using colossalAI::cuda::utils::get_vec_size;
+
 template <typename scalar_t, typename m_scalar_t, int VecSize>
 __device__ void apply_emb_rotary_compute(
     scalar_t* __restrict__ src, const m_scalar_t* __restrict__ cos_ptr,

@@ -3,7 +3,10 @@
 
 #include "utils/vec_copy.h"
 #include "../common/micros.h"
-#include "stdio.h"
+
+using colossalAI::cuda::utils::copy_vector;
+using colossalAI::cuda::utils::get_vec_size;
+
 
 template <typename scalar_t, bool Aligned, int VecSize>
 __device__ void apply_cos_and_sin_memcopy(
