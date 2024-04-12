@@ -23,7 +23,6 @@ from transformers.models.llama.modeling_llama import (
     repeat_kv,
 )
 from transformers.utils import logging
-from transformers.cache_utils import Cache
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import (
@@ -521,8 +520,8 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_group, sp_size):
                 raise ValueError(
                     f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
-                    "with a layer index."        
-                )        
+                    "with a layer index."
+                )
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
