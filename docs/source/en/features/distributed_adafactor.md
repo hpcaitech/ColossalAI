@@ -21,11 +21,13 @@ We now demonstrate how to start Distributed Adafactor with booster API.
 import torch
 from torch import nn
 import torch.distributed as dist
+from transformers import LlamaModel, LlamaConfig
 
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.nn.optimizer.distributed_adafactor import DistributedAdaFactor
-
+from colossal_llama2.dataset.loader import load_tokenized_dataset
+from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
 ```
 
 ### step 2. Initialize Distributed Environment and Parallism Group
@@ -44,72 +46,37 @@ proc_mesh = ProcessGroupMesh(tp_size, zero_size)
 tp_group, dp_group = proc_mesh.get_group_along_axis(0), proc_mesh.get_group_along_axis(1)
 ```
 
-### step 3. Initialize Module
+### step 3. Initialize Module and Optimizer
 Build our model. We created an MLP using two Linear Layer.
 
 ```python
-# Init a Tensor Paralleled Module
-class TPModel(nn.Module):
-    def __init__(self, linear1, linear2, tp_group=None):
-        super().__init__()
-        self.linear1 = Linear1D_Col.from_native_module(
-            linear1, process_group=tp_group, gather_output=False, overlap=True
-        )
-        self.linear2 = Linear1D_Row.from_native_module(linear2, process_group=tp_group, parallel_input=True)
+# Init Llama from huggingface
+configuration = LlamaConfig()
+model = LlamaModel(configuration)
+dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train")
+dataloader = plugin.prepare_dataloader(dataset, batch_size=8)
+criterion = lambda x: x.mean()
+dist_optim = DistributedAdaFactor(model.parameters())
 
-    def forward(self, x):
-        x = self.linear1(x)
-        x = self.linear2(x)
-        return x
-HEIGHT = 4096
-WIDTH = 4096
-tp_model = TPModel(copy.deepcopy(nn.Linear(HEIGHT, WIDTH)), copy.deepcopy(nn.Linear(HEIGHT, WIDTH)), tp_group).to(local_rank)
-
-# Get Module parameter
-tp_param_group = [p for n, p in tp_model.named_parameters()]
 ```
 
-### step 4. Initialize Optimizer
-Then, We initialise the optimiser using the model parameter. Then, we set the distributed information for optimiser.
-
-```python
-# Init a Optimizer
-dist_optim = DistributedAdaFactor(tp_param_group)
-shard_to_param = {id(p):p for p in tp_param_group}
-
-# Setup distributed information for Optimizer
-dist_optim.setup_distributed(
-    tensor_parallel_group=tp_group,
-    data_parallel_group=dp_group,
-    shard_to_param=shard_to_param,
-    use_zero=use_zero,
-)
-```
-
-### step 5.Init Booster
+### step 4.Init Booster
 
 ```python
 plugin = LowLevelZeroPlugin()
 booster = Booster(plugin=plugin)
-criterion = lambda x: x.mean()
-tp_model, dist_optim, criterion, _, _ = booster.boost(tp_model, dist_optim, criterion) 
+model, dist_optim, criterion, dataloader, _ = booster.boost(model, dist_optim, criterion, dataloader) 
 ```
-### step 6.Perform a forward and backward propagation for model and step the gradient
-
+### step 5.Train Your Model 
 ```python
-# Random initialise dataset
-x = torch.randn(HEIGHT, WIDTH, device=local_rank)
-
-# Fwd and Bwd
-out_tp = tp_model(x)
-if zero_size > 1:
-    dist_optim.backward(out_tp.sum())
-else:
-    out_tp.sum().backward()
-
-# perform step for param and grad  
-dist_optim.step()
-dist_optim.zero_grad()
+for epoch in range(max_epochs):
+    for input_ids, attention_mask in dataloader:
+        outputs = model(input_ids.cuda(), attention_mask.cuda())
+        loss = criterion(outputs.logits, input_ids)
+        booster.backward(loss, optimizer)
+        optimizer.step()
+        lr_scheduler.step()
+        optimizer.zero_grad()
 ```
 
 ## Supporting Information

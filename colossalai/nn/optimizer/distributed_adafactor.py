@@ -93,7 +93,9 @@ class DistributedAdaFactor(DistributedOptim):
                 if self.param_is_dtensor_dict[id(p)]:
                     self.grad_shape_dict[id(p)] = self.shard_to_param.get(id(p)).shape 
                 else:
-                    self.grad_shape_dict[id(p)] = p.shape
+                    # no tp; could be zero or not zero
+                    # self.grad_shape_dict[id(p)] = p.shape
+                    self.grad_shape_dict[id(p)] = self.shard_to_param.get(id(p)).shape 
                 self.factored_dict[id(p)], self.use_first_moment_dict[id(p)] = self._get_options(group, self.grad_shape_dict[id(p)])
                 if self.param_is_dtensor_dict[id(p)]:
                     self.shard_spec_dict[id(p)] = get_sharding_spec(self.shard_to_param.get(id(p)))
@@ -120,6 +122,7 @@ class DistributedAdaFactor(DistributedOptim):
             param_shape : Original Shape of param
 
         """
+        print(f"param_shape {param_shape}")
         factored = len(param_shape) >= 2
         use_first_moment = param_group["beta1"] is not None
         return factored, use_first_moment
@@ -221,16 +224,28 @@ class DistributedAdaFactor(DistributedOptim):
         return update
     
     def _base_factor(self, update, grad, state, grad_shape, beta2t):
-        exp_avg_sq_row = state["exp_avg_sq_row"]
-        exp_avg_sq_col = state["exp_avg_sq_col"]
-        # Exponential average of row indexes
-        exp_avg_sq_row.mul_(beta2t).add_(update.mean(dim=-1), alpha=(1.0 - beta2t))
-        # Exponential average of columns indexes
-        exp_avg_sq_col.mul_(beta2t).add_(update.mean(dim=-2), alpha=(1.0 - beta2t))
-        # Approximation of exponential moving average of square of gradient
-        update = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
-        update.mul_(grad)
+        if self.use_zero:
+            # view update to origin shape update.view(grad_shape[0]//self.data_parallel_size , grad_shape[1])
+                            
+            # row mean no change
+                            
+            # col mean need reduce and div
+            
+            print(f"origin shape {grad_shape}, true shape {update.shape}")
+            pass
+        else:
+            exp_avg_sq_row = state["exp_avg_sq_row"]
+            exp_avg_sq_col = state["exp_avg_sq_col"]
+            # Exponential average of row indexes
+            exp_avg_sq_row.mul_(beta2t).add_(update.mean(dim=-1), alpha=(1.0 - beta2t))
+            # Exponential average of columns indexes
+            exp_avg_sq_col.mul_(beta2t).add_(update.mean(dim=-2), alpha=(1.0 - beta2t))
+            # Approximation of exponential moving average of square of gradient
+            update = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
+            update.mul_(grad)
         return update
+    
+    
     
     @torch.no_grad()
     def step(self, closure=None):
@@ -273,6 +288,9 @@ class DistributedAdaFactor(DistributedOptim):
                 if param_is_dtensor:
                     grad_shape = self.shard_to_param.get(id(p)).shape  # tp shape (2 dim)
                 factored, use_first_moment = self.factored_dict[id(p)], self.use_first_moment_dict[id(p)]
+                
+                # print(f"factored {factored} param_is_dtensor {param_is_dtensor} shape {grad_shape}")
+                
                 shard_spec = self.shard_spec_dict[id(p)]
                 if len(state) == 0:
                     state["step"] = 0
@@ -304,7 +322,13 @@ class DistributedAdaFactor(DistributedOptim):
                                     grad_shape[1], device=p.device, dtype=p.dtype
                                 )  # [W]
                         else:
-                            state["exp_avg_sq_row"] = torch.zeros(grad_shape[0], device=grad.device, dtype=p.dtype)
+                            if self.use_zero:
+                                # [H // dp]
+                                state["exp_avg_sq_row"] = torch.zeros(grad_shape[0] // self.data_parallel_size, device=grad.device, dtype=p.dtype)
+                            else:
+                                # [H]
+                                state["exp_avg_sq_row"] = torch.zeros(grad_shape[0], device=grad.device, dtype=p.dtype)
+                            # Alaways [W]
                             state["exp_avg_sq_col"] = torch.zeros(grad_shape[1], device=grad.device, dtype=p.dtype)
                     else:
                         state["exp_avg_sq"] = torch.zeros_like(p)
