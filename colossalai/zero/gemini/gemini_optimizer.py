@@ -13,7 +13,7 @@ from torch.optim import Optimizer
 
 from colossalai.accelerator import get_accelerator
 from colossalai.amp.naive_amp.mixed_precision_mixin import BF16MixedPrecisionMixin, FP16MixedPrecisionMixin
-from colossalai.checkpoint_io.utils import StateDictSharder, gather_distributed_param, search_padding_dim
+from colossalai.checkpoint_io.utils import StateDictSharder, gather_distributed_param
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import CPUAdam, FusedAdam, HybridAdam
@@ -27,6 +27,12 @@ from colossalai.tensor.d_tensor import (
     init_tensor_as_customization_distributed,
     is_customized_distributed_tensor,
     is_distributed_tensor,
+)
+from colossalai.tensor.padded_tensor import (
+    init_as_padded_tensor,
+    is_padded_tensor,
+    to_padded_tensor,
+    to_unpadded_tensor,
 )
 from colossalai.utils import disposable, is_ddp_ignored
 
@@ -461,7 +467,6 @@ class GeminiOptimizer(OptimizerWrapper):
         shard_spec = get_sharding_spec(param) if is_dtensor else None
         device_mesh = get_device_mesh(param) if is_dtensor else None
         global_shape = self.params_info["id2shape"][param_id]
-        origin_shape = global_shape
 
         # If the chunk is kept gathered,
         # the parameters are treated the same as that of those in strict DDP during training.
@@ -494,8 +499,11 @@ class GeminiOptimizer(OptimizerWrapper):
                             )
                         state_tensor = gather_distributed_param(state_tensor, keep_vars=False).cpu()
                         state_tensor = state_tensor.reshape(global_shape)
-                        state_tensor = state_tensor[: origin_shape[0], ...]
-
+                        if is_padded_tensor(param):
+                            state_tensor = init_as_padded_tensor(
+                                state_tensor, param._current_length, param._origin_length, param._padding_dim
+                            )
+                            state_tensor = to_unpadded_tensor(state_tensor)
                         collected_states[state_name] = state_tensor
             return collected_states
 
@@ -551,7 +559,11 @@ class GeminiOptimizer(OptimizerWrapper):
                         state_tensor, shard_fn=param.shard_fn, gather_fn=param.gather_fn
                     )
                 state_tensor = gather_distributed_param(state_tensor, keep_vars=False).cpu()
-                state_tensor = state_tensor[: origin_shape[0], ...]
+                if is_padded_tensor(param):
+                    state_tensor = init_as_padded_tensor(
+                        state_tensor, param._current_length, param._origin_length, param._padding_dim
+                    )
+                    state_tensor = to_unpadded_tensor(state_tensor)
 
         return collected_states
 
@@ -723,18 +735,10 @@ class GeminiOptimizer(OptimizerWrapper):
                 if is_dtensor:
                     global_shape = get_global_shape(real_param)
 
-                padding_dim = search_padding_dim(global_shape, origin_shape)
-                if padding_dim is not None:
-                    padding_num = global_shape[padding_dim] - origin_shape[padding_dim]
+                if is_padded_tensor(real_param):
                     value = torch.reshape(value, origin_shape)
-                    padding_data = torch.zeros(
-                        *value.shape[:padding_dim],
-                        padding_num,
-                        *value.shape[padding_dim + 1 :],
-                        device=value.device,
-                        dtype=value.dtype,
-                    )
-                    value = torch.cat((value, padding_data), dim=padding_dim).contiguous()
+                    padding_dim = real_param._padding_dim
+                    value = to_padded_tensor(value, global_shape[padding_dim], padding_dim)
 
                 if is_dtensor:
                     value = distribute_tensor(value, sharding_spec=shard_spec, device_mesh=device_mesh)

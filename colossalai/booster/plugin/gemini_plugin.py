@@ -41,16 +41,12 @@ PRECISION_STR_TO_DTYPE = {"fp16": torch.half, "bf16": torch.bfloat16}
 ZERO_AXIS, DP_AXIS, TP_AXIS = 0, 1, 2
 
 
-def get_param_info(model: nn.Module, optim: Optimizer):
+def get_param_info(optim: Optimizer):
     # Get a backup of necessary information of parameters for future use, which includes:
     # 1. A mapping from integer param_id to param32 shape.
-
-    param_info = {"id2shape": {}, "name2shape": {}}
-    for p_name, param in model.named_parameters(remove_duplicate=False):
-        param_info["name2shape"][p_name] = param.shape
-
     if optim is None:
-        return param_info
+        return {}
+    param_info = {"id2shape": {}}
 
     start_index = 0
     for group in optim.param_groups:
@@ -531,7 +527,7 @@ class GeminiPlugin(DPPluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
-        params_info = get_param_info(model, optimizer)
+        params_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
             # FIXME(ver217): gemini does not support sync bn
@@ -553,7 +549,6 @@ class GeminiPlugin(DPPluginBase):
                 zero_group=self.zero_group,
                 extra_dp_group=self.extra_dp_group,
                 verbose=self.verbose,
-                params_info=params_info,
             )
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):

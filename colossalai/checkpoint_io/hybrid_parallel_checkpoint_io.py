@@ -4,7 +4,7 @@ import os
 from functools import reduce
 from pathlib import Path
 from shutil import rmtree
-from typing import Dict, Iterator, Optional, OrderedDict, Set, Tuple
+from typing import Dict, Iterator, Optional, OrderedDict, Tuple
 
 import torch
 import torch.distributed as dist
@@ -14,6 +14,12 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.tensor.padded_tensor import (
+    init_as_padded_tensor,
+    is_padded_tensor,
+    to_padded_tensor,
+    to_unpadded_tensor,
+)
 from colossalai.utils import get_current_device
 
 from .general_checkpoint_io import GeneralCheckpointIO
@@ -78,40 +84,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         self.coordinator = DistCoordinator()
 
     @staticmethod
-    def _named_modules(
-        module: nn.Module, memo: Optional[Set[nn.Module]] = None, prefix: str = "", remove_duplicate: bool = True
-    ):
-        r"""Returns an iterator over all leaf modules in the network, yielding
-        both the name of the module as well as the module itself.
-
-        Args:
-            memo: a memo to store the set of modules already added to the result
-            prefix: a prefix that will be added to the name of the module
-            remove_duplicate: whether to remove the duplicated module instances in the result
-                or not
-
-        Yields:
-            (str, Module): Tuple of name and module
-
-        Note:
-            Duplicate modules are returned only once. In the following
-            example, ``l`` will be returned only once.
-        """
-        if memo is None:
-            memo = set()
-
-        if module not in memo:
-            sub_modules = [(name, subm) for (name, subm) in module._modules.items() if subm is not None]
-            if len(sub_modules) == 0:
-                if remove_duplicate:
-                    memo.add(module)
-                yield prefix, module
-            else:
-                for name, subm in sub_modules:
-                    submodule_prefix = prefix + ("." if prefix else "") + name
-                    yield from HybridParallelCheckpointIO._named_modules(subm, memo, submodule_prefix, remove_duplicate)
-
-    @staticmethod
     def _model_sharder(
         model: nn.Module, prefix: str = "", keep_vars: bool = False, size_per_shard: int = 1024
     ) -> Iterator[Tuple[OrderedDict, int]]:
@@ -120,18 +92,16 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         state_dict_sharder = StateDictSharder(size_per_shard)
 
         # Save parameters.
-        for module_name, module in HybridParallelCheckpointIO._named_modules(model):
-            state_dicts = module.state_dict()
-            for name, param in state_dicts.items():
-                if param is None:
-                    continue
-                # Gather tensor pieces when using tensor parallel.
-                param_ = gather_distributed_param(param, keep_vars=False)
-                if module_name != "":
-                    module_name = module_name + "."
-                block, block_size = state_dict_sharder.append_param(module_name + name, param_)
-                if block is not None:
-                    yield block, block_size
+        for name, param in model.named_parameters():
+            if param is None:
+                continue
+            # Gather tensor pieces when using tensor parallel.
+            if is_padded_tensor(param):
+                param = to_unpadded_tensor(param)
+            param_ = gather_distributed_param(param, keep_vars=False)
+            block, block_size = state_dict_sharder.append_param(prefix + name, param_)
+            if block is not None:
+                yield block, block_size
 
         # Save buffers.
         for name, buf in model.named_buffers():
@@ -906,7 +876,12 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     dist.all_gather(gather_tensor, v, group=tp_group)
                     v = torch.cat(gather_tensor, dim=partition_dim)
 
-                state_[k] = v.detach().clone()[: original_shape[0], ...].to(device)
+                padding_dim = search_padding_dim(v.shape, original_shape)
+                if padding_dim is not None:
+                    v = init_as_padded_tensor(v, v.shape[padding_dim], original_shape[padding_dim], padding_dim)
+                    v = to_unpadded_tensor(v)
+
+                state_[k] = v.detach().clone().to(device)
 
         return state_
 
@@ -949,15 +924,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
                 padding_dim = search_padding_dim(global_shape, original_shape)
                 if padding_dim is not None:
-                    padding_size = global_shape[padding_dim] - original_shape[padding_dim]
-                    padding_data = torch.zeros(
-                        *v.shape[:padding_dim],
-                        padding_size,
-                        *v.shape[padding_dim + 1 :],
-                        device=v.device,
-                        dtype=v.dtype,
-                    )
-                    v = torch.cat((v, padding_data), dim=padding_dim).contiguous()
+                    v = to_padded_tensor(v, global_shape[padding_dim], padding_dim)
 
                 if partition_dim is not None:
                     slice_size = current_shape[partition_dim]

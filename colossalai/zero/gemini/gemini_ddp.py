@@ -11,7 +11,7 @@ from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import _get_default_group
 
 from colossalai.accelerator import get_accelerator
-from colossalai.checkpoint_io.utils import StateDictSharder, gather_distributed_param, search_padding_dim
+from colossalai.checkpoint_io.utils import StateDictSharder, gather_distributed_param
 from colossalai.interface import ModelWrapper
 from colossalai.lazy import LazyTensor
 from colossalai.logging import get_dist_logger
@@ -26,6 +26,12 @@ from colossalai.tensor.d_tensor import (
     init_tensor_as_customization_distributed,
     is_customized_distributed_tensor,
     is_distributed_tensor,
+)
+from colossalai.tensor.padded_tensor import (
+    init_as_padded_tensor,
+    is_padded_tensor,
+    to_padded_tensor,
+    to_unpadded_tensor,
 )
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.utils import _cast_float, free_storage, is_ddp_ignored
@@ -89,7 +95,6 @@ class GeminiDDP(ModelWrapper):
         memstats: Optional[MemStats] = None,  # genimi memory stats
         master_weights: bool = True,
         extra_dp_group: Optional[ProcessGroup] = None,
-        params_info: OrderedDict = None,
         verbose: bool = False,
     ) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
@@ -131,7 +136,6 @@ class GeminiDDP(ModelWrapper):
         self.mixed_precision = mixed_precision
         self.zero_group = zero_group or _get_default_group()
         self.extra_dp_group = extra_dp_group
-        self.params_info = params_info
 
         self.reuse_fp16_chunk = master_weights
         self.master_weights = master_weights
@@ -462,6 +466,11 @@ class GeminiDDP(ModelWrapper):
                         record_tensor, shard_fn=tensor.shard_fn, gather_fn=tensor.gather_fn
                     )
                 record_tensor = gather_distributed_param(record_tensor, keep_vars=False).cpu()
+                if is_padded_tensor(tensor):
+                    record_tensor = init_as_padded_tensor(
+                        record_tensor, tensor._current_length, tensor._origin_length, tensor._padding_dim
+                    )
+                    record_tensor = to_unpadded_tensor(record_tensor)
 
             assert tensor not in chunk_to_save_data
             chunk_to_save_data[tensor] = record_tensor
@@ -522,17 +531,9 @@ class GeminiDDP(ModelWrapper):
                     # deal with ddp ignored parameters
                     destination[prefix + name] = param if keep_vars else param.detach()
                 else:
-                    if self.params_info is not None:
-                        origin_shape = self.params_info["name2shape"][name]
-                        padding_dim = search_padding_dim(p_mapping[param].shape, origin_shape)
-                        if padding_dim is not None:
-                            unpadding_slices = [slice(None)] * p_mapping[param].dim()
-                            unpadding_slices[padding_dim] = slice(None, origin_shape[0])
-                            destination[prefix + name] = p_mapping[param][tuple(unpadding_slices)]
-                        else:
-                            destination[prefix + name] = p_mapping[param]
-                    else:
-                        destination[prefix + name] = p_mapping[param]
+                    if is_padded_tensor(p_mapping[param]):
+                        p_mapping[param] = to_unpadded_tensor(p_mapping[param])
+                    destination[prefix + name] = p_mapping[param]
         del p_mapping
         del param_to_save_data
 
@@ -639,6 +640,7 @@ class GeminiDDP(ModelWrapper):
                 list, and will be reported together in
                 :meth:`~torch.nn.Module.load_state_dict`
         """
+
         for hook in self._load_state_dict_pre_hooks.values():
             hook(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
 
@@ -663,17 +665,9 @@ class GeminiDDP(ModelWrapper):
                 if source_device_mesh is not None and source_sharding_spec is not None:
                     global_shape = get_global_shape(dest_tensor)
 
-                padding_dim = search_padding_dim(global_shape, input_param.shape)
-                if padding_dim is not None:
-                    padding_num = global_shape[padding_dim] - input_param.shape[padding_dim]
-                    padding_data = torch.zeros(
-                        *input_param.shape[:padding_dim],
-                        padding_num,
-                        *input_param.shape[padding_dim + 1 :],
-                        device=input_param.device,
-                        dtype=input_param.dtype,
-                    )
-                    input_param = torch.cat((input_param, padding_data), dim=padding_dim)
+                if is_padded_tensor(dest_tensor):
+                    padding_dim = dest_tensor._padding_dim
+                    input_param = to_padded_tensor(input_param, global_shape[padding_dim], padding_dim)
 
                 if source_device_mesh is not None and source_sharding_spec is not None:
                     input_param = distribute_tensor(input_param, source_device_mesh, source_sharding_spec)
@@ -910,14 +904,6 @@ class GeminiDDP(ModelWrapper):
                         chunk = self.chunk_manager.get_chunk(param_to_save)
                         gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0))
                     gathered_param = gathered_param_buffer.pop(param_to_save)
-
-                if self.params_info is not None:
-                    origin_shape = self.params_info["name2shape"][name]
-                    padding_dim = search_padding_dim(gathered_param.shape, origin_shape)
-                    if padding_dim is not None:
-                        unpadding_slices = [slice(None)] * gathered_param.dim()
-                        unpadding_slices[padding_dim] = slice(None, origin_shape[0])
-                        gathered_param = gathered_param[tuple(unpadding_slices)]
 
                 block, block_size = sharder.append_param(prefix + name, gathered_param)
                 if block is not None:

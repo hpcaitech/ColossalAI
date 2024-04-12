@@ -81,6 +81,7 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
         optimizer.backward(loss)
 
     optimizer.step()
+    optimizer.zero_grad()
     with shared_tempdir() as tempdir:
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
@@ -99,7 +100,6 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
         dist.barrier()
 
     # Check whether the loaded model & optimizer works smoothly.
-    optimizer.zero_grad()
     model.train()
     new_model.train()
     data_for_shard = data_gen_fn()

@@ -20,6 +20,7 @@ from colossalai.tensor.d_tensor import (
     is_distributed_tensor,
     sharded_tensor_to_param,
 )
+from colossalai.tensor.padded_tensor import is_padded_tensor, to_padded_tensor, to_unpadded_tensor
 
 __all__ = ["ParallelModule"]
 
@@ -230,10 +231,9 @@ class PaddingParallelModule(ParallelModule):
         for name, param in self._parameters.items():
             if param is not None:
                 param = gather_distributed_param(param, keep_vars=keep_vars)
-                if self.new_num_embeddings > self.old_num_embeddings:
-                    destination[prefix + name] = param[: self.old_num_embeddings, ...].data
-                else:
-                    destination[prefix + name] = param.data
+                if is_padded_tensor(param):
+                    param = to_unpadded_tensor(param)
+                destination[prefix + name] = param.data
 
         for name, buf in self._buffers.items():
             if buf is not None and name not in self._non_persistent_buffers_set:
@@ -296,12 +296,8 @@ class PaddingParallelModule(ParallelModule):
                     )
                     continue
 
-                if self.new_num_embeddings > self.old_num_embeddings:
-                    num_padding_tokens = self.new_num_embeddings - self.old_num_embeddings
-                    padding_embeddings = torch.zeros(
-                        num_padding_tokens, *input_param.shape[1:], device=input_param.device, dtype=input_param.dtype
-                    )
-                    input_param.data = torch.cat((input_param.data, padding_embeddings), dim=0).contiguous()
+                if is_padded_tensor(param):
+                    input_param = to_padded_tensor(input_param, param._current_length, param._padding_dim)
 
                 if is_distributed_tensor(param):
                     # shard the input param
@@ -359,16 +355,7 @@ class PaddingParallelModule(ParallelModule):
                         unexpected_keys.append(key)
 
     def resize_embedding_weight(self):
-        num_padding_tokens = self.new_num_embeddings - self.old_num_embeddings
-        valid_weight = self.weight.data
-        padding_weight = torch.zeros(
-            num_padding_tokens, *self.weight.shape[1:], device=self.weight.device, dtype=self.weight.dtype
-        )
-        # padding to embedding
-        self.weight.data = torch.cat((valid_weight, padding_weight), dim=0).contiguous()
+        self.weight = to_padded_tensor(self.weight, self.new_num_embeddings, 0)
 
     def resize_embedding_bias(self):
-        num_padding_tokens = self.new_num_embeddings - self.old_num_embeddings
-        valid_bias = self.bias.data
-        padding_bias = torch.zeros((num_padding_tokens), device=self.bias.device, dtype=self.bias.dtype)
-        self.bias.data = torch.cat((valid_bias, padding_bias), dim=0).contiguous()
+        self.bias = to_padded_tensor(self.bias, self.new_num_embeddings, 0)
