@@ -74,7 +74,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
             loss = criterion(outputs[output_key])
             return loss
 
-        booster.execute_pipeline(data_iter, model, _criterion, optimizer, return_loss=True, return_outputs=False)
+        booster.execute_pipeline(data_iter, model, _criterion, optimizer, return_loss=True)
         optimizer.step()
 
     except Exception as e:
@@ -83,7 +83,7 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
 
 @parameterize("init_method", ["none", "lazy"])
 def check_3d_plugin(init_method: str = "none", early_stop: bool = True):
-    """check gemini plugin over model zoo
+    """check hybrid plugin over model zoo
 
     Args:
         early_stop (bool, optional): Whether to stop when getting the first error. Defaults to True.
@@ -260,7 +260,7 @@ def run_grad_acc_test(test_args):
         origin_model, origin_optimizer, dataloader=dataloader
     )
     for p1, p2 in zip(model.unwrap().parameters(), origin_model.unwrap().parameters()):
-        assert_close(p1.to(p2.dtype), p2, atol=1e-2, rtol=1e-2)      
+        assert_close(p1.to(p2.dtype), p2, atol=1e-2, rtol=1e-2)
 
 
 def run_dist(rank, world_size, port, early_stop: bool = True):
@@ -271,9 +271,9 @@ def run_dist(rank, world_size, port, early_stop: bool = True):
 
 
 @rerun_if_address_is_in_use()
-def test_gemini_plugin(early_stop: bool = True):
+def test_3d_plugin(early_stop: bool = True):
     spawn(run_dist, 4, early_stop=early_stop)
 
 
 if __name__ == "__main__":
-    test_gemini_plugin(early_stop=False)
+    test_3d_plugin(early_stop=False)

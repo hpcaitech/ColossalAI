@@ -2,8 +2,8 @@ import time
 
 import torch
 from grok1_policy import Grok1ForCausalLMPolicy
-from transformers import AutoModelForCausalLM, LlamaTokenizerFast
-from utils import get_defualt_parser, inference, print_output
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from utils import get_default_parser, inference, print_output
 
 import colossalai
 from colossalai.booster import Booster
@@ -13,7 +13,7 @@ from colossalai.lazy import LazyInitContext
 from colossalai.utils import get_current_device
 
 if __name__ == "__main__":
-    parser = get_defualt_parser()
+    parser = get_default_parser()
     args = parser.parse_args()
     start = time.time()
     colossalai.launch_from_torch({})
@@ -27,6 +27,9 @@ if __name__ == "__main__":
     )
     booster = Booster(plugin=plugin)
     torch.set_default_dtype(torch.bfloat16)
+
+    tokenizer = AutoTokenizer.from_pretrained(args.pretrained, trust_remote_code=True)
+
     with LazyInitContext(default_device=get_current_device()):
         model = AutoModelForCausalLM.from_pretrained(
             args.pretrained, trust_remote_code=True, torch_dtype=torch.bfloat16
@@ -34,10 +37,6 @@ if __name__ == "__main__":
     model, *_ = booster.boost(model)
     model.eval()
     init_time = time.time() - start
-
-    # A transformers-compatible version of the grok-1 tokenizer by Xenova
-    # https://huggingface.co/Xenova/grok-1-tokenizer
-    tokenizer = LlamaTokenizerFast.from_pretrained("Xenova/grok-1-tokenizer")
 
     for text in args.text:
         output = inference(

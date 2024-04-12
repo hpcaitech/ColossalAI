@@ -44,7 +44,10 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
 
     (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     bert_model = model_fn()
-    enable_all_optimization = True if tp_size > 1 else False
+
+    enable_flash_attention = True if tp_size > 1 else False
+    enable_fused_normalization = True if tp_size > 1 else False
+    enable_jit_fused = True if tp_size > 1 else False
 
     with shared_tempdir() as tempdir:
         pretrained_path = os.path.join(tempdir, "pretrained")
@@ -54,7 +57,9 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
         plugin = GeminiPlugin(
             **placement_config,
             tp_size=tp_size,
-            enable_all_optimization=enable_all_optimization,
+            enable_flash_attention=enable_flash_attention,
+            enable_fused_normalization=enable_fused_normalization,
+            enable_jit_fused=enable_jit_fused,
             extra_dp_size=extra_dp_size,
         )
         booster = Booster(plugin=plugin)
@@ -80,7 +85,9 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
 def exam_state_dict(placement_config, shard: bool, model_name: str, size_per_shard: int, tp_size: int, zero_size: int):
     (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()
-    enable_all_optimization = True if tp_size > 1 else False
+    enable_flash_attention = True if tp_size > 1 else False
+    enable_fused_normalization = True if tp_size > 1 else False
+    enable_jit_fused = True if tp_size > 1 else False
     extra_dp_size = dist.get_world_size() // (zero_size * tp_size)
     plugin = GeminiPlugin(
         **placement_config,
@@ -88,7 +95,9 @@ def exam_state_dict(placement_config, shard: bool, model_name: str, size_per_sha
         initial_scale=(2**14),
         tp_size=tp_size,
         extra_dp_size=extra_dp_size,
-        enable_all_optimization=enable_all_optimization,
+        enable_flash_attention=enable_flash_attention,
+        enable_fused_normalization=enable_fused_normalization,
+        enable_jit_fused=enable_jit_fused,
     )
     booster = Booster(plugin=plugin)
 

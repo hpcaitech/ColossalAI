@@ -41,9 +41,9 @@ class DummyDataloader:
 
 def main():
     # launch from torch
-    parser = colossalai.get_default_parser()
+    parser = colossalai.legacy.get_default_parser()
     args = parser.parse_args()
-    colossalai.launch_from_torch(config=args.config)
+    colossalai.legacy.launch_from_torch(config=args.config)
 
     # get logger
     logger = get_dist_logger()

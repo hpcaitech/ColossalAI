@@ -2,9 +2,12 @@ import os
 
 import pytest
 import torch
+import torch.distributed as dist
+from torch.testing import assert_close
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
+from colossalai.shardformer import PipelineGradientCheckpointConfig
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
@@ -24,9 +27,13 @@ os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 
 
 def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
+    enable_gradient_checkpointing = test_config.pop("enable_gradient_checkpointing", False)
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
         model_fn, loss_fn, test_config
     )
+    if enable_gradient_checkpointing:
+        org_model.gradient_checkpointing_enable()
+        sharded_model.unwrap().gradient_checkpointing_enable()
 
     org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
         org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
@@ -41,6 +48,26 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     row_layer_for_check = ["layers[0].self_attn.q_proj", "embed_tokens"]
     col_layer_for_check = ["layers[0].self_attn.o_proj"]
+    # Here we check the grad of layernorm because an all-reduce operation should be performed during sequence parallelism
+    norm_layer_for_check = ["layers[0].input_layernorm", "layers[0].post_attention_layernorm"]
+
+    # During pipeline parallelism, we cannot get the grad of norm layer during first stage, so we only check this when pp is not enbaled
+    if stage_manager is None:
+        norm_layer_for_check.append("norm")
+
+    # Check the grad when using ZeRO-1 and ZeRO-2
+    if (
+        booster.plugin.zero_stage in [1, 2]
+        and booster.plugin.shard_config.enable_sequence_parallelism
+        and booster.plugin.shard_config.sequence_parallelism_mode == "all_to_all"
+    ):
+        for p1, p2 in zip(llama_model.parameters(), sharded_optimizer._master_param_groups_of_current_rank[0]):
+            working_p = sharded_optimizer._param_store.master_to_working_param[id(p2)]
+            grads = sharded_optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(working_p))
+            grad_index = 0 if sharded_optimizer._partition_grads else sharded_optimizer._local_rank
+            grad = grads[grad_index]
+            sharded_grad = p1.grad.view(-1).chunk(dist.get_world_size())[dist.get_rank()]
+            assert_close(sharded_grad, grad[: sharded_grad.shape[0]], atol=5e-3, rtol=5e-3, check_dtype=False)
 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
@@ -55,8 +82,19 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         col_layer_grads = get_grad_tensors_for_check(
             llama_model, shard_llama_model, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False
         )
+        norm_layer_grads = get_grad_tensors_for_check(
+            llama_model,
+            shard_llama_model,
+            norm_layer_for_check,
+            tp_group,
+            atol=atol,
+            rtol=rtol,
+            dim=1,
+            verbose=False,
+        )
         grads_to_check.update(col_layer_grads)
         grads_to_check.update(row_layer_grads)
+        grads_to_check.update(norm_layer_grads)
 
     # optimizer executes step
     org_optimizer.step()
@@ -95,12 +133,82 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     [
         {
             "tp_size": 2,
+            "pp_size": 1,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "ring",
+            "enable_flash_attention": True,
+            "use_lazy_init": True,
+            "zero_stage": 2,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 4,
+            "pp_size": 1,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "ring",
+            "enable_flash_attention": False,
+            "use_lazy_init": True,
+            "precision": "fp32",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 4,
+            "pp_size": 1,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "split_gather",
+            "enable_flash_attention": False,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 1,
+            "pp_size": 1,
+            "sp_size": 2,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "all_to_all",
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 1,
+            "pp_size": 1,
+            "sp_size": 2,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "all_to_all",
+            "use_lazy_init": True,
+            "zero_stage": 2,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 1,
+            "pp_size": 1,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "all_to_all",
+            "enable_flash_attention": False,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 2,
             "pp_size": 2,
             "num_microbatches": 2,
             "enable_all_optimization": True,
             "use_lazy_init": True,
             "precision": "fp16",
             "initial_scale": 1,
+            "enable_gradient_checkpointing": True,
+            "gradient_checkpoint_config": PipelineGradientCheckpointConfig(gradient_checkpointing_ratio=0.5),
         },
         {
             "tp_size": 1,
@@ -108,11 +216,15 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "num_microbatches": 4,
             "use_lazy_init": False,
             "precision": "fp32",
+            "enable_gradient_checkpointing": True,
+            "gradient_checkpoint_config": PipelineGradientCheckpointConfig(
+                num_stages=2, num_model_chunks=1, num_model_layers=8, num_ckpt_layers_per_stage=[4, 0]
+            ),
         },
         {
             "tp_size": 4,
             "pp_size": 1,
-            "enable_all_optimization": True,
+            "enable_all_optimization": False,
             "use_lazy_init": False,
             "precision": "fp32",
         },
@@ -124,7 +236,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "use_lazy_init": False,
             "precision": "fp32",
         },
-        {"tp_size": 2, "pp_size": 1, "enable_all_optimization": True, "use_lazy_init": False, "precision": "fp32"},
+        {"tp_size": 2, "pp_size": 1, "enable_all_optimization": False, "use_lazy_init": False, "precision": "fp32"},
         {
             "tp_size": 2,
             "pp_size": 1,
@@ -189,6 +301,13 @@ def run_llama_test(test_config):
             "precision": "fp16",
             "zero_stage": 1,
             "initial_scale": 1,
+            "enable_gradient_checkpointing": True,
+            "gradient_checkpoint_config": PipelineGradientCheckpointConfig(
+                num_stages=2,
+                num_model_chunks=2,
+                num_model_layers=8,
+                num_ckpt_layers_per_stage=[0, 1, 2, 2],
+            ),
         },
     ],
 )

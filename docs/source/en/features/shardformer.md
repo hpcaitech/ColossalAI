@@ -271,7 +271,7 @@ However, if pipeline parallel is enabled, there are several usages different fro
 3. Do forward and backward passing through calling `Booster.execute_pipeline` method:
     ```python
     outputs = booster.execute_pipeline(
-        train_dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
+        train_dataloader_iter, model, _criterion, optimizer, return_loss=True
     )
     ```
     Backward passing has been completed by this method, so there is no need to call `loss.backward()` after executing this method.

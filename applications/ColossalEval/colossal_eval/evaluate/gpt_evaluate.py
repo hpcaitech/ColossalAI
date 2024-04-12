@@ -670,7 +670,7 @@ def calculate_scores_form_logprobs(logprobs: Dict[str, Any]) -> float:
 def calculate_scores_form_response(response: str, evaluation: Dict[str, Any]) -> int:
     """
     Calculate the score from the response returned by gpt-3.5-turbo or gpt-4.
-    Different from text-davinci-003, this fuction directly calculates the score according to the plain response returned by gpt-3.5-turbo or gpt-4.
+    Different from text-davinci-003, this function directly calculates the score according to the plain response returned by gpt-3.5-turbo or gpt-4.
     Although text-davinci-003 can return log probabilities, it costs ten times as much as gpt-3.5-turbo.
 
     Args:

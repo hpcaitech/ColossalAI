@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-PRETRAINED=${1:-"hpcaitech/grok-1"}
+PRETRAINED=${1:-"hpcai-tech/grok-1"}
 
 torchrun --standalone --nproc_per_node 8 inference_tp.py --pretrained "$PRETRAINED" \
     --max_new_tokens 100 \

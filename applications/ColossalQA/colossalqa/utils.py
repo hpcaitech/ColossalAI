@@ -49,7 +49,7 @@ def destroy_sql_database(sql_engine: Union[Engine, str]) -> None:
 
 def detect_lang_naive(s):
     """
-    Naive function for language detection, should be replaced by an independant layer
+    Naive function for language detection, should be replaced by an independent layer
     """
     remove_nota = "[’·°–!\"#$%&'()*+,-./:;<=>?@，。?★、…【】（）《》？“”‘’！[\\]^_`{|}~]+"
     s = re.sub(remove_nota, "", s)

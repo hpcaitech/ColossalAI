@@ -24,7 +24,7 @@
 </div>
 
 ## 新闻
-* [2024/03] [Grok-1 of PyTorch + HuggingFace version is now available!](https://hpc-ai.com/blog/grok-1-of-pytorch-huggingface-version-is-now-available)
+* [2024/03] [314 Billion Parameter Grok-1 Inference Accelerated by 3.8x, Efficient and Easy-to-Use PyTorch+HuggingFace version is Here](https://hpc-ai.com/blog/314-billion-parameter-grok-1-inference-accelerated-by-3.8x-efficient-and-easy-to-use-pytorchhuggingface-version-is-here)
 * [2024/03] [Open-Sora: Revealing Complete Model Parameters, Training Details, and Everything for Sora-like Video Generation Models](https://hpc-ai.com/blog/open-sora-v1.0)
 * [2024/03] [Open-Sora：Sora Replication Solution with 46% Cost Reduction, Sequence Expansion to Nearly a Million](https://hpc-ai.com/blog/open-sora)
 * [2024/01] [Inference Performance Improved by 46%, Open Source Solution Breaks the Length Limit of LLM for Multi-Round Conversations](https://hpc-ai.com/blog/Colossal-AI-SwiftInfer)
@@ -361,10 +361,16 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 ## 推理
 ### Grok-1
-方便易用的Python + PyTorch + HuggingFace Grok-1 推理
+<p id="Grok-1" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/images/grok-1-inference.jpg" width=600/>
+</p>
+
+ - 3140亿参数Grok-1推理加速3.8倍，高效易用的PyTorch+HuggingFace版
+
 [[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/grok-1)
-[[博客]](https://hpc-ai.com/blog/grok-1-of-pytorch-huggingface-version-is-now-available)
-[[HuggingFace Grok-1 PyTorch模型权重]](https://huggingface.co/hpcai-tech/grok-1)
+[[博客]](https://hpc-ai.com/blog/314-billion-parameter-grok-1-inference-accelerated-by-3.8x-efficient-and-easy-to-use-pytorchhuggingface-version-is-here)
+[[HuggingFace Grok-1 PyTorch 模型权重]](https://huggingface.co/hpcai-tech/grok-1)
+[[ModelScope Grok-1 PyTorch 模型权重]](https://www.modelscope.cn/models/colossalai/grok-1-pytorch/summary)
 
 <p id="SwiftInfer" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/SwiftInfer.jpg" width=800/>
