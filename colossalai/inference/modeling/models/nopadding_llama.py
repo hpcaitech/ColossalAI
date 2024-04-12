@@ -301,7 +301,6 @@ class NopadLlamaAttention(LlamaAttention):
 
         return attn_layer
 
-    # Replace transformers.models.llama.modeling_llama.LlamaAttention.forward
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -339,100 +338,23 @@ class NopadLlamaAttention(LlamaAttention):
             high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
         """
 
-        token_nums = hidden_states.size(0)
-
-        if self.num_heads != self.num_key_value_heads:
-            query_states = torch.mm(hidden_states, self.q_proj_weight).view(-1, self.num_heads, self.head_dim)
-            key_states = torch.mm(hidden_states, self.k_proj_weight).view(-1, self.num_key_value_heads, self.head_dim)
-            value_states = torch.mm(hidden_states, self.v_proj_weight).view(-1, self.num_key_value_heads, self.head_dim)
-        else:
-            # fused qkv
-            hidden_states = hidden_states.expand(3, -1, -1)
-            query_states, key_states, value_states = (
-                torch.bmm(hidden_states, self.qkv_weight).view(3, token_nums, self.num_heads, self.head_dim).unbind(0)
-            )
-
-        block_size = k_cache.size(-2)
-
-        if is_prompts:
-            if use_cuda_kernel and query_states.dtype != torch.float32 and use_flash_attn2:
-                # flash attn 2 currently only supports FP16/BF16.
-                inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1], high_precision)
-                inference_ops.context_kv_cache_memcpy(
-                    key_states, value_states, k_cache, v_cache, sequence_lengths, cu_seqlens, block_tables, kv_seq_len
-                )
-
-                attn_output = flash_attn_varlen_func(
-                    query_states,
-                    key_states,
-                    value_states,
-                    cu_seqlens_q=cu_seqlens,
-                    cu_seqlens_k=cu_seqlens,
-                    max_seqlen_q=kv_seq_len,
-                    max_seqlen_k=kv_seq_len,
-                    dropout_p=0.0,
-                    softmax_scale=sm_scale,
-                    causal=True,
-                )
-                attn_output = attn_output.view(token_nums, -1)
-            else:
-                rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
-                attn_output = context_attention_unpadded(
-                    q=query_states,
-                    k=key_states,
-                    v=value_states,
-                    k_cache=k_cache,
-                    v_cache=v_cache,
-                    context_lengths=sequence_lengths,
-                    block_tables=block_tables,
-                    block_size=block_size,
-                    output=output_tensor,
-                    max_seq_len=kv_seq_len,
-                    sm_scale=sm_scale,
-                )
-        else:
-            if use_cuda_kernel:
-                inference_ops.rotary_embedding_and_cache_copy(
-                    query_states,
-                    key_states,
-                    value_states,
-                    cos_sin[0],
-                    cos_sin[1],
-                    k_cache,
-                    v_cache,
-                    sequence_lengths,
-                    block_tables,
-                    high_precision,
-                )
-            else:
-                decoding_fused_rotary_embedding(
-                    query_states,
-                    key_states,
-                    value_states,
-                    cos_sin[0],
-                    cos_sin[1],
-                    k_cache,
-                    v_cache,
-                    block_tables,
-                    sequence_lengths,
-                )
-            attn_output = flash_decoding_attention(
-                q=query_states,
-                k_cache=k_cache,
-                v_cache=v_cache,
-                kv_seq_len=sequence_lengths,
-                block_tables=block_tables,
-                block_size=block_size,
-                max_seq_len_in_batch=kv_seq_len,
-                output=output_tensor,
-                mid_output=fd_inter_tensor.mid_output,
-                mid_output_lse=fd_inter_tensor.mid_output_lse,
-                sm_scale=sm_scale,
-            )
-
-        attn_output = torch.mm(attn_output, self.o_proj_weight)
-
-        return attn_output
+        return llama_base_attn_forward(
+            self,
+            hidden_states=hidden_states,
+            block_tables=block_tables,
+            k_cache=k_cache,
+            v_cache=v_cache,
+            sequence_lengths=sequence_lengths,
+            cos_sin=cos_sin,
+            fd_inter_tensor=fd_inter_tensor,
+            is_prompts=is_prompts,
+            kv_seq_len=kv_seq_len,
+            output_tensor=output_tensor,
+            sm_scale=sm_scale,
+            use_cuda_kernel=use_cuda_kernel,
+            cu_seqlens=cu_seqlens,
+            high_precision=high_precision,
+        )
 
 
 # NOTE This will cause the result to be different from the transformer in some cases.
@@ -490,3 +412,136 @@ class NopadLlamaMLP(LlamaMLP):
         gate_up_proj_out = torch.bmm(hidden_states, self.gate_up_weight)
         act_out = inference_ops.silu_and_mul(gate_up_proj_out)
         return torch.mm(act_out, self.down_proj_weight)
+
+
+# Replace transformers.models.llama.modeling_llama.LlamaAttention.forward
+def llama_base_attn_forward(
+    self,
+    hidden_states: torch.Tensor,
+    block_tables: torch.Tensor,
+    k_cache: torch.Tensor,
+    v_cache: torch.Tensor,
+    sequence_lengths: torch.Tensor,
+    cos_sin: Tuple[torch.Tensor],
+    fd_inter_tensor: FDIntermTensors,
+    is_prompts: bool = True,
+    kv_seq_len: int = 0,
+    output_tensor: torch.Tensor = None,
+    sm_scale: int = None,
+    use_cuda_kernel: bool = True,
+    cu_seqlens: torch.Tensor = None,
+    high_precision: bool = False,
+) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    """
+    Args:
+        hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
+        block_tables (torch.Tensor): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
+            storing mapping of token_position_id -> block_id.
+        k_cache (torch.Tensor): It holds the GPU memory for the key cache.
+        v_cache (torch.Tensor): It holds the GPU memory for the key cache.
+        sequence_lengths (torch.Tensor, optional): Holding the sequence length of each sequence.
+        cos_sin (Tuple[torch.Tensor], optional): Holding cos and sin.
+        fd_inter_tensor (FDIntermTensors, optional): Holding tensors used for
+            storing intermediate values in flash-decoding.
+        is_prompts (bool, optional): Whether the current inference process is in the context input phase. Defaults to True.
+        kv_seq_len (int, optional): The max sequence length of input sequences. Defaults to 0.
+        output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
+        sm_scale (int, optional): Used for flash attention. Defaults to None.
+        use_cuda_kernel: (bool, optional): Whether to use cuda kernel. Defaults to True.
+        cu_seqlens(torch.Tensor, optional): Holding the cumulative sum of sequence length.
+        high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
+    """
+
+    token_nums = hidden_states.size(0)
+
+    if self.num_heads != self.num_key_value_heads:
+        query_states = torch.mm(hidden_states, self.q_proj_weight).view(-1, self.num_heads, self.head_dim)
+        key_states = torch.mm(hidden_states, self.k_proj_weight).view(-1, self.num_key_value_heads, self.head_dim)
+        value_states = torch.mm(hidden_states, self.v_proj_weight).view(-1, self.num_key_value_heads, self.head_dim)
+    else:
+        # fused qkv
+        hidden_states = hidden_states.expand(3, -1, -1)
+        query_states, key_states, value_states = (
+            torch.bmm(hidden_states, self.qkv_weight).view(3, token_nums, self.num_heads, self.head_dim).unbind(0)
+        )
+
+    block_size = k_cache.size(-2)
+
+    if is_prompts:
+        if use_cuda_kernel and query_states.dtype != torch.float32 and use_flash_attn2:
+            # flash attn 2 currently only supports FP16/BF16.
+            inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1], high_precision)
+            inference_ops.context_kv_cache_memcpy(
+                key_states, value_states, k_cache, v_cache, sequence_lengths, cu_seqlens, block_tables, kv_seq_len
+            )
+
+            attn_output = flash_attn_varlen_func(
+                query_states,
+                key_states,
+                value_states,
+                cu_seqlens_q=cu_seqlens,
+                cu_seqlens_k=cu_seqlens,
+                max_seqlen_q=kv_seq_len,
+                max_seqlen_k=kv_seq_len,
+                dropout_p=0.0,
+                softmax_scale=sm_scale,
+                causal=True,
+            )
+            attn_output = attn_output.view(token_nums, -1)
+        else:
+            rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
+            attn_output = context_attention_unpadded(
+                q=query_states,
+                k=key_states,
+                v=value_states,
+                k_cache=k_cache,
+                v_cache=v_cache,
+                context_lengths=sequence_lengths,
+                block_tables=block_tables,
+                block_size=block_size,
+                output=output_tensor,
+                max_seq_len=kv_seq_len,
+                sm_scale=sm_scale,
+            )
+    else:
+        if use_cuda_kernel:
+            inference_ops.rotary_embedding_and_cache_copy(
+                query_states,
+                key_states,
+                value_states,
+                cos_sin[0],
+                cos_sin[1],
+                k_cache,
+                v_cache,
+                sequence_lengths,
+                block_tables,
+                high_precision,
+            )
+        else:
+            decoding_fused_rotary_embedding(
+                query_states,
+                key_states,
+                value_states,
+                cos_sin[0],
+                cos_sin[1],
+                k_cache,
+                v_cache,
+                block_tables,
+                sequence_lengths,
+            )
+        attn_output = flash_decoding_attention(
+            q=query_states,
+            k_cache=k_cache,
+            v_cache=v_cache,
+            kv_seq_len=sequence_lengths,
+            block_tables=block_tables,
+            block_size=block_size,
+            max_seq_len_in_batch=kv_seq_len,
+            output=output_tensor,
+            mid_output=fd_inter_tensor.mid_output,
+            mid_output_lse=fd_inter_tensor.mid_output_lse,
+            sm_scale=sm_scale,
+        )
+
+    attn_output = torch.mm(attn_output, self.o_proj_weight)
+    return attn_output
