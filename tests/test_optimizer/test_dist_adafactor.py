@@ -617,9 +617,9 @@ def run_dist(rank, world_size, port):
     disable_existing_loggers()
     config = {}
     colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    # exam_dist_adafactor_base()
-    # exam_dist_adafactor_zero()
-    # exam_bert_test()
+    exam_bert_test()
+    exam_dist_adafactor_base()
+    exam_dist_adafactor_zero()
     exam_dist_adafactor_booster()
 
 @pytest.mark.dist

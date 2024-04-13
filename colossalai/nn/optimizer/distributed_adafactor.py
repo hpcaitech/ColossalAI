@@ -122,7 +122,6 @@ class DistributedAdaFactor(DistributedOptim):
             param_shape : Original Shape of param
 
         """
-        print(f"param_shape {param_shape}")
         factored = len(param_shape) >= 2
         use_first_moment = param_group["beta1"] is not None
         return factored, use_first_moment
@@ -225,15 +224,49 @@ class DistributedAdaFactor(DistributedOptim):
     
     def _base_factor(self, update, grad, state, grad_shape, beta2t):
         if self.use_zero:
-            # view update to origin shape update.view(grad_shape[0]//self.data_parallel_size , grad_shape[1])
-                            
-            # row mean no change
-                            
-            # col mean need reduce and div
-            
-            print(f"origin shape {grad_shape}, true shape {update.shape}")
-            pass
+            # only zero
+            if grad_shape[0] % self.data_parallel_size != 0:
+                # view update to origin shape update.view(grad_shape[0]//self.data_parallel_size , grad_shape[1])         
+                # row mean no change         
+                # col mean need reduce and div
+                # gather update[flatten] along dp group then reshape to [H, W]
+                update = _gather(
+                        input_=update, dim=-1, process_group=self.data_parallel_group
+                        )
+                # view update to origin[tp] shape
+                update_reshape = update.view(-1, grad_shape[1])
+                # gather grad[flatten] along dp group then reshape to [H, W]
+                grad = _gather(
+                        input_=grad, dim=-1, process_group=self.data_parallel_group
+                        ) 
+                grad_reshape = grad.view(-1, grad_shape[1])
+                exp_avg_sq_row = state["exp_avg_sq_row"]  # [H/dp]
+                exp_avg_sq_col = state["exp_avg_sq_col"]  # [W]
+                exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
+                exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
+                # reduce col
+                dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
+                exp_avg_sq_col.div_(self.tensor_parallel_size)
+                update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
+                update_reshape.mul_(grad_reshape)
+                update = _split(input_=update_reshape.view(-1), dim=-1, process_group=self.data_parallel_group)
+            else:
+                # no residual row
+                # view update to origin[tp] shape
+                update_reshape = update.view(-1, grad_shape[1]) # [H/dp, W]
+                grad_reshape = grad.view(-1, grad_shape[1]) # [H/dp, W]
+                exp_avg_sq_row = state["exp_avg_sq_row"]  # [H/tp]
+                exp_avg_sq_col = state["exp_avg_sq_col"]  # [W]
+                exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
+                exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
+                # reduce col
+                dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
+                exp_avg_sq_col.div_(self.tensor_parallel_size)
+                update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
+                update_reshape.mul_(grad_reshape)
+                update = update_reshape.view(-1)   
         else:
+            # base factor; no tp, no dp
             exp_avg_sq_row = state["exp_avg_sq_row"]
             exp_avg_sq_col = state["exp_avg_sq_col"]
             # Exponential average of row indexes
@@ -323,12 +356,17 @@ class DistributedAdaFactor(DistributedOptim):
                                 )  # [W]
                         else:
                             if self.use_zero:
-                                # [H // dp]
-                                state["exp_avg_sq_row"] = torch.zeros(grad_shape[0] // self.data_parallel_size, device=grad.device, dtype=p.dtype)
+                                # param grad [H // dp]
+                                if grad_shape[0] % self.data_parallel_size != 0:
+                                    # save all exp_avg_sq_row [H]
+                                    state["exp_avg_sq_row"] = torch.zeros(grad_shape[0], device=grad.device, dtype=p.dtype)
+                                else:
+                                    # exp_avg_sq_row [H // dp]
+                                    state["exp_avg_sq_row"] = torch.zeros(grad_shape[0] // self.data_parallel_size, device=grad.device, dtype=p.dtype)
                             else:
-                                # [H]
+                                # exp_avg_sq_row [H]
                                 state["exp_avg_sq_row"] = torch.zeros(grad_shape[0], device=grad.device, dtype=p.dtype)
-                            # Alaways [W]
+                            # exp_avg_sq_col alaways [W]
                             state["exp_avg_sq_col"] = torch.zeros(grad_shape[1], device=grad.device, dtype=p.dtype)
                     else:
                         state["exp_avg_sq"] = torch.zeros_like(p)
