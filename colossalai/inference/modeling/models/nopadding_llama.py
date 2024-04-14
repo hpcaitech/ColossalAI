@@ -437,19 +437,19 @@ class NopadLlamaAttention(LlamaAttention):
                     block_tables,
                     high_precision,
                 )
-                inference_ops.flash_decoding_attention(
-                    attn_output,
-                    query_states,
-                    k_cache,
-                    v_cache,
-                    sequence_lengths,
-                    block_tables,
-                    block_size,
-                    kv_seq_len,
-                    fd_inter_tensor.mid_output,
-                    fd_inter_tensor.mid_output_lse,
-                    sm_scale,
-                )
+                # inference_ops.flash_decoding_attention(
+                #     attn_output,
+                #     query_states,
+                #     k_cache,
+                #     v_cache,
+                #     sequence_lengths,
+                #     block_tables,
+                #     block_size,
+                #     kv_seq_len,
+                #     fd_inter_tensor.mid_output,
+                #     fd_inter_tensor.mid_output_lse,
+                #     sm_scale,
+                # )
             else:
                 if is_verifier:
                     rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
@@ -471,20 +471,20 @@ class NopadLlamaAttention(LlamaAttention):
                         block_tables,
                         sequence_lengths,
                     )
-                attn_output = flash_decoding_attention(
-                    q=query_states,
-                    k_cache=k_cache,
-                    v_cache=v_cache,
-                    kv_seq_len=sequence_lengths,
-                    block_tables=block_tables,
-                    block_size=block_size,
-                    max_seq_len_in_batch=kv_seq_len,
-                    output=output_tensor,
-                    mid_output=fd_inter_tensor.mid_output,
-                    mid_output_lse=fd_inter_tensor.mid_output_lse,
-                    sm_scale=sm_scale,
-                    q_len=q_len,
-                )
+            attn_output = flash_decoding_attention(
+                q=query_states,
+                k_cache=k_cache,
+                v_cache=v_cache,
+                kv_seq_len=sequence_lengths,
+                block_tables=block_tables,
+                block_size=block_size,
+                max_seq_len_in_batch=kv_seq_len,
+                output=output_tensor,
+                mid_output=fd_inter_tensor.mid_output,
+                mid_output_lse=fd_inter_tensor.mid_output_lse,
+                sm_scale=sm_scale,
+                q_len=q_len,
+            )
 
         attn_output = attn_output.view(-1, self.hidden_size)
         attn_output = torch.mm(attn_output, self.o_proj_weight)

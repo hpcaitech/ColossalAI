@@ -23,481 +23,48 @@
 #include <cuda_fp16.h>
 #include <float.h>
 
-#include "attention_generic.h"
-#include "cuda_type_utils.h"
+#include "../funcs/binary_functor.h"
+#include "../funcs/cast_functor.h"
+#include "../funcs/ternary_functor.h"
+#include "../funcs/unary_functor.h"
+#include "../utils/vec_type_traits.h"
 
-// Define custom BF16 vector data types.
-struct bfloat164 {
-  __nv_bfloat162 x;
-  __nv_bfloat162 y;
-};
+namespace colossalAI {
+namespace cuda {
+namespace attention {
 
-struct bfloat168 {
-  __nv_bfloat162 x;
-  __nv_bfloat162 y;
-  __nv_bfloat162 z;
-  __nv_bfloat162 w;
-};
+using colossalAI::cuda::funcs::BinaryOpFunctor;
+using colossalAI::cuda::funcs::BinaryOpType;
+using colossalAI::cuda::funcs::TernaryOpFunctor;
+using colossalAI::cuda::funcs::TernaryOpType;
+using colossalAI::cuda::funcs::UnaryOpFunctor;
+using colossalAI::cuda::funcs::UnaryOpType;
+using colossalAI::cuda::utils::FloatVecTypeTrait;
 
-struct half4 {
-  half2 x;
-  half2 y;
-};
-
-struct half8 {
-  half2 x;
-  half2 y;
-  half2 z;
-  half2 w;
-};
-
-template <>
-struct VecType<__nv_bfloat16, 2> {
-  using Type = __nv_bfloat162;
-};
-template <>
-struct VecType<__nv_bfloat16, 4> {
-  using Type = bfloat164;
-};
-template <>
-struct VecType<__nv_bfloat16, 8> {
-  using Type = bfloat168;
-};
-
-template <>
-struct VecType<half, 2> {
-  using Type = half2;
-};
-template <>
-struct VecType<half, 4> {
-  using Type = half4;
-};
-template <>
-struct VecType<half, 8> {
-  using Type = half8;
-};
-
-template <>
-struct VecType<float, 2> {
-  using Type = float2;
-};
-template <>
-struct VecType<float, 4> {
-  using Type = float4;
-};
-template <>
-struct VecType<float, 8> {
-  using Type = float8_;
-};
-
-template <>
-struct FloatVec<__nv_bfloat162> {
-  using Type = float2;
-};
-template <>
-struct FloatVec<bfloat164> {
-  using Type = float4_;
-};
-template <>
-struct FloatVec<bfloat168> {
-  using Type = float8_;
-};
-
-template <>
-struct FloatVec<half2> {
-  using Type = float2;
-};
-template <>
-struct FloatVec<half4> {
-  using Type = float4_;
-};
-template <>
-struct FloatVec<half8> {
-  using Type = float8_;
-};
-
-template <>
-struct FloatVec<float2> {
-  using Type = float2;
-};
-template <>
-struct FloatVec<float4> {
-  using Type = float4;
-};
-
-template <typename T>
-inline __device__ void zero(T& dst) {
-  constexpr int WORDS = sizeof(T) / 4;
-  union {
-    T raw;
-    uint32_t words[WORDS];
-  } tmp;
-
-#pragma unroll
-  for (int ii = 0; ii < WORDS; ii++) {
-    tmp.words[ii] = 0u;
-  }
-  dst = tmp.raw;
-}
+#define WARP_SIZE 32
+#define VEC_SIZE_8 8
 
 #define SHFL_XOR_SYNC(var, lane_mask) \
   __shfl_xor_sync(uint32_t(-1), var, lane_mask)
 #define SHFL_SYNC(var, src_lane) __shfl_sync(uint32_t(-1), var, src_lane)
 
-inline __device__ __nv_bfloat162 bf162bf162(const __nv_bfloat16 val) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
-  __nv_bfloat162 val2;
-  val2.x = val;
-  val2.y = val;
-  return val2;
-#else
-  return __bfloat162bfloat162(val);
-#endif
-}
-
-inline __device__ float2 bf1622float2(const __nv_bfloat162 val) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
-  float2 f_val;
-  f_val.x = __low2float(val);
-  f_val.y = __high2float(val);
-  return f_val;
-#else
-  return __bfloat1622float2(val);
-#endif
-}
-
-template <>
-inline __device__ float2 mul(float2 a, float2 b) {
-  float2 c;
-  c.x = a.x * b.x;
-  c.y = a.y * b.y;
-  return c;
-}
-
-template <>
-inline __device__ float4 mul(float4 a, float4 b) {
-  float4 c;
-  c.x = a.x * b.x;
-  c.y = a.y * b.y;
-  c.z = a.z * b.z;
-  c.w = a.w * b.w;
-  return c;
-}
-
-template <>
-inline __device__ float2 mul(__nv_bfloat162 a, __nv_bfloat162 b) {
-  float2 fa = bf1622float2(a);
-  float2 fb = bf1622float2(b);
-  return mul<float2, float2, float2>(fa, fb);
-}
-
-template <>
-inline __device__ float4_ mul(bfloat164 a, bfloat164 b) {
-  float4_ fc;
-  fc.x = mul<float2, __nv_bfloat162, __nv_bfloat162>(a.x, b.x);
-  fc.y = mul<float2, __nv_bfloat162, __nv_bfloat162>(a.y, b.y);
-  return fc;
-}
-
-template <>
-inline __device__ float8_ mul(bfloat168 a, bfloat168 b) {
-  float8_ fc;
-  fc.x = mul<float2, __nv_bfloat162, __nv_bfloat162>(a.x, b.x);
-  fc.y = mul<float2, __nv_bfloat162, __nv_bfloat162>(a.y, b.y);
-  fc.z = mul<float2, __nv_bfloat162, __nv_bfloat162>(a.z, b.z);
-  fc.w = mul<float2, __nv_bfloat162, __nv_bfloat162>(a.w, b.w);
-  return fc;
-}
-
-template <>
-inline __device__ float2 mul(half2 a, half2 b) {
-  float2 fa = __half22float2(a);
-  float2 fb = __half22float2(b);
-  return mul<float2, float2, float2>(fa, fb);
-}
-
-template <>
-inline __device__ float4_ mul(half4 a, half4 b) {
-  float4_ fc;
-  fc.x = mul<float2, half2, half2>(a.x, b.x);
-  fc.y = mul<float2, half2, half2>(a.y, b.y);
-  return fc;
-}
-
-template <>
-inline __device__ float8_ mul(half8 a, half8 b) {
-  float8_ fc;
-  fc.x = mul<float2, half2, half2>(a.x, b.x);
-  fc.y = mul<float2, half2, half2>(a.y, b.y);
-  fc.z = mul<float2, half2, half2>(a.z, b.z);
-  fc.w = mul<float2, half2, half2>(a.w, b.w);
-  return fc;
-}
-
-template <>
-inline __device__ float sum(float2 v) {
-  return v.x + v.y;
-}
-
-template <>
-inline __device__ float sum(float4 v) {
-  return v.x + v.y + v.z + v.w;
-}
-
-template <>
-inline __device__ float sum(float4_ v) {
-  return v.x.x + v.x.y + v.y.x + v.y.y;
-}
-
-template <>
-inline __device__ float sum(float8_ v) {
-  return v.x.x + v.x.y + v.y.x + v.y.y + v.z.x + v.z.y + v.w.x + v.w.y;
-}
-
-template <typename T, typename TFLOAT>
-inline __device__ void from_float(T& dst, TFLOAT src) {
-  dst = src;
-}
-
-template <>
-inline __device__ void from_float(__nv_bfloat16& dst, float src) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
-  assert(false);
-#else
-  dst = __float2bfloat16_rn(src);
-#endif
-}
-
-template <>
-inline __device__ void from_float(__nv_bfloat162& dst, float2 src) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
-  assert(false);
-#else
-  dst = __float22bfloat162_rn(src);
-#endif
-}
-
-template <>
-inline __device__ void from_float(bfloat164& dst, float4 src) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
-  assert(false);
-#else
-  dst.x = __floats2bfloat162_rn(src.x, src.y);
-  dst.y = __floats2bfloat162_rn(src.z, src.w);
-#endif
-}
-
-template <>
-inline __device__ void from_float(bfloat164& dst, float4_ src) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
-  assert(false);
-#else
-  dst.x = __float22bfloat162_rn(src.x);
-  dst.y = __float22bfloat162_rn(src.y);
-#endif
-}
-
-template <>
-inline __device__ void from_float(bfloat168& dst, float8_ src) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
-  assert(false);
-#else
-  dst.x = __float22bfloat162_rn(src.x);
-  dst.y = __float22bfloat162_rn(src.y);
-  dst.z = __float22bfloat162_rn(src.z);
-  dst.w = __float22bfloat162_rn(src.w);
-#endif
-}
-
-template <>
-inline __device__ void from_float(half& dst, float src) {
-  dst = __float2half_rn(src);
-}
-
-template <>
-inline __device__ void from_float(half2& dst, float2 src) {
-  dst = __float22half2_rn(src);
-}
-
-template <>
-inline __device__ void from_float(half4& dst, float4 src) {
-  dst.x = __floats2half2_rn(src.x, src.y);
-  dst.y = __floats2half2_rn(src.z, src.w);
-}
-
-template <>
-inline __device__ void from_float(half4& dst, float4_ src) {
-  dst.x = __float22half2_rn(src.x);
-  dst.y = __float22half2_rn(src.y);
-}
-
-template <>
-inline __device__ void from_float(half8& dst, float8_ src) {
-  dst.x = __float22half2_rn(src.x);
-  dst.y = __float22half2_rn(src.y);
-  dst.z = __float22half2_rn(src.z);
-  dst.w = __float22half2_rn(src.w);
-}
-
-template <>
-inline __device__ float fma(__nv_bfloat16 a, __nv_bfloat16 b, float c) {
-  return __bfloat162float(a) * __bfloat162float(b) + c;
-}
-
-template <>
-inline __device__ float fma(half a, half b, float c) {
-  return __half2float(a) * __half2float(b) + c;
-}
-
-template <>
-inline __device__ float2 fma(float2 a, float2 b, float2 c) {
-  float2 d;
-  d.x = fma(a.x, b.x, c.x);
-  d.y = fma(a.y, b.y, c.y);
-  return d;
-}
-
-template <>
-inline __device__ float2 fma(float a, float2 b, float2 c) {
-  float2 d;
-  d.x = fma(a, b.x, c.x);
-  d.y = fma(a, b.y, c.y);
-  return d;
-}
-
-template <>
-inline __device__ float2 fma(half2 a, half2 b, float2 c) {
-  float2 fa = __half22float2(a);
-  float2 fb = __half22float2(b);
-  return fma(fa, fb, c);
-}
-
-template <>
-inline __device__ float2 fma(half a, half2 b, float2 c) {
-  return fma(__half2half2(a), b, c);
-}
-
-template <>
-inline __device__ float4_ fma(half4 a, half4 b, float4_ c) {
-  float4_ fd;
-  fd.x = fma(a.x, b.x, c.x);
-  fd.y = fma(a.y, b.y, c.y);
-  return fd;
-}
-
-template <>
-inline __device__ float4_ fma(half a, half4 b, float4_ c) {
-  half2 s = __half2half2(a);
-  float4_ fd;
-  fd.x = fma(s, b.x, c.x);
-  fd.y = fma(s, b.y, c.y);
-  return fd;
-}
-
-template <>
-inline __device__ float8_ fma(half8 a, half8 b, float8_ c) {
-  float8_ fd;
-  fd.x = fma(a.x, b.x, c.x);
-  fd.y = fma(a.y, b.y, c.y);
-  fd.z = fma(a.z, b.z, c.z);
-  fd.w = fma(a.w, b.w, c.w);
-  return fd;
-}
-
-template <>
-inline __device__ float8_ fma(half a, half8 b, float8_ c) {
-  half2 s = __half2half2(a);
-  float8_ fd;
-  fd.x = fma(s, b.x, c.x);
-  fd.y = fma(s, b.y, c.y);
-  fd.z = fma(s, b.z, c.z);
-  fd.w = fma(s, b.w, c.w);
-  return fd;
-}
-
-template <>
-inline __device__ float2 fma(__nv_bfloat162 a, __nv_bfloat162 b, float2 c) {
-  float2 fa = bf1622float2(a);
-  float2 fb = bf1622float2(b);
-  return fma(fa, fb, c);
-}
-
-template <>
-inline __device__ float2 fma(__nv_bfloat16 a, __nv_bfloat162 b, float2 c) {
-  return fma(bf162bf162(a), b, c);
-}
-
-template <>
-inline __device__ float4_ fma(bfloat164 a, bfloat164 b, float4_ c) {
-  float4_ fd;
-  fd.x = fma(a.x, b.x, c.x);
-  fd.y = fma(a.y, b.y, c.y);
-  return fd;
-}
-
-template <>
-inline __device__ float4_ fma(__nv_bfloat16 a, bfloat164 b, float4_ c) {
-  __nv_bfloat162 s = bf162bf162(a);
-  float4_ fd;
-  fd.x = fma(s, b.x, c.x);
-  fd.y = fma(s, b.y, c.y);
-  return fd;
-}
-
-template <>
-inline __device__ float8_ fma(bfloat168 a, bfloat168 b, float8_ c) {
-  float8_ fd;
-  fd.x = fma(a.x, b.x, c.x);
-  fd.y = fma(a.y, b.y, c.y);
-  fd.z = fma(a.z, b.z, c.z);
-  fd.w = fma(a.w, b.w, c.w);
-  return fd;
-}
-
-template <>
-inline __device__ float8_ fma(__nv_bfloat16 a, bfloat168 b, float8_ c) {
-  __nv_bfloat162 s = bf162bf162(a);
-  float8_ fd;
-  fd.x = fma(s, b.x, c.x);
-  fd.y = fma(s, b.y, c.y);
-  fd.z = fma(s, b.z, c.z);
-  fd.w = fma(s, b.w, c.w);
-  return fd;
-}
-
-template <>
-inline __device__ float4 fma(float4 a, float4 b, float4 c) {
-  float4 d;
-  d.x = fma(a.x, b.x, c.x);
-  d.y = fma(a.y, b.y, c.y);
-  d.z = fma(a.z, b.z, c.z);
-  d.w = fma(a.w, b.w, c.w);
-  return d;
-}
-
-template <>
-inline __device__ float4 fma(float a, float4 b, float4 c) {
-  float4 d;
-  d.x = fma(a, b.x, c.x);
-  d.y = fma(a, b.y, c.y);
-  d.z = fma(a, b.z, c.z);
-  d.w = fma(a, b.w, c.w);
-  return d;
-}
-
 // Q*K^T operation.
-template <int NUM_THREADS_PER_TOKEN, typename Vec, int N>
-inline __device__ float qk_dot_(const Vec (&q)[N], const Vec (&k)[N]) {
-  using A_vec = typename FloatVec<Vec>::Type;
+template <int NUM_THREADS_PER_TOKEN, typename VecT, int N>
+inline __device__ float qk_dot_(const VecT (&q)[N], const VecT (&k)[N]) {
+  using A_vec = typename FloatVecTypeTrait<VecT>::Type;
   // Compute the parallel products for Q*K^T (treat vector lanes separately).
-  A_vec qk_vec = mul<A_vec, Vec, Vec>(q[0], k[0]);
+  BinaryOpFunctor<VecT, VecT, A_vec, BinaryOpType::kMul> mul_vect;
+  UnaryOpFunctor<A_vec, float, UnaryOpType::kSum> sum_vect;
+  TernaryOpFunctor<VecT, VecT, A_vec, TernaryOpType::kFma> fma;
+
+  A_vec qk_vec = mul_vect(q[0], k[0]);
 #pragma unroll
   for (int ii = 1; ii < N; ii++) {
     qk_vec = fma(q[ii], k[ii], qk_vec);
   }
 
   // Finalize the reduction across lanes.
-  float qk = sum(qk_vec);
+  float qk = sum_vect(qk_vec);
 #pragma unroll
   for (int mask = (NUM_THREADS_PER_TOKEN >> 1); mask > 0; mask >>= 1) {
     qk += SHFL_XOR_SYNC(qk, mask);
@@ -507,8 +74,133 @@ inline __device__ float qk_dot_(const Vec (&q)[N], const Vec (&k)[N]) {
 
 template <typename T, int NUM_THREADS_PER_TOKEN>
 struct Qk_dot {
-  template <typename Vec, int N>
-  static inline __device__ float dot(const Vec (&q)[N], const Vec (&k)[N]) {
+  template <typename VecT, int N>
+  static inline __device__ float dot(const VecT (&q)[N], const VecT (&k)[N]) {
     return qk_dot_<NUM_THREADS_PER_TOKEN>(q, k);
   }
 };
+
+template <int NUM_WARPS, int NUM_THREADS_PER_TOKEN>
+inline __device__ float block_max(float* red_smem, float max) {
+  int warp = threadIdx.x >> 5;
+  int lane = threadIdx.x & 0x1f;
+
+// Perform reduction across the threads in the same warp to get the max value
+// for each warp, the 1st out of NUM_THREADS_PER_TOKEN thread already has the
+// max value among every NUM_THREADS_PER_TOKEN threads.
+#pragma unroll
+  for (int mask = (WARP_SIZE >> 1); mask >= NUM_THREADS_PER_TOKEN; mask >>= 1) {
+    max = fmaxf(max, SHFL_XOR_SYNC(max, mask));
+  }
+
+  if (lane == 0) red_smem[warp] = max;
+  __syncthreads();
+
+  // The warps compute the final maxs.
+  max = lane < NUM_WARPS ? red_smem[lane] : -FLT_MAX;
+
+// Parallel reduction of all tokens from the same sequence inside the warp.
+#pragma unroll
+  for (int mask = (NUM_WARPS >> 1); mask > 0; mask >>= 1) {
+    max = fmaxf(max, SHFL_XOR_SYNC(max, mask));
+  }
+
+  // Broadcast to other threads.
+  return SHFL_SYNC(max, 0);
+}
+
+// here we need another block_sum instead of using block_reduce
+// since we need manage shared memory in a explicit way
+template <int NUM_WARPS>
+inline __device__ float block_sum(float* red_smem, float sum) {
+  int warp = threadIdx.x >> 5;
+  int lane = threadIdx.x & 0x1f;
+
+// Compute the sum per warp.
+#pragma unroll
+  for (int mask = (WARP_SIZE >> 1); mask > 0; mask >>= 1) {
+    sum += SHFL_XOR_SYNC(sum, mask);
+  }
+
+  if (lane == 0) red_smem[warp] = sum;
+  __syncthreads();
+
+  if (lane < NUM_WARPS) {
+    sum = red_smem[lane];
+  }
+
+// Parallel reduction of all tokens from the same sequence inside the warp.
+#pragma unroll
+  for (int mask = (NUM_WARPS >> 1); mask > 0; mask >>= 1) {
+    sum += SHFL_XOR_SYNC(sum, mask);
+  }
+
+  // Broadcast to other threads.
+  return SHFL_SYNC(sum, 0);
+}
+
+// here VecT is a vector of float, whose size is N
+template <typename VecT, int NUM_WARPS, int NUM_THREADS_PER_GROUP, int N>
+inline __device__ void block_sum(float* red_smem, VecT& acc) {
+  float* acc_ptr = reinterpret_cast<float*>(&acc);
+  int warp = threadIdx.x >> 5;
+  int lane = threadIdx.x & 0x1f;
+
+#pragma unroll
+  for (int i = 0; i < N; i++) {
+#pragma unroll
+    for (int mask = (WARP_SIZE >> 1); mask >= NUM_THREADS_PER_GROUP;
+         mask >>= 1) {
+      acc_ptr[i] += SHFL_XOR_SYNC(acc_ptr[i], mask);
+    }
+  }
+
+#pragma unroll
+  for (int limit = NUM_WARPS; limit > 1; limit >>= 1) {
+    int mid = limit >> 1;
+    if (warp >= mid && warp < limit) {
+      float* dst = red_smem + (warp - mid) * N * NUM_THREADS_PER_GROUP;
+      if (lane < NUM_THREADS_PER_GROUP) {
+        if constexpr (N == VEC_SIZE_8) {
+          VecT* vdst = &((reinterpret_cast<VecT*>(dst))[lane]);
+          (reinterpret_cast<float4*>(vdst))[0] =
+              (reinterpret_cast<float4*>(acc_ptr))[0];
+          (reinterpret_cast<float4*>(vdst))[1] =
+              (reinterpret_cast<float4*>(acc_ptr))[1];
+        } else {
+          (reinterpret_cast<VecT*>(dst))[lane] = acc;
+        }
+      }
+    }
+    __syncthreads();
+
+    if (warp < mid) {
+      float* src = red_smem + warp * N * NUM_THREADS_PER_GROUP;
+      VecT src_reg;
+      if (lane < NUM_THREADS_PER_GROUP) {
+        float* src_ptr = reinterpret_cast<float*>(&src_reg);
+        if constexpr (N == VEC_SIZE_8) {
+          VecT* vsrc = &((reinterpret_cast<VecT*>(src))[lane]);
+          (reinterpret_cast<float4*>(src_ptr))[0] =
+              (reinterpret_cast<float4*>(vsrc))[0];
+          (reinterpret_cast<float4*>(src_ptr))[1] =
+              (reinterpret_cast<float4*>(vsrc))[1];
+        } else {
+          src_reg = (reinterpret_cast<VecT*>(src))[lane];
+        }
+#pragma unroll
+        for (int j = 0; j < N; j++) {
+          acc_ptr[j] += src_ptr[j];
+        }
+      }
+    }
+    __syncthreads();
+  }
+}
+
+#undef SHFL_SYNC
+#undef SHFL_XOR_SYNC
+
+}  // namespace attention
+}  // namespace cuda
+}  // namespace colossalAI

@@ -11,11 +11,13 @@ inference_ops = InferenceOpsLoader().load()
 
 from tests.test_infer.test_ops.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
+    create_attention_mask,
     generate_caches_and_block_tables_v2,
     generate_caches_and_block_tables_vllm,
-    prepare_padding_mask,
     torch_attn_ref,
 )
+
+q_len = 1
 
 
 def prepare_data(
@@ -35,7 +37,7 @@ def prepare_data(
     kv_lengths = torch.randint(low=1, high=MAX_SEQ_LEN, size=(BATCH_SIZE,), dtype=torch.int32, device=device)
     num_tokens = torch.sum(kv_lengths).item()
 
-    q_size = (BATCH_SIZE, 1, NUM_ATTN_HEADS, HEAD_SIZE)
+    q_size = (BATCH_SIZE, q_len, NUM_ATTN_HEADS, HEAD_SIZE)
     q = torch.empty(size=q_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5).transpose(1, 2)
     kv_size = (num_tokens, 2 * NUM_KV_HEADS, HEAD_SIZE)
     kv_unpad = torch.empty(size=kv_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
@@ -48,50 +50,12 @@ def numpy_allclose(x, y, rtol, atol):
     x_numpy = x.detach().cpu().numpy()
     y_numpy = y.detach().cpu().numpy()
 
-    # mismatched_indices = np.argwhere(np.abs(x_numpy - y_numpy) > (atol + rtol * np.abs(y_numpy)))
-
-    # print(mismatched_indices)
-
-    # # Print the results
-    # for idx in mismatched_indices:
-    #     print(f"Mismatched element at index {tuple(idx)}: x = {x_numpy[tuple(idx)]}, y = {y_numpy[tuple(idx)]}")
-
-    # max_atol_idx = np.argmax(np.abs(x_numpy - y_numpy))
-    # np_a_flatten = x_numpy.flatten()
-    # np_b_flatten = y_numpy.flatten()
-    # sub_res = np_a_flatten - np_b_flatten
-    # nonzero_idx = np.nonzero(np_b_flatten)
-    # sub_res = sub_res.take(nonzero_idx)
-    # np_b_flatten_nonzero = np_b_flatten.take(nonzero_idx).flatten()
-    # np_a_flatten_nonzero = np_a_flatten.take(nonzero_idx).flatten()
-    # if sub_res.size ==0:
-    #     max_rtol_idx = 0
-    # else:
-    #     max_rtol_idx = np.argmax(np.abs(sub_res / np_b_flatten_nonzero))
-    # np.testing.assert_allclose(
-    #     x_numpy,
-    #     y_numpy,
-    #     atol=atol,
-    #     rtol=rtol,
-    #     err_msg=(
-    #         'max_atol value, torch_value: {value_a}, cuda_value: {value_b},\n'.format(
-    #             value_a=str(np_a_flatten[max_atol_idx].item()),
-    #             value_b=str(np_b_flatten[max_atol_idx].item()),
-    #         )
-    #         + 'max_rtol value , torch_value: {value_a}, cuda_value: {value_b},\n'.format(
-    #             value_a=str(np_a_flatten_nonzero[max_rtol_idx].item()) if max_rtol_idx < len(np_a_flatten_nonzero) else '',
-    #             value_b=str(np_b_flatten_nonzero[max_rtol_idx].item()) if max_rtol_idx < len(np_b_flatten_nonzero) else '',
-    #         )
-    #     ),
-    # )
-
     np.testing.assert_allclose(x_numpy, y_numpy, rtol=rtol, atol=atol)
 
 
 @pytest.mark.parametrize("BATCH_SIZE", [1, 4, 7, 32])
 @pytest.mark.parametrize("BLOCK_SIZE", [8, 16, 32])
 @pytest.mark.parametrize("MAX_NUM_BLOCKS_PER_SEQ", [1, 8, 32])
-# @pytest.mark.parametrize("HEAD_SIZE", [64, 128, 256])
 @pytest.mark.parametrize("HEAD_SIZE", [64, 128])
 @pytest.mark.parametrize("NUM_ATTN_HEADS", [16])
 @pytest.mark.parametrize("KV_GROUP_NUM", [1, 2, 16])
@@ -125,7 +89,7 @@ def test_flash_decoding_attention(
 
     k_torch = convert_kv_unpad_to_padded(k_unpad, kv_seq_lengths, BATCH_SIZE, max_seq_len_across_batch)
     v_torch = convert_kv_unpad_to_padded(v_unpad, kv_seq_lengths, BATCH_SIZE, max_seq_len_across_batch)
-    torch_padding_mask = prepare_padding_mask(kv_seq_lengths, BATCH_SIZE, max_seq_len_across_batch, device)
+    torch_padding_mask = create_attention_mask(kv_seq_lengths, BATCH_SIZE, q_len, max_seq_len_across_batch, device)
 
     mid_output = torch.empty(
         size=(BATCH_SIZE, NUM_ATTN_HEADS, kv_max_split_num, HEAD_SIZE), dtype=torch.float32, device=device
@@ -147,7 +111,7 @@ def test_flash_decoding_attention(
             high_precision_v_torch,
             torch_padding_mask,
             BATCH_SIZE,
-            1,
+            q_len,
             max_seq_len_across_batch,
             NUM_ATTN_HEADS,
             NUM_KV_HEADS,
@@ -164,7 +128,7 @@ def test_flash_decoding_attention(
             v_torch,
             torch_padding_mask,
             BATCH_SIZE,
-            1,
+            q_len,
             max_seq_len_across_batch,
             NUM_ATTN_HEADS,
             NUM_KV_HEADS,
@@ -190,7 +154,6 @@ def test_flash_decoding_attention(
 @pytest.mark.parametrize("BATCH_SIZE", [1, 4, 7, 32])
 @pytest.mark.parametrize("BLOCK_SIZE", [8, 16, 32])
 @pytest.mark.parametrize("MAX_NUM_BLOCKS_PER_SEQ", [1, 8, 32])
-# @pytest.mark.parametrize("HEAD_SIZE", [64, 128, 256])
 @pytest.mark.parametrize("HEAD_SIZE", [64, 128])
 @pytest.mark.parametrize("NUM_ATTN_HEADS", [16])
 @pytest.mark.parametrize("KV_GROUP_NUM", [1, 2, 16])
@@ -228,7 +191,7 @@ def test_vllm_flash_decoding_attention(
 
     k_torch = convert_kv_unpad_to_padded(k_unpad, kv_seq_lengths, BATCH_SIZE, max_seq_len_across_batch)
     v_torch = convert_kv_unpad_to_padded(v_unpad, kv_seq_lengths, BATCH_SIZE, max_seq_len_across_batch)
-    torch_padding_mask = prepare_padding_mask(kv_seq_lengths, BATCH_SIZE, max_seq_len_across_batch, device)
+    torch_padding_mask = create_attention_mask(kv_seq_lengths, BATCH_SIZE, q_len, max_seq_len_across_batch, device)
 
     if dtype == torch.float16:
         rtol = 1e-3
@@ -243,7 +206,7 @@ def test_vllm_flash_decoding_attention(
             high_precision_v_torch,
             torch_padding_mask,
             BATCH_SIZE,
-            1,
+            q_len,
             max_seq_len_across_batch,
             NUM_ATTN_HEADS,
             NUM_KV_HEADS,
@@ -260,7 +223,7 @@ def test_vllm_flash_decoding_attention(
             v_torch,
             torch_padding_mask,
             BATCH_SIZE,
-            1,
+            q_len,
             max_seq_len_across_batch,
             NUM_ATTN_HEADS,
             NUM_KV_HEADS,
@@ -290,7 +253,6 @@ if __name__ == "__main__":
     BATCH_SIZE = [1, 4, 7, 32]
     BLOCK_SIZE = [8, 16, 32]
     MAX_NUM_BLOCKS_PER_SEQ = [1, 8, 32]
-    # HEAD_SIZE = [64, 128, 256]
     HEAD_SIZE = [64, 128]
     NUM_ATTN_HEADS = [16]
     KV_GROUP_NUM = [1, 2, 16]
@@ -310,6 +272,3 @@ if __name__ == "__main__":
         test_flash_decoding_attention(
             batch_size, block_size, max_num_blocks_per_seq, head_size, num_attn_heads, kv_group_num, dtype
         )
-        # test_vllm_flash_decoding_attention(
-        #     batch_size, block_size, max_num_blocks_per_seq, head_size, num_attn_heads, kv_group_num, dtype
-        # )

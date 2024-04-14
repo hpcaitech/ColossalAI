@@ -23,7 +23,7 @@ class InferenceOpsCudaExtension(_CudaExtension):
         return ret
 
     def include_dirs(self):
-        ret = [self.csrc_abs_path("cuda/include"), self.csrc_abs_path("cuda/attention"), self.get_cuda_home_include()]
+        ret = [self.csrc_abs_path("cuda/include"), self.get_cuda_home_include()]
         return ret
 
     def cxx_flags(self):

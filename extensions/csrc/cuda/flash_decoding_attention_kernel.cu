@@ -1,16 +1,20 @@
+/*This code adapted from vllm:
+ *     https://github.com/vllm-project/vllm/blob/main/csrc/attention/attention_kernels.cu
+ *     with different kvcache layout. */
+
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <stdio.h>
 
-
-#include "block_reduce.h"
 #include "../common/micros.h"
-#include "cuda_type_utils.h"
-#include "attention_utils.h"
+#include "funcs/cast_functor.h"
+#include "funcs/ternary_functor.h"
+#include "funcs/binary_functor.h"
+#include "utils/vec_type_traits.h"
+#include "attention/attention_utils.h"
 
 #define WARP_SIZE 32
-#define VEC_SIZE_8 8
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define DIVIDE_ROUND_UP(a, b) (((a) + (b) - 1) / (b))
@@ -30,117 +34,15 @@ constexpr unsigned int nextHighestPowerOf2(unsigned int v) {
   return v;
 }
 
-template<int NUM_WARPS, int NUM_THREADS_PER_TOKEN>
-inline __device__ float block_max(float* red_smem, float max) {
-  int warp = threadIdx.x >> 5;
-  int lane = threadIdx.x & 0x1f;
+using colossalAI::cuda::funcs::BinaryOpType;
+using colossalAI::cuda::funcs::CastFunctor;
+using colossalAI::cuda::funcs::TernaryOpFunctor;
+using colossalAI::cuda::funcs::TernaryOpType;
+using colossalAI::cuda::funcs::zero;
+using colossalAI::cuda::utils::VecTypeTrait;
+using colossalAI::cuda::utils::FloatVecTypeTrait;
+using namespace colossalAI::cuda::attention;
 
-  // Perform reduction across the threads in the same warp to get the max value for each warp,
-  // the 1st out of NUM_THREADS_PER_TOKEN thread already has the max value among every NUM_THREADS_PER_TOKEN threads.
-  #pragma unroll
-  for (int mask = (WARP_SIZE >> 1); mask >= NUM_THREADS_PER_TOKEN; mask >>= 1) {
-    max = fmaxf(max, SHFL_XOR_SYNC(max, mask));
-  }
-
-  if (lane == 0) red_smem[warp] = max;
-  __syncthreads();
-
-  // The warps compute the final maxs.
-  max = lane < NUM_WARPS ? red_smem[lane] : -FLT_MAX;
-
-  // Parallel reduction of all tokens from the same sequence inside the warp.
-  #pragma unroll
-  for (int mask = (NUM_WARPS >> 1); mask > 0; mask >>= 1) {
-    max = fmaxf(max, SHFL_XOR_SYNC(max, mask));
-  }
-
-  // Broadcast to other threads.
-  return SHFL_SYNC(max, 0);
-}
-
-// here we need another block_sum instead of using block_reduce
-// since we need manage shared memory in a explicit way
-template<int NUM_WARPS>
-inline __device__ float block_sum(float* red_smem, float sum) {
-  int warp = threadIdx.x >> 5;
-  int lane = threadIdx.x & 0x1f;
-
-  // Compute the sum per warp.
-  #pragma unroll
-  for (int mask = (WARP_SIZE >> 1); mask > 0; mask >>= 1) {
-    sum += SHFL_XOR_SYNC(sum, mask);
-  }
-
-  if (lane == 0) red_smem[warp] = sum;
-  __syncthreads();
-
-  if (lane < NUM_WARPS) {
-    sum = red_smem[lane];
-  }
-
-  // Parallel reduction of all tokens from the same sequence inside the warp.
-  #pragma unroll
-  for (int mask = (NUM_WARPS >> 1); mask > 0; mask >>= 1) {
-    sum += SHFL_XOR_SYNC(sum, mask);
-  }
-
-  // Broadcast to other threads.
-  return SHFL_SYNC(sum, 0);
-}
-
-// here Vec is a vector of float, whose size is N
-template<typename Vec, int NUM_WARPS, int NUM_THREADS_PER_GROUP, int N>
-inline __device__ void block_sum(float* red_smem, Vec& acc) {
-  float* acc_ptr = reinterpret_cast<float*>(&acc);
-  int warp = threadIdx.x >> 5;
-  int lane = threadIdx.x & 0x1f;
-
-  #pragma unroll
-  for (int i = 0; i < N; i++) {
-    #pragma unroll
-    for (int mask = (WARP_SIZE >> 1); mask >= NUM_THREADS_PER_GROUP; mask >>= 1) {
-      acc_ptr[i] += SHFL_XOR_SYNC(acc_ptr[i], mask);
-    }
-  }
-
-  #pragma unroll
-  for (int limit = NUM_WARPS; limit > 1; limit >>= 1) {
-    int mid = limit >> 1;
-    if (warp >= mid && warp < limit) {
-      float* dst = red_smem + (warp - mid) * N * NUM_THREADS_PER_GROUP;
-      if (lane < NUM_THREADS_PER_GROUP) {
-        if constexpr (N == VEC_SIZE_8) {
-          Vec* vdst = &((reinterpret_cast<Vec*>(dst))[lane]);
-          (reinterpret_cast<float4*>(vdst))[0] = (reinterpret_cast<float4*>(acc_ptr))[0];
-          (reinterpret_cast<float4*>(vdst))[1] = (reinterpret_cast<float4*>(acc_ptr))[1];
-        } else {
-          (reinterpret_cast<Vec*>(dst))[lane] = acc;
-        }
-      }
-    }
-    __syncthreads();
-
-    if (warp < mid) {
-      float* src = red_smem + warp * N * NUM_THREADS_PER_GROUP;
-      Vec src_reg;
-      if (lane < NUM_THREADS_PER_GROUP) {
-        float* src_ptr = reinterpret_cast<float*>(&src_reg);
-        if constexpr (N == VEC_SIZE_8) {
-          Vec* vsrc = &((reinterpret_cast<Vec*>(src))[lane]);
-          (reinterpret_cast<float4*>(src_ptr))[0] = (reinterpret_cast<float4*>(vsrc))[0];
-          (reinterpret_cast<float4*>(src_ptr))[1] = (reinterpret_cast<float4*>(vsrc))[1];
-        } else {
-          src_reg = (reinterpret_cast<Vec*>(src))[lane];
-        }
-        #pragma unroll
-        for (int j = 0; j < N; j++) {
-          acc_ptr[j] += src_ptr[j];
-        }
-      }
-    }
-    __syncthreads();
-  }
-}
 
 // We only support head size of { 64, 128, 256 }
 // models like Phi-2, whose head size is 80, is not supported right now
@@ -178,10 +80,10 @@ __global__ void flash_decoding_attention_kernel(
   constexpr int NUM_ROUNDS_PER_TOKEN = NUM_VECS_PER_TOKEN / NUM_THREADS_PER_TOKEN;
   constexpr int WARP_STRIDE = WARP_SIZE * NUM_ROUNDS_PER_TOKEN;
 
-  using K_vec = typename VecType<scalar_t, VEC_SIZE>::Type;
-  using V_vec = typename VecType<scalar_t, VEC_SIZE>::Type;
-  using L_vec = typename VecType<scalar_t, VEC_SIZE>::Type;
-  using Float_vec = typename FloatVec<L_vec>::Type;
+  using K_vec = typename VecTypeTrait<scalar_t, VEC_SIZE>::Type;
+  using V_vec = typename VecTypeTrait<scalar_t, VEC_SIZE>::Type;
+  using L_vec = typename VecTypeTrait<scalar_t, VEC_SIZE>::Type;
+  using Float_vec = typename FloatVecTypeTrait<L_vec>::Type;
 
   const int context_len = context_lens[seq_idx];
   const int thread_group_offset = thread_idx % NUM_THREADS_PER_TOKEN;
@@ -284,10 +186,10 @@ __global__ void flash_decoding_attention_kernel(
         }
       }
 
-      from_float(logit, logits[token_idx]);
+      logit = CastFunctor<float, scalar_t>()(logits[token_idx]);
       #pragma unroll
       for (int i = 0; i < NUM_ROUNDS_PER_TOKEN; i++) {
-        accs[i] = fma(logit, v_vecs[i], accs[i]);
+        accs[i] = TernaryOpFunctor<scalar_t, V_vec, Float_vec, TernaryOpType::kFma>()(logit, v_vecs[i], accs[i]);
       }
     }
   }
@@ -305,7 +207,7 @@ __global__ void flash_decoding_attention_kernel(
   #pragma unroll
   for (int i = 0; i < NUM_ROUNDS_PER_TOKEN; i++) {
     if (thread_idx < NUM_THREADS_PER_TOKEN) {
-      from_float(out_reg, accs[i]);
+      out_reg = CastFunctor<Float_vec, L_vec>()(accs[i]);
       (reinterpret_cast<L_vec*>(out_ptr))[thread_idx + i * NUM_THREADS_PER_TOKEN] = out_reg;
     }
   }
@@ -444,3 +346,8 @@ void flash_decoding_attention(
       AT_ERROR("Unsupported data type: ", toString(query.scalar_type()));
   }
 }
+
+
+#undef LAUNCH_FLASH_DECODING_ATTENTION_V1
+#undef CALL_V1_LAUNCHER
+#undef CALL_V1_LAUNCHER_BLOCK_SIZE
