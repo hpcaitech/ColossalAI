@@ -550,8 +550,8 @@ def exam_bert_test(test_config):
     test_config["initial_scale"] = 2**16  # avoid overflow
     model_list = [
         "transformers_bert",
-        "transformers_bert_for_pretraining",
-        "transformers_bert_lm_head_model",
+        "transformers_bert_for_pretraining", 
+        "transformers_bert_lm_head_model", 
         "transformers_bert_for_masked_lm",
         "transformers_bert_for_sequence_classification",
         "transformers_bert_for_token_classification",

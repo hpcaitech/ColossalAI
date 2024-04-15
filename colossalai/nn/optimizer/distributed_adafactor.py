@@ -90,12 +90,7 @@ class DistributedAdaFactor(DistributedOptim):
         for group in self.param_groups:
             for p in group["params"]:
                 self.param_is_dtensor_dict[id(p)] = is_distributed_tensor(self.shard_to_param.get(id(p)))
-                if self.param_is_dtensor_dict[id(p)]:
-                    self.grad_shape_dict[id(p)] = self.shard_to_param.get(id(p)).shape 
-                else:
-                    # no tp; could be zero or not zero
-                    # self.grad_shape_dict[id(p)] = p.shape
-                    self.grad_shape_dict[id(p)] = self.shard_to_param.get(id(p)).shape 
+                self.grad_shape_dict[id(p)] = self.shard_to_param.get(id(p)).shape 
                 self.factored_dict[id(p)], self.use_first_moment_dict[id(p)] = self._get_options(group, self.grad_shape_dict[id(p)])
                 if self.param_is_dtensor_dict[id(p)]:
                     self.shard_spec_dict[id(p)] = get_sharding_spec(self.shard_to_param.get(id(p)))
@@ -181,11 +176,6 @@ class DistributedAdaFactor(DistributedOptim):
             exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
             update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
             update_reshape.mul_(grad_reshape) 
-            if self.use_zero:
-                update = update_reshape.view(-1)
-            else:
-                update = update_reshape
-        
         else:
             update_reshape = update.view(-1, grad_shape[1])
             grad_reshape = grad.view(-1, grad_shape[1])
@@ -197,10 +187,11 @@ class DistributedAdaFactor(DistributedOptim):
             exp_avg_sq_row.div_(self.tensor_parallel_size)
             update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
             update_reshape.mul_(grad_reshape)
-            if self.use_zero:
-                update = update_reshape.view(-1)
-            else:
-                update = update_reshape
+            
+        if self.use_zero:
+            update = update_reshape.view(-1)
+        else:
+            update = update_reshape
         return update
     
     def _row_parallel_factor(self, update, grad, state, grad_shape, beta2t):
