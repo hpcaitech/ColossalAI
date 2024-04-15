@@ -1,17 +1,23 @@
+import os
 import random
 
 import numpy as np
 import pytest
 import torch
-from model_utils.baichuan2_7B.configuration_baichuan import BaichuanConfig
-from model_utils.baichuan2_7B.modeling_baichuan import BaichuanForCausalLM
-from transformers import AutoTokenizer, GenerationConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 
 import colossalai
 from colossalai.inference.config import _DEFAULT_PROMPT_TEMPLATES, InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+
+PATH_EXIST = "baichuan-inc/Baichuan2-7B-Base"
+
+if os.path.exists(PATH_EXIST):
+    PATH_EXIST = True
+else:
+    PATH_EXIST = False
 
 
 def setup_seed(seed):
@@ -23,11 +29,9 @@ def setup_seed(seed):
 
 def check_inference_engine(use_engine=False, prompt_template=None):
     setup_seed(20)
-    tokenizer = AutoTokenizer.from_pretrained("baichuan-inc/Baichuan2-7B-Base", use_fast=False, trust_remote_code=True)
-    model = BaichuanForCausalLM(
-        BaichuanConfig(
-            vocab_size=125696, hidden_size=32, intermediate_size=1376, num_attention_heads=1, num_hidden_layers=1
-        )
+    tokenizer = AutoTokenizer.from_pretrained(PATH_EXIST, use_fast=False, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        PATH_EXIST, device_map="auto", torch_dtype=torch.bfloat16, trust_remote_code=True
     ).cuda()
     model = model.eval()
 
@@ -36,9 +40,7 @@ def check_inference_engine(use_engine=False, prompt_template=None):
     ]
 
     output_len = 38
-    do_sample = True
-    top_p = 0.5
-    top_k = 50
+    do_sample = False
 
     if use_engine:
         inference_config = InferenceConfig(
@@ -48,7 +50,7 @@ def check_inference_engine(use_engine=False, prompt_template=None):
         assert inference_engine.generation_config.max_new_tokens == output_len
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
-        generation_config = GenerationConfig(do_sample=do_sample, top_p=top_p, top_k=top_k)
+        generation_config = GenerationConfig(do_sample=do_sample)
         outputs = inference_engine.generate(generation_config=generation_config)
     else:
         if prompt_template:
@@ -60,8 +62,6 @@ def check_inference_engine(use_engine=False, prompt_template=None):
         inputs = inputs.cuda()
         generation_config = GenerationConfig(
             do_sample=do_sample,
-            top_p=top_p,
-            top_k=top_k,
             pad_token_id=tokenizer.pad_token_id,
             max_new_tokens=output_len,
         )
@@ -88,6 +88,10 @@ def run_dist(rank, world_size, port):
     check_output_consistency()
 
 
+@pytest.mark.skipif(
+    not PATH_EXIST,
+    reason="There is no local model address included, please replace this address with a valid one.",
+)
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_inference_engine():
