@@ -450,12 +450,10 @@ class InferenceEngine:
             List[str]: Inference result returned by one generation.
         """
         with torch.inference_mode():
-            if generation_config is not None:
-                self.generation_config = generation_config
-
             if prompts is not None or prompts_token_ids is not None:
-                if isinstance(prompts, str) and isinstance(request_ids, int):
+                if isinstance(prompts, str):
                     prompts = [prompts]
+                if isinstance(request_ids, int):
                     request_ids = [request_ids]
                 self.add_request(request_ids=request_ids, prompts=prompts, prompts_token_ids=prompts_token_ids)
 
@@ -463,6 +461,8 @@ class InferenceEngine:
             total_tokens_list = []
 
             # intuition: If user provide a generation config, we should replace the existing one.
+            if generation_config is not None:
+                self.generation_config = generation_config
 
             if self.use_spec_dec:
                 assert self.drafter is not None, "Drafter Model is not initialized."
@@ -538,7 +538,7 @@ class InferenceEngine:
 
         if isinstance(prompts_token_ids, list):
             if isinstance(prompts_token_ids[0], torch.Tensor):
-                prompts_token_ids = [prompt_token_ids.tolist() for prompt_token_ids in prompts_token_ids]
+                prompts_token_ids = [prompt_token_id.tolist() for prompt_token_id in prompts_token_ids]
         elif isinstance(prompts_token_ids, torch.Tensor) or isinstance(prompts_token_ids, np.ndarray):
             prompts_token_ids = prompts_token_ids.tolist()
         else:

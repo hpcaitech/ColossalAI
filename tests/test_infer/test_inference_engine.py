@@ -36,17 +36,27 @@ def check_inference_engine(use_engine=False, prompt_template=None):
     ]
 
     output_len = 38
-    do_sample = True
+    do_sample = False
     top_p = 0.5
     top_k = 50
 
     if use_engine:
-        inference_config = InferenceConfig(max_output_len=output_len, prompt_template=prompt_template, dtype="fp32")
+        inference_config = InferenceConfig(
+            max_output_len=output_len,
+            prompt_template=prompt_template,
+            dtype="fp32",
+            do_sample=do_sample,
+            top_p=top_p,
+            top_k=top_k,
+            use_cuda_kernel=True,
+        )
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         assert inference_engine.generation_config.max_new_tokens == output_len
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
-        generation_config = GenerationConfig(do_sample=do_sample, top_p=top_p, top_k=top_k)
+        generation_config = GenerationConfig(
+            max_new_tokens=output_len, do_sample=do_sample, dtype="fp32", top_p=top_p, top_k=top_k
+        )
         outputs = inference_engine.generate(generation_config=generation_config)
     else:
         if prompt_template:
@@ -58,6 +68,7 @@ def check_inference_engine(use_engine=False, prompt_template=None):
         inputs = inputs.cuda()
         generation_config = GenerationConfig(
             do_sample=do_sample,
+            dtype="fp32",
             top_p=top_p,
             top_k=top_k,
             pad_token_id=tokenizer.pad_token_id,

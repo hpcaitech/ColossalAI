@@ -1,6 +1,6 @@
 import pytest
 
-from colossalai.inference.core.async_engine import RequestTracker
+from colossalai.inference.core.async_engine import Tracer
 from colossalai.inference.struct import Sequence
 
 
@@ -16,7 +16,7 @@ class SampleEvent:
 
 
 def test_request_tracker():
-    tracker = RequestTracker()
+    tracker = Tracer()
     tracker.new_requests_event = SampleEvent()
     stream_1 = tracker.add_request(1)
     assert tracker.new_requests_event.flag
