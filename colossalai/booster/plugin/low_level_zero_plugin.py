@@ -16,7 +16,7 @@ from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 
 from colossalai.accelerator import get_accelerator
-from colossalai.booster.quantization import BnbQuantizationConfig, quantize_model
+from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO
 from colossalai.checkpoint_io.utils import (
     get_optimizer_base_filenames,
