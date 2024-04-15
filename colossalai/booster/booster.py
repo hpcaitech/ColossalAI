@@ -17,9 +17,9 @@ except ImportError:
     pass
 
 import colossalai.interface.pretrained as pretrained_utils
-from colossalai.quantization import BnbQuantizationConfig
 from colossalai.checkpoint_io import GeneralCheckpointIO
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.quantization import BnbQuantizationConfig
 
 from .accelerator import Accelerator
 from .mixed_precision import MixedPrecision, mixed_precision_factory
