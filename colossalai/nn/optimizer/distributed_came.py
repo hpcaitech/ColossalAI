@@ -108,7 +108,7 @@ class DistributedCAME(DistributedOptim):
 
         # Summarize the total number of elements across all devices
         # use working param shape to calculate numel instead of high cost allreduce
-        numel = torch.tensor(reduce(lambda x, y: x * y, self.ori_shape[id(param)]), device=tensor.device)
+        numel = torch.tensor(reduce(lambda x, y: x * y, self.working_shape[id(param)]), device=tensor.device)
         if self.tensor_parallel_group and not (len(param.size()) == 1 and self.clip_method[id(param)] == "row"):
             numel *= dist.get_world_size(group=self.tensor_parallel_group)
 
@@ -145,7 +145,7 @@ class DistributedCAME(DistributedOptim):
         If the the working param has shape [3, 4] and the master param has shape [6],
         The grad of master param can not have shape [1.5, 4], So in this situation the grad is gathered of shape [3, 4] before compute.
         """
-        ori_shape = self.ori_shape[id(param)]
+        ori_shape = self.working_shape[id(param)]
         # return param.grad.data.reshape(*working_shape)
         if not (len(ori_shape) >= 2 and len(param.size()) == 1):
             return param.grad.data
@@ -166,9 +166,8 @@ class DistributedCAME(DistributedOptim):
         If the grad of master param is unflattened, the update has the same shape as the grad, different shape with the master param
         This function will flatten the update tensor to the shape of the master param
         """
-        self.working_shape[id(param)]
         # return tensor.reshape(*working_shape)
-        ori_shape = self.ori_shape[id(param)]
+        ori_shape = self.working_shape[id(param)]
         if not (len(ori_shape) >= 2 and len(param.size()) == 1):
             return tensor
         if self.gather_before_compute[id(param)]:
@@ -177,6 +176,7 @@ class DistributedCAME(DistributedOptim):
             return torch.flatten(tensor)[rank * length : (rank + 1) * length]
         return torch.flatten(tensor)
 
+    @torch.no_grad()
     def step(self, closure=None):
         """Performs a single optimization step.
         Args:
@@ -192,8 +192,6 @@ class DistributedCAME(DistributedOptim):
                 if p.grad is None:
                     continue
                 grad = self._unflatten_grad_tensor_by_param(p) if self.zero else p.grad.data
-                # if grad.dtype in {torch.float16, torch.bfloat16}:
-                #     grad = grad.float()
                 if grad.is_sparse:
                     raise RuntimeError("CAME does not support sparse gradients.")
 
@@ -237,8 +235,7 @@ class DistributedCAME(DistributedOptim):
                         elif self.clip_method[id(p)] == "col":
                             dist.all_reduce(sq_mean_col, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
                             sq_mean_col /= dist.get_world_size(group=self.tensor_parallel_group)
-                        else:
-                            pass
+
                         if self.zero and not self.gather_before_compute[id(p)]:
                             dist.all_reduce(sq_mean_col, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
                             sq_mean_col /= dist.get_world_size(group=self.zero_parallel_group)

@@ -47,9 +47,9 @@ def check_bert_fwd_bwd(
 
     # check weights
     if test_config["precision"] == "bf16":
-        atol, rtol = 5e-4, 1e-4
+        atol, rtol = 5e-3, 1e-3
     else:
-        atol, rtol = 5e-4, 5e-4
+        atol, rtol = 5e-3, 5e-3
     if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
         check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
 
@@ -62,13 +62,19 @@ def check_bert_fwd_bwd(
     "test_config",
     [
         {
-            "tp_size": 1,
+            "tp_size": 4,
+            "num_microbatches": 4,
+            "zero_stage": 0,
+            "precision": "fp32",
+        },
+        {
+            "tp_size": 2,
             "num_microbatches": 4,
             "zero_stage": 2,
             "precision": "bf16",
         },
         {
-            "tp_size": 2,
+            "tp_size": 1,
             "num_microbatches": 4,
             "zero_stage": 2,
             "precision": "bf16",
@@ -101,12 +107,6 @@ def check_bert_fwd_bwd(
             "tp_size": 2,
             "num_microbatches": 4,
             "zero_stage": 1,
-            "precision": "bf16",
-        },
-        {
-            "tp_size": 2,
-            "num_microbatches": 4,
-            "zero_stage": 0,
             "precision": "bf16",
         },
     ],

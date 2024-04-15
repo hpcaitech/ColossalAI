@@ -1,176 +1,308 @@
-import copy
-
+import pytest
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.testing import assert_close
 
 import colossalai
-import colossalai.tensor.d_tensor.api as api
-from colossalai.cluster.process_group_mesh import ProcessGroupMesh
-from colossalai.nn.optimizer.came import CAME
-from colossalai.nn.optimizer.distributed_came import DistributedCAME
-from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
-from colossalai.shardformer.layer.utils import Randomizer
-from colossalai.tensor.d_tensor import api
+from colossalai.cluster import DistCoordinator, ProcessGroupMesh
+from colossalai.logging import disable_existing_loggers
+from colossalai.nn.optimizer import CAME, DistributedCAME
+from colossalai.tensor.d_tensor import is_distributed_tensor
+from colossalai.tensor.d_tensor.api import clear_layout_converter
+from colossalai.tensor.d_tensor.sharding_spec import DimSpec
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.zero.low_level.low_level_optim import LowLevelZeroOptimizer
+from colossalai.testing.random import seed_all
+from colossalai.zero import LowLevelZeroOptimizer
+from tests.kit.model_zoo import model_zoo
+from tests.test_optimizer._utils import check_optim_states, run_bert_test
+
+_ALLOWED_P_G_TYPES = [
+    (torch.float, torch.float),  # pure fp32
+    (torch.float, torch.half),  # fp16 amp
+    (torch.float, torch.bfloat16),  # bfloat16 amp
+]
+
+# Identifiers for Tensor Parallel linear layers
+_SHARD_DIM = DimSpec([0])
+_IN_DIM = 32
+_HID_DIM = 128
+_N_STEP = 3
+_SEED = 1024
+_COORD = None
+
+Net, data_gen, *_ = next(iter(model_zoo.get_sub_registry("simple_mlp").values()))
+TPNet, *_ = next(iter(model_zoo.get_sub_registry("simple_tp_mlp").values()))
 
 
-def check_dist_1d(seq_parallel, tp_size, zero_size, col, zero_stage):
-    world_size = dist.get_world_size()
+def get_split_dim(p):
+    if not is_distributed_tensor(p):
+        raise ValueError("p is not a distributed tensor")
+    sharding = p.dist_layout.sharding_spec.sharding_sequence
+    return sharding.index(_SHARD_DIM)
+
+
+def assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group):
+    rank = dist.get_rank(tp_group)
+    tp_size = dist.get_world_size(tp_group)
+
+    for (name, p), torch_p in zip(tp_model.named_parameters(), torch_model.parameters()):
+        # if overflow, the weight won't be updated. so there will be no nan in p
+        assert not torch.isnan(p).any()
+        try:
+            if is_distributed_tensor(p):
+                split_dim = get_split_dim(p)
+                torch_p = torch_p.chunk(tp_size, dim=split_dim)[rank]
+
+            assert_close(p.float(), torch_p, rtol=rtol, atol=atol)
+        except AssertionError as e:
+            print(f"grad mismatch in {name}")
+            raise e
+
+
+def setup_param_groups(bert_model: nn.Module) -> list:
+    no_decay = ["bias", "LayerNorm.weight"]
+    optimizer_grouped_parameters = [
+        {
+            "params": [p for n, p in bert_model.named_parameters() if not any(nd in n for nd in no_decay)],
+            "weight_decay": 0.1,
+        },
+        {
+            "params": [p for n, p in bert_model.named_parameters() if any(nd in n for nd in no_decay)],
+            "weight_decay": 0.0,
+        },
+    ]
+    return optimizer_grouped_parameters
+
+
+def force_assign_grad(p, g_dtype, grad=None):
+    """avoid inconsistent grad and param dtype error"""
+    orig_p = p.data
+    p.data = torch.randn_like(p, device=orig_p.device, dtype=g_dtype) if grad == None else grad
+    p.grad = p.data
+    p.data = orig_p
+
+
+def set_dist_grad(
+    dist_module: nn.Module,
+    torch_model: nn.Module,
+    g_dtype: torch.dtype,
+    group: dist.ProcessGroup,
+) -> None:
+    """
+    Set grads chunks for Tensor Parallel or ZeRO DP.
+    We do not need a separate treatment for ZeRO,
+    as the LowLevelOptimizer takes care of reduce-scattering grads.
+    """
+    rank = dist.get_rank(group)
+    world_size = dist.get_world_size(group)
+
+    for p, torch_p in zip(dist_module.parameters(), torch_model.parameters()):
+        if torch_p.grad is None:
+            # avoid inconsistent grad and param dtype error
+            force_assign_grad(torch_p, g_dtype)
+        else:
+            torch_p.grad += torch.randn_like(torch_p, device=torch_p.device, dtype=g_dtype)
+
+        if p.grad is None:
+            force_assign_grad(p, g_dtype)
+
+        if is_distributed_tensor(p):
+            split_dim = get_split_dim(p)
+            # Add grads only to the correctly split chunk
+            force_assign_grad(p, g_dtype, torch_p.grad.chunk(world_size, dim=split_dim)[rank])
+            # assert_close(p.grad, torch_p.grad.chunk(world_size, dim=split_dim)[rank])
+        else:
+            force_assign_grad(p, g_dtype, torch_p.grad)
+
+
+@parameterize("p_g_dtype", _ALLOWED_P_G_TYPES)
+@parameterize("bias_correction", [False, True])
+@parameterize("tp_zero_size", [(1, 4), (4, 1), (2, 2)])
+def run_dist_lamb_basic(
+    bias_correction: bool, p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_size: tuple[int, int]
+) -> None:
+    """Test without forward"""
+    p_dtype, g_dtype = p_g_dtype
+    tp_size, zero_size = tp_zero_size
+
+    # Set distributed groups
     rank = dist.get_rank()
-    in_features, out_features = 128, 512
-    assert world_size % tp_size == 0, "world size must divide tp size"
-    DP_AXIS = 0
-    TP_AXIS = 1
-    zero_size = world_size // tp_size if zero_size == 0 else zero_size
-    pg_mesh = ProcessGroupMesh(zero_size, tp_size)
-    tp_group = pg_mesh.get_group_along_axis(TP_AXIS)
-    dp_group = pg_mesh.get_group_along_axis(DP_AXIS)
-    # print("TP: ", dist.get_process_group_ranks(tp_group), "DP: ", dist.get_process_group_ranks(dp_group))
-    ori_model = nn.Linear(in_features, out_features).to(rank)
-    if col:
-        clip_dim = 0
-        shard_model = Linear1D_Col.from_native_module(
-            copy.deepcopy(ori_model),
-            process_group=tp_group,
-            gather_output=True,
-            seq_parallel=seq_parallel,
-            overlap=False,
-        ).to(rank)
-    else:
-        clip_dim = -1
-        shard_model = Linear1D_Row.from_native_module(
-            copy.deepcopy(ori_model), process_group=tp_group, seq_parallel=seq_parallel, parallel_input=False
-        ).to(rank)
-    tp_rank = dist.get_rank(group=tp_group)
+    clear_layout_converter()  # Ensure correct sharding
+    proc_mesh = ProcessGroupMesh(tp_size, zero_size)
+    tp_group = proc_mesh.get_group_along_axis(0)
+    dp_group = proc_mesh.get_group_along_axis(1)
 
-    # check original weight and bias
-    with torch.no_grad():
-        ori_dist_weight = copy.deepcopy(shard_model.weight)
-        ori_target_weight = torch.chunk(ori_model.weight.clone(), tp_size, dim=clip_dim)[tp_rank]
-        ori_dist_bias = copy.deepcopy(shard_model.bias)
-        ori_target_bias = torch.chunk(ori_model.bias.clone(), tp_size if col else 1, dim=clip_dim)[
-            tp_rank if col else 0
-        ]
-        assert_close(ori_dist_weight, ori_target_weight)
-        assert_close(ori_dist_bias, ori_target_bias)
-
-    # plugin = HybridParallelPlugin(tp_size=tp_size, pp_size=1, zero_stage=zero_stage)
-    # booster = Booster(plugin=plugin)
-
-    optim = CAME(ori_model.parameters(), lr=0.1)
-    dist_optim = DistributedCAME(shard_model.parameters(), lr=0.1)
-
-    # shard_model, dist_optim, _, _, _ = booster.boost(shard_model, dist_optim)
-
-    if zero_size > 1:
-        dist_optim = LowLevelZeroOptimizer(
-            optimizer=dist_optim, partition_grad=(zero_stage == 2), dp_process_group=dp_group
-        )
-    master_to_working_map = (
-        dist_optim.get_master_to_working_map() if isinstance(dist_optim, LowLevelZeroOptimizer) else None
+    tp_rank = dist.get_rank(tp_group)
+    seed_all(_SEED)  # Fix model init
+    torch_model = Net(in_dim=_IN_DIM, hid_dim=_HID_DIM, identity=True).to(rank)
+    tp_model = TPNet(torch_model.fc0, torch_model.fc1, torch_model.fc2, tp_group).to(rank)
+    # Ensure equal weight init
+    assert_close(
+        torch_model.fc1.weight[tp_rank * _HID_DIM // tp_size : (tp_rank + 1) * _HID_DIM // tp_size],
+        tp_model.fc1.weight,
     )
-    zero_flag = True if isinstance(dist_optim, LowLevelZeroOptimizer) else False
-    if isinstance(dist_optim, LowLevelZeroOptimizer):
-        dist_optim.optim.setup_distributed(tp_group, dp_group, master_to_working_map, zero_flag)
+    assert_close(
+        torch_model.fc2.weight[:, tp_rank * _HID_DIM // tp_size : (tp_rank + 1) * _HID_DIM // tp_size],
+        tp_model.fc2.weight,
+    )
+
+    # Set up optimizers
+    lr = 1e-3
+    beta1, beta2, beta3 = 0.9, 0.999, 0.9999
+    eps = (1e-30, 1e-16)
+    torch_optim = CAME(setup_param_groups(torch_model), lr=lr, betas=(beta1, beta2, beta3), eps=eps)
+    optim = DistributedCAME(
+        setup_param_groups(tp_model),
+        lr=lr,
+        betas=(beta1, beta2, beta3),
+        eps=eps,
+    )
+    optim.setup_distributed(tp_group, dp_group, None, zero_flag=False)
+
+    rtol, atol = 1e-4, 1e-4
+    if p_dtype is torch.float16 or g_dtype is torch.float16:
+        rtol, atol = 1e-3, 1e-3
+    if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
+        rtol, atol = 2e-3, 2e-3
+
+    for i in range(_N_STEP):
+        seed_all(_SEED + i)  # NOTE: having only one manual_seed above doesn't work?
+        set_dist_grad(tp_model, torch_model, g_dtype, tp_group)
+
+        torch_optim.step()
+        optim.step()
+        torch_optim.zero_grad()
+        optim.zero_grad()
+        try:
+            assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group)
+        except Exception as e:
+            _COORD.print_on_master(
+                f"step {i + 1}: bias_correction: {bias_correction}, p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}"
+            )
+            raise e
+
+
+@parameterize("p_g_dtype", _ALLOWED_P_G_TYPES)
+@parameterize("bias_correction", [False, True])
+@parameterize("tp_zero_size", [(2, 2), (4, 1), (1, 4)])
+def run_dist_lamb_fwd_bwd(
+    bias_correction: bool, p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_size: tuple[int, int]
+) -> None:
+    p_dtype, g_dtype = p_g_dtype
+    tp_size, zero_size = tp_zero_size
+
+    # Set distributed groups
+    rank = dist.get_rank()
+    proc_mesh = ProcessGroupMesh(tp_size, zero_size)
+    tp_group = proc_mesh.get_group_along_axis(0)
+    dp_group = proc_mesh.get_group_along_axis(1)
+    tp_rank = dist.get_rank(tp_group)
+
+    seed_all(_SEED)
+    clear_layout_converter()  # Ensure correct sharding
+    torch_model = Net(_IN_DIM, _HID_DIM).to(rank)
+    tp_model = TPNet(torch_model.fc0, torch_model.fc1, torch_model.fc2, tp_group).to(rank)
+
+    assert_close(
+        torch_model.fc1.weight[tp_rank * _HID_DIM // tp_size : (tp_rank + 1) * _HID_DIM // tp_size],
+        tp_model.fc1.weight,
+    )
+    assert_close(
+        torch_model.fc2.weight[:, tp_rank * _HID_DIM // tp_size : (tp_rank + 1) * _HID_DIM // tp_size],
+        tp_model.fc2.weight,
+    )
+
+    # Set up optimizers
+    lr = 1e-3
+    beta1, beta2, beta3 = 0.9, 0.999, 0.9999
+    eps = (1e-30, 1e-16)
+    torch_optim = CAME(setup_param_groups(torch_model), lr=lr, betas=(beta1, beta2, beta3), eps=eps)
+    optim = DistributedCAME(
+        setup_param_groups(tp_model),
+        lr=lr,
+        betas=(beta1, beta2, beta3),
+        eps=eps,
+    )
+
+    # Setup distributed optimizer
+    if zero_size > 1:
+        optim = LowLevelZeroOptimizer(
+            optim,
+            overlap_communication=True,
+            initial_scale=128,
+            partition_grad=True,
+            dp_process_group=dp_group,
+            verbose=True,
+        )
+        shard_to_param = optim._param_store.master_to_working_param
+        optim.optim.setup_distributed(tp_group, dp_group, shard_to_param, zero_flag=True)
     else:
-        dist_optim.setup_distributed(tp_group, dp_group, master_to_working_map, zero_flag)
+        optim.setup_distributed(tp_group, dp_group, None, zero_flag=False)
 
-    ori_model.weight.grad = torch.randn(out_features, in_features).cuda()
-    ori_model.bias.grad = torch.randn(out_features).cuda()
-    shard_model.weight.grad = torch.chunk(ori_model.weight.grad.clone(), tp_size, dim=clip_dim)[tp_rank].cuda()
-    shard_model.bias.grad = torch.chunk(ori_model.bias.grad.clone(), tp_size if col else 1, dim=0)[
-        tp_rank if col else 0
-    ].cuda()
+    rtol, atol = 1e-4, 1e-4
+    if p_dtype is torch.float16 or g_dtype is torch.float16:
+        rtol, atol = 1e-3, 1e-3
+    if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
+        rtol, atol = 2e-3, 2e-3
 
-    # check grad assign
-    with torch.no_grad():
-        target_grad = torch.chunk(ori_model.weight.grad.clone(), tp_size, dim=clip_dim)[tp_rank]
-        target_bias_grad = torch.chunk(ori_model.bias.grad.clone(), tp_size if col else 1, dim=0)[tp_rank if col else 0]
-        assert_close(target_grad, shard_model.weight.grad)
-        assert_close(target_bias_grad, shard_model.bias.grad)
+    seed_all(_SEED)  # NOTE: having only one manual_seed above doesn't work?
+    x = data_gen()
+    x = x.cuda().to(dtype=p_dtype)
+
+    out_tp = tp_model(x)
+    out = torch_model(x)
+    try:
+        assert_close(out, out_tp, rtol=rtol, atol=atol)
+    except Exception as e:
+        _COORD.print_on_master(
+            f"bias_correction: {bias_correction}, p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}"
+        )
+        raise e
 
     if zero_size > 1:
-        x = torch.rand(2, 4, in_features).cuda()
-        x_for_unshard = x.expand_as(x.clone())
-        x_for_unshard.requires_grad_(True)
-        x_for_shard = (
-            x.expand_as(x.clone())
-            if seq_parallel is False
-            else torch.chunk(x.clone(), tp_size, dim=1 - clip_dim)[tp_rank]
-        )
-        x_for_shard.requires_grad_(True)
+        optim.backward(out_tp.sum())
+        out.sum().backward()
+    else:
+        out_tp.sum().backward()
+        out.sum().backward()
 
-        out = ori_model(x_for_unshard)
-        gather_out = shard_model(x_for_shard)
-        assert_close(out, gather_out)
-
-        out = out.sum()
-        gather_out = gather_out.sum()
-        out.backward()
-        dist_optim.backward(gather_out)
-
-    # check before optim.step()
-    with torch.no_grad():
-        target_weight = torch.chunk(ori_model.weight.clone(), tp_size, dim=clip_dim)[tp_rank]
-        target_bias = torch.chunk(ori_model.bias.clone(), tp_size if col else 1, dim=0)[tp_rank if col else 0]
-        assert_close(target_weight, shard_model.weight)
-        assert_close(target_bias, shard_model.bias)
-
+    torch_optim.step()
     optim.step()
-    dist_optim.step()
-    dist_optim.zero_grad()
+    dist.barrier()
+    torch_optim.zero_grad()
     optim.zero_grad()
-    with torch.no_grad():
-        target_weight = torch.chunk(ori_model.weight.clone(), tp_size, dim=clip_dim)[tp_rank]
-        target_bias = torch.chunk(ori_model.bias.clone(), tp_size if col else 1, dim=0)[tp_rank if col else 0]
-    # check after optim.step()
-    assert not torch.allclose(ori_target_weight, target_weight)
-    assert not torch.allclose(ori_dist_weight, shard_model.weight)
-    assert_close(target_weight, shard_model.weight)
-    assert_close(target_bias, shard_model.bias)
-    if zero_size <= 1:
-        for i in range(1):
-            state = optim.state_dict()["state"][i]
-            dist_state = dist_optim.state_dict()["state"][i]
-            for st, dist_st in zip(state.values(), dist_state.values()):
-                if isinstance(st, torch.Tensor):
-                    if st.size() != dist_st.size():
-                        dist_st_list = [
-                            torch.zeros_like(dist_st).to(rank) for _ in range(dist.get_world_size(tp_group))
-                        ]
-                        dist.all_gather(dist_st_list, dist_st, group=tp_group)
-                        dist_st = torch.cat(dist_st_list, dim=clip_dim)
-                        # print(st.size(), dist_st.size())
-
-                    assert_close(st, dist_st)
-
-    torch.cuda.empty_cache()
+    try:
+        assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group)
+        check_optim_states(getattr(torch_optim, "optim", torch_optim), getattr(optim, "optim", optim))
+    except Exception as e:
+        _COORD.print_on_master(
+            f"bias_correction: {bias_correction}, p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}"
+        )
+        raise e
 
 
-@parameterize("seq_parallel", [False])
-@parameterize("tp_size", [4, 2, 1])
-@parameterize("zero_size", [0])  # zero parallel size, 0 means world_size // tp_size
-@parameterize("col", [True, False])
-@parameterize("zero_stage", [2])
-def run_dist_linear_test(seq_parallel, tp_size, zero_size, col, zero_stage):
-    check_dist_1d(seq_parallel, tp_size, zero_size, col, zero_stage)
-    api.clear_layout_converter()
-    Randomizer.reset_index()
-    torch.cuda.empty_cache()
-
-
-def check_dist_linear(rank, world_size, port=12256):
+def check_dist_lamb(rank, world_size, port):
+    disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    run_dist_linear_test()
+    global _COORD
+    _COORD = DistCoordinator()
+
+    run_dist_lamb_basic()
+    _COORD.print_on_master("Basic tests passed")
+
+    run_dist_lamb_fwd_bwd()
+    _COORD.print_on_master("Forward-backward tests passed")
+
+    run_bert_test(optim_class=CAME, sharded_optim_class=DistributedCAME)
+    print(f"rank {rank} tests passed :)")
 
 
+@pytest.mark.dist
 @rerun_if_address_is_in_use()
-def test_dist_came():
-    spawn(check_dist_linear, nprocs=4)
+def test_dist_lamb():
+    spawn(check_dist_lamb, nprocs=4)
 
 
 if __name__ == "__main__":
-    test_dist_came()
+    test_dist_lamb()
