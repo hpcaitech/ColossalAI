@@ -479,7 +479,7 @@ class NopadLlamaAttention(LlamaAttention):
         return attn_output
 
 
-# NOTE This will cause the result to be different from the transformer in some cases.
+# NOTE This will cause difference as out length increases.
 class NopadLlamaMLP(LlamaMLP):
     def __init__(
         self,
