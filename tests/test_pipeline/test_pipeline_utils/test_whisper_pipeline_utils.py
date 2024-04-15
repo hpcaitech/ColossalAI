@@ -1,4 +1,23 @@
+import random
+
+from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.policies.whisper import WhisperPolicy
+from colossalai.shardformer.shard.shard_config import ShardConfig
+
+
+class _ShardConfig(ShardConfig):
+    def __post_init__(self):
+        pass
+
+
+class _PipelineStageManager(PipelineStageManager):
+    def __init__(self):
+        self.is_interleave = False
+        self.num_layers_per_stage = None
+
+    @property
+    def num_stages(self):
+        return random.randint(5, 10)
 
 
 def test_whisper_pipeline_distribution():
@@ -10,9 +29,15 @@ def test_whisper_pipeline_distribution():
         "decoder_starting_stage": [1, 1, 2, 2, 3, 1, 5, 2],
     }
 
+    stage_manager = _PipelineStageManager()
+    shard_config = _ShardConfig(pipeline_stage_manager=stage_manager)
+    policy = WhisperPolicy()
+    policy.set_shard_config(shard_config)
     for i in range(num_test_cases):
-        _, decoder_starting_stage = WhisperPolicy.distribute_whisper_layers(
-            test_dict["num_encoder_layers"][i], test_dict["num_decoder_layers"][i], test_dict["num_stages"][i]
+        _, decoder_starting_stage = policy.distribute_whisper_layers(
+            test_dict["num_encoder_layers"][i],
+            test_dict["num_decoder_layers"][i],
+            test_dict["num_stages"][i],
         )
         assert test_dict["decoder_starting_stage"][i] == decoder_starting_stage
 
@@ -31,14 +56,20 @@ def test_whisper_pipeline_layers():
         ],
     }
 
+    stage_manager = _PipelineStageManager()
+    shard_config = _ShardConfig(pipeline_stage_manager=stage_manager)
+    policy = WhisperPolicy()
+    policy.set_shard_config(shard_config)
     for i in range(num_test_cases):
-        layers_per_stage, decoder_starting_stage = WhisperPolicy.distribute_whisper_layers(
-            test_dict["num_encoder_layers"][i], test_dict["num_decoder_layers"][i], test_dict["num_stages"][i]
+        layers_per_stage, decoder_starting_stage = policy.distribute_whisper_layers(
+            test_dict["num_encoder_layers"][i],
+            test_dict["num_decoder_layers"][i],
+            test_dict["num_stages"][i],
         )
 
         for stage in range(test_dict["num_stages"][i]):
             start_idx, end_idx = test_dict["layers_per_stage"][i][stage]
-            predicted_start, predicted_end = WhisperPolicy.get_whisper_stage_index(
+            predicted_start, predicted_end = policy.get_whisper_stage_index(
                 layers_per_stage, stage, decoder_starting_stage
             )
             assert start_idx == predicted_start

@@ -101,13 +101,13 @@ class MyExtension(_Extension):
         self._support_jit = True
         self.priority = 10
 
-    def is_hardware_available(self) -> bool:
+    def is_available(self) -> bool:
         """
         Return if the required hardware can be found.
         """
         ...
 
-    def assert_hardware_compatible(self) -> None:
+    def assert_compatible(self) -> None:
         """
         Check if the hardware required by the kernel is compatible.
         """

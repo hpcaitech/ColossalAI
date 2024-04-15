@@ -76,7 +76,7 @@ def check_installation():
     click.echo("")
     click.echo(f"Note:")
     click.echo(
-        f"1. AOT (ahead-of-time) compilation of the CUDA kernels occurs during installation when the environment variable CUDA_EXT=1 is set"
+        f"1. AOT (ahead-of-time) compilation of the CUDA kernels occurs during installation when the environment variable BUILD_EXT=1 is set"
     )
     click.echo(f"2. If AOT compilation is not enabled, stay calm as the CUDA kernels can still be built during runtime")
 

@@ -1,8 +1,12 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
 
-#include "utils/vector_copy_utils.h"
+#include "utils/vec_copy.h"
 #include "../common/micros.h"
+
+using colossalAI::cuda::utils::copy_vector;
+using colossalAI::cuda::utils::get_vec_size;
+
 
 template<typename scalar_t, bool Aligned, int VecSize>
 __global__ void context_kv_cache_memcpy_kernel(

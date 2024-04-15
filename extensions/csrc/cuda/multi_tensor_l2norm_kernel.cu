@@ -12,10 +12,98 @@
 
 #include "multi_tensor_apply.cuh"
 #include "../common/micros.h"
-#include "include/block_reduce.h"
+#include "funcs/reduce_function.h"
 
 #define BLOCK_SIZE 512
 #define ILP 4
+
+
+template <typename T>
+__device__ __forceinline__ T reduce_block_into_lanes(
+    T* x, T val, int lanes = 1,
+    bool share_result = false)  // lanes is intended to be <= 32.
+{
+  int tid = threadIdx.x + threadIdx.y * blockDim.x;
+  int blockSize =
+      blockDim.x * blockDim.y;  // blockSize is intended to be a multiple of 32.
+
+  if (blockSize >= 64) {
+    x[tid] = val;
+    __syncthreads();
+  }
+
+#pragma unroll
+  for (int i = (blockSize >> 1); i >= 64; i >>= 1) {
+    if (tid < i) x[tid] = x[tid] + x[tid + i];
+    __syncthreads();
+  }
+
+  T final;
+
+  if (tid < 32) {
+    if (blockSize >= 64)
+      final = x[tid] + x[tid + 32];
+    else
+      final = val;
+      // __SYNCWARP();
+
+#pragma unroll
+    for (int i = 16; i >= lanes; i >>= 1)
+      final = final + __shfl_down_sync(0xffffffff, final, i);
+  }
+
+  if (share_result) {
+    if (tid < lanes) x[tid] = final;  // EpilogueOp
+    // Make sure the smem result is visible to all warps.
+    __syncthreads();
+  }
+
+  return final;
+}
+
+template <typename T>
+__device__ __forceinline__ T reduce_block_into_lanes_max_op(
+    T* x, T val, int lanes = 1,
+    bool share_result = false)  // lanes is intended to be <= 32.
+{
+  int tid = threadIdx.x + threadIdx.y * blockDim.x;
+  int blockSize =
+      blockDim.x * blockDim.y;  // blockSize is intended to be a multiple of 32.
+
+  if (blockSize >= 64) {
+    x[tid] = val;
+    __syncthreads();
+  }
+
+#pragma unroll
+  for (int i = (blockSize >> 1); i >= 64; i >>= 1) {
+    if (tid < i) x[tid] = fmaxf(fabsf(x[tid]), fabsf(x[tid + i]));
+    __syncthreads();
+  }
+
+  T final;
+
+  if (tid < 32) {
+    if (blockSize >= 64)
+      final = fmaxf(fabsf(x[tid]), fabsf(x[tid + 32]));
+    else
+      final = val;
+      // __SYNCWARP();
+
+#pragma unroll
+    for (int i = 16; i >= lanes; i >>= 1)
+      final =
+          fmaxf(fabsf(final), fabsf(__shfl_down_sync(0xffffffff, final, i)));
+  }
+
+  if (share_result) {
+    if (tid < lanes) x[tid] = final;  // EpilogueOp
+    // Make sure the smem result is visible to all warps.
+    __syncthreads();
+  }
+
+  return final;
+}
 
 template <typename T>
 __device__ __forceinline__ bool is_aligned(T *p) {
@@ -290,8 +378,8 @@ std::tuple<at::Tensor, at::Tensor> multi_tensor_l2norm_cuda(
       tensor_lists[0][0].scalar_type(), 0, "multi_tensor_l2norm_cuda",
       multi_tensor_apply<1>(
           BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
-          L2NormFunctor<scalar_t_0>(), output.DATA_PTR<float>(),
-          per_tensor ? output_per_tensor.DATA_PTR<float>() : nullptr,
+          L2NormFunctor<scalar_t_0>(), output.data_ptr<float>(),
+          per_tensor ? output_per_tensor.data_ptr<float>() : nullptr,
           per_tensor, max_chunks_per_tensor);)
 
   AT_CUDA_CHECK(cudaGetLastError());
@@ -304,10 +392,10 @@ std::tuple<at::Tensor, at::Tensor> multi_tensor_l2norm_cuda(
   const at::cuda::OptionalCUDAGuard device_guard(device_of(output));
   auto stream = at::cuda::getCurrentCUDAStream();
   cleanup<<<per_tensor ? ntensors : 1, 512, 0, stream>>>(
-      output.DATA_PTR<float>(),
-      per_tensor ? output_per_tensor.DATA_PTR<float>() : nullptr,
-      ret.DATA_PTR<float>(),
-      per_tensor ? ret_per_tensor.DATA_PTR<float>() : nullptr, per_tensor,
+      output.data_ptr<float>(),
+      per_tensor ? output_per_tensor.data_ptr<float>() : nullptr,
+      ret.data_ptr<float>(),
+      per_tensor ? ret_per_tensor.data_ptr<float>() : nullptr, per_tensor,
       max_chunks_per_tensor);
 
   return std::tuple<at::Tensor, at::Tensor>(ret, ret_per_tensor);
@@ -350,15 +438,15 @@ void multi_tensor_norm_out_cuda(
         tensor_lists[0][0].scalar_type(), 0, "multi_tensor_maxnorm_cuda",
         multi_tensor_apply<1>(
             BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
-            MaxNormFunctor<scalar_t_0>(), output.DATA_PTR<float>(),
-            output_per_tensor.DATA_PTR<float>(), true, max_chunks_per_tensor);)
+            MaxNormFunctor<scalar_t_0>(), output.data_ptr<float>(),
+            output_per_tensor.data_ptr<float>(), true, max_chunks_per_tensor);)
   } else {
     DISPATCH_FLOAT_AND_HALF(
         tensor_lists[0][0].scalar_type(), 0, "multi_tensor_l2norm_cuda",
         multi_tensor_apply<1>(
             BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
-            L2NormFunctor<scalar_t_0>(), output.DATA_PTR<float>(),
-            output_per_tensor.DATA_PTR<float>(), true, max_chunks_per_tensor);)
+            L2NormFunctor<scalar_t_0>(), output.data_ptr<float>(),
+            output_per_tensor.data_ptr<float>(), true, max_chunks_per_tensor);)
   }
   AT_CUDA_CHECK(cudaGetLastError());
 
@@ -375,8 +463,8 @@ void multi_tensor_norm_out_cuda(
   const at::cuda::OptionalCUDAGuard device_guard(device_of(output));
   auto stream = at::cuda::getCurrentCUDAStream();
   cleanup_v2<<<ntensors, 512, 0, stream>>>(
-      output.DATA_PTR<float>(), output_per_tensor.DATA_PTR<float>(),
-      ret.DATA_PTR<float>(), out.DATA_PTR<float>(), true, max_chunks_per_tensor,
+      output.data_ptr<float>(), output_per_tensor.data_ptr<float>(),
+      ret.data_ptr<float>(), out.data_ptr<float>(), true, max_chunks_per_tensor,
       norm_type, alpha, beta);
 
   return;

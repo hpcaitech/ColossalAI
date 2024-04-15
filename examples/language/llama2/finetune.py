@@ -270,9 +270,7 @@ def main():
         ) as pbar:
             for step in pbar:
                 if use_pipeline:
-                    outputs = booster.execute_pipeline(
-                        dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
-                    )
+                    outputs = booster.execute_pipeline(dataloader_iter, model, _criterion, optimizer, return_loss=True)
                     loss = outputs["loss"]
                 else:
                     batch = next(dataloader_iter)

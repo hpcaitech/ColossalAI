@@ -42,7 +42,7 @@ pip install -r requirements/requirements.txt
 BUILD_EXT=1 pip install .
 ```
 
-If you don't want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer), just don't specify the `CUDA_EXT`:
+If you don't want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer), just don't specify the `BUILD_EXT`:
 
 ```shell
 pip install .

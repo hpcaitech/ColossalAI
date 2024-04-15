@@ -1,5 +1,3 @@
-from functools import partial
-
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaForCausalLM, LlamaModel, LlamaRMSNorm
 
 from colossalai.inference.modeling.models.nopadding_llama import (
@@ -13,8 +11,6 @@ from colossalai.inference.modeling.models.nopadding_llama import (
 from colossalai.inference.utils import init_to_get_rotary
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
-
-# import colossalai
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
 
 
@@ -79,34 +75,27 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy):
             ],
         )
 
-        self.shard_config._infer()
-
-        # add a new item for casual lm
-        new_item = {
-            LlamaForCausalLM: ModulePolicyDescription(
-                sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="lm_head", target_module=Linear1D_Col, kwargs={"gather_output": True}
-                    )
-                ],
-                method_replacement={"forward": partial(llama_causal_lm_forward)},
-            )
-        }
-        policy.update(new_item)
-
-        infer_forward = llama_model_forward
-        method_replacement = {"forward": partial(infer_forward)}
-        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=LlamaModel)
-
-        infer_forward = llama_decoder_layer_forward
-        method_replacement = {"forward": partial(infer_forward)}
-        self.append_or_create_method_replacement(
-            description=method_replacement, policy=policy, target_key=LlamaDecoderLayer
+        policy[LlamaForCausalLM] = ModulePolicyDescription(
+            sub_module_replacement=[
+                SubModuleReplacementDescription(
+                    suffix="lm_head", target_module=Linear1D_Col, kwargs={"gather_output": True}
+                )
+            ],
         )
 
-        infer_forward = llama_rmsnorm_forward
-        method_replacement = {"forward": partial(infer_forward)}
-        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=LlamaRMSNorm)
+        # self.shard_config._infer()
+        self.append_or_create_method_replacement(
+            description={"forward": llama_causal_lm_forward}, policy=policy, target_key=LlamaForCausalLM
+        )
+        self.append_or_create_method_replacement(
+            description={"forward": llama_model_forward}, policy=policy, target_key=LlamaModel
+        )
+        self.append_or_create_method_replacement(
+            description={"forward": llama_decoder_layer_forward}, policy=policy, target_key=LlamaDecoderLayer
+        )
+        self.append_or_create_method_replacement(
+            description={"forward": llama_rmsnorm_forward}, policy=policy, target_key=LlamaRMSNorm
+        )
 
         return policy
 

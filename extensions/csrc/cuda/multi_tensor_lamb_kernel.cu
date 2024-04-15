@@ -333,7 +333,7 @@ void multi_tensor_lamb_cuda(int chunk_size, at::Tensor noop_flag,
                             beta3,  // 1-beta1 or 1 depends on averaging mode
                             bias_correction1, bias_correction2, epsilon,
                             (adamMode_t)mode, weight_decay,
-                            global_grad_norm.DATA_PTR<float>(), max_grad_norm);)
+                            global_grad_norm.data_ptr<float>(), max_grad_norm);)
 
   // Compute update norms
   auto update_norm_tuple =
@@ -346,8 +346,8 @@ void multi_tensor_lamb_cuda(int chunk_size, at::Tensor noop_flag,
       tensor_lists[0][0].scalar_type(), 0, "lamb_stage_2",
       multi_tensor_apply<2>(BLOCK_SIZE, chunk_size, noop_flag, grad_param_list,
                             LAMBStage2Functor<scalar_t_0>(),
-                            std::get<1>(param_norm_tuple).DATA_PTR<float>(),
-                            std::get<1>(update_norm_tuple).DATA_PTR<float>(),
+                            std::get<1>(param_norm_tuple).data_ptr<float>(),
+                            std::get<1>(update_norm_tuple).data_ptr<float>(),
                             lr, weight_decay, use_nvlamb);)
 
   AT_CUDA_CHECK(cudaGetLastError());

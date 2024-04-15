@@ -84,6 +84,30 @@ def check_process_group_mesh_with_cases():
         2: [2],
         3: [3],
     }
+    TPxPP_RANKS_IN_GROUP = {
+        0: [0, 1, 2, 3],
+        1: [0, 1, 2, 3],
+        2: [0, 1, 2, 3],
+        3: [0, 1, 2, 3],
+    }
+    DPxTP_RANKS_IN_GROUP = {
+        0: [0, 1],
+        1: [0, 1],
+        2: [2, 3],
+        3: [2, 3],
+    }
+    TPxPP_PARTIAL_INDICES = {
+        0: [[0, 1], [0]],
+        1: [[1], [0, 1]],
+        2: [[0], [0, 1]],
+        3: [[0, 1], [1]],
+    }
+    TPxPP_RANKS_IN_GROUP_PARTIAL = {
+        0: [0, 1],
+        1: [1, 3],
+        2: [0, 2],
+        3: [2, 3],
+    }
 
     pg_mesh = ProcessGroupMesh(DP_SIZE, PP_SIZE, TP_SIZE)
 
@@ -107,6 +131,12 @@ def check_process_group_mesh_with_cases():
     assert pg_mesh.get_ranks_in_group(pp_group) == PP_RANKS_IN_GROUP[rank]
     dp_group = pg_mesh.get_group_along_axis(DP_DIM)
     assert pg_mesh.get_ranks_in_group(dp_group) == DP_RANKS_IN_GROUP[rank]
+    dpxtp_group = pg_mesh.create_group_along_axis([DP_DIM, TP_DIM])
+    assert pg_mesh.get_ranks_in_group(dpxtp_group) == DPxTP_RANKS_IN_GROUP[rank]
+    tpxpp_group = pg_mesh.create_group_along_axis([TP_DIM, PP_DIM])
+    assert pg_mesh.get_ranks_in_group(tpxpp_group) == TPxPP_RANKS_IN_GROUP[rank]
+    tpxpp_group_partial = pg_mesh.create_group_along_axis([TP_DIM, PP_DIM], TPxPP_PARTIAL_INDICES[rank])
+    assert pg_mesh.get_ranks_in_group(tpxpp_group_partial) == TPxPP_RANKS_IN_GROUP_PARTIAL[rank]
 
     # check prev rank
     if RANK_TO_COORDINATE[rank][TP_DIM] != 0:
