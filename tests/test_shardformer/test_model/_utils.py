@@ -124,28 +124,10 @@ def build_model_from_hybrid_plugin(
         sharded_model = copy.deepcopy(org_model)
     if use_lazy_init:
         ctx.materialize(org_model)
-    names = [
-        # "embeddings.word_embeddings.weight",
-        # "encoder.layer.0.attention.self.query.weight",
-        "encoder.layer.0.output.dense.weight",
-        "encoder.layer.0.output.dense.bias",
-        "encoder.layer.1.output.dense.weight",
-        "encoder.layer.1.output.dense.bias",
-    ]
-    # for name, param in org_model.named_parameters():
-    #     if name in names:
-    #         param.requires_grad = True
-    #     else:
-    #         param.requires_grad = False
-    # for name, param in sharded_model.named_parameters():
-    #     if name in names:
-    #         param.requires_grad = True
-    #     else:
-    #         param.requires_grad = False
 
     org_model = org_model.cuda()
-    org_optimizer = Adam(org_model.parameters(), lr=1e-3)
-    sharded_optimizer = Adam(sharded_model.parameters(), lr=1e-3)
+    org_optimizer = optim_class(org_model.parameters(), lr=1e-3)
+    sharded_optimizer = sharded_optim_class(sharded_model.parameters(), lr=1e-3)
     criterion = loss_fn
 
     plugin = HybridParallelPlugin(**test_config)
@@ -199,14 +181,17 @@ def run_forward_backward_with_hybrid_plugin(
     else:
         data = {k: v.cuda() for k, v in data.items()}
         sharded_output = sharded_model(**data)
+
         sharded_loss = criterion(sharded_output)
         sharded_optimizer.backward(sharded_loss)
 
     org_model.train()
     data = {k: v.cuda() for k, v in data.items()}
     org_output = org_model(**data)
+
     org_loss = criterion(org_output)
     org_loss.backward()
+
     return org_loss, org_output, sharded_loss, sharded_output
 
 
@@ -326,7 +311,7 @@ def check_grad(
         if verbose and dist.get_rank() == 0:
             print(f"'{suffix}' grad: {org_grad}, {shard_grad}")
 
-        assert_close(org_grad.float(), shard_grad.float())
+        assert_close(org_grad.float(), shard_grad.float(), rtol=rtol, atol=atol)
 
 
 def unwrap_model(

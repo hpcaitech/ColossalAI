@@ -211,7 +211,7 @@ class DistributedCAME(DistributedOptim):
                         state["exp_avg_sq_row"] = torch.zeros(grad_shape[:-1], dtype=p.dtype, device=p.device)
                         state["exp_avg_sq_col"] = torch.zeros(
                             grad_shape[:-2] + grad_shape[-1:], dtype=p.dtype, device=p.device
-                        ).type_as(grad)
+                        )
 
                         state["exp_avg_res_row"] = torch.zeros(grad_shape[:-1], dtype=p.dtype, device=p.device)
                         state["exp_avg_res_col"] = torch.zeros(
