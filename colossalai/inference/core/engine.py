@@ -644,8 +644,6 @@ class InferenceEngine:
             logits = logits[:, -1, :]
         next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
         self.request_handler.append_next_tokens(next_tokens)
-
-        self.request_handler.search_tokens(self.generation_config, logits)
         finished_sequences = self.request_handler.update()
 
         return finished_sequences
