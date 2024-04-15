@@ -130,15 +130,22 @@ class DistributedAdaFactor(DistributedOptim):
     def _rms(tensor, param_is_dtensor, tp_size, dp_size, tp_group, dp_group):
         tensor_sum = tensor.pow(2).sum()
         num_of_element = tensor.numel()
-        # reduce sum on tp group if exist
-        if tp_size > 1 and param_is_dtensor:
+        
+        if param_is_dtensor:
+            # reduce tensor_sum  from tp_group
             dist.all_reduce(tensor_sum, group=tp_group)
             num_of_element = num_of_element * tp_size
-        # reduce sum on dp group if exist
-        if dp_size > 1 and param_is_dtensor:
-            dist.all_reduce(tensor_sum, group=dp_group)
-            num_of_element = num_of_element * dp_size
-        # div num of element 
+            if dp_size > 1:
+                dist.all_reduce(tensor_sum, group=dp_group)
+                num_of_element = num_of_element * dp_size
+            else:
+                pass
+        else:
+            if dp_size > 1:
+                dist.all_reduce(tensor_sum, group=dp_group)
+                num_of_element = num_of_element * dp_size
+            else:
+                pass
         rms = (tensor_sum / num_of_element).sqrt()
         return rms
 
@@ -344,9 +351,7 @@ class DistributedAdaFactor(DistributedOptim):
                 if param_is_dtensor:
                     grad_shape = self.shard_to_param.get(id(p)).shape  # tp shape (2 dim)
                 factored, use_first_moment = self.factored_dict[id(p)], self.use_first_moment_dict[id(p)]
-                
-                # print(f"factored {factored} param_is_dtensor {param_is_dtensor} shape {grad_shape}")
-                
+
                 shard_spec = self.shard_spec_dict[id(p)]
                 if len(state) == 0:
                     state["step"] = 0
@@ -384,7 +389,6 @@ class DistributedAdaFactor(DistributedOptim):
                                     )  # [W]
                         else:
                             if self.use_zero:
-                                # param grad [H // dp]
                                 if grad_shape[0] % self.data_parallel_size != 0:
                                     # save all exp_avg_sq_row [H]
                                     state["exp_avg_sq_row"] = torch.zeros(grad_shape[0], device=grad.device, dtype=p.dtype)

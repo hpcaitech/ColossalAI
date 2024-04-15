@@ -32,7 +32,8 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from colossalai.zero import LowLevelZeroOptimizer
 from tests.kit.model_zoo import model_zoo
-from tests.test_optimizer._utils import run_bert_test, check_optim_states
+from tests.test_optimizer._utils import run_bert_test, check_dist_optim_state
+from colossalai.shardformer.layer._operation import _gather
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
     check_weight,
@@ -587,27 +588,8 @@ def exam_bert_test(test_config):
                 atol, rtol = 5e-4, 5e-4
             if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
                 check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
-            # check optim states
-            # print(f"{org_optimizer.param_groups} {sharded_optimizer.optim.param_groups}")
-            
-            # for group, tp_group in zip(org_optimizer.param_groups, sharded_optimizer.optim.param_groups):
-            #     for i in range(len(group["params"])):
-            #         p, tp = group["params"], tp_group["params"]
-                    
-            #         sharded_state = sharded_optimizer.optim.state[tp]
-            #         state = org_optimizer.state[p]
-                    
-            #         print(f"sharded_state {sharded_state}\n state {state}")
-                
-                # for p in group["params"]:
-                #     sharded_state = sharded_optimizer.optim.state[p]
-                #     state = org_optimizer.state[p]
-                #     print(sharded_state)
-                #     for key in sharded_state:
-                #         print(state[key], sharded_state[key])
-            
-            # check_optim_states(org_optimizer, sharded_optimizer.optim)
-            # print(f"{name} check pass")
+                # check optim states
+                # check_dist_optim_state(org_optimizer, sharded_optimizer.optim)                
 
     Randomizer.reset_index()
     torch.cuda.empty_cache()
