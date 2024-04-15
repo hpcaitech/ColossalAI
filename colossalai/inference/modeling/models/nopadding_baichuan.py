@@ -14,7 +14,7 @@ inference_ops = InferenceOpsLoader().load()
 logger = get_dist_logger(__name__)
 
 
-class NopadBaiChuanAttention(nn.Module):
+class NopadBaichuanAttention(nn.Module):
     def __init__(
         self,
         config,
@@ -47,11 +47,11 @@ class NopadBaiChuanAttention(nn.Module):
         self.qkv_weight = torch.stack(qkv_weight_list, dim=0)
 
     @staticmethod
-    def from_native_module(module: nn.Module, *args, **kwargs) -> nn.Module:
-        """Used for initialize the weight of NopadBaiChuanAttention by origin BaiChuanAttention.
+    def from_native_module(module: nn.Module, *args, **kwargs) -> "NopadBaichuanAttention":
+        """Used for initialize the weight of NopadBaichuanAttention by origin BaichuanAttention.
 
         Args:
-            module (BaiChuanAttention): The origin BaiChuanAttention layer.
+            module (nn.Module): The origin BaichuanAttention layer.
         """
 
         config = module.config
@@ -63,7 +63,7 @@ class NopadBaiChuanAttention(nn.Module):
         attn_vproj_w = v_proj_w.transpose(0, 1)
         attn_oproj_w = module.o_proj.weight.transpose(0, 1)
 
-        attn_layer = NopadBaiChuanAttention(
+        attn_layer = NopadBaichuanAttention(
             config=config,
             attn_qproj_w=attn_qproj_w,
             attn_kproj_w=attn_kproj_w,
@@ -141,7 +141,7 @@ class NopadBaichuanMLP(nn.Module):
         mlp_uproj_w: torch.Tensor = None,
         mlp_dproj_w: torch.Tensor = None,
     ):
-        """This layer will replace the BaiChuanAttention.
+        """This layer will replace the BaichuanAttention.
 
         Args:
             mlp_gproj_w (torch.Tensor, optional): The transposed gate_proj weight. Defaults to None.

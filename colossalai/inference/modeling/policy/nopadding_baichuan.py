@@ -1,7 +1,7 @@
 import torch.nn as nn
 from torch.nn import Parameter
 
-from colossalai.inference.modeling.models.nopadding_baichuan import NopadBaiChuanAttention, NopadBaichuanMLP
+from colossalai.inference.modeling.models.nopadding_baichuan import NopadBaichuanAttention, NopadBaichuanMLP
 from colossalai.inference.modeling.models.nopadding_llama import (
     llama_causal_lm_forward,
     llama_decoder_layer_forward,
@@ -10,12 +10,10 @@ from colossalai.inference.modeling.models.nopadding_llama import (
 )
 from colossalai.inference.utils import init_to_get_rotary
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
-
-# import colossalai
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
 
 
-class NoPaddingBaiChuanModelInferPolicy(LlamaForCausalLMPolicy):
+class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy):
     def __init__(self) -> None:
         super().__init__()
 
@@ -39,7 +37,7 @@ class NoPaddingBaiChuanModelInferPolicy(LlamaForCausalLMPolicy):
                 ),
                 SubModuleReplacementDescription(
                     suffix="self_attn",
-                    target_module=NopadBaiChuanAttention,
+                    target_module=NopadBaichuanAttention,
                 ),
             ]
         )

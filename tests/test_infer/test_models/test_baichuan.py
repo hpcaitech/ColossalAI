@@ -12,12 +12,7 @@ from colossalai.inference.core.engine import InferenceEngine
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
-PATH_EXIST = "baichuan-inc/Baichuan2-7B-Base"
-
-if os.path.exists(PATH_EXIST):
-    PATH_EXIST = True
-else:
-    PATH_EXIST = False
+BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-7B-Base"
 
 
 def setup_seed(seed):
@@ -29,9 +24,9 @@ def setup_seed(seed):
 
 def check_inference_engine(use_engine=False, prompt_template=None):
     setup_seed(20)
-    tokenizer = AutoTokenizer.from_pretrained(PATH_EXIST, use_fast=False, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(BAICHUAN_MODEL_NAME_OR_PATH, use_fast=False, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
-        PATH_EXIST, device_map="auto", torch_dtype=torch.bfloat16, trust_remote_code=True
+        BAICHUAN_MODEL_NAME_OR_PATH, device_map="auto", torch_dtype=torch.bfloat16, trust_remote_code=True
     ).cuda()
     model = model.eval()
 
@@ -89,7 +84,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.skipif(
-    not PATH_EXIST,
+    not os.path.exists(BAICHUAN_MODEL_NAME_OR_PATH),
     reason="There is no local model address included, please replace this address with a valid one.",
 )
 @pytest.mark.dist
