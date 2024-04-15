@@ -589,7 +589,7 @@ def exam_bert_test(test_config):
             if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
                 check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
                 # check optim states
-                # check_dist_optim_state(org_optimizer, sharded_optimizer.optim)                
+                check_dist_optim_state(org_optimizer, sharded_optimizer.optim)                
 
     Randomizer.reset_index()
     torch.cuda.empty_cache()

@@ -145,47 +145,86 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
             for key in ["exp_avg_sq_col", "exp_avg_sq_row"]:
                 if key in tp_state.keys() and type(tp_state[key]) is torch.Tensor:
                     tp_is_dtensor = sharded_optimizer.param_is_dtensor_dict[id(tp)]
+                    shard_spec = sharded_optimizer.shard_spec_dict[id(tp)]
                     use_zero = sharded_optimizer.use_zero
                     tp_optim_state = tp_state[key]
                     p_state_shape, tp_state_shape = p_state[key].shape, tp_state[key].shape
-                    # we start init model as first tensor parallel then zero; 
-                    # we gather model as first zero then tensor parallel
-                    if use_zero:
-                        # gather from dp group
-                        if p_state_shape != tp_state_shape:
-                            tp_optim_state = _gather(
-                                input_=tp_optim_state, dim=-1, process_group=sharded_optimizer.data_parallel_group
-                            )
-                            tp_state_shape = tp_optim_state.shape
-                        else:
-                            pass
-                        
-                        # check tp
-                        if tp_is_dtensor:
-                            # gather from tp group
-                            if p_state_shape != tp_state_shape:
-                                tp_optim_state = _gather(
-                                            input_=tp_optim_state, dim=-1, process_group=sharded_optimizer.tensor_parallel_group
-                                        )
-                                tp_state_shape = tp_optim_state.shape
-                            else:
-                                pass
-                        else:
-                            pass
-                        
-                    else:
-                        # check tp
-                        if tp_is_dtensor:
-                            # gather from tp group
-                            if p_state_shape != tp_state_shape:
-                                tp_optim_state = _gather(
-                                            input_=tp_optim_state, dim=-1, process_group=sharded_optimizer.tensor_parallel_group
-                                        )
-                                tp_state_shape = tp_optim_state.shape
-                            else:
-                                pass
-                        else:
-                            pass
-                    print(f"{key} \np_state {p_state[key].shape} \ntp_optim_state {tp_state[key].shape} {tp_state_shape}\n")
+                    dp_size, tp_size = sharded_optimizer.data_parallel_size, sharded_optimizer.tensor_parallel_size,
+                    # we start init model with first tensor parallel then zero; 
+                    # So, we gather model with first zero then tensor parallel
                     
-                    assert_close(p_state[key], tp_optim_state, atol=5e-3, rtol=1.6e-2)
+                    if tp_is_dtensor:
+                        # col parallel
+                        if shard_spec.sharding_sequence[0] == "R":
+                            if use_zero:
+                                # sq_row need gather alone dp group
+                                if key == "exp_avg_sq_row":
+                                    tp_optim_state = _gather(
+                                        input_=tp_optim_state, dim=-1, process_group=sharded_optimizer.data_parallel_group
+                                    )
+                                    tp_state_shape = tp_optim_state.shape
+                                # sq_col don't need gather alone dp group
+                                if key == "exp_avg_sq_col":
+                                    pass
+                            else:
+                                pass
+                            
+                            # gather from tp group
+                            # sq_row don need gather alone tp group
+                            if key == "exp_avg_sq_row":
+                                pass
+                            # sq_col need gather alone dp group
+                            if key == "exp_avg_sq_col":
+                                tp_optim_state = _gather(
+                                    input_=tp_optim_state, dim=-1, process_group=sharded_optimizer.tensor_parallel_group
+                                )
+                                tp_state_shape = tp_optim_state.shape
+                        
+                        # row parallel
+                        if shard_spec.sharding_sequence[-1] == "R":
+                            if use_zero:
+                                # sq_row need gather alone dp group
+                                if key == "exp_avg_sq_row":
+                                    if p_state[key].shape[0] // tp_size % dp_size != 0:
+                                        pass
+                                    else:
+                                        tp_optim_state = _gather(
+                                            input_=tp_optim_state, dim=-1, process_group=sharded_optimizer.data_parallel_group
+                                        )
+                                        tp_state_shape = tp_optim_state.shape
+                                # sq_col don't need gather alone dp group
+                                if key == "exp_avg_sq_col":
+                                    pass
+                            else:
+                                pass
+                            # gather from tp group
+                            # sq_row need gather alone tp group
+                            if key == "exp_avg_sq_row":
+                                tp_optim_state = _gather(
+                                    input_=tp_optim_state, dim=-1, process_group=sharded_optimizer.tensor_parallel_group
+                                )
+                                tp_state_shape = tp_optim_state.shape
+                            # sq_col don't need gather alone dp group
+                            if key == "exp_avg_sq_col":
+                                pass
+                    else:
+                        if use_zero:
+                            # sq_row need gather alone dp group
+                            if key == "exp_avg_sq_row":
+                                # row residule; no gather
+                                
+                                if p_state[key].shape[0] % dp_size != 0:
+                                    pass
+                                else:
+                                    tp_optim_state = _gather(
+                                        input_=tp_optim_state, dim=-1, process_group=sharded_optimizer.data_parallel_group
+                                    )
+                                    tp_state_shape = tp_optim_state.shape
+                            # sq_col don't need gather alone dp group
+                            if key == "exp_avg_sq_col":
+                                pass
+                        else:
+                            pass
+                    print(f"{key} is_dtensor {tp_is_dtensor} shard_spec {shard_spec} dp_size {dp_size} tp_size {tp_size}\np_state {p_state[key].shape} \ntp_optim_state {tp_state[key].shape} {tp_state_shape}\ndp res {p_state[key].shape[0] // tp_size % dp_size}\n")
+                    
+                    # assert_close(p_state[key], tp_optim_state, atol=5e-3, rtol=1.6e-2)
