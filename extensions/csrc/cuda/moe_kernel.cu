@@ -4,11 +4,11 @@
 
 #include <cub/cub.cuh>
 
-#include "block_reduce.h"
+#include "funcs/reduce_function.h"
 
 
-using colossalAI::cuda::utils::block_reduce;
-using colossalAI::cuda::utils::ReduceType;
+using colossalAI::cuda::funcs::block_reduce;
+using colossalAI::cuda::funcs::ReduceType;
 
 template <typename T, int block_size, int pack_size>
 __device__ void moe_dpch_one_fwd(T *src_row, T *dst_row, const int cols) {

@@ -1,11 +1,15 @@
 
 #pragma once
 
-#include <c10/macros/Macros.h>
 #include <cuda_fp16.h>
 #include <stdint.h>
 
+#include "../funcs/cast_functor.h"
 #include "vec_type_traits.h"
+
+namespace colossalAI {
+namespace cuda {
+namespace utils {
 
 template <typename T, int VecSize>
 __device__ __inline__ void copy_vector(T *dst, const T *src) {
@@ -26,7 +30,8 @@ __device__ __inline__ void copy_vector<float, 8>(float *dst, const float *src) {
 template <typename T, int VecSize>
 __device__ __inline__ void copy_zero_vector(T *dst) {
   using VT = typename colossalAI::cuda::utils::VecTypeTrait<T, VecSize>::Type;
-  *(reinterpret_cast<VT *>(dst)) = {0.0};
+  *(reinterpret_cast<VT *>(dst)) =
+      colossalAI::cuda::funcs::CastFunctor<float, VT>()(0.0f);
 }
 
 template <typename T>
@@ -50,3 +55,7 @@ int get_vec_size(const torch::Tensor &tensor) {
     return 1;
   }
 }
+
+}  // namespace utils
+}  // namespace cuda
+}  // namespace colossalAI

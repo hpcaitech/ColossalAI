@@ -15,7 +15,7 @@ namespace funcs {
 
 // Note(LiuYang): As a retrieved table to check which operation is supported
 // already
-enum class UnaryOpType { kLog2Ceil = 0 };
+enum class UnaryOpType { kLog2Ceil = 0, kAbs };
 
 // Note(LiuYang): Implementation of common and simple unary operators should be
 // placed here, otherwise, they should be placed in a new file under functors
@@ -30,6 +30,9 @@ struct UnaryOpFunctor;
       : public std::unary_function<FROM, TO> {                  \
     FUNCTION_MODIFIER TO operator()(FROM val) STMTS             \
   };
+
+COLOSSAL_UNARY_FUNCTOR_SPECIALIZATION(
+    T, T, UnaryOpType::kAbs, HOSTDEVICE, { return std::abs(val); }, typename T)
 
 COLOSSAL_UNARY_FUNCTOR_SPECIALIZATION(int, int, UnaryOpType::kLog2Ceil,
                                       HOSTDEVICE, {
