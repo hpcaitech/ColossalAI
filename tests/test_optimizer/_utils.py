@@ -1,4 +1,5 @@
 import torch
+import torch.distributed
 from torch.testing import assert_close
 
 import colossalai
@@ -142,7 +143,8 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
         for p, tp in zip(group["params"], tp_group["params"]):
             p_state = org_optimizer.state[p]
             tp_state = sharded_optimizer.state[tp]
-            for key in ["exp_avg_sq_col", "exp_avg_sq_row"]:
+            # TODO "exp_avg_sq_col", "exp_avg_sq_row", "exp_avg_sq"
+            for key in ["exp_avg_sq_row"]:
                 if key in tp_state.keys() and type(tp_state[key]) is torch.Tensor:
                     tp_is_dtensor = sharded_optimizer.param_is_dtensor_dict[id(tp)]
                     shard_spec = sharded_optimizer.shard_spec_dict[id(tp)]
@@ -168,7 +170,6 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
                                     pass
                             else:
                                 pass
-                            
                             # gather from tp group
                             # sq_row don need gather alone tp group
                             if key == "exp_avg_sq_row":
@@ -212,7 +213,6 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
                             # sq_row need gather alone dp group
                             if key == "exp_avg_sq_row":
                                 # row residule; no gather
-                                
                                 if p_state[key].shape[0] % dp_size != 0:
                                     pass
                                 else:
@@ -222,9 +222,13 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
                                     tp_state_shape = tp_optim_state.shape
                             # sq_col don't need gather alone dp group
                             if key == "exp_avg_sq_col":
-                                pass
+                                tp_optim_state = tp_optim_state.div_(dp_size)
+                                # need a div; 
+                                # if dp group is []
                         else:
                             pass
-                    print(f"{key} is_dtensor {tp_is_dtensor} shard_spec {shard_spec} dp_size {dp_size} tp_size {tp_size}\np_state {p_state[key].shape} \ntp_optim_state {tp_state[key].shape} {tp_state_shape}\ndp res {p_state[key].shape[0] // tp_size % dp_size}\n")
-                    
-                    # assert_close(p_state[key], tp_optim_state, atol=5e-3, rtol=1.6e-2)
+                    res = torch.allclose(p_state[key], tp_optim_state, atol=5e-4, rtol=1.6e-2)
+                    # print(f"device {torch.distributed.get_rank(sharded_optimizer.data_parallel_group)} {key} is_dtensor {tp_is_dtensor} shard_spec {shard_spec} use_zero {use_zero} dp_size {dp_size} tp_size {tp_size}\np_state {p_state[key].shape} \ntp_optim_state {tp_state[key].shape} {tp_state_shape}\ndp res {p_state[key].shape[0] // tp_size % dp_size} Close {res}\n")
+                    # if not res:
+                    #     print(f"p_state {p_state[key]}\ntp_optim_state {tp_optim_state}\n")
+                    assert_close(p_state[key], tp_optim_state, atol=5e-4, rtol=1.6e-2)

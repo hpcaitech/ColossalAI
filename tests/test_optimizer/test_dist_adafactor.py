@@ -47,6 +47,7 @@ HEIGHT = 4
 WIDTH = 4
 _TP_SPEC = DimSpec([0])
 
+
 def correctness_verify(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: torch.dtype = torch.float32):
     rtol = None
     atol = None
@@ -63,6 +64,7 @@ def correctness_verify(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: torc
     # return torch.all(tensor1.isclose(tensor2, rtol=rtol, atol=atol))
     assert_close(tensor1, tensor2, rtol=rtol, atol=atol)
 
+
 # setup param groups; (For zero test optim)
 def setup_param_groups_zero(model: nn.Module) -> list:
     no_decay = ["bias", "LayerNorm.weight"]
@@ -78,10 +80,12 @@ def setup_param_groups_zero(model: nn.Module) -> list:
     ]
     return optimizer_grouped_parameters
 
+
 # setup param groups; (For base optim)
 def setup_param_groups(model: nn.Module) -> list:
     optimizer_grouped_parameters = [p for n, p in model.named_parameters()]
     return optimizer_grouped_parameters
+
 
 # setup flatten param groups, sharding spec and shape; (For dist optim)
 def setup_flatten_param_groups_sharding_spec_shape(model: nn.Module) -> dict:
@@ -136,9 +140,11 @@ def set_dist_grad(
         p.grad = p.data
         p.data = orig_p
 
+
 def set_master_param_to_shard_param(master_param_list) -> dict:
     master_param_to_shard_param ={id(p):p for p in master_param_list}
     return master_param_to_shard_param
+    
     
 class MlpModel(nn.Module):
     def __init__(self):
@@ -163,6 +169,7 @@ class TPModel(nn.Module):
         x = self.linear1(x)
         x = self.linear2(x)
         return x
+
 
 @parameterize("dtype", [torch.float32, torch.float16, torch.bfloat16])  # torch.float32, torch.float16, torch.bfloat16
 @parameterize("tp_zero_size", [(4, 1)]) 
@@ -276,6 +283,7 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
 
     print(f"Base Test Pass")
 
+
 @parameterize("dtype", [torch.float16])  # torch.float32, torch.float16, torch.bfloat16
 @parameterize("tp_zero_size", [(1, 4)])  # (2, 2), (4, 1), (1, 4)
 def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
@@ -377,7 +385,6 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
             else:
                 # TP bias
                 tp_p = _gather(input_=tp_p, dim=-1, process_group=tp_group)  # gather
-
         else:
             # No TP bias
             pass
@@ -386,6 +393,7 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     Randomizer.reset_index()
     torch.cuda.empty_cache()
     print(f"Zero Test Pass")
+     
          
 @parameterize("dtype", [torch.float16])
 @parameterize("tp_zero_size", [(1, 4)])

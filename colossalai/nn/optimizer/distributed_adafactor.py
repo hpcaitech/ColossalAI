@@ -3,7 +3,6 @@ from typing import Dict
 
 import torch
 import torch.distributed as dist
-# from torch.optim import Optimizer
 from colossalai.interface.optimizer import DistributedOptim
 
 from colossalai.shardformer.layer._operation import _gather, _split
@@ -58,7 +57,6 @@ class DistributedAdaFactor(DistributedOptim):
         self.shard_spec_dict = {}  # {id(p): ShardSpec}
         super().__init__(params, defaults)
         
-
     def setup_distributed(
         self,
         tensor_parallel_group: dist.ProcessGroup = None,
@@ -276,6 +274,7 @@ class DistributedAdaFactor(DistributedOptim):
                 # view update to origin[tp] shape
                 update_reshape = update.view(-1, grad_shape[1]) # [H/dp, W]
                 grad_reshape = grad.view(-1, grad_shape[1]) # [H/dp, W]
+                # print(f"grad_shape {grad_shape} update shape {update.shape} grad shape {grad.shape}\n update {update}\n")
                 exp_avg_sq_row = state["exp_avg_sq_row"]  # [H/tp]
                 exp_avg_sq_col = state["exp_avg_sq_col"]  # [W]
                 exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
@@ -286,6 +285,7 @@ class DistributedAdaFactor(DistributedOptim):
                 update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
                 update_reshape.mul_(grad_reshape)
                 update = update_reshape.view(-1)   
+                # print(f"No res factor exp_avg_sq_col is_dtensor {False} shard_spec {None} use_zero {self.use_zero} dp_size {self.data_parallel_size} tp_size {self.tensor_parallel_size}\n {state['exp_avg_sq_col']}\n")
         else:
             # base factor; no tp, no dp
             exp_avg_sq_row = state["exp_avg_sq_row"]
@@ -298,9 +298,7 @@ class DistributedAdaFactor(DistributedOptim):
             update = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
             update.mul_(grad)
         return update
-    
-    
-    
+      
     @torch.no_grad()
     def step(self, closure=None):
         """
@@ -400,6 +398,7 @@ class DistributedAdaFactor(DistributedOptim):
                     if factored:
                         state["exp_avg_sq_row"] = state["exp_avg_sq_row"]
                         state["exp_avg_sq_col"] = state["exp_avg_sq_col"]
+
                     else:
                         state["exp_avg_sq"] = state["exp_avg_sq"]
 
@@ -407,7 +406,7 @@ class DistributedAdaFactor(DistributedOptim):
                 lr = self._get_lr(group, state)
                 beta2t = 1.0 - math.pow(state["step"], group["decay_rate"])
                 update = (grad**2) + group["eps"][0]
-
+                
                 if factored:
                     if param_is_dtensor:
                         # ==============================
@@ -428,7 +427,7 @@ class DistributedAdaFactor(DistributedOptim):
                     exp_avg_sq = state["exp_avg_sq"]
                     exp_avg_sq.mul_(beta2t).add_(update, alpha=(1.0 - beta2t))
                     update = exp_avg_sq.rsqrt().mul_(grad)
-                    
+
                 # # (Line No.8) RMS
                 rms = self._rms(update, param_is_dtensor, self.tensor_parallel_size, self.data_parallel_size, self.tensor_parallel_group, self.data_parallel_group)
                 update.div_((rms / group["clip_threshold"]).clamp_(min=1.0))
@@ -444,5 +443,4 @@ class DistributedAdaFactor(DistributedOptim):
                     
                 p.add_(-update)
                 
-
         return loss
