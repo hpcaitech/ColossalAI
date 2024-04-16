@@ -12,5 +12,6 @@ __all__ = [
     "NoPaddingLlamaModelInferPolicy",
     "NoPaddingBaichuanModelInferPolicy",
     "GlideLlamaModelPolicy",
+    "BloomModelInferPolicy",
     "model_polic_map",
 ]
