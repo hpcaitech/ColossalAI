@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import torch
+from torch import nn
 
 
 def init_to_get_rotary(self, base=10000, use_elem=False):
@@ -88,3 +89,16 @@ def has_index_file(checkpoint_path: str) -> Tuple[bool, Optional[Path]]:
             return False, None
     else:
         raise RuntimeError(f"Invalid checkpoint path {checkpoint_path}. Expected a file or a directory.")
+
+
+def get_model_size(model: nn.Module):
+    """Calculates the total size of the model weights (including biases) in bytes.
+    Args:
+        model: The PyTorch model to analyze.
+    Returns:
+        The total size of the model weights in bytes.
+    """
+    total_size = 0
+    for key, param in model.named_parameters():
+        total_size += param.element_size() * param.numel()
+    return total_size / (1024**3)

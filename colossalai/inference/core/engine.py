@@ -17,7 +17,7 @@ from colossalai.inference.graph_runner import CUDAGraphRunner
 from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.spec import Drafter, GlideInput
 from colossalai.inference.struct import Sequence
-from colossalai.inference.utils import has_index_file
+from colossalai.inference.utils import get_model_size, has_index_file
 from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -60,18 +60,13 @@ class InferenceEngine:
     ) -> None:
         self.inference_config = inference_config
         self.dtype = inference_config.dtype
-        torch.set_default_dtype(self.dtype)
         self.high_precision = inference_config.high_precision
 
         self.verbose = verbose
         if verbose:
             self.logger = get_dist_logger(__name__)
 
-        # enable memory history, which will
-        # add tracebacks and event history to snapshots
-        # torch.cuda.memory._record_memory_history()
         self.init_model(model_or_path, model_policy)
-        # torch.cuda.memory._dump_snapshot(f"my_snapshot_rank_{dist.get_rank()}.pickle")
 
         self.generation_config = inference_config.to_generation_config(self.model_config)
 
@@ -127,11 +122,11 @@ class InferenceEngine:
         if self.verbose:
             self.logger.info(f"the device is {self.device}")
 
-        model = model.eval()
+        model = model.to(self.dtype).eval()
 
         if self.verbose:
             self.logger.info(
-                f"Before the shard, Rank: [{dist.get_rank()}], model size: {self.get_model_size(model)} GB, model's device is: {model.device}"
+                f"Before the shard, Rank: [{dist.get_rank()}], model size: {get_model_size(model)} GB, model's device is: {model.device}"
             )
 
         if model_policy is None:
@@ -155,7 +150,7 @@ class InferenceEngine:
 
         if self.verbose:
             self.logger.info(
-                f"After the shard, Rank: [{dist.get_rank()}], model size: {self.get_model_size(self.model)} GB, model's device is: {model.device}"
+                f"After the shard, Rank: [{dist.get_rank()}], model size: {get_model_size(self.model)} GB, model's device is: {model.device}"
             )
 
         if isinstance(model_or_path, str):
@@ -173,22 +168,8 @@ class InferenceEngine:
         peak_memory = init_gpu_memory - free_gpu_memory
         if self.verbose:
             self.logger.info(
-                f"Rank [{dist.get_rank()}], Model Weight Max Occupy {peak_memory / (1024 ** 3)} GB, Model size: {self.get_model_size(self.model)} GB"
+                f"Rank [{dist.get_rank()}], Model Weight Max Occupy {peak_memory / (1024 ** 3)} GB, Model size: {get_model_size(self.model)} GB"
             )
-
-    def get_model_size(self, model: nn.Module):
-        """Calculates the total size of the model weights (including biases) in bytes.
-
-        Args:
-            model: The PyTorch model to analyze.
-
-        Returns:
-            The total size of the model weights in bytes.
-        """
-        total_size = 0
-        for key, param in model.named_parameters():
-            total_size += param.element_size() * param.numel()
-        return total_size / (1024**3)
 
     @torch.inference_mode()
     def capture_model(self, k_cache: List[torch.Tensor], v_cache: List[torch.Tensor]):
