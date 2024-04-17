@@ -44,10 +44,10 @@ ZERO_AXIS, DP_AXIS, TP_AXIS = 0, 1, 2
 def get_param_info(optim: Optimizer):
     # Get a backup of necessary information of parameters for future use, which includes:
     # 1. A mapping from integer param_id to param32 shape.
-
     if optim is None:
         return {}
     param_info = {"id2shape": {}}
+
     start_index = 0
     for group in optim.param_groups:
         for param_id, param in enumerate(group["params"], start_index):
@@ -527,7 +527,7 @@ class GeminiPlugin(DPPluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
-        optimizer_params_info = get_param_info(optimizer)
+        params_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
             # FIXME(ver217): gemini does not support sync bn
@@ -558,7 +558,7 @@ class GeminiPlugin(DPPluginBase):
                 **self.zero_optim_config,
                 **self.optim_kwargs,
                 tp_group=self.tp_group,
-                optimizer_params_info=optimizer_params_info,
+                params_info=params_info,
                 verbose=self.verbose,
             )
 

@@ -14,12 +14,14 @@ from torch.testing import assert_close
 from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.booster.plugin.hybrid_parallel_plugin import HybridParallelModule
+from colossalai.checkpoint_io.utils import gather_distributed_param
 from colossalai.lazy import LazyInitContext
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer._utils import getattr_
 from colossalai.shardformer.policies.auto_policy import Policy
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
+from colossalai.tensor.padded_tensor.api import is_padded_tensor, to_unpadded_tensor
 
 
 def build_model(
@@ -247,11 +249,10 @@ def check_weight(
             continue
 
         if is_distributed_tensor(sharded_weight) or is_customized_distributed_tensor(sharded_weight):
-            sharded_weight_list = [
-                torch.zeros_like(sharded_weight).to("cuda") for _ in range(dist.get_world_size(tp_group))
-            ]
-            dist.all_gather(sharded_weight_list, sharded_weight, tp_group)
-            sharded_weight = torch.cat(sharded_weight_list, dim=dim)
+            sharded_weight = gather_distributed_param(sharded_weight, keep_vars=False)
+
+        if is_padded_tensor(sharded_weight):
+            sharded_weight = to_unpadded_tensor(sharded_weight)
 
         if verbose and dist.get_rank() == 0:
             print(f"'{suffix}' weight: {org_weight}, {sharded_weight}")

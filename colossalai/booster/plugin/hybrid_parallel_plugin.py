@@ -213,12 +213,7 @@ def get_param_info(optim: Optimizer):
 
     if optim is None:
         return {}
-    param_info = {
-        "param_groups": [],
-        "param2id": {},
-        "id2param": {},
-        "param2shape": {},
-    }
+    param_info = {"param_groups": [], "param2id": {}, "id2param": {}, "param2shape": {}}
     start_index = 0
     for group in optim.param_groups:
         packed_group = {k: v for k, v in group.items() if k != "params"}
@@ -947,6 +942,8 @@ class HybridParallelPlugin(PipelinePluginBase):
         num_model_chunks (int, optional): The number of model chunks for interleaved pipeline parallelism. Defaults to 1.
         gradient_checkpoint_config (GradientCheckpointConfig, optional): Configuration for gradient checkpointing. Defaults to None.
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
+        make_vocab_size_divisible_by (int, optional): it's used when padding the vocabulary size, to make it choose an faster kenel. Default to 64.
+
     """
 
     def __init__(
@@ -989,6 +986,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         num_model_chunks: int = 1,
         gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None,
         enable_metadata_cache: bool = True,
+        make_vocab_size_divisible_by: int = 64,
     ) -> None:
         super().__init__()
         assert (
@@ -1095,6 +1093,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             sequence_parallelism_mode=sequence_parallelism_mode,
             enable_sequence_overlap=enable_sequence_overlap,
             parallel_output=parallel_output,
+            make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             gradient_checkpoint_config=gradient_checkpoint_config,
         )
         self.amp_config = dict(
