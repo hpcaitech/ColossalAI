@@ -7,7 +7,7 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
-from colossalai.nn.optimizer import DistributedLamb, Lamb
+from colossalai.nn.optimizer import CAME, DistributedCAME
 from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.tensor.d_tensor.sharding_spec import DimSpec
@@ -131,6 +131,7 @@ def run_dist_lamb_basic(
     clear_layout_converter()  # Ensure correct sharding
     proc_mesh = ProcessGroupMesh(tp_size, zero_size)
     tp_group = proc_mesh.get_group_along_axis(0)
+    dp_group = proc_mesh.get_group_along_axis(1)
 
     tp_rank = dist.get_rank(tp_group)
     seed_all(_SEED)  # Fix model init
@@ -148,25 +149,22 @@ def run_dist_lamb_basic(
 
     # Set up optimizers
     lr = 1e-3
-    beta1, beta2 = 0.9, 0.999
-    eps = 1e-8
-    torch_optim = Lamb(
-        setup_param_groups(torch_model), lr=lr, betas=(beta1, beta2), eps=eps, bias_correction=bias_correction
-    )
-    optim = DistributedLamb(
+    beta1, beta2, beta3 = 0.9, 0.999, 0.9999
+    eps = (1e-30, 1e-16)
+    torch_optim = CAME(setup_param_groups(torch_model), lr=lr, betas=(beta1, beta2, beta3), eps=eps)
+    optim = DistributedCAME(
         setup_param_groups(tp_model),
         lr=lr,
-        betas=(beta1, beta2),
+        betas=(beta1, beta2, beta3),
         eps=eps,
-        bias_correction=bias_correction,
     )
-    optim.setup_distributed(tp_group)
+    optim.setup_distributed(tp_group, dp_group, None, zero_flag=False)
 
-    rtol, atol = 8e-7, 8e-7
+    rtol, atol = 1e-4, 1e-4
     if p_dtype is torch.float16 or g_dtype is torch.float16:
-        rtol, atol = 1e-6, 1e-6
+        rtol, atol = 1e-3, 1e-3
     if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
-        rtol, atol = 2e-6, 2e-6
+        rtol, atol = 2e-3, 2e-3
 
     for i in range(_N_STEP):
         seed_all(_SEED + i)  # NOTE: having only one manual_seed above doesn't work?
@@ -217,17 +215,14 @@ def run_dist_lamb_fwd_bwd(
 
     # Set up optimizers
     lr = 1e-3
-    beta1, beta2 = 0.9, 0.999
-    eps = 1e-8
-    torch_optim = Lamb(
-        setup_param_groups(torch_model), lr=lr, betas=(beta1, beta2), eps=eps, bias_correction=bias_correction
-    )
-    optim = DistributedLamb(
+    beta1, beta2, beta3 = 0.9, 0.999, 0.9999
+    eps = (1e-30, 1e-16)
+    torch_optim = CAME(setup_param_groups(torch_model), lr=lr, betas=(beta1, beta2, beta3), eps=eps)
+    optim = DistributedCAME(
         setup_param_groups(tp_model),
         lr=lr,
-        betas=(beta1, beta2),
+        betas=(beta1, beta2, beta3),
         eps=eps,
-        bias_correction=bias_correction,
     )
 
     # Setup distributed optimizer
@@ -241,15 +236,15 @@ def run_dist_lamb_fwd_bwd(
             verbose=True,
         )
         shard_to_param = optim._param_store.master_to_working_param
-        optim.optim.setup_distributed(tp_group, dp_group, shard_to_param, is_zero=True)
+        optim.optim.setup_distributed(tp_group, dp_group, shard_to_param, zero_flag=True)
     else:
-        optim.setup_distributed(tp_group)
+        optim.setup_distributed(tp_group, dp_group, None, zero_flag=False)
 
-    rtol, atol = 8e-7, 8e-7
+    rtol, atol = 1e-4, 1e-4
     if p_dtype is torch.float16 or g_dtype is torch.float16:
-        rtol, atol = 1e-6, 1e-6
+        rtol, atol = 1e-3, 1e-3
     if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
-        rtol, atol = 2e-6, 2e-6
+        rtol, atol = 2e-3, 2e-3
 
     seed_all(_SEED)  # NOTE: having only one manual_seed above doesn't work?
     x = data_gen()
@@ -299,7 +294,7 @@ def check_dist_lamb(rank, world_size, port):
     run_dist_lamb_fwd_bwd()
     _COORD.print_on_master("Forward-backward tests passed")
 
-    run_bert_test(optim_class=Lamb, sharded_optim_class=DistributedLamb)
+    run_bert_test(optim_class=CAME, sharded_optim_class=DistributedCAME)
     print(f"rank {rank} tests passed :)")
 
 
