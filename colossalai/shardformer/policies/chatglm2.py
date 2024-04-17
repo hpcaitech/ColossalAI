@@ -67,6 +67,20 @@ class ChatGLMPolicy(Policy):
         sp_partial_derived = sp_mode == "split_gather"
 
         if self.shard_config.enable_tensor_parallelism:
+            policy[ChatGLMModel] = ModulePolicyDescription(
+                attribute_replacement={},
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="embedding.word_embeddings",
+                        target_module=col_nn.VocabParallelEmbedding1D,
+                    )
+                ],
+            )
+            sp_mode = "split_gather"
+        overlap = self.shard_config.enable_sequence_overlap
+        sp_partial_derived = sp_mode == "split_gather"
+
+        if self.shard_config.enable_tensor_parallelism:
             policy[GLMBlock] = ModulePolicyDescription(
                 attribute_replacement={
                     "self_attention.num_attention_heads_per_partition": self.model.config.num_attention_heads
