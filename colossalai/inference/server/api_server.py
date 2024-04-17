@@ -37,7 +37,7 @@ completion_serving = None
 app = FastAPI()
 
 
-# NOTE: models are still under development, need to be updated
+# NOTE: (CjhHa1) models are still under development, need to be updated
 @app.get("/models")
 def get_available_models() -> Response:
     return JSONResponse(supported_models_dict)
