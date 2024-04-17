@@ -38,12 +38,6 @@ for other initialization methods. We use `ProcessGroupMesh` to create tensor par
 # Distributed Enviroment
 config = {}
 colossalai.launch(config=config, rank=rank, world_size=world_size,host="localhost", port=port, backend="nccl")
-
-# Parallism Group
-tp_size, zero_size = 2, 2
-use_zero = True if zero_size > 1 else False
-proc_mesh = ProcessGroupMesh(tp_size, zero_size)
-tp_group, dp_group = proc_mesh.get_group_along_axis(0), proc_mesh.get_group_along_axis(1)
 ```
 
 ### step 3. Initialize Module and Optimizer
@@ -95,7 +89,7 @@ Model/Feature Compatibility Matrix:
     <th nowrap="nowrap" align="center" title="Transformers Bert For Question Answering">Transformers Bert<br />For Question Answering</th>
   </tr>
   <tr>
-    <td nowrap="nowrap">Distributed<br />Adafactor</td>
+    <td nowrap="nowrap">Hybrid Parallel<br />Plugin</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
@@ -106,7 +100,54 @@ Model/Feature Compatibility Matrix:
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
   </tr>
-  
+  <tr>
+    <td nowrap="nowrap">Low Level Zero<br />Plugin</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+  </tr>  
+  <tr>
+    <td nowrap="nowrap">Torch DDP<br />Plugin</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+  </tr>  
+  <tr>
+    <td nowrap="nowrap">Gemini<br />Plugin</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+  </tr>  
+  <tr>
+    <td nowrap="nowrap">Moe Hybrid<br />Plugin</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+  </tr>  
   <tr>
     <td colspan="39"></td>
   </tr>
