@@ -3,16 +3,13 @@
 
 import os
 from dataclasses import dataclass
-from typing import Callable, Dict, Iterator, List, Optional, Sequence, Union
+from typing import Dict, Iterator, List, Optional, Sequence, Union
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 from datasets import Dataset as HFDataset
 from datasets import dataset_dict, load_from_disk
-from torch.distributed import ProcessGroup
-from torch.distributed.distributed_c10d import _get_default_group
-from torch.utils.data import ConcatDataset, DataLoader, Dataset, DistributedSampler
+from torch.utils.data import ConcatDataset, Dataset, DistributedSampler
 from transformers.tokenization_utils import PreTrainedTokenizer
 
 DatasetType = Union[Dataset, ConcatDataset, dataset_dict.Dataset]
