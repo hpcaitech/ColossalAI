@@ -20,5 +20,4 @@ datasets
 pydantic
 ray
 peft>=0.7.1
-bitsandbytes>=0.39.0
 #auto-gptq now not support torch1.12
