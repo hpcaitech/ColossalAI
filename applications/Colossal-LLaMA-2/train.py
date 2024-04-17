@@ -1,44 +1,38 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Continual Pre-training of LLaMA-2 developed by Colossal-AI Team 
+Continual Pre-training of LLaMA-2 developed by Colossal-AI Team
 """
 
-import json
 import argparse
+import json
 import os
 import resource
 from contextlib import nullcontext
-from tqdm import tqdm
 
 import torch
 import torch.distributed as dist
+from colossal_llama2.dataset.loader import (
+    DataCollatorForSupervisedDataset,
+    StatefulDistributedSampler,
+    load_tokenized_dataset,
+    setup_distributed_dataloader,
+)
+from colossal_llama2.utils.ckpt_io import load_checkpoint, save_checkpoint
+from colossal_llama2.utils.flash_attention_patch import replace_with_flash_attention
+from colossal_llama2.utils.froze import freeze_non_embeds_parameters
 from torch.utils.tensorboard import SummaryWriter
-from transformers import LlamaTokenizer, LlamaForCausalLM, LlamaConfig
+from tqdm import tqdm
+from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizer
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import (
-    GeminiPlugin,
-    LowLevelZeroPlugin,
-    HybridParallelPlugin,
-)
+from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
-
-from colossal_llama2.dataset.loader import (
-    load_tokenized_dataset,
-    setup_distributed_dataloader,
-    DataCollatorForSupervisedDataset,
-    StatefulDistributedSampler,
-)
-
-from colossal_llama2.utils.flash_attention_patch import replace_with_flash_attention
-from colossal_llama2.utils.ckpt_io import load_checkpoint, save_checkpoint
-from colossal_llama2.utils.froze import freeze_non_embeds_parameters
 
 
 def get_model_numel(model: torch.nn.Module) -> int:
@@ -372,9 +366,7 @@ def main() -> None:
     # Final save.
     coordinator.print_on_master("Start saving final model checkpoint")
     booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
-    coordinator.print_on_master(
-        f"Saved final model checkpoint at epoch {epoch} at folder {args.save_dir}"
-    )
+    coordinator.print_on_master(f"Saved final model checkpoint at epoch {epoch} at folder {args.save_dir}")
 
     coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
 

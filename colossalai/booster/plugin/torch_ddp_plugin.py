@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.quantization import BnbQuantizationConfig, quantize_model
 
 from .dp_plugin_base import DPPluginBase
 
@@ -237,9 +238,16 @@ class TorchDDPPlugin(DPPluginBase):
         return model.module.no_sync()
 
     def enable_lora(
-        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+        self,
+        model: nn.Module,
+        pretrained_dir: Optional[str] = None,
+        lora_config: Optional[Dict] = None,
+        bnb_quantization_config: Optional[BnbQuantizationConfig] = None,
     ) -> nn.Module:
         from peft import PeftModel, get_peft_model
+
+        if bnb_quantization_config is not None:
+            model = quantize_model(model, bnb_quantization_config)
 
         assert not isinstance(model, TorchDDPModel), "Lora should be enabled before boosting the model."
         if pretrained_dir is None:
