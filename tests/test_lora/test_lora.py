@@ -32,17 +32,34 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
         },
     ]
     for plugin, test_config in product(test_plugins, test_configs):
-        test_model = copy.deepcopy(model)
+        # checkpoint loaded model
+        model_save = model_fn()
+        model_load = copy.deepcopy(model_save)
 
-        booster = Booster(plugin=plugin)
-
-        test_model = booster.enable_lora(test_model, **test_config)
-        model_copy = copy.deepcopy(test_model)
-
-        optimizer = AdamW(test_model.parameters(), lr=0.001)
+        optimizer = AdamW(model.parameters(), lr=0.001)
         criterion = loss_fn
 
-        test_model, optimizer, criterion, _, _ = booster.boost(test_model, optimizer, criterion)
+        booster = Booster(plugin=plugin)
+        model_save = booster.enable_lora(model_save, **test_config)
+        model_save, optimizer, criterion, _, _ = booster.boost(model_save, optimizer, criterion)
+
+        with shared_tempdir() as tempdir:
+            lora_ckpt_path = os.path.join(tempdir, "ckpt")
+            booster.save_lora_as_pretrained(model_save, lora_ckpt_path)
+            dist.barrier()
+
+            # The Lora checkpoint should be small in size
+            checkpoint_size_mb = os.path.getsize(os.path.join(lora_ckpt_path, "adapter_model.bin")) / (1024 * 1024)
+            assert checkpoint_size_mb < 1
+
+            model_load = booster.enable_lora(model_load, pretrained_dir=lora_ckpt_path, **test_config)
+            model_load, _, _, _, _ = booster.boost(model_load)
+
+            check_state_dict_equal(model_save.state_dict(), model_load.state_dict())
+
+        # test fwd bwd correctness
+        test_model = model_load
+        model_copy = copy.deepcopy(model_load)
 
         data = data_gen_fn()
         data = {
@@ -67,44 +84,6 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
                     torch.testing.assert_close(p1.to(p2.device).to(p2.dtype), p2, atol=5e-3, rtol=5e-3)
 
 
-@clear_cache_before_run()
-def check_checkpoint(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type):
-    lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
-
-    test_plugins = [TorchDDPPlugin(), LowLevelZeroPlugin()]
-    test_configs = [
-        {
-            "lora_config": lora_config,
-            "quantize": False,
-        },
-        {
-            "lora_config": lora_config,
-            "quantize": True,
-        },
-    ]
-    for plugin, test_config in product(test_plugins, test_configs):
-        model_save = model_fn()
-        model_load = copy.deepcopy(model_save)
-
-        booster = Booster(plugin=plugin)
-        model_save = booster.enable_lora(model_save, **test_config)
-        model_save, _, _, _, _ = booster.boost(model_save)
-
-        with shared_tempdir() as tempdir:
-            lora_ckpt_path = os.path.join(tempdir, "ckpt")
-            booster.save_lora_as_pretrained(model_save, lora_ckpt_path)
-            dist.barrier()
-
-            # The Lora checkpoint should be small in size
-            checkpoint_size_mb = os.path.getsize(os.path.join(lora_ckpt_path, "adapter_model.bin")) / (1024 * 1024)
-            assert checkpoint_size_mb < 1
-
-            model_load = booster.enable_lora(model_load, pretrained_dir=lora_ckpt_path, **test_config)
-            model_load, _, _, _, _ = booster.boost(model_load)
-
-            check_state_dict_equal(model_save.state_dict(), model_load.state_dict())
-
-
 def run_lora_test():
     sub_model_zoo = model_zoo.get_sub_registry("transformers_llama")
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
@@ -114,7 +93,6 @@ def run_lora_test():
         if name == "transformers_llama_for_sequence_classification":
             task_type = "SEQ_CLS"
         check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type)
-        check_checkpoint(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type)
 
 
 def run_dist(rank, world_size, port):
