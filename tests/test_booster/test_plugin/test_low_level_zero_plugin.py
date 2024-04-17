@@ -2,8 +2,8 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
-from torch.optim import Adam
 from peft import LoraConfig
+from torch.optim import Adam
 
 import colossalai
 from colossalai.accelerator import get_accelerator

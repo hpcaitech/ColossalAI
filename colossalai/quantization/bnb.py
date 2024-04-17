@@ -55,7 +55,6 @@ def quantize_model(
     if bnb_quantization_config.skip_modules is None:
         bnb_quantization_config.skip_modules = get_keys_to_not_convert(model)
 
-    # add cpu modules to skip modules only for 4-bit modules
     modules_to_not_convert = bnb_quantization_config.skip_modules
 
     # We add the modules we want to keep in full precision
