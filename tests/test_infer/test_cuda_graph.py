@@ -40,7 +40,7 @@ def check_inference_engine(use_cuda_graph=False, batch_size=32):
 
     input_len = 1024
     output_len = 128
-    do_sample = True
+    do_sample = False
     top_p = 0.5
     top_k = 50
 
