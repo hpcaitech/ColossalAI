@@ -4,10 +4,12 @@ import sys
 import time
 
 import pytest
-import ray
 import requests
 
 MAX_WAITING_TIME = 300
+
+ray = pytest.importorskip("ray")
+
 
 pytestmark = pytest.mark.asyncio
 

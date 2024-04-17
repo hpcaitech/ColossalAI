@@ -451,10 +451,6 @@ class InferenceEngine:
         """
         with torch.inference_mode():
             if prompts is not None or prompts_token_ids is not None:
-                if isinstance(prompts, str):
-                    prompts = [prompts]
-                if isinstance(request_ids, int):
-                    request_ids = [request_ids]
                 self.add_request(request_ids=request_ids, prompts=prompts, prompts_token_ids=prompts_token_ids)
 
             output_seqs_list = []
@@ -527,6 +523,9 @@ class InferenceEngine:
 
         block_size = self.inference_config.block_size
 
+        if request_ids is not None and not isinstance(request_ids, list):
+            request_ids = [request_ids]
+
         if prompts is not None and not isinstance(prompts, list):
             prompts = [prompts]
 
@@ -536,6 +535,7 @@ class InferenceEngine:
                 "input_ids"
             ]
 
+        # list of torch Tensor
         if isinstance(prompts_token_ids, list):
             if isinstance(prompts_token_ids[0], torch.Tensor):
                 prompts_token_ids = [prompt_token_id.tolist() for prompt_token_id in prompts_token_ids]

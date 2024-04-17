@@ -9,6 +9,11 @@ Doc:
     - For completion service, you can invoke it by using `curl -X POST  http://127.0.0.1:8000/v1/completion  \
          -H 'Content-Type: application/json' \
          -d '{"prompt":"hello, who are you? ","stream":"False"}'`
+
+    Version declaration:
+    - This is the first version of the API server for Colossal-Inference
+    - V0 stands for the under development api, such as models, changes should be made to perfect it.
+    - V1 stands for the currently supported api, such as completion and chat, this is the first version.
 """
 
 import argparse
@@ -127,14 +132,6 @@ def add_engine_config(parser):
         help="model context length. If unspecified, " "will be automatically derived from the model.",
     )
     # Parallel arguments
-    parser.add_argument(
-        "--worker-use-ray",
-        action="store_true",
-        help="use Ray for distributed serving, will be " "automatically set when using more than 1 GPU",
-    )
-
-    parser.add_argument("--pipeline-parallel-size", "-pp", type=int, default=1, help="number of pipeline stages")
-
     parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1, help="number of tensor parallel replicas")
 
     # KV cache arguments
@@ -148,28 +145,6 @@ def add_engine_config(parser):
         choices=prompt_template_choices,
         default=None,
         help=f"Allowed choices are {','.join(prompt_template_choices)}. Default to None.",
-    )
-
-    # Quantization settings.
-    parser.add_argument(
-        "--quantization",
-        "-q",
-        type=str,
-        choices=["awq", "gptq", "squeezellm", None],
-        default=None,
-        help="Method used to quantize the weights. If "
-        "None, we first check the `quantization_config` "
-        "attribute in the model config file. If that is "
-        "None, we assume the model weights are not "
-        "quantized and use `dtype` to determine the data "
-        "type of the weights.",
-    )
-    parser.add_argument(
-        "--enforce-eager",
-        action="store_true",
-        help="Always use eager-mode PyTorch. If False, "
-        "will use eager mode and CUDA graph in hybrid "
-        "for maximal performance and flexibility.",
     )
     return parser
 
