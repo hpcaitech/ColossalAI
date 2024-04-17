@@ -7,18 +7,18 @@ class QuickstartUser(HttpUser):
     @tag("online-generation")
     @task(5)
     def completion(self):
-        self.client.post("/v1/completion", json={"prompt": "hello, who are you? ", "stream": "False"})
+        self.client.post("/completion", json={"prompt": "hello, who are you? ", "stream": "False"})
 
     @tag("online-generation")
     @task(5)
     def completion_streaming(self):
-        self.client.post("/v1/completion", json={"prompt": "hello, who are you? ", "stream": "True"})
+        self.client.post("/completion", json={"prompt": "hello, who are you? ", "stream": "True"})
 
     @tag("online-chat")
     @task(5)
     def chat(self):
         self.client.post(
-            "v1/chat",
+            "/chat",
             json={
                 "converation": [
                     {"role": "system", "content": "you are a helpful assistant"},
@@ -32,7 +32,7 @@ class QuickstartUser(HttpUser):
     @task(5)
     def chat_streaming(self):
         self.client.post(
-            "v1/chat",
+            "/chat",
             json={
                 "converation": [
                     {"role": "system", "content": "you are a helpful assistant"},
@@ -55,4 +55,4 @@ class QuickstartUser(HttpUser):
     @tag("online-generation", "offline-generation")
     @task
     def get_models(self):
-        self.client.get("/v0/models")
+        self.client.get("/models")

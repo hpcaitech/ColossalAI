@@ -9,11 +9,7 @@ Doc:
     - For completion service, you can invoke it by using `curl -X POST  http://127.0.0.1:8000/v1/completion  \
          -H 'Content-Type: application/json' \
          -d '{"prompt":"hello, who are you? ","stream":"False"}'`
-
-    Version declaration:
-    - This is the first version of the API server for Colossal-Inference
-    - V0 stands for the under development api, such as models, changes should be made to perfect it.
-    - V1 stands for the currently supported api, such as completion and chat, this is the first version.
+    Version: V1.0
 """
 
 import argparse
@@ -41,7 +37,8 @@ completion_serving = None
 app = FastAPI()
 
 
-@app.get("/v0/models")
+# NOTE: models are still under development, need to be updated
+@app.get("/models")
 def get_available_models() -> Response:
     return JSONResponse(supported_models_dict)
 
@@ -86,7 +83,7 @@ async def generate(request: Request) -> Response:
     return JSONResponse(ret)
 
 
-@app.post("/v1/completion")
+@app.post("/completion")
 async def create_completion(request: Request):
     request_dict = await request.json()
     stream = request_dict.pop("stream", "false").lower()
@@ -100,7 +97,7 @@ async def create_completion(request: Request):
         return JSONResponse(content=ret)
 
 
-@app.post("/v1/chat")
+@app.post("/chat")
 async def create_chat(request: Request):
     request_dict = await request.json()
 

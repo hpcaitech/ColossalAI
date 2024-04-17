@@ -32,7 +32,7 @@ class ServerRunner:
         start = time.time()
         while True:
             try:
-                if requests.get("http://localhost:8000/v0/models").status_code == 200:
+                if requests.get("http://localhost:8000/models").status_code == 200:
                     break
             except Exception as err:
                 if self.proc.poll() is not None:
@@ -63,7 +63,7 @@ def server():
 
 async def test_completion(server):
     data = {"prompt": "How are you?", "stream": "False"}
-    response = await server.post("v1/completion", json=data)
+    response = await server.post("/completion", json=data)
     assert response is not None
 
 
@@ -73,7 +73,7 @@ async def test_chat(server):
         {"role": "user", "content": "what is 1+1?"},
     ]
     data = {"messages": messages, "stream": "False"}
-    response = await server.post("v1/chat", data)
+    response = await server.post("/chat", data)
     assert response is not None
 
 
