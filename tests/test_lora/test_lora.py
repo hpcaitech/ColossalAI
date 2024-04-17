@@ -16,7 +16,7 @@ from tests.test_checkpoint_io.utils import shared_tempdir
 
 
 @clear_cache_before_run()
-def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type):
+def check_checkpoint_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type):
     model = model_fn()
     lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
 
@@ -92,7 +92,7 @@ def run_lora_test():
             task_type = "CAUSAL_LM"
         if name == "transformers_llama_for_sequence_classification":
             task_type = "SEQ_CLS"
-        check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type)
+        check_checkpoint_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type)
 
 
 def run_dist(rank, world_size, port):
