@@ -156,10 +156,7 @@ class InferenceEngine:
         if isinstance(model_or_path, str):
             from colossalai.inference.core.plugin import InferCheckpoint_io
 
-            # from colossalai.checkpoint_io.hybrid_parallel_checkpoint_io import HybridParallelCheckpointIO
-
             cpt_io = InferCheckpoint_io()
-            # cpt_io = HybridParallelCheckpointIO(dp_group=None, pp_group=None, tp_group=pg_mesh.get_group_along_axis(TP_AXIS), zero_stage=0, verbose=True)
             if_has_index_file, model_index_file = has_index_file(model_or_path)
             assert if_has_index_file, "the model path is invalid"
             cpt_io.load_model(self.model, model_index_file)
