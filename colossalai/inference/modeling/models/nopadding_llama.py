@@ -465,8 +465,6 @@ class NopadLlamaAttention(ParallelModule):
             module (LlamaAttention): The origin LlamaAttention layer.
         """
 
-        # LazyInitContext.materialize(module)
-
         config = module.config
         layer_idx = module.layer_idx
 

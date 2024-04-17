@@ -19,6 +19,11 @@ except ImportError:
 
 
 class InferCheckpoint_io(GeneralCheckpointIO):
+    """
+    This class is for inference model loading, most codes are copied from colossalai.checkpoint_io.hybrid_parallel_checkpoint_io.HybridParallelCheckpointIO.
+    Origin HybridParallelCheckpointIO contains some codes about MixPrecision-Training, so we remove them and build a relatively clean class specifically for Inference.
+    """
+
     def __init__(
         self,
         verbose: bool = True,
