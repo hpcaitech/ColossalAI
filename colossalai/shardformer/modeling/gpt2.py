@@ -96,6 +96,7 @@ def _get_attention_mask(
         attention_mask = (1.0 - attention_mask) * torch.finfo(self.dtype).min
     return attention_mask, encoder_attention_mask
 
+
 logger = logging.get_logger(__name__)
 
 
