@@ -188,7 +188,7 @@ def _run_dist(rank, world_size, port, parallel):
     _test_moe_checkpoint(rank, parallel)
 
 
-@pytest.mark.skip(reason="This is tested in ColossalMOE")
+# @pytest.mark.skip(reason="This is tested in ColossalMOE")
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
 @pytest.mark.parametrize("parallel", [None, "ep", "ep_zero", "hybrid"])

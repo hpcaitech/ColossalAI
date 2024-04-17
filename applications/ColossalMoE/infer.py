@@ -2,8 +2,7 @@ import argparse
 
 import torch
 import torch.distributed as dist
-from colossal_moe.models.mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
-from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
+from mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
 from transformers import AutoTokenizer
 from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
 
@@ -11,6 +10,7 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
+from colossalai.shardformer.policies.mixtral import MixtralForCausalLMPolicy
 
 
 def parse_args():

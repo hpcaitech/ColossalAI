@@ -28,7 +28,6 @@ from colossalai.checkpoint_io.utils import (
     sharded_optimizer_loading_epilogue,
 )
 from colossalai.interface import OptimizerWrapper
-from colossalai.moe.manager import MOE_MANAGER
 from colossalai.tensor.moe_tensor.api import (
     get_dp_group,
     get_dp_rank,
@@ -54,7 +53,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             2,
         ], f"zero_stage should be 0 or 1 or 2, got {zero_stage}"
         super().__init__(dp_group, pp_group, tp_group, zero_stage)
-        self.parallel = MOE_MANAGER.parallel
+        # self.parallel = MOE_MANAGER.parallel
 
     def pre_load_model(self, model: nn.Module, state_dict: dict) -> dict:
         """
@@ -172,14 +171,17 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                     param = param.data.cuda()
                     all_param = [torch.zeros_like(param) for _ in range(ep_size)]
                     # gather param from every ep rank
-                    dist.all_gather(all_param, param, group=ep_group)
+                    # TODO: Switch to gather
+                    # dist.all_gather(all_param, param, group=ep_group)
+                    dist.gather(param, all_param, group=ep_group)
                     if ep_rank == 0:
                         all_param = torch.cat(all_param, dim=0)
                         state_dict[name] = all_param.cpu()
         if self.pp_size > 1:
             if self.dp_rank == 0:
                 out = [None for _ in range(self.pp_size)]
-                dist.all_gather_object(out, state_dict, group=self.pp_group)
+                # dist.all_gather_object(out, state_dict, group=self.pp_group)
+                dist.gather_object(state_dict, out, group=self.pp_group)
                 if self.pp_rank == 0:
                     new_state_dict = {}
                     for o in out:
@@ -469,8 +471,10 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             new_pg = copy.deepcopy(saved_pg)
             new_pg["params"] = old_pg["params"]  # Only keep the parameters kept by current pipeline stage.
             updated_groups.append(new_pg)
+
         # ep extra group
-        if MOE_MANAGER.parallel == "EP":
+        # if MOE_MANAGER.parallel == "EP":
+        if self.ep_size > 1:
             new_pg = copy.deepcopy(saved_pg)
             new_pg["params"] = optimizer.optim.param_groups[-1][
                 "params"
