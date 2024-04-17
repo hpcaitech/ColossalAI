@@ -224,11 +224,7 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
                             if key == "exp_avg_sq_col":
                                 tp_optim_state = tp_optim_state.div_(dp_size)
                                 # need a div; 
-                                # if dp group is []
                         else:
                             pass
                     res = torch.allclose(p_state[key], tp_optim_state, atol=5e-4, rtol=1.6e-2)
-                    # print(f"device {torch.distributed.get_rank(sharded_optimizer.data_parallel_group)} {key} is_dtensor {tp_is_dtensor} shard_spec {shard_spec} use_zero {use_zero} dp_size {dp_size} tp_size {tp_size}\np_state {p_state[key].shape} \ntp_optim_state {tp_state[key].shape} {tp_state_shape}\ndp res {p_state[key].shape[0] // tp_size % dp_size} Close {res}\n")
-                    # if not res:
-                    #     print(f"p_state {p_state[key]}\ntp_optim_state {tp_optim_state}\n")
                     assert_close(p_state[key], tp_optim_state, atol=5e-4, rtol=1.6e-2)
