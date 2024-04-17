@@ -253,9 +253,11 @@ def main() -> None:
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")
 
     optimizer = HybridAdam(
-        model_params=filter(lambda p: p.requires_grad, model.parameters())
-        if args.freeze_non_embeds_params
-        else model.parameters(),
+        model_params=(
+            filter(lambda p: p.requires_grad, model.parameters())
+            if args.freeze_non_embeds_params
+            else model.parameters()
+        ),
         lr=args.lr,
         betas=(0.9, 0.95),
         weight_decay=args.weight_decay,

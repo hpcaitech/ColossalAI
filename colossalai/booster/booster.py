@@ -19,6 +19,7 @@ except ImportError:
 import colossalai.interface.pretrained as pretrained_utils
 from colossalai.checkpoint_io import GeneralCheckpointIO
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.quantization import BnbQuantizationConfig
 
 from .accelerator import Accelerator
 from .mixed_precision import MixedPrecision, mixed_precision_factory
@@ -230,7 +231,12 @@ class Booster:
         return self.plugin.no_sync(model, optimizer)
 
     def enable_lora(
-        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: "peft.LoraConfig" = None
+        self,
+        model: nn.Module,
+        pretrained_dir: Optional[str] = None,
+        lora_config: "peft.LoraConfig" = None,
+        bnb_quantization_config: Optional[BnbQuantizationConfig] = None,
+        quantize=False,
     ) -> nn.Module:
         """
         Wrap the passed in model with LoRA modules for training. If pretrained directory is provided, lora configs and weights are loaded from that directory.
@@ -259,7 +265,20 @@ class Booster:
             assert (
                 pretrained_dir is not None
             ), "Please provide pretrained directory path if not passing in lora configuration."
-        return self.plugin.enable_lora(model, pretrained_dir, lora_config)
+        if quantize is True:
+            if bnb_quantization_config is not None:
+                warnings.warn(
+                    "User defined BnbQuantizationConfig is not fully tested in ColossalAI. Use it at your own risk."
+                )
+            else:
+                bnb_quantization_config = BnbQuantizationConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                )
+
+        return self.plugin.enable_lora(model, pretrained_dir, lora_config, bnb_quantization_config)
 
     def load_model(self, model: Union[nn.Module, ModelWrapper], checkpoint: str, strict: bool = True) -> None:
         """Load model from checkpoint.
