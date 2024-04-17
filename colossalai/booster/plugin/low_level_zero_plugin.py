@@ -15,7 +15,6 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 
-from colossalai.booster.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO
 from colossalai.checkpoint_io.utils import (
     get_optimizer_base_filenames,
@@ -28,6 +27,7 @@ from colossalai.checkpoint_io.utils import (
     sharded_optimizer_loading_epilogue,
 )
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
+from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.utils import get_current_device
 from colossalai.zero import LowLevelZeroOptimizer
 
