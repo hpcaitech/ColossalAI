@@ -372,7 +372,7 @@ if AUTOCHUNK_AVAILABLE:
             if print_progress:
                 get_logger().info("AutoChunk start codegen")
 
-        def _gen_python_code(self, nodes, root_module: str, namespace: _Namespace) -> PythonCode:
+        def _gen_python_code(self, nodes, root_module: str, namespace: _Namespace, verbose=None) -> PythonCode:
             free_vars: List[str] = []
             body: List[str] = []
             globals_: Dict[str, Any] = {}
