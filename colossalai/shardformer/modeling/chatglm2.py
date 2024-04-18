@@ -12,7 +12,8 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.layer import AttnMaskType, ColoAttention
 from colossalai.shardformer.layer._operation import gather_forward_split_backward, split_forward_gather_backward
-from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
+
+# from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
 
 
 def get_flash_core_attention_forward():
@@ -31,7 +32,12 @@ def get_flash_core_attention_forward():
                 device=query_layer.device,
             )
             temp_mask = (
-                torch.ones(query_layer.shape[2], key_layer.shape[2], dtype=torch.bool, device=query_layer.device)
+                torch.ones(
+                    query_layer.shape[2],
+                    key_layer.shape[2],
+                    dtype=torch.bool,
+                    device=query_layer.device,
+                )
                 .tril(diagonal=0)
                 .expand(query_layer.shape[0], 1, -1, -1)
             )
@@ -115,7 +121,7 @@ class ChatGLMPipelineForwards:
 
     @staticmethod
     def chatglm_model_forward(
-        self: ChatGLMModel,
+        self: "ChatGLMModel",
         input_ids,
         position_ids: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.BoolTensor] = None,
@@ -194,7 +200,9 @@ class ChatGLMPipelineForwards:
         if shard_config and shard_config.enable_sequence_parallelism:
             if shard_config.sequence_parallelism_mode == "split_gather":
                 hidden_states = split_forward_gather_backward(
-                    hidden_states, dim=0, process_group=shard_config.tensor_parallel_process_group
+                    hidden_states,
+                    dim=0,
+                    process_group=shard_config.tensor_parallel_process_group,
                 )
         for idx in range(start_idx, end_idx):
             layer = self.encoder._get_layer(idx)
@@ -224,7 +232,9 @@ class ChatGLMPipelineForwards:
         if shard_config and shard_config.enable_sequence_parallelism:
             if shard_config.sequence_parallelism_mode == "split_gather":
                 hidden_states = gather_forward_split_backward(
-                    hidden_states, dim=0, process_group=shard_config.tensor_parallel_process_group
+                    hidden_states,
+                    dim=0,
+                    process_group=shard_config.tensor_parallel_process_group,
                 )
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
@@ -254,7 +264,7 @@ class ChatGLMPipelineForwards:
 
     @staticmethod
     def chatglm_for_conditional_generation_forward(
-        self: ChatGLMForConditionalGeneration,
+        self: "ChatGLMForConditionalGeneration",
         input_ids: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
