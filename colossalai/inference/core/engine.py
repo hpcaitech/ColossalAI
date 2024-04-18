@@ -6,7 +6,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch import distributed as dist
-from transformers import AutoConfig, GenerationConfig, PreTrainedTokenizer, PreTrainedTokenizerFast
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    GenerationConfig,
+    PreTrainedTokenizer,
+    PreTrainedTokenizerFast,
+)
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 from colossalai.accelerator import get_accelerator
@@ -32,7 +38,7 @@ PP_AXIS, TP_AXIS = 0, 1
 
 _supported_models = {
     "LlamaForCausalLM": LlamaForCausalLM,
-    "BaichuanForCausalLM": LlamaForCausalLM,
+    "BaichuanForCausalLM": AutoModelForCausalLM,
 }
 
 _BATCH_SIZES_TO_CAPTURE = [1, 2, 4] + [8 * i for i in range(1, 33)]
@@ -64,8 +70,7 @@ class InferenceEngine:
         self.high_precision = inference_config.high_precision
 
         self.verbose = verbose
-        if verbose:
-            self.logger = get_dist_logger(__name__)
+        self.logger = get_dist_logger(__name__)
 
         self.init_model(model_or_path, model_policy)
 
@@ -108,9 +113,14 @@ class InferenceEngine:
         """
 
         if isinstance(model_or_path, str):
-            hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
-            arch = getattr(hf_config, "architectures", [])[0]
-            model = _supported_models[arch](hf_config)
+            try:
+                hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
+                arch = getattr(hf_config, "architectures")[0]
+                model = _supported_models[arch](hf_config)
+            except Exception as e:
+                self.logger.error(
+                    f"An exception occurred during loading model: {e}, model should be loaded by transformers\n"
+                )
         else:
             model = model_or_path
 
