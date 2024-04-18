@@ -32,7 +32,7 @@ from ._operation import (
     reducescatter_forward_gather_backward,
     split_forward_gather_backward,
 )
-from .parallel_module import ParallelModule
+from .parallel_module import PaddingParallelModule, ParallelModule
 from .utils import create_randomizer_with_offset
 
 __all__ = ["Linear1D_Col", "Linear1D_Row"]
@@ -84,8 +84,9 @@ class Linear1D_Col(ParallelModule):
         bias_: Optional[Parameter] = None,
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+        **kwargs,
     ):
-        super().__init__()
+        super().__init__(weight=weight, bias_=bias_, **kwargs)
 
         # Keep input parameters
         self.in_features = in_features
@@ -118,6 +119,7 @@ class Linear1D_Col(ParallelModule):
         else:
             weight.data = weight.data.to(device=device, dtype=dtype)
             self.weight = weight
+
         if not is_distributed_tensor(self.weight):
             sharded_weight = shard_rowwise(self.weight.data, self.process_group)
             sharded_tensor_to_existing_param(sharded_weight, self.weight)
@@ -140,7 +142,7 @@ class Linear1D_Col(ParallelModule):
 
     @staticmethod
     def from_native_module(
-        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
+        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], **kwargs
     ) -> ParallelModule:
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
@@ -173,7 +175,6 @@ class Linear1D_Col(ParallelModule):
             process_group=process_group,
             weight=module.weight,
             bias_=module.bias,
-            *args,
             **kwargs,
         )
 
@@ -322,7 +323,7 @@ class Linear1D_Row(ParallelModule):
 
     @staticmethod
     def from_native_module(
-        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
+        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], **kwargs
     ) -> ParallelModule:
         r"""
         Convert a native PyTorch linear layer to a parallelized linear layer.
@@ -356,7 +357,6 @@ class Linear1D_Row(ParallelModule):
             process_group=process_group,
             weight=module.weight,
             bias_=module.bias,
-            *args,
             **kwargs,
         )
 
@@ -439,3 +439,211 @@ class Linear1D_Row(ParallelModule):
             return output
         else:
             return output, self.bias
+
+
+class PaddingLMHead(PaddingParallelModule):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+        weight: Optional[Parameter] = None,
+        bias_: Optional[Parameter] = None,
+        make_vocab_size_divisible_by: int = 64,
+        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+    ):
+        # Keep input parameters
+        self.in_features = in_features
+        self.out_features = out_features
+
+        if out_features % make_vocab_size_divisible_by != 0:
+            self.out_features = (
+                out_features + make_vocab_size_divisible_by - (out_features % make_vocab_size_divisible_by)
+            )
+        if weight is None:
+            factory_kwargs = {"device": device, "dtype": dtype}
+            weight = Parameter(torch.empty(out_features, self.in_features, **factory_kwargs))
+        else:
+            weight.data = weight.data.to(device=device, dtype=dtype)
+
+        if bias:
+            if bias_ is None:
+                self.bias = Parameter(torch.empty(out_features, **factory_kwargs))
+            else:
+                bias_.data = bias_.data.to(device=device, dtype=dtype)
+        else:
+            bias_ = None
+
+        # resize embeddings
+        super().__init__(self.out_features, out_features, weight, bias_)
+
+        if weight is None:
+            self.reset_parameters(weight_initializer, bias_initializer)
+
+    def reset_parameters(self, weight_initializer, bias_initializer) -> None:
+        fan_in, fan_out = self.in_features, self.out_features
+        weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+        if self.bias is not None:
+            bias_initializer(self.bias, fan_in=fan_in)
+
+    @staticmethod
+    def from_native_module(
+        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], **kwargs
+    ) -> PaddingParallelModule:
+        r"""
+        Convert a native PyTorch linear layer to a parallelized linear layer.
+        """
+        LazyInitContext.materialize(module)
+        # get the attributes
+        in_features = module.in_features
+        out_features = module.out_features
+        bias = module.bias is not None
+        device = module.weight.device
+        # ensure only one process group is passed
+
+        lm_head_linear = PaddingLMHead(
+            in_features=in_features,
+            out_features=out_features,
+            bias=bias,
+            device=device,
+            weight=module.weight,
+            bias_=module.bias,
+            **kwargs,
+        )
+
+        return lm_head_linear
+
+    def forward(self, input: Tensor) -> Tensor:
+        output = F.linear(input, self.weight, self.bias)
+        output = output[..., : self.old_num_embeddings]
+        return output
+
+
+class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
+    r"""Linear layer with column parallelism.
+
+    The linear layer is defined as :math:`Y = XA + b`. A is parallelized along
+    its second dimension as :math:`A = [A_1, ..., A_p]`.
+
+    Args:
+        in_features (int): size of each input sample.
+        out_features (int): size of each output sample.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (`torch.dtype`): The dtype of parameters, defaults to None.
+        device (`torch.device`): The device of parameters, defaults to None.
+        process_group (`torch.distributed.ProcessGroup`): The process group to be used for weight sharding and communication, defaults to None.
+        gather_output (bool, optional): If true, call all-gather on output and make Y available
+                    to all GPUs, otherwise, every GPU will have its output
+                    which is :math:`Y_i = XA_i`, defaults to False
+        seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
+        overlap (`bool`): If set to ``True``, it will overlap input all-gather with gradient computation during backward, defaults to False.
+        skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
+            which is preserved for kernel fusion, defaults to False
+        weight_initializer (`typing.Callable`):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (`typing.Callable`):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
+    """
+
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+        process_group: ProcessGroup = None,
+        weight: Optional[Parameter] = None,
+        bias_: Optional[Parameter] = None,
+        make_vocab_size_divisible_by: int = 64,
+        **kwargs,
+    ):
+        # create weight and bias
+        if weight is None:
+            factory_kwargs = {"device": device, "dtype": dtype}
+            weight = Parameter(torch.empty(out_features, self.in_features, **factory_kwargs))
+        if bias:
+            if bias_ is None:
+                bias_ = Parameter(torch.empty(out_features, **factory_kwargs))
+        else:
+            bias_ = None
+
+        # calculate new vocab size
+        self.tensor_parallel_size = dist.get_world_size(group=process_group)
+        new_out_features = out_features
+        multiple = make_vocab_size_divisible_by * self.tensor_parallel_size
+        if out_features % multiple != 0:
+            new_out_features = out_features + multiple - (out_features % multiple)
+
+        super().__init__(
+            in_features=in_features,
+            out_features=new_out_features,
+            bias=bias,
+            device=device,
+            process_group=process_group,
+            weight=weight,
+            bias_=bias_,
+            **kwargs,
+            new_num_embeddings=new_out_features,
+            old_num_embeddings=out_features,
+        )
+        # get the length of valid embeddings
+        tp_rank = dist.get_rank(process_group)
+        partition_size = self.new_num_embeddings // dist.get_world_size(process_group)
+        if self.old_num_embeddings >= (tp_rank + 1) * partition_size:
+            self.num_valid_embeddings_local = partition_size
+        elif self.old_num_embeddings >= tp_rank * partition_size:
+            self.num_valid_embeddings_local = self.old_num_embeddings - tp_rank * partition_size
+        else:
+            self.num_valid_embeddings_local = 0
+
+    @staticmethod
+    def from_native_module(
+        module: nn.Linear, process_group: Union[ProcessGroup, List[ProcessGroup]], **kwargs
+    ) -> PaddingParallelModule:
+        r"""
+        Convert a native PyTorch linear layer to a parallelized linear layer.
+        """
+        LazyInitContext.materialize(module)
+        # get the attributes
+        in_features = module.in_features
+        out_features = module.out_features
+        bias = module.bias is not None
+        device = module.weight.device
+
+        lm_head_linear = VocabParallelLMHead1D(
+            in_features=in_features,
+            out_features=out_features,
+            bias=bias,
+            device=device,
+            process_group=process_group,
+            weight=module.weight,
+            bias_=module.bias,
+            **kwargs,
+        )
+
+        return lm_head_linear
+
+    def forward(self, input_: Tensor) -> Tuple[Tensor, Tensor]:
+        # get forward output
+        if self.skip_bias_add:
+            output, bias = super().forward(input_)
+        else:
+            output = super().forward(input_)
+
+        # delete the padding of output
+        if self.gather_output:
+            output = output[..., : self.old_num_embeddings]
+        else:
+            output = output[..., : self.num_valid_embeddings_local]
+
+        # return
+        if self.skip_bias_add:
+            return output, bias
+        return output
