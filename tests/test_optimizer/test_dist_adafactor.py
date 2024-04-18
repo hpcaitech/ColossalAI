@@ -447,7 +447,6 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
             verbose=True,
         )
         shard_to_param = dist_optim._param_store.master_to_working_param  # {id(): param tensor} but flattened
-        # print(f"shard_to_param {shard_to_param}")
         dist_optim.optim.setup_distributed(
             tensor_parallel_group=tp_group,
             data_parallel_group=dp_group,
