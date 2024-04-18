@@ -120,6 +120,15 @@ def search_tp_partition_dim(current_shape: torch.Size, original_shape: torch.Siz
     return partition_dim
 
 
+def search_padding_dim(global_shape: torch.Size, original_shape: torch.Size) -> Optional[int]:
+    padding_dim = None
+    for dim, length in enumerate(global_shape):
+        if length > original_shape[dim]:
+            padding_dim = dim
+            break
+    return padding_dim
+
+
 # ======================================
 # Helper classes and functions for saving shard file
 # ======================================
