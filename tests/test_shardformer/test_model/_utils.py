@@ -12,6 +12,7 @@ from torch.nn import Module
 from torch.optim import Adam, Optimizer
 from torch.testing import assert_close
 
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.booster.plugin.hybrid_parallel_plugin import HybridParallelModule
@@ -21,7 +22,6 @@ from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer._utils import getattr_
 from colossalai.shardformer.policies.auto_policy import Policy
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
-from colossalai.accelerator import get_accelerator
 
 
 def build_model(
@@ -231,7 +231,7 @@ def run_forward_backward_with_low_level_zero_plugin(
     criterion: Callable,
     booster: Booster,
 ):
-    device = get_accelerator().get_current_device()
+    get_accelerator().get_current_device()
     org_model.cuda()
     sharded_model.cuda()
 
@@ -246,7 +246,7 @@ def run_forward_backward_with_low_level_zero_plugin(
     #     k: v.to(device) if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
     # }
     data = {k: v.cuda() for k, v in data.items()}
-    
+
     sharded_model.train()
     sharded_output = sharded_model(**data)
     sharded_loss = criterion(sharded_output)
@@ -256,7 +256,7 @@ def run_forward_backward_with_low_level_zero_plugin(
     org_output = org_model(**data)
     org_loss = criterion(org_output)
     org_loss.backward()
-    
+
     return org_loss, org_output, sharded_loss, sharded_output
 
 

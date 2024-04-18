@@ -1,5 +1,4 @@
 import copy
-import os
 
 import pytest
 import torch
@@ -9,19 +8,19 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.booster import Booster
-from colossalai.booster.plugin import TorchDDPPlugin, HybridParallelPlugin, LowLevelZeroPlugin
-from colossalai.logging import disable_existing_loggers
+from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.device.device_mesh import DeviceMesh
+from colossalai.logging import disable_existing_loggers
 from colossalai.nn.optimizer.adafactor import Adafactor
 from colossalai.nn.optimizer.distributed_adafactor import DistributedAdaFactor
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.shardformer.layer._operation import _gather
+from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor import (
     distribute_tensor,
+    get_device_mesh,
     get_layout,
     get_sharding_spec,
-    get_device_mesh,
     is_distributed_tensor,
     shard_colwise,
     shard_rowwise,
@@ -32,8 +31,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from colossalai.zero import LowLevelZeroOptimizer
 from tests.kit.model_zoo import model_zoo
-from tests.test_optimizer._utils import run_bert_test, check_dist_optim_state, check_dist_param, check_optim_states
-from colossalai.shardformer.layer._operation import _gather
+from tests.test_optimizer._utils import check_dist_optim_state, check_dist_param, check_optim_states
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
     build_model_from_low_level_zero_plugin,
@@ -42,8 +40,6 @@ from tests.test_shardformer.test_model._utils import (
     run_forward_backward_with_low_level_zero_plugin,
     unwrap_model,
 )
-from colossalai.shardformer.layer.utils import Randomizer
-from colossalai.accelerator import get_accelerator
 
 HEIGHT = 4
 WIDTH = 4
@@ -144,10 +140,10 @@ def set_dist_grad(
 
 
 def set_master_param_to_shard_param(master_param_list) -> dict:
-    master_param_to_shard_param ={id(p):p for p in master_param_list}
+    master_param_to_shard_param = {id(p): p for p in master_param_list}
     return master_param_to_shard_param
-    
-    
+
+
 class MlpModel(nn.Module):
     def __init__(self):
         super(MlpModel, self).__init__()
@@ -158,6 +154,7 @@ class MlpModel(nn.Module):
         x = self.linear1(x)
         x = self.linear2(x)
         return x
+
 
 class TPModel(nn.Module):
     def __init__(self, linear1, linear2, tp_group=None):
@@ -174,7 +171,7 @@ class TPModel(nn.Module):
 
 
 @parameterize("dtype", [torch.float32, torch.float16, torch.bfloat16])  # torch.float32, torch.float16, torch.bfloat16
-@parameterize("tp_zero_size", [(4, 1)]) 
+@parameterize("tp_zero_size", [(4, 1)])
 def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     tp_size, zero_size = tp_zero_size
     local_rank = dist.get_rank()
@@ -192,7 +189,7 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     H, W = HEIGHT, WIDTH
     model_col = nn.Linear(H, W).to(local_rank)  # Col parallel weight
     weight, bias = model_col.weight, model_col.bias
-    
+
     # ==============================
     # Col Parallel
     # ==============================
@@ -212,7 +209,7 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
         weight_row_shard.clone().flatten().requires_grad_(True)
     )  # flatten input(not dtensor) to optimizer
     bias_row_flatten = nn.Parameter(bias.clone().flatten().requires_grad_(True))
-    
+
     # base_param_group = setup_param_groups([weight, bias])
     # cp_param_group = setup_param_groups([weight_col_shard_flatten, bias_col_flatten])
     # rp_param_group = setup_param_groups([weight_row_shard_flatten, bias_row_flatten])
@@ -225,7 +222,7 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     optimizer_base = Adafactor([weight, bias])
     cp_dist_optim = DistributedAdaFactor([weight_col_shard_flatten, bias_col_flatten])
     rp_dist_optim = DistributedAdaFactor([weight_row_shard_flatten, bias_row_flatten])
-    
+
     shard_to_param_cp = set_master_param_to_shard_param([weight_col_shard_flatten, bias_col_flatten])
     cp_dist_optim.setup_distributed(
         tensor_parallel_group=tp_group,
@@ -233,7 +230,7 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
         shard_to_param=shard_to_param_cp,
         use_zero=use_zero,
     )
-    
+
     shard_to_param_rp = set_master_param_to_shard_param([weight_row_shard_flatten, bias_row_flatten])
     rp_dist_optim.setup_distributed(
         tensor_parallel_group=tp_group,
@@ -242,7 +239,6 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
         use_zero=use_zero,
     )
 
-   
     N_STEPS = 1
     for _ in range(N_STEPS):
         # base step
@@ -254,7 +250,9 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
         # col parallel step
         cp_dist_optim.zero_grad()
         weight_col_shard_flatten.grad = (
-            distribute_tensor(weight.grad, get_device_mesh(weight_col_shard), weight_col_shard_shard_spec).clone().flatten()
+            distribute_tensor(weight.grad, get_device_mesh(weight_col_shard), weight_col_shard_shard_spec)
+            .clone()
+            .flatten()
         )
         bias_col_flatten.grad = bias.grad.clone().flatten()
         cp_dist_optim.step()
@@ -262,7 +260,9 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
         # row parallel step
         rp_dist_optim.zero_grad()
         weight_row_shard_flatten.grad = (
-            distribute_tensor(weight.grad, get_device_mesh(weight_row_shard), weight_row_shard_shard_spec).clone().flatten()
+            distribute_tensor(weight.grad, get_device_mesh(weight_row_shard), weight_row_shard_shard_spec)
+            .clone()
+            .flatten()
         )
         bias_row_flatten.grad = bias.grad.clone().flatten()
         rp_dist_optim.step()
@@ -273,15 +273,13 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
             dim=-1,
             process_group=tp_group,
         )  # gather
-        weight_row_gather = _gather(
-            input_=weight_row_shard_flatten.data, dim=-1, process_group=tp_group
-        ).view(
+        weight_row_gather = _gather(input_=weight_row_shard_flatten.data, dim=-1, process_group=tp_group).view(
             -1, W
         )  # gather
 
         # verify
-        col_correct = correctness_verify(weight.data, weight_col_gather.data, dtype)
-        row_correct = correctness_verify(weight.data, weight_row_gather.data, dtype)
+        correctness_verify(weight.data, weight_col_gather.data, dtype)
+        correctness_verify(weight.data, weight_row_gather.data, dtype)
 
     print(f"Base Test Pass")
 
@@ -292,7 +290,7 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     tp_size, zero_size = tp_zero_size
     use_zero = True if zero_size > 1 else False
     local_rank = dist.get_rank()
-    
+
     clear_layout_converter()
 
     proc_mesh = ProcessGroupMesh(tp_size, zero_size)
@@ -390,20 +388,20 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
         else:
             # No TP bias
             pass
-        correctness = correctness_verify(p.data, tp_p.data, dtype)
+        correctness_verify(p.data, tp_p.data, dtype)
     clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()
     print(f"Zero Test Pass")
-     
-         
+
+
 @parameterize("dtype", [torch.float16])
 @parameterize("tp_zero_size", [(1, 4)])
 def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     tp_size, zero_size = tp_zero_size
     use_zero = True if zero_size > 1 else False
     local_rank = dist.get_rank()
-    
+
     clear_layout_converter()
 
     proc_mesh = ProcessGroupMesh(tp_size, zero_size)
@@ -464,14 +462,14 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
             shard_to_param=shard_to_param,
             use_zero=use_zero,
         )
-    
+
     # ==============================
     # Booster Init
     # ==============================
     plugin = LowLevelZeroPlugin()
     booster = Booster(plugin=plugin)
     criterion = lambda x: x.mean()
-    
+
     tp_model, dist_optim, criterion, _, _ = booster.boost(tp_model, dist_optim, criterion)
 
     # ==============================
@@ -512,11 +510,12 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
         else:
             # No TP bias
             pass
-        correctness = correctness_verify(p.data, tp_p.data, dtype)
+        correctness_verify(p.data, tp_p.data, dtype)
     Randomizer.reset_index()
-    torch.cuda.empty_cache()  
-    print(f"Booster Test Pass")    
-        
+    torch.cuda.empty_cache()
+    print(f"Booster Test Pass")
+
+
 @parameterize(
     "test_config",
     [
@@ -529,13 +528,13 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
             "precision": "bf16",
         },
     ],
-)        
+)
 def exam_bert_test_on_lowlevelzero_plugin(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_bert")
     model_list = [
         "transformers_bert",
-        "transformers_bert_for_pretraining", 
-        "transformers_bert_lm_head_model", 
+        "transformers_bert_for_pretraining",
+        "transformers_bert_lm_head_model",
         "transformers_bert_for_masked_lm",
         "transformers_bert_for_sequence_classification",
         "transformers_bert_for_token_classification",
@@ -547,35 +546,44 @@ def exam_bert_test_on_lowlevelzero_plugin(test_config):
     torch.set_default_dtype(torch.bfloat16)
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         if name in model_list:
-            org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_low_level_zero_plugin(
-                model_fn, loss_fn, test_config, Adafactor, DistributedAdaFactor
-                )
-            
+            (
+                org_model,
+                org_optimizer,
+                sharded_model,
+                sharded_optimizer,
+                criterion,
+                booster,
+            ) = build_model_from_low_level_zero_plugin(model_fn, loss_fn, test_config, Adafactor, DistributedAdaFactor)
+
             org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_low_level_zero_plugin(
                 org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
             )
-            
+
             # LowLevelZero not need warp
             # bert = unwrap_model(org_model, "BertModel", "bert")
             # sharded_bert = unwrap_model(sharded_model, "BertModel", "bert")
-            weight_layer_for_check = ["bert.encoder.layer.0.output.dense.weight", "bert.encoder.layer.0.output.dense.weight"]
-                    
+            weight_layer_for_check = [
+                "bert.encoder.layer.0.output.dense.weight",
+                "bert.encoder.layer.0.output.dense.weight",
+            ]
+
             org_optimizer.step()
             sharded_optimizer.step()
-                    
+
             # check weights
             if test_config["precision"] == "bf16":
                 atol, rtol = 5e-4, 5e-4
             else:
                 atol, rtol = 5e-4, 5e-4
-            
+
             check_dist_param(org_model, sharded_model, weight_layer_for_check, atol, rtol)
-            check_optim_states(org_optimizer, sharded_optimizer.optim)                   
+            check_optim_states(org_optimizer, sharded_optimizer.optim)
 
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"Bert Model Zoo Test Pass") 
- 
+    print(f"Bert Model Zoo Test Pass")
+
+
 @parameterize(
     "test_config",
     [
@@ -618,8 +626,8 @@ def exam_bert_test_on_hybrid_plugin(test_config):
     test_config["initial_scale"] = 2**16  # avoid overflow
     model_list = [
         "transformers_bert",
-        "transformers_bert_for_pretraining", 
-        "transformers_bert_lm_head_model", 
+        "transformers_bert_for_pretraining",
+        "transformers_bert_lm_head_model",
         "transformers_bert_for_masked_lm",
         "transformers_bert_for_sequence_classification",
         "transformers_bert_for_token_classification",
@@ -631,24 +639,29 @@ def exam_bert_test_on_hybrid_plugin(test_config):
     torch.set_default_dtype(torch.bfloat16)
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         if name in model_list:
-            org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
-                model_fn, loss_fn, test_config, Adafactor, DistributedAdaFactor
-                )
-            
+            (
+                org_model,
+                org_optimizer,
+                sharded_model,
+                sharded_optimizer,
+                criterion,
+                booster,
+            ) = build_model_from_hybrid_plugin(model_fn, loss_fn, test_config, Adafactor, DistributedAdaFactor)
+
             org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
                 org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
             )
-  
+
             stage_manager = booster.plugin.stage_manager
             tp_group = booster.plugin.tp_group
 
             bert = unwrap_model(org_model, "BertModel", "bert")
             sharded_bert = unwrap_model(sharded_model, "BertModel", "bert")
             weight_layer_for_check = ["encoder.layer[0].output.dense", "encoder.layer[1].output.dense"]
-                    
+
             org_optimizer.step()
             sharded_optimizer.step()
-                    
+
             # check weights
             if test_config["precision"] == "bf16":
                 atol, rtol = 5e-4, 5e-4
@@ -657,12 +670,13 @@ def exam_bert_test_on_hybrid_plugin(test_config):
             if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
                 check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
                 # check optim states
-                check_dist_optim_state(org_optimizer, sharded_optimizer.optim)                
+                check_dist_optim_state(org_optimizer, sharded_optimizer.optim)
 
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"Bert Model Zoo Test Pass") 
-    
+    print(f"Bert Model Zoo Test Pass")
+
+
 def run_dist(rank, world_size, port):
     disable_existing_loggers()
     config = {}
@@ -672,6 +686,7 @@ def run_dist(rank, world_size, port):
     exam_dist_adafactor_base()
     exam_dist_adafactor_zero()
     exam_dist_adafactor_booster()
+
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()

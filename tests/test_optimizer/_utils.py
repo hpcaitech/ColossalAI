@@ -3,6 +3,7 @@ import torch.distributed
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.shardformer.layer._operation import _gather
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import parameterize, spawn
@@ -13,7 +14,7 @@ from tests.test_shardformer.test_model._utils import (
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
-from colossalai.shardformer.layer._operation import _gather
+
 
 def check_optim_states(org_optim, sharded_optim):
     for group in org_optim.param_groups:
@@ -152,10 +153,13 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
                     use_zero = sharded_optimizer.use_zero
                     tp_optim_state = tp_state[key]
                     p_state_shape, tp_state_shape = p_state[key].shape, tp_state[key].shape
-                    dp_size, tp_size = sharded_optimizer.data_parallel_size, sharded_optimizer.tensor_parallel_size,
-                    # we start init model with first tensor parallel then zero; 
+                    dp_size, tp_size = (
+                        sharded_optimizer.data_parallel_size,
+                        sharded_optimizer.tensor_parallel_size,
+                    )
+                    # we start init model with first tensor parallel then zero;
                     # So, we gather model with first zero then tensor parallel
-                    
+
                     if tp_is_dtensor:
                         # col parallel
                         if shard_spec.sharding_sequence[0] == "R":
@@ -163,9 +167,11 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
                                 # sq_row need gather alone dp group
                                 if key == "exp_avg_sq_row":
                                     tp_optim_state = _gather(
-                                        input_=tp_optim_state, dim=-1, process_group=sharded_optimizer.data_parallel_group
+                                        input_=tp_optim_state,
+                                        dim=-1,
+                                        process_group=sharded_optimizer.data_parallel_group,
                                     )
-                                    tp_state_shape = tp_optim_state.shape
+                                    tp_optim_state.shape
                                 # sq_col don't need gather alone dp group
                                 if key == "exp_avg_sq_col":
                                     pass
@@ -180,8 +186,8 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
                                 tp_optim_state = _gather(
                                     input_=tp_optim_state, dim=-1, process_group=sharded_optimizer.tensor_parallel_group
                                 )
-                                tp_state_shape = tp_optim_state.shape
-                        
+                                tp_optim_state.shape
+
                         # row parallel
                         if shard_spec.sharding_sequence[-1] == "R":
                             if use_zero:
@@ -191,9 +197,11 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
                                         pass
                                     else:
                                         tp_optim_state = _gather(
-                                            input_=tp_optim_state, dim=-1, process_group=sharded_optimizer.data_parallel_group
+                                            input_=tp_optim_state,
+                                            dim=-1,
+                                            process_group=sharded_optimizer.data_parallel_group,
                                         )
-                                        tp_state_shape = tp_optim_state.shape
+                                        tp_optim_state.shape
                                 # sq_col don't need gather alone dp group
                                 if key == "exp_avg_sq_col":
                                     pass
@@ -205,7 +213,7 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
                                 tp_optim_state = _gather(
                                     input_=tp_optim_state, dim=-1, process_group=sharded_optimizer.tensor_parallel_group
                                 )
-                                tp_state_shape = tp_optim_state.shape
+                                tp_optim_state.shape
                             # sq_col don't need gather alone dp group
                             if key == "exp_avg_sq_col":
                                 pass
@@ -218,18 +226,20 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
                                     pass
                                 else:
                                     tp_optim_state = _gather(
-                                        input_=tp_optim_state, dim=-1, process_group=sharded_optimizer.data_parallel_group
+                                        input_=tp_optim_state,
+                                        dim=-1,
+                                        process_group=sharded_optimizer.data_parallel_group,
                                     )
-                                    tp_state_shape = tp_optim_state.shape
+                                    tp_optim_state.shape
                             # sq_col don't need gather alone dp group
                             if key == "exp_avg_sq_col":
                                 tp_optim_state = tp_optim_state.div_(dp_size)
-                                # need a div; 
+                                # need a div;
                         else:
                             pass
-                    # Sovled a New issus: different dtype; 
-                    # So far, only happen in H100 env; 
-                    # Seem torch.set_default_dtype(torch.bfloat16) not act on booster.percision; 
+                    # Sovled a New issus: different dtype;
+                    # So far, only happen in H100 env;
+                    # Seem torch.set_default_dtype(torch.bfloat16) not act on booster.percision;
                     # Or assert_close just update to check dtype;
                     if p_state[key].dtype != tp_optim_state.dtype:
                         tp_optim_state = tp_optim_state.type(p_state[key].dtype)
@@ -237,7 +247,9 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
 
 
 def check_dist_param(org_model, sharded_model, weight_layer_for_check, atol, rtol):
-    for (org_name, org_param), (sharded_name, sharded_param) in zip(org_model.named_parameters(), sharded_model.named_parameters()):
+    for (org_name, org_param), (sharded_name, sharded_param) in zip(
+        org_model.named_parameters(), sharded_model.named_parameters()
+    ):
         if org_name in weight_layer_for_check:
             # print(f"org_name {org_name} shape {org_param.shape} {org_param}\n sharded_name {sharded_name} shape {sharded_param.shape} {sharded_param}\n")
             assert_close(org_param, sharded_param, atol=atol, rtol=rtol)

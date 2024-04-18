@@ -1,20 +1,20 @@
 # Distributed Adafactor
 
-Author: 
+Author:
 
 **Related Paper**
 - [Adafactor: Adaptive Learning Rates with Sublinear Memory Cost](https://arxiv.org/abs/1804.04235)
 
 ## Introduction
 
-Distributed Adafactor is an optimiser that supports hybrid optimisation, including 1D tensor parallelism as well as ZerO. It makes full use of computational resources through reasonable task parallelism, improves training efficiency and speed, and reduces space pressure on single card storage. It has a wide range of applications and currently supports a range of Transformer based models, see [tests.kit.model_zoo](https://github.com/hpcaitech/ColossalAI/tree/main/tests/kit/model_zoo) for details. 
+Distributed Adafactor is an optimiser that supports hybrid optimisation, including 1D tensor parallelism as well as ZerO. It makes full use of computational resources through reasonable task parallelism, improves training efficiency and speed, and reduces space pressure on single card storage. It has a wide range of applications and currently supports a range of Transformer based models, see [tests.kit.model_zoo](https://github.com/hpcaitech/ColossalAI/tree/main/tests/kit/model_zoo) for details.
 
 ## API Reference
 
 {{ autodoc:colossalai.nn.optimizer.distributed_adafactor.DistributedAdaFactor }}
 
 ## Hands-On Practice
-We now demonstrate how to start Distributed Adafactor with booster API.  
+We now demonstrate how to start Distributed Adafactor with booster API.
 ### step 1. Import libraries
 
 ```python
@@ -59,9 +59,9 @@ dist_optim = DistributedAdaFactor(model.parameters())
 ```python
 plugin = LowLevelZeroPlugin()
 booster = Booster(plugin=plugin)
-model, dist_optim, criterion, dataloader, _ = booster.boost(model, dist_optim, criterion, dataloader) 
+model, dist_optim, criterion, dataloader, _ = booster.boost(model, dist_optim, criterion, dataloader)
 ```
-### step 5.Train Your Model 
+### step 5.Train Your Model
 ```python
 for epoch in range(max_epochs):
     for input_ids, attention_mask in dataloader:
@@ -111,7 +111,7 @@ Model/Feature Compatibility Matrix:
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
-  </tr>  
+  </tr>
   <tr>
     <td nowrap="nowrap">Torch DDP<br />Plugin</td>
     <td nowrap="nowrap" align="center">✔️</td>
@@ -123,7 +123,7 @@ Model/Feature Compatibility Matrix:
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
-  </tr>  
+  </tr>
   <tr>
     <td nowrap="nowrap">Gemini<br />Plugin</td>
     <td nowrap="nowrap" align="center">❌</td>
@@ -135,7 +135,7 @@ Model/Feature Compatibility Matrix:
     <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
-  </tr>  
+  </tr>
   <tr>
     <td nowrap="nowrap">Moe Hybrid<br />Plugin</td>
     <td nowrap="nowrap" align="center">❌</td>
@@ -147,7 +147,7 @@ Model/Feature Compatibility Matrix:
     <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
-  </tr>  
+  </tr>
   <tr>
     <td colspan="39"></td>
   </tr>
