@@ -962,7 +962,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                 device=inputs_embeds.device,
             )
 
-        attention_mask = self._prepare_decoder_attention_mask(
+        attention_mask = _prepare_4d_causal_attention_mask(
             attention_mask, attention_mask.shape, inputs_embeds, past_key_values_length
         )
 
