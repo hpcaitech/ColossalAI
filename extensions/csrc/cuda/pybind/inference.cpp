@@ -58,6 +58,21 @@ void get_cos_and_sin(at::Tensor& cos_cache,  // [max_rotary_position, head_dim]
                      at::Tensor& sequence_lengths,  // [batch_size]
                      int max_seq_len_in_batch, bool is_prompts);
 
+void flash_decoding_attention(
+    torch::Tensor& out,    // [num_tokens, num_heads, head_size]
+    torch::Tensor& query,  // [num_tokens, num_heads, head_size]
+    torch::Tensor&
+        key_cache,  // [num_blocks, num_kv_heads, block_size, head_size]
+    torch::Tensor&
+        value_cache,  // [num_blocks, num_kv_heads, block_size, head_size]
+    torch::Tensor& context_lens,  // [num_tokens]
+    torch::Tensor& block_tables,  // [num_tokens, max_num_blocks_per_seq]
+    int block_size, int max_context_len,
+    torch::Tensor&
+        tmp_out,  // [num_tokens, num_heads, max_num_partitions, head_size]
+    torch::Tensor& tmp_out_lse,  // [num_tokens, num_heads, max_num_partitions]
+    float scale);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("decode_kv_cache_memcpy", &decode_kv_cache_memcpy,
         "Copy the GPU memory of kvcache during the decode stage.");
@@ -81,4 +96,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         "In-place fused Add and RMS Normalization.");
 
   m.def("get_cos_and_sin", &get_cos_and_sin, "Get cos and sin from the cache.");
+
+  m.def("flash_decoding_attention", &flash_decoding_attention,
+        "Compute the attention between an input query and the cached "
+        "keys/values using PagedAttention.");
 }

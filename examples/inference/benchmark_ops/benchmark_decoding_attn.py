@@ -4,8 +4,8 @@ from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
 from tests.test_infer.test_ops.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
+    create_attention_mask,
     generate_caches_and_block_tables_v2,
-    prepare_padding_mask,
     torch_attn_ref,
 )
 from tests.test_infer.test_ops.triton.test_decoding_attn import prepare_data
@@ -67,9 +67,18 @@ def bench_kernel(
     if provider == "torch":
         k_torch = convert_kv_unpad_to_padded(k_unpad, kv_lengths, bsz, max_seq_len_in_b)
         v_torch = convert_kv_unpad_to_padded(v_unpad, kv_lengths, bsz, max_seq_len_in_b)
-        torch_padding_mask = prepare_padding_mask(kv_lengths, bsz, max_seq_len_in_b, q.device)
+        torch_padding_mask = create_attention_mask(kv_lengths, bsz, Q_LEN, max_seq_len_in_b, q.device)
         fn = lambda: torch_attn_ref(
-            q, k_torch, v_torch, torch_padding_mask, bsz, 1, max_seq_len_in_b, num_attn_heads, num_kv_heads, HEAD_DIM
+            q,
+            k_torch,
+            v_torch,
+            torch_padding_mask,
+            bsz,
+            Q_LEN,
+            max_seq_len_in_b,
+            num_attn_heads,
+            num_kv_heads,
+            HEAD_DIM,
         )
         ms, min_ms, max_ms = triton.testing.do_bench(fn, warmup=WARM_UPS, rep=REPS, quantiles=quantiles)
     if provider == "triton":
