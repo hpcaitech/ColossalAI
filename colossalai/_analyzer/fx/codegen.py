@@ -246,7 +246,7 @@ def emit_code_with_activation_checkpoint(body, ckpt_func, nodes, emit_node_func,
 
 @compatibility(is_backward_compatible=True)
 class ActivationCheckpointCodeGen(CodeGen):
-    def _gen_python_code(self, nodes, root_module: str, namespace: _Namespace) -> PythonCode:
+    def _gen_python_code(self, nodes, root_module: str, namespace: _Namespace, verbose=None) -> PythonCode:
         free_vars: List[str] = []
         body: List[str] = []
         globals_: Dict[str, Any] = {}
