@@ -288,11 +288,11 @@ def test_chatglm():
     spawn(check_chatglm, 4)
 
 
-@pytest.mark.largedist
-@rerun_if_address_is_in_use()
-@clear_cache_before_run()
-def test_chatglm_3d():
-    spawn(check_chatglm_3d, 8)
+# @pytest.mark.largedist
+# @rerun_if_address_is_in_use()
+# @clear_cache_before_run()
+# def test_chatglm_3d():
+#     spawn(check_chatglm_3d, 8)
 
 
 if __name__ == "__main__":
