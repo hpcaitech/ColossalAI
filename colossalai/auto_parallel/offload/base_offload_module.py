@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from colossalai.utils import _cast_float
-from colossalai.zero.legacy.gemini.tensor_utils import free_storage
+from colossalai.utils.common import free_storage
 
 from .region_manager import RegionManager
 from .util import GlobalRuntimeInfo
