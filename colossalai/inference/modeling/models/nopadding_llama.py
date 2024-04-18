@@ -277,7 +277,7 @@ def llama_rmsnorm_forward(
         return rms_layernorm(hidden_states, self.weight.data, self.variance_epsilon, norm_output, residual)
 
 
-class NopadLlamaMLP(ParallelModule):
+class NopadLlamaMLP(ParallelModule, LlamaMLP):
     def __init__(
         self,
         config: LlamaConfig,
@@ -285,8 +285,6 @@ class NopadLlamaMLP(ParallelModule):
         mlp_uproj_w: torch.Tensor = None,
         mlp_dproj: ParallelModule = None,
         process_group: ProcessGroup = None,
-        *args,
-        **kwargs,
     ):
         """A Unified Layer for
 
@@ -294,9 +292,9 @@ class NopadLlamaMLP(ParallelModule):
             config (LlamaConfig): Holding the Llama model config.
             mlp_gproj_w (torch.Tensor, optional): The transposed gate_proj weight. Defaults to None.
             mlp_uproj_w (torch.Tensor, optional): The transposed up_proj weight. Defaults to None.
-            mlp_dproj_w (torch.Tensor, optional): The transposed down_proj weight. Defaults to None.
+            mlp_dproj (Linear1D_Row, optional): The Linear1D_Row mlp_dproj weight. Defaults to None.
         """
-        super().__init__()
+        ParallelModule.__init__(self)
         self.config = config
         assert is_distributed_tensor(
             mlp_gproj_w
@@ -335,8 +333,6 @@ class NopadLlamaMLP(ParallelModule):
             mlp_uproj_w=mlp_uproj_w,
             mlp_dproj=mlp_dproj,
             process_group=process_group,
-            *args,
-            **kwargs,
         )
 
         return mlp_layer
@@ -403,7 +399,7 @@ class NopadLlamaMLP(ParallelModule):
         return f"gate_up_proj MergedLinear1D_Col: in_features={self.gate_up_weight.shape[1]}x2, out_features={self.gate_up_weight.shape[2]}, bias=False"
 
 
-class NopadLlamaAttention(ParallelModule):
+class NopadLlamaAttention(ParallelModule, LlamaAttention):
     def __init__(
         self,
         config: LlamaConfig,
@@ -425,9 +421,9 @@ class NopadLlamaAttention(ParallelModule):
             attn_qproj_w (torch.Tensor, optional): The transposed q_proj weight. Defaults to None.
             attn_kproj_w (torch.Tensor, optional): The transposed k_proj weight. Defaults to None.
             attn_vproj_w (torch.Tensor, optional): The transposed v_proj weight. Defaults to None.
-            attn_oproj (torch.Tensor, optional): The transposed o_proj weight. Defaults to None.
+            attn_oproj (Linear1D_Row, optional): The Linear1D_Row o_proj weight. Defaults to None.
         """
-        super().__init__()
+        ParallelModule.__init__(self)
         self.config = config
         self.layer_idx = layer_idx
 
@@ -485,8 +481,6 @@ class NopadLlamaAttention(ParallelModule):
             num_heads=module.num_heads,
             hidden_size=module.hidden_size,
             num_key_value_heads=module.num_key_value_heads,
-            *args,
-            **kwargs,
         )
 
         return attn_layer
