@@ -16,7 +16,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         super().__init__(config)
 
     def setup_ep(self, moe_info: MoeParallelInfo):
-        self.moe_info = moe_info
+        self.moe_info = moe_info  # TODO: remove
         ep_group = moe_info.ep_group
         self.ep_size = dist.get_world_size(ep_group) if ep_group is not None else 1
         self.ep_rank = dist.get_rank(ep_group) if ep_group is not None else 0
@@ -26,6 +26,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         self.expert_start_idx = self.ep_rank * self.num_experts_per_ep
         held_experts = self.experts[self.expert_start_idx : self.expert_start_idx + self.num_experts_per_ep]
         set_tensors_to_none(self.experts, exclude=set(held_experts))
+        # TODO: change to assign pg mesh for all modules
         for p in self.experts.parameters():
             set_moe_tensor_info(p, moe_info)
 
@@ -35,7 +36,6 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
     ) -> "EPMixtralSparseMoeBlock":
         LazyInitContext.materialize(module)
         module.__class__ = EPMixtralSparseMoeBlock
-        module.setup_ep(moe_info)
         return module
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:

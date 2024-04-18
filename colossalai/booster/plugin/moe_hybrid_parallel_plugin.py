@@ -27,8 +27,6 @@ from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.policies.base_policy import Policy
-from colossalai.tensor.moe_tensor.api import get_moe_info
-from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 PP_AXIS, DP_AXIS, TP_AXIS = 0, 1, 2
@@ -221,8 +219,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         # Variables updated by setup
         self.parallel_info_dict = dict()
         self.use_ep_inside = use_ep_inside
-        self.moe_info = get_moe_info(self.ep_size, self.real_dp_size, self.pp_size, ep_inside=self.use_ep_inside)
-        self.pg_mesh = self.moe_info.pg
+        # self.moe_info = get_moe_info(self.ep_size, self.real_dp_size, self.pp_size, ep_inside=self.use_ep_inside)
+        # self.pg_mesh = self.moe_info.pg
 
         # sync moe in outer dp group, and sync other param in global dp group
         if extra_dp_size > 1:
@@ -233,8 +231,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 if dist.get_rank() == 0:
                     print(f"Zero Parallel: pp {self.pp_size}, outer_dp {extra_dp_size}, inner_dp {ep_size}")
             else:
-                self.pg_mesh_moe = ProcessGroupMesh(self.pp_size, ep_size, extra_dp_size)
-                self.moe_extra_dp_group = self.pg_mesh_moe.get_group_along_axis(2)
+                self.pg_mesh_moe = ProcessGroupMesh(self.pp_size, extra_dp_size, ep_size)
+                self.moe_extra_dp_group = self.pg_mesh_moe.get_group_along_axis(1)
                 if dist.get_rank() == 0:
                     print(f"Zero Parallel: pp {self.pp_size}, outer_dp {ep_size}, inner_dp {extra_dp_size}")
         else:
@@ -242,7 +240,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
 
         self.stage_manager = None
         self.schedule = None
-        self.custom_policy = custom_policy
+        self.custom_policy = custom_policy  # recursively pass moe info (process mesh)
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
             assert (
@@ -302,36 +300,36 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
     # ==============================
     # Migration from MOE_MANAGER.get_info
     # ==============================
-    def get_info(self, num_experts: int, use_tp: bool = False) -> Tuple[int, MoeParallelInfo]:
-        """Calculate the Data Parallel Group and Expert Parallel Group.
+    # def get_info(self, num_experts: int, use_tp: bool = False) -> Tuple[int, MoeParallelInfo]:
+    #     """Calculate the Data Parallel Group and Expert Parallel Group.
 
-        Parameters
-        ----------
-        num_experts : int
-            The number experts
+    #     Parameters
+    #     ----------
+    #     num_experts : int
+    #         The number experts
 
-        Returns
-        -------
-        int, MoeParallelInfo
-            number of local experts, the MoeParallelInfo of the current ep_size
-        """
+    #     Returns
+    #     -------
+    #     int, MoeParallelInfo
+    #         number of local experts, the MoeParallelInfo of the current ep_size
+    #     """
 
-        dp_size = self.dp_size
-        ep_size = self.ep_size
-        pp_size = self.pp_size
+    #     dp_size = self.dp_size
+    #     ep_size = self.ep_size
+    #     pp_size = self.pp_size
 
-        # Calculate the number of experts for each GPU
-        num_local_experts = num_experts // ep_size
+    #     # Calculate the number of experts for each GPU
+    #     num_local_experts = num_experts // ep_size
 
-        if not (ep_size in self.parallel_info_dict):
-            self.parallel_info_dict[ep_size] = get_moe_info(ep_size, dp_size, pp_size, ep_inside=self.use_ep_inside)
-            if dist.get_rank() == 0:
-                if self.use_ep_inside:
-                    print(f"MoE Parallel: pp {pp_size}, dp {dp_size}, ep {ep_size}")
-                else:
-                    print(f"MoE Parallel: pp {pp_size}, ep {ep_size}, dp {dp_size}")
+    #     if not (ep_size in self.parallel_info_dict):
+    #         # self.parallel_info_dict[ep_size] = get_moe_info(ep_size, dp_size, pp_size, ep_inside=self.use_ep_inside)
+    #         if dist.get_rank() == 0:
+    #             if self.use_ep_inside:
+    #                 print(f"MoE Parallel: pp {pp_size}, dp {dp_size}, ep {ep_size}")
+    #             else:
+    #                 print(f"MoE Parallel: pp {pp_size}, ep {ep_size}, dp {dp_size}")
 
-        return num_local_experts, self.parallel_info_dict[ep_size]
+    #     return num_local_experts, self.parallel_info_dict[ep_size]
 
     def prepare_dataloader(
         self, dataset, batch_size, shuffle=False, seed=1024, drop_last=False, pin_memory=False, num_workers=0, **kwargs
@@ -406,7 +404,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 shard_config=self.shard_config,
                 dp_group=self.dp_group,
                 tp_group=self.tp_group,
-                sp_group=self.sp_group,
+                sp_group=self.sp_group,  # TODO: add ep group. Modify shard_config to assign pg in policy
                 use_ddp=use_ddp,
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,

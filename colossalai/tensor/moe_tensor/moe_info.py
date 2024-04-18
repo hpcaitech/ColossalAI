@@ -1,6 +1,7 @@
 from colossalai.cluster import ProcessGroupMesh
 
 
+# TODO: replace with 3d process mesh
 class MoeParallelInfo:
     """Moe parallelism information, storing parallel sizes and groups."""
 
