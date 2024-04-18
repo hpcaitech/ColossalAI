@@ -27,6 +27,12 @@ from colossalai.tensor.d_tensor import (
     is_customized_distributed_tensor,
     is_distributed_tensor,
 )
+from colossalai.tensor.padded_tensor import (
+    init_as_padded_tensor,
+    is_padded_tensor,
+    to_padded_tensor,
+    to_unpadded_tensor,
+)
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.utils import _cast_float, free_storage, is_ddp_ignored
 
@@ -460,6 +466,11 @@ class GeminiDDP(ModelWrapper):
                         record_tensor, shard_fn=tensor.shard_fn, gather_fn=tensor.gather_fn
                     )
                 record_tensor = gather_distributed_param(record_tensor, keep_vars=False).cpu()
+                if is_padded_tensor(tensor):
+                    record_tensor = init_as_padded_tensor(
+                        record_tensor, tensor._current_length, tensor._origin_length, tensor._padding_dim
+                    )
+                    record_tensor = to_unpadded_tensor(record_tensor)
 
             assert tensor not in chunk_to_save_data
             chunk_to_save_data[tensor] = record_tensor
@@ -520,6 +531,8 @@ class GeminiDDP(ModelWrapper):
                     # deal with ddp ignored parameters
                     destination[prefix + name] = param if keep_vars else param.detach()
                 else:
+                    if is_padded_tensor(p_mapping[param]):
+                        p_mapping[param] = to_unpadded_tensor(p_mapping[param])
                     destination[prefix + name] = p_mapping[param]
         del p_mapping
         del param_to_save_data
@@ -627,6 +640,7 @@ class GeminiDDP(ModelWrapper):
                 list, and will be reported together in
                 :meth:`~torch.nn.Module.load_state_dict`
         """
+
         for hook in self._load_state_dict_pre_hooks.values():
             hook(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
 
@@ -646,6 +660,14 @@ class GeminiDDP(ModelWrapper):
             state_key = prefix + param_name
             if state_key in state_dict:
                 input_param = state_dict[state_key]
+
+                global_shape = dest_tensor.shape
+                if source_device_mesh is not None and source_sharding_spec is not None:
+                    global_shape = get_global_shape(dest_tensor)
+
+                if is_padded_tensor(dest_tensor):
+                    padding_dim = dest_tensor._padding_dim
+                    input_param = to_padded_tensor(input_param, global_shape[padding_dim], padding_dim)
 
                 if source_device_mesh is not None and source_sharding_spec is not None:
                     input_param = distribute_tensor(input_param, source_device_mesh, source_sharding_spec)

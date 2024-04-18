@@ -5,7 +5,16 @@ from typing import Callable, Dict, List
 import torch.nn as nn
 from torch import Tensor, nn
 
-from colossalai.shardformer.layer import FusedLayerNorm, LayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import (
+    FusedLayerNorm,
+    LayerNorm,
+    Linear1D_Col,
+    Linear1D_Row,
+    PaddingEmbedding,
+    PaddingLMHead,
+    VocabParallelEmbedding1D,
+    VocabParallelLMHead1D,
+)
 
 from .._utils import getattr_
 from ..modeling.jit import get_jit_fused_dropout_add_func
@@ -41,22 +50,20 @@ class OPTPolicy(Policy):
         pass
 
     def preprocess(self):
-        # reshape the embedding layer
-        r"""
-        Reshape the Embedding layer to make the embedding dimension divisible by world_size
-        """
-        if self.shard_config.enable_tensor_parallelism:
-            vocab_size = self.model.config.vocab_size
-            world_size = self.shard_config.tensor_parallel_size
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
+        self.tie_weight = self.tie_weight_check()
         return self.model
 
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer
 
         policy = {}
+
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
             norm_cls = FusedLayerNorm
@@ -68,14 +75,6 @@ class OPTPolicy(Policy):
             warnings.warn("OPT doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
-            policy[OPTDecoder] = ModulePolicyDescription(
-                sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="embed_tokens",
-                        target_module=VocabParallelEmbedding1D,
-                    )
-                ]
-            )
             policy[OPTDecoderLayer] = ModulePolicyDescription(
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
@@ -112,6 +111,17 @@ class OPTPolicy(Policy):
                         target_module=Linear1D_Row,
                     ),
                 ],
+            )
+
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="embed_tokens",
+                    target_module=embedding_cls,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                ),
+                policy=policy,
+                target_key=OPTDecoder,
             )
 
         # optimization configuration
@@ -253,8 +263,20 @@ class OPTForCausalLMPolicy(OPTPolicy):
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="lm_head",
-                    target_module=Linear1D_Col,
-                    kwargs=dict(gather_output=True),
+                    target_module=VocabParallelLMHead1D,
+                    kwargs=dict(
+                        gather_output=True, make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by
+                    ),
+                ),
+                policy=policy,
+                target_key=OPTForCausalLM,
+            )
+        else:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="lm_head",
+                    target_module=PaddingLMHead,
+                    kwargs=dict(make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by),
                 ),
                 policy=policy,
                 target_key=OPTForCausalLM,
