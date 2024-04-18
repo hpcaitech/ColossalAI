@@ -33,6 +33,7 @@ from colossalai.shardformer.layer._operation import (
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import ColoAttention, cross_entropy_1d
+from ..layer._operation import gather_forward_split_backward
 
 
 class LlamaPipelineForwards:
@@ -113,6 +114,10 @@ class LlamaPipelineForwards:
                 device=device,
             )
             position_ids = position_ids.unsqueeze(0)
+
+        if self._use_flash_attention_2:
+            # 2d mask is passed through the layers
+            attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
 
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
@@ -329,6 +334,7 @@ class LlamaPipelineForwards:
                         shift_logits,
                         shift_labels,
                         process_group=shard_config.tensor_parallel_process_group,
+                        vocab_size=self.lm_head.out_features,
                     )
                 else:
                     shift_logits = shift_logits.view(-1, self.config.vocab_size)
@@ -758,13 +764,13 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             shift_labels = shift_labels.view(-1)
             # Enable model parallelism
             shift_labels = shift_labels.to(shift_logits.device)
-
             new_vocab_size = logits.shape[-1]
             shift_logits = shift_logits.view(-1, new_vocab_size)
             loss = cross_entropy_1d(
                 shift_logits,
                 shift_labels,
                 process_group=shard_config.tensor_parallel_process_group,
+                vocab_size=self.lm_head.out_features,
             )
 
         if not return_dict:
@@ -962,7 +968,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                 device=inputs_embeds.device,
             )
 
-        attention_mask = self._prepare_decoder_attention_mask(
+        attention_mask = _prepare_4d_causal_attention_mask(
             attention_mask, attention_mask.shape, inputs_embeds, past_key_values_length
         )
 
