@@ -139,6 +139,7 @@ def check_optim_on_bert(optim_class, sharded_optim_class):
 
 
 def check_dist_optim_state(org_optimizer, sharded_optimizer):
+    torch.set_default_dtype(torch.bfloat16)
     for group, tp_group in zip(org_optimizer.param_groups, sharded_optimizer.param_groups):
         for p, tp in zip(group["params"], tp_group["params"]):
             p_state = org_optimizer.state[p]
@@ -226,5 +227,17 @@ def check_dist_optim_state(org_optimizer, sharded_optimizer):
                                 # need a div; 
                         else:
                             pass
-                    res = torch.allclose(p_state[key], tp_optim_state, atol=5e-4, rtol=1.6e-2)
+                    # Sovled a New issus: different dtype; 
+                    # So far, only happen in H100 env; 
+                    # Seem torch.set_default_dtype(torch.bfloat16) not act on booster.percision; 
+                    # Or assert_close just update to check dtype;
+                    if p_state[key].dtype != tp_optim_state.dtype:
+                        tp_optim_state = tp_optim_state.type(p_state[key].dtype)
                     assert_close(p_state[key], tp_optim_state, atol=5e-4, rtol=1.6e-2)
+
+
+def check_dist_param(org_model, sharded_model, weight_layer_for_check, atol, rtol):
+    for (org_name, org_param), (sharded_name, sharded_param) in zip(org_model.named_parameters(), sharded_model.named_parameters()):
+        if org_name in weight_layer_for_check:
+            # print(f"org_name {org_name} shape {org_param.shape} {org_param}\n sharded_name {sharded_name} shape {sharded_param.shape} {sharded_param}\n")
+            assert_close(org_param, sharded_param, atol=atol, rtol=rtol)

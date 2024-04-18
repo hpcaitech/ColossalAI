@@ -13,7 +13,7 @@ from torch.optim import Adam, Optimizer
 from torch.testing import assert_close
 
 from colossalai.booster import Booster
-from colossalai.booster.plugin import HybridParallelPlugin
+from colossalai.booster.plugin import HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.booster.plugin.hybrid_parallel_plugin import HybridParallelModule
 from colossalai.lazy import LazyInitContext
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -21,6 +21,7 @@ from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer._utils import getattr_
 from colossalai.shardformer.policies.auto_policy import Policy
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
+from colossalai.accelerator import get_accelerator
 
 
 def build_model(
@@ -137,6 +138,32 @@ def build_model_from_hybrid_plugin(
     return org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster
 
 
+def build_model_from_low_level_zero_plugin(
+    model_fn: Callable, loss_fn: Callable, test_config: Dict[str, Any], optim_class=Adam, sharded_optim_class=Adam
+):
+    use_lazy_init = False
+    if "use_lazy_init" in test_config:
+        use_lazy_init = test_config.pop("use_lazy_init")
+
+    ctx = LazyInitContext() if use_lazy_init else nullcontext()
+    with ctx:
+        org_model = model_fn()
+        sharded_model = copy.deepcopy(org_model)
+    if use_lazy_init:
+        ctx.materialize(org_model)
+
+    org_model = org_model.cuda()
+    org_optimizer = optim_class(org_model.parameters(), lr=1e-3)
+    sharded_optimizer = sharded_optim_class(sharded_model.parameters(), lr=1e-3)
+    criterion = loss_fn
+
+    plugin = LowLevelZeroPlugin(**test_config, max_norm=1.0, initial_scale=2**5)
+    booster = Booster(plugin=plugin)
+
+    sharded_model, sharded_optimizer, criterion, _, _ = booster.boost(sharded_model, sharded_optimizer, criterion)
+    return org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster
+
+
 def run_forward_backward_with_hybrid_plugin(
     org_model: Module,
     sharded_model: Module,
@@ -192,6 +219,44 @@ def run_forward_backward_with_hybrid_plugin(
     org_loss = criterion(org_output)
     org_loss.backward()
 
+    return org_loss, org_output, sharded_loss, sharded_output
+
+
+def run_forward_backward_with_low_level_zero_plugin(
+    org_model: Module,
+    sharded_model: Module,
+    sharded_optimizer: Optimizer,
+    data_gen_fn: Callable,
+    output_transform_fn: Callable,
+    criterion: Callable,
+    booster: Booster,
+):
+    device = get_accelerator().get_current_device()
+    org_model.cuda()
+    sharded_model.cuda()
+
+    def _criterion(outputs, inputs):
+        outputs = output_transform_fn(outputs)
+        loss = criterion(outputs)
+        return loss
+
+    data = data_gen_fn()
+
+    # data = {
+    #     k: v.to(device) if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
+    # }
+    data = {k: v.cuda() for k, v in data.items()}
+    
+    sharded_model.train()
+    sharded_output = sharded_model(**data)
+    sharded_loss = criterion(sharded_output)
+    sharded_optimizer.backward(sharded_loss)
+
+    org_model.train()
+    org_output = org_model(**data)
+    org_loss = criterion(org_output)
+    org_loss.backward()
+    
     return org_loss, org_output, sharded_loss, sharded_output
 
 

@@ -152,4 +152,5 @@ Model/Feature Compatibility Matrix:
     <td colspan="39"></td>
   </tr>
 </table>
-<!-- doc-test-command: echo  -->
+
+<!-- doc-test-command: python -m pytest -rP ./tests/test_optimizer/test_dist_adafactor.py  -->

@@ -6,6 +6,7 @@ from types import MethodType
 from typing import Callable, Iterator, List, Optional, Tuple
 
 import torch
+import torch.distributed
 import torch.nn as nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
@@ -328,8 +329,8 @@ class LowLevelZeroPlugin(DPPluginBase):
             model.update_master_params = MethodType(optimizer.update_master_params, model)
             # Setup optimizers that require global states
             if isinstance(optimizer.optim, DistributedOptim):
-                tp_group = self.tp_group
-                dp_group = self.dp_group
+                tp_group = None
+                dp_group = torch.distributed.distributed_c10d._get_default_group()
                 shard_to_param = optimizer.get_master_to_working_map()
                 is_zero = True
                 optimizer.optim.setup_distributed(tp_group, dp_group, shard_to_param, is_zero)

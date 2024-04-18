@@ -32,16 +32,18 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from colossalai.zero import LowLevelZeroOptimizer
 from tests.kit.model_zoo import model_zoo
-from tests.test_optimizer._utils import run_bert_test, check_dist_optim_state
+from tests.test_optimizer._utils import run_bert_test, check_dist_optim_state, check_dist_param, check_optim_states
 from colossalai.shardformer.layer._operation import _gather
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
+    build_model_from_low_level_zero_plugin,
     check_weight,
     run_forward_backward_with_hybrid_plugin,
+    run_forward_backward_with_low_level_zero_plugin,
     unwrap_model,
 )
 from colossalai.shardformer.layer.utils import Randomizer
-
+from colossalai.accelerator import get_accelerator
 
 HEIGHT = 4
 WIDTH = 4
@@ -514,8 +516,66 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
     Randomizer.reset_index()
     torch.cuda.empty_cache()  
     print(f"Booster Test Pass")    
-                 
-         
+        
+@parameterize(
+    "test_config",
+    [
+        {
+            "stage": 1,
+            "precision": "bf16",
+        },
+        {
+            "stage": 2,
+            "precision": "bf16",
+        },
+    ],
+)        
+def exam_bert_test_on_lowlevelzero_plugin(test_config):
+    sub_model_zoo = model_zoo.get_sub_registry("transformers_bert")
+    model_list = [
+        "transformers_bert",
+        "transformers_bert_for_pretraining", 
+        "transformers_bert_lm_head_model", 
+        "transformers_bert_for_masked_lm",
+        "transformers_bert_for_sequence_classification",
+        "transformers_bert_for_token_classification",
+        "transformers_bert_for_next_sentence",
+        "transformers_bert_for_mcq",
+        "transformers_bert_for_question_answering",
+    ]
+    clear_layout_converter()
+    torch.set_default_dtype(torch.bfloat16)
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        if name in model_list:
+            org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_low_level_zero_plugin(
+                model_fn, loss_fn, test_config, Adafactor, DistributedAdaFactor
+                )
+            
+            org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_low_level_zero_plugin(
+                org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
+            )
+            
+            # LowLevelZero not need warp
+            # bert = unwrap_model(org_model, "BertModel", "bert")
+            # sharded_bert = unwrap_model(sharded_model, "BertModel", "bert")
+            weight_layer_for_check = ["bert.encoder.layer.0.output.dense.weight", "bert.encoder.layer.0.output.dense.weight"]
+                    
+            org_optimizer.step()
+            sharded_optimizer.step()
+                    
+            # check weights
+            if test_config["precision"] == "bf16":
+                atol, rtol = 5e-4, 5e-4
+            else:
+                atol, rtol = 5e-4, 5e-4
+            
+            check_dist_param(org_model, sharded_model, weight_layer_for_check, atol, rtol)
+            check_optim_states(org_optimizer, sharded_optimizer.optim)                   
+
+    Randomizer.reset_index()
+    torch.cuda.empty_cache()
+    print(f"Bert Model Zoo Test Pass") 
+ 
 @parameterize(
     "test_config",
     [
@@ -551,7 +611,7 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
         },
     ],
 )
-def exam_bert_test(test_config):
+def exam_bert_test_on_hybrid_plugin(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_bert")
     test_config["use_lazy_init"] = False
     test_config["pp_size"] = 1  # Do NOT test Pipeline Parallel
@@ -568,17 +628,17 @@ def exam_bert_test(test_config):
         "transformers_bert_for_question_answering",
     ]
     clear_layout_converter()
+    torch.set_default_dtype(torch.bfloat16)
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         if name in model_list:
-
             org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
                 model_fn, loss_fn, test_config, Adafactor, DistributedAdaFactor
-            )
-                    
+                )
+            
             org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
                 org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
             )
-                       
+  
             stage_manager = booster.plugin.stage_manager
             tp_group = booster.plugin.tp_group
 
@@ -607,7 +667,8 @@ def run_dist(rank, world_size, port):
     disable_existing_loggers()
     config = {}
     colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    exam_bert_test()
+    exam_bert_test_on_lowlevelzero_plugin()
+    exam_bert_test_on_hybrid_plugin()
     exam_dist_adafactor_base()
     exam_dist_adafactor_zero()
     exam_dist_adafactor_booster()
