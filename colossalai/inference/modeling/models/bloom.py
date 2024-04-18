@@ -6,7 +6,7 @@ from colossalai.shardformer.layer._operation import (
 )
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.shardformer.shard import ShardConfig
-from colossalai.kernel.triton import flash_decoding_attention, get_xine_cache
+from colossalai.kernel.triton import flash_decoding_attention_with_alibi
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.jit.bias_gelu import GeLUFunction
 from colossalai.kernel.jit.bias_dropout_add import bias_dropout_add_fused_inference
@@ -42,33 +42,39 @@ except ImportError:
     logger.warning(f"flash_attn2 has not been installed yet, we will use triton flash attn instead.")
 
 
-# A temporary python implementation of ALibi.
-def _get_bias_matrix(n_heads: int):
-    def _get_bias_matrix_pow_of_2(n_heads):
+# The Alibi implementation is adapted from https://github.com/ofirpress/attention_with_linear_biases/blob/a35aaca144e0eb6b789dfcb46784c4b8e31b7983/fairseq/models/transformer.py#L742
+def _get_alibi_slopes(n_heads: int):
+    def _get_alibi_slopes_pow_of_2(n_heads):
         start = (2 ** (-2 ** -(math.log2(n_heads) - 3)))
         ratio = start
         return [start * ratio ** i for i in range(n_heads)]
     
     if math.log2(n_heads).is_integer():
-        return _get_bias_matrix_pow_of_2(n_heads)
+        return _get_alibi_slopes_pow_of_2(n_heads)
     else: 
         closest_power_of_2 = 2 ** math.floor(math.log2(n_heads))
-        return _get_bias_matrix_pow_of_2(closest_power_of_2) + _get_bias_matrix(2 * closest_power_of_2)[0::2][:n_heads - closest_power_of_2]
+        return _get_alibi_slopes_pow_of_2(closest_power_of_2) + _get_alibi_slopes(2 * closest_power_of_2)[0::2][:n_heads - closest_power_of_2]
         
-def _fill_with_neg_inf(t):
-    return t.float().fill_(float("-inf")).type_as(t)
+def _get_alibi_tensor(n_heads: int, mask: torch.Tensor):
+    slopes = _get_alibi_slopes(n_heads).to(mask.device)
+    distance = mask.cumsum(dim=-1)
+    return distance[:, :, None] * slopes[None, None, :]
+
+
+# def _fill_with_neg_inf(t):
+#     return t.float().fill_(float("-inf")).type_as(t)
        
-# (Register buffer within BloomModel), only use for inference
-def _get_alibi_mask(max_pos: int, n_heads: int):
-    slopes = torch.Tensor(_get_bias_matrix(n_heads))
-    alibi = slopes.unsqueeze(1).unsqueeze(1) * torch.arange(max_pos).unsqueeze(0).unsqueeze(0) \
-        .expand(n_heads, -1, -1) \
-        .view(n_heads, 1, max_pos)
+# # (Register buffer within BloomModel), only use for inference
+# def _get_alibi_tensor(max_pos: int, n_heads: int):
+#     slopes = torch.Tensor(_get_alibi_slopes(n_heads))
+#     alibi = slopes.unsqueeze(1).unsqueeze(1) * torch.arange(max_pos).unsqueeze(0).unsqueeze(0) \
+#         .expand(n_heads, -1, -1) \
+#         .view(n_heads, 1, max_pos)
         
-    alibi_mask = torch.triu (
-        _fill_with_neg_inf(torch.zeros([max_pos, max_pos])), 1
-    )
-    return alibi_mask.unsqueeze(0) + alibi
+#     alibi_mask = torch.triu (
+#         _fill_with_neg_inf(torch.zeros([max_pos, max_pos])), 1
+#     )
+#     return alibi_mask.unsqueeze(0) + alibi
         
 
 # TODO
@@ -77,7 +83,6 @@ def bloom_model_forward(
     input_tokens_ids: torch.Tensor,
     output_tensor: torch.Tensor,
     inputmetadata: InputMetaData,
-    attention_mask: torch.Tensor = None,
     k_caches: List[torch.Tensor] = None,
     v_caches: List[torch.Tensor] = None,
     use_cuda_kernel: Optional[bool] = True,
@@ -87,7 +92,7 @@ def bloom_model_forward(
     def get_alibi_mask(x: torch.Tensor, past_seq_length: int, is_prompts: bool = False):
         if is_prompts:
             is_prompts = False
-            self.register_buffer("future_mask", _get_alibi_mask())
+            self.register_buffer("future_mask", _get_alibi_tensor())
     
     is_prompts = inputmetadata.is_prompts
     block_tables = inputmetadata.block_tables
@@ -105,23 +110,18 @@ def bloom_model_forward(
     if use_cuda_kernel:
         if inputmetadata != torch.float32 and use_flash_attn2:
             cu_seqlens = F.pad(torch.cumsum(sequence_lengths, dim=0, dtype=torch.torch.int32), (1, 0))
-
-    # TODO: need pass deal with past_seq_length (k, v cache related)
-    # alibi = get_alibi_mask(hidden_states)
     
     seq_length_with_past = sequence_lengths
     
-    if is_prompts:
-        is_prompts = False
-        self.register_buffer("future_mask", _get_alibi_mask(self.n_head, self.max_cache_pos).to(hidden_states), persistent=False)
-    if seq_length_with_past > self.max_cache_pos:
-        self.max_cache_pos = seq_length_with_past
-        self.register_buffer("future_mask", _get_alibi_mask(self.n_head, self.max_cache_pos).to(hidden_states), persistent=False)
+    # if is_prompts:
+    #     is_prompts = False
+    #     self.register_buffer("future_mask", _get_alibi_tensor(self.n_head, self.max_cache_pos).to(hidden_states), persistent=False)
+    # if seq_length_with_past > self.max_cache_pos:
+    #     self.max_cache_pos = seq_length_with_past
+    #     self.register_buffer("future_mask", _get_alibi_tensor(self.n_head, self.max_cache_pos).to(hidden_states), persistent=False)
     
-    alibi = _get_bias_matrix(self.n_head)
-    alibi_mask = self.future_mask[:self.n_head, :seq_length_with_past, :seq_length_with_past] 
-    attention_mask = alibi_mask # refer to baichuan_13b
-    
+    alibi = _get_alibi_slopes(self.n_head)
+    # alibi_mask = self.future_mask[:self.n_head, :seq_length_with_past, :seq_length_with_past]     
     
     sm_scale = 1.0 / (inputmetadata.head_dim**0.5)
     norm_output = torch.empty_like(hidden_states)
@@ -144,10 +144,7 @@ def bloom_model_forward(
             sm_scale=sm_scale,
             use_cuda_kernel=use_cuda_kernel,
             high_precision=high_precision,
-            attention_mask=attention_mask,
         )
-        
-    # TODO: is_prompt
               
     hidden_states = self.ln_f(hidden_states)
     return hidden_states    
@@ -186,7 +183,6 @@ def bloom_block_forward(
     v_cache: torch.Tensor,
     sequence_lengths: torch.Tensor,
     fd_inter_tensor: FDIntermTensors,
-    attention_mask: torch.Tensor = None,
     is_prompts: bool = True,
     is_verifier: bool = False,
     tokens_to_verify: int = None,
@@ -212,7 +208,6 @@ def bloom_block_forward(
         hidden_states=layernorm_output,
         residual=residual,
         alibi=alibi,
-        attention_mask=attention_mask,
         hidden_states=hidden_states,
         block_tables=block_tables,
         k_cache=k_cache,
@@ -289,8 +284,7 @@ class ColossalInferBloomAttention(BloomAttention):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        alibi: torch.Tensor, # alibi slopes
-        attention_mask: torch.Tensor,
+        alibi: torch.Tensor,
         block_tables: torch.Tensor,
         k_cache: torch.Tensor,
         v_cache: torch.Tensor,
@@ -331,10 +325,11 @@ class ColossalInferBloomAttention(BloomAttention):
             )
                 
             
-            attn_output = flash_decoding_attention(
+            attn_output = flash_decoding_attention_with_alibi(
                 q=query_states,
                 k_cache=k_cache,
                 v_cache=v_cache,
+                alibi=alibi,
                 kv_seq_len=sequence_lengths,
                 block_tables=block_tables,
                 block_size=block_size,
