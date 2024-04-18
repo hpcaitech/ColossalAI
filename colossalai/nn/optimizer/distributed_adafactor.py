@@ -128,13 +128,9 @@ class DistributedAdaFactor(DistributedOptim):
             # reduce tensor_sum  from tp_group
             dist.all_reduce(tensor_sum, group=tp_group)
             num_of_element = num_of_element * tp_size
-            if use_zero:
-                dist.all_reduce(tensor_sum, group=dp_group)
-                num_of_element = num_of_element * dp_size
-        else:
-            if use_zero:
-                dist.all_reduce(tensor_sum, group=dp_group)
-                num_of_element = num_of_element * dp_size
+        if use_zero:
+            dist.all_reduce(tensor_sum, group=dp_group)
+            num_of_element = num_of_element * dp_size
         rms = (tensor_sum / num_of_element).sqrt()
         return rms
 
