@@ -12,7 +12,9 @@ from colossalai.inference.core.engine import InferenceEngine
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
-BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-7B-Base"
+BAICHUAN_MODEL_NAME_OR_PATH = "/home/caidi/Baichuan2-13B-Base"
+# BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-7B-Base"
+# BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-13B-Base"
 
 
 def setup_seed(seed):
@@ -39,7 +41,7 @@ def check_inference_engine(use_engine=False, prompt_template=None):
 
     if use_engine:
         inference_config = InferenceConfig(
-            max_output_len=output_len, prompt_template=prompt_template, dtype="fp32", use_cuda_kernel=True
+            max_output_len=output_len, prompt_template=prompt_template, use_cuda_kernel=False
         )
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         assert inference_engine.generation_config.max_new_tokens == output_len

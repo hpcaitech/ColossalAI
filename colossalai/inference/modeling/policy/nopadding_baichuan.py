@@ -1,12 +1,15 @@
 import torch.nn as nn
 from torch.nn import Parameter
 
-from colossalai.inference.modeling.models.nopadding_baichuan import NopadBaichuanAttention, NopadBaichuanMLP
+from colossalai.inference.modeling.models.nopadding_baichuan import (
+    NopadBaichuanAttention,
+    NopadBaichuanMLP,
+    baichuan_rmsnorm_forward,
+)
 from colossalai.inference.modeling.models.nopadding_llama import (
     llama_causal_lm_forward,
     llama_decoder_layer_forward,
     llama_model_forward,
-    llama_rmsnorm_forward,
 )
 from colossalai.inference.utils import init_to_get_rotary
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
@@ -29,7 +32,22 @@ class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy):
             attribute_replacement=decoder_attribute_replacement,
         )
 
+        # used for Baichuan 7B
         policy["DecoderLayer"] = ModulePolicyDescription(
+            sub_module_replacement=[
+                SubModuleReplacementDescription(
+                    suffix="mlp",
+                    target_module=NopadBaichuanMLP,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="self_attn",
+                    target_module=NopadBaichuanAttention,
+                ),
+            ]
+        )
+
+        # used for Baichuan 13B
+        policy["BaichuanLayer"] = ModulePolicyDescription(
             sub_module_replacement=[
                 SubModuleReplacementDescription(
                     suffix="mlp",
@@ -48,11 +66,18 @@ class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy):
         self.append_or_create_method_replacement(
             description={"forward": llama_model_forward}, policy=policy, target_key="BaichuanModel"
         )
+
+        # used for Baichuan 7B
         self.append_or_create_method_replacement(
             description={"forward": llama_decoder_layer_forward}, policy=policy, target_key="DecoderLayer"
         )
+        # used for Baichuan 13B
         self.append_or_create_method_replacement(
-            description={"forward": llama_rmsnorm_forward}, policy=policy, target_key="RMSNorm"
+            description={"forward": llama_decoder_layer_forward}, policy=policy, target_key="BaichuanLayer"
+        )
+
+        self.append_or_create_method_replacement(
+            description={"forward": baichuan_rmsnorm_forward}, policy=policy, target_key="RMSNorm"
         )
 
         return policy

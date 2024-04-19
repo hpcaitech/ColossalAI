@@ -2,6 +2,7 @@ import pytest
 import torch
 from packaging import version
 
+from colossalai.inference.flash_decoding_utils import get_alibi_slopes
 from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
 from tests.test_infer.test_ops.triton.kernel_utils import (
@@ -10,6 +11,7 @@ from tests.test_infer.test_ops.triton.kernel_utils import (
     generate_caches_and_block_tables_v2,
     torch_attn_ref,
 )
+from tests.test_infer.test_ops.triton.test_context_attn_unpad import generate_alibi_mask
 
 try:
     import triton  # noqa
@@ -64,6 +66,7 @@ def prepare_data(
 @pytest.mark.parametrize("kv_group_num", [1, 2, 16])
 @pytest.mark.parametrize("same_context_len", [True, False])
 @pytest.mark.parametrize("q_len", [1, 5])
+@pytest.mark.parametrize("use_alibi_slopes", [True, False])
 def test_flash_decoding(
     bsz: int,
     block_size: int,
@@ -72,6 +75,7 @@ def test_flash_decoding(
     kv_group_num: int,
     same_context_len: bool,
     q_len: int,
+    use_alibi_slopes: bool,
 ):
     torch.manual_seed(123)
     torch.cuda.empty_cache()
@@ -83,6 +87,12 @@ def test_flash_decoding(
     max_seq_len = block_size * max_num_blocks_per_seq
     dtype = torch.float16
     device = get_current_device()
+
+    if use_alibi_slopes:
+        alibi_slopes = get_alibi_slopes(num_attn_heads, device)
+    else:
+        alibi_slopes = None
+
     q, k_unpad, v_unpad, kv_lengths = prepare_data(
         bsz, num_attn_heads, num_kv_heads, HEAD_DIM, same_context_len, q_len, max_seq_len, dtype, device
     )
@@ -92,6 +102,11 @@ def test_flash_decoding(
     k_torch = convert_kv_unpad_to_padded(k_unpad, kv_lengths, bsz, max_kv_len_in_b)
     v_torch = convert_kv_unpad_to_padded(v_unpad, kv_lengths, bsz, max_kv_len_in_b)
     attention_mask = create_attention_mask(kv_lengths, bsz, q_len, max_kv_len_in_b, q.device)
+
+    if use_alibi_slopes:
+        alibi_mask = generate_alibi_mask(alibi_slopes, num_attn_heads, max_kv_len_in_b, q.device)
+        attention_mask = attention_mask + alibi_mask
+
     out_torch = torch_attn_ref(
         q, k_torch, v_torch, attention_mask, bsz, q_len, max_kv_len_in_b, num_attn_heads, num_kv_heads, HEAD_DIM
     )
@@ -130,6 +145,7 @@ def test_flash_decoding(
         output,
         mid_output,
         mid_output_lse,
+        alibi_slopes=alibi_slopes,
         sm_scale=sm_scale,
         kv_group_num=kv_group_num,
         q_len=q_len,
@@ -140,4 +156,4 @@ def test_flash_decoding(
 
 
 if __name__ == "__main__":
-    test_flash_decoding(16, 32, 32, 16, 1, True)
+    test_flash_decoding(16, 32, 32, 16, 1, True, 1, True)
