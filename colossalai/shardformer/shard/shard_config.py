@@ -110,11 +110,10 @@ class ShardConfig:
         """
         # you can add all the optimization flag here
         try:
-            from apex.normalization import FusedLayerNorm
             apex_installed = True
         except ImportError:
             apex_installed = False
-            
+
         self.enable_fused_normalization = True and apex_installed
         self.enable_flash_attention = True
         self.enable_jit_fused = True
