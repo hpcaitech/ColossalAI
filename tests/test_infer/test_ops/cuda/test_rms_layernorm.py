@@ -9,7 +9,7 @@ inference_ops = InferenceOpsLoader().load()
 
 
 @pytest.mark.parametrize("M", [2, 4, 8, 16])
-@pytest.mark.parametrize("N", [64, 128, 512])
+@pytest.mark.parametrize("N", [64, 128, 512, 5120])
 def test_rms_layernorm(M: int, N: int):
     torch.manual_seed(123)
     torch.cuda.empty_cache()
@@ -48,4 +48,4 @@ def test_rms_layernorm(M: int, N: int):
 
 
 if __name__ == "__main__":
-    test_rms_layernorm(16, 512)
+    test_rms_layernorm(16, 5120)
