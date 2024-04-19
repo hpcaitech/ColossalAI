@@ -287,7 +287,7 @@ void rms_layernorm(
         RMSNORM_LAUNCHER(8, block);
         break;
       default:
-        AT_ERROR("unroll_factor must be 1, 2, 4 or 8");
+        AT_ERROR("unroll_factor must be 1, 2, 3, 4 or 8");
     }
   }
 }
@@ -334,7 +334,7 @@ void fused_add_rms_layernorm(
         FUSED_ADD_RMSNORM_LAUNCHER(8, block);
         break;
       default:
-        AT_ERROR("unroll_factor must be 1, 2, 4 or 8");
+        AT_ERROR("unroll_factor must be 1, 2, 3, 4 or 8");
     }
   }
 }

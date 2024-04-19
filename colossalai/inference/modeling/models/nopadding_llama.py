@@ -593,7 +593,7 @@ class NopadLlamaAttention(ParallelModule, LlamaAttention):
                     high_precision,
                 )
                 # inference_ops.flash_decoding_attention(
-                #     attn_output,
+                #     output_tensor,
                 #     query_states,
                 #     k_cache,
                 #     v_cache,
@@ -605,6 +605,7 @@ class NopadLlamaAttention(ParallelModule, LlamaAttention):
                 #     fd_inter_tensor.mid_output_lse,
                 #     sm_scale,
                 # )
+                # attn_output = output_tensor
             else:
                 if is_verifier:
                     rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
