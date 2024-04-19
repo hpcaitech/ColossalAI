@@ -35,7 +35,7 @@ configs = [
         styles=[("red", "-"), ("blue", "-"), ("yellow", "-"), ("red", "--"), ("blue", "--"), ("yellow", "--")],
         ylabel="ms",
         plot_name=f"RMSNorm benchmarking results",
-        args={"HIDDEN_SIZE": 1024},
+        args={"HIDDEN_SIZE": 5120},
     )
 ]
 
