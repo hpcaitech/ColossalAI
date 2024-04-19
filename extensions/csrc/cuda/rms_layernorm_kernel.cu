@@ -277,6 +277,9 @@ void rms_layernorm(
       case 2:
         RMSNORM_LAUNCHER(2, block);
         break;
+      case 3:
+        RMSNORM_LAUNCHER(3, block);
+        break;
       case 4:
         RMSNORM_LAUNCHER(4, block);
         break;
@@ -320,6 +323,9 @@ void fused_add_rms_layernorm(
         break;
       case 2:
         FUSED_ADD_RMSNORM_LAUNCHER(2, block);
+        break;
+      case 3:
+        FUSED_ADD_RMSNORM_LAUNCHER(3, block);
         break;
       case 4:
         FUSED_ADD_RMSNORM_LAUNCHER(4, block);
