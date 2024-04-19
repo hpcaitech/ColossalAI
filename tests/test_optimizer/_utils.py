@@ -1,4 +1,5 @@
 import torch
+import torch.distributed as dist
 from torch.testing import assert_close
 
 import colossalai
@@ -12,6 +13,11 @@ from tests.test_shardformer.test_model._utils import (
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
+
+
+def print_rank_0(msg):
+    if dist.get_rank() == 0:
+        print(msg)
 
 
 def check_optim_states(org_optim, sharded_optim):

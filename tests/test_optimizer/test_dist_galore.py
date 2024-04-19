@@ -1,3 +1,5 @@
+"""Usage(requires 4 GPUs): python test_dist_galore.py"""
+
 import pytest
 import torch
 import torch.distributed as dist
@@ -16,7 +18,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 from colossalai.zero import LowLevelZeroOptimizer
 from tests.kit.model_zoo import model_zoo
-from tests.test_optimizer._utils import check_optim_states, run_bert_test
+from tests.test_optimizer._utils import check_optim_states, print_rank_0, run_bert_test
 
 _ALLOWED_P_G_TYPES = [
     (torch.float, torch.float),  # pure fp32
@@ -29,7 +31,7 @@ _SHARD_DIM = DimSpec([0])
 _IN_DIM = 32
 _HID_DIM = 128
 _N_STEP = 3
-_SEED = 1024
+_SEED = 111
 _COORD = None
 
 Net, data_gen, *_ = next(iter(model_zoo.get_sub_registry("simple_mlp").values()))
@@ -41,6 +43,27 @@ def get_split_dim(p):
         raise ValueError("p is not a distributed tensor")
     sharding = p.dist_layout.sharding_spec.sharding_sequence
     return sharding.index(_SHARD_DIM)
+
+
+def assert_grad_close(tp_model, torch_model, tp_group):
+    tp_size = dist.get_world_size(tp_group)
+
+    # Check equal grads
+    for p, torch_p in zip(tp_model.parameters(), torch_model.parameters()):
+        update = p.grad
+        if is_distributed_tensor(p):
+            split_dim = get_split_dim(p)
+            all_update = [torch.empty_like(update) for _ in range(tp_size)]
+            dist.all_gather(all_update, update.contiguous(), group=tp_group)
+            all_update = torch.cat(all_update, dim=split_dim)
+        else:
+            all_update = update
+        try:
+            assert (all_update != 0).any()
+            assert_close(all_update, torch_p.grad)
+        except Exception as e:
+            print(f"Before gather: {update.shape}, after: {all_update.shape}")
+            raise e
 
 
 def assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group):
@@ -103,7 +126,7 @@ def set_dist_grad(
 
 
 @parameterize("p_g_dtype", _ALLOWED_P_G_TYPES)
-@parameterize("tp_zero_size", [(1, 4), (4, 1), (2, 2)])
+@parameterize("tp_zero_size", [(4, 1), (1, 4), (2, 2)])
 def run_dist_galore_basic(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_size: tuple[int, int]) -> None:
     """Test without forward"""
     p_dtype, g_dtype = p_g_dtype
@@ -114,6 +137,7 @@ def run_dist_galore_basic(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_si
     clear_layout_converter()  # Ensure correct sharding
     proc_mesh = ProcessGroupMesh(tp_size, zero_size)
     tp_group = proc_mesh.get_group_along_axis(0)
+    dp_group = proc_mesh.get_group_along_axis(1)
 
     tp_rank = dist.get_rank(tp_group)
     seed_all(_SEED)  # Fix model init
@@ -128,43 +152,46 @@ def run_dist_galore_basic(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_si
         torch_model.fc2.weight[:, tp_rank * _HID_DIM // tp_size : (tp_rank + 1) * _HID_DIM // tp_size],
         tp_model.fc2.weight,
     )
-
     # Set up optimizers
-    lr = 1e-3
+    lr = 1e-2
     beta1, beta2 = 0.9, 0.999
     eps = 1e-8
-    torch_optim = GaLoreAdamW8bit(get_galore_param_groups(torch_model), lr=lr, betas=(beta1, beta2), eps=eps)
+    torch_optim = GaLoreAdamW8bit(get_galore_param_groups(torch_model, rank=8), lr=lr, betas=(beta1, beta2), eps=eps)
     optim = DistGaloreAwamW8bit(
-        get_galore_param_groups(tp_model),
+        get_galore_param_groups(tp_model, rank=8),
         lr=lr,
         betas=(beta1, beta2),
         eps=eps,
     )
-    optim.setup_distributed(tp_group)
+    optim.setup_distributed(tp_group, dp_group)
 
-    rtol, atol = 8e-5, 8e-5
+    rtol, atol = 8e-7, 8e-7
     if p_dtype is torch.float16 or g_dtype is torch.float16:
-        rtol, atol = 2e-4, 2e-4
+        rtol, atol = 1e-6, 1e-6
     if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
-        rtol, atol = 4e-4, 4e-4
+        rtol, atol = 2e-6, 2e-6
 
     for i in range(_N_STEP):
         seed_all(_SEED + i)  # NOTE: having only one manual_seed above doesn't work?
         set_dist_grad(tp_model, torch_model, g_dtype, tp_group)
-
-        torch_optim.step()
-        optim.step()
-        torch_optim.zero_grad()
-        optim.zero_grad()
         try:
+            print_rank_0(f"--------------------Debugging step {i}-------------------")
+            torch_optim.step()
+            optim.step()
+            assert_grad_close(tp_model, torch_model, tp_group)
+
+            torch_optim.zero_grad()
+            optim.zero_grad()
             assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group)
+            check_optim_states(torch_optim, optim)
+
         except Exception as e:
             _COORD.print_on_master(f"step {i}: p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}")
             raise e
 
 
 @parameterize("p_g_dtype", _ALLOWED_P_G_TYPES)
-@parameterize("tp_zero_size", [(2, 2), (4, 1), (1, 4)])
+@parameterize("tp_zero_size", [(4, 1), (2, 2), (1, 4)])
 def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_size: tuple[int, int]) -> None:
     p_dtype, g_dtype = p_g_dtype
     tp_size, zero_size = tp_zero_size
@@ -191,12 +218,12 @@ def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_
     )
 
     # Set up optimizers
-    lr = 1e-3
+    lr = 1e-2
     beta1, beta2 = 0.9, 0.999
     eps = 1e-8
-    torch_optim = GaLoreAdamW8bit(get_galore_param_groups(torch_model), lr=lr, betas=(beta1, beta2), eps=eps)
+    torch_optim = GaLoreAdamW8bit(get_galore_param_groups(torch_model, rank=8), lr=lr, betas=(beta1, beta2), eps=eps)
     optim = DistGaloreAwamW8bit(
-        get_galore_param_groups(tp_model),
+        get_galore_param_groups(tp_model, rank=8),
         lr=lr,
         betas=(beta1, beta2),
         eps=eps,
@@ -212,26 +239,18 @@ def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_
             dp_process_group=dp_group,
             verbose=True,
         )
-        shard_to_param = optim._param_store.master_to_working_param
-        torch_optim = LowLevelZeroOptimizer(
-            torch_optim,
-            overlap_communication=True,
-            initial_scale=128,
-            partition_grad=True,
-            dp_process_group=dp_group,
-            verbose=True,
-        )
+        shard_to_param = optim.get_master_to_working_map()
         optim.optim.setup_distributed(
             tp_group, dp_group, shard_to_param, padding_map=optim.get_param_padding_map(), is_zero=True
         )
     else:
         optim.setup_distributed(tp_group)
 
-    rtol, atol = 3e-5, 3e-5
+    rtol, atol = 8e-7, 8e-7
     if p_dtype is torch.float16 or g_dtype is torch.float16:
-        rtol, atol = 1e-4, 1e-4
+        rtol, atol = 1e-6, 1e-6
     if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
-        rtol, atol = 2e-4, 2e-4
+        rtol, atol = 2e-6, 2e-6
 
     seed_all(_SEED)  # NOTE: having only one manual_seed above doesn't work?
     x = data_gen()
@@ -247,13 +266,15 @@ def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_
 
     if zero_size > 1:
         optim.backward(out_tp.sum())
-        torch_optim.backward(out.sum())
+        out.sum().backward()
     else:
         out_tp.sum().backward()
         out.sum().backward()
 
     torch_optim.step()
     optim.step()
+    assert_grad_close(tp_model, torch_model, tp_group)
+
     torch_optim.zero_grad()
     optim.zero_grad()
     try:

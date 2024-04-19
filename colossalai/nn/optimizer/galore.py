@@ -1,10 +1,28 @@
-# adapted from https://github.com/jiaweizzhao/GaLore/blob/master/galore_torch/adamw8bit.py
+""" adapted from https://github.com/jiaweizzhao/GaLore/blob/master/galore_torch/adamw8bit.py"""
+
+import warnings
 from typing import List
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from bitsandbytes.optim.optimizer import Optimizer2State
 from torch._C import _LinAlgError
+
+
+# Debug
+def get_chunk(_grad):
+    if _grad.dim() == 1:
+        return _grad
+    if _grad.shape[1] == 128:
+        _grad = _grad[:, :32]
+    elif _grad.shape[0] == 128:
+        _grad = _grad[:32, :]
+    elif _grad.shape[0] == 32:
+        _grad = _grad[:8,]
+    else:
+        _grad = _grad
+    return _grad
 
 
 def get_galore_param_groups(model: nn.Module, rank=256, update_proj_gap=200, scale=0.25, proj_type="std") -> List[dict]:
@@ -14,16 +32,12 @@ def get_galore_param_groups(model: nn.Module, rank=256, update_proj_gap=200, sca
     """
     galore_params = []
     non_galore = []
-    galore_names = []  # Directly checking if tensor in list throws shape mismatch comparison error
-    for name, module in model.named_modules():
+    for param in model.parameters():
         # Only make sense to do SVD on 2d gradient matrices
-        # Do NOT apply on Vocab Embedding, which is already highly rank deficient
-        if isinstance(module, nn.Linear):
-            galore_params.append(module.weight)
-            galore_names.append(name + ".weight")
-
-    for name, param in model.named_parameters():
-        if name not in galore_names:
+        # e.g. nn.Linear, VocabEmbedding, etc.
+        if param.dim() == 2:
+            galore_params.append(param)
+        else:
             non_galore.append(param)
 
     param_groups = [
@@ -40,6 +54,18 @@ def get_galore_param_groups(model: nn.Module, rank=256, update_proj_gap=200, sca
     return param_groups
 
 
+def make_low_rank_buffer(p, grad):
+    """For compatibility with bitsandbytes's update_step, we need an empty low-rank
+    param update buffer to avoid mutating original params.
+    TODO: optimize by reusing the memory for p.grad? Need to modify bitsandbytes?
+    """
+    p.saved_data = p.data.clone()
+    # p.data = grad.clone().to(p.data.dtype).to(p.data.device)
+    p.data = torch.zeros_like(grad, device=p.data.device, dtype=p.data.dtype)
+    # p.data.zero_()
+    p.grad = grad
+
+
 class GaLoreProjector:
     def __init__(self, rank, verbose=False, update_proj_gap=200, scale=1.0, proj_type="std"):
         self.rank = rank
@@ -48,44 +74,60 @@ class GaLoreProjector:
         self.scale = scale
         self.ortho_matrix = None
         self.proj_type = proj_type
+        self.svd_type = None
 
     def project(self, full_rank_grad, iter):
-        if full_rank_grad.dim() == 1:
+        dim = full_rank_grad.dim()
+        if dim != 2:
+            warnings.warn(f"Warning: You have a {dim}D param with projection rank specified. Skipping SVD.")
             return full_rank_grad
 
         m, n = full_rank_grad.shape  # For ZeRO sharded grads
         if self.proj_type == "std":
-            if full_rank_grad.shape[0] >= full_rank_grad.shape[1]:
-                if self.ortho_matrix is None or iter % self.update_proj_gap == 0:
-                    self.ortho_matrix = self.get_orthogonal_matrix(full_rank_grad, self.rank, type="right")
-                low_rank_grad = torch.matmul(full_rank_grad, self.ortho_matrix.t()[:m])
+            # Fix SVD side so that sharding grads won't change it
+            if self.svd_type is None:
+                self.svd_type = "right" if m >= n else "left"
+            # SVD step
+            if self.ortho_matrix is None or iter % self.update_proj_gap == 0:
+                self.ortho_matrix = self.get_orthogonal_matrix(full_rank_grad, self.rank, type=self.svd_type)
+            if self.svd_type == "right":
+                low_rank_grad = torch.matmul(full_rank_grad, self.ortho_matrix.t()[:n])
             else:
-                if self.ortho_matrix is None or iter % self.update_proj_gap == 0:
-                    self.ortho_matrix = self.get_orthogonal_matrix(full_rank_grad, self.rank, type="left")
-                low_rank_grad = torch.matmul(self.ortho_matrix.t()[:, :n], full_rank_grad)
+                low_rank_grad = torch.matmul(self.ortho_matrix.t()[:, :m], full_rank_grad)
+
         elif self.proj_type == "reverse_std":
-            if full_rank_grad.shape[0] >= full_rank_grad.shape[1]:
-                if self.ortho_matrix is None or iter % self.update_proj_gap == 0:
-                    self.ortho_matrix = self.get_orthogonal_matrix(full_rank_grad, self.rank, type="left")
-                low_rank_grad = torch.matmul(self.ortho_matrix.t()[:, :n], full_rank_grad)
+            if self.svd_type is None:
+                self.svd_type = "left" if m >= n else "right"
+            # SVD step
+            if self.ortho_matrix is None or iter % self.update_proj_gap == 0:
+                self.ortho_matrix = self.get_orthogonal_matrix(full_rank_grad, self.rank, type=self.svd_type)
+
+            if self.svd_type == "left":
+                low_rank_grad = torch.matmul(self.ortho_matrix.t()[:, :m], full_rank_grad)
             else:
-                if self.ortho_matrix is None or iter % self.update_proj_gap == 0:
-                    self.ortho_matrix = self.get_orthogonal_matrix(full_rank_grad, self.rank, type="right")
-                low_rank_grad = torch.matmul(full_rank_grad, self.ortho_matrix.t()[:m])
+                low_rank_grad = torch.matmul(full_rank_grad, self.ortho_matrix.t()[:n])
         return low_rank_grad
 
     def project_back(self, low_rank_grad):
+        if low_rank_grad.dim() != 2:
+            return
+
         m, n = low_rank_grad.shape
-        if self.proj_type == "std":
-            if low_rank_grad.shape[0] >= low_rank_grad.shape[1]:
-                full_rank_grad = torch.matmul(low_rank_grad, self.ortho_matrix[:m])
-            else:
-                full_rank_grad = torch.matmul(self.ortho_matrix[:, :n], low_rank_grad)
-        elif self.proj_type == "reverse_std":
-            if low_rank_grad.shape[0] <= low_rank_grad.shape[1]:  # note this is different from std
-                full_rank_grad = torch.matmul(self.ortho_matrix[:, :n], low_rank_grad)
-            else:
-                full_rank_grad = torch.matmul(low_rank_grad, self.ortho_matrix[:m])
+        # if self.proj_type == "std":
+        #     if m >= n:
+        #         full_rank_grad = torch.matmul(low_rank_grad, self.ortho_matrix[:m])
+        #     else:
+        #         full_rank_grad = torch.matmul(self.ortho_matrix[:, :n], low_rank_grad)
+        # elif self.proj_type == "reverse_std":
+        #     if m <= n:  # note this is different from std
+        #         full_rank_grad = torch.matmul(self.ortho_matrix[:, :n], low_rank_grad)
+        #     else:
+        #         full_rank_grad = torch.matmul(low_rank_grad, self.ortho_matrix[:m])
+        if self.svd_type == "right":
+            full_rank_grad = torch.matmul(low_rank_grad, self.ortho_matrix[:n])
+        else:
+            full_rank_grad = torch.matmul(self.ortho_matrix[:, :m], low_rank_grad)
+
         return full_rank_grad * self.scale
 
     # svd decomposition
@@ -113,7 +155,7 @@ class GaLoreProjector:
 
         # make the smaller matrix always to be orthogonal matrix
         if type == "right":
-            A = U[:, :rank] @ torch.diag(s[:rank])
+            # A = U[:, :rank] @ torch.diag(s[:rank])
             B = Vh[:rank, :]
 
             if not float_data:
@@ -121,7 +163,7 @@ class GaLoreProjector:
             return B
         elif type == "left":
             A = U[:, :rank]
-            B = torch.diag(s[:rank]) @ Vh[:rank, :]
+            # B = torch.diag(s[:rank]) @ Vh[:rank, :]
             if not float_data:
                 A = A.to(original_device).type(original_type)
             return A
@@ -151,7 +193,16 @@ class GaLoreAdamW8bit(Optimizer2State):
         eps (float, optional): term added to the denominator to improve
             numerical stability. (default: 1e-6)
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0.01)
-
+        args (`object`, defaults to `None`):
+            An object with additional arguments.
+        min_8bit_size (`int`, defaults to 4096):
+            The minimum number of elements of the parameter tensors for 8-bit optimization.
+        percentile_clipping (`int`, defaults to 100):
+            Adapts clipping threshold automatically by tracking the last 100 gradient norms and clipping the gradient at a certain percentile to improve stability.
+        block_wise (`bool`, defaults to `True`):
+            Whether to independently quantize each block of tensors to reduce outlier effects and improve stability.
+        is_paged (`bool`, defaults to `False`):
+            Whether the optimizer is a paged optimizer (handle memory spike via CPU-GPU transfer) or not.
     Example:
 
     """
@@ -188,7 +239,7 @@ class GaLoreAdamW8bit(Optimizer2State):
         if proj_none:
             print(
                 "Will not apply GaLore as no rank is specified. Or did you forget to?\
-                Try get_galore_param_groups(model)"
+                Try get_galore_param_groups"
             )
 
         # Defaults from the paper
@@ -206,6 +257,7 @@ class GaLoreAdamW8bit(Optimizer2State):
             closure (callable, optional): A closure that reevaluates the model
                 and returns the loss.
         """
+
         loss = None
         if closure is not None:
             with torch.enable_grad():
@@ -241,25 +293,23 @@ class GaLoreAdamW8bit(Optimizer2State):
                         group["weight_decay"] = 0
 
                     grad = state["projector"].project(p.grad, state["step"])
-
-                    # suboptimal implementation
-                    p.saved_data = p.data.clone()
-                    p.data = grad.clone().to(p.data.dtype).to(p.data.device)
-                    p.data.zero_()
-                    p.grad = grad
+                    make_low_rank_buffer(p, grad)
 
                 if "state1" not in state:
                     self.init_state(group, p, gindex, pindex)
 
+                # Prefetch if paged
                 self.prefetch_state(p)
+                # Adam update step using the buffer
                 self.update_step(group, p, gindex, pindex)
                 torch.cuda.synchronize()
 
                 # GaLore Projection Back
                 if "rank" in group:
-                    if p.dim() == 1:
-                        pass
-                    p.data = p.saved_data.add_(state["projector"].project_back(p.data))
+                    update = state["projector"].project_back(p.data)
+                    if dist.get_rank() == 0:
+                        print(f"unprojected update: {get_chunk(update).mean()}")
+                    p.data = p.saved_data.add_(update)
 
                     # apply weight decay
                     if "weight_decay_saved" in group:
@@ -273,3 +323,11 @@ class GaLoreAdamW8bit(Optimizer2State):
             torch.cuda.synchronize()
 
         return loss
+
+    def __del__(self):
+        """Avoid buffer memory leak"""
+        for group in self.param_groups:
+            for p in group["params"]:
+                if hasattr(p, "saved_data"):
+                    del p.saved_data
+

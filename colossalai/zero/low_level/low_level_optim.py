@@ -238,7 +238,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         device = "cpu" if self._cpu_offload else get_accelerator().get_current_device()
 
         for param in param_list:
-            padding_size = (self._world_size - param.numel() % self._world_size) % self._world_size
+            padding_size = self._world_size - param.numel() % self._world_size
             self._param_store.record_param_padding_size(param, padding_size)
 
             with torch.no_grad():

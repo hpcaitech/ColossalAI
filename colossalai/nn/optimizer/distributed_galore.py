@@ -1,16 +1,18 @@
-# adapted from https://github.com/jiaweizzhao/GaLore/blob/master/galore_torch/adamw8bit.py
+""" adapted from https://github.com/jiaweizzhao/GaLore/blob/master/galore_torch/adamw8bit.py"""
+
 from collections import defaultdict
 from typing import Dict, Optional
 
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 from bitsandbytes.optim.optimizer import Optimizer2State
 
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.tensor.d_tensor.sharding_spec import DimSpec
 
-from .galore import GaLoreProjector
+from .galore import GaLoreProjector, make_low_rank_buffer
 
 __all__ = ["DistributedGalore"]
 # Mark sharded dimension
@@ -27,7 +29,7 @@ def get_shard_dim(p):
 class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
     r"""Implements Galore, a optimizer-agonistic gradient compression technique on 8-bit AdamW.
     It largely compresses gradient via low-rank projection and is claimed to be insensitive to hyperparams like lr.
-    Supports Tensor Parallel and ZeRO stage 1 and 2 via setup_distributed inside booster and plugin.
+    Supports Tensor Parallel and ZeRO stage 1 and 2 via booster and plugin.
     Proposed in `GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection`
     https://arxiv.org/abs/2403.03507
 
@@ -75,14 +77,14 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
             block_wise,
             is_paged=is_paged,
         )
-        self.tp_size = 0
-        self.dp_size = 0
+        self.tp_size = 1
+        self.dp_size = 1
         self.is_dist = {}
         proj_none = all(["rank" not in group for group in self.param_groups])
         if proj_none:
             print(
                 "Will not apply GaLore as no rank is specified. Or did you forget to?\
-                Try get_galore_param_groups(model)"
+                Try get_galore_param_groups"
             )
 
         # Default from the paper
@@ -119,9 +121,9 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
             self.dp_size = dist.get_world_size(dp_group)
 
         self.shard_to_working_param = shard_to_working_param if shard_to_working_param is not None else {}
-        self.is_zero = is_zero
+        self.is_zero = is_zero and self.dp_size > 1
         if is_zero:
-            assert padding_map is not defaultdict(0), "We can't do SVD without knowing ZeRO's per-param padding size"
+            assert padding_map is not defaultdict(int), "We can't do SVD without knowing ZeRO's per-param padding size"
         self.padding_map = padding_map
         self.distributed_on = self.tp_size > 0 or self.dp_size > 0
 
@@ -132,6 +134,8 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
                 if id(p) not in self.shard_to_working_param:
                     # No ZeRO; master param = working param
                     self.shard_to_working_param[id(p)] = p
+                if id(p) not in self.padding_map:
+                    self.padding_map[id(p)] = 0
 
                 self.is_dist[id(p)] = is_distributed_tensor(self.shard_to_working_param[id(p)])
                 if is_distributed_tensor(self.shard_to_working_param[id(p)]):
@@ -180,13 +184,15 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
                         group["weight_decay"] = 0
 
                     grad = p.grad
-                    working_shape = self.shard_to_working_param[id(p)].shape
-                    # Restore unsharded working param shape for projection
+                    working_shape = list(self.shard_to_working_param[id(p)].shape)
+                    padding = self.padding_map[id(p)]
+
+                    # All-gather grads for projection step
                     if self.distributed_on:
-                        # Both the ZeRO 1 & 2 implementation don't retain full grads
-                        if self.dp_size > 1 and self.is_zero:
-                            grad = grad[: self.padding_map[id(p)]]  # unpad
-                            split_factor = self.dp_size
+                        # Gather for ZeRO 1 & 2 implementation don't retain full grads
+                        if self.is_zero:
+                            # (m, n).flatten().chunk(dp_size) equals to (m / dp_size, n).flatten()
+                            working_shape[0] //= self.dp_size
 
                             # Gather grads for projection
                             if state["step"] % group["update_proj_gap"] == 0:
@@ -196,44 +202,43 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
                                 ]
                                 dist.all_gather(all_grads, grad, self.dp_group)
                                 grad = torch.cat(all_grads)
-                                split_factor = 1
+                                # To working param shape
+                                if padding > 0:
+                                    grad = grad[:-padding]
+                                working_shape[0] *= self.dp_size
+                            grad = grad.reshape(working_shape)  # unflatten
 
-                            # For correct reshaping both w/ and w/o ZeRO:
-                            # (m, n).flatten().chunk(dp_size) equals to
-                            # (m / dp_size, n).flatten()
-                            working_shape[0] /= split_factor
-                            grad = grad.reshape(working_shape)
-
+                        # Gather TP grads
                         if self.is_dist[id(p)] and state["step"] % group["update_proj_gap"] == 0:
                             all_grads = [
                                 torch.empty_like(grad, dtype=p.grad.dtype, device=p.grad.device)
                                 for _ in range(self.tp_size)
                             ]
-                            dist.all_gather(all_grads, grad, self.tp_group)
+                            dist.all_gather(all_grads, grad.contiguous(), self.tp_group)
                             grad = torch.cat(all_grads, dim=self.shard_dim[id(p)])
 
-                        # Compute SVD. Will adaptively use a subset of singular
-                        # vectors during update_proj_gap when grads are not gathered.
-                        grad = state["projector"].project(grad, state["step"])
+                    # Compute SVD. Will use a subset of singular vectors when grads are sharded.
+                    grad = state["projector"].project(grad, state["step"])
 
-                        # Post-projection sharding to master shape
-                        if self.distributed_on:
-                            if self.is_dist[id(p)] and state["step"] % group["update_proj_gap"] == 0:
-                                grad = grad.chunk(self.tp_size, dim=self.shard_dim[id(p)])[dist.get_rank(self.tp_group)]
-
-                            if self.dp_size > 1 and self.is_zero:
-                                if state["step"] % group["update_proj_gap"] == 0:
-                                    grad = grad.flatten().chunk(self.dp_size)[dist.get_rank(self.dp_group)]
-
-                        # pad back to master param shape
-                        grad = torch.nn.functional.pad(grad, [0, self.padding_map[id(p)]])
-                        assert grad.shape == p.shape
-
-                    # suboptimal implementation
-                    p.saved_data = p.data.clone()
-                    p.data = grad.clone().to(p.data.dtype).to(p.data.device)
-                    p.data.zero_()
-                    p.grad = grad
+                    # Don't retrain gathered grads after SVD
+                    if self.distributed_on:
+                        # TP
+                        if self.is_dist[id(p)] and state["step"] % group["update_proj_gap"] == 0:
+                            grad = grad.chunk(self.tp_size, dim=self.shard_dim[id(p)])[dist.get_rank(self.tp_group)]
+                        # ZeRO
+                        if self.is_zero and state["step"] % group["update_proj_gap"] == 0:
+                            # TODO: this might not work with padding, e.g. (3, 3) with dp size 2
+                            # Need extra logic in ZeRO to pad nRows to be divisible by dp_size
+                            grad = grad.chunk(self.dp_size)[dist.get_rank(self.dp_group)]
+                    working_shape = grad.shape
+                    # Debug
+                    if dist.get_rank() == 0:
+                        if state["step"] == 1:
+                            pass
+                        print(f"rank 0 projected grad mean: {grad.mean()}")
+                    # To flattended master param shape
+                    grad = self.to_zero_master_shape(grad, padding)
+                    make_low_rank_buffer(p, grad)
 
                 if "state1" not in state:
                     self.init_state(group, p, gindex, pindex)
@@ -242,12 +247,19 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
                 self.update_step(group, p, gindex, pindex)
                 torch.cuda.synchronize()
 
-                # GaLore Projection Back
+                # Project Back to working param shape
                 if "rank" in group:
-                    data = p.data[: -self.padding_map[id(p)]].view(working_shape)  # to working shape
-                    data = state["projector"].project_back(data).view(-1)  # to master shape
-                    data = torch.pad(data, [0, self.padding_map[id(p)]])
-                    p.data = p.saved_data.add_(data)
+                    # Unpad
+                    if self.is_zero:
+                        if padding > 0:
+                            p.data = p.data[:-padding]
+                        p.data = p.data.reshape(working_shape)
+                    p.data = state["projector"].project_back(p.data)
+                    # Re-flatten grads for ZeRO
+                    p.data = self.to_zero_master_shape(p.data, padding)
+                    p.data = p.saved_data.add_(p.data)
+                    if dist.get_rank() == 0:
+                        print(f"rank {dist.get_rank()} unprojected update: {p.data.mean()}")
 
                     # apply decoupled weight decay
                     if "weight_decay_saved" in group:
@@ -260,3 +272,19 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
             # to sync to make sure all tensors are in the right state
             torch.cuda.synchronize()
         return loss
+
+    def to_zero_master_shape(self, data, padding):
+        """Pad to master(optimizer) param shape"""
+        if not self.is_zero:
+            return data
+        data = data.view(-1)
+        if padding > 0:
+            data = F.pad(data, [0, padding])
+        return data
+
+    def __del__(self):
+        """Avoid buffer memory leak"""
+        for group in self.param_groups:
+            for p in group["params"]:
+                if hasattr(p, "saved_data"):
+                    del p.saved_data
