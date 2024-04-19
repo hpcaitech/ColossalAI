@@ -25,6 +25,9 @@ class _CppExtension(_Extension):
     def csrc_abs_path(self, path):
         return os.path.join(self.relative_to_abs_path("csrc"), path)
 
+    def pybind_abs_path(self, path):
+        return os.path.join(self.relative_to_abs_path("pybind"), path)
+
     def relative_to_abs_path(self, code_path: str) -> str:
         """
         This function takes in a path relative to the colossalai root directory and return the absolute path.
@@ -116,6 +119,7 @@ class _CppExtension(_Extension):
         """
         This function should return a list of include files for extensions.
         """
+        return [self.csrc_abs_path("")]
 
     @abstractmethod
     def cxx_flags(self) -> List[str]:

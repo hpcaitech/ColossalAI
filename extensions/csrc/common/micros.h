@@ -222,3 +222,13 @@
     AT_ERROR(#NAME, "not implemented for '", toString(GTYPE), toString(PTYPE), \
              "'");                                                             \
   }
+
+#if defined(COLOSSAL_WITH_CUDA)
+#define HOST __host__
+#define DEVICE __device__
+#define HOSTDEVICE __host__ __device__
+#else
+#define HOST
+#define DEVICE
+#define HOSTDEVICE
+#endif
