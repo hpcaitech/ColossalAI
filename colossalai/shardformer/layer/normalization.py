@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 import torch.nn as nn
 
 from colossalai.lazy import LazyInitContext
-
+import warnings
 from ._operation import hook_parameter_in_backward
 from .utils import SeqParallelUtils
 
@@ -225,7 +225,11 @@ class FusedLayerNorm(BaseLayerNorm):
                 # fall back to the normal fused layernorm is not built
                 ApexFusedLayerNorm = FusedLayerNormWithHook
         else:
-            ApexFusedLayerNorm = FusedLayerNormWithHook
+            try:
+                ApexFusedLayerNorm = FusedLayerNormWithHook
+            except NameError:
+                warnings.warn("Please install Apex from source to use fused kernels, or set self.enable_fused_normalization = False. Using vanilla layernorm instead.")
+                return module
 
         layernorm = (
             ApexFusedLayerNorm(normalized_shape, eps=eps, elementwise_affine=elementwise_affine).to(dtype).to(device)
