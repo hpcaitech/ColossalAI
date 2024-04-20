@@ -25,17 +25,27 @@ def get_chunk(_grad):
     return _grad
 
 
-def get_galore_param_groups(model: nn.Module, rank=256, update_proj_gap=200, scale=0.25, proj_type="std") -> List[dict]:
+def get_galore_param_groups(model,
+                            weight_decay, 
+                            rank=256,
+                            update_proj_gap=200,
+                            scale=0.25,
+                            proj_type="std") -> List[dict]:
     """
     It's advised to use this instead of manually specifying which param groups
     to apply GaLore on.
     """
     galore_params = []
     non_galore = []
-    for param in model.parameters():
+    no_decay_params = []
+    no_decay = ["bias", "LayerNorm.weight"]
+    
+    for name, param in model.named_parameters():
         # Only make sense to do SVD on 2d gradient matrices
         # e.g. nn.Linear, VocabEmbedding, etc.
-        if param.dim() == 2:
+        if any(nd in name for nd in no_decay):
+            no_decay_params.append(param)
+        elif param.dim() == 2:
             galore_params.append(param)
         else:
             non_galore.append(param)
@@ -47,8 +57,10 @@ def get_galore_param_groups(model: nn.Module, rank=256, update_proj_gap=200, sca
             "update_proj_gap": update_proj_gap,
             "scale": scale,
             "proj_type": proj_type,
+            "weight_decay": weight_decay
         },
-        {"params": non_galore},
+        {"params": non_galore, "weight_decay": weight_decay},
+        {"params": no_decay_params, "weight_decay": 0.0},
     ]
 
     return param_groups
@@ -61,7 +73,7 @@ def make_low_rank_buffer(p, grad):
     """
     p.saved_data = p.data.clone()
     # p.data = grad.clone().to(p.data.dtype).to(p.data.device)
-    p.data = torch.zeros_like(grad, device=p.data.device, dtype=p.data.dtype)
+    p.data = torch.zeros_like(grad, device=grad.device, dtype=grad.dtype)
     # p.data.zero_()
     p.grad = grad
 
@@ -193,8 +205,7 @@ class GaLoreAdamW8bit(Optimizer2State):
         eps (float, optional): term added to the denominator to improve
             numerical stability. (default: 1e-6)
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0.01)
-        args (`object`, defaults to `None`):
-            An object with additional arguments.
+        nbits (int): The number of bits of optim states. Only 32 and 8 are supported.
         min_8bit_size (`int`, defaults to 4096):
             The minimum number of elements of the parameter tensors for 8-bit optimization.
         percentile_clipping (`int`, defaults to 100):
@@ -214,7 +225,7 @@ class GaLoreAdamW8bit(Optimizer2State):
         betas=(0.9, 0.999),
         eps=1e-8,
         weight_decay=1e-2,
-        args=None,
+        nbits=8,
         min_8bit_size=4096,
         percentile_clipping=100,
         block_wise=True,
@@ -227,8 +238,8 @@ class GaLoreAdamW8bit(Optimizer2State):
             betas,
             eps,
             weight_decay,
-            8,
-            args,
+            nbits,
+            None,
             min_8bit_size,
             percentile_clipping,
             block_wise,
@@ -298,6 +309,7 @@ class GaLoreAdamW8bit(Optimizer2State):
                 if "state1" not in state:
                     self.init_state(group, p, gindex, pindex)
 
+                p.grad = p.grad.contiguous() # avoid bitsandbytes update error
                 # Prefetch if paged
                 self.prefetch_state(p)
                 # Adam update step using the buffer
@@ -306,17 +318,24 @@ class GaLoreAdamW8bit(Optimizer2State):
 
                 # GaLore Projection Back
                 if "rank" in group:
+                    if p is self.param_groups[0]["params"][1]:
+                        pass
                     update = state["projector"].project_back(p.data)
-                    if dist.get_rank() == 0:
-                        print(f"unprojected update: {get_chunk(update).mean()}")
                     p.data = p.saved_data.add_(update)
 
-                    # apply weight decay
-                    if "weight_decay_saved" in group:
-                        p.data.add_(p.data, alpha=-group["lr"] * group["weight_decay_saved"])
-                        group["weight_decay"] = group["weight_decay_saved"]
-                        del group["weight_decay_saved"]
-
+                # apply weight decay
+                if "weight_decay_saved" in group:
+                    p.data.add_(p.data, alpha=-group["lr"] * group["weight_decay_saved"])
+                    group["weight_decay"] = group["weight_decay_saved"]
+                    del group["weight_decay_saved"]
+                        
+                if dist.get_rank() == 0:
+                    print(f"unprojected update: {get_chunk(update).mean()}")
+                    if p is self.param_groups[2]["params"][1]:
+                        # torch.save(update, "galore_unproj.pt")
+                        torch.save(p.grad, "low_rank_grad.pt")
+                        # torch.save(p.data, "low_rank_update.pt")
+                        # torch.save(state["projector"].ortho_matrix, "ortho_matrix.pt")
         if self.is_paged:
             # all paged operation are asynchronous, we need
             # to sync to make sure all tensors are in the right state

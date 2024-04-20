@@ -42,6 +42,7 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
         eps (float, optional): term added to the denominator to improve
             numerical stability. (default: 1e-6)
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0.01)
+        nbits: Number of bits for quantization optim states. Only 32 and 8 are supported. 
     Example:
         >>> optim = DistributedLamb(model.parameters(), lr=1e-3)
         >>> proc_mesh = ProcessGroupMesh(tp_size, zero_size)
@@ -57,7 +58,7 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
         betas=(0.9, 0.999),
         eps=1e-8,
         weight_decay=1e-2,
-        args=None,
+        nbits=8,
         min_8bit_size=4096,
         percentile_clipping=100,
         block_wise=True,
@@ -71,7 +72,7 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
             eps,
             weight_decay,
             8,
-            args,
+            None,
             min_8bit_size,
             percentile_clipping,
             block_wise,
@@ -164,7 +165,7 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
                 if p.grad is None:
                     continue
                 state = self.state[p]
-
+                    
                 if "step" not in state:
                     state["step"] = 0
 
@@ -177,9 +178,8 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
                             update_proj_gap=group["update_proj_gap"],
                             proj_type=group["proj_type"],
                         )
-
+                    # decoupled weight decay
                     if "weight_decay" in group and group["weight_decay"] > 0:
-                        # ensure that the weight decay is not applied to the norm grad
                         group["weight_decay_saved"] = group["weight_decay"]
                         group["weight_decay"] = 0
 
@@ -220,30 +220,27 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
                     # Compute SVD. Will use a subset of singular vectors when grads are sharded.
                     grad = state["projector"].project(grad, state["step"])
 
-                    # Don't retrain gathered grads after SVD
-                    if self.distributed_on:
+                    # Re-shard gathered grads after SVD
+                    if self.distributed_on and state["step"] % group["update_proj_gap"] == 0:
                         # TP
-                        if self.is_dist[id(p)] and state["step"] % group["update_proj_gap"] == 0:
+                        if self.is_dist[id(p)]:
                             grad = grad.chunk(self.tp_size, dim=self.shard_dim[id(p)])[dist.get_rank(self.tp_group)]
                         # ZeRO
-                        if self.is_zero and state["step"] % group["update_proj_gap"] == 0:
+                        if self.is_zero:
                             # TODO: this might not work with padding, e.g. (3, 3) with dp size 2
                             # Need extra logic in ZeRO to pad nRows to be divisible by dp_size
                             grad = grad.chunk(self.dp_size)[dist.get_rank(self.dp_group)]
+                        
                     working_shape = grad.shape
-                    # Debug
-                    if dist.get_rank() == 0:
-                        if state["step"] == 1:
-                            pass
-                        print(f"rank 0 projected grad mean: {grad.mean()}")
                     # To flattended master param shape
                     grad = self.to_zero_master_shape(grad, padding)
                     make_low_rank_buffer(p, grad)
-
+                    
                 if "state1" not in state:
                     self.init_state(group, p, gindex, pindex)
 
                 self.prefetch_state(p)
+                p.grad = p.grad.contiguous() # avoid bitsandbytes update error
                 self.update_step(group, p, gindex, pindex)
                 torch.cuda.synchronize()
 
@@ -254,18 +251,27 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
                         if padding > 0:
                             p.data = p.data[:-padding]
                         p.data = p.data.reshape(working_shape)
+
+                    update = p.data.clone()
                     p.data = state["projector"].project_back(p.data)
+                    un_proj = p.data.clone()
                     # Re-flatten grads for ZeRO
                     p.data = self.to_zero_master_shape(p.data, padding)
                     p.data = p.saved_data.add_(p.data)
-                    if dist.get_rank() == 0:
-                        print(f"rank {dist.get_rank()} unprojected update: {p.data.mean()}")
-
-                    # apply decoupled weight decay
-                    if "weight_decay_saved" in group:
-                        p.data.add_(p.data, alpha=-group["lr"] * group["weight_decay_saved"])
-                        group["weight_decay"] = group["weight_decay_saved"]
-                        del group["weight_decay_saved"]
+                    
+                if dist.get_rank() == 0:
+                    print(f"rank {dist.get_rank()} unprojected update: {un_proj.mean()}")
+                    if p is self.param_groups[2]["params"][1]:
+                        # torch.save(un_proj, f"dist_galore_unproj.pt")
+                        torch.save(p.grad, f"dist_low_rank_grad.pt")
+                        # torch.save(update, "dist_low_rank_update.pt")
+                        # torch.save(state["projector"].ortho_matrix, f"dist_galore_ortho.pt")
+                
+                # apply decoupled weight decay
+                if "weight_decay_saved" in group:
+                    p.data.add_(p.data, alpha=-group["lr"] * group["weight_decay_saved"])
+                    group["weight_decay"] = group["weight_decay_saved"]
+                    del group["weight_decay_saved"]
 
         if self.is_paged:
             # all paged operation are asynchronous, we need

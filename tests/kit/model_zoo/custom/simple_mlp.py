@@ -13,15 +13,15 @@ _HID_DIM = 128
 
 
 class Net(nn.Module):
-    def __init__(self, in_dim=_IN_DIM, hid_dim=_HID_DIM, identity=False):
+    def __init__(self, in_dim=_IN_DIM, hid_dim=_HID_DIM, identity=False, dtype=torch.float32):
         super().__init__()
         if identity:
             self.fc0 = nn.Identity()
         else:
-            self.fc0 = nn.Linear(in_dim, in_dim)
+            self.fc0 = nn.Linear(in_dim, in_dim).to(dtype=dtype)
 
-        self.fc1 = nn.Linear(in_dim, hid_dim)
-        self.fc2 = nn.Linear(hid_dim, in_dim)
+        self.fc1 = nn.Linear(in_dim, hid_dim).to(dtype=dtype)
+        self.fc2 = nn.Linear(hid_dim, in_dim).to(dtype=dtype)
 
     def forward(self, x):
         return self.fc2(self.fc1(self.fc0(x)))
@@ -34,13 +34,14 @@ class TPNet(nn.Module):
         fc1=nn.Linear(_IN_DIM, _HID_DIM),
         fc2=nn.Linear(_HID_DIM, _IN_DIM),
         tp_group=None,
+        dtype=torch.float32
     ):
         super().__init__()
         self.fc0 = deepcopy(fc0)
         self.fc1 = Linear1D_Col.from_native_module(
-            deepcopy(fc1), process_group=tp_group, gather_output=False, overlap=True
+            deepcopy(fc1), process_group=tp_group, gather_output=False, overlap=True, dtype=dtype
         )
-        self.fc2 = Linear1D_Row.from_native_module(deepcopy(fc2), process_group=tp_group, parallel_input=True)
+        self.fc2 = Linear1D_Row.from_native_module(deepcopy(fc2), process_group=tp_group, parallel_input=True, dtype=dtype)
 
     def forward(self, x):
         return self.fc2(self.fc1(self.fc0(x)))

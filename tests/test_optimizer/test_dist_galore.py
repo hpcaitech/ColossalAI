@@ -22,8 +22,8 @@ from tests.test_optimizer._utils import check_optim_states, print_rank_0, run_be
 
 _ALLOWED_P_G_TYPES = [
     (torch.float, torch.float),  # pure fp32
-    (torch.float, torch.half),  # fp16 amp
-    (torch.float, torch.bfloat16),  # bfloat16 amp
+    (torch.half, torch.half),  # fp16 amp
+    (torch.bfloat16, torch.bfloat16),  # bfloat16 amp
 ]
 
 # Identifiers for Tensor Parallel linear layers
@@ -38,7 +38,7 @@ Net, data_gen, *_ = next(iter(model_zoo.get_sub_registry("simple_mlp").values())
 TPNet, *_ = next(iter(model_zoo.get_sub_registry("simple_tp_mlp").values()))
 
 
-def get_split_dim(p):
+def get_shard_dim(p):
     if not is_distributed_tensor(p):
         raise ValueError("p is not a distributed tensor")
     sharding = p.dist_layout.sharding_spec.sharding_sequence
@@ -52,7 +52,7 @@ def assert_grad_close(tp_model, torch_model, tp_group):
     for p, torch_p in zip(tp_model.parameters(), torch_model.parameters()):
         update = p.grad
         if is_distributed_tensor(p):
-            split_dim = get_split_dim(p)
+            split_dim = get_shard_dim(p)
             all_update = [torch.empty_like(update) for _ in range(tp_size)]
             dist.all_gather(all_update, update.contiguous(), group=tp_group)
             all_update = torch.cat(all_update, dim=split_dim)
@@ -75,10 +75,10 @@ def assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group):
         assert not torch.isnan(p).any()
         try:
             if is_distributed_tensor(p):
-                split_dim = get_split_dim(p)
+                split_dim = get_shard_dim(p)
                 torch_p = torch_p.chunk(tp_size, dim=split_dim)[rank]
 
-            assert_close(p.float(), torch_p, rtol=rtol, atol=atol)
+            assert_close(p, torch_p, rtol=rtol, atol=atol)
         except AssertionError as e:
             print(f"grad mismatch in {name}")
             raise e
@@ -117,9 +117,9 @@ def set_dist_grad(
             force_assign_grad(p, g_dtype)
 
         if is_distributed_tensor(p):
-            split_dim = get_split_dim(p)
+            split_dim = get_shard_dim(p)
             # Add grads only to the correctly split chunk
-            force_assign_grad(p, g_dtype, torch_p.grad.chunk(world_size, dim=split_dim)[rank])
+            force_assign_grad(p, g_dtype, torch_p.grad.chunk(world_size, dim=split_dim)[rank].contiguous())
             # assert_close(p.grad, torch_p.grad.chunk(world_size, dim=split_dim)[rank])
         else:
             force_assign_grad(p, g_dtype, torch_p.grad)
@@ -141,27 +141,31 @@ def run_dist_galore_basic(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_si
 
     tp_rank = dist.get_rank(tp_group)
     seed_all(_SEED)  # Fix model init
-    torch_model = Net(in_dim=_IN_DIM, hid_dim=_HID_DIM, identity=True).to(rank)
-    tp_model = TPNet(torch_model.fc0, torch_model.fc1, torch_model.fc2, tp_group).to(rank)
-    # Ensure equal weight init
-    assert_close(
-        torch_model.fc1.weight[tp_rank * _HID_DIM // tp_size : (tp_rank + 1) * _HID_DIM // tp_size],
-        tp_model.fc1.weight,
-    )
-    assert_close(
-        torch_model.fc2.weight[:, tp_rank * _HID_DIM // tp_size : (tp_rank + 1) * _HID_DIM // tp_size],
-        tp_model.fc2.weight,
-    )
+    torch_model = Net(in_dim=_IN_DIM, hid_dim=_HID_DIM, identity=True, dtype=p_dtype).to(rank)
+    tp_model = TPNet(torch_model.fc0, torch_model.fc1, torch_model.fc2, tp_group, dtype=p_dtype).to(rank)
+    assert_distributed_close(tp_model, torch_model, rtol=0, atol=0, tp_group=tp_group)
+    
     # Set up optimizers
     lr = 1e-2
     beta1, beta2 = 0.9, 0.999
     eps = 1e-8
-    torch_optim = GaLoreAdamW8bit(get_galore_param_groups(torch_model, rank=8), lr=lr, betas=(beta1, beta2), eps=eps)
+    decay = 1e-3
+    torch_optim = GaLoreAdamW8bit(get_galore_param_groups(torch_model, decay, rank=8),
+                                  lr=lr,
+                                  betas=(beta1, beta2),
+                                  eps=eps,
+                                  percentile_clipping=101,
+                                  block_wise=False,
+                                  min_8bit_size=1e10, # Disable quantization
+                                  )
     optim = DistGaloreAwamW8bit(
-        get_galore_param_groups(tp_model, rank=8),
+        get_galore_param_groups(tp_model, decay, rank=8),
         lr=lr,
         betas=(beta1, beta2),
         eps=eps,
+        percentile_clipping=101,
+        block_wise=False,
+        min_8bit_size=1e10,
     )
     optim.setup_distributed(tp_group, dp_group)
 
@@ -205,25 +209,18 @@ def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_
 
     seed_all(_SEED)
     clear_layout_converter()  # Ensure correct sharding
-    torch_model = Net(_IN_DIM, _HID_DIM).to(rank)
-    tp_model = TPNet(torch_model.fc0, torch_model.fc1, torch_model.fc2, tp_group).to(rank)
-
-    assert_close(
-        torch_model.fc1.weight[tp_rank * _HID_DIM // tp_size : (tp_rank + 1) * _HID_DIM // tp_size],
-        tp_model.fc1.weight,
-    )
-    assert_close(
-        torch_model.fc2.weight[:, tp_rank * _HID_DIM // tp_size : (tp_rank + 1) * _HID_DIM // tp_size],
-        tp_model.fc2.weight,
-    )
+    torch_model = Net(_IN_DIM, _HID_DIM, dtype=p_dtype).to(rank)
+    tp_model = TPNet(torch_model.fc0, torch_model.fc1, torch_model.fc2, tp_group, dtype=p_dtype).to(rank)
+    assert_distributed_close(tp_model, torch_model, rtol=0, atol=0, tp_group=tp_group)
 
     # Set up optimizers
     lr = 1e-2
     beta1, beta2 = 0.9, 0.999
     eps = 1e-8
-    torch_optim = GaLoreAdamW8bit(get_galore_param_groups(torch_model, rank=8), lr=lr, betas=(beta1, beta2), eps=eps)
+    decay = 1e-3
+    torch_optim = GaLoreAdamW8bit(get_galore_param_groups(torch_model, decay, rank=8), lr=lr, betas=(beta1, beta2), eps=eps)
     optim = DistGaloreAwamW8bit(
-        get_galore_param_groups(tp_model, rank=8),
+        get_galore_param_groups(tp_model, decay, rank=8),
         lr=lr,
         betas=(beta1, beta2),
         eps=eps,

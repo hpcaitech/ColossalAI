@@ -226,7 +226,7 @@ class FusedLayerNorm(BaseLayerNorm):
                 ApexFusedLayerNorm = FusedLayerNormWithHook
         else:
             ApexFusedLayerNorm = FusedLayerNormWithHook
-z
+
         layernorm = (
             ApexFusedLayerNorm(normalized_shape, eps=eps, elementwise_affine=elementwise_affine).to(dtype).to(device)
         )
