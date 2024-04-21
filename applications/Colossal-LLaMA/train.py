@@ -23,8 +23,7 @@ from colossal_llama.utils.froze import freeze_non_embeds_parameters
 from colossal_llama.utils.neftune_patch import activate_neftune, deactivate_neftune
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from transformers import LlamaForCausalLM
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, LlamaForCausalLM
 
 import colossalai
 from colossalai.accelerator import get_accelerator
