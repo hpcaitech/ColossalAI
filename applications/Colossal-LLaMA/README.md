@@ -47,7 +47,7 @@ Colossal-LLaMA
 - [Citations](#citations)
 
 ## News
-* [2024/4] Support continual pre-training and supervised fine-tuning of LLaMA-3. 
+* [2024/4] Support continual pre-training and supervised fine-tuning of LLaMA-3.
 * [2024/01] [Construct Refined 13B Private Model With Just $5000 USD, Upgraded Colossal-AI Llama-2 Open Source](https://hpc-ai.com/blog/colossal-llama-2-13b).
 [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Colossal-LLaMA-2)
 [[blog]](https://hpc-ai.com/blog/colossal-llama-2-13b)

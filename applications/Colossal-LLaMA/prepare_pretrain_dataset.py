@@ -46,7 +46,7 @@ def main():
     args.data_cache_dir = os.path.join(args.data_output_dirs, "cache")
     args.data_jsonl_output_dir = os.path.join(args.data_output_dirs, "jsonl")
     args.data_arrow_output_dir = os.path.join(args.data_output_dirs, "arrow")
-    
+
     if not os.path.exists(args.data_cache_dir):
         os.makedirs(args.data_cache_dir)
     if not os.path.exists(args.data_jsonl_output_dir):

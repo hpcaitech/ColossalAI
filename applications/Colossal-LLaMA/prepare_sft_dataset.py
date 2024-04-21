@@ -13,8 +13,7 @@ from multiprocessing import cpu_count
 from colossal_llama.dataset.conversation import default_conversation
 from colossal_llama.dataset.spliced_and_tokenized_dataset import supervised_tokenize_sft
 from datasets import dataset_dict, load_dataset
-from transformers import AutoTokenizer
-from transformers import AddedToken
+from transformers import AddedToken, AutoTokenizer
 
 from colossalai.logging import get_dist_logger
 
