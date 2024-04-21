@@ -1,6 +1,6 @@
 import argparse
 
-from colossal_llama2.utils.stream_chat_patch import streaming_chat
+from colossal_llama.utils.stream_chat_patch import streaming_chat
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 SYSTEM = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions."

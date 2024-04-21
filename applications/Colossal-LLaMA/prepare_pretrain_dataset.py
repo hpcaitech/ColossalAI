@@ -11,12 +11,12 @@ import os
 import time
 from multiprocessing import cpu_count
 
-from colossal_llama2.dataset.spliced_and_tokenized_dataset import (
+from colossal_llama.dataset.spliced_and_tokenized_dataset import (
     ClosedToConstantLengthSplicedDataset,
     supervised_tokenize_pretrain,
 )
 from datasets import dataset_dict, load_dataset
-from transformers.models.llama.tokenization_llama import LlamaTokenizer
+from transformers import AutoTokenizer
 
 from colossalai.logging import get_dist_logger
 
@@ -35,35 +35,24 @@ def main():
     parser.add_argument(
         "--tokenizer_dir", type=str, required=True, default=None, help="A directory containing the tokenizer"
     )
-    parser.add_argument("--data_cache_dir", type=str, default="cache", help="Data cache directory")
-    parser.add_argument(
-        "--data_jsonl_output_dir",
-        type=str,
-        default="jsonl_output",
-        help="Output directory of spliced dataset with jsonl format",
-    )
-    parser.add_argument(
-        "--data_arrow_output_dir",
-        type=str,
-        default="arrow_output",
-        help="Output directory of spliced dataset with arrow format",
-    )
-    parser.add_argument("--max_length", type=int, default=4096, help="Max length of each spliced tokenized sequence")
+    parser.add_argument("--data_output_dirs", type=str, default="data_output_dirs", help="Data output directory")
+    parser.add_argument("--max_length", type=int, default=8192, help="Max length of each spliced tokenized sequence")
     parser.add_argument("--num_spliced_dataset_bins", type=int, default=10, help="Number of spliced dataset bins")
     args = parser.parse_args()
 
     if args.num_spliced_dataset_bins >= 100000:
         raise ValueError("Too many spliced divisions, must be smaller than 100000")
 
-    assert not os.path.exists(args.data_cache_dir), f"Find existed data cache dir {args.data_cache_dir}"
-    assert not os.path.exists(
-        args.data_jsonl_output_dir
-    ), f"Find existed jsonl data output dir {args.data_jsonl_output_dir}"
-    assert not os.path.exists(
-        args.data_arrow_output_dir
-    ), f"Find existed arrow data output dir {args.data_arrow_output_dir}"
-    os.makedirs(args.data_jsonl_output_dir)
-    os.makedirs(args.data_arrow_output_dir)
+    args.data_cache_dir = os.path.join(args.data_output_dirs, "cache")
+    args.data_jsonl_output_dir = os.path.join(args.data_output_dirs, "jsonl")
+    args.data_arrow_output_dir = os.path.join(args.data_output_dirs, "arrow")
+    
+    if not os.path.exists(args.data_cache_dir):
+        os.makedirs(args.data_cache_dir)
+    if not os.path.exists(args.data_jsonl_output_dir):
+        os.makedirs(args.data_jsonl_output_dir)
+    if not os.path.exists(args.data_arrow_output_dir):
+        os.makedirs(args.data_arrow_output_dir)
 
     # Prepare to all input datasets
     input_data_paths = []
@@ -86,7 +75,7 @@ def main():
         train_splits.append(f"train[{start}%:{end}%]")
 
     # Prepare to the tokenizer.
-    tokenizer = LlamaTokenizer.from_pretrained(args.tokenizer_dir)
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir)
     tokenizer.add_bos_token = False
     tokenizer.add_eos_token = False
     if tokenizer.pad_token is None:
