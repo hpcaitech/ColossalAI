@@ -43,6 +43,7 @@ class ShardConfig:
     sequence_parallelism_mode: str = None
     enable_sequence_overlap: bool = False
     parallel_output: bool = True
+    make_vocab_size_divisible_by: int = 64
     gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
     # TODO padding vocab
