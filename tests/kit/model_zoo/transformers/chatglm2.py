@@ -42,10 +42,10 @@ config = AutoConfig.from_pretrained(
     ffn_hidden_size=214,
     num_attention_heads=8,
     kv_channels=16,
-    multi_query_group_num=4,
     rmsnorm=True,
     original_rope=True,
     use_cache=True,
+    multi_query_attention=False,
     torch_dtype=torch.float32,
 )
 
