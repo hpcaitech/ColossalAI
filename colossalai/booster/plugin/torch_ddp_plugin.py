@@ -10,6 +10,7 @@ from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.quantization import BnbQuantizationConfig, quantize_model
 
 from .dp_plugin_base import DPPluginBase
 
