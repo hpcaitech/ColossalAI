@@ -16,9 +16,6 @@ from ..modeling.chatglm2 import (
 from ..modeling.jit import get_jit_fused_dropout_add_func
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
-# from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
-
-
 __all__ = [
     "ChatGLMPolicy",
     "ChatGLMModelPolicy",
@@ -80,7 +77,26 @@ class ChatGLMPolicy(Policy):
                     )
                 ],
             )
-
+            assert (
+                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"num_attention_heads {self.model.config.num_attention_heads} should be divisible by tensor_parallel_size {self.shard_config.tensor_parallel_size}"
+            attn_kwargs = {
+                "self_attention.qkv_hidden_size": (
+                    self.model.config.kv_channels * self.model.config.num_attention_heads * 3
+                )
+                // self.shard_config.tensor_parallel_size,
+            }
+            if self.model.config.multi_query_attention:
+                assert (
+                    self.model.config.multi_query_group_num % self.shard_config.tensor_parallel_size == 0
+                ), f"multi_query_group_num {self.model.config.multi_query_group_num} should be divisible by tensor_parallel_size {self.shard_config.tensor_parallel_size}"
+                attn_kwargs["self_attention.num_multi_query_groups_per_partition"] = (
+                    self.model.config.multi_query_group_num // self.shard_config.tensor_parallel_size
+                )
+                attn_kwargs["self_attention.qkv_hidden_size"] = (
+                    self.model.config.kv_channels * self.model.config.num_attention_heads
+                    + 2 * self.model.config.kv_channels * self.model.config.multi_query_group_num
+                ) // self.shard_config.tensor_parallel_size
             policy["GLMBlock"] = ModulePolicyDescription(
                 attribute_replacement={
                     "self_attention.num_attention_heads_per_partition": self.model.config.num_attention_heads
@@ -89,15 +105,12 @@ class ChatGLMPolicy(Policy):
                         self.model.config.kv_channels * self.model.config.num_attention_heads
                     )
                     // self.shard_config.tensor_parallel_size,
-                    "self_attention.qkv_hidden_size": (
-                        self.model.config.kv_channels * self.model.config.num_attention_heads * 3
-                    )
-                    // self.shard_config.tensor_parallel_size,
                     "self_attention.core_attention.num_attention_heads_per_partition": self.model.config.num_attention_heads
                     // self.shard_config.tensor_parallel_size,
                     "self_attention.core_attention.hidden_size_per_partition": self.model.config.kv_channels
                     * self.model.config.num_attention_heads
                     // self.shard_config.tensor_parallel_size,
+                    **attn_kwargs,
                 },
                 param_replacement=[],
                 sub_module_replacement=[

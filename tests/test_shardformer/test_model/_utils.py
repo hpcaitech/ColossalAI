@@ -227,7 +227,7 @@ def check_output_hidden_state(
 
 
 def check_loss(org_loss: Tensor, sharded_loss: Tensor, atol: float = 1e-5, rtol: float = 1e-3):
-    assert torch.allclose(org_loss.float(), sharded_loss.float(), atol=atol, rtol=rtol)
+    assert_close(org_loss.float(), sharded_loss.float(), atol=atol, rtol=rtol)
 
 
 def check_weight(

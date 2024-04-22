@@ -114,30 +114,30 @@ We will follow this roadmap to develop Shardformer:
 - [x] Unit Testing
 - [ ] Policy Implementation
 
-| model |   tensor parallel    |  pipeline parallel   |   lazy initialization |  xformer   |  flash attn2 | jit fused operator | fused layernorm |  sequence parallel |  overlap |
-| :------: | :-----: | :-----: | :--------: | :---------: | :------: | :-----: | :-----: | :--------: | :---------: |
-| bert |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [√] |  [√] |
-| t5 |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
-| llama V1/V2 |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
-| gpt2 |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [√] |  [√] |
-| opt |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
-| bloom |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [√] |  [√] |
-| chatglm2 |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [√] | [√] |  [√] |  [√] |
-| vit |   [√]   |  [√]   |   [ ] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
-| whisper |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [ ] | [√] |  [ ] |  [ ] |
-| sam |   [√]   |  [ ]   |   [ ] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
-| blip2 |   [√]   |  [ ]   |   [ ] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
-| falcon |   [√]   |  [√]   |   [√] |  [√]   |  [√] | [ ] | [√] |  [ ] |  [ ] |
-| roberta |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
-| albert |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
-| ernie |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
-| gpt-neo |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
-| gpt-j |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
-| beit |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
-| swin |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
-| swin V2 |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
-| qwen |   [ ]   |  [ ]   |   [ ] |  [ ]   |  [ ] | [ ] | [ ] |  [ ] |  [ ] |
-| mistral |   [√]   |  [ ]   |   [ ] |  [√]   |  [√] | [√] | [√] |  [ ] |  [ ] |
+|    model    | tensor parallel | pipeline parallel | lazy initialization | xformer | flash attn2 | jit fused operator | fused layernorm | sequence parallel | overlap |
+|:-----------:|:---------------:|:-----------------:|:-------------------:|:-------:|:-----------:|:------------------:|:---------------:|:-----------------:|:-------:|
+|    bert     |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [√]        |   [√]   |
+|     t5      |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
+| llama V1/V2 |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
+|    gpt2     |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [√]        |   [√]   |
+|     opt     |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
+|    bloom    |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [√]        |   [√]   |
+|  chatglm2   |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [√]        |   [√]   |
+|     vit     |       [√]       |        [√]        |         [ ]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
+|   whisper   |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [ ]         |       [√]       |        [ ]        |   [ ]   |
+|     sam     |       [√]       |        [ ]        |         [ ]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
+|    blip2    |       [√]       |        [ ]        |         [ ]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
+|   falcon    |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [ ]         |       [√]       |        [ ]        |   [ ]   |
+|   roberta   |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
+|   albert    |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
+|    ernie    |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
+|   gpt-neo   |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
+|    gpt-j    |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
+|    beit     |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
+|    swin     |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
+|   swin V2   |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
+|    qwen     |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
+|   mistral   |       [√]       |        [ ]        |         [ ]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
 
 
 ## 💡 API Design
@@ -391,6 +391,43 @@ _POLICY_LIST = {
 }
 ```
 
+#### How to support those models in huggingface model hub but not in the transformers library
+
+There are two cases:
+
+1. the modeling file is in the `transformers` library but the model weight is not in the `transformers` library. E.g. model structure of "01-ai/Yi-34B" is the same as LLaMA but the weight is not in the `transformers` library. In this case, we should support llama as usual and Yi-34B is also supported by the llama policy. We do not need to add a new policy for Yi-34B.
+2. the modeling file is not in the `transformers` library, such as the "THUDM/chatglm2-6b".
+
+Take "THUDM/chatglm2-6b" as an example, we clearly illustrate how to support this model in the `shardformer`.
+
+Unlike llama which is in `transformers` library, we cannot import chatglm2 model directly. Thus, the key in policy should be str of class name, rather than class itself.
+
+E.g. for llama:
+```python
+policy[LlamaDecoderLayer] = ModulePolicyDescription(...)
+```
+
+for chatglm2:
+```python
+policy["GLMBlock"] = ModulePolicyDescription(...)
+```
+
+Then when registering such models in the autopolicy, we should follow below format:
+```python
+"transformers_modules.<modeling_filename>.<class_name>": PolicyLocation(
+    file_name="<policy_filename>", class_name="<policy_class_name>"
+)
+```
+
+As for chatglm2 model, it should be:
+```python
+"transformers_modules.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
+    file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
+)
+```
+
+When using such models, `AutoModel` is supported as usual. The policy will be automatically loaded by the autopolicy.
+
 ### Write Your Unit Testing
 
 This section serves as the guideline for testing the `shardformer` module.
@@ -424,13 +461,13 @@ We conducted [benchmark tests](./examples/performance_benchmark.py) to evaluate 
 We set the batch size to 4, the number of attention heads to 8, and the head dimension to 64. 'N_CTX' refers to the sequence length.
 
 In the case of using 2 GPUs, the training times are as follows.
-| N_CTX |   org_model    |  shard_model   |
-| :------: | :-----: | :-----: |
-| 256  | 11.2ms | 17.2ms |
-| 512  | 9.8ms | 19.5ms |
-| 1024  | 19.6ms | 18.9ms |
-| 2048  | 46.6ms | 30.8ms |
-| 4096  | 160.5ms | 90.4ms |
+| N_CTX | org_model | shard_model |
+|:-----:|:---------:|:-----------:|
+|  256  |  11.2ms   |   17.2ms    |
+|  512  |   9.8ms   |   19.5ms    |
+| 1024  |  19.6ms   |   18.9ms    |
+| 2048  |  46.6ms   |   30.8ms    |
+| 4096  |  160.5ms  |   90.4ms    |
 
 
 <p align="center">
@@ -440,13 +477,13 @@ In the case of using 2 GPUs, the training times are as follows.
 
 In the case of using 4 GPUs, the training times are as follows.
 
-| N_CTX |   org_model    |  shard_model   |
-| :------: | :-----: | :-----: |
-| 256  | 10.0ms | 21.1ms |
-| 512  | 11.5ms | 20.2ms |
-| 1024  | 22.1ms | 20.6ms |
-| 2048  | 46.9ms | 24.8ms |
-| 4096  | 160.4ms | 68.0ms |
+| N_CTX | org_model | shard_model |
+|:-----:|:---------:|:-----------:|
+|  256  |  10.0ms   |   21.1ms    |
+|  512  |  11.5ms   |   20.2ms    |
+| 1024  |  22.1ms   |   20.6ms    |
+| 2048  |  46.9ms   |   24.8ms    |
+| 4096  |  160.4ms  |   68.0ms    |
 
 
 
@@ -475,10 +512,10 @@ warmup_fraction = 0.03
 
 
 | accuracy |   f1    |  loss   | GPU number | model sharded |
-| :------: | :-----: | :-----: | :--------: | :---------: |
-| 0.82971  | 0.87713 | 0.23194 |     4      |    True     |
-| 0.83797  | 0.88006 | 0.22683 |     2      |    True     |
-| 0.84521  | 0.88700 | 0.21822 |     1      |    False    |
+|:--------:|:-------:|:-------:|:----------:|:-------------:|
+| 0.82971  | 0.87713 | 0.23194 |     4      |     True      |
+| 0.83797  | 0.88006 | 0.22683 |     2      |     True      |
+| 0.84521  | 0.88700 | 0.21822 |     1      |     False     |
 
 
 Overall, the results demonstrate that using shardformers during model training does not affect the convergence.

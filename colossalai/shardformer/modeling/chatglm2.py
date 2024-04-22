@@ -13,8 +13,6 @@ from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.layer import AttnMaskType, ColoAttention
 from colossalai.shardformer.layer._operation import gather_forward_split_backward, split_forward_gather_backward
 
-# from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
-
 
 def get_flash_core_attention_forward():
     from .chatglm2_6b.modeling_chatglm import CoreAttention
