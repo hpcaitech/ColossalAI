@@ -110,18 +110,15 @@ class ShardConfig:
         """
         # you can add all the optimization flag here
         try:
-            apex_installed = True
+            from apex.normalization import FusedLayerNorm as ApexFusedLayerNorm  # noqa
+
+            apex_avail = True
         except ImportError:
-            apex_installed = False
+            apex_avail = False
             warnings.warn("You set enable_all_optimization=True, but apex is not installed.")
-        try:
-            import flash_attn
-        except ImportError:
-            flash_attn_installed = False
-            warnings.warn("You set enable_all_optimization=True, but flash_attn is not installed.")
-        
-        self.enable_fused_normalization = apex_installed
-        self.enable_flash_attention = flash_attn_installed
+
+        self.enable_fused_normalization = apex_avail
+        self.enable_flash_attention = True
         self.enable_jit_fused = True
         # This can cause non-in-place param sharding when used without ZeRO.
         # It may also slow down training when seq len is small. Plz enable manually.
