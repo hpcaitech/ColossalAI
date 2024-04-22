@@ -5,7 +5,6 @@ from typing import List
 
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 from bitsandbytes.optim.optimizer import Optimizer2State
 from torch._C import _LinAlgError
 
@@ -25,12 +24,9 @@ def get_chunk(_grad):
     return _grad
 
 
-def get_galore_param_groups(model,
-                            weight_decay, 
-                            rank=256,
-                            update_proj_gap=200,
-                            scale=0.25,
-                            proj_type="std") -> List[dict]:
+def get_galore_param_groups(
+    model, weight_decay, rank=256, update_proj_gap=200, scale=0.25, proj_type="std"
+) -> List[dict]:
     """
     It's advised to use this instead of manually specifying which param groups
     to apply GaLore on.
@@ -39,7 +35,7 @@ def get_galore_param_groups(model,
     non_galore = []
     no_decay_params = []
     no_decay = ["bias", "LayerNorm.weight"]
-    
+
     for name, param in model.named_parameters():
         # Only make sense to do SVD on 2d gradient matrices
         # e.g. nn.Linear, VocabEmbedding, etc.
@@ -57,7 +53,7 @@ def get_galore_param_groups(model,
             "update_proj_gap": update_proj_gap,
             "scale": scale,
             "proj_type": proj_type,
-            "weight_decay": weight_decay
+            "weight_decay": weight_decay,
         },
         {"params": non_galore, "weight_decay": weight_decay},
         {"params": no_decay_params, "weight_decay": 0.0},
@@ -96,7 +92,7 @@ class GaLoreProjector:
 
         m, n = full_rank_grad.shape  # For ZeRO sharded grads
         if self.proj_type == "std":
-            # Fix SVD side so that sharding grads won't change it
+            # Project the lower dim to minimize information loss
             if self.svd_type is None:
                 self.svd_type = "right" if m >= n else "left"
             # SVD step
@@ -283,6 +279,8 @@ class GaLoreAdamW8bit(Optimizer2State):
             for pindex, p in enumerate(group["params"]):
                 if p.grad is None:
                     continue
+                if p is self.param_groups[0]["params"][0]:
+                    torch.save(p.grad, "grad.pt")
                 state = self.state[p]
 
                 if "step" not in state:
@@ -309,7 +307,7 @@ class GaLoreAdamW8bit(Optimizer2State):
                 if "state1" not in state:
                     self.init_state(group, p, gindex, pindex)
 
-                p.grad = p.grad.contiguous() # avoid bitsandbytes update error
+                # p.grad = p.grad.contiguous() # avoid bitsandbytes update error
                 # Prefetch if paged
                 self.prefetch_state(p)
                 # Adam update step using the buffer
@@ -323,19 +321,19 @@ class GaLoreAdamW8bit(Optimizer2State):
                     update = state["projector"].project_back(p.data)
                     p.data = p.saved_data.add_(update)
 
+                    if dist.get_rank() == 0:
+                        print(f"unprojected update: {get_chunk(update).mean()}, shape: {update.shape}")
+                        if p is self.param_groups[0]["params"][0]:
+                            torch.save(update, "galore_unproj.pt")
+                            torch.save(p.grad, "low_rank_grad.pt")
+                            torch.save(p.data, "low_rank_update.pt")
+                            torch.save(state["projector"].ortho_matrix, "ortho_matrix.pt")
                 # apply weight decay
                 if "weight_decay_saved" in group:
                     p.data.add_(p.data, alpha=-group["lr"] * group["weight_decay_saved"])
                     group["weight_decay"] = group["weight_decay_saved"]
                     del group["weight_decay_saved"]
-                        
-                if dist.get_rank() == 0:
-                    print(f"unprojected update: {get_chunk(update).mean()}")
-                    if p is self.param_groups[2]["params"][1]:
-                        # torch.save(update, "galore_unproj.pt")
-                        torch.save(p.grad, "low_rank_grad.pt")
-                        # torch.save(p.data, "low_rank_update.pt")
-                        # torch.save(state["projector"].ortho_matrix, "ortho_matrix.pt")
+
         if self.is_paged:
             # all paged operation are asynchronous, we need
             # to sync to make sure all tensors are in the right state
@@ -349,4 +347,3 @@ class GaLoreAdamW8bit(Optimizer2State):
             for p in group["params"]:
                 if hasattr(p, "saved_data"):
                     del p.saved_data
-

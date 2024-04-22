@@ -42,7 +42,7 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
         eps (float, optional): term added to the denominator to improve
             numerical stability. (default: 1e-6)
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0.01)
-        nbits: Number of bits for quantization optim states. Only 32 and 8 are supported. 
+        nbits: Number of bits for quantization optim states. Only 32 and 8 are supported.
     Example:
         >>> optim = DistributedLamb(model.parameters(), lr=1e-3)
         >>> proc_mesh = ProcessGroupMesh(tp_size, zero_size)
@@ -164,8 +164,10 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
             for pindex, p in enumerate(group["params"]):
                 if p.grad is None:
                     continue
+                if p is self.param_groups[0]["params"][0] and dist.get_rank() == 0:
+                    torch.save(p.grad, "dist_grad.pt")
                 state = self.state[p]
-                    
+
                 if "step" not in state:
                     state["step"] = 0
 
@@ -230,17 +232,17 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
                             # TODO: this might not work with padding, e.g. (3, 3) with dp size 2
                             # Need extra logic in ZeRO to pad nRows to be divisible by dp_size
                             grad = grad.chunk(self.dp_size)[dist.get_rank(self.dp_group)]
-                        
+                        grad = grad.contiguous()  # avoid bitsandbytes update error
+
                     working_shape = grad.shape
                     # To flattended master param shape
-                    grad = self.to_zero_master_shape(grad, padding)
+                    grad = self.to_master_shape(grad, padding)
                     make_low_rank_buffer(p, grad)
-                    
+
                 if "state1" not in state:
                     self.init_state(group, p, gindex, pindex)
 
                 self.prefetch_state(p)
-                p.grad = p.grad.contiguous() # avoid bitsandbytes update error
                 self.update_step(group, p, gindex, pindex)
                 torch.cuda.synchronize()
 
@@ -256,17 +258,17 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
                     p.data = state["projector"].project_back(p.data)
                     un_proj = p.data.clone()
                     # Re-flatten grads for ZeRO
-                    p.data = self.to_zero_master_shape(p.data, padding)
+                    p.data = self.to_master_shape(p.data, padding)
                     p.data = p.saved_data.add_(p.data)
-                    
-                if dist.get_rank() == 0:
-                    print(f"rank {dist.get_rank()} unprojected update: {un_proj.mean()}")
-                    if p is self.param_groups[2]["params"][1]:
-                        # torch.save(un_proj, f"dist_galore_unproj.pt")
-                        torch.save(p.grad, f"dist_low_rank_grad.pt")
-                        # torch.save(update, "dist_low_rank_update.pt")
-                        # torch.save(state["projector"].ortho_matrix, f"dist_galore_ortho.pt")
-                
+
+                    if dist.get_rank() == 0:
+                        print(f"rank {dist.get_rank()} unprojected update: {un_proj.mean()}, shape: {un_proj.shape}")
+                        if p is self.param_groups[0]["params"][0]:
+                            torch.save(un_proj, f"dist_galore_unproj.pt")
+                            torch.save(p.grad, f"dist_low_rank_grad.pt")
+                            torch.save(update, "dist_low_rank_update.pt")
+                            torch.save(state["projector"].ortho_matrix, f"dist_galore_ortho.pt")
+
                 # apply decoupled weight decay
                 if "weight_decay_saved" in group:
                     p.data.add_(p.data, alpha=-group["lr"] * group["weight_decay_saved"])
@@ -279,8 +281,8 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
             torch.cuda.synchronize()
         return loss
 
-    def to_zero_master_shape(self, data, padding):
-        """Pad to master(optimizer) param shape"""
+    def to_master_shape(self, data, padding):
+        """Pad to master (optimizer) param shape"""
         if not self.is_zero:
             return data
         data = data.view(-1)
