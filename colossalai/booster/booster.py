@@ -17,7 +17,6 @@ except ImportError:
     pass
 
 import colossalai.interface.pretrained as pretrained_utils
-from colossalai.quantization import BnbQuantizationConfig
 from colossalai.checkpoint_io import GeneralCheckpointIO
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.quantization import BnbQuantizationConfig

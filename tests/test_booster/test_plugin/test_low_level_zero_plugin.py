@@ -2,8 +2,8 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
-from torch.optim import Adam
 from peft import LoraConfig
+from torch.optim import Adam
 
 import colossalai
 from colossalai.accelerator import get_accelerator
@@ -11,7 +11,7 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 
 # from colossalai.nn.optimizer import HybridAdam
-from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import COMMON_MODELS, IS_FAST_TEST, model_zoo
 
 # These models are not compatible with AMP
