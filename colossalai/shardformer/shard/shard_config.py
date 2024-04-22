@@ -7,7 +7,7 @@ from torch.distributed import ProcessGroup
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
-from .grad_ckpt_config import GradientCheckpointConfig
+from .grad_ckpt_config import GradientCheckpointConfig, PipelineGradientCheckpointConfig
 
 __all__ = ["ShardConfig"]
 SUPPORT_SP_MODE = ["split_gather", "ring", "all_to_all"]
@@ -30,6 +30,7 @@ class ShardConfig:
         gradient_checkpoint_config (Optional[GradientCheckpointConfig]): The gradient checkpoint config. Defaults to None.
         enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalization', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
     """
+
     tensor_parallel_process_group: Optional[ProcessGroup] = None
     sequence_parallel_process_group: Optional[ProcessGroup] = None
     pipeline_stage_manager: Optional[PipelineStageManager] = None
@@ -103,6 +104,16 @@ class ShardConfig:
             self._sequence_parallel_size = 1
         else:
             self._sequence_parallel_size = dist.get_world_size(self.sequence_parallel_process_group)
+
+        if (
+            self.pipeline_stage_manager is not None
+            and isinstance(self.gradient_checkpoint_config, PipelineGradientCheckpointConfig)
+            and self.gradient_checkpoint_config._customize_num_layers_per_stage
+        ):
+            self.pipeline_stage_manager.set_distribution_config(
+                self.gradient_checkpoint_config.num_model_layers,
+                self.gradient_checkpoint_config.num_layers_per_stage,
+            )
 
     def _turn_on_all_optimization(self):
         """

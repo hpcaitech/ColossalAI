@@ -22,6 +22,7 @@ class PipelineGradientCheckpointConfig(GradientCheckpointConfig):
         2. Customize # ckpt layers assigned to each stage. This takes precedence over `gradient_checkpointing_ratio`.
 
     """
+
     """
     Args:
         gradient_checkpointing_ratio (Optional[float]): The ratio of gradient checkpointing. It can only be used in pipeline parallelism. Defaults to None.
@@ -49,6 +50,7 @@ class PipelineGradientCheckpointConfig(GradientCheckpointConfig):
     num_stages: Optional[int] = None
     num_model_chunks: Optional[int] = None
     num_model_layers: Optional[int] = None
+    num_layers_per_stage: Optional[List[int]] = None
     num_ckpt_layers_per_stage: Optional[List[int]] = None
 
     def __post_init__(self):
@@ -69,6 +71,10 @@ class PipelineGradientCheckpointConfig(GradientCheckpointConfig):
     @property
     def _enable_gradient_checkpointing_ratio(self) -> bool:
         return self.gradient_checkpointing_ratio is not None
+
+    @property
+    def _customize_num_layers_per_stage(self) -> bool:
+        return self.num_layers_per_stage is not None and self.num_model_layers is not None
 
     @property
     def _enable_customized_ckpt_layers_per_stage(self) -> bool:
