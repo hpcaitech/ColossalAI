@@ -68,15 +68,6 @@ class ChatGLMPolicy(Policy):
         sp_partial_derived = sp_mode == "split_gather"
 
         if self.shard_config.enable_tensor_parallelism:
-            policy["ChatGLMModel"] = ModulePolicyDescription(
-                attribute_replacement={},
-                sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="embedding.word_embeddings",
-                        target_module=col_nn.VocabParallelEmbedding1D,
-                    )
-                ],
-            )
             assert (
                 self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
             ), f"num_attention_heads {self.model.config.num_attention_heads} should be divisible by tensor_parallel_size {self.shard_config.tensor_parallel_size}"
@@ -145,7 +136,7 @@ class ChatGLMPolicy(Policy):
                     ),
                 ],
                 policy=policy,
-                target_key=ChatGLMModel,
+                target_key="ChatGLMModel",
             )
         # optimization configuration
         self.append_or_create_submodule_replacement(

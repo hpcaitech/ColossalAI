@@ -1,4 +1,5 @@
 import torch
+from torch.nn import init
 from transformers import AutoConfig, AutoModelForCausalLM
 
 from ..registry import ModelAttribute, model_zoo
@@ -66,9 +67,17 @@ infer_config = AutoConfig.from_pretrained(
 )
 
 
+def init_chatglm():
+    model = AutoModelForCausalLM.from_config(config, empty_init=False, trust_remote_code=True)
+    for m in model.modules():
+        if m.__class__.__name__ == "RMSNorm":
+            init.ones_(m.weight)
+    return model
+
+
 model_zoo.register(
     name="transformers_chatglm_for_conditional_generation",
-    model_fn=lambda: AutoModelForCausalLM.from_config(config, empty_init=False, trust_remote_code=True),
+    model_fn=init_chatglm,
     data_gen_fn=data_gen_for_conditional_generation,
     output_transform_fn=output_transform_fn,
     loss_fn=loss_fn,
