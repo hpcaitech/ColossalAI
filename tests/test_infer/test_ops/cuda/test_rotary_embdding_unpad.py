@@ -21,7 +21,7 @@ def numpy_allclose(x, y, rtol, atol):
 @pytest.mark.parametrize("BATCH_SIZE", [4])
 @pytest.mark.parametrize("SEQ_LEN", [64])
 @pytest.mark.parametrize("H", [32])
-@pytest.mark.parametrize("K_H", [32, 64])
+@pytest.mark.parametrize("K_H", [16, 32])
 @pytest.mark.parametrize("D", [64])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, K_H, D, dtype):
@@ -124,4 +124,4 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, K_H, D, dtype):
 
 
 if __name__ == "__main__":
-    test_rotary_emb(16, 64, 4, 32, 128, torch.float16)
+    test_rotary_emb(16, 64, 32, 16, 128, torch.float16)
