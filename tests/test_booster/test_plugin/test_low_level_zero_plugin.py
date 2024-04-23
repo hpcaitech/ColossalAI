@@ -21,6 +21,7 @@ _LOW_LEVEL_ZERO_ERR_MODELS = ["dlrm_interactionarch"]
 # These models will cause stuck, to be fixed
 _STUCK_MODELS = ["transformers_albert_for_multiple_choice"]
 
+
 @clear_cache_before_run()
 def run_fn(stage, model_fn, data_gen_fn, output_transform_fn, lora_config=None) -> Optional[str]:
     device = get_accelerator().get_current_device()
