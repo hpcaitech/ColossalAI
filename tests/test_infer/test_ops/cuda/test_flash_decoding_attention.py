@@ -152,7 +152,7 @@ def test_flash_decoding_attention(
 
 
 try:
-    pass
+    from vllm._C import ops as vllm_ops  # noqa
 
     HAS_VLLM = True
 except ImportError:
@@ -175,11 +175,6 @@ def test_vllm_flash_decoding_attention(
     torch.cuda.empty_cache()
     torch.cuda.synchronize()
     torch.cuda.reset_peak_memory_stats()
-
-    try:
-        from vllm._C import ops as vllm_ops
-    except ImportError:
-        raise ImportError("Please install vllm from https://github.com/vllm-project/vllm")
 
     NUM_KV_HEADS = NUM_ATTN_HEADS // KV_GROUP_NUM
     assert isinstance(NUM_KV_HEADS, int) and NUM_KV_HEADS > 0, "Invalid number of kv heads."
