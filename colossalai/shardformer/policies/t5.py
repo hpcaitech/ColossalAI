@@ -272,7 +272,7 @@ class T5BasePolicy(Policy):
 
         # in the case of T5EncoderModel, set decoder starting stage to num_stages since it doesn't exist
         if num_decoder_layers == 0:
-            return stage_manager.distribute_layers(num_encoder_layers, num_stages), num_stages
+            return self.distribute_layers(num_encoder_layers, num_stages), num_stages
 
         # the number of stages distributed between encoder and decoder is optimized in this way:
         # num_encoder_stages = argmin(abs(num_encoder_layers / encoder_stages - num_decoder_layers / decoder_stages))
@@ -283,8 +283,8 @@ class T5BasePolicy(Policy):
         num_encoder_stages = np.argmin([objective(i) for i in range(1, num_stages)]) + 1
         num_decoder_stages = num_stages - num_encoder_stages
 
-        encoder_distribution = stage_manager.distribute_layers(num_encoder_layers, num_encoder_stages)
-        decoder_distribution = stage_manager.distribute_layers(num_decoder_layers, num_decoder_stages)
+        encoder_distribution = self.distribute_layers(num_encoder_layers, num_encoder_stages)
+        decoder_distribution = self.distribute_layers(num_decoder_layers, num_decoder_stages)
         return encoder_distribution + decoder_distribution, num_encoder_stages
 
     def get_t5_stage_index(

@@ -96,7 +96,7 @@ class OpenMoePolicy(Policy):
             else:
                 module = self.model.model
 
-            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            layers_per_stage = self.distribute_layers(len(module.layers))
             stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {"forward": partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
             self.append_or_create_method_replacement(
@@ -116,7 +116,7 @@ class OpenMoePolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+        layers_per_stage = self.distribute_layers(len(module.layers))
         if stage_manager.is_first_stage():
             held_layers.append(module.embed_tokens)
         start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)

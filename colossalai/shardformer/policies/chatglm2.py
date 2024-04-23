@@ -191,7 +191,7 @@ class ChatGLMPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = stage_manager.distribute_layers(module.num_layers)
+        layers_per_stage = self.distribute_layers(module.num_layers)
         if stage_manager.is_first_stage():
             held_layers.append(module.embedding)
         start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
@@ -216,7 +216,7 @@ class ChatGLMPolicy(Policy):
         else:
             module = self.model.transformer
 
-        layers_per_stage = stage_manager.distribute_layers(module.num_layers)
+        layers_per_stage = self.distribute_layers(module.num_layers)
         stage_index = stage_manager.get_stage_index(layers_per_stage)
         method_replacement = {
             "forward": partial(

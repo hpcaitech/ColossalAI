@@ -72,51 +72,6 @@ class PipelineStageManager:
             # for shardformer, hold model chunk id
             self.model_chunk_id: Optional[int] = None
 
-    @property
-    def control_distribute_layers(self) -> bool:
-        return self.num_layers_per_stage is not None
-
-    def set_distribution_config(self, num_model_layers: int, num_layers_per_stage: List[int]) -> None:
-        """Set the distribution configuration.
-        This allows user to customize the number of layers for each stage.
-
-        Args:
-            num_model_layers (int): Number of layers in the model.
-            num_layers_per_stage (List[int]): Number of layers for each stage.
-        """
-        assert all([0 < num_layers < num_model_layers for num_layers in num_layers_per_stage])
-        assert sum(num_layers_per_stage) == num_model_layers
-        assert len(num_layers_per_stage) == self.num_stages * (self.num_model_chunks if self.is_interleave else 1)
-        self.num_model_layers = num_model_layers
-        self.num_layers_per_stage = num_layers_per_stage
-
-    def distribute_layers(
-        self, num_layers: int, num_stages: Optional[int] = None, num_model_chunks: Optional[int] = None
-    ) -> List[int]:
-        """Divide layers into stages"""
-        num_stages = self.num_stages if num_stages is None else num_stages
-        num_model_chunks = (
-            (self.num_model_chunks if self.is_interleave else 1) if num_model_chunks is None else num_model_chunks
-        )
-
-        if self.control_distribute_layers:
-            assert num_layers == self.num_model_layers
-            return self.num_layers_per_stage
-
-        else:
-            quotient = num_layers // (num_stages * num_model_chunks)
-            remainder = num_layers % (num_stages * num_model_chunks)
-
-            # calculate the num_layers per stage
-            layers_per_stage = [quotient] * num_stages * num_model_chunks
-
-            # deal with the rest layers
-            if remainder > 0:
-                start_position = (num_stages * num_model_chunks) // 2 - remainder // 2
-                for i in range(start_position, start_position + remainder):
-                    layers_per_stage[i] += 1
-            return layers_per_stage
-
     def get_stage_index(
         self,
         layers_per_stage: List[int],

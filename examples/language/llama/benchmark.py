@@ -90,9 +90,6 @@ def main():
     # ckpt config for LLaMA3-70B on 64 H100 GPUs
     ckpt_config = (
         PipelineGradientCheckpointConfig(
-            num_stages=args.pp,
-            num_model_chunks=1,
-            num_model_layers=80,
             num_layers_per_stage=[19, 20, 20, 21],
             num_ckpt_layers_per_stage=[19, 19, 19, 13],
         )

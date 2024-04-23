@@ -221,7 +221,7 @@ class GPT2Policy(Policy):
         held_layers = []
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
-            layers_per_stage = stage_manager.distribute_layers(len(module.h))
+            layers_per_stage = self.distribute_layers(len(module.h))
             stage_indices = stage_manager.get_stage_index(layers_per_stage)
             if stage_manager.is_first_stage(ignore_chunk=True):
                 held_layers.append(module.wte)
@@ -232,7 +232,7 @@ class GPT2Policy(Policy):
             if stage_manager.is_last_stage(ignore_chunk=True):
                 held_layers.append(module.ln_f)
         else:
-            layers_per_stage = stage_manager.distribute_layers(len(module.h))
+            layers_per_stage = self.distribute_layers(len(module.h))
             if stage_manager.is_first_stage():
                 held_layers.append(module.wte)
                 held_layers.append(module.wpe)
@@ -255,7 +255,7 @@ class GPT2Policy(Policy):
             module = self.model.transformer
 
         if stage_manager.is_interleave:
-            layers_per_stage = stage_manager.distribute_layers(len(module.h))
+            layers_per_stage = self.distribute_layers(len(module.h))
             stage_manager.stage_indices = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(
@@ -265,7 +265,7 @@ class GPT2Policy(Policy):
                 )
             }
         else:
-            layers_per_stage = stage_manager.distribute_layers(len(module.h))
+            layers_per_stage = self.distribute_layers(len(module.h))
             stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(

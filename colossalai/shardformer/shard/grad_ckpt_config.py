@@ -47,26 +47,24 @@ class PipelineGradientCheckpointConfig(GradientCheckpointConfig):
         ...
 
     """
-    num_stages: Optional[int] = None
-    num_model_chunks: Optional[int] = None
-    num_model_layers: Optional[int] = None
     num_layers_per_stage: Optional[List[int]] = None
     num_ckpt_layers_per_stage: Optional[List[int]] = None
+    _num_stages: Optional[int] = None
+    _num_model_chunks: Optional[int] = None
+
+    def setup_pipeline(self, num_layers: int, num_stages: int, num_model_chunks: int) -> None:
+        self._num_stages = num_stages
+        self._num_model_chunks = num_model_chunks
+        if self._enable_customized_ckpt_layers_per_stage:
+            assert self._num_stages is not None and self._num_model_chunks is not None and num_layers is not None
+            assert len(self.num_ckpt_layers_per_stage) == self._num_stages * self._num_model_chunks
+            assert all([0 <= num_ckpt_layers < num_layers for num_ckpt_layers in self.num_ckpt_layers_per_stage])
+            self.gradient_checkpointing_ratio = sum(self.num_ckpt_layers_per_stage) / num_layers
 
     def __post_init__(self):
         if self._enable_gradient_checkpointing_ratio:
             if not (0 <= self.gradient_checkpointing_ratio <= 1):
                 raise ValueError("gradient_checkpointing_ratio should be in 0% to 100%")
-
-        if self._enable_customized_ckpt_layers_per_stage:
-            assert (
-                self.num_stages is not None and self.num_model_chunks is not None and self.num_model_layers is not None
-            )
-            assert len(self.num_ckpt_layers_per_stage) == self.num_stages * self.num_model_chunks
-            assert all(
-                [0 <= num_ckpt_layers < self.num_model_layers for num_ckpt_layers in self.num_ckpt_layers_per_stage]
-            )
-            self.gradient_checkpointing_ratio = sum(self.num_ckpt_layers_per_stage) / self.num_model_layers
 
     @property
     def _enable_gradient_checkpointing_ratio(self) -> bool:
@@ -74,7 +72,7 @@ class PipelineGradientCheckpointConfig(GradientCheckpointConfig):
 
     @property
     def _customize_num_layers_per_stage(self) -> bool:
-        return self.num_layers_per_stage is not None and self.num_model_layers is not None
+        return self.num_layers_per_stage is not None
 
     @property
     def _enable_customized_ckpt_layers_per_stage(self) -> bool:
@@ -85,8 +83,8 @@ class PipelineGradientCheckpointConfig(GradientCheckpointConfig):
             raise RuntimeError("No checkpointed layers information is provided")
 
         if self._enable_customized_ckpt_layers_per_stage:
-            assert stage <= self.num_stages and model_chunk_id <= self.num_model_chunks
-            num_ckpt_layers = self.num_ckpt_layers_per_stage[stage + model_chunk_id * self.num_stages]
+            assert stage <= self._num_stages and model_chunk_id <= self._num_model_chunks
+            num_ckpt_layers = self.num_ckpt_layers_per_stage[stage + model_chunk_id * self._num_stages]
             assert num_ckpt_layers <= num_layers
             return num_ckpt_layers
         else:

@@ -307,7 +307,7 @@ class BertPolicy(Policy):
             module = self.model.bert
 
         if stage_manager.is_interleave:
-            layers_per_stage = stage_manager.distribute_layers(len(module.encoder.layer))
+            layers_per_stage = self.distribute_layers(len(module.encoder.layer))
             stage_manager.stage_indices = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(
@@ -318,7 +318,7 @@ class BertPolicy(Policy):
             }
 
         else:
-            layers_per_stage = stage_manager.distribute_layers(len(module.encoder.layer))
+            layers_per_stage = self.distribute_layers(len(module.encoder.layer))
             stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(
@@ -344,7 +344,7 @@ class BertPolicy(Policy):
         held_layers = []
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
-            layers_per_stage = stage_manager.distribute_layers(len(module.encoder.layer))
+            layers_per_stage = self.distribute_layers(len(module.encoder.layer))
             stage_indices = stage_manager.get_stage_index(layers_per_stage)
             if stage_manager.is_first_stage(ignore_chunk=True):
                 held_layers.append(module.embeddings)
@@ -354,7 +354,7 @@ class BertPolicy(Policy):
                 held_layers.append(module.pooler)
 
         else:
-            layers_per_stage = stage_manager.distribute_layers(len(module.encoder.layer))
+            layers_per_stage = self.distribute_layers(len(module.encoder.layer))
             if stage_manager.is_first_stage():
                 held_layers.append(module.embeddings)
             start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
