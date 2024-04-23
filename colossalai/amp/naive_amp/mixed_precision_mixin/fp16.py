@@ -5,8 +5,8 @@ import torch
 import torch.distributed as dist
 from torch import Tensor
 
+from colossalai.accelerator import get_accelerator
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
-from colossalai.utils import get_current_device
 
 from .base import MixedPrecisionMixin
 
@@ -40,7 +40,7 @@ class FP16MixedPrecisionMixin(MixedPrecisionMixin):
             max_scale=max_scale,
         )
         self.optim_state = OptimState.UNSCALED
-        self.found_overflow = torch.zeros(1, dtype=torch.float, device=get_current_device())
+        self.found_overflow = torch.zeros(1, dtype=torch.float, device=get_accelerator().get_current_device())
 
     @property
     def loss_scale(self) -> float:

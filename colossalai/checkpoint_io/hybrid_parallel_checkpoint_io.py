@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+from functools import reduce
 from pathlib import Path
 from shutil import rmtree
 from typing import Dict, Iterator, Optional, OrderedDict, Tuple
@@ -13,6 +14,13 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.tensor.padded_tensor import (
+    init_as_padded_tensor,
+    is_padded_tensor,
+    to_padded_tensor,
+    to_unpadded_tensor,
+)
+from colossalai.utils import get_current_device
 
 from .general_checkpoint_io import GeneralCheckpointIO
 from .index_file import CheckpointIndexFile
@@ -30,6 +38,7 @@ from .utils import (
     save_param_groups,
     save_state_dict,
     save_state_dict_shards,
+    search_padding_dim,
     search_tp_partition_dim,
     sharded_optimizer_loading_epilogue,
 )
@@ -49,7 +58,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         pp_group (ProcessGroup): Process group along pipeline parallel dimension.
         tp_group (ProcessGroup): Process group along tensor parallel dimension.
         zero_stage (int): The zero stage of plugin. Should be in [0, 1, 2].
-        verbose (bool, optional): Whether to print logging massage when saving/loading has been succesfully executed. Defaults to True.
+        verbose (bool, optional): Whether to print logging massage when saving/loading has been successfully executed. Defaults to True.
     """
 
     def __init__(
@@ -87,6 +96,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if param is None:
                 continue
             # Gather tensor pieces when using tensor parallel.
+            if is_padded_tensor(param):
+                param = to_unpadded_tensor(param)
             param_ = gather_distributed_param(param, keep_vars=False)
             block, block_size = state_dict_sharder.append_param(prefix + name, param_)
             if block is not None:
@@ -229,7 +240,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             # When pipeline is used, each stage produces its own shard files and index files.
             # Index files belonging to each stage are saved under a temporary folder ./tmp_index_files/
             # After all the state_dicts have been saved, the master rank integrates all the index files into one final index file and deletes the tmp folder.
-
             final_index_file_path = copy.deepcopy(save_index_file)
             tmp_index_file_folder = os.path.join(checkpoint, "tmp_index_files")
             Path(tmp_index_file_folder).mkdir(parents=True, exist_ok=True)
@@ -249,6 +259,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 use_safetensors=use_safetensors,
                 use_pp_format=True,
             )
+
             if control_saving:
                 assert (
                     self.dp_rank == 0 and self.tp_rank == 0
@@ -313,9 +324,13 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         # Keep a record of loaded files so that file will not be repeatedly loaded.
         loaded_file = set()
 
+        missing_keys = []
+        missing_file_keys = []
+
         def _load(name: str):
             if name not in weight_map:
-                raise ValueError(f"{name} is not stored in checkpoint, please check your checkpointing configuration!")
+                missing_file_keys.append(name)
+                return
             filename = weight_map[name]
 
             # If this param/buffer has been loaded before, directly return.
@@ -324,7 +339,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
             file_path = os.path.join(ckpt_root_path, filename)
             state_dict = load_shard_state_dict(Path(file_path), use_safetensors)
-            missing_keys = []
 
             load_state_dict_into_model(
                 model, state_dict, missing_keys=missing_keys, strict=strict, load_sub_module=True
@@ -356,6 +370,27 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         if self.verbose and self.coordinator.is_master():
             logging.info(f"The model has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
+
+        if len(missing_keys) == 0:
+            raise RuntimeError(
+                "No weigth is loaded into the model. Please check the checkpoint files and the model structure."
+            )
+
+        remain_keys = reduce(lambda a, b: a & b, map(set, missing_keys))
+        remain_keys = remain_keys.union(set(missing_file_keys))
+        if len(remain_keys) > 0:
+            if strict:
+                error_msgs = "Missing key(s) in state_dict: {}. ".format(
+                    ", ".join('"{}"'.format(k) for k in missing_keys)
+                )
+                raise RuntimeError(
+                    "Error(s) in loading state_dict for {}:\n\t{}".format(
+                        self.__class__.__name__, "\n\t".join(error_msgs)
+                    )
+                )
+            else:
+                if self.coordinator.is_master():
+                    logging.info(f"The following keys are not loaded from checkpoint: {remain_keys}")
 
     def save_sharded_optimizer(
         self,
@@ -420,7 +455,11 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 # Store param groups.
                 index_file.append_meta_data("param_groups", param_group_file)
                 group_file_path = os.path.join(checkpoint, param_group_file)
-                save_param_groups(optimizer.param_info, group_file_path)
+                param_groups = [
+                    {**group, "params": group_info["params"]}
+                    for group, group_info in zip(optimizer.param_groups, optimizer.param_info["param_groups"])
+                ]
+                save_param_groups({"param_groups": param_groups}, group_file_path)
                 # Store index file.
                 index_file.append_meta_data("total_size", total_size)
                 index_file.write_index_file(save_index_file)
@@ -479,7 +518,11 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 # Store param groups.
                 final_index_file.append_meta_data("param_groups", param_group_file)
                 group_file_path = os.path.join(checkpoint, param_group_file)
-                save_param_groups(optimizer.param_info, group_file_path)
+                param_groups = [
+                    {**group, "params": group_info["params"]}
+                    for group, group_info in zip(optimizer.param_groups, optimizer.param_info["param_groups"])
+                ]
+                save_param_groups({"param_groups": param_groups}, group_file_path)
 
                 final_index_file.write_index_file(final_index_file_path)
                 rmtree(tmp_index_file_folder)
@@ -540,7 +583,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
             # obtain updated param group
             new_pg = copy.deepcopy(saved_pg)
-            new_pg["params"] = old_pg["params"]  # The parameters in the same group shouln't change.
+            new_pg["params"] = old_pg["params"]  # The parameters in the same group shouldn't change.
             updated_groups.append(new_pg)
         optimizer.optim.__dict__.update({"param_groups": updated_groups})
 
@@ -688,12 +731,16 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 tp_group=self.tp_group,
                 use_zero=self.use_zero,
                 inplace=False,
-                device=torch.device("cuda"),
+                device=get_current_device(),
             )
 
         if self.pp_size == 1:
             # When pipeline is not used, let master rank directly save the collected state_dict.
-            state_dict = {"param_groups": optimizer.param_info["param_groups"], "state": local_states}
+            param_groups = [
+                {**group, "params": group_info["params"]}
+                for group, group_info in zip(optimizer.param_groups, optimizer.param_info["param_groups"])
+            ]
+            state_dict = {"param_groups": param_groups, "state": local_states}
             if self.coordinator.is_master():
                 save_state_dict(state_dict, checkpoint, use_safetensors=False)
         else:
@@ -704,7 +751,11 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
             # Only the master rank do the saving.
             if self.coordinator.is_master():
-                state_dict = {"param_groups": optimizer.param_info["param_groups"], "state": dict()}
+                param_groups = [
+                    {**group, "params": group_info["params"]}
+                    for group, group_info in zip(optimizer.param_groups, optimizer.param_info["param_groups"])
+                ]
+                state_dict = {"param_groups": param_groups, "state": dict()}
                 for _states in states_list:
                     state_dict["state"].update(_states)
                 save_state_dict(state_dict, checkpoint, use_safetensors=False)
@@ -813,7 +864,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if isinstance(v, torch.Tensor) and k != "step":
                 # First gather Zero shards.
                 if use_zero:
-                    v = v.cuda()
+                    v = v.to(get_current_device())
                     gather_tensor = [torch.zeros_like(v) for _ in range(dp_size)]
                     dist.all_gather(gather_tensor, v, group=dp_group)
                     v = torch.stack(gather_tensor).view(-1)[: param.numel()].reshape_as(param)
@@ -824,6 +875,11 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     gather_tensor = [torch.zeros_like(v) for _ in range(tp_size)]
                     dist.all_gather(gather_tensor, v, group=tp_group)
                     v = torch.cat(gather_tensor, dim=partition_dim)
+
+                padding_dim = search_padding_dim(v.shape, original_shape)
+                if padding_dim is not None:
+                    v = init_as_padded_tensor(v, v.shape[padding_dim], original_shape[padding_dim], padding_dim)
+                    v = to_unpadded_tensor(v)
 
                 state_[k] = v.detach().clone().to(device)
 
@@ -857,6 +913,19 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if isinstance(v, torch.Tensor) and k != "step":
                 # Shard state along tensor parallel group.
                 partition_dim = search_tp_partition_dim(current_shape, original_shape, self.tp_size)
+                global_shape = current_shape
+                if partition_dim is not None:
+                    # pad embedding params
+                    global_shape = (
+                        *current_shape[:partition_dim],
+                        current_shape[partition_dim] * self.tp_size,
+                        *current_shape[partition_dim + 1 :],
+                    )
+
+                padding_dim = search_padding_dim(global_shape, original_shape)
+                if padding_dim is not None:
+                    v = to_padded_tensor(v, global_shape[padding_dim], padding_dim)
+
                 if partition_dim is not None:
                     slice_size = current_shape[partition_dim]
                     v = v.split(slice_size, dim=partition_dim)[self.tp_rank]

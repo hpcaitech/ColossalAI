@@ -5,10 +5,10 @@ import torch.distributed as dist
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.communication.collective import all_gather, all_reduce, reduce_scatter
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
-from colossalai.utils import get_current_device
 
 
 def get_parallel_group(parallel_mode: ParallelMode):
@@ -205,7 +205,7 @@ class Matmul_AB_2p5D(torch.autograd.Function):
         B_shape = B.shape
         B = B.reshape((-1, B_shape[-1]))
         C_shape = (A.shape[0], B.shape[-1])
-        C = torch.zeros(C_shape, dtype=A.dtype, device=get_current_device())
+        C = torch.zeros(C_shape, dtype=A.dtype, device=get_accelerator().get_current_device())
 
         # use circular buffer to store the communication tensor
         # 2 is enough for all cases
@@ -362,7 +362,7 @@ class Matmul_ABT_2p5D(torch.autograd.Function):
         B_shape = B.shape
         B = B.reshape((-1, B_shape[-1]))
         C_shape = (A.shape[0], B.shape[0])
-        C = torch.empty(C_shape, dtype=A.dtype, device=get_current_device())
+        C = torch.empty(C_shape, dtype=A.dtype, device=get_accelerator().get_current_device())
 
         # use circular buffer to store the communication tensor
         # 2 is enough for all cases
@@ -527,7 +527,7 @@ class Matmul_ATB_2p5D(torch.autograd.Function):
         B_shape = B.shape
         B = B.reshape((-1, B_shape[-1]))
         C_shape = (A.shape[-1], B.shape[-1])
-        C = torch.empty(C_shape, dtype=A.dtype, device=get_current_device())
+        C = torch.empty(C_shape, dtype=A.dtype, device=get_accelerator().get_current_device())
 
         # use circular buffer to store the communication tensor
         # 2 is enough for all cases
@@ -661,7 +661,9 @@ class _Add_Bias_2p5D(torch.autograd.Function):
         if row_rank == 0:
             bias_temp = bias.clone()
         else:
-            bias_temp = torch.zeros(output_size_per_partition, dtype=bias.dtype, device=get_current_device())
+            bias_temp = torch.zeros(
+                output_size_per_partition, dtype=bias.dtype, device=get_accelerator().get_current_device()
+            )
         src_rank = (
             col_rank
             + dep_rank * tesseract_dim**2
@@ -984,7 +986,7 @@ class SplitFirst(torch.autograd.Function):
     @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
         grad_shape = (ctx.batch_size,) + output_grad.shape[1:]
-        grad = torch.empty(grad_shape, dtype=output_grad.dtype, device=get_current_device())
+        grad = torch.empty(grad_shape, dtype=output_grad.dtype, device=get_accelerator().get_current_device())
         dist.all_gather(
             list(grad.chunk(ctx.tesseract_dim, dim=0)), output_grad.contiguous(), group=gpc.get_group(ctx.para_mode)
         )

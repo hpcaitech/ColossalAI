@@ -4,12 +4,12 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.nn.functional import cross_entropy
 from torch.nn.modules.loss import _Loss
 
+from colossalai.accelerator import get_accelerator
 from colossalai.legacy.context import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.nn.layer.parallel_2p5d import reduce_by_batch_2p5d, split_batch_2p5d
 from colossalai.legacy.nn.layer.parallel_2p5d._utils import assert_tesseract_initialization
 from colossalai.legacy.registry import LOSSES
-from colossalai.utils import get_current_device
 
 
 @LOSSES.register_module
@@ -112,7 +112,7 @@ class _VocabParallelCrossEntropy2p5D(torch.autograd.Function):
         grad_2d = grad_input.view(-1, partition_vocab_size)
 
         # Add the gradient from matching classes.
-        arange_1d = torch.arange(start=0, end=grad_2d.size()[0], device=get_current_device())
+        arange_1d = torch.arange(start=0, end=grad_2d.size()[0], device=get_accelerator().get_current_device())
         grad_2d[arange_1d, masked_target] -= 1.0 - target_mask.view(-1).float()
 
         # Finally elementwise multiplication with the output gradients.

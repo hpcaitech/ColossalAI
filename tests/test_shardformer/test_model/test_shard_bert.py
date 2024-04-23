@@ -34,8 +34,10 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     bert = unwrap_model(org_model, "BertModel", "bert")
     sharded_bert = unwrap_model(sharded_model, "BertModel", "bert")
 
+    norm_layer_for_check = ["encoder.layer[0].attention.output.LayerNorm", "embeddings.LayerNorm"]
     col_layer_for_check = ["encoder.layer[0].output.dense"]
     row_layer_for_check = ["embeddings.word_embeddings", "encoder.layer[0].intermediate.dense"]
+    weight_layer_for_check = ["encoder.layer[0].output.dense", "encoder.layer[1].output.dense"]
 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
@@ -43,22 +45,35 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         atol, rtol = 1e-4, 1e-3
     else:
         atol, rtol = 5e-3, 5e-3
-    if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
+    if (stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True)) and booster.plugin.zero_stage == 0:
         col_layer_grads = get_grad_tensors_for_check(
             bert, sharded_bert, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False
         )
         row_layer_grads = get_grad_tensors_for_check(
             bert, sharded_bert, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0, verbose=False
         )
+
+        norm_layer_grads = get_grad_tensors_for_check(
+            bert,
+            sharded_bert,
+            norm_layer_for_check,
+            tp_group,
+            atol=atol,
+            rtol=rtol,
+            dim=1,
+            verbose=False,
+        )
+
         grads_to_check.update(col_layer_grads)
         grads_to_check.update(row_layer_grads)
+        grads_to_check.update(norm_layer_grads)
 
     # optimizer executes step
     org_optimizer.step()
     sharded_optimizer.step()
 
     # check last hidden state & loss
-    if stage_manager is None or stage_manager.is_last_stage():
+    if stage_manager is None or stage_manager.is_last_stage(ignore_chunk=True):
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
         else:
@@ -73,8 +88,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         atol, rtol = 5e-3, 1e-3
     else:
         atol, rtol = 5e-3, 5e-3
-    if stage_manager is None or stage_manager.is_first_stage():
-        check_weight(bert, sharded_bert, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False)
+    if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
+        check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
 
     # check grads
     check_all_grad_tensors(grads_to_check)
@@ -85,6 +100,35 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 @parameterize(
     "test_config",
     [
+        {
+            "tp_size": 4,
+            "pp_size": 1,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "ring",
+            "enable_flash_attention": False,
+            "use_lazy_init": True,
+            "precision": "fp32",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 4,
+            "pp_size": 1,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "split_gather",
+            "enable_flash_attention": False,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 1,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "precision": "fp32",
+        },
         {
             "tp_size": 1,
             "pp_size": 2,
@@ -132,7 +176,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 )
 def run_bert_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_bert")
-
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
@@ -158,6 +201,17 @@ def run_bert_test(test_config):
             "num_microbatches": 4,
             "enable_all_optimization": False,
             "use_lazy_init": False,
+            "precision": "fp16",
+            "zero_stage": 1,
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "pp_style": "interleaved",
+            "num_model_chunks": 2,
+            "num_microbatches": 4,
+            "enable_all_optimization": False,
             "precision": "fp16",
             "zero_stage": 1,
             "initial_scale": 1,

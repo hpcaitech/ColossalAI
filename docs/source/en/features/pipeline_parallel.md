@@ -167,7 +167,7 @@ plugin = HybridParallelPlugin(tp_size=1,
 booster = Booster(plugin=plugin)
 ```
 
-Boost these train componts with the booster created.
+Boost these train components with the booster created.
 ```python
 model, optimizer, _criterion, _, lr_scheduler = booster.boost(model,
                                                                 optimizer,
@@ -198,8 +198,7 @@ def train_epoch(epoch: int, model: nn.Module, optimizer: Optimizer, _criterion: 
                                                 model,
                                                 _criterion,
                                                 optimizer,
-                                                return_loss=True,
-                                                return_outputs=True)
+                                                return_loss=True)
             # Backward and optimize
             if is_pp_last_stage:
                 loss = outputs['loss']

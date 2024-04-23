@@ -15,8 +15,8 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 
+from colossalai.accelerator import get_accelerator
 from colossalai.context import Config, ConfigException
-from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.interface import OptimizerWrapper
 from colossalai.legacy.amp import AMP_TYPE, convert_to_amp
 from colossalai.legacy.amp.naive_amp import NaiveAMPModel
@@ -35,8 +35,6 @@ from colossalai.legacy.utils import is_using_ddp, is_using_pp, is_using_sequence
 from colossalai.legacy.zero import ShardedOptimizerV2, convert_to_zero_v2
 from colossalai.legacy.zero.gemini.ophooks import BaseOpHook
 from colossalai.logging import get_dist_logger
-from colossalai.utils import get_current_device
-from colossalai.utils.moe import sync_moe_model_param
 
 
 def get_default_parser():
@@ -311,9 +309,9 @@ def initialize(
     else:
         if isinstance(model, nn.Module):
             # first sync model across dp ranks
-            model.to(get_current_device())
+            model.to(get_accelerator().get_current_device())
         elif isinstance(model, Callable):
-            model = model().to(get_current_device())
+            model = model().to(get_accelerator().get_current_device())
 
         # optimizer maybe a optimizer_cls
         if isinstance(optimizer, Callable):
@@ -323,8 +321,6 @@ def initialize(
     if not use_zero:
         if is_using_sequence():
             sync_model_param(model, ParallelMode.SEQUENCE_DP)
-        elif MOE_CONTEXT.is_initialized:
-            sync_moe_model_param(model)
         elif is_using_ddp():
             sync_model_param(model, ParallelMode.DATA)
     else:
@@ -374,14 +370,6 @@ def initialize(
             if verbose:
                 logger.info(
                     "Training with zero is detected, ZeROGradientHandler is automatically "
-                    "added even though not specified in the configuration",
-                    ranks=[0],
-                )
-        elif is_using_ddp() and MOE_CONTEXT.is_initialized:
-            gradient_handler_cfg = [dict(type="MoeGradientHandler")]
-            if verbose:
-                logger.info(
-                    "Data parallel training is detected with moe parallel, MoeGradientHandler is automatically "
                     "added even though not specified in the configuration",
                     ranks=[0],
                 )

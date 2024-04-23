@@ -8,12 +8,12 @@ from lr_scheduler import AnnealingLR
 from model.bert import BertForPretrain, build_pipeline_bert
 
 import colossalai
-from colossalai.kernel import LayerNorm
 from colossalai.legacy.amp import AMP_TYPE
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.utils import is_using_pp
 from colossalai.logging import get_dist_logger
+from colossalai.nn.layer.layernorm import MixedFusedLayerNorm as LayerNorm
 from colossalai.nn.optimizer import FusedAdam
 from colossalai.utils import MultiTimer
 
@@ -48,7 +48,7 @@ def pipeline_data_process_func(stage_output, micro_batch_data):
 def main():
     # initialize
     parse_args()
-    colossalai.launch_from_torch(config="./config.py", seed=1234, backend="nccl")
+    colossalai.legacy.launch_from_torch(config="./config.py", seed=1234, backend="nccl")
 
     logger = get_dist_logger()
 
@@ -136,7 +136,7 @@ def main():
     logger.info(f"LR Scheduler is built with {warmup_steps} warmup steps and {gpc.config.DECAY_ITERS} decay steps")
 
     # # init
-    engine, *dummy = colossalai.initialize(model, optimizer, criterion, verbose=True)
+    engine, *dummy = colossalai.legacy.initialize(model, optimizer, criterion, verbose=True)
 
     # build timer
     timer = MultiTimer()

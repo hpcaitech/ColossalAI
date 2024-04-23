@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from attn import SUPPORT_XFORMERS, replace_xformers
+from attn import replace_with_flash_attention
 from data_utils import load_json, prepare_dataloader, save_json
 from datasets import load_dataset
 from torch.optim import Optimizer
@@ -21,13 +21,13 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 
 def get_model_numel(model: nn.Module) -> int:
@@ -58,6 +58,7 @@ def tokenize_batch_for_finetune(batch, tokenizer: Optional[LlamaTokenizer] = Non
 
 def all_reduce_mean(tensor: torch.Tensor) -> torch.Tensor:
     dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+    tensor = tensor.data
     tensor.div_(dist.get_world_size())
     return tensor
 
@@ -190,7 +191,9 @@ def main():
     config = LlamaConfig.from_pretrained(args.model_path)
     # use lazy init when using GeminiPlugin
     init_ctx = (
-        LazyInitContext(default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
+        LazyInitContext(default_device=get_accelerator().get_current_device())
+        if isinstance(plugin, GeminiPlugin)
+        else nullcontext()
     )
 
     with init_ctx:
@@ -216,8 +219,7 @@ def main():
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
     if args.flash_attention:
-        assert SUPPORT_XFORMERS, "Use flash attention while xfomers is not installed"
-        replace_xformers(model)
+        replace_with_flash_attention(model)
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")
@@ -268,9 +270,7 @@ def main():
         ) as pbar:
             for step in pbar:
                 if use_pipeline:
-                    outputs = booster.execute_pipeline(
-                        dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
-                    )
+                    outputs = booster.execute_pipeline(dataloader_iter, model, _criterion, optimizer, return_loss=True)
                     loss = outputs["loss"]
                 else:
                     batch = next(dataloader_iter)

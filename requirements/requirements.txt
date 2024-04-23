@@ -8,9 +8,11 @@ click
 fabric
 contexttimer
 ninja
-torch>=1.12
+torch>=2.1.0
 safetensors
 einops
+pydantic
+ray
 sentencepiece
 google
 protobuf

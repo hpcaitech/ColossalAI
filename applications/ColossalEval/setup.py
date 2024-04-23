@@ -19,7 +19,7 @@ setup(
     long_description=fetch_readme(),
     long_description_content_type="text/markdown",
     license="Apache Software License 2.0",
-    url="https://github.com/hpcaitech/LLM-Evaluation",
+    url="https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval",
     install_requires=fetch_requirements("requirements.txt"),
     python_requires=">=3.6",
     classifiers=[

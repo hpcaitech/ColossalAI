@@ -17,16 +17,7 @@ class BlipPolicy(Policy):
         pass
 
     def preprocess(self):
-        # reshape the embedding layer
-        r"""
-        Reshape the Embedding layer to make the embedding dimension divisible by world_size
-        """
-        # TODO:
-        vocab_size = self.model.config.qformer_config.vocab_size
-        world_size = self.shard_config.tensor_parallel_size
-        if vocab_size % world_size != 0:
-            new_vocab_size = vocab_size + world_size - vocab_size % world_size
-            self.model.resize_token_embeddings(new_vocab_size)
+        self.tie_weight = self.tie_weight_check()
         return self.model
 
     def module_policy(self):
@@ -42,6 +33,18 @@ class BlipPolicy(Policy):
         from transformers.models.opt.modeling_opt import OPTDecoderLayer, OPTForCausalLM
 
         policy = {}
+
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = col_nn.VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = col_nn.PaddingEmbedding
+
+        if self.shard_config.enable_fused_normalization:
+            norm_cls = col_nn.FusedLayerNorm
+        else:
+            norm_cls = col_nn.LayerNorm
 
         if self.shard_config.enable_tensor_parallelism:
             policy[Blip2EncoderLayer] = ModulePolicyDescription(
@@ -197,111 +200,136 @@ class BlipPolicy(Policy):
                 ],
             )
 
-            policy[OPTForCausalLM] = ModulePolicyDescription(
-                sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="model.decoder.embed_tokens",
-                        target_module=col_nn.VocabParallelEmbedding1D,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="lm_head",
-                        target_module=col_nn.Linear1D_Col,
-                        kwargs={"gather_output": True},
-                    ),
-                ]
-            )
-
             policy[Blip2Attention] = ModulePolicyDescription(method_replacement={"forward": forward_fn()})
 
-        # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            # Handle Blip2EncoderLayer layer
+        if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=[
                     SubModuleReplacementDescription(
-                        suffix="layer_norm1",
-                        target_module=col_nn.FusedLayerNorm,
+                        suffix="model.decoder.embed_tokens",
+                        target_module=embedding_cls,
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                     ),
-                    SubModuleReplacementDescription(
-                        suffix="layer_norm2",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=Blip2EncoderLayer,
-            )
-
-            # handle Blip2VisionModel layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="post_layernorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    )
-                ],
-                policy=policy,
-                target_key=Blip2VisionModel,
-            )
-
-            # handle Blip2VisionModel layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="layernorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    )
-                ],
-                policy=policy,
-                target_key=Blip2QFormerModel,
-            )
-
-            # handle Blip2QFormerLayer layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="attention.output.LayerNorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="crossattention.output.LayerNorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="output_query.LayerNorm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=Blip2QFormerLayer,
-            )
-
-            # handle OPTForCausalLM layer
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="model.decoder.final_layer_norm",
-                        target_module=col_nn.FusedLayerNorm,
-                    )
                 ],
                 policy=policy,
                 target_key=OPTForCausalLM,
             )
 
-            # handle OPTDecoderLayer layer
+        if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(
                 description=[
                     SubModuleReplacementDescription(
-                        suffix="self_attn_layer_norm",
-                        target_module=col_nn.FusedLayerNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="final_layer_norm",
-                        target_module=col_nn.FusedLayerNorm,
+                        suffix="lm_head",
+                        target_module=col_nn.VocabParallelLMHead1D,
+                        kwargs={
+                            "gather_output": True,
+                            "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                        },
                     ),
                 ],
                 policy=policy,
-                target_key=OPTDecoderLayer,
+                target_key=OPTForCausalLM,
             )
+        else:
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="lm_head",
+                        target_module=col_nn.PaddingLMHead,
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    ),
+                ],
+                policy=policy,
+                target_key=OPTForCausalLM,
+            )
+        # optimization configuration
+        # Handle Blip2EncoderLayer layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="layer_norm1",
+                    target_module=norm_cls,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="layer_norm2",
+                    target_module=norm_cls,
+                ),
+            ],
+            policy=policy,
+            target_key=Blip2EncoderLayer,
+        )
+
+        # handle Blip2VisionModel layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="post_layernorm",
+                    target_module=norm_cls,
+                )
+            ],
+            policy=policy,
+            target_key=Blip2VisionModel,
+        )
+
+        # handle Blip2VisionModel layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="layernorm",
+                    target_module=norm_cls,
+                )
+            ],
+            policy=policy,
+            target_key=Blip2QFormerModel,
+        )
+
+        # handle Blip2QFormerLayer layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="attention.output.LayerNorm",
+                    target_module=norm_cls,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="crossattention.output.LayerNorm",
+                    target_module=norm_cls,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="output_query.LayerNorm",
+                    target_module=norm_cls,
+                ),
+            ],
+            policy=policy,
+            target_key=Blip2QFormerLayer,
+        )
+
+        # handle OPTForCausalLM layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="model.decoder.final_layer_norm",
+                    target_module=norm_cls,
+                )
+            ],
+            policy=policy,
+            target_key=OPTForCausalLM,
+        )
+
+        # handle OPTDecoderLayer layer
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="self_attn_layer_norm",
+                    target_module=norm_cls,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="final_layer_norm",
+                    target_module=norm_cls,
+                ),
+            ],
+            policy=policy,
+            target_key=OPTDecoderLayer,
+        )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:

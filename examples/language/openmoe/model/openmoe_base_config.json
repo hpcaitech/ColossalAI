@@ -1,0 +1,24 @@
+{
+  "architectures": [
+    "OpenMoeForCausalLM"
+  ],
+  "intermediate_size": 2048,
+  "hidden_size": 768,
+  "num_hidden_layers": 12,
+  "head_dim": 64,
+  "num_attention_heads": 12,
+  "dropout_rate": 0.0,
+  "layer_norm_epsilon": 1e-06,
+  "vocab_size": 256384,
+  "hidden_act": "swiglu",
+  "num_experts": 16,
+  "topk": 2,
+  "capacity_factor_train": 1.25,
+  "capacity_factor_eval": 2.0,
+  "min_capacity": 4,
+  "noisy_policy": null,
+  "drop_tks": true,
+  "expert_parallel": null,
+  "gated": true,
+  "moe_layer_interval": 4
+}

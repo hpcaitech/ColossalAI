@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
@@ -24,20 +25,12 @@ class ChatGLMPolicy(Policy):
         pass
 
     def preprocess(self):
-        # Resize embedding
-        if self.shard_config.enable_tensor_parallelism:
-            vocab_size = self.model.config.padded_vocab_size
-            world_size = self.shard_config.tensor_parallel_size
-
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
-
         if self.pipeline_stage_manager is not None:
             # the batch_size_dim is bounded to Model
             bsz_dim = 1
             setattr(self.model, "batch_size_dim", bsz_dim)
 
+        self.tie_weight = self.tie_weight_check()
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
@@ -45,19 +38,35 @@ class ChatGLMPolicy(Policy):
 
         policy = {}
 
-        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
-        overlap = self.shard_config.enable_sequence_overlap
+        embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
-            policy[ChatGLMModel] = ModulePolicyDescription(
-                attribute_replacement={},
-                sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="embedding.word_embeddings",
-                        target_module=col_nn.VocabParallelEmbedding1D,
-                    )
-                ],
-            )
+            embedding_cls = col_nn.VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = col_nn.PaddingEmbedding
 
+        if self.shard_config.enable_fused_normalization:
+            if self.model.config.rmsnorm:
+                norm_cls = col_nn.FusedRMSNorm
+            else:
+                norm_cls = col_nn.FusedLayerNorm
+        else:
+            if self.model.config.rmsnorm:
+                norm_cls = col_nn.RMSNorm
+            else:
+                norm_cls = col_nn.LayerNorm
+
+        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        assert sp_mode != "all_to_all", "all_to_all sequence parallelism is not supported for ChatGLM2"
+        if sp_mode == "ring":
+            warnings.warn(
+                f"For ChatGLM2, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
+            )
+            sp_mode = "split_gather"
+        overlap = self.shard_config.enable_sequence_overlap
+        sp_partial_derived = sp_mode == "split_gather"
+
+        if self.shard_config.enable_tensor_parallelism:
             policy[GLMBlock] = ModulePolicyDescription(
                 attribute_replacement={
                     "self_attention.num_attention_heads_per_partition": self.model.config.num_attention_heads
@@ -81,12 +90,12 @@ class ChatGLMPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attention.query_key_value",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel, "seq_parallel_dim": 0, "overlap": overlap},
+                        kwargs={"seq_parallel_mode": sp_mode, "seq_parallel_dim": 0, "overlap": overlap},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.dense",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel, "seq_parallel_dim": 0},
+                        kwargs={"seq_parallel_mode": sp_mode, "seq_parallel_dim": 0},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.core_attention.attention_dropout",
@@ -95,53 +104,47 @@ class ChatGLMPolicy(Policy):
                 ],
             )
 
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="embedding.word_embeddings",
+                        target_module=embedding_cls,
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    ),
+                ],
+                policy=policy,
+                target_key=ChatGLMModel,
+            )
         # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            if not self.model.config.rmsnorm:
-                self.append_or_create_submodule_replacement(
-                    description=[
-                        SubModuleReplacementDescription(suffix="input_layernorm", target_module=col_nn.FusedLayerNorm),
-                        SubModuleReplacementDescription(
-                            suffix="post_attention_layernorm", target_module=col_nn.FusedLayerNorm
-                        ),
-                    ],
-                    policy=policy,
-                    target_key=GLMBlock,
-                )
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="input_layernorm",
+                    target_module=norm_cls,
+                    kwargs={"sp_partial_derived": sp_partial_derived},
+                ),
+                SubModuleReplacementDescription(
+                    suffix="post_attention_layernorm",
+                    target_module=norm_cls,
+                    kwargs={"sp_partial_derived": sp_partial_derived},
+                ),
+            ],
+            policy=policy,
+            target_key=GLMBlock,
+        )
 
-                if self.model.config.post_layer_norm:
-                    self.append_or_create_submodule_replacement(
-                        description=[
-                            SubModuleReplacementDescription(
-                                suffix="encoder.final_layernorm", target_module=col_nn.FusedLayerNorm
-                            )
-                        ],
-                        policy=policy,
-                        target_key=ChatGLMModel,
+        if self.model.config.post_layer_norm:
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="encoder.final_layernorm",
+                        target_module=norm_cls,
                     )
-
-            else:
-                self.append_or_create_submodule_replacement(
-                    description=[
-                        SubModuleReplacementDescription(suffix="input_layernorm", target_module=col_nn.FusedRMSNorm),
-                        SubModuleReplacementDescription(
-                            suffix="post_attention_layernorm", target_module=col_nn.FusedRMSNorm
-                        ),
-                    ],
-                    policy=policy,
-                    target_key=GLMBlock,
-                )
-
-                if self.model.config.post_layer_norm:
-                    self.append_or_create_submodule_replacement(
-                        description=[
-                            SubModuleReplacementDescription(
-                                suffix="encoder.final_layernorm", target_module=col_nn.FusedRMSNorm
-                            )
-                        ],
-                        policy=policy,
-                        target_key=ChatGLMModel,
-                    )
+                ],
+                policy=policy,
+                target_key=ChatGLMModel,
+            )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
@@ -154,7 +157,7 @@ class ChatGLMPolicy(Policy):
             )
 
         # use sequence parallel
-        if use_sequence_parallel:
+        if sp_mode == "split_gather":
             self.append_or_create_method_replacement(
                 description={"forward": get_chatglm_sequence_parallel_forward_fn(self.shard_config)},
                 policy=policy,
@@ -188,10 +191,10 @@ class ChatGLMPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(module.num_layers, stage_manager.num_stages)
+        layers_per_stage = stage_manager.distribute_layers(module.num_layers)
         if stage_manager.is_first_stage():
             held_layers.append(module.embedding)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
         held_layers.extend(module.encoder.layers[start_idx:end_idx])
         if stage_manager.is_last_stage():
             if module.encoder.post_layer_norm:
@@ -213,8 +216,8 @@ class ChatGLMPolicy(Policy):
         else:
             module = self.model.transformer
 
-        layers_per_stage = Policy.distribute_layers(module.num_layers, stage_manager.num_stages)
-        stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+        layers_per_stage = stage_manager.distribute_layers(module.num_layers)
+        stage_index = stage_manager.get_stage_index(layers_per_stage)
         method_replacement = {
             "forward": partial(
                 new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
@@ -224,9 +227,6 @@ class ChatGLMPolicy(Policy):
 
 
 class ChatGLMModelPolicy(ChatGLMPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         pass
 

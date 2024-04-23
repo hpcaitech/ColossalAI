@@ -234,7 +234,7 @@ def run_forward_backward(
     if isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1:
         # run pipeline forward backward when enabling pp in hybrid parallel plugin
         output_dict = booster.execute_pipeline(
-            data_iter, model, criterion, optimizer, return_loss=True, return_outputs=True
+            data_iter, model, criterion, optimizer, return_loss=True
         )
         loss, outputs = output_dict["loss"], output_dict["outputs"]
     else:

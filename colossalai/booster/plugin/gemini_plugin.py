@@ -1,15 +1,21 @@
 import gc
 import logging
 import os
+import random
 from pathlib import Path
 from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
+import numpy as np
 import torch
+import torch.distributed as dist
 import torch.nn as nn
+from torch.distributed.distributed_c10d import _get_default_group
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
+from colossalai.accelerator import get_accelerator
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO
 from colossalai.checkpoint_io.utils import (
     get_model_base_filenames,
@@ -19,9 +25,9 @@ from colossalai.checkpoint_io.utils import (
     save_state_dict,
     save_state_dict_shards,
 )
-from colossalai.cluster import DistCoordinator
+from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.utils import get_current_device
+from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.memory_tracer import MemStats
 
@@ -31,6 +37,26 @@ __all__ = ["GeminiPlugin"]
 
 SUPPORTED_PRECISION = ["fp16", "bf16"]
 PRECISION_STR_TO_DTYPE = {"fp16": torch.half, "bf16": torch.bfloat16}
+
+ZERO_AXIS, DP_AXIS, TP_AXIS = 0, 1, 2
+
+
+def get_param_info(optim: Optimizer):
+    # Get a backup of necessary information of parameters for future use, which includes:
+    # 1. A mapping from integer param_id to param32 shape.
+    if optim is None:
+        return {}
+    param_info = {"id2shape": {}}
+
+    start_index = 0
+    for group in optim.param_groups:
+        for param_id, param in enumerate(group["params"], start_index):
+            original_shape = param.shape if isinstance(param, torch.Tensor) else None
+            param_info["id2shape"][param_id] = original_shape
+
+        start_index += len(group["params"])
+
+    return param_info
 
 
 class GeminiCheckpointIO(GeneralCheckpointIO):
@@ -150,24 +176,24 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         # Preparing file paths and index file.
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
         index_file = CheckpointIndexFile(checkpoint)
+        index_file.append_meta_data("param_groups", param_group_file)
 
         # Store the information of param groups to param_group_file.
-        index_file.append_meta_data("param_groups", param_group_file)
-        group_file_path = os.path.join(checkpoint, param_group_file)
-        param_groups = optimizer.get_param_groups_for_saving()
-        torch.save(param_groups, group_file_path)
+        if self.coordinator.is_master():
+            group_file_path = os.path.join(checkpoint, param_group_file)
+            param_groups = optimizer.get_param_groups_for_saving()
+            torch.save(param_groups, group_file_path)
 
         # States are broken into shards within max_shard_size.
         state_dict_shard = optimizer.state_shard(prefix=prefix, max_shard_size=size_per_shard, only_rank_0=True)
 
         # Save shards of optimizer states.
-        is_master = self.coordinator.is_master()
         total_size = save_state_dict_shards(
             sharded_state_dict=state_dict_shard,
             checkpoint=checkpoint,
             index_file=index_file,
             base_filename=states_name,
-            is_master=is_master,
+            is_master=self.coordinator.is_master(),
             use_safetensors=False,
         )
 
@@ -284,6 +310,16 @@ class GeminiPlugin(DPPluginBase):
         max_norm (float, optional): max_norm used for `clip_grad_norm`. You should notice that you shall not do
             clip_grad_norm by yourself when using ZeRO DDP. The ZeRO optimizer will take care of clip_grad_norm.
         norm_type (float, optional): norm_type used for `clip_grad_norm`.
+        tp_size (int, optional): If 'tp_size' is set to be greater than 1, it means using tensor parallelism strategy, which is implemented in Shardformer, 'tp_size' determines the size of the tensor parallel process group. Default to 1.
+        extra_dp_size (int, optional): If 'extra_dp_size' is set to be greater than 1, it means creating another group to run with a ddp-like strategy. Default to 1.
+        enable_all_optimization (bool, optional): Whether to switch on all the optimizations supported by Shardformer.
+                                                    Currently all the optimization methods include fused normalization, flash attention and JIT.
+                                                    Defaults to False.
+        enable_fused_normalization (bool, optional): Whether to switch on fused normalization in Shardformer. Defaults to False.
+        enable_flash_attention (bool, optional): Whether to switch on flash attention in Shardformer. Defaults to False.
+        enable_jit_fused (bool, optional): Whether to switch on JIT in Shardformer. Default to False.
+        enable_sequence_parallelism (bool): Whether to turn on sequence parallelism in Shardformer. Defaults to False.
+        enable_sequence_overlap (bool): Whether to turn on sequence overlap in Shardformer. Defaults to False.
         verbose (bool, optional): verbose mode. Debug info including chunk search result will be printed. Defaults to False.
     """
 
@@ -317,13 +353,23 @@ class GeminiPlugin(DPPluginBase):
         max_scale: float = 2**32,
         max_norm: float = 0.0,
         norm_type: float = 2.0,
+        tp_size: int = 1,
+        extra_dp_size: int = 1,
+        enable_all_optimization: bool = False,
+        enable_fused_normalization: bool = False,
+        enable_flash_attention: bool = False,
+        enable_sequence_parallelism: bool = False,
+        enable_jit_fused: bool = False,
+        enable_sequence_overlap: bool = False,
         verbose: bool = False,
     ) -> None:
         super().__init__()
         assert precision in SUPPORTED_PRECISION, f"precision {precision} is not supported"
+        if get_accelerator().name == "npu":
+            assert placement_policy == "static", "NPU only supports static placement policy"
         self.gemini_config = dict(
             chunk_config_dict=chunk_config_dict,
-            chunk_init_device=(chunk_init_device or get_current_device()),
+            chunk_init_device=(chunk_init_device or get_accelerator().get_current_device()),
             placement_policy=placement_policy,
             enable_gradient_accumulation=enable_gradient_accumulation,
             shard_param_frac=shard_param_frac,
@@ -355,7 +401,44 @@ class GeminiPlugin(DPPluginBase):
             max_norm=max_norm,
             norm_type=norm_type,
         )
+        self.enable_tensor_parallelism = tp_size > 1
+        self.enable_all_optimization = enable_all_optimization
+        self.enable_fused_normalization = enable_fused_normalization
+        self.enable_flash_attention = enable_flash_attention
+        self.enable_sequence_parallelism = enable_sequence_parallelism if self.enable_tensor_parallelism else False
+        self.enable_jit_fused = enable_jit_fused
+        self.enable_sequence_overlap = enable_sequence_overlap
         self.verbose = verbose
+
+        self.tp_size = tp_size
+        self.extra_dp_size = extra_dp_size
+        world_size = dist.get_world_size()
+        self.zero_size = world_size // (self.tp_size * self.extra_dp_size)
+        assert (
+            world_size == (self.tp_size * self.extra_dp_size) * self.zero_size
+        ), f"The global group size can't be evenly divided by the subgroup size."
+
+        self.pg_mesh = ProcessGroupMesh(self.zero_size, self.extra_dp_size, self.tp_size)
+        self.zero_group = (
+            self.pg_mesh.get_group_along_axis(ZERO_AXIS) if self.zero_size < world_size else _get_default_group()
+        )
+        self.extra_dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS) if self.extra_dp_size > 1 else None
+        self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS) if self.tp_size > 1 else None
+
+        self.shard_config = ShardConfig(
+            tensor_parallel_process_group=self.tp_group,
+            enable_tensor_parallelism=self.enable_tensor_parallelism,
+            enable_all_optimization=self.enable_all_optimization,
+            enable_fused_normalization=self.enable_fused_normalization,
+            enable_flash_attention=self.enable_flash_attention,
+            enable_jit_fused=self.enable_jit_fused,
+            enable_sequence_parallelism=self.enable_sequence_parallelism,
+            enable_sequence_overlap=self.enable_sequence_overlap,
+        )
+
+    def __del__(self):
+        """Destroy the process groups in ProcessGroupMesh"""
+        self.pg_mesh.destroy_mesh_process_groups()
 
     def support_no_sync(self) -> bool:
         return False
@@ -373,7 +456,71 @@ class GeminiPlugin(DPPluginBase):
         return True
 
     def supported_devices(self) -> List[str]:
-        return ["cuda"]
+        return ["cuda", "npu"]
+
+    def prepare_dataloader(
+        self,
+        dataset,
+        batch_size,
+        shuffle=False,
+        seed=1024,
+        drop_last=False,
+        pin_memory=False,
+        num_workers=0,
+        distributed_sampler_cls=None,
+        **kwargs,
+    ):
+        r"""
+        Prepare a dataloader for distributed training. The dataloader will be wrapped by
+        `torch.utils.data.DataLoader` and `torch.utils.data.DistributedSampler`.
+
+
+        Args:
+            dataset (`torch.utils.data.Dataset`): The dataset to be loaded.
+            shuffle (bool, optional): Whether to shuffle the dataset. Defaults to False.
+            seed (int, optional): Random worker seed for sampling, defaults to 1024.
+            add_sampler: Whether to add ``DistributedDataParallelSampler`` to the dataset. Defaults to True.
+            drop_last (bool, optional): Set to True to drop the last incomplete batch, if the dataset size
+                is not divisible by the batch size. If False and the size of dataset is not divisible by
+                the batch size, then the last batch will be smaller, defaults to False.
+            pin_memory (bool, optional): Whether to pin memory address in CPU memory. Defaults to False.
+            num_workers (int, optional): Number of worker threads for this dataloader. Defaults to 0.
+            kwargs (dict): optional parameters for ``torch.utils.data.DataLoader``, more details could be found in
+                    `DataLoader <https://pytorch.org/docs/stable/_modules/torch/utils/data/dataloader.html#DataLoader>`_.
+
+        Returns:
+            :class:`torch.utils.data.DataLoader`: A DataLoader used for training or testing.
+        """
+        _kwargs = kwargs.copy()
+        zero_world_size = self.pg_mesh.size(ZERO_AXIS)
+        extra_dp_world_size = self.pg_mesh.size(DP_AXIS)
+        zero_rank = self.pg_mesh.coordinate(ZERO_AXIS)
+        extra_dp_rank = self.pg_mesh.coordinate(DP_AXIS)
+        distributed_sampler_cls = distributed_sampler_cls or DistributedSampler
+        sampler = distributed_sampler_cls(
+            dataset,
+            num_replicas=zero_world_size * extra_dp_world_size,
+            rank=zero_rank * extra_dp_world_size + extra_dp_rank,
+            shuffle=shuffle,
+        )
+
+        # Deterministic dataloader
+        def seed_worker(worker_id):
+            worker_seed = seed
+            np.random.seed(worker_seed)
+            torch.manual_seed(worker_seed)
+            random.seed(worker_seed)
+
+        return DataLoader(
+            dataset,
+            batch_size=batch_size,
+            sampler=sampler,
+            worker_init_fn=seed_worker,
+            drop_last=drop_last,
+            pin_memory=pin_memory,
+            num_workers=num_workers,
+            **_kwargs,
+        )
 
     def configure(
         self,
@@ -383,6 +530,7 @@ class GeminiPlugin(DPPluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
+        params_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
             # FIXME(ver217): gemini does not support sync bn
@@ -394,11 +542,27 @@ class GeminiPlugin(DPPluginBase):
             # model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
 
             # wrap the model with Gemini
-            model = GeminiDDP(model, **self.gemini_config, verbose=self.verbose)
+            if self.enable_tensor_parallelism:
+                shardformer = ShardFormer(self.shard_config)
+                model, _ = shardformer.optimize(model)
+
+            model = GeminiDDP(
+                model,
+                **self.gemini_config,
+                zero_group=self.zero_group,
+                extra_dp_group=self.extra_dp_group,
+                verbose=self.verbose,
+            )
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer = GeminiOptimizer(
-                optimizer, model, **self.zero_optim_config, **self.optim_kwargs, verbose=self.verbose
+                optimizer,
+                model,
+                **self.zero_optim_config,
+                **self.optim_kwargs,
+                tp_group=self.tp_group,
+                params_info=params_info,
+                verbose=self.verbose,
             )
 
         return model, optimizer, criterion, dataloader, lr_scheduler

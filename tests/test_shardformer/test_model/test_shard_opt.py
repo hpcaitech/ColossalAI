@@ -29,7 +29,13 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     )
 
     org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
-        org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
+        org_model,
+        sharded_model,
+        sharded_optimizer,
+        data_gen_fn,
+        output_transform_fn,
+        criterion,
+        booster,
     )
 
     stage_manager = booster.plugin.stage_manager
@@ -39,7 +45,10 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     opt_model = unwrap_model(org_model, "OPTModel", "model")
     shard_opt_model = unwrap_model(sharded_model, "OPTModel", "model")
 
-    row_layer_for_check = ["decoder.layers[0].self_attn.q_proj", "decoder.embed_tokens"]  # 'decoder.embed_tokens'
+    row_layer_for_check = [
+        "decoder.layers[0].self_attn.q_proj",
+        "decoder.embed_tokens",
+    ]  # 'decoder.embed_tokens'
     col_layer_for_check = ["decoder.layers[0].self_attn.out_proj"]
 
     # Save gradient tensors for comparison between the original model and the sharded model.
@@ -50,10 +59,24 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         else:
             atol, rtol = 4e-2, 4e-2
         row_layer_grads = get_grad_tensors_for_check(
-            opt_model, shard_opt_model, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0, verbose=False
+            opt_model,
+            shard_opt_model,
+            row_layer_for_check,
+            tp_group,
+            atol=atol,
+            rtol=rtol,
+            dim=0,
+            verbose=False,
         )
         col_layer_grads = get_grad_tensors_for_check(
-            opt_model, shard_opt_model, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False
+            opt_model,
+            shard_opt_model,
+            col_layer_for_check,
+            tp_group,
+            atol=atol,
+            rtol=rtol,
+            dim=1,
+            verbose=False,
         )
         grads_to_check.update(col_layer_grads)
         grads_to_check.update(row_layer_grads)
@@ -80,7 +103,14 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         else:
             atol, rtol = 5e-3, 5e-3
         check_weight(
-            opt_model, shard_opt_model, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False
+            opt_model,
+            shard_opt_model,
+            col_layer_for_check,
+            tp_group,
+            atol=atol,
+            rtol=rtol,
+            dim=1,
+            verbose=False,
         )
 
     # check grads
@@ -110,8 +140,20 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "use_lazy_init": False,
             "precision": "fp32",
         },
-        {"tp_size": 4, "pp_size": 1, "enable_all_optimization": True, "use_lazy_init": False, "precision": "fp32"},
-        {"tp_size": 2, "pp_size": 1, "enable_all_optimization": True, "use_lazy_init": False, "precision": "fp32"},
+        {
+            "tp_size": 4,
+            "pp_size": 1,
+            "enable_all_optimization": False,
+            "use_lazy_init": False,
+            "precision": "fp32",
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 1,
+            "enable_all_optimization": False,
+            "use_lazy_init": False,
+            "precision": "fp32",
+        },
         {
             "tp_size": 2,
             "pp_size": 1,
@@ -135,7 +177,13 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 )
 def run_opt_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_opt")
-    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+    for name, (
+        model_fn,
+        data_gen_fn,
+        output_transform_fn,
+        loss_fn,
+        _,
+    ) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
     clear_layout_converter()
@@ -169,7 +217,13 @@ def run_opt_test(test_config):
 def run_opt_3d_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_opt")
 
-    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+    for name, (
+        model_fn,
+        data_gen_fn,
+        output_transform_fn,
+        loss_fn,
+        _,
+    ) in sub_model_zoo.items():
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
     clear_layout_converter()
@@ -178,13 +232,27 @@ def run_opt_3d_test(test_config):
 
 def check_OPTModel(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(
+        config={},
+        rank=rank,
+        world_size=world_size,
+        host="localhost",
+        port=port,
+        backend="nccl",
+    )
     run_opt_test()
 
 
 def check_opt_3d(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(
+        config={},
+        rank=rank,
+        world_size=world_size,
+        host="localhost",
+        port=port,
+        backend="nccl",
+    )
     run_opt_3d_test()
 
 

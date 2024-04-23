@@ -49,7 +49,7 @@ You should expect to the log like this. This log shows the edge cost on the comp
 
 ### Auto-Checkpoint Tutorial
 
-We prepare two bechmarks for you to test the performance of auto checkpoint
+We prepare two benchmarks for you to test the performance of auto checkpoint
 
 The first test `auto_ckpt_solver_test.py` will show you the ability of solver to search checkpoint strategy that could fit in the given budget (test on GPT2 Medium and ResNet 50). It will output the benchmark summary and data visualization of peak memory vs. budget memory and relative step time vs. peak memory.
 

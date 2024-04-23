@@ -6,7 +6,7 @@ import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
-from colossalai.utils import get_current_device
+from colossalai.accelerator import get_accelerator
 
 
 class TensorState(Enum):
@@ -61,12 +61,13 @@ class Chunk:
     def __init__(
         self,
         chunk_size: int,
-        process_group: ProcessGroup,
+        zero_group: ProcessGroup,
         dtype: torch.dtype,
         init_device: Optional[torch.device] = None,
         cpu_shard_init: bool = False,
         keep_gathered: bool = False,
         pin_memory: bool = False,
+        extra_dp_group: ProcessGroup = None,
     ) -> None:
         """
         Chunk: A container owning a piece of contiguous memory space for tensors
@@ -76,7 +77,7 @@ class Chunk:
 
         Args:
             chunk_size (int): the number of elements in the chunk
-            process_group (ProcessGroup): the process group of this chunk
+            zero_group (ProcessGroup): the process group of this chunk
             dtype (torch.dtype): the data type of the chunk
             init_device (torch.device): optional, During the chunk construction process, where the tensor is stored.
                 The default value is None, which is the current GPU
@@ -90,9 +91,11 @@ class Chunk:
         self.chunk_size = chunk_size
         self.utilized_size = 0
 
-        self.torch_pg = process_group
+        self.torch_pg = zero_group
         self.pg_size = dist.get_world_size(self.torch_pg)
         self.pg_rank = dist.get_rank(self.torch_pg)
+        self.extra_dp_group = extra_dp_group
+        self.extra_dp_size = dist.get_world_size(self.extra_dp_group) if self.extra_dp_group is not None else 1
 
         # the chunk size should be divisible by the dp degree
         if not keep_gathered:
@@ -103,7 +106,7 @@ class Chunk:
         self.valid_end = self.shard_size
 
         self.dtype = dtype
-        device = init_device or get_current_device()
+        device = init_device or get_accelerator().get_current_device()
 
         # chunk_temp is a global chunk, which only exists during building the chunks.
         self.chunk_temp = torch.zeros(chunk_size, dtype=dtype, device=device)  # keep all zero
@@ -121,7 +124,7 @@ class Chunk:
         # configure the init device of the shard
         # no-offload default: fp16, fp32 -> CUDA
         # offload default: fp16, fp32 -> CPU
-        self.shard_device = torch.device("cpu") if cpu_shard_init else get_current_device()
+        self.shard_device = torch.device("cpu") if cpu_shard_init else get_accelerator().get_current_device()
 
         self.chunk_mem = self.chunk_size * self.chunk_temp.element_size()
         self.shard_mem = self.chunk_mem // self.pg_size
@@ -169,7 +172,7 @@ class Chunk:
 
         if self.chunk_temp is not None:
             # this chunk is not closed
-            if self.chunk_temp.device.type == "cuda":
+            if self.chunk_temp.device.type == "cuda" or self.chunk_temp.device.type == "npu":
                 cuda_memory += self.chunk_mem
             else:
                 cpu_memory += self.chunk_mem
@@ -187,13 +190,10 @@ class Chunk:
     def device_type(self) -> str:
         if self.chunk_temp is not None:
             return self.chunk_temp.device.type
+        elif self.is_gathered or self.cuda_shard is not None:
+            return get_accelerator().name
         else:
-            if self.is_gathered:
-                return "cuda"
-            elif self.cuda_shard is not None:
-                return "cuda"
-            else:
-                return "cpu"
+            return "cpu"
 
     @property
     def payload(self) -> torch.Tensor:
@@ -295,7 +295,7 @@ class Chunk:
             self.valid_end = self.utilized_size - self.shard_begin
 
         if self.chunk_temp.device.type == "cpu":
-            self.cuda_global_chunk = self.chunk_temp.to(get_current_device())
+            self.cuda_global_chunk = self.chunk_temp.to(get_accelerator().get_current_device())
             self.__update_tensors_ptr()
         else:
             self.cuda_global_chunk = self.chunk_temp
@@ -326,18 +326,18 @@ class Chunk:
         # when the current chunk is not synchronized with the optimizer
         # just use another way for the movement
         if not self.optim_sync_flag:
-            assert device.type == "cuda", "each chunk should first be moved to CUDA"
+            assert device.type == "cuda" or device.type == "npu", "each chunk should first be moved to CUDA"
             self.__paired_shard_move()
             self.optim_sync_flag = True
             return
 
-        if device.type == "cuda":
-            assert device == get_current_device(), "can't move chunk to another device"
+        if device.type == "cuda" or device.type == "npu":
+            assert device == get_accelerator().get_current_device(), "can't move chunk to another device"
 
             if self.cuda_shard:
                 return
 
-            self.cuda_shard = self.cpu_shard.to(get_current_device())
+            self.cuda_shard = self.cpu_shard.to(get_accelerator().get_current_device())
 
             if not self.pin_memory:
                 self.cpu_shard = None
@@ -384,14 +384,22 @@ class Chunk:
             # just move cuda_global_chunk to cuda_shard
             # the communication is not necessary
             self.__scatter()
+            if self.extra_dp_group is not None:
+                dist.all_reduce(self.cuda_shard, group=self.extra_dp_group)
         elif self.keep_gathered:
             # we use all-reduce here
             dist.all_reduce(self.cuda_global_chunk, group=self.torch_pg)
+            if self.extra_dp_group is not None:
+                dist.all_reduce(self.cuda_global_chunk, group=self.extra_dp_group)
         else:
-            self.cuda_shard = torch.empty(self.shard_size, dtype=self.dtype, device=get_current_device())
+            self.cuda_shard = torch.empty(
+                self.shard_size, dtype=self.dtype, device=get_accelerator().get_current_device()
+            )
 
             input_list = list(torch.chunk(self.cuda_global_chunk, chunks=self.pg_size, dim=0))
             dist.reduce_scatter(self.cuda_shard, input_list, group=self.torch_pg)
+            if self.extra_dp_group is not None:
+                dist.all_reduce(self.cuda_shard, group=self.extra_dp_group)
 
             free_storage(self.cuda_global_chunk)
             self.is_gathered = False
@@ -475,7 +483,7 @@ class Chunk:
             assert friend_chunk.is_gathered is True
             self.cuda_global_chunk.copy_(friend_chunk.cuda_global_chunk)
             self.optim_sync_flag = True
-        elif friend_chunk.device_type == "cuda" and self.device_type == "cuda":
+        elif friend_chunk.device_type in ("cuda", "npu") and self.device_type in ("cuda", "npu"):
             self.cuda_shard.copy_(friend_chunk.cuda_shard)
             self.optim_sync_flag = True
             self.cpu_vis_flag = False
@@ -525,7 +533,7 @@ class Chunk:
         # only be called when optimizer state is in CPU memory
         # the grad and param should be in the same device
         assert self.cuda_shard is None
-        temp = optim_chunk.cpu_shard.to(get_current_device())
+        temp = optim_chunk.cpu_shard.to(get_accelerator().get_current_device())
         # avoid to transform FP32 in CPU
         self.cuda_shard = temp.to(self.dtype)
 
@@ -608,10 +616,11 @@ class Chunk:
             # grad chunk is not initialized
             grad_chunk = Chunk(
                 chunk_size=self.chunk_size,
-                process_group=self.torch_pg,
+                zero_group=self.torch_pg,
                 dtype=self.dtype,
                 keep_gathered=self.keep_gathered,
                 pin_memory=self.pin_memory,
+                extra_dp_group=self.extra_dp_group,
             )
             grad_chunk.num_tensors = self.num_tensors
             grad_chunk.utilized_size = self.utilized_size
@@ -622,7 +631,7 @@ class Chunk:
             grad_chunk.valid_end = self.valid_end
 
             if grad_chunk.chunk_temp.device.type == "cpu":
-                grad_chunk.cuda_global_chunk = grad_chunk.chunk_temp.to(get_current_device())
+                grad_chunk.cuda_global_chunk = grad_chunk.chunk_temp.to(get_accelerator().get_current_device())
             else:
                 grad_chunk.cuda_global_chunk = grad_chunk.chunk_temp
             grad_chunk.chunk_temp = None
@@ -637,6 +646,7 @@ class Chunk:
             # grad chunk is initialized, just reallocate cuda global chunk
             self.grad_chunk.cuda_shard = None
             self.grad_chunk.is_gathered = True
+            self.grad_chunk.l2_norm = None
             alloc_storage(self.grad_chunk.cuda_global_chunk)
 
         return self.grad_chunk

@@ -1,6 +1,6 @@
 # Lazy initialization
 
-Author: [Hongxiu Liu](https://github.com/ver217)
+Author: [Hongxin Liu](https://github.com/ver217)
 
 **Prerequisite:**
 - [Train with booster](../basics/booster_api.md)
@@ -73,4 +73,4 @@ And some models are not supported at all which will raise an error. We tested mo
 | Blip2Model                    | transformers |
 | Blip2ForConditionalGeneration | transformers |
 
-<!-- doc-test-command: torchrun --standalone --nproc_per_node=2 lazy_iniy.py  -->
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=2 lazy_init.py  -->

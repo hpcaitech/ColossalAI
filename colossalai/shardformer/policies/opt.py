@@ -5,11 +5,25 @@ from typing import Callable, Dict, List
 import torch.nn as nn
 from torch import Tensor, nn
 
-from colossalai.shardformer.layer import FusedLayerNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import (
+    FusedLayerNorm,
+    LayerNorm,
+    Linear1D_Col,
+    Linear1D_Row,
+    PaddingEmbedding,
+    PaddingLMHead,
+    VocabParallelEmbedding1D,
+    VocabParallelLMHead1D,
+)
 
 from .._utils import getattr_
 from ..modeling.jit import get_jit_fused_dropout_add_func
-from ..modeling.opt import OPTPipelineForwards, get_jit_fused_opt_decoder_layer_forward, get_opt_flash_attention_forward
+from ..modeling.opt import (
+    OPTPipelineForwards,
+    get_jit_fused_opt_decoder_layer_forward,
+    get_opt_decoder_forward_for_flash_attention,
+    get_opt_flash_attention_forward,
+)
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -22,39 +36,45 @@ __all__ = [
 
 
 class OPTPolicy(Policy):
+    def __init__(self) -> None:
+        super().__init__()
+        import transformers
+        from packaging.version import Version
+
+        # TODO: remove this version check when transformers>=4.36.0
+        assert Version(transformers.__version__) <= Version(
+            "4.33.0"
+        ), "The OPT model should run on a transformers version not greater than 4.33.0."
+
     def config_sanity_check(self):
         pass
 
     def preprocess(self):
-        # reshape the embedding layer
-        r"""
-        Reshape the Embedding layer to make the embedding dimension divisible by world_size
-        """
-        if self.shard_config.enable_tensor_parallelism:
-            vocab_size = self.model.config.vocab_size
-            world_size = self.shard_config.tensor_parallel_size
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
+        self.tie_weight = self.tie_weight_check()
         return self.model
 
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer
 
         policy = {}
+
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = PaddingEmbedding
+
+        if self.shard_config.enable_fused_normalization:
+            norm_cls = FusedLayerNorm
+        else:
+            norm_cls = LayerNorm
+
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
-            warnings.warn("OPT dosen't support sequence parallelism now, will ignore the sequence parallelism flag.")
+            warnings.warn("OPT doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
-            policy[OPTDecoder] = ModulePolicyDescription(
-                sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="embed_tokens",
-                        target_module=VocabParallelEmbedding1D,
-                    )
-                ]
-            )
             policy[OPTDecoderLayer] = ModulePolicyDescription(
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
@@ -93,37 +113,61 @@ class OPTPolicy(Policy):
                 ],
             )
 
-        # optimization configuration
-        if self.shard_config.enable_fused_normalization:
+        if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
-                    suffix="final_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True
+                    suffix="embed_tokens",
+                    target_module=embedding_cls,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                 ),
                 policy=policy,
                 target_key=OPTDecoder,
             )
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="self_attn_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="final_layer_norm", target_module=FusedLayerNorm, ignore_if_not_exist=True
-                    ),
-                ],
-                policy=policy,
-                target_key=OPTDecoderLayer,
-            )
+
+        # optimization configuration
+        self.append_or_create_submodule_replacement(
+            description=SubModuleReplacementDescription(
+                suffix="final_layer_norm",
+                target_module=norm_cls,
+                ignore_if_not_exist=True,
+            ),
+            policy=policy,
+            target_key=OPTDecoder,
+        )
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="self_attn_layer_norm",
+                    target_module=norm_cls,
+                    ignore_if_not_exist=True,
+                ),
+                SubModuleReplacementDescription(
+                    suffix="final_layer_norm",
+                    target_module=norm_cls,
+                    ignore_if_not_exist=True,
+                ),
+            ],
+            policy=policy,
+            target_key=OPTDecoderLayer,
+        )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_opt_flash_attention_forward(),
+                    "forward": get_opt_flash_attention_forward(self.shard_config),
                 },
                 policy=policy,
                 target_key=OPTAttention,
             )
+            if not self.shard_config.pipeline_stage_manager:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_opt_decoder_forward_for_flash_attention(self.shard_config),
+                    },
+                    policy=policy,
+                    target_key=OPTDecoder,
+                )
 
         # use jit fused operator
         if self.shard_config.enable_jit_fused:
@@ -152,12 +196,12 @@ class OPTPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
+        layers_per_stage = stage_manager.distribute_layers(len(module.layers))
         if stage_manager.is_first_stage():
             held_layers.append(module.embed_tokens)
             held_layers.append(module.embed_positions)
             held_layers.append(module.project_in)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
         held_layers.extend(module.layers[start_idx:end_idx])
         if stage_manager.is_last_stage():
             held_layers.append(module.final_layer_norm)
@@ -174,25 +218,31 @@ class OPTPolicy(Policy):
             else:
                 module = self.model.model.decoder
 
-            layers_per_stage = Policy.distribute_layers(len(module.layers), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
-            method_replacement = {"forward": partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            stage_index = stage_manager.get_stage_index(layers_per_stage)
+            method_replacement = {
+                "forward": partial(
+                    new_forward,
+                    stage_manager=stage_manager,
+                    stage_index=stage_index,
+                    shard_config=self.shard_config,
+                )
+            }
             self.append_or_create_method_replacement(
                 description=method_replacement, policy=policy, target_key=model_cls
             )
 
 
 class OPTModelPolicy(OPTPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTModel
 
         policy = super().module_policy()
         if self.pipeline_stage_manager:
             self.set_pipeline_forward(
-                model_cls=OPTModel, new_forward=OPTPipelineForwards.opt_model_forward, policy=policy
+                model_cls=OPTModel,
+                new_forward=OPTPipelineForwards.opt_model_forward,
+                policy=policy,
             )
         return policy
 
@@ -212,14 +262,30 @@ class OPTForCausalLMPolicy(OPTPolicy):
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
-                    suffix="lm_head", target_module=Linear1D_Col, kwargs=dict(gather_output=True)
+                    suffix="lm_head",
+                    target_module=VocabParallelLMHead1D,
+                    kwargs=dict(
+                        gather_output=True, make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by
+                    ),
+                ),
+                policy=policy,
+                target_key=OPTForCausalLM,
+            )
+        else:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="lm_head",
+                    target_module=PaddingLMHead,
+                    kwargs=dict(make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by),
                 ),
                 policy=policy,
                 target_key=OPTForCausalLM,
             )
         if self.pipeline_stage_manager:
             self.set_pipeline_forward(
-                model_cls=OPTForCausalLM, new_forward=OPTPipelineForwards.opt_for_causal_lm_forward, policy=policy
+                model_cls=OPTForCausalLM,
+                new_forward=OPTPipelineForwards.opt_for_causal_lm_forward,
+                policy=policy,
             )
 
         return policy
@@ -235,7 +301,12 @@ class OPTForCausalLMPolicy(OPTPolicy):
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             num_stages = self.pipeline_stage_manager.num_stages
             if id(opt_model.model.decoder.embed_tokens.weight) == id(opt_model.lm_head.weight):
-                return [{0: opt_model.model.decoder.embed_tokens.weight, num_stages - 1: opt_model.lm_head.weight}]
+                return [
+                    {
+                        0: opt_model.model.decoder.embed_tokens.weight,
+                        num_stages - 1: opt_model.lm_head.weight,
+                    }
+                ]
         return []
 
     def postprocess(self):
@@ -253,9 +324,6 @@ class OPTForCausalLMPolicy(OPTPolicy):
 
 
 class OPTForSequenceClassificationPolicy(OPTPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTForSequenceClassification
 
@@ -281,9 +349,6 @@ class OPTForSequenceClassificationPolicy(OPTPolicy):
 
 
 class OPTForQuestionAnsweringPolicy(OPTPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def module_policy(self):
         from transformers.models.opt.modeling_opt import OPTForQuestionAnswering
 

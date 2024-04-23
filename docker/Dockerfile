@@ -37,7 +37,7 @@ RUN git clone https://github.com/NVIDIA/apex && \
 ARG VERSION=main
 RUN git clone -b ${VERSION} https://github.com/hpcaitech/ColossalAI.git \
     && cd ./ColossalAI \
-    && CUDA_EXT=1 pip install -v --no-cache-dir .
+    && BUILD_EXT=1 pip install -v --no-cache-dir .
 
 # install titans
 RUN pip install --no-cache-dir titans

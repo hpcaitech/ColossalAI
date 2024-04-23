@@ -5,7 +5,8 @@ import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
-from colossalai.utils import free_storage, get_current_device
+from colossalai.accelerator import get_accelerator
+from colossalai.utils import free_storage
 
 from .chunk import Chunk, ChunkFullError, TensorState
 
@@ -20,7 +21,7 @@ class ChunkManager:
     """
 
     def __init__(self, chunk_configuration, init_device: Optional[torch.device] = None) -> None:
-        self.device = init_device or get_current_device()
+        self.device = init_device or get_accelerator().get_current_device()
         self.dp_degree_chunk_size_dict: Dict[int, int] = dict()
         self.kwargs_config = chunk_configuration
         for k, v in self.kwargs_config.items():
@@ -38,7 +39,8 @@ class ChunkManager:
         tensor: torch.Tensor,
         group_type: str,
         config_key: int,
-        process_group: ProcessGroup,
+        zero_group: ProcessGroup,
+        extra_dp_group: ProcessGroup = None,
         cpu_offload: bool = False,
         pin_memory: bool = False,
     ) -> None:
@@ -76,15 +78,16 @@ class ChunkManager:
 
             if tensor.numel() > chunk_size:
                 chunk_size = tensor.numel()
-                dp_size = dist.get_world_size(process_group)
+                dp_size = dist.get_world_size(zero_group)
                 chunk_size = chunk_size + (-chunk_size % dp_size)
 
             chunk = Chunk(
                 chunk_size=chunk_size,
-                process_group=process_group,
+                zero_group=zero_group,
                 dtype=tensor.dtype,
                 cpu_shard_init=cpu_offload,
                 pin_memory=pin_memory,
+                extra_dp_group=extra_dp_group,
                 **chunk_kwargs,
             )
 
@@ -105,7 +108,7 @@ class ChunkManager:
             return
         self.__sub_memory_usage(chunk.memory_usage)
         if chunk.device_type == "cpu":
-            chunk.shard_move(get_current_device())
+            chunk.shard_move(get_accelerator().get_current_device())
         self.__add_accessed_chunk(chunk)
         self.__add_memory_usage(chunk.memory_usage)
 
@@ -204,7 +207,10 @@ class ChunkManager:
             tensor (torch.Tensor): An extern static tensor. E.g. optimizer state.
         """
         assert tensor not in self.tensor_chunk_map
-        self.total_mem[tensor.device.type] += tensor.numel() * tensor.element_size()
+        device_type = tensor.device.type
+        if device_type == "npu":
+            device_type = "cuda"
+        self.total_mem[device_type] += tensor.numel() * tensor.element_size()
 
     def __repr__(self) -> str:
         msg = [
@@ -271,7 +277,10 @@ class ChunkManager:
                 accumulated_grad = chunk.grad_chunk.cuda_shard.clone().detach().mul_(chunk.pg_size)
             else:
                 accumulated_grad = (
-                    chunk.grad_chunk.cpu_shard.to(get_current_device()).clone().detach().mul_(chunk.pg_size)
+                    chunk.grad_chunk.cpu_shard.to(get_accelerator().get_current_device())
+                    .clone()
+                    .detach()
+                    .mul_(chunk.pg_size)
                 )
             accumulated_grad_gathered = False
 

@@ -1,16 +1,18 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-import torch.cuda.amp as torch_amp
 import torch.nn as nn
 from torch import Tensor
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
 
+from colossalai.accelerator import get_accelerator
 from colossalai.interface import OptimizerWrapper
 from colossalai.legacy.utils import clip_grad_norm_fp32
 
 from ._grad_scaler import GradScaler
+
+autocast = get_accelerator().autocast
 
 
 class TorchAMPOptimizer(OptimizerWrapper):
@@ -70,7 +72,7 @@ class TorchAMPModel(nn.Module):
         super().__init__()
         self.model = model
 
-    @torch_amp.autocast()
+    @autocast()
     def forward(self, *args, **kwargs):
         """
         Execute forward under the torch amp context
@@ -89,7 +91,7 @@ class TorchAMPLoss(nn.Module):
         super().__init__()
         self.loss = loss
 
-    @torch_amp.autocast()
+    @autocast()
     def forward(self, *args, **kwargs):
         """
         Execute forward under the torch amp context

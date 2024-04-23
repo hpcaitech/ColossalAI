@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 from packaging.version import Version
 from torch.optim import Optimizer
+from torch.utils._pytree import tree_map
 
 from colossalai.tensor.d_tensor import (
     is_customized_distributed_tensor,
@@ -117,6 +118,15 @@ def search_tp_partition_dim(current_shape: torch.Size, original_shape: torch.Siz
                 shape before sharding {original_shape}, shape after sharding {current_shape}"
 
     return partition_dim
+
+
+def search_padding_dim(global_shape: torch.Size, original_shape: torch.Size) -> Optional[int]:
+    padding_dim = None
+    for dim, length in enumerate(global_shape):
+        if length > original_shape[dim]:
+            padding_dim = dim
+            break
+    return padding_dim
 
 
 # ======================================
@@ -303,6 +313,9 @@ def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors
         checkpoint_file_path (str): path to the checkpoint file.
         use_safetensors (bool): whether to use safetensors to save the checkpoint.
     """
+    # Move all tensors in the state_dict to CPU before saving to avoid serialization issues
+    state_dict_cpu = tree_map(lambda x: x.cpu() if torch.is_tensor(x) else x, state_dict)
+
     if use_safetensors:
         assert is_safetensors_available(), "safetensors is not available."
         assert checkpoint_file_path.endswith(
@@ -310,9 +323,9 @@ def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors
         ), "safetensors only supports .safetensors suffix for checkpoint file."
         from safetensors.torch import save_file as safe_save_file
 
-        safe_save_file(state_dict, checkpoint_file_path, metadata={"format": "pt"})
+        safe_save_file(state_dict_cpu, checkpoint_file_path, metadata={"format": "pt"})
     else:
-        torch.save(state_dict, checkpoint_file_path)
+        torch.save(state_dict_cpu, checkpoint_file_path)
 
 
 def save_param_groups(state_dict: dict, group_file_path: str) -> None:

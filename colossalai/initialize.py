@@ -6,12 +6,12 @@ import warnings
 from pathlib import Path
 from typing import Dict, Union
 
-import torch
 import torch.distributed as dist
 
+from colossalai.accelerator import get_accelerator
 from colossalai.context import Config
 from colossalai.logging import get_dist_logger
-from colossalai.utils import set_device, set_seed
+from colossalai.utils import set_seed
 
 
 def launch(
@@ -47,14 +47,18 @@ def launch(
     if rank == 0:
         warnings.warn("`config` is deprecated and will be removed soon.")
 
+    cur_accelerator = get_accelerator()
+
+    backend = cur_accelerator.communication_backend
+
     # init default process group
     init_method = f"tcp://[{host}]:{port}"
     dist.init_process_group(rank=rank, world_size=world_size, backend=backend, init_method=init_method)
 
     # set cuda device
-    if torch.cuda.is_available():
-        # if local rank is not given, calculate automatically
-        set_device(local_rank)
+    # if local rank is not given, calculate automatically
+    if cur_accelerator.support_set_device:
+        cur_accelerator.set_device(local_rank)
 
     set_seed(seed)
 

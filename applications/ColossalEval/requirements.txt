@@ -1,5 +1,5 @@
 transformers>=4.32.0
-colossalai>=0.3.1
+colossalai>=0.3.4
 peft
 tabulate
 jieba

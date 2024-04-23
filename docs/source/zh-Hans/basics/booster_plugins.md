@@ -16,7 +16,7 @@
 - [Torch FSDP 插件](#torch-fsdp-插件): 它包装了 `torch.distributed.fsdp.FullyShardedDataParallel` 并且可用于使用 Zero-dp 训练模型。
 - [Low Level Zero 插件](#low-level-zero-插件): 它包装了 `colossalai.zero.low_level.LowLevelZeroOptimizer`，可用于使用 Zero-dp 训练模型。它仅支持 Zero 阶段1和阶段2。
 - [Gemini 插件](#gemini-插件): 它包装了 [Gemini](../features/zero_with_chunk.md)，Gemini 实现了基于Chunk内存管理和异构内存管理的 Zero-3。
-- [Hybrid Pararllel 插件](#hybrid-parallel-插件): 它为Shardformer，流水线管理器，混合精度运算，TorchDDP以及Zero-1/Zero-2功能提供了一个统一且简洁的接口。使用该插件可以简单高效地实现transformer模型在张量并行，流水线并行以及数据并行（DDP, Zero）间任意组合并行训练策略，同时支持多种训练速度和内存的优化工具。有关这些训练策略和优化工具的具体信息将在下一章中阐述。
+- [Hybrid Parallel 插件](#hybrid-parallel-插件): 它为Shardformer，流水线管理器，混合精度运算，TorchDDP以及Zero-1/Zero-2功能提供了一个统一且简洁的接口。使用该插件可以简单高效地实现transformer模型在张量并行，流水线并行以及数据并行（DDP, Zero）间任意组合并行训练策略，同时支持多种训练速度和内存的优化工具。有关这些训练策略和优化工具的具体信息将在下一章中阐述。
 
 更多插件即将推出。
 
@@ -24,7 +24,7 @@
 - [Torch DDP 插件](#torch-ddp-插件): 适用于参数少于 20 亿的模型（例如 Bert-3m、GPT2-1.5b）。
 - [Torch FSDP 插件](#torch-fsdp-插件) / [Low Level Zero 插件](#low-level-zero-插件): 适用于参数少于 100 亿的模型（例如 GPTJ-6b、MegatronLM-8b）。
 - [Gemini 插件](#gemini-插件): 适合参数超过 100 亿的模型（例如 TuringNLG-17b），且**跨节点带宽高、中小规模集群（千卡以下）**的场景（例如 Llama2-70b）。
-- [Hybrid Pararllel 插件](#hybrid-parallel-插件): 适合参数超过 600 亿的模型、超长序列、超大词表等特殊模型，且**跨节点带宽低、大规模集群（千卡以上）**的场景（例如 GPT3-175b、Bloom-176b）。
+- [Hybrid Parallel 插件](#hybrid-parallel-插件): 适合参数超过 600 亿的模型、超长序列、超大词表等特殊模型，且**跨节点带宽低、大规模集群（千卡以上）**的场景（例如 GPT3-175b、Bloom-176b）。
 
 ## 插件
 
@@ -55,7 +55,11 @@ Zero-2 不支持局部梯度累积。如果您坚持使用，虽然可以积累�
 
 这个插件实现了多种并行训练策略和优化工具的组合。Hybrid Parallel插件支持的功能大致可以被分为以下四个部分：
 
-1. Shardformer: Shardformer负责在张量并行以及流水线并行下切分模型的逻辑，以及前向/后向方法的重载，这个插件为Shardformer功能提供了一个简单易用的接口。与此同时，Shardformer还负责将包括fused normalization, flash attention (xformers), JIT和序列并行在内的各类优化工具融入重载后的前向/后向方法。更多关于Shardformer的信息请参考 [Shardformer文档](../features/shardformer.md)。
+1. Shardformer: Shardformer负责在张量并行以及流水线并行下切分模型的逻辑，以及前向/后向方法的重载，这个插件为Shardformer功能提供了一个简单易用的接口。与此同时，Shardformer还负责将包括fused normalization, flash attention (xformers), JIT和序列并行在内的各类优化工具融入重载后的前向/后向方法。更多关于Shardformer的信息请参考 [Shardformer文档](../features/shardformer.md)。下图展示了Shardformer与Hybrid Parallel插件所支持的功能。
+
+<div align="center">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/shardformer/shardformer_and_hybridparallel.png" width="500" />
+</div>
 
 2. 混合精度训练：插件支持fp16/bf16的混合精度训练。更多关于混合精度训练的参数配置的详细信息请参考 [混合精度训练文档](../features/mixed_precision_training_with_booster.md)。
 

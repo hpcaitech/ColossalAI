@@ -88,7 +88,7 @@ def exam_grad_clipping(placement_config, model_name: str, master_weights: bool):
     )
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
-    zero_optim = GeminiOptimizer(optimizer, model, initial_scale=32, clipping_norm=1.0)
+    zero_optim = GeminiOptimizer(optimizer, model, initial_scale=32, max_norm=1.0)
 
     model.train()
     torch_model.train()

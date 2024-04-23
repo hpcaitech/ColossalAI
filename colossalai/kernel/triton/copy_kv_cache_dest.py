@@ -52,7 +52,6 @@ if HAS_TRITON:
         assert head_dim == out.shape[2], "head_dim should be the same for k_ptr and out"
 
         num_warps = 2
-
         _fwd_copy_kv_cache_dest[(seq_len,)](
             k_ptr,
             dest_index_ptr,

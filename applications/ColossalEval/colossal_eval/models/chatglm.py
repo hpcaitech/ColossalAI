@@ -3,6 +3,8 @@ from typing import List
 
 import torch
 
+from colossalai.utils import get_current_device
+
 from .huggingface import HuggingFaceModel
 
 IGNORE_INDEX = -100
@@ -126,9 +128,9 @@ class ChatGLMModel(HuggingFaceModel):
         """
         input_ids = torch.nn.utils.rnn.pad_sequence(
             input_ids_list, batch_first=True, padding_value=self.tokenizer.pad_token_id
-        ).to(torch.cuda.current_device())
+        ).to(get_current_device())
         labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX).to(
-            torch.cuda.current_device()
+            get_current_device()
         )
 
         outputs = self.model(input_ids)[0]
@@ -197,7 +199,7 @@ class ChatGLM2Model(ChatGLMModel):
             truncation=True,
             return_tensors="pt",
             max_length=self.model_max_length - max_new_tokens,
-        ).to(torch.cuda.current_device())
+        ).to(get_current_device())
 
         # Set output_scores=True to get prediction scores.
         outputs = self.model.generate(

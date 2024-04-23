@@ -1,3 +1,4 @@
+import gc
 import itertools
 from functools import reduce
 from operator import mul
@@ -43,6 +44,24 @@ class ProcessGroupMesh:
         self._coord = ProcessGroupMesh.unravel(self._rank, self._shape)
         self._ranks_to_group: Dict[Tuple[int, ...], ProcessGroup] = {}
         self._group_to_ranks: Dict[ProcessGroup, Tuple[int, ...]] = {}
+
+    def destroy_mesh_process_groups(self):
+        r"""
+        Destructor method for the ProcessGroupMesh class.
+
+        When the ProcessGroupMesh object is deleted or goes out of scope, this method is called. It is responsible for
+        cleaning up any process groups that were created during the lifetime of the object.
+
+        Note:
+            All process groups in PyTorch are represented as global variables, and they may not be automatically destroyed
+            when the ProcessGroupMesh's lifetime ends. This method manually destroys the process groups to release
+            system resources.
+        """
+        for group in self._ranks_to_group.values():
+            dist.destroy_process_group(group)
+
+        # Manually clear all process groups to save memory
+        gc.collect()
 
     @property
     def shape(self) -> Tuple[int, ...]:
@@ -142,7 +161,7 @@ class ProcessGroupMesh:
 
     @staticmethod
     def get_coords_along_axis(
-        base_coord: Tuple[int, ...], axis: int, indices_at_axis: List[int]
+        base_coord: Tuple[int, ...], axis: Union[int, List[int]], indices_at_axis: Union[List[int], List[List[int]]]
     ) -> List[Tuple[int, ...]]:
         """Get coordinates along the given axis.
 
@@ -154,13 +173,35 @@ class ProcessGroupMesh:
         Returns:
             List[Tuple[int, ...]]: Coordinates along the axis.
         """
-        coords_in_group = []
-        for idx in indices_at_axis:
-            coords_in_group.append(base_coord[:axis] + (idx,) + base_coord[axis + 1 :])
+        if isinstance(axis, int):
+            axis = [
+                axis,
+            ]
+            assert isinstance(indices_at_axis[0], int)
+            indices_at_axis = [
+                indices_at_axis,
+            ]
+
+        def add_index(base_coord, axis, indices_at_axis):
+            coords_in_group = []
+            for idx in indices_at_axis:
+                coords_in_group.append(base_coord[:axis] + (idx,) + base_coord[axis + 1 :])
+            return coords_in_group
+
+        coords_in_group = [base_coord]
+        for ax, indices_at_ax in zip(axis, indices_at_axis):
+            new_coords_in_group = []
+            for coords in coords_in_group:
+                new_coords_in_group += add_index(coords, ax, indices_at_ax)
+            coords_in_group = new_coords_in_group
+
         return coords_in_group
 
     def create_group_along_axis(
-        self, axis: int, indices_at_axis: Optional[List[int]] = None, backend: Optional[str] = None
+        self,
+        axis: Union[int, List[int]],
+        indices_at_axis: Optional[Union[List[int], List[List[int]]]] = None,
+        backend: Optional[str] = None,
     ) -> ProcessGroup:
         """Create all process groups along the given axis, and return the one which the current process belongs to.
 
@@ -172,10 +213,21 @@ class ProcessGroupMesh:
         Returns:
             ProcessGroup: The process group along the given axis which the current process belongs to.
         """
-        indices_at_axis = indices_at_axis or list(range(self._shape[axis]))
+        if isinstance(axis, int):
+            axis = [
+                axis,
+            ]
+            if indices_at_axis is not None:
+                assert isinstance(indices_at_axis[0], int)
+                indices_at_axis = [
+                    indices_at_axis,
+                ]
+
+        indices_at_axis = indices_at_axis or [list(range(self._shape[ax])) for ax in axis]
         reduced_shape = list(self._shape)
         # the choices on the axis are reduced to 1, since it's determined by `indices_at_axis`
-        reduced_shape[axis] = 1
+        for ax in axis:
+            reduced_shape[ax] = 1
         target_group = None
         # use Cartesian product to generate all combinations of coordinates
         for base_coord in itertools.product(*[range(s) for s in reduced_shape]):

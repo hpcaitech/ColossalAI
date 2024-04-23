@@ -8,7 +8,7 @@ from typing import Optional, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from attn import SUPPORT_XFORMERS, replace_xformers
+from attn import replace_with_flash_attention
 from data_utils import load_json, prepare_dataloader, save_json
 from datasets import load_dataset
 from torch.optim import Optimizer
@@ -20,13 +20,13 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 from transformers.models.llama.tokenization_llama import LlamaTokenizer
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 MODEL_CONFIGS = {
     "7b": LlamaConfig(max_position_embeddings=4096),
@@ -76,6 +76,7 @@ def tokenize_batch_for_pretrain(batch, tokenizer: Optional[LlamaTokenizer] = Non
 
 def all_reduce_mean(tensor: torch.Tensor) -> torch.Tensor:
     dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+    tensor = tensor.data
     tensor.div_(dist.get_world_size())
     return tensor
 
@@ -184,7 +185,7 @@ def main():
             microbatch_size=1,
             enable_jit_fused=False,
             zero_stage=0,
-            precision="fp32",
+            precision=args.mixed_precision,
             initial_scale=1,
         )
     else:
@@ -226,7 +227,9 @@ def main():
     config = MODEL_CONFIGS[args.config]
     # use lazy init when using GeminiPlugin
     init_ctx = (
-        LazyInitContext(default_device=get_current_device()) if isinstance(plugin, GeminiPlugin) else nullcontext()
+        LazyInitContext(default_device=get_accelerator().get_current_device())
+        if isinstance(plugin, GeminiPlugin)
+        else nullcontext()
     )
 
     with init_ctx:
@@ -235,8 +238,7 @@ def main():
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
     if args.flash_attention:
-        assert SUPPORT_XFORMERS, "Use flash attention while xfomers is not installed"
-        replace_xformers(model)
+        replace_with_flash_attention(model)
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")
@@ -272,11 +274,10 @@ def main():
     dataloader.sampler.set_start_index(sampler_start_idx)
     for epoch in range(start_epoch, args.num_epochs):
         dataloader.sampler.set_epoch(epoch)
-        step_nums = num_steps_per_epoch - start_step
         dataloader_iter = iter(dataloader)
 
         with tqdm(
-            range(step_nums),
+            range(start_step, num_steps_per_epoch),
             desc=f"Epoch {epoch}",
             disable=not print_flag,
             total=num_steps_per_epoch,
@@ -284,9 +285,7 @@ def main():
         ) as pbar:
             for step in pbar:
                 if use_pipeline:
-                    outputs = booster.execute_pipeline(
-                        dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
-                    )
+                    outputs = booster.execute_pipeline(dataloader_iter, model, _criterion, optimizer, return_loss=True)
                     loss = outputs["loss"]
                 else:
                     batch = next(dataloader_iter)

@@ -18,11 +18,11 @@ from transformers import (
 )
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 # ==============================
 # Prepare Hyperparameters
@@ -57,9 +57,9 @@ def evaluate_model(
 
     def evaluate_subset(dataloader: DataLoader):
         use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
-        is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
+        is_pp_last_device = use_pipeline and booster.plugin.stage_manager.is_last_stage(ignore_chunk=True)
 
-        accum_loss = torch.zeros(1, device=get_current_device())
+        accum_loss = torch.zeros(1, device=get_accelerator().get_current_device())
         for batch in dataloader:
             batch = move_to_cuda(batch)
             labels = batch["labels"]
@@ -69,9 +69,10 @@ def evaluate_model(
                 current_pp_group_ranks = pg_mesh.get_ranks_in_group(pp_group)
                 current_rank = dist.get_rank()
                 batch = iter([batch])
+
                 outputs = booster.execute_pipeline(batch, model, criterion, return_loss=True, return_outputs=True)
 
-                if is_pp_last_stage:
+                if is_pp_last_device:
                     logits = outputs["outputs"]["logits"]
                     val_loss = outputs["loss"]
                     accum_loss.add_(val_loss)
@@ -88,8 +89,10 @@ def evaluate_model(
                     object_list = [None, None]
                     dist.broadcast_object_list(object_list, src=current_pp_group_ranks[-1], group=pp_group)
 
-                    metric.add_batch(predictions=object_list[0].to(get_current_device()), references=labels)
-                    accum_loss.add_(object_list[1].to(get_current_device()))
+                    metric.add_batch(
+                        predictions=object_list[0].to(get_accelerator().get_current_device()), references=labels
+                    )
+                    accum_loss.add_(object_list[1].to(get_accelerator().get_current_device()))
 
             else:
                 batch = move_to_cuda(batch)
@@ -133,8 +136,8 @@ def train_epoch(
     coordinator: DistCoordinator,
 ):
     use_pipeline = isinstance(booster.plugin, HybridParallelPlugin) and booster.plugin.pp_size > 1
-    is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
-    print_flag = (not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_stage)
+    is_pp_last_device = use_pipeline and booster.plugin.stage_manager.is_last_stage(ignore_chunk=True)
+    print_flag = (not use_pipeline and coordinator.is_master()) or (use_pipeline and is_pp_last_device)
     total_step = len(train_dataloader)
 
     model.train()
@@ -145,10 +148,10 @@ def train_epoch(
         for _ in pbar:
             if use_pipeline:
                 outputs = booster.execute_pipeline(
-                    train_dataloader_iter, model, _criterion, optimizer, return_loss=True, return_outputs=True
+                    train_dataloader_iter, model, _criterion, optimizer, return_loss=True
                 )
                 # Backward and optimize
-                if is_pp_last_stage:
+                if is_pp_last_device:
                     loss = outputs["loss"]
                     pbar.set_postfix({"loss": loss.item()})
             else:
@@ -222,7 +225,9 @@ def main():
             tp_size=1,
             pp_size=2,
             num_microbatches=None,
-            microbatch_size=1,
+            pp_style="interleaved",
+            num_model_chunks=2,
+            microbatch_size=16,
             enable_all_optimization=True,
             zero_stage=1,
             precision="fp16",

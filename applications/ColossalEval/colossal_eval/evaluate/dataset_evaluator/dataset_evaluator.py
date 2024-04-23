@@ -1,12 +1,24 @@
-from typing import Dict, List
+import os
+from typing import Dict, List, Union
 
 import colossal_eval.evaluate.dataset_evaluator.metrics as metric_helper
 import numpy as np
 import tqdm
+from colossal_eval.utils import jdump
+
+import colossal_eval.evaluate.dataset_evaluator.gpt_judge as gpt_helper  # noqa
 
 LabelBasedMetrics = ["first_token_accuracy", "matthews_correlation"]
-LossBasedMetrics = ["perplexity", "ppl_score", "ppl_score_over_choices", "per_byte_perplexity", "per_byte_ppl_score"]
+LossBasedMetrics = [
+    "perplexity",
+    "ppl_score",
+    "ppl_score_over_choices",
+    "per_byte_perplexity",
+    "per_byte_ppl_score",
+    "loss_over_all_tokens",
+]
 CombinedMetrics = ["combined_single_choice_accuracy"]
+GPTMetrics = ["mtbench_single_judge"]
 OtherMetrics = [
     "f1_score",
     "f1_zh_score",
@@ -20,6 +32,7 @@ OtherMetrics = [
     "multi_choice_accuracy",
     "math_equivalence",
     "single_choice_accuracy",
+    "gsm_accuracy",
 ]
 
 
@@ -29,8 +42,9 @@ class DatasetEvaluator(object):
 
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, config_path: str, save_path: str):
+        self.config_path = config_path
+        self.save_path = save_path
 
     def _calculate_label_metrics(self, metric: str, category: str):
         """Calculate label-based metrics."""
@@ -44,12 +58,12 @@ class DatasetEvaluator(object):
         [sample["output"] for sample in self.data[category]["data"]]
 
         flag = False
-        softmaxs = []
+        logits = []
         for i, sample in enumerate(self.data[category]["data"]):
-            if np.any(np.isnan(np.array(list(sample["softmax_over_choices"].values())))):
+            if np.any(np.isnan(np.array(list(sample["logits_over_choices"].values())))):
                 if not flag:
                     print(
-                        f"NaN in the softmax, switch to exact match for category {category} in dataset {self.dataset_name} in model {self.model_name}."
+                        f"NaN in the logits, switch to exact match for category {category} in dataset {self.dataset_name} in model {self.model_name}."
                     )
                     flag = True
                 score = 0
@@ -60,13 +74,18 @@ class DatasetEvaluator(object):
                             sample["output"], ref, all_classes=self.data[category]["inference_kwargs"]["all_classes"]
                         ),
                     )
-                softmaxs.append(references[i] if score == 1 else -1)
+
+                    score = max(
+                        score,
+                        metric_helper.accuracy_by_options(sample["input"], sample["output"], ref),
+                    )
+                logits.append(references[i] if score == 1 else -1)
             else:
-                softmaxs.append(np.argmax(np.array(list(sample["softmax_over_choices"].values()))))
+                logits.append(np.argmax(np.array(list(sample["logits_over_choices"].values()))))
 
         references = np.array(references)
-        softmaxs = np.array(softmaxs)
-        scores = np.sum(references == softmaxs) / len(self.data[category]["data"]) * 100
+        logits = np.array(logits)
+        scores = np.sum(references == logits) / len(self.data[category]["data"]) * 100
 
         self.evaluation_results[metric][category] = (scores, len(self.data[category]["data"]))
         self.evaluation_results[metric]["ALL"] += scores * weight
@@ -86,12 +105,12 @@ class DatasetEvaluator(object):
         predictions = [sample["output"] for sample in self.data[category]["data"]]
 
         flag = False
-        softmaxs = []
+        logits = []
         for i, sample in enumerate(self.data[category]["data"]):
-            if np.any(np.isnan(np.array(list(sample["softmax_over_choices"].values())))):
+            if np.any(np.isnan(np.array(list(sample["logits_over_choices"].values())))):
                 if not flag:
                     print(
-                        f"NaN in the softmax, switch to exact match for category {category} in dataset {self.dataset_name} in model {self.model_name}."
+                        f"NaN in the logits, switch to exact match for category {category} in dataset {self.dataset_name} in model {self.model_name}."
                     )
                     flag = True
                 score = 0
@@ -102,16 +121,14 @@ class DatasetEvaluator(object):
                             sample["output"], ref, all_classes=self.data[category]["inference_kwargs"]["all_classes"]
                         ),
                     )
-                softmaxs.append(references[i] if score == 1 else -1)
+                logits.append(references[i] if score == 1 else -1)
             else:
-                softmaxs.append(np.argmax(np.array(list(sample["softmax_over_choices"].values()))))
+                logits.append(np.argmax(np.array(list(sample["logits_over_choices"].values()))))
 
         metric_method = eval("metric_helper." + metric)
 
         total_score = 0.0
-        for prediction, reference, references_label, softmax in zip(
-            predictions, references, references_labels, softmaxs
-        ):
+        for prediction, reference, references_label, softmax in zip(predictions, references, references_labels, logits):
             score = 0.0
 
             for ref in reference:
@@ -132,7 +149,10 @@ class DatasetEvaluator(object):
         """Calculate other metrics."""
         weight = len(self.data[category]["data"]) / self.metric_total_length[metric]
 
-        references = [sample["target"] for sample in self.data[category]["data"]]
+        references = [
+            sample["target"] if isinstance(sample["target"], list) else [sample["target"]]
+            for sample in self.data[category]["data"]
+        ]
         predictions = [sample["output"] for sample in self.data[category]["data"]]
 
         metric_method = eval("metric_helper." + metric)
@@ -150,6 +170,24 @@ class DatasetEvaluator(object):
 
         self.evaluation_results[metric][category] = (total_score, len(self.data[category]["data"]))
         self.evaluation_results[metric]["ALL"] += total_score * weight
+
+    def _calculate_gpt_metrics(self, metric: str, category: str):
+        """Calculate gpt metrics."""
+        weight = len(self.data[category]["data"]) / self.metric_total_length[metric]
+
+        metric_method = eval("gpt_helper." + metric)
+
+        judgements, avg_ratings = metric_method(self.data[category]["data"], self.config_path)
+        self.judgements[category] = judgements
+
+        self.evaluation_results[metric][category] = (np.mean(avg_ratings), len(self.data[category]["data"]))
+        self.evaluation_results[metric]["ALL"] += np.mean(avg_ratings) * weight
+
+        for i in range(avg_ratings.shape[0]):
+            if f"{metric}_{i+1}" not in self.evaluation_results:
+                self.evaluation_results[f"{metric}_{i+1}"] = {cat: 0 for cat in (["ALL"] + self.categories)}
+            self.evaluation_results[f"{metric}_{i+1}"][category] = (avg_ratings[i], len(self.data[category]["data"]))
+            self.evaluation_results[f"{metric}_{i+1}"]["ALL"] += avg_ratings[i] * weight
 
     def _calculate_loss_metrics(self, metric: str, category: str):
         """Calculate perplexity."""
@@ -191,6 +229,18 @@ class DatasetEvaluator(object):
 
             self.evaluation_results["per_byte_ppl_score"][category] = perplexity_score
             self.evaluation_results["per_byte_ppl_score"]["ALL"] += perplexity_score * weight
+        elif metric == "loss_over_all_tokens":
+            weight = len(self.data[category]["data"]) / self.metric_total_length[metric]
+            losses = [min(sample["loss_sum"]) for sample in self.data[category]["data"]]
+            token_nums = [sample["token_num"][np.argmin(sample["loss_sum"])] for sample in self.data[category]["data"]]
+            perplexity = np.sum(np.array(losses)) / np.sum(np.array(token_nums))
+
+            self.evaluation_results["loss_over_all_tokens"][category] = perplexity
+            self.evaluation_results["loss_over_all_tokens"]["ALL"] += perplexity * weight
+
+            # The number of tokens can be used for normalizing.
+            # See https://github.com/SkyworkAI/Skywork/issues/43#issuecomment-1811733834
+            print(f"{self.model_name} {category} token num: {np.sum(np.array(token_nums))}")
 
     def _evaluate(self):
         """Calculate and return evaluation results"""
@@ -212,14 +262,26 @@ class DatasetEvaluator(object):
                 for category in self.suggested_categories[metric]:
                     self._calculate_combined_metrics(metric, category)
                     pbar.update(1)
+            elif metric in GPTMetrics:
+                for category in self.suggested_categories[metric]:
+                    self._calculate_gpt_metrics(metric, category)
+                    pbar.update(1)
             elif metric in OtherMetrics:
                 for category in self.suggested_categories[metric]:
                     self._calculate_other_metrics(metric, category)
                     pbar.update(1)
+            else:
+                raise Exception(f"{metric} not supported.")
+
+        if self.judgements:
+            judgement_path = os.path.join(self.save_path, f"{self.model_name}_judgements.json")
+            jdump(self.judgements, judgement_path)
 
         return self.evaluation_results
 
-    def get_evaluation_results(self, data: List[Dict], dataset_name: str, model_name: str, metrics: List[str]):
+    def get_evaluation_results(
+        self, data: Dict[str, Union[str, Dict]], dataset_name: str, model_name: str, metrics: List[str]
+    ):
         """
         Evaluate inference data on the given metrics.
 
@@ -230,11 +292,13 @@ class DatasetEvaluator(object):
             metrics: Metrics used to evaluate.
 
         """
-        self.data = data
+        self.data = data["inference_results"]
         self.dataset_name = dataset_name
+        self.dataset_class = data["dataset_class"]
         self.model_name = model_name
-        self.categories = list(data.keys())
+        self.categories = list(self.data.keys())
         self.metrics = metrics
+        self.judgements = {}
 
         self.evaluation_results = {
             metric: {category: 0 for category in (["ALL"] + self.categories)} for metric in self.metrics
@@ -251,7 +315,8 @@ class DatasetEvaluator(object):
         self.suggested_categories = {metric: [] for metric in self.metrics}
 
         for metric in self.metrics:
-            self.suggested_categories[metric] = metric_helper.metrics4subcategory[self.dataset_name][metric]
+            # Train and reference split use same metric as test split.
+            self.suggested_categories[metric] = metric_helper.metrics4subcategory[self.dataset_class][metric]
             if "ALL" in self.suggested_categories[metric]:
                 self.suggested_categories[metric] = self.categories
                 self.metric_total_length[metric] = self.total_length

@@ -4,11 +4,13 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 import torch
+import torch.distributed as dist
 
 from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.tensor.d_tensor.comm_spec import *
 from colossalai.tensor.d_tensor.layout import Layout
 from colossalai.tensor.d_tensor.misc import LayoutException
+from colossalai.tensor.padded_tensor.api import init_as_padded_tensor, is_padded_tensor
 from colossalai.tensor.utils import all_gather_simulator, all_to_all_simulator, shard_simulator
 
 from .sharding_spec import ShardingSpec
@@ -438,11 +440,61 @@ class LayoutConverter(metaclass=SingletonMeta):
         MAX_TRANSFORM_STEPS = 20
         total_steps = 0
         transform_path = []
-        comm_action_sequence = []
-        spec_pairs = (str(source_spec.sharding_sequence), str(target_spec.sharding_sequence))
+        comm_action_sequence: List[CommSpec] = []
+
+        src_shape = source_layout.get_sharded_shape_per_device()
+        dst_shape = target_layout.get_sharded_shape_per_device()
+        spec_pairs = ((str(source_spec.sharding_sequence), src_shape), (str(target_spec.sharding_sequence), dst_shape))
 
         if spec_pairs in self.cached_solution:
-            return self.cached_solution[spec_pairs]
+            # Solution Cache hit
+
+            def _group_alive_check(cached_comm_action_sequence):
+                r"""
+                Check if the process groups required for sharding have been deleted by torch.distributed.destroy_process_group method.
+                If not deleted, return True; otherwise, return False.
+
+                Args:
+                    cached_comm_action_sequence (List[CommSpec]): A list of communication specifications representing actions.
+
+                Returns:
+                    bool: True if all process groups are still registered, False if at least one has been deleted.
+
+                Raises:
+                    RuntimeError: If there is an error while checking the status of a process group.
+                """
+
+                # Collect all process groups used in communication actions from the cached sequence
+                used_process_groups = [
+                    pg for comm_spec in cached_comm_action_sequence for pg in comm_spec.process_group_dict.values()
+                ]
+
+                # Check if each process group is still alive
+                for process_group in used_process_groups:
+                    try:
+                        dist.get_rank(process_group)
+                    except RuntimeError as e:
+                        # If the group is not registered, it means it has been deleted
+                        if str(e) == (
+                            f"Group {process_group} is not registered, please create group with torch.distributed.new_group API"
+                        ):
+                            return False
+                        elif str(e) == "The given group does not exist":
+                            return False
+                        else:
+                            # Re-raise the exception if it's not related to group deletion
+                            raise e
+                # All process groups are alive
+                return True
+
+            cached_transform_path, cached_comm_action_sequence = self.cached_solution[spec_pairs]
+
+            if _group_alive_check(cached_comm_action_sequence):
+                # If all process groups have not been deleted, the cache is valid
+                return cached_transform_path, cached_comm_action_sequence
+            else:
+                # If at least one process group has been deleted, the cache is invalid, so delete it
+                del self.cached_solution[spec_pairs]
 
         # We do nothing if the sharding spec is all the same.
         if source_spec.spec_diff(target_spec) == 0:
@@ -556,8 +608,18 @@ class LayoutConverter(metaclass=SingletonMeta):
                     [3.],
                     [3.]])
         """
+
         _, comm_action_sequence = self.layout_converting(source_layout, target_layout)
+
+        target_tensor = tensor
         for comm_spec in comm_action_sequence:
-            tensor = comm_spec.covert_spec_to_action(tensor)
-        tensor.dist_layout = target_layout
-        return tensor
+            target_tensor = comm_spec.covert_spec_to_action(target_tensor)
+        target_tensor.dist_layout = target_layout
+
+        # restore the padding information
+        if is_padded_tensor(tensor) and not is_padded_tensor(target_tensor):
+            target_tensor = init_as_padded_tensor(
+                target_tensor, tensor._current_length, tensor._origin_length, tensor._padding_dim
+            )
+
+        return target_tensor

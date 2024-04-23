@@ -15,6 +15,7 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 
+from colossalai.accelerator import get_accelerator
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO
 from colossalai.checkpoint_io.utils import (
     get_optimizer_base_filenames,
@@ -28,7 +29,6 @@ from colossalai.checkpoint_io.utils import (
 )
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
-from colossalai.utils import get_current_device
 from colossalai.zero import LowLevelZeroOptimizer
 
 from .dp_plugin_base import DPPluginBase
@@ -62,7 +62,7 @@ class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
             self.dtype = torch.bfloat16
         if self.dtype is not None:
             module = module.to(self.dtype)
-        module = module.to(get_current_device())
+        module = module.to(get_accelerator().get_current_device())
         self.module = module
         self.convert_fn = None
         if self.dtype is not None:
@@ -129,11 +129,12 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         # Preparing file paths and index file.
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
         index_file = CheckpointIndexFile(checkpoint)
+        index_file.append_meta_data("param_groups", param_group_file)
 
         # Store the information of param groups to param_group_file.
-        index_file.append_meta_data("param_groups", param_group_file)
-        group_file_path = os.path.join(checkpoint, param_group_file)
-        save_param_groups(state_dict, group_file_path)
+        if self.coordinator.is_master():
+            group_file_path = os.path.join(checkpoint, param_group_file)
+            save_param_groups(state_dict, group_file_path)
 
         # Save shards of optimizer states.
         total_size = 0
@@ -332,7 +333,80 @@ class LowLevelZeroPlugin(DPPluginBase):
         return True
 
     def supported_devices(self) -> List[str]:
-        return ["cuda"]
+        return ["cuda", "npu"]
+
+    def support_lora(self) -> bool:
+        return True
+
+    def enable_lora(
+        self,
+        model: nn.Module,
+        pretrained_dir: Optional[str] = None,
+        lora_config: Optional[Dict] = None,
+        bnb_quantization_config: Optional[BnbQuantizationConfig] = None,
+    ) -> nn.Module:
+        from peft import PeftModel, get_peft_model
+
+        assert not isinstance(model, LowLevelZeroModel), "Lora should be enabled before boosting the model."
+        self.lora_enabled = True
+        warnings.warn("You have enabled LoRa training. Please check the hyperparameters such as lr")
+
+        if bnb_quantization_config is not None:
+            model = quantize_model(model, bnb_quantization_config)
+
+        if pretrained_dir is None:
+            peft_model = get_peft_model(model, lora_config)
+        else:
+            peft_model = PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)
+        return peft_model
+
+    def get_param_group_id(self, optimizer: Optimizer, origin_param: Parameter):
+        origin_param_id = id(origin_param)
+        for group_id, param_group in enumerate(optimizer.param_groups):
+            for p in param_group["params"]:
+                if id(p) == origin_param_id:
+                    return group_id
+        return -1
+
+    def get_param_group_id(self, optimizer: Optimizer, origin_param: Parameter, lora_param: Parameter):
+        origin_param_id = id(origin_param)
+        lora_param_id = id(lora_param)
+        target_group_id = None
+        for group_id, param_group in enumerate(optimizer.param_groups):
+            for p in param_group["params"]:
+                if id(p) == lora_param_id:
+                    # check if the lora parameter exists.
+                    return target_group_id, OptimizerParamCheckState.LORA_PARM_EXISTED
+                if id(p) == origin_param_id:
+                    target_group_id = group_id
+        if target_group_id is not None:
+            return target_group_id, OptimizerParamCheckState.ORIGIN_PARAM_FINDED
+        else:
+            return target_group_id, OptimizerParamCheckState.ORIGIN_PARAM_NOT_FIND
+
+    def add_lora_params_to_optimizer(self, model, optimizer):
+        """add lora parameters to optimizer"""
+        name2param = {}
+        for name, param in model.named_parameters():
+            name2param[name] = param
+
+        for name, param in name2param.items():
+            if "lora_A" in name or "lora_B" in name:
+                origin_key = name.replace("lora_A.", "")
+                origin_key = origin_key.replace("lora_B.", "")
+                origin_key = origin_key.replace(f"{model.active_adapter}", "base_layer")
+                origin_param = name2param[origin_key]
+                group_id, check_state = self.get_param_group_id(optimizer, origin_param, param)
+                if check_state == OptimizerParamCheckState.ORIGIN_PARAM_NOT_FIND:
+                    warnings.warn(
+                        "Origin parameter {origin_key} related to {name} doesn't exist in optimizer param_groups."
+                    )
+                elif (
+                    check_state == OptimizerParamCheckState.ORIGIN_PARAM_FINDED
+                    and group_id is not None
+                    and group_id >= 0
+                ):
+                    optimizer.param_groups[group_id]["params"].append(param)
 
     def support_lora(self) -> bool:
         return True
