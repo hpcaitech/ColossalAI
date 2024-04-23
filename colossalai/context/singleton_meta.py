@@ -1,15 +1,20 @@
 import threading
-    
+
 """
 Synchronization decorator
 """
+
+
 def synchronized(lock):
     def wrap(func):
         def synchronized_func(*args, **kwargs):
             with lock:
                 return func(*args, **kwargs)
+
         return synchronized_func
+
     return wrap
+
 
 class SingletonMeta(type):
     """
