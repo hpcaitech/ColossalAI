@@ -7,7 +7,6 @@ from torch.testing import assert_close
 from colossalai.kernel.kernel_loader import (
     FlashAttentionLoader,
     FlashAttentionWithCustomMaskLoader,
-    FlashAttentionWithPaddingMaskLoader,
 )
 from colossalai.shardformer.layer import AttnMaskType, ColoAttention
 from colossalai.shardformer.layer.attn import invert_mask
@@ -119,11 +118,6 @@ def test_flash_attn_func(dtype: torch.dtype):
         if ext.is_available():
             ext.assert_compatible()
             avail_custom_mask_attn_funcs.append((ext.load(), ext.name, True))
-    for ext_cls in FlashAttentionWithPaddingMaskLoader.REGISTRY:
-        ext = ext_cls()
-        if ext.is_available():
-            ext.assert_compatible()
-            avail_padding_mask_attn_funcs.append((ext.load(), ext.name, True))
 
     test_sets = {
         "none": (lambda dtype: ({}, None), avail_attn_funcs),

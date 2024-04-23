@@ -8,7 +8,6 @@ from colossalai.kernel.kernel_loader import (
     FlashAttentionForFloatAndCustomMaskLoader,
     FlashAttentionLoader,
     FlashAttentionWithCustomMaskLoader,
-    FlashAttentionWithPaddingMaskLoader,
     KernelLoader,
 )
 
@@ -65,15 +64,17 @@ class ColoAttention:
             half_dispatch_map = {
                 None: FlashAttentionLoader(),
                 AttnMaskType.CUSTOM: FlashAttentionWithCustomMaskLoader(),
-                AttnMaskType.PADDED: FlashAttentionWithPaddingMaskLoader(),
+                AttnMaskType.PADDED: FlashAttentionLoader(),
                 AttnMaskType.CAUSAL: FlashAttentionLoader(),
-                AttnMaskType.PADDED_CAUSAL: FlashAttentionWithPaddingMaskLoader(),
+                AttnMaskType.PADDED_CAUSAL: FlashAttentionLoader(),
             }
             # fp32
             float_dispatch_map = {
                 None: FlashAttentionForFloatAndCustomMaskLoader(),
                 AttnMaskType.CUSTOM: FlashAttentionForFloatAndCustomMaskLoader(),
+                AttnMaskType.PADDED: FlashAttentionForFloatAndCustomMaskLoader(),
                 AttnMaskType.CAUSAL: FlashAttentionForFloatAndCustomMaskLoader(),
+                AttnMaskType.PADDED_CAUSAL: FlashAttentionForFloatAndCustomMaskLoader(),
             }
             ColoAttention._kernel_dispatch_map = {
                 torch.float16: half_dispatch_map,
@@ -149,7 +150,7 @@ class ColoAttention:
             else:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
             assert kv_padding_mask.shape == (b, s_kv), f"q_padding_mask shape {kv_padding_mask.shape} should be the same. ({shape_4d})"
-            attention_mask = torch.einsum("bi,bj->bij", q_padding_mask, kv_padding_mask).to(dtype=dtype, device=device)
+            attention_mask = q_padding_mask[:, None, :].expand(b, s_kv, s_q).to(dtype=dtype, device=device)
             outputs.update(
                 {
                     "cu_seqlens_q": cu_seqlens_q,
