@@ -148,6 +148,7 @@ class ColoAttention:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = max_seqlen_q, cu_seqlens_q, q_indices
             else:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
+            assert kv_padding_mask.shape == (b, s_kv), f"q_padding_mask shape {kv_padding_mask.shape} should be the same. ({shape_4d})"
             attention_mask = torch.einsum("bi,bj->bij", q_padding_mask, kv_padding_mask).to(dtype=dtype, device=device)
             outputs.update(
                 {
