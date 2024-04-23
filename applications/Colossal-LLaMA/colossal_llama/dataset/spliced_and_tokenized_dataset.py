@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, Iterable, List, Tuple, Union
 
 from datasets import dataset_dict
 from torch.utils.data import ConcatDataset, Dataset, IterableDataset
+from transformers import AutoTokenizer
 from transformers.models.llama.tokenization_llama import LlamaTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 
@@ -71,7 +72,7 @@ def supervised_tokenize_pretrain(
 
 def supervised_tokenize_sft(
     data_point: Dict[str, str],
-    tokenizer: LlamaTokenizer,
+    tokenizer: AutoTokenizer,
     conversation_template: Conversation = default_conversation,
     ignore_index: int = None,
     max_length: int = 4096,

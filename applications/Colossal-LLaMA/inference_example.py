@@ -1,7 +1,7 @@
 import argparse
 
 import torch
-from colossal_llama2.dataset.conversation import default_conversation
+from colossal_llama.dataset.conversation import default_conversation
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from colossalai.logging import get_dist_logger
