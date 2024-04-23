@@ -1,22 +1,36 @@
+import threading
+    
+"""
+Synchronization decorator
+"""
+def synchronized(lock):
+    def wrap(func):
+        def synchronized_func(*args, **kwargs):
+            with lock:
+                return func(*args, **kwargs)
+        return synchronized_func
+    return wrap
+
 class SingletonMeta(type):
     """
-    The Singleton class can be implemented in different ways in Python. Some
-    possible methods include: base class, decorator, metaclass. We will use the
-    metaclass because it is best suited for this purpose.
+    Thread-safe Singleton Meta, and we use double-checked locking to ensure no degradation on performance
+    Reference: https://en.wikipedia.org/wiki/Double-checked_locking
     """
 
     _instances = {}
+    _lock = threading.Lock()
 
     def __call__(cls, *args, **kwargs):
-        """
-        Possible changes to the value of the `__init__` argument do not affect
-        the returned instance.
-        """
         if cls not in cls._instances:
-            instance = super().__call__(*args, **kwargs)
+            instance = cls._locked_call(*args, **kwargs)
             cls._instances[cls] = instance
         else:
             assert (
                 len(args) == 0 and len(kwargs) == 0
             ), f"{cls.__name__} is a singleton class and a instance has been created."
         return cls._instances[cls]
+
+    @synchronized(_lock)
+    def _locked_call(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(SingletonMeta, cls).__call__(*args, **kwargs)
