@@ -539,22 +539,6 @@ void cumsum_launch(int *inputs, int *outputs, const int s, const int e) {
 
 // API FUNCTIONS --------------------------------
 
-#define DISPATCH_FLOAT_AND_HALF(TYPE, NAME, ...)                       \
-  switch (TYPE) {                                                      \
-    case at::ScalarType::Float: {                                      \
-      using scalar_t = float;                                          \
-      __VA_ARGS__;                                                     \
-      break;                                                           \
-    }                                                                  \
-    case at::ScalarType::Half: {                                       \
-      using scalar_t = at::Half;                                       \
-      __VA_ARGS__;                                                     \
-      break;                                                           \
-    }                                                                  \
-    default:                                                           \
-      AT_ERROR(#NAME, " not implemented yet for specific data type."); \
-  }
-
 torch::Tensor moe_dispatch_cuda_forward(int s, int ec, int h,
                                         torch::Tensor batch_tokens,
                                         torch::Tensor mask,
