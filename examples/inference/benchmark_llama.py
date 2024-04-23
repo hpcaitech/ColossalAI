@@ -82,7 +82,7 @@ def print_details_info(model_config, args, whole_end2end, total_token_num):
         msg += "-------Perf Summary-------\n"
         whole_avg_latency = whole_end2end / (total_token_num)
         num_layers = getattr(model_config, "num_layers", model_config.num_hidden_layers)
-        num_parameters = num_layers * model_config.hidden_size * model_config.hidden_size * 12 / args.pp_size
+        num_parameters = num_layers * model_config.hidden_size * model_config.hidden_size * 12
         if args.dtype in ["fp16", "bf16"]:
             num_bytes = 2
         else:
@@ -106,11 +106,11 @@ def benchmark_inference(args):
         config = CONFIG_MAP[args.model]
         config.pad_token_id = config.eos_token_id
         if args.test_random_weight:
-            model = transformers.LlamaForCausalLM(config).cuda()
+            model = transformers.LlamaForCausalLM(config)
             tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
         else:
             assert args.model_path, "When testing pretrained weights, the model path must be provided.'"
-            model = transformers.LlamaForCausalLM.from_pretrained(args.model_path).cuda()
+            model = transformers.LlamaForCausalLM.from_pretrained(args.model_path)
             tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
 
         model = model.eval()
@@ -127,14 +127,12 @@ def benchmark_inference(args):
         if args.mode == "colossalai":
             inference_config = InferenceConfig(
                 dtype=args.dtype,
-                micro_batch_size=args.mb_size,
                 max_batch_size=mbsz,
                 max_input_len=args.seq_len,
                 max_output_len=args.output_len,
                 prefill_ratio=1.2,
                 block_size=32,
                 tp_size=args.tp_size,
-                pp_size=args.pp_size,
                 use_cuda_kernel=True,
             )
             engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
@@ -238,7 +236,7 @@ def hybrid_inference(rank, world_size, port, args):
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def benchmark(args):
-    spawn(hybrid_inference, nprocs=args.tp_size * args.pp_size, args=args)
+    spawn(hybrid_inference, nprocs=args.tp_size, args=args)
 
 
 if __name__ == "__main__":
@@ -254,12 +252,9 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--batch_size", type=int, default=8, help="batch size")
     parser.add_argument("--mbsz", type=int, default=8, help="batch size for one step")
     parser.add_argument("-s", "--seq_len", type=int, default=8, help="input sequence length")
-    parser.add_argument("--mb_size", type=int, default=1, help="micro_batch_size")
-    parser.add_argument("--pp_size", type=int, default=1, help="pipeline size")
     parser.add_argument("--tp_size", type=int, default=1, help="Tensor Parallelism size")
     parser.add_argument("--output_len", type=int, default=128, help="Output length")
     parser.add_argument("--dtype", type=str, default="fp16", help="data type", choices=["fp16", "fp32", "bf16"])
-    parser.add_argument("-v", "--verbose", default=False, action="store_true")
     parser.add_argument(
         "--test_random_weight", default=False, action="store_true", help="whether to test random weight"
     )
