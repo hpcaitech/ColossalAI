@@ -133,6 +133,8 @@ def benchmark_inference(args):
                 max_output_len=args.output_len,
                 prefill_ratio=1.2,
                 block_size=32,
+                tp_size=args.tp_size,
+                pp_size=args.pp_size,
                 use_cuda_kernel=True,
             )
             engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
@@ -254,7 +256,7 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--seq_len", type=int, default=8, help="input sequence length")
     parser.add_argument("--mb_size", type=int, default=1, help="micro_batch_size")
     parser.add_argument("--pp_size", type=int, default=1, help="pipeline size")
-    parser.add_argument("--tp_size", type=int, default=1, help="pipeline size")
+    parser.add_argument("--tp_size", type=int, default=1, help="Tensor Parallelism size")
     parser.add_argument("--output_len", type=int, default=128, help="Output length")
     parser.add_argument("--dtype", type=str, default="fp16", help="data type", choices=["fp16", "fp32", "bf16"])
     parser.add_argument("-v", "--verbose", default=False, action="store_true")
