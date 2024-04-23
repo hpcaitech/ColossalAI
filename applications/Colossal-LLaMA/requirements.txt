@@ -1,9 +1,10 @@
-torch<2.0.0, >=1.12.1
-packaging==23.1
-colossalai==0.3.5
+torch==2.1.2
+huggingface-hub
+packaging==24.0
+colossalai==0.3.6
 autoflake==2.2.1
 black==23.9.1
-transformers==4.33.3
+transformers==4.34.1
 tensorboard==2.14.0
 six==1.16.0
 datasets

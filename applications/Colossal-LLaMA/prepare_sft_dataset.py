@@ -1,22 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Prepare dataset for continual pre-training
+Prepare sft dataset for fine-tuning
 """
 
 import argparse
 import json
 import math
 import os
-import time
 from multiprocessing import cpu_count
 
-from colossal_llama2.dataset.spliced_and_tokenized_dataset import (
-    ClosedToConstantLengthSplicedDataset,
-    supervised_tokenize_pretrain,
-)
+from colossal_llama.dataset.conversation import default_conversation
+from colossal_llama.dataset.spliced_and_tokenized_dataset import supervised_tokenize_sft
 from datasets import dataset_dict, load_dataset
-from transformers.models.llama.tokenization_llama import LlamaTokenizer
+from transformers import AddedToken, AutoTokenizer
 
 from colossalai.logging import get_dist_logger
 
@@ -35,35 +32,25 @@ def main():
     parser.add_argument(
         "--tokenizer_dir", type=str, required=True, default=None, help="A directory containing the tokenizer"
     )
-    parser.add_argument("--data_cache_dir", type=str, default="cache", help="Data cache directory")
-    parser.add_argument(
-        "--data_jsonl_output_dir",
-        type=str,
-        default="jsonl_output",
-        help="Output directory of spliced dataset with jsonl format",
-    )
-    parser.add_argument(
-        "--data_arrow_output_dir",
-        type=str,
-        default="arrow_output",
-        help="Output directory of spliced dataset with arrow format",
-    )
-    parser.add_argument("--max_length", type=int, default=4096, help="Max length of each spliced tokenized sequence")
+    parser.add_argument("--data_output_dirs", type=str, default="data_output_dirs", help="Data output directory")
+    parser.add_argument("--max_length", type=int, default=8192, help="Max length of each spliced tokenized sequence")
     parser.add_argument("--num_spliced_dataset_bins", type=int, default=10, help="Number of spliced dataset bins")
+    parser.add_argument("--llama_version", type=int, default=3, help="LLaMA version")
     args = parser.parse_args()
 
     if args.num_spliced_dataset_bins >= 100000:
         raise ValueError("Too many spliced divisions, must be smaller than 100000")
 
-    assert not os.path.exists(args.data_cache_dir), f"Find existed data cache dir {args.data_cache_dir}"
-    assert not os.path.exists(
-        args.data_jsonl_output_dir
-    ), f"Find existed jsonl data output dir {args.data_jsonl_output_dir}"
-    assert not os.path.exists(
-        args.data_arrow_output_dir
-    ), f"Find existed arrow data output dir {args.data_arrow_output_dir}"
-    os.makedirs(args.data_jsonl_output_dir)
-    os.makedirs(args.data_arrow_output_dir)
+    args.data_cache_dir = os.path.join(args.data_output_dirs, "cache")
+    args.data_jsonl_output_dir = os.path.join(args.data_output_dirs, "jsonl")
+    args.data_arrow_output_dir = os.path.join(args.data_output_dirs, "arrow")
+
+    if not os.path.exists(args.data_cache_dir):
+        os.makedirs(args.data_cache_dir)
+    if not os.path.exists(args.data_jsonl_output_dir):
+        os.makedirs(args.data_jsonl_output_dir)
+    if not os.path.exists(args.data_arrow_output_dir):
+        os.makedirs(args.data_arrow_output_dir)
 
     # Prepare to all input datasets
     input_data_paths = []
@@ -86,11 +73,20 @@ def main():
         train_splits.append(f"train[{start}%:{end}%]")
 
     # Prepare to the tokenizer.
-    tokenizer = LlamaTokenizer.from_pretrained(args.tokenizer_dir)
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir)
+
+    # Fix </s> split issue: https://github.com/huggingface/transformers/issues/23833
+    if args.llama_version == 2:
+        tokenizer.add_tokens(AddedToken("</s>", normalized=False, special=True), special_tokens=True)
+
     tokenizer.add_bos_token = False
     tokenizer.add_eos_token = False
     if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.unk_token
+        if tokenizer.unk_token is not None:
+            tokenizer.pad_token = tokenizer.unk_token
+        else:
+            tokenizer.pad_token = tokenizer.eos_token
+            tokenizer.unk_token = tokenizer.eos_token
 
     list_dataset = load_dataset(
         path="json",
@@ -104,22 +100,26 @@ def main():
         assert isinstance(dataset, dataset_dict.Dataset)
         logger.info(f"Start to process part-{index}/{len(list_dataset)} of all original datasets.")
         dataset = dataset.map(
-            function=supervised_tokenize_pretrain,
-            fn_kwargs={"tokenizer": tokenizer, "max_length": args.max_length},
+            function=supervised_tokenize_sft,
+            fn_kwargs={
+                "tokenizer": tokenizer,
+                "conversation_template": default_conversation,
+                "max_length": args.max_length,
+            },
             keep_in_memory=False,
             num_proc=min(len(dataset), cpu_count()),
         )
-        dataset = dataset.remove_columns(column_names=["source", "target", "category"])
+
+        dataset = dataset.filter(lambda data: data["labels"] is not None)
         dataset = dataset.sort(column_names=("seq_category", "seq_length"), reverse=False, keep_in_memory=False)
-        dataset = dataset.remove_columns(column_names=["seq_category", "seq_length"])
-        spliced_dataset = ClosedToConstantLengthSplicedDataset(
-            dataset=dataset, tokenizer=tokenizer, max_length=args.max_length, error_strict=False
-        )
+
+        # We don't concatenate data samples here.
+        spliced_dataset = dataset
         # Save each jsonl spliced dataset.
         output_index = "0" * (5 - len(str(index))) + str(index)
         output_name = f"part-{output_index}"
         output_jsonl_path = os.path.join(args.data_jsonl_output_dir, output_name + ".jsonl")
-        st = time.time()
+        # st = time.time()
         with open(file=output_jsonl_path, mode="w", encoding="utf-8") as fp_writer:
             spliced_count = 0
             for spliced_data_point in spliced_dataset:
@@ -127,13 +127,6 @@ def main():
                     logger.info(f"processing {spliced_count} spliced data points for {fp_writer.name}")
                 spliced_count += 1
                 fp_writer.write(json.dumps(spliced_data_point, ensure_ascii=False) + "\n")
-        logger.info(
-            f"Current file {fp_writer.name}; "
-            f"Data size: {len(spliced_dataset)}; "
-            f"Spliced data size: {spliced_dataset.current_size}; "
-            f"Splicing compression rate: {round(spliced_dataset.current_size / len(spliced_dataset), 6)}; "
-            f"Time cost: {round((time.time() - st) / 60, 6)} minutes."
-        )
 
         # Save each arrow spliced dataset
         output_arrow_path = os.path.join(args.data_arrow_output_dir, output_name)
