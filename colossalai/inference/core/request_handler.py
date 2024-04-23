@@ -314,10 +314,11 @@ class RequestHandler:
 
     def update_batch_finished(self, batch: BatchBucket, generation_config: GenerationConfig):
         for seq in batch.seqs_li:
-            if (
-                seq.output_token_id[-1] == generation_config.eos_token_id
-                or seq.output_len >= generation_config.max_length
-            ):
+            max_length = generation_config.max_length
+            max_new_tokens = generation_config.max_new_tokens
+            if max_length is not None:
+                max_new_tokens = max_length - seq.input_len
+            if seq.output_token_id[-1] == generation_config.eos_token_id or seq.output_len >= max_new_tokens:
                 seq.mark_finished()
 
     def check_unfinished_seqs(self) -> bool:

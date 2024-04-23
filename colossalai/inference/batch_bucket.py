@@ -386,6 +386,7 @@ class BatchBucket:
                 seq_id, seq = next(seqs_iter)
                 assert seq.output_len >= n_tokens, "Revoking len exceeds the current output len of the sequence"
                 seq.output_token_id = seq.output_token_id[:-n_tokens]
+                seq.revoke_finished_status()
                 self._sequence_lengths[self._sequences_indexes[seq_id]] -= n_tokens
 
     def clear(self, free_block_tables_fn: Optional[Callable[[torch.Tensor], None]]) -> List[int]:
