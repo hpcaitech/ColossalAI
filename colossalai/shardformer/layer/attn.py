@@ -140,7 +140,10 @@ class ColoAttention:
             outputs["attention_mask_type"] = AttnMaskType.CAUSAL
             attention_mask = torch.ones(s_q, s_kv, dtype=dtype, device=device).tril(diagonal=0).expand(b, s_q, s_kv)
         else:
-            assert q_padding_mask.shape == (b, s_q), f"q_padding_mask shape {q_padding_mask.shape} should be the same. ({shape_4d})"
+            assert q_padding_mask.shape == (
+                b,
+                s_q,
+            ), f"q_padding_mask shape {q_padding_mask.shape} should be the same. ({shape_4d})"
             attention_mask = torch.einsum("bi,bj->bij", q_padding_mask, kv_padding_mask).to(dtype=dtype, device=device)
             max_seqlen_q, cu_seqlens_q, q_indices = get_pad_info(q_padding_mask)
             if kv_padding_mask is None:
