@@ -11,7 +11,7 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 
 # from colossalai.nn.optimizer import HybridAdam
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import COMMON_MODELS, IS_FAST_TEST, model_zoo
 
 # These models are not compatible with AMP
@@ -21,8 +21,9 @@ _LOW_LEVEL_ZERO_ERR_MODELS = ["dlrm_interactionarch"]
 # These models will cause stuck, to be fixed
 _STUCK_MODELS = ["transformers_albert_for_multiple_choice"]
 
-
+@clear_cache_before_run()
 def run_fn(stage, model_fn, data_gen_fn, output_transform_fn, lora_config=None) -> Optional[str]:
+    device = get_accelerator().get_current_device()
     try:
         plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=2**5)
         booster = Booster(plugin=plugin)
