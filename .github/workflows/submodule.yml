@@ -9,6 +9,9 @@ jobs:
   sync-submodule:
     runs-on: ubuntu-latest
     if: github.repository == 'hpcaitech/ColossalAI'
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v2
