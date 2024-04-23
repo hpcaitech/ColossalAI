@@ -100,5 +100,5 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy):
         return policy
 
     def postprocess(self):
-        init_to_get_rotary(self.model.model)
+        init_to_get_rotary(self.model.model, self.model.config.rope_theta)
         return self.model
