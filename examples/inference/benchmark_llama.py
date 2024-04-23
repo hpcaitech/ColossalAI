@@ -51,6 +51,22 @@ CONFIG_MAP = {
         num_key_value_heads=40,
         max_position_embeddings=4096,
     ),
+    "llama3-8b": transformers.LlamaConfig(
+        hidden_size=4096,
+        intermediate_size=14336,
+        num_attention_heads=32,
+        num_hidden_layers=32,
+        num_key_value_heads=8,
+        max_position_embeddings=8192,
+    ),
+    "llama3-70b": transformers.LlamaConfig(
+        hidden_size=8192,
+        intermediate_size=28672,
+        num_attention_heads=64,
+        num_hidden_layers=80,
+        num_key_value_heads=8,
+        max_position_embeddings=8192,
+    ),
 }
 
 
@@ -142,7 +158,8 @@ def benchmark_inference(args):
 
         generation_config = GenerationConfig(
             pad_token_id=tokenizer.pad_token_id,
-            max_new_tokens=args.output_len,
+            max_length=args.seq_len + args.output_len,
+            # max_new_tokens=args.output_len,
         )
 
         N_WARMUP_STEPS = 2
@@ -229,7 +246,7 @@ if __name__ == "__main__":
         "--model",
         default="toy",
         help="the size of model",
-        choices=["toy", "llama-7b", "llama-13b", "llama2-7b", "llama2-13b"],
+        choices=["toy", "llama-7b", "llama-13b", "llama2-7b", "llama2-13b", "llama3-8b", "llama3-70b"],
     )
     parser.add_argument("--model_path", type=str, default=None, help="The pretrained weights path")
     parser.add_argument("-b", "--batch_size", type=int, default=8, help="batch size")
