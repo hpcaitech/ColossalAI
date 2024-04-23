@@ -66,7 +66,9 @@ class KVCacheManager:
         self.head_num = get_model_config_attr(model_config, "num_attention_heads")
         self.kv_head_num = get_model_config_attr(model_config, "num_key_value_heads")
         self.head_size = get_model_config_attr(model_config, "hidden_size") // self.head_num
-        assert self.kv_head_num % self.tp_size == 0, f"Cannot shard {self.kv_head_num} heads with tp size {self.tp_size}"
+        assert (
+            self.kv_head_num % self.tp_size == 0
+        ), f"Cannot shard {self.kv_head_num} heads with tp size {self.tp_size}"
         self.kv_head_num //= self.tp_size
         self.beam_width = config.beam_width
         self.max_batch_size = config.max_batch_size
@@ -93,7 +95,9 @@ class KVCacheManager:
             * self.kv_head_num
             * self.head_size
         )
-        self.logger.info(f"Allocated {self.total_physical_cache_size_in_bytes / GIGABYTE:.2f} GB of KV cache on device {self.device}.")
+        self.logger.info(
+            f"Allocated {self.total_physical_cache_size_in_bytes / GIGABYTE:.2f} GB of KV cache on device {self.device}."
+        )
         # Logical cache blocks allocation
         self._available_blocks = self.num_blocks
         self._cache_blocks = tuple(self._init_logical_caches())

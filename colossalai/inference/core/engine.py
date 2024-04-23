@@ -519,10 +519,10 @@ class InferenceEngine:
         with torch.inference_mode():
             if prompts is not None or prompts_token_ids is not None:
                 self.add_request(
-                    request_ids=request_ids, 
-                    prompts=prompts, 
-                    prompts_token_ids=prompts_token_ids, 
-                    **generation_config.to_dict()
+                    request_ids=request_ids,
+                    prompts=prompts,
+                    prompts_token_ids=prompts_token_ids,
+                    **generation_config.to_dict(),
                 )
 
             output_seqs_list = []
@@ -578,7 +578,7 @@ class InferenceEngine:
         request_ids: List[int] = None,
         prompts: List[str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         """
         Add requests.

@@ -38,7 +38,7 @@ def rotary_embedding_kernel(
     Q_HEAD_NUM: tl.constexpr,
     KV_GROUP_NUM: tl.constexpr,
     HEAD_DIM: tl.constexpr,
-    BLOCK_TOKENS: tl.constexpr, # token range length
+    BLOCK_TOKENS: tl.constexpr,  # token range length
 ):
     cur_head_idx = tl.program_id(0)
     cur_token_block_idx = tl.program_id(1)
@@ -85,7 +85,7 @@ def rotary_embedding_kernel(
         mask=((cur_head_idx < Q_HEAD_NUM) & (tokens_range[:, None, None] < q_total_tokens)),
     )
 
-    handle_k = (cur_head_idx % KV_GROUP_NUM == 0)
+    handle_k = cur_head_idx % KV_GROUP_NUM == 0
     if handle_k:
         k_head_idx = cur_head_idx // KV_GROUP_NUM
         off_k0 = (
@@ -408,7 +408,7 @@ def decoding_fused_rotary_embedding_kernel(
     dim_range = tl.arange(0, HEAD_DIM)
     dim_range0 = tl.arange(0, HEAD_DIM // 2)
     dim_range1 = tl.arange(HEAD_DIM // 2, HEAD_DIM)
-    
+
     off_q = cur_token_idx * q_token_stride + cur_head_idx * q_head_stride
     off_q0 = off_q + dim_range0 * head_dim_stride
     off_q1 = off_q + dim_range1 * head_dim_stride
@@ -424,7 +424,7 @@ def decoding_fused_rotary_embedding_kernel(
     tl.store(q + off_q0, out_q0)
     tl.store(q + off_q1, out_q1)
 
-    handle_k = (cur_head_idx % KV_GROUP_NUM == 0)
+    handle_k = cur_head_idx % KV_GROUP_NUM == 0
     if handle_k:
         cur_k_head_idx = cur_head_idx // KV_GROUP_NUM
         off_kv = cur_token_idx * k_token_stride + cur_k_head_idx * k_head_stride
@@ -432,7 +432,7 @@ def decoding_fused_rotary_embedding_kernel(
         off_k1 = off_kv + dim_range1 * head_dim_stride
         loaded_k0 = tl.load(k + off_k0)
         loaded_k1 = tl.load(k + off_k1)
-        
+
         out_k0 = loaded_k0 * loaded_cos - loaded_k1 * loaded_sin
         out_k1 = loaded_k0 * loaded_sin + loaded_k1 * loaded_cos
 
@@ -467,7 +467,6 @@ def decoding_fused_rotary_embedding_kernel(
             + dim_range * cache_d_stride
         )
         tl.store(v_cache + v_range, loaded_v)
-
 
 
 def rotary_embedding(
