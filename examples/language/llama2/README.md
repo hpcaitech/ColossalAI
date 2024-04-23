@@ -1,4 +1,4 @@
-# Pretraining LLaMA-1/2: best practices for building LLaMA-1/2-like base models
+# Pretraining LLaMA-1/2/3: best practices for building LLaMA-1/2/3-like base models
 
 ### LLaMA2
 <p align="center">
