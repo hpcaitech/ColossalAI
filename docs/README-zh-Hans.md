@@ -51,7 +51,7 @@
  <li>
    <a href="#并行训练样例展示">并行训练样例展示</a>
    <ul>
-     <li><a href="#LLaMA2">LLaMA 1/2</a></li>
+     <li><a href="#LLaMA3">LLaMA 1/2/3</a></li>
      <li><a href="#MoE">MoE</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
@@ -261,6 +261,14 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 并行训练样例展示
+### LLaMA3
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/images/LLaMA3-70B-H100.png" width=600/>
+</p>
+
+- 700亿参数LLaMA3训练加速18%
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama)
+
 ### LLaMA2
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/llama2_pretraining.png" width=600/>
