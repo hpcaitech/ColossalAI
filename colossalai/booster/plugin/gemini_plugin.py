@@ -424,6 +424,7 @@ class GeminiPlugin(DPPluginBase):
         )
         self.extra_dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS) if self.extra_dp_size > 1 else None
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS) if self.tp_size > 1 else None
+        self.dp_size = self.zero_size * self.extra_dp_size
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
