@@ -52,7 +52,7 @@
  <li>
    <a href="#Parallel-Training-Demo">Parallel Training Demo</a>
    <ul>
-     <li><a href="#LLaMA2">LLaMA 1/2</a></li>
+     <li><a href="#LLaMA3">LLaMA 1/2/3 </a></li>
      <li><a href="#MoE">MoE</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
