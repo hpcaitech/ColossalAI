@@ -43,7 +43,7 @@ def _get_attention_mask(
             is_causal=True,
         )
     else:
-        attention_mask = self.decoder._prepare_decoder_attention_mask(
+        attention_mask = _prepare_4d_causal_attention_mask(
             attention_mask,
             (batch_size, seq_length),
             hidden_states,
