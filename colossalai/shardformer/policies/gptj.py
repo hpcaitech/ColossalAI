@@ -47,7 +47,9 @@ class GPTJPolicy(Policy):
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn("GPTJ doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
-        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
+
+        # currently not support sp for GPTJ
+        sp_mode = None
 
         overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
@@ -71,7 +73,7 @@ class GPTJPolicy(Policy):
                         suffix="attn.k_proj",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                         },
                     ),
@@ -79,7 +81,7 @@ class GPTJPolicy(Policy):
                         suffix="attn.q_proj",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                         },
                     ),
@@ -87,24 +89,24 @@ class GPTJPolicy(Policy):
                         suffix="attn.v_proj",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
+                            "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                         },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.out_proj",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.fc_in",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.fc_out",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.attn_dropout",
