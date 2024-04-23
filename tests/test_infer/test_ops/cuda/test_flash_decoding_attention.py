@@ -151,6 +151,16 @@ def test_flash_decoding_attention(
     numpy_allclose(out_ref, output, rtol=rtol, atol=atol)
 
 
+try:
+    from vllm._C import ops as vllm_ops  # noqa
+
+    HAS_VLLM = True
+except ImportError:
+    HAS_VLLM = False
+    print("The subsequent test requires vllm. Please refer to https://github.com/vllm-project/vllm")
+
+
+@pytest.mark.skipif(not HAS_VLLM, reason="requires vllm")
 @pytest.mark.parametrize("BATCH_SIZE", [1, 4, 7, 32])
 @pytest.mark.parametrize("BLOCK_SIZE", [8, 16, 32])
 @pytest.mark.parametrize("MAX_NUM_BLOCKS_PER_SEQ", [1, 8, 32])
@@ -165,11 +175,6 @@ def test_vllm_flash_decoding_attention(
     torch.cuda.empty_cache()
     torch.cuda.synchronize()
     torch.cuda.reset_peak_memory_stats()
-
-    try:
-        from vllm._C import ops as vllm_ops
-    except ImportError:
-        raise ImportError("Please install vllm from https://github.com/vllm-project/vllm")
 
     NUM_KV_HEADS = NUM_ATTN_HEADS // KV_GROUP_NUM
     assert isinstance(NUM_KV_HEADS, int) and NUM_KV_HEADS > 0, "Invalid number of kv heads."

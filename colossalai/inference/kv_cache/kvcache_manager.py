@@ -38,7 +38,7 @@ class KVCacheManager:
         The block table after block allocation might be:
         |  0 |  1 |  2 | -1 | -1 | -1 |
         Then the logical blocks with id 0, 1, and 2, are allocated for this sequence,
-        and the physical caches, each with size of `block_size * head_num * head_size * elem_size` for a single layer,
+        and the physical caches, each with size of `block_size * kv_head_num * head_size * elem_size` for a single layer,
         corresponding to these blocks will be used to read/write KV Caches in kernels.
 
         For a batch of sequences, the block tables after allocation might be:
@@ -64,9 +64,12 @@ class KVCacheManager:
         self.elem_size_in_bytes = torch.tensor([], dtype=self.dtype).element_size()
         self.num_layers = get_model_config_attr(model_config, "num_hidden_layers")
         self.head_num = get_model_config_attr(model_config, "num_attention_heads")
+        self.kv_head_num = get_model_config_attr(model_config, "num_key_value_heads")
         self.head_size = get_model_config_attr(model_config, "hidden_size") // self.head_num
-        assert self.head_num % self.tp_size == 0, f"Cannot shard {self.head_num} heads with tp size {self.tp_size}"
-        self.head_num //= self.tp_size
+        assert (
+            self.kv_head_num % self.tp_size == 0
+        ), f"Cannot shard {self.kv_head_num} heads with tp size {self.tp_size}"
+        self.kv_head_num //= self.tp_size
         self.beam_width = config.beam_width
         self.max_batch_size = config.max_batch_size
         self.max_input_length = config.max_input_len
@@ -80,9 +83,8 @@ class KVCacheManager:
         self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size * self.beam_width
 
         # Physical cache allocation
-        alloc_shape = (self.num_blocks, self.head_num, self.block_size, self.head_size)
-        # if verbose:
-        #     self.logger.info(f"Allocating KV cache with shape: {alloc_shape} consisting of {self.num_blocks} blocks.")
+        alloc_shape = (self.num_blocks, self.kv_head_num, self.block_size, self.head_size)
+        self.logger.info(f"Allocating KV cache with shape: {alloc_shape} consisting of {self.num_blocks} blocks.")
         self._kv_caches = self._init_device_caches(alloc_shape)
         self.total_physical_cache_size_in_bytes = (
             self.elem_size_in_bytes
@@ -90,8 +92,11 @@ class KVCacheManager:
             * 2
             * self.num_blocks
             * self.block_size
-            * self.head_num
+            * self.kv_head_num
             * self.head_size
+        )
+        self.logger.info(
+            f"Allocated {self.total_physical_cache_size_in_bytes / GIGABYTE:.2f} GB of KV cache on device {self.device}."
         )
         # Logical cache blocks allocation
         self._available_blocks = self.num_blocks
@@ -453,7 +458,7 @@ class KVCacheManager:
         """
         assert self._kv_caches is not None and len(self._kv_caches[0]) > 0
         blocks = []
-        physical_block_size = self.elem_size_in_bytes * self.block_size * self.head_num * self.head_size
+        physical_block_size = self.elem_size_in_bytes * self.block_size * self.kv_head_num * self.head_size
         k_ptrs = [
             self._kv_caches[0][layer_idx].data_ptr() - physical_block_size for layer_idx in range(self.num_layers)
         ]
