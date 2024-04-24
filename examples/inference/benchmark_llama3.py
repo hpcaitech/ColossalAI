@@ -106,9 +106,9 @@ def benchmark_inference(args):
 
     config = CONFIG_MAP[args.model]
     config.pad_token_id = config.eos_token_id
-    tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
     if args.model_path is not None:
         model = transformers.LlamaForCausalLM.from_pretrained(args.model_path)
+        tokenizer = AutoTokenizer.from_pretrained(args.model_path)
     else:
         # Random weights
         model = transformers.LlamaForCausalLM(config)
