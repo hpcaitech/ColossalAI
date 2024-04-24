@@ -14,6 +14,7 @@ from transformers import (
     PreTrainedTokenizerFast,
 )
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
+from transformers.models.bloom.modeling_bloom import BloomForCausalLM
 
 from colossalai.accelerator import get_accelerator
 from colossalai.cluster import ProcessGroupMesh
@@ -39,7 +40,10 @@ PP_AXIS, TP_AXIS = 0, 1
 _supported_models = {
     "LlamaForCausalLM": LlamaForCausalLM,
     "BaichuanForCausalLM": AutoModelForCausalLM,
+    "BloomForCausalLM": BloomForCausalLM,
 }
+
+_alibi_models = ["bloom", "baichuan"]
 
 _BATCH_SIZES_TO_CAPTURE = [1, 2, 4] + [8 * i for i in range(1, 33)]
 
@@ -79,7 +83,7 @@ class InferenceEngine:
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        self.request_handler = RequestHandler(self.inference_config, self.model_config)
+        self.request_handler = RequestHandler(self.inference_config, self.model_config, alibi_attn=self.alibi_attn)
         self.k_cache, self.v_cache = self.request_handler.get_kvcache()
         # DISCUSS maybe move this into batch info?
 
@@ -159,6 +163,14 @@ class InferenceEngine:
 
         pg_mesh = ProcessGroupMesh(self.inference_config.pp_size, self.inference_config.tp_size)
         tp_group = pg_mesh.get_group_along_axis(TP_AXIS)
+
+        self.alibi_attn = False
+        if self.model_config.model_type in _alibi_models:
+            # Used for bloom, baichuan 13b and baichuan2 13b.
+            self.alibi_attn = True
+            # Hardcode used to distinguish between baichuan 7b and baichuan 13b.(There might be a better way to handle this.)
+            if self.model_config.model_type == "baichuan" and self.model_config.hidden_size == 4096:
+                self.alibi_attn = False
 
         self.model = self._shardformer(
             model,

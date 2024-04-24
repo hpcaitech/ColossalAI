@@ -6,7 +6,7 @@ from colossalai.shardformer.layer._operation import (
 )
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.shardformer.shard import ShardConfig
-from colossalai.kernel.triton import flash_decoding_attention_with_alibi
+from colossalai.kernel.triton import flash_decoding_attention, context_attention_unpadded
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.jit.bias_gelu import GeLUFunction
 from colossalai.kernel.jit.bias_dropout_add import bias_dropout_add_fused_inference
@@ -14,6 +14,7 @@ from colossalai.kernel.jit.bias_dropout_add import bias_dropout_add_fused_infere
 
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
 from typing import List, Optional, Tuple
 import math
 
@@ -61,26 +62,9 @@ def _get_alibi_tensor(n_heads: int, mask: torch.Tensor):
     return distance[:, :, None] * slopes[None, None, :]
 
 
-# def _fill_with_neg_inf(t):
-#     return t.float().fill_(float("-inf")).type_as(t)
-       
-# # (Register buffer within BloomModel), only use for inference
-# def _get_alibi_tensor(max_pos: int, n_heads: int):
-#     slopes = torch.Tensor(_get_alibi_slopes(n_heads))
-#     alibi = slopes.unsqueeze(1).unsqueeze(1) * torch.arange(max_pos).unsqueeze(0).unsqueeze(0) \
-#         .expand(n_heads, -1, -1) \
-#         .view(n_heads, 1, max_pos)
-        
-#     alibi_mask = torch.triu (
-#         _fill_with_neg_inf(torch.zeros([max_pos, max_pos])), 1
-#     )
-#     return alibi_mask.unsqueeze(0) + alibi
-        
-
-# TODO
 def bloom_model_forward(
     self: BloomModel,
-    input_tokens_ids: torch.Tensor,
+    input_tokens_ids: torch.Tensor, # no padding
     output_tensor: torch.Tensor,
     inputmetadata: InputMetaData,
     k_caches: List[torch.Tensor] = None,
@@ -89,10 +73,10 @@ def bloom_model_forward(
     high_precision: bool = False,
 ) -> torch.Tensor:
     
-    def get_alibi_mask(x: torch.Tensor, past_seq_length: int, is_prompts: bool = False):
-        if is_prompts:
-            is_prompts = False
-            self.register_buffer("future_mask", _get_alibi_tensor())
+    # def get_alibi_mask(x: torch.Tensor, past_seq_length: int, is_prompts: bool = False):
+    #     if is_prompts:
+    #         is_prompts = False
+    #         self.register_buffer("future_mask", _get_alibi_tensor())
     
     is_prompts = inputmetadata.is_prompts
     block_tables = inputmetadata.block_tables
@@ -120,7 +104,7 @@ def bloom_model_forward(
     #     self.max_cache_pos = seq_length_with_past
     #     self.register_buffer("future_mask", _get_alibi_tensor(self.n_head, self.max_cache_pos).to(hidden_states), persistent=False)
     
-    alibi = _get_alibi_slopes(self.n_head)
+    # alibi = _get_alibi_slopes(self.num_heads)
     # alibi_mask = self.future_mask[:self.n_head, :seq_length_with_past, :seq_length_with_past]     
     
     sm_scale = 1.0 / (inputmetadata.head_dim**0.5)
@@ -129,7 +113,6 @@ def bloom_model_forward(
     for layer_id, layer in enumerate(self.h):
         hidden_states = layer(
             hidden_states,
-            alibi=alibi,
             block_tables=block_tables,
             k_cache=k_caches[layer_id],
             v_cache=v_caches[layer_id],
@@ -138,8 +121,6 @@ def bloom_model_forward(
             fd_inter_tensor=inputmetadata.fd_inter_tensor,
             kv_seq_len=kv_seq_len,
             output_tensor=output_tensor,
-            use_cuda_kernel=use_cuda_kernel,
-            high_precision=high_precision,
             norm_output=norm_output,
             sm_scale=sm_scale,
             use_cuda_kernel=use_cuda_kernel,
@@ -160,7 +141,7 @@ def bloom_causal_lm_forward(
 ) -> torch.Tensor:
     
     hidden_states = bloom_model_forward(
-        self.model,
+        self.transformer,
         input_tokens_ids=input_tokens_ids,
         output_tensor=output_tensor,
         inputmetadata=inputmetadata,
@@ -173,11 +154,9 @@ def bloom_causal_lm_forward(
     return logits
 
 
-# TODO
 def bloom_block_forward(
     self: BloomBlock,
     hidden_states: torch.Tensor,
-    alibi: torch.Tensor,
     block_tables: torch.Tensor,
     k_cache: torch.Tensor,
     v_cache: torch.Tensor,
@@ -204,17 +183,14 @@ def bloom_block_forward(
         residual = hidden_states
     
     # Self attention
-    attn_output, _ = self.self_attention(
+    attn_output = self.self_attention(
         hidden_states=layernorm_output,
-        residual=residual,
-        alibi=alibi,
-        hidden_states=hidden_states,
         block_tables=block_tables,
         k_cache=k_cache,
         v_cache=v_cache,
         is_prompts=is_prompts,
-        is_verifier=is_verifier,
-        tokens_to_verify=tokens_to_verify,
+        # is_verifier=is_verifier,
+        # tokens_to_verify=tokens_to_verify,
         sequence_lengths=sequence_lengths,
         fd_inter_tensor=fd_inter_tensor,
         kv_seq_len=kv_seq_len,
@@ -233,46 +209,50 @@ def bloom_block_forward(
     else:
         residual = attn_output
         
-    # MLP
-    output = self.mlp(layernorm_output, residual) # including residuals
+    print(f"[DEBUG] Show attn_output shape: {attn_output.shape}, \
+        show residual shape: {residual.shape} \
+        ")
+        
+    # MLP (including residuals)
+    output = self.mlp(layernorm_output, residual)
         
     return output
         
-
-# TODO
-class ColossalInferBloomAttention(BloomAttention):
+        
+class NopadBloomAttention(nn.Module):
     def __init__(
         self, 
-        config: BloomConfig,
+        hidden_size: int,
+        n_heads: int,
         attn_qproj_w: torch.Tensor = None,
         attn_kproj_w: torch.Tensor = None,
         attn_vproj_w: torch.Tensor = None,
         attn_oproj_w: torch.Tensor = None,
     ):
-        super().__init__(config)
-        self.q_proj_weight = attn_qproj_w
-        self.k_proj_weight = attn_kproj_w
-        self.v_proj_weight = attn_vproj_w
-        self.o_proj_weight = attn_oproj_w
- 
-        qkv_weight_list = [self.q_proj_weight, self.k_proj_weight, self.v_proj_weight]
-        self.qkv_weight = torch.stack(qkv_weight_list, dim=0)
+        super().__init__()
 
-        # garbage collection
-        self.q_proj = None
-        self.k_proj = None
-        self.v_proj = None
+        self.hidden_size = hidden_size
+        self.num_heads = n_heads
+        self.head_dim = self.hidden_size // self.num_heads
+        self.o_proj_w = attn_oproj_w
+        
+        qkv_weight_list = [attn_qproj_w, attn_kproj_w, attn_vproj_w]
+        self.qkv_weight = torch.stack(qkv_weight_list, dim=0)
         
     @staticmethod
-    def from_native_module(module: BloomAttention, *args, **kwargs) -> BloomAttention:
-        config = module.config
-        attn_qproj_w = module.q_proj.weight.transpose(0, 1)
-        attn_kproj_w = module.k_proj.weight.transpose(0, 1)
-        attn_vproj_w = module.v_proj.weight.transpose(0, 1)
-        attn_oproj_w = module.o_proj.weight.transpose(0, 1)
+    def from_native_module(module: nn.Module, *args, **kwargs) -> "NopadBloomAttention": 
+        hidden_size = module.hidden_size
+        num_heads = module.num_heads
+        q_proj_w, k_proj_w, v_proj_w = module.query_key_value.weight.view((3, hidden_size, hidden_size))
 
-        attn_layer = ColossalInferBloomAttention(
-            config=config,
+        attn_qproj_w = q_proj_w.transpose(0, 1)
+        attn_kproj_w = k_proj_w.transpose(0, 1)
+        attn_vproj_w = v_proj_w.transpose(0, 1)
+        attn_oproj_w = module.dense.weight.transpose(0, 1)
+
+        attn_layer = NopadBloomAttention(
+            hidden_size=hidden_size,
+            n_heads=num_heads,
             attn_qproj_w=attn_qproj_w,
             attn_kproj_w=attn_kproj_w,
             attn_vproj_w=attn_vproj_w,
@@ -284,7 +264,6 @@ class ColossalInferBloomAttention(BloomAttention):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        alibi: torch.Tensor,
         block_tables: torch.Tensor,
         k_cache: torch.Tensor,
         v_cache: torch.Tensor,
@@ -297,10 +276,9 @@ class ColossalInferBloomAttention(BloomAttention):
         use_cuda_kernel: bool = True,
         cu_seqlens: torch.Tensor = None,
         high_precision: bool = False,
-    ):
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         
         token_nums = hidden_states.size(0)
-
         hidden_states = hidden_states.expand(3, -1, -1)
         query_states, key_states, value_states = (
             torch.bmm(hidden_states, self.qkv_weight).view(3, token_nums, self.num_heads, self.head_dim).unbind(0)
@@ -308,28 +286,28 @@ class ColossalInferBloomAttention(BloomAttention):
 
         block_size = k_cache.size(-2)
         
-        if is_prompts:  # Prefilling
-            
-            # TODO context stage alibi flash_attn
-            pass
-        
-        else:   # Decoding
-                            
-            # If alibi in this way, then next step is to softmax with matmul_result,
-            # so do I need consider how to utilize the matmul_result
-            matmul_result = alibi.baddbmm(
-                batch1=query_states,
-                batch2=key_states,
-                beta=self.beta,
-                alpha=self.inv_norm_factor,
+        if is_prompts:
+            # TODO(char-1ee) Integrate context stage flash attention with alibi encoding
+            attn_output = context_attention_unpadded(
+                q=query_states,
+                k=key_states,
+                v=value_states,
+                k_cache=k_cache,
+                v_cache=v_cache,
+                context_lengths=sequence_lengths,
+                block_size=block_size,
+                block_tables=block_tables,
+                output=output_tensor,
+                alibi_slopes=fd_inter_tensor.alibi_slopes,
+                max_seq_len=kv_seq_len,
+                sm_scale=sm_scale,                
             )
-                
-            
-            attn_output = flash_decoding_attention_with_alibi(
+        else:
+            attn_output = flash_decoding_attention(
                 q=query_states,
                 k_cache=k_cache,
                 v_cache=v_cache,
-                alibi=alibi,
+                alibi_slopes=fd_inter_tensor.alibi_slopes,
                 kv_seq_len=sequence_lengths,
                 block_tables=block_tables,
                 block_size=block_size,
@@ -341,23 +319,30 @@ class ColossalInferBloomAttention(BloomAttention):
             )
 
         attn_output = attn_output.view(-1, self.hidden_size)
-        attn_output = torch.mm(attn_output, self.o_proj_weight)
-
+        attn_output = torch.mm(attn_output, self.o_proj_w)
         return attn_output
     
 
-class ColossalInferBloomMLP(BloomMLP):
-    def __init__(self, config: BloomConfig):
-        super().__init__(config)
+class NopadBloomMLP(nn.Module):
+    def __init__(self, hidden_size: int = 64, hidden_dropout: float = 0.0):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.hidden_dropout = hidden_dropout
+        self.dense_h_to_4h = nn.Linear(hidden_size, hidden_size * 4)
         self.gelu_impl = GeLUFunction.apply
+        self.dense_4h_to_h = nn.Linear(hidden_size * 4, hidden_size)
+        
+        self.dense_h_to_4h = self.dense_h_to_4h.half()
+        self.dense_4h_to_h = self.dense_4h_to_h.half()
         
     @staticmethod
-    def from_native_method(module: BloomMLP, *args, **kwargs) -> BloomMLP:
-        config = module.config
-        mlp_layer = ColossalInferBloomMLP(config=config)
+    def from_native_module(module: nn.Module, *args, **kwargs) -> "NopadBloomMLP":
+        hidden_size = 64 # TODO: hyperparameters
+        mlp_layer = NopadBloomMLP(hidden_size=hidden_size, hidden_dropout=module.hidden_dropout)
         return mlp_layer
     
     def forward(self, hidden_states: torch.Tensor, residual: torch.Tensor) -> torch.Tensor:
+        print(f"[DEBUG] Print shape of hidden_states: {hidden_states.shape}, and dtype is {hidden_states.dtype}")
         hidden_states = self.dense_h_to_4h(hidden_states)
         bias = torch.zero_like(hidden_states)
         hidden_states = self.gelu_impl(hidden_states, bias)
