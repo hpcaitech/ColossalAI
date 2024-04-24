@@ -36,13 +36,26 @@ class LlamaPolicy(Policy):
 
     def preprocess(self):
         self.tie_weight = self.tie_weight_check()
+        self.origin_attn_implement = self.model.config._attn_implementation
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel
+        from transformers.models.llama.modeling_llama import (
+            LlamaAttention,
+            LlamaDecoderLayer,
+            LlamaFlashAttention2,
+            LlamaModel,
+            LlamaSdpaAttention,
+        )
 
+        ATTN_IMPLEMENTATION = {
+            "eager": LlamaAttention,
+            "flash_attention_2": LlamaFlashAttention2,
+            "sdpa": LlamaSdpaAttention,
+        }
         policy = {}
 
+        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = VocabParallelEmbedding1D
@@ -93,7 +106,7 @@ class LlamaPolicy(Policy):
                     "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
-                target_key=LlamaAttention,
+                target_key=attn_cls,
             )
         elif sp_mode == "all_to_all":
             decoder_attribute_replacement = {
@@ -102,7 +115,7 @@ class LlamaPolicy(Policy):
             if getattr(self.model.config, "num_key_value_heads", False):
                 decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
 
-            policy[LlamaAttention] = ModulePolicyDescription(
+            policy[attn_cls] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
             )
             self.append_or_create_method_replacement(
@@ -110,7 +123,7 @@ class LlamaPolicy(Policy):
                     "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
-                target_key=LlamaAttention,
+                target_key=attn_cls,
             )
             self.append_or_create_method_replacement(
                 description={
@@ -221,7 +234,7 @@ class LlamaPolicy(Policy):
                     "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_group, sp_size),
                 },
                 policy=policy,
-                target_key=LlamaAttention,
+                target_key=attn_cls,
             )
             if self.pipeline_stage_manager is None:
                 # replace llama model forward method

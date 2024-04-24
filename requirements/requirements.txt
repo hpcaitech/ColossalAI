@@ -16,3 +16,4 @@ ray
 sentencepiece
 google
 protobuf
+transformers==4.36.2

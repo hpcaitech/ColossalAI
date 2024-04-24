@@ -5,6 +5,10 @@ from typing import List, Optional, Tuple, Union
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
+from transformers.modeling_attn_mask_utils import (
+    _prepare_4d_causal_attention_mask,
+    _prepare_4d_causal_attention_mask_for_sdpa,
+)
 from transformers.modeling_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
@@ -35,6 +39,8 @@ def _get_attention_mask(
     hidden_states: torch.Tensor,
     past_key_values_length: int,
     attention_mask: Optional[torch.FloatTensor],
+    head_mask: Optional[torch.Tensor] = None,
+    output_attentions: bool = False,
 ):
     batch_size, seq_length = hidden_states.shape[:2]
     mask_seq_length = past_key_values_length + seq_length
@@ -47,12 +53,20 @@ def _get_attention_mask(
             is_causal=True,
         )
     else:
-        attention_mask = self._prepare_decoder_attention_mask(
-            attention_mask,
-            (batch_size, seq_length),
-            hidden_states,
-            past_key_values_length,
-        )
+        input_shape = (batch_size, seq_length)
+        if self._use_flash_attention_2:
+            # 2d mask is passed through the layers
+            attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
+        elif self._use_sdpa and head_mask is None and not output_attentions:
+            # output_attentions=True & head_mask can not be supported when using SDPA.
+            attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
+                attention_mask, input_shape, hidden_states, past_key_values_length
+            )
+        else:
+            # 4d mask is passed through the layers
+            attention_mask = _prepare_4d_causal_attention_mask(
+                attention_mask, input_shape, hidden_states, past_key_values_length
+            )
     return attention_mask
 
 
@@ -539,18 +553,12 @@ class WhisperPipelineForwards:
                 layer_outputs = (None, None)
             else:
                 if self.gradient_checkpointing and self.training:
-
-                    def create_custom_forward(module):
-                        def custom_forward(*inputs):
-                            return module(*inputs, output_attentions)
-
-                        return custom_forward
-
-                    layer_outputs = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(encoder_layer),
+                    layer_outputs = self._gradient_checkpointing_func(
+                        encoder_layer.__call__,
                         hidden_states,
                         None,
                         (head_mask[idx] if head_mask is not None else None),
+                        output_attentions,
                     )
                 else:
                     layer_outputs = encoder_layer(
@@ -702,19 +710,15 @@ class WhisperPipelineForwards:
             if inputs_embeds is None:
                 inputs_embeds = self.embed_tokens(input_ids)
 
+            attention_mask = _get_attention_mask(
+                self, shard_config, inputs_embeds, past_key_values_length, attention_mask
+            )
+
             # embed positions
             if input_ids is not None:
                 positions = self.embed_positions(input_ids, past_key_values_length=past_key_values_length)
             else:
                 positions = self.embed_positions(inputs_embeds, past_key_values_length=past_key_values_length)
-
-            attention_mask = _get_attention_mask(
-                self,
-                shard_config,
-                inputs_embeds,
-                past_key_values_length,
-                attention_mask,
-            )
 
             hidden_states = inputs_embeds + positions
             hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
@@ -732,7 +736,6 @@ class WhisperPipelineForwards:
                     "hidden_states shouldn't be None for stages other than the first stage of encoder/decoder."
                 )
             input_shape = hidden_states.size()[:-1]
-
             attention_mask = _get_attention_mask(
                 self,
                 shard_config,
@@ -756,16 +759,8 @@ class WhisperPipelineForwards:
             past_key_value = past_key_values[idx] if past_key_values is not None else None
 
             if self.gradient_checkpointing and self.training:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, output_attentions, use_cache)
-
-                    return custom_forward
-
-                layer_outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(decoder_layer),
+                layer_outputs = self._gradient_checkpointing_func(
+                    decoder_layer.__call__,
                     hidden_states,
                     attention_mask,
                     encoder_hidden_states,
@@ -773,6 +768,8 @@ class WhisperPipelineForwards:
                     head_mask[idx] if head_mask is not None else None,
                     (cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None),
                     None,  # past_key_value
+                    output_attentions,
+                    use_cache,
                 )
             else:
                 layer_outputs = decoder_layer(

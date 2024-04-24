@@ -64,7 +64,6 @@ if HAS_LLAMA:
         intermediate_size=64,
         num_attention_heads=4,
         max_position_embeddings=128,
-        num_labels=16,
     )
 
     if hasattr(config, "pad_token_id"):
