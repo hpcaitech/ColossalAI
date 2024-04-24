@@ -33,7 +33,6 @@ from colossalai.shardformer.layer._operation import (
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import ColoAttention, cross_entropy_1d
-from ..layer._operation import gather_forward_split_backward
 
 
 class LlamaPipelineForwards:

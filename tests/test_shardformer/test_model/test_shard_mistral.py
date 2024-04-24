@@ -174,7 +174,6 @@ def check_mistral(rank, world_size, port):
     run_mistral_test()
 
 
-# @pytest.mark.skip("something wrong with pipeline parallelism")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
