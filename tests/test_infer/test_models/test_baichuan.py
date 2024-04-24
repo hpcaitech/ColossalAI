@@ -12,9 +12,8 @@ from colossalai.inference.core.engine import InferenceEngine
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
-BAICHUAN_MODEL_NAME_OR_PATH = "/home/caidi/Baichuan2-13B-Base"
 # BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-7B-Base"
-# BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-13B-Base"
+BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-13B-Base"
 
 
 def setup_seed(seed):
