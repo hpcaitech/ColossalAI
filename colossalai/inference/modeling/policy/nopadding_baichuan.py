@@ -24,9 +24,7 @@ class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy):
         policy = super().module_policy()
 
         decoder_attribute_replacement = {
-            "lm_head.weight": Parameter(
-                nn.functional.normalize(self.model.lm_head.weight).transpose(0, 1), requires_grad=False
-            ),
+            "lm_head.weight": Parameter(nn.functional.normalize(self.model.lm_head.weight), requires_grad=False),
         }
         policy["BaichuanForCausalLM"] = ModulePolicyDescription(
             attribute_replacement=decoder_attribute_replacement,
