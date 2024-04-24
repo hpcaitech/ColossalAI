@@ -89,20 +89,27 @@ def benchmark_inference(args):
     with torch.no_grad():
         config = CONFIG_MAP[args.model]
         config.pad_token_id = config.eos_token_id
-        if args.test_random_weight:
-            model = transformers.LlamaForCausalLM(config).cuda()
-            tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
-        else:
-            assert args.model_path, "When testing pretrained weights, the model path must be provided.'"
-            model = transformers.LlamaForCausalLM.from_pretrained(args.model_path).cuda()
-            tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
 
-        model = model.eval()
+        if args.mode != "vllm":
+            if args.test_random_weight:
+                model = transformers.LlamaForCausalLM(config).cuda()
+                tokenizer = AutoTokenizer.from_pretrained("/home/litong/workspace/Models/Meta-Llama-3-8B/")
+            else:
+                assert args.model_path, "When testing pretrained weights, the model path must be provided.'"
+                model = transformers.LlamaForCausalLM.from_pretrained(args.model_path).cuda()
+                tokenizer = AutoTokenizer.from_pretrained("/home/litong/workspace/Models/Meta-Llama-3-8B/")
 
-        if args.dtype == "fp16":
-            model = model.half()
-        elif args.dtype == "bf16":
-            model = model.to(torch.bfloat16)
+            model = model.eval()
+
+            if args.dtype == "fp16":
+                model = model.half()
+            elif args.dtype == "bf16":
+                model = model.to(torch.bfloat16)
+
+            generation_config = GenerationConfig(
+                pad_token_id=tokenizer.pad_token_id,
+                max_new_tokens=args.output_len,
+            )
 
         if args.continous_batching:
             mbsz = args.mbsz
@@ -123,10 +130,10 @@ def benchmark_inference(args):
         elif args.mode == "vllm":
             engine = LLM(
                 model=args.model_path,
-                tokenizer="hf-internal-testing/llama-tokenizer",
+                tokenizer="/home/litong/workspace/Models/Meta-Llama-3-8B/",
                 max_num_seqs=mbsz,
                 dtype="float16",
-                enforce_eager=True,
+                enforce_eager=False,
             )
 
             sampling_params = SamplingParams(
@@ -139,11 +146,6 @@ def benchmark_inference(args):
 
         if args.mode == "colossalai" or args.mode == "vllm":
             data = data.tolist()
-
-        generation_config = GenerationConfig(
-            pad_token_id=tokenizer.pad_token_id,
-            max_new_tokens=args.output_len,
-        )
 
         N_WARMUP_STEPS = 2
 
@@ -187,6 +189,7 @@ def benchmark_inference(args):
                         prompts_token_ids=data, generation_config=generation_config, return_token_ids=True
                     )
             elif args.mode == "vllm":
+                print("args.batch_size: ", args.batch_size)
                 for _ in range(args.batch_size // mbsz):
                     output = engine.generate(prompt_token_ids=data, sampling_params=sampling_params)
             else:
@@ -208,7 +211,7 @@ def benchmark_inference(args):
             if args.profile:
                 ctx.step()
     print(f"config:batch_size {args.batch_size}, input_len{ args.seq_len}, output_len {args.output_len}")
-    print_details_info(model.config, args, whole_end2end, total_token_num)
+    print_details_info(config, args, whole_end2end, total_token_num)
 
 
 def hybrid_inference(rank, world_size, port, args):
