@@ -48,6 +48,8 @@ class WhisperPolicy(Policy):
             WhisperDecoderLayer,
             WhisperEncoder,
             WhisperEncoderLayer,
+            WhisperFlashAttention2,
+            WhisperSdpaAttention,
         )
 
         policy = {}
@@ -241,6 +243,20 @@ class WhisperPolicy(Policy):
                 },
                 policy=policy,
                 target_key=WhisperAttention,
+            )
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_whisper_flash_attention_forward(),
+                },
+                policy=policy,
+                target_key=WhisperFlashAttention2,
+            )
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_whisper_flash_attention_forward(),
+                },
+                policy=policy,
+                target_key=WhisperSdpaAttention,
             )
             if not self.shard_config.pipeline_stage_manager:
                 self.append_or_create_method_replacement(

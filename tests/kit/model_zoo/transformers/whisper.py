@@ -66,7 +66,6 @@ config = transformers.WhisperConfig(
     encoder_ffn_dim=1536,
     encoder_layers=2,
     vocab_size=51866,
-    _attn_implementation="eager",
 )
 
 # register the Whisper variants
