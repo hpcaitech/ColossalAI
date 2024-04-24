@@ -1,5 +1,6 @@
 import threading
 
+
 class SingletonMeta(type):
     """
     Thread-safe Singleton Meta with double-checked locking.
