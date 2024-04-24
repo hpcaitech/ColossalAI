@@ -115,10 +115,6 @@ class LlamaPipelineForwards:
             )
             position_ids = position_ids.unsqueeze(0)
 
-        if self._use_flash_attention_2:
-            # 2d mask is passed through the layers
-            attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
-
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
         if shard_config.enable_flash_attention:
@@ -413,6 +409,9 @@ class LlamaPipelineForwards:
             batch_size = inputs_embeds.shape[0]
         else:
             batch_size = hidden_states.shape[0]
+
+        print("batch_sizellama", batch_size)
+        print("self.config.pad_token_id", self.config.pad_token_id)
 
         if stage_manager.is_last_stage():
             hidden_states = transformer_outputs[0]
