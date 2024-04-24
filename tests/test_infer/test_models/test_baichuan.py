@@ -27,7 +27,7 @@ def check_inference_engine(use_engine=False, prompt_template=None):
     setup_seed(20)
     tokenizer = AutoTokenizer.from_pretrained(BAICHUAN_MODEL_NAME_OR_PATH, use_fast=False, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
-        BAICHUAN_MODEL_NAME_OR_PATH, device_map="auto", torch_dtype=torch.bfloat16, trust_remote_code=True
+        BAICHUAN_MODEL_NAME_OR_PATH, torch_dtype=torch.bfloat16, trust_remote_code=True
     ).cuda()
     model = model.eval()
 

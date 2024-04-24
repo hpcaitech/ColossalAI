@@ -111,7 +111,9 @@ class RequestHandler:
        dtype (torch.dtype): The data type for weights and activations.
     """
 
-    def __init__(self, inference_config: InferenceConfig, model_config: PretrainedConfig, alibi_attn: bool) -> None:
+    def __init__(
+        self, inference_config: InferenceConfig, model_config: PretrainedConfig, alibi_attn: bool = False
+    ) -> None:
         self.inference_config = inference_config
         self.running_list: RunningList = RunningList(inference_config.prefill_ratio)
         self.waiting_list: List[List] = [[], [], []]
