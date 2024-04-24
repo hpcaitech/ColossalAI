@@ -156,7 +156,7 @@ def check_mistral(rank, world_size, port):
     run_mistral_test()
 
 
-@pytest.mark.skip("This test should be run on a version of transformers not less than 4.35.2.")
+@pytest.mark.skip("something wrong with pipeline parallelism")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()

@@ -26,12 +26,20 @@ class MistralPolicy(Policy):
 
     def preprocess(self):
         self.tie_weight = self.tie_weight_check()
+        self.origin_attn_implement = self.model.config._attn_implementation
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.mistral.modeling_mistral import MistralAttention, MistralDecoderLayer, MistralModel
+        from transformers.models.mistral.modeling_mistral import MistralAttention, MistralFlashAttention2, MistralDecoderLayer, MistralModel
+
+        ATTN_IMPLEMENTATION = {
+            "eager": MistralAttention,
+            "flash_attention_2": MistralFlashAttention2,
+        }
 
         policy = {}
+
+        attn_cls = ATTN_IMPLEMENTATION[self.model.config._attn_implementation]
 
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
@@ -128,10 +136,10 @@ class MistralPolicy(Policy):
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_mistral_flash_attention_forward(),
+                    "forward": get_mistral_flash_attention_forward(self.shard_config),
                 },
                 policy=policy,
-                target_key=MistralAttention,
+                target_key=attn_cls,
             )
 
         return policy
@@ -143,9 +151,6 @@ class MistralPolicy(Policy):
         method_replacement = {"forward": partial(new_forward)}
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
-    def set_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
-        method_replacement = {"forward": partial(new_forward)}
-        self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
 
 class MistralModelPolicy(MistralPolicy):
@@ -155,7 +160,6 @@ class MistralModelPolicy(MistralPolicy):
     def module_policy(self):
         policy = super().module_policy()
         from transformers.models.mistral.modeling_mistral import MistralModel
-
         self.set_forward(model_cls=MistralModel, new_forward=MistralForwards.mistral_model_forward, policy=policy)
         return policy
 
