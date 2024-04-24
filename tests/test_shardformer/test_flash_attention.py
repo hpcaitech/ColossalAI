@@ -4,10 +4,7 @@ from copy import copy
 import torch
 from torch.testing import assert_close
 
-from colossalai.kernel.kernel_loader import (
-    FlashAttentionLoader,
-    FlashAttentionWithCustomMaskLoader,
-)
+from colossalai.kernel.kernel_loader import FlashAttentionLoader, FlashAttentionWithCustomMaskLoader
 from colossalai.shardformer.layer import AttnMaskType, ColoAttention
 from colossalai.shardformer.layer.attn import invert_mask
 from colossalai.testing import clear_cache_before_run, parameterize

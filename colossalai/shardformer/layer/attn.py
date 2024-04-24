@@ -141,7 +141,10 @@ class ColoAttention:
             outputs["attention_mask_type"] = AttnMaskType.CAUSAL
             attention_mask = torch.ones(s_q, s_kv, dtype=dtype, device=device).tril(diagonal=0).expand(b, s_q, s_kv)
         else:
-            assert q_padding_mask.shape == (b, s_q), f"q_padding_mask shape {q_padding_mask.shape} should be the same. ({shape_4d})"
+            assert q_padding_mask.shape == (
+                b,
+                s_q,
+            ), f"q_padding_mask shape {q_padding_mask.shape} should be the same. ({shape_4d})"
             max_seqlen_q, cu_seqlens_q, q_indices = get_pad_info(q_padding_mask)
             if kv_padding_mask is None:
                 # self attention
@@ -149,7 +152,10 @@ class ColoAttention:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = max_seqlen_q, cu_seqlens_q, q_indices
             else:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
-            assert kv_padding_mask.shape == (b, s_kv), f"q_padding_mask shape {kv_padding_mask.shape} should be the same. ({shape_4d})"
+            assert kv_padding_mask.shape == (
+                b,
+                s_kv,
+            ), f"q_padding_mask shape {kv_padding_mask.shape} should be the same. ({shape_4d})"
             attention_mask = q_padding_mask[:, None, :].expand(b, s_kv, s_q).to(dtype=dtype, device=device)
             outputs.update(
                 {
