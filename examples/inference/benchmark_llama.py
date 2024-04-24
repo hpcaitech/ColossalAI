@@ -105,20 +105,28 @@ def benchmark_inference(args):
     with torch.no_grad():
         config = CONFIG_MAP[args.model]
         config.pad_token_id = config.eos_token_id
-        if args.test_random_weight:
-            model = transformers.LlamaForCausalLM(config)
-            tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
-        else:
-            assert args.model_path, "When testing pretrained weights, the model path must be provided.'"
-            model = transformers.LlamaForCausalLM.from_pretrained(args.model_path)
-            tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
 
-        model = model.eval()
+        if args.mode != "vllm":
+            if args.test_random_weight:
+                model = transformers.LlamaForCausalLM(config).cuda()
+                tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+            else:
+                assert args.model_path, "When testing pretrained weights, the model path must be provided.'"
+                model = transformers.LlamaForCausalLM.from_pretrained(args.model_path).cuda()
+                tokenizer = AutoTokenizer.from_pretrained(args.model_path)
 
-        if args.dtype == "fp16":
-            model = model.half()
-        elif args.dtype == "bf16":
-            model = model.to(torch.bfloat16)
+            model = model.eval()
+
+            if args.dtype == "fp16":
+                model = model.half()
+            elif args.dtype == "bf16":
+                model = model.to(torch.bfloat16)
+
+            generation_config = GenerationConfig(
+                pad_token_id=tokenizer.pad_token_id,
+                max_length=args.seq_len + args.output_len,
+                # max_new_tokens=args.max_output_len,
+            )
 
         if args.continous_batching:
             mbsz = args.mbsz
@@ -155,12 +163,6 @@ def benchmark_inference(args):
 
         if args.mode == "colossalai" or args.mode == "vllm":
             data = data.tolist()
-
-        generation_config = GenerationConfig(
-            pad_token_id=tokenizer.pad_token_id,
-            max_length=args.seq_len + args.output_len,
-            # max_new_tokens=args.output_len,
-        )
 
         N_WARMUP_STEPS = 2
 
@@ -225,7 +227,7 @@ def benchmark_inference(args):
             if args.profile:
                 ctx.step()
     print(f"config:batch_size {args.batch_size}, input_len{ args.seq_len}, output_len {args.output_len}")
-    print_details_info(model.config, args, whole_end2end, total_token_num)
+    print_details_info(config, args, whole_end2end, total_token_num)
 
 
 def hybrid_inference(rank, world_size, port, args):
