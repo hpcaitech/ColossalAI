@@ -6,7 +6,6 @@ import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-from torch.nn import functional as F
 from transformers.modeling_attn_mask_utils import (
     AttentionMaskConverter,
     _prepare_4d_causal_attention_mask,
@@ -25,7 +24,6 @@ from transformers.models.falcon.modeling_falcon import (
     FalconForSequenceClassification,
     FalconForTokenClassification,
     FalconModel,
-    apply_rotary_pos_emb,
     build_alibi_tensor,
 )
 from transformers.utils import logging
@@ -169,6 +167,7 @@ def get_tp_falcon_decoder_layer_forward():
         return outputs  # hidden_states, present, attentions
 
     return forward
+
 
 class FalconPipelineForwards:
     """
