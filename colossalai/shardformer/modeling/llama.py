@@ -115,10 +115,6 @@ class LlamaPipelineForwards:
             )
             position_ids = position_ids.unsqueeze(0)
 
-        if self._use_flash_attention_2:
-            # 2d mask is passed through the layers
-            attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
-
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
         if shard_config.enable_flash_attention:
