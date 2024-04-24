@@ -124,7 +124,8 @@ def benchmark_inference(args):
 
             generation_config = GenerationConfig(
                 pad_token_id=tokenizer.pad_token_id,
-                max_new_tokens=args.output_len,
+                max_length=args.seq_len + args.output_len,
+                # max_new_tokens=args.max_output_len,
             )
 
         if args.continous_batching:
