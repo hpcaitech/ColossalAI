@@ -539,6 +539,22 @@ void cumsum_launch(int *inputs, int *outputs, const int s, const int e) {
 
 // API FUNCTIONS --------------------------------
 
+#define DISPATCH_FLOAT_AND_HALF_MOE(TYPE, NAME, ...)                   \
+  switch (TYPE) {                                                      \
+    case at::ScalarType::Float: {                                      \
+      using scalar_t = float;                                          \
+      __VA_ARGS__;                                                     \
+      break;                                                           \
+    }                                                                  \
+    case at::ScalarType::Half: {                                       \
+      using scalar_t = at::Half;                                       \
+      __VA_ARGS__;                                                     \
+      break;                                                           \
+    }                                                                  \
+    default:                                                           \
+      AT_ERROR(#NAME, " not implemented yet for specific data type."); \
+  }
+
 torch::Tensor moe_dispatch_cuda_forward(int s, int ec, int h,
                                         torch::Tensor batch_tokens,
                                         torch::Tensor mask,
@@ -549,7 +565,7 @@ torch::Tensor moe_dispatch_cuda_forward(int s, int ec, int h,
       torch::dtype(batch_tokens.dtype()).device(batch_tokens.device()));
   auto k = mask.size(0);
 
-  DISPATCH_FLOAT_AND_HALF(
+  DISPATCH_FLOAT_AND_HALF_MOE(
       batch_tokens.scalar_type(), "moe dispatch forward",
       moe_dpch_fwd_launch<scalar_t>(
           batch_tokens.data_ptr<scalar_t>(), res.data_ptr<scalar_t>(),
@@ -569,7 +585,7 @@ torch::Tensor moe_dispatch_cuda_backward(int s, int ec, int h,
       {s, h}, torch::dtype(expert_grad.dtype()).device(expert_grad.device()));
   auto k = mask.size(0);
 
-  DISPATCH_FLOAT_AND_HALF(
+  DISPATCH_FLOAT_AND_HALF_MOE(
       expert_grad.scalar_type(), "moe dispatch backward",
       moe_dpch_bwd_launch<scalar_t>(
           res.data_ptr<scalar_t>(), expert_grad.data_ptr<scalar_t>(),
@@ -592,7 +608,7 @@ torch::Tensor moe_combine_cuda_forward(int s, int e, int c, int h,
       torch::dtype(expert_tokens.dtype()).device(expert_tokens.device()));
   auto k = mask.size(0);
 
-  DISPATCH_FLOAT_AND_HALF(
+  DISPATCH_FLOAT_AND_HALF_MOE(
       expert_tokens.scalar_type(), "moe combine forward",
       moe_cb_fwd_launch<scalar_t>(
           expert_tokens.data_ptr<scalar_t>(), res.data_ptr<scalar_t>(),
@@ -619,7 +635,7 @@ std::vector<torch::Tensor> moe_combine_cuda_backward(
            {s, e}, torch::dtype(logits.dtype()).device(logits.device()));
   auto k = mask.size(0);
 
-  DISPATCH_FLOAT_AND_HALF(
+  DISPATCH_FLOAT_AND_HALF_MOE(
       tokens_grad.scalar_type(), "moe combine backward",
       moe_cb_bwd_launch<scalar_t>(
           tokens_grad.data_ptr<scalar_t>(), egrad.data_ptr<scalar_t>(),
