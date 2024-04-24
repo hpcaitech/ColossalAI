@@ -7,12 +7,7 @@ from torch.nn import Module
 
 import colossalai.shardformer.layer as col_nn
 
-from ..modeling.falcon import (
-    FalconPipelineForwards,
-    build_falcon_alibi_tensor_fn,
-    get_falcon_flash_attention_forward,
-    get_tp_falcon_decoder_layer_forward,
-)
+from ..modeling.falcon import FalconPipelineForwards, build_falcon_alibi_tensor_fn, get_tp_falcon_decoder_layer_forward
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["FalconPolicy"]
@@ -21,12 +16,6 @@ __all__ = ["FalconPolicy"]
 class FalconPolicy(Policy):
     def __init__(self) -> None:
         super().__init__()
-        import transformers
-        from packaging.version import Version
-
-        assert Version(transformers.__version__) <= Version(
-            "4.33.0"
-        ), "The Falcon model should run on a transformers version not greater than 4.33.0."
 
     def config_sanity_check(self):
         pass
@@ -36,7 +25,7 @@ class FalconPolicy(Policy):
         return self.model
 
     def module_policy(self):
-        from transformers.models.falcon.modeling_falcon import FalconAttention, FalconDecoderLayer, FalconModel
+        from transformers.models.falcon.modeling_falcon import FalconDecoderLayer, FalconModel
 
         if not self.model.config.new_decoder_architecture and self.model.config.multi_query:
             warnings.warn(
@@ -147,11 +136,8 @@ class FalconPolicy(Policy):
             )
 
         if self.shard_config.enable_flash_attention:
-            self.append_or_create_method_replacement(
-                description={"forward": get_falcon_flash_attention_forward()},
-                policy=policy,
-                target_key=FalconAttention,
-            )
+            warnings.warn("Falcon doesn't support flash attention now, fallback to transformers attention.")
+
         return policy
 
     def postprocess(self):

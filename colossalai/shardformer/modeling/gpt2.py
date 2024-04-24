@@ -177,11 +177,9 @@ class GPT2PipelineForwards:
         head_mask = self.get_head_mask(head_mask, self.config.n_layer)
 
         if stage_manager.is_first_stage():
-            if position_ids is not None:
-                position_ids = position_ids.view(-1, input_shape[-1])
-            else:
+            if position_ids is None:
                 position_ids = torch.arange(0, input_shape[-1], dtype=torch.long, device=device)
-                position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
+                position_ids = position_ids.unsqueeze(0)
 
             if inputs_embeds is None:
                 inputs_embeds = self.wte(input_ids)
@@ -239,22 +237,16 @@ class GPT2PipelineForwards:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             if self.gradient_checkpointing and self.training:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, use_cache, output_attentions)
-
-                    return custom_forward
-
-                outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                outputs = self._gradient_checkpointing_func(
+                    block.__call__,
                     hidden_states,
                     None,
                     attention_mask,
                     head_mask[i],
                     encoder_hidden_states,
                     encoder_attention_mask,
+                    use_cache,
+                    output_attentions,
                 )
             else:
                 outputs = block(

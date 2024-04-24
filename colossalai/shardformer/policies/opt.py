@@ -38,25 +38,26 @@ __all__ = [
 class OPTPolicy(Policy):
     def __init__(self) -> None:
         super().__init__()
-        import transformers
-        from packaging.version import Version
-
-        # TODO: remove this version check when transformers>=4.36.0
-        assert Version(transformers.__version__) <= Version(
-            "4.33.0"
-        ), "The OPT model should run on a transformers version not greater than 4.33.0."
 
     def config_sanity_check(self):
         pass
 
     def preprocess(self):
         self.tie_weight = self.tie_weight_check()
+        self.origin_attn_implement = self.model.config._attn_implementation
         return self.model
 
     def module_policy(self):
-        from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer
+        from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer, OptFlashAttention2
+
+        ATTN_IMPLEMENTATION = {
+            "eager": OPTAttention,
+            "flash_attention_2": OptFlashAttention2,
+        }
 
         policy = {}
+
+        attn_cls = ATTN_IMPLEMENTATION[self.model.config._attn_implementation]
 
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
@@ -88,7 +89,7 @@ class OPTPolicy(Policy):
                 ]
             )
 
-            policy[OPTAttention] = ModulePolicyDescription(
+            policy[attn_cls] = ModulePolicyDescription(
                 attribute_replacement={
                     "embed_dim": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                     "num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
@@ -158,7 +159,7 @@ class OPTPolicy(Policy):
                     "forward": get_opt_flash_attention_forward(self.shard_config),
                 },
                 policy=policy,
-                target_key=OPTAttention,
+                target_key=attn_cls,
             )
             if not self.shard_config.pipeline_stage_manager:
                 self.append_or_create_method_replacement(

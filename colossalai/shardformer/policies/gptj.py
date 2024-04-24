@@ -30,12 +30,19 @@ class GPTJPolicy(Policy):
 
     def preprocess(self):
         self.tie_weight = self.tie_weight_check()
+        self.origin_attn_implement = self.model.config._attn_implementation
         return self.model
 
     def module_policy(self):
         from transformers.models.gptj.modeling_gptj import GPTJAttention, GPTJBlock, GPTJModel
 
+        ATTN_IMPLEMENTATION = {
+            "eager": GPTJAttention,
+        }
+
         policy = {}
+
+        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
 
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
@@ -160,7 +167,7 @@ class GPTJPolicy(Policy):
                     "forward": get_gptj_flash_attention_forward(),
                 },
                 policy=policy,
-                target_key=GPTJAttention,
+                target_key=attn_cls,
             )
             if not self.shard_config.pipeline_stage_manager:
                 self.append_or_create_method_replacement(

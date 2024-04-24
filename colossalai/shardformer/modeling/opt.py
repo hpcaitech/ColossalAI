@@ -3,6 +3,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
@@ -42,7 +43,7 @@ def _get_attention_mask(
             is_causal=True,
         )
     else:
-        attention_mask = self.decoder._prepare_decoder_attention_mask(
+        attention_mask = _prepare_4d_causal_attention_mask(
             attention_mask,
             (batch_size, seq_length),
             hidden_states,
@@ -56,6 +57,20 @@ class OPTPipelineForwards:
     This class serves as a micro library for forward function substitution of OPT models
     under pipeline setting.
     """
+
+    @staticmethod
+    def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
+        """
+        Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`.
+        """
+        bsz, src_len = mask.size()
+        tgt_len = tgt_len if tgt_len is not None else src_len
+
+        expanded_mask = mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(dtype)
+
+        inverted_mask = 1.0 - expanded_mask
+
+        return inverted_mask.masked_fill(inverted_mask.to(torch.bool), torch.finfo(dtype).min)
 
     @staticmethod
     def opt_model_forward(
@@ -112,7 +127,7 @@ class OPTPipelineForwards:
                 inputs_embeds = decoder.project_in(inputs_embeds)
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             inputs_embeds.dtype
-
+            hidden_states = inputs_embeds
         else:
             if hidden_states is None:
                 raise ValueError("hidden_states shouldn't be None for intermediate stages.")
@@ -125,12 +140,25 @@ class OPTPipelineForwards:
         # required mask seq length can be calculated via length of past
         mask_seq_length = past_key_values_length + seq_length
         # embed positions
-        if attention_mask is None:
-            attention_mask = torch.ones(batch_size, mask_seq_length, device=device)
-        elif attention_mask.shape[1] != mask_seq_length:
-            raise ValueError(
-                f"The provided attention mask has length {attention_mask.shape[1]}, but its length should be "
-                f"{mask_seq_length} (sum of the lengths of current and past inputs)"
+        if self.decoder._use_flash_attention_2:
+            # 2d mask is passed through the layers
+            causal_attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
+            attention_mask = (
+                torch.ones(batch_size, mask_seq_length, device=inputs_embeds.device)
+                if attention_mask is None
+                else attention_mask
+            )
+        else:
+            # 4d mask is passed through the layers
+            if attention_mask is None:
+                attention_mask = torch.ones(batch_size, mask_seq_length, device=inputs_embeds.device)
+            elif attention_mask.shape[1] != mask_seq_length:
+                raise ValueError(
+                    f"The provided attention mask has length {attention_mask.shape[1]}, but its length should be "
+                    f"{mask_seq_length} (sum of the lengths of current and past inputs)"
+                )
+            causal_attention_mask = _prepare_4d_causal_attention_mask(
+                attention_mask, input_shape, hidden_states, past_key_values_length
             )
 
         if stage_manager.is_first_stage():
@@ -205,20 +233,14 @@ class OPTPipelineForwards:
             past_key_value = past_key_values[idx] if past_key_values is not None else None
 
             if decoder.gradient_checkpointing and decoder.training:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, output_attentions, None)
-
-                    return custom_forward
-
-                layer_outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(decoder_layer),
+                layer_outputs = self._gradient_checkpointing_func(
+                    decoder_layer.__call__,
                     hidden_states,
                     causal_attention_mask,
                     head_mask[idx] if head_mask is not None else None,
                     None,
+                    output_attentions,
+                    use_cache,
                 )
             else:
                 layer_outputs = decoder_layer(

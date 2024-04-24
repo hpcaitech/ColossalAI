@@ -29,13 +29,6 @@ __all__ = [
 class WhisperPolicy(Policy):
     def __init__(self) -> None:
         super().__init__()
-        import transformers
-        from packaging.version import Version
-
-        # TODO: remove this version check when transformers>=4.36.0
-        assert Version(transformers.__version__) <= Version(
-            "4.33.0"
-        ), "The Whisper model should run on a transformers version not greater than 4.33.0."
 
     def config_sanity_check(self):
         pass
@@ -55,6 +48,8 @@ class WhisperPolicy(Policy):
             WhisperDecoderLayer,
             WhisperEncoder,
             WhisperEncoderLayer,
+            WhisperFlashAttention2,
+            WhisperSdpaAttention,
         )
 
         policy = {}
@@ -248,6 +243,20 @@ class WhisperPolicy(Policy):
                 },
                 policy=policy,
                 target_key=WhisperAttention,
+            )
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_whisper_flash_attention_forward(),
+                },
+                policy=policy,
+                target_key=WhisperFlashAttention2,
+            )
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_whisper_flash_attention_forward(),
+                },
+                policy=policy,
+                target_key=WhisperSdpaAttention,
             )
             if not self.shard_config.pipeline_stage_manager:
                 self.append_or_create_method_replacement(
