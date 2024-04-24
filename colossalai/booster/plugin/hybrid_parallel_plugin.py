@@ -34,7 +34,6 @@ from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 from .pp_plugin_base import PipelinePluginBase
 
-DP_AXIS, PP_AXIS, TP_AXIS, SP_AXIS = 0, 1, 2, 3
 SUPPORT_SP_MODE = ["split_gather", "ring", "all_to_all"]
 
 PRECISION_TORCH_TYPE = {"fp16": torch.float16, "fp32": torch.float32, "bf16": torch.bfloat16}
@@ -987,6 +986,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None,
         enable_metadata_cache: bool = True,
         make_vocab_size_divisible_by: int = 64,
+        dp_outside: bool = True,
     ) -> None:
         super().__init__()
         assert (
@@ -1034,7 +1034,12 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_flash_attention = enable_flash_attention
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
-        self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
+        if dp_outside:
+            self.dp_axis, self.pp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
+            self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
+        else:
+            self.pp_axis, self.dp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
+            self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size, self.sp_size)
         self.stage_manager = None
         self.schedule = None
         self.custom_policy = custom_policy
@@ -1048,7 +1053,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             assert self.zero_stage <= 1, "zero stage must be 0 or 1 when using pipeline parallelism"
             self.stage_manager = PipelineStageManager(
                 self.pg_mesh,
-                pipeline_axis=PP_AXIS,
+                pipeline_axis=self.pp_axis,
                 enable_interleave=pp_style == "interleaved",
                 num_model_chunks=num_model_chunks,
             )
@@ -1072,13 +1077,13 @@ class HybridParallelPlugin(PipelinePluginBase):
             else:
                 raise NotImplementedError()
 
-        self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
-        self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
-        self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
+        self.tp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
+        self.dp_group = self.pg_mesh.get_group_along_axis(self.dp_axis)
+        self.pp_group = self.pg_mesh.get_group_along_axis(self.pp_axis)
         if self.enable_sequence_parallelism and self.sequence_parallelism_mode in ["split_gather", "ring"]:
-            self.sp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
+            self.sp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
         else:
-            self.sp_group = self.pg_mesh.get_group_along_axis(SP_AXIS)
+            self.sp_group = self.pg_mesh.get_group_along_axis(self.sp_axis)
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
@@ -1169,7 +1174,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 and self.sequence_parallelism_mode == "all_to_all"
             )
             if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
-                dp_group = self.pg_mesh.create_group_along_axis([DP_AXIS, SP_AXIS])
+                dp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
             else:
                 dp_group = self.dp_group
             model = HybridParallelModule(
@@ -1317,7 +1322,10 @@ class HybridParallelPlugin(PipelinePluginBase):
         _kwargs = kwargs.copy()
         distributed_sampler_cls = distributed_sampler_cls or DistributedSampler
         sampler = distributed_sampler_cls(
-            dataset, num_replicas=self.pg_mesh.size(DP_AXIS), rank=self.pg_mesh.coordinate(DP_AXIS), shuffle=shuffle
+            dataset,
+            num_replicas=self.pg_mesh.size(self.dp_axis),
+            rank=self.pg_mesh.coordinate(self.dp_axis),
+            shuffle=shuffle,
         )
 
         # Deterministic dataloader

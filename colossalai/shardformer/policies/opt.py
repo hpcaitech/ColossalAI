@@ -58,7 +58,6 @@ class OPTPolicy(Policy):
         policy = {}
 
         attn_cls = ATTN_IMPLEMENTATION[self.model.config._attn_implementation]
-
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = VocabParallelEmbedding1D
