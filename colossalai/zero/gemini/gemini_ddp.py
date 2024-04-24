@@ -840,6 +840,7 @@ class GeminiDDP(ModelWrapper):
         for buffer in self.module.buffers():
             if isinstance(buffer, LazyTensor):
                 buffer.materialize()
+        for buffer in self.module.buffers():
             buffer.data = buffer.to(get_accelerator().get_current_device())
             if torch.is_floating_point(buffer):
                 buffer.data = buffer.to(self.mixed_precision)
