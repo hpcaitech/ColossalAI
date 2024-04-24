@@ -65,6 +65,7 @@ if HAS_LLAMA:
         num_attention_heads=4,
         max_position_embeddings=128,
         num_labels=16,
+        attn_implementation="eager",
     )
 
     if hasattr(config, "pad_token_id"):
