@@ -215,9 +215,6 @@ def get_mistral_flash_attention_forward():
 
         attn_output = self.o_proj(attn_output)
 
-        if not output_attentions:
-            attn_weights = None
-
-        return attn_output, attn_weights, past_key_value
+        return attn_output, past_key_value
 
     return forward
