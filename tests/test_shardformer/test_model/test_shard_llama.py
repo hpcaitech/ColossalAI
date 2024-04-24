@@ -32,7 +32,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         model_fn, loss_fn, test_config
     )
     if enable_gradient_checkpointing:
-        org_model.gradient_checkpointing_enable()
+        # org_model.gradient_checkpointing_enable()
         sharded_model.unwrap().gradient_checkpointing_enable()
 
     org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(

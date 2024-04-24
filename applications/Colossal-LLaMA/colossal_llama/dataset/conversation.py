@@ -83,7 +83,7 @@ class Conversation:
         }
 
 
-conv = Conversation(
+LLaMA2_Conv = Conversation(
     system="A chat between a curious human and an artificial intelligence assistant. "
     "The assistant gives helpful, detailed, and polite answers to the human's questions.\n\n",
     roles=("Human", "Assistant"),
@@ -93,4 +93,14 @@ conv = Conversation(
     seps=["<s>", "</s>"],
 )
 
-default_conversation = conv
+LLaMA3_Conv = Conversation(
+    system="A chat between a curious human and an artificial intelligence assistant. "
+    "The assistant gives helpful, detailed, and polite answers to the human's questions.\n\n",
+    roles=("Human", "Assistant"),
+    messages=[],
+    offset=0,
+    sep_style=SeparatorStyle.ADD_BOS_EOS_TOKEN,
+    seps=["<|begin_of_text|>", "<|end_of_text|>"],
+)
+
+default_conversation = LLaMA3_Conv

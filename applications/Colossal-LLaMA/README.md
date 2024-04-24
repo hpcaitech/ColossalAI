@@ -1,6 +1,6 @@
 <div align="center">
 <h1>
-<img src="https://github.com/hpcaitech/public_assets/blob/main/applications/colossal-llama-2/colossalllam2.jpg?raw=true" width=800/>
+Colossal-LLaMA
 </h1>
 </div>
 
@@ -47,6 +47,7 @@
 - [Citations](#citations)
 
 ## News
+* [2024/4] Support continual pre-training and supervised fine-tuning of LLaMA-3.
 * [2024/01] [Construct Refined 13B Private Model With Just $5000 USD, Upgraded Colossal-AI Llama-2 Open Source](https://hpc-ai.com/blog/colossal-llama-2-13b).
 [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Colossal-LLaMA-2)
 [[blog]](https://hpc-ai.com/blog/colossal-llama-2-13b)
@@ -289,7 +290,7 @@ Here is details about CLI arguments:
 
 #### 1. Install required packages
 ```
-cd Colossal-LLaMA-2
+cd Colossal-LLaMA
 pip install -r requirements.txt
 ```
 #### 2. Install `xentropy`, `layer_norm` and `rotary`
@@ -314,7 +315,7 @@ Initialize new tokenizer with additional Chinese tokens. Additional Chinese toke
 Command to initialize new tokenizer:
 ```bash
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION='python'
-python colossal_llama2/tokenizer/init_tokenizer.py \
+python colossal_llama/tokenizer/init_tokenizer.py \
     --source_tokenizer_dir "<SOURCE_TOKENIZER_DIR>" \
     --target_tokenizer_dir "<TARGET_TOKENIZER_DIR>" \
     --expand_tokens_file "<NEW_TOKENS_FILE>.jsonl"
@@ -328,7 +329,7 @@ Here is details about CLI arguments:
 Initialize the new model checkpoint by calculating the mean values from the original model checkpoint.
 Command to initialize new model checkpoint:
 ```bash
-python colossal_llama2/model/init_model.py \
+python colossal_llama/model/init_model.py \
     --source_model_and_tokenizer_path "<SOURCE_MODEL_AND_TOKENIZER_DIR>" \
     --target_tokenizer_path "<TARGET_TOKENIZER_DIR>" \
     --target_model_path "<TARGET_MODEL_DIR>"
@@ -362,18 +363,17 @@ Command to convert jsonl dataset to arrow format:
 python prepare_pretrain_dataset.py \
     --data_input_dirs "<JSONL_DIR_1>,<JSONL_DIR_2>,<JSONL_DIR_3>" \
     --tokenizer_dir "<TOKENIZER_DIR>" \
-    --data_cache_dir "jsonl_to_arrow_cache" \
-    --data_jsonl_output_dir "spliced_tokenized_output_jsonl" \
-    --data_arrow_output_dir "spliced_tokenized_output_arrow" \
+    --data_output_dirs "spliced tokenized output" \
     --max_length 4096 \
     --num_spliced_dataset_bins 10
 ```
 Here is details about CLI arguments:
 * Source data directory: `data_input_dirs`. Each `<JSONL_DIR>` can have multiple file in `jsonl` format.
 * Tokenizer directory: `tokenizer_dir`. Path to the tokenizer in Hugging Face format.
-* Data cache directory: `data_cache_dir`. Directory to store Hugging Face data cache. Default case will create `cache` folder locally.
-* Output directory for jsonl format: `data_jsonl_output_dir`. Output directory to store converted dataset in jsonl format.
-* Output directory for arrow format: `data_arrow_output_dir`. Output directory to store converted dataset in arrow format, which can be used for training directly.
+* Data output directory: `data_output_dirs`. Directory to store preprocessed output, including three sub-directories:
+  * `cache`: Directory to store Hugging Face data cache.
+  * `jsonl`: Output directory to store converted dataset in jsonl format.
+  * `arrow`: Output directory to store converted dataset in arrow format, which can be used for training directly.
 * Max length: `max_length`. Max length of spliced samples. Default value is 4096.
 * Number of bins for each category: `num_spliced_dataset_bins`. Number of bins for each category, used for bucket-based training.
 
@@ -392,12 +392,14 @@ Command to convert jsonl dataset to arrow format is similar to the command in [3
 python prepare_sft_dataset.py.py \
     --data_input_dirs "<JSONL_DIR_1>,<JSONL_DIR_2>,<JSONL_DIR_3>" \
     --tokenizer_dir "<TOKENIZER_DIR>" \
-    --data_cache_dir "jsonl_to_arrow_cache" \
-    --data_jsonl_output_dir "spliced_tokenized_output_jsonl" \
-    --data_arrow_output_dir "spliced_tokenized_output_arrow" \
+    --data_output_dirs "spliced tokenized output" \
     --max_length 4096 \
-    --num_spliced_dataset_bins 10
+    --num_spliced_dataset_bins 10 \
+    --llama_version 3
 ```
+
+Additional CLI arguments:
+* LLaMA verison: `llama_version`. Specify the LLaMA version.
 
 #### 4. Command Line Arguments for Training
 

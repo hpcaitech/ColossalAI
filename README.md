@@ -52,7 +52,7 @@
  <li>
    <a href="#Parallel-Training-Demo">Parallel Training Demo</a>
    <ul>
-     <li><a href="#LLaMA2">LLaMA 1/2</a></li>
+     <li><a href="#LLaMA3">LLaMA 1/2/3 </a></li>
      <li><a href="#MoE">MoE</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
@@ -270,13 +270,21 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Parallel Training Demo
+### LLaMA3
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/images/LLaMA3-70B-H100.png" width=600/>
+</p>
+
+- 70 billion parameter LLaMA3 model training accelerated by 18%
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama)
+
 ### LLaMA2
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/llama2_pretraining.png" width=600/>
 </p>
 
 - 70 billion parameter LLaMA2 model training accelerated by 195%
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama2)
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama)
 [[blog]](https://www.hpc-ai.tech/blog/70b-llama2-training)
 
 ### LLaMA1
@@ -285,7 +293,7 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 </p>
 
 - 65-billion-parameter large model pretraining accelerated by 38%
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/example/llama/examples/language/llama)
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama)
 [[blog]](https://www.hpc-ai.tech/blog/large-model-pretraining)
 
 ### MoE

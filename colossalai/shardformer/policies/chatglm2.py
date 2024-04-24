@@ -25,26 +25,25 @@ class ChatGLMPolicy(Policy):
         pass
 
     def preprocess(self):
-        # Resize embedding
-        if self.shard_config.enable_tensor_parallelism:
-            vocab_size = self.model.config.padded_vocab_size
-            world_size = self.shard_config.tensor_parallel_size
-
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
-
         if self.pipeline_stage_manager is not None:
             # the batch_size_dim is bounded to Model
             bsz_dim = 1
             setattr(self.model, "batch_size_dim", bsz_dim)
 
+        self.tie_weight = self.tie_weight_check()
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMModel, CoreAttention, GLMBlock
 
         policy = {}
+
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = col_nn.VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = col_nn.PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
             if self.model.config.rmsnorm:
@@ -68,16 +67,6 @@ class ChatGLMPolicy(Policy):
         sp_partial_derived = sp_mode == "split_gather"
 
         if self.shard_config.enable_tensor_parallelism:
-            policy[ChatGLMModel] = ModulePolicyDescription(
-                attribute_replacement={},
-                sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="embedding.word_embeddings",
-                        target_module=col_nn.VocabParallelEmbedding1D,
-                    )
-                ],
-            )
-
             policy[GLMBlock] = ModulePolicyDescription(
                 attribute_replacement={
                     "self_attention.num_attention_heads_per_partition": self.model.config.num_attention_heads
@@ -113,6 +102,19 @@ class ChatGLMPolicy(Policy):
                         target_module=col_nn.DropoutForParallelInput,
                     ),
                 ],
+            )
+
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="embedding.word_embeddings",
+                        target_module=embedding_cls,
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    ),
+                ],
+                policy=policy,
+                target_key=ChatGLMModel,
             )
         # optimization configuration
         self.append_or_create_submodule_replacement(
