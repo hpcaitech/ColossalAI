@@ -35,12 +35,19 @@ class GPT2Policy(Policy):
         Reshape the Embedding layer to make the embedding dimension divisible by world_size
         """
         self.tie_weight = self.tie_weight_check()
+        self.origin_attn_implement = self.model.config._attn_implementation
         return self.model
 
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2Attention, GPT2Block, GPT2Model
 
+        ATTN_IMPLEMENTATION = {
+            "eager": GPT2Attention,
+        }
+
         policy = {}
+
+        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
 
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
@@ -186,7 +193,7 @@ class GPT2Policy(Policy):
                     "forward": get_gpt2_flash_attention_forward(),
                 },
                 policy=policy,
-                target_key=GPT2Attention,
+                target_key=attn_cls,
             )
             if not self.shard_config.pipeline_stage_manager:
                 policy[GPT2Model].method_replacement = {
