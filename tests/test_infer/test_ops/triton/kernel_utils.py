@@ -193,6 +193,7 @@ def mock_alloc_block_table_and_kvcache_v3(
 
     return block_tables
 
+
 def mock_alloc_block_table_and_kvcache_vllm(
     k: torch.Tensor,
     v: torch.Tensor,
@@ -292,6 +293,7 @@ def generate_caches_and_block_tables_v2(
         k_unpad, v_unpad, k_cache, v_cache, kv_lengths, bsz, max_num_blocks_per_seq, block_size
     )
     return k_cache, v_cache, block_tables
+
 
 def generate_caches_and_block_tables_v3(
     k_unpad, v_unpad, kv_lengths, bsz, max_num_blocks_per_seq, block_size, dtype=torch.float16, device="cuda"

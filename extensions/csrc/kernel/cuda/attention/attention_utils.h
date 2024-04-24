@@ -41,7 +41,8 @@ namespace attention {
 #define SHFL_SYNC(var, src_lane) __shfl_sync(uint32_t(-1), var, src_lane)
 
 // Q*K^T operation.
-template <int NUM_THREADS_PER_ROUNDS, int NUM_THREADS_PER_X, typename VecT, int N>
+template <int NUM_THREADS_PER_ROUNDS, int NUM_THREADS_PER_X, typename VecT,
+          int N>
 inline __device__ float qk_dot_(const VecT (&q)[N], const VecT (&k)[N]) {
   using A_vec = typename common::FloatVecTypeTrait<VecT>::Type;
   // Compute the parallel products for Q*K^T (treat vector lanes separately).
@@ -57,12 +58,13 @@ inline __device__ float qk_dot_(const VecT (&q)[N], const VecT (&k)[N]) {
 
   // Finalize the reduction across lanes.
   float qk = sum_vect(qk_vec);
-  #pragma unroll
-  for (int mask = (WARP_SIZE >> 1); mask >= NUM_THREADS_PER_ROUNDS; mask >>= 1) {
+#pragma unroll
+  for (int mask = (WARP_SIZE >> 1); mask >= NUM_THREADS_PER_ROUNDS;
+       mask >>= 1) {
     qk += SHFL_XOR_SYNC(qk, mask);
   }
 
-  #pragma unroll
+#pragma unroll
   for (int mask = (NUM_THREADS_PER_X >> 1); mask > 0; mask >>= 1) {
     qk += SHFL_XOR_SYNC(qk, mask);
   }
@@ -86,7 +88,8 @@ inline __device__ float block_max(float* red_smem, float max) {
 // for each warp, the 1st out of NUM_THREADS_PER_TOKEN thread already has the
 // max value among every NUM_THREADS_PER_TOKEN threads.
 #pragma unroll
-  for (int mask = (NUM_THREADS_PER_ROUNDS >> 1); mask >= NUM_THREADS_PER_X; mask >>= 1) {
+  for (int mask = (NUM_THREADS_PER_ROUNDS >> 1); mask >= NUM_THREADS_PER_X;
+       mask >>= 1) {
     max = fmaxf(max, SHFL_XOR_SYNC(max, mask));
   }
 
