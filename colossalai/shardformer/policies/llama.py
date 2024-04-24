@@ -40,7 +40,14 @@ class LlamaPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.llama.modeling_llama import LlamaAttention, LlamaFlashAttention2, LlamaSdpaAttention, LlamaDecoderLayer, LlamaModel
+        from transformers.models.llama.modeling_llama import (
+            LlamaAttention,
+            LlamaDecoderLayer,
+            LlamaFlashAttention2,
+            LlamaModel,
+            LlamaSdpaAttention,
+        )
+
         ATTN_IMPLEMENTATION = {
             "eager": LlamaAttention,
             "flash_attention_2": LlamaFlashAttention2,

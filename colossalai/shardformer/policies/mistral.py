@@ -30,7 +30,12 @@ class MistralPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.mistral.modeling_mistral import MistralAttention, MistralFlashAttention2, MistralDecoderLayer, MistralModel
+        from transformers.models.mistral.modeling_mistral import (
+            MistralAttention,
+            MistralDecoderLayer,
+            MistralFlashAttention2,
+            MistralModel,
+        )
 
         ATTN_IMPLEMENTATION = {
             "eager": MistralAttention,
@@ -152,7 +157,6 @@ class MistralPolicy(Policy):
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
 
-
 class MistralModelPolicy(MistralPolicy):
     def __init__(self) -> None:
         super().__init__()
@@ -160,6 +164,7 @@ class MistralModelPolicy(MistralPolicy):
     def module_policy(self):
         policy = super().module_policy()
         from transformers.models.mistral.modeling_mistral import MistralModel
+
         self.set_forward(model_cls=MistralModel, new_forward=MistralForwards.mistral_model_forward, policy=policy)
         return policy
 

@@ -48,7 +48,7 @@ class OPTPolicy(Policy):
         return self.model
 
     def module_policy(self):
-        from transformers.models.opt.modeling_opt import OPTAttention, OptFlashAttention2, OPTDecoder, OPTDecoderLayer
+        from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer, OptFlashAttention2
 
         ATTN_IMPLEMENTATION = {
             "eager": OPTAttention,
