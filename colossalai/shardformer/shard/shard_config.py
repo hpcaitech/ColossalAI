@@ -120,7 +120,15 @@ class ShardConfig:
         Turn on all optimization.
         """
         # you can add all the optimization flag here
-        self.enable_fused_normalization = True
+        try:
+            from apex.normalization import FusedLayerNorm as ApexFusedLayerNorm  # noqa
+
+            apex_avail = True
+        except ImportError:
+            apex_avail = False
+            warnings.warn("You set enable_all_optimization=True, but apex is not installed.")
+
+        self.enable_fused_normalization = apex_avail
         self.enable_flash_attention = True
         self.enable_jit_fused = True
         # This can cause non-in-place param sharding when used without ZeRO.
