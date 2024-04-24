@@ -137,6 +137,7 @@ class FalconPolicy(Policy):
 
         if self.shard_config.enable_flash_attention:
             warnings.warn("Falcon doesn't support flash attention now, fallback to transformers attention.")
+
         return policy
 
     def postprocess(self):

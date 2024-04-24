@@ -43,6 +43,7 @@ class GPTJPolicy(Policy):
         policy = {}
 
         attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
+
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = col_nn.VocabParallelEmbedding1D
