@@ -55,22 +55,22 @@ config = MistralConfig(
 if hasattr(config, "pad_token_id"):
     config.pad_token_id = config.eos_token_id
 
-# model_zoo.register(
-#     name="transformers_mistral",
-#     model_fn=lambda: transformers.MistralModel(config),
-#     data_gen_fn=data_gen,
-#     output_transform_fn=output_transform_fn,
-#     loss_fn=loss_fn_for_mistral_model,
-#     model_attribute=ModelAttribute(has_control_flow=True),
-# )
-# model_zoo.register(
-#     name="transformers_mistral_for_casual_lm",
-#     model_fn=lambda: transformers.MistralForCausalLM(config),
-#     data_gen_fn=data_gen_for_lm,
-#     output_transform_fn=output_transform_fn,
-#     loss_fn=loss_fn,
-#     model_attribute=ModelAttribute(has_control_flow=True),
-# )
+model_zoo.register(
+    name="transformers_mistral",
+    model_fn=lambda: transformers.MistralModel(config),
+    data_gen_fn=data_gen,
+    output_transform_fn=output_transform_fn,
+    loss_fn=loss_fn_for_mistral_model,
+    model_attribute=ModelAttribute(has_control_flow=True),
+)
+model_zoo.register(
+    name="transformers_mistral_for_casual_lm",
+    model_fn=lambda: transformers.MistralForCausalLM(config),
+    data_gen_fn=data_gen_for_lm,
+    output_transform_fn=output_transform_fn,
+    loss_fn=loss_fn,
+    model_attribute=ModelAttribute(has_control_flow=True),
+)
 model_zoo.register(
     name="transformers_mistral_for_sequence_classification",
     model_fn=lambda: transformers.MistralForSequenceClassification(config),

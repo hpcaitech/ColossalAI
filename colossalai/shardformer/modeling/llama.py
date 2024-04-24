@@ -410,9 +410,6 @@ class LlamaPipelineForwards:
         else:
             batch_size = hidden_states.shape[0]
 
-        print("batch_sizellama", batch_size)
-        print("self.config.pad_token_id", self.config.pad_token_id)
-
         if stage_manager.is_last_stage():
             hidden_states = transformer_outputs[0]
             logits = self.score(hidden_states)

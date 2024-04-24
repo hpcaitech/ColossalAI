@@ -221,16 +221,12 @@ class MistralPolicy(Policy):
 
         else:
             layers_per_stage = stage_manager.distribute_layers(len(module.layers))
-            print("layers_per_stage", layers_per_stage)
             if stage_manager.is_first_stage():
                 held_layers.append(module.embed_tokens)
             start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
-            print("start_idx, end_idx", start_idx, end_idx)
-            print("input_layernorm", module.layers[start_idx].input_layernorm.weight)
             held_layers.extend(module.layers[start_idx:end_idx])
             if stage_manager.is_last_stage():
                 held_layers.append(module.norm)
-        print(held_layers)
         return held_layers
 
 
@@ -246,7 +242,6 @@ class MistralModelPolicy(MistralPolicy):
             self.set_pipeline_forward(
                 model_cls=MistralModel, new_forward=MistralForwards.mistral_model_forward, policy=policy
             )
-        print("policy", policy)
 
         return policy
 
@@ -349,8 +344,6 @@ class MistralForSequenceClassificationPolicy(MistralPolicy):
             }
             policy.update(new_item)
 
-            # if self.pipeline_stage_manager:
-            #     warnings.warn("Mistral doesn't support pipeline parallelism now.")
         if self.pipeline_stage_manager:
             # set None as default
             self.set_pipeline_forward(

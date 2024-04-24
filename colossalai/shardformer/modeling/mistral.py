@@ -338,7 +338,6 @@ class MistralForwards:
             batch_size = inputs_embeds.shape[0]
         else:
             batch_size = hidden_states.shape[0]
-        print("batch_size", batch_size)
 
         if stage_manager.is_last_stage():
             hidden_states = transformer_outputs[0]
