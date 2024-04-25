@@ -43,9 +43,10 @@ def baichuan_rmsnorm_forward(
         eps = self.variance_epsilon
     elif hasattr(self, "epsilon"):
         eps = self.epsilon
-
-    # TODO "Currently, CUDA RMS Norm does not support the hidden_size of 5120. Remove this code after CUDA RMS Norm is fixed."
-    use_cuda_kernel = False
+    else:
+        TypeError(
+            "Currently, the variable name for the epsilon of baichuan7B/13B should be 'variance_epsilon' or 'epsilon'."
+        )
 
     if use_cuda_kernel:
         if residual is not None:

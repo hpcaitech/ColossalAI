@@ -6,7 +6,7 @@ from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.utils import get_current_device
 
 
-# alibi slopes calculation adapted from https://github.com/huggingface/transformers/blob/v4.39.3/src/transformers/models/bloom/modeling_bloom.py#L57
+# alibi slopes calculation adapted from https://github.com/huggingface/transformers/blob/v4.36.0/src/transformers/models/bloom/modeling_bloom.py#L57
 def get_alibi_slopes(num_heads: int, device: torch.device) -> torch.Tensor:
     closest_power_of_2 = 2 ** math.floor(math.log2(num_heads))
     base = torch.tensor(2 ** (-(2 ** -(math.log2(closest_power_of_2) - 3))), dtype=torch.float32, device=device)

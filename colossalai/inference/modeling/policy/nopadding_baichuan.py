@@ -30,48 +30,30 @@ class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy):
             attribute_replacement=decoder_attribute_replacement,
         )
 
-        # used for Baichuan 7B
-        policy["DecoderLayer"] = ModulePolicyDescription(
-            sub_module_replacement=[
-                SubModuleReplacementDescription(
-                    suffix="mlp",
-                    target_module=NopadBaichuanMLP,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="self_attn",
-                    target_module=NopadBaichuanAttention,
-                ),
-            ]
-        )
+        # used for relpacing Baichuan 7B/13B decoder layer
+        for layer_name in ["DecoderLayer", "BaichuanLayer"]:
+            policy[layer_name] = ModulePolicyDescription(
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="mlp",
+                        target_module=NopadBaichuanMLP,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn",
+                        target_module=NopadBaichuanAttention,
+                    ),
+                ]
+            )
 
-        # used for Baichuan 13B
-        policy["BaichuanLayer"] = ModulePolicyDescription(
-            sub_module_replacement=[
-                SubModuleReplacementDescription(
-                    suffix="mlp",
-                    target_module=NopadBaichuanMLP,
-                ),
-                SubModuleReplacementDescription(
-                    suffix="self_attn",
-                    target_module=NopadBaichuanAttention,
-                ),
-            ]
-        )
+            self.append_or_create_method_replacement(
+                description={"forward": llama_decoder_layer_forward}, policy=policy, target_key=layer_name
+            )
 
         self.append_or_create_method_replacement(
             description={"forward": llama_causal_lm_forward}, policy=policy, target_key="BaichuanForCausalLM"
         )
         self.append_or_create_method_replacement(
             description={"forward": llama_model_forward}, policy=policy, target_key="BaichuanModel"
-        )
-
-        # used for Baichuan 7B
-        self.append_or_create_method_replacement(
-            description={"forward": llama_decoder_layer_forward}, policy=policy, target_key="DecoderLayer"
-        )
-        # used for Baichuan 13B
-        self.append_or_create_method_replacement(
-            description={"forward": llama_decoder_layer_forward}, policy=policy, target_key="BaichuanLayer"
         )
 
         self.append_or_create_method_replacement(

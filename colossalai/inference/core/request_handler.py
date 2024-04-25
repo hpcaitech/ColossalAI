@@ -111,9 +111,7 @@ class RequestHandler:
        dtype (torch.dtype): The data type for weights and activations.
     """
 
-    def __init__(
-        self, inference_config: InferenceConfig, model_config: PretrainedConfig, alibi_attn: bool = False
-    ) -> None:
+    def __init__(self, inference_config: InferenceConfig, model_config: PretrainedConfig) -> None:
         self.inference_config = inference_config
         self.running_list: RunningList = RunningList(inference_config.prefill_ratio)
         self.waiting_list: List[List] = [[], [], []]
@@ -145,7 +143,7 @@ class RequestHandler:
             num_attn_heads=model_config.num_attention_heads // inference_config.tp_size,
             kv_max_split_num=kv_max_split_num,
             head_dim=head_dim,
-            alibi_attn=alibi_attn,
+            alibi_attn=inference_config.alibi_attn if hasattr(inference_config, "alibi_attn") else False,
             dtype=self.dtype,
             device=device,
         )

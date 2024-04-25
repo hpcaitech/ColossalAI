@@ -162,8 +162,13 @@ def test_flash_decoding(
     )  # [bsz * q_len, num_heads, head_dim]
 
     assert out_torch.shape == out_triton.shape
+
+    rtol = 1e-4
     # After the shape becomes larger, some data elements are too small, leading to excessively large relative errors.
-    numpy_allclose(out_torch, out_triton, atol=1e-3, rtol=100)
+    if bsz == 32 and use_alibi_slopes:
+        rtol = 100
+
+    numpy_allclose(out_torch, out_triton, atol=1e-3, rtol=rtol)
 
 
 if __name__ == "__main__":
