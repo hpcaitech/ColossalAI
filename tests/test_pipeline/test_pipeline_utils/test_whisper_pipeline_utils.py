@@ -14,6 +14,7 @@ class _PipelineStageManager(PipelineStageManager):
     def __init__(self):
         self.is_interleave = False
         self.num_layers_per_stage = None
+        self.num_model_chunks = 1
 
     @property
     def num_stages(self):
