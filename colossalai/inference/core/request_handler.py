@@ -143,7 +143,6 @@ class RequestHandler:
             num_attn_heads=model_config.num_attention_heads // inference_config.tp_size,
             kv_max_split_num=kv_max_split_num,
             head_dim=head_dim,
-            alibi_attn=inference_config.alibi_attn if hasattr(inference_config, "alibi_attn") else False,
             dtype=self.dtype,
             device=device,
         )

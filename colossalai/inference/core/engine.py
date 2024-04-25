@@ -41,8 +41,6 @@ _supported_models = {
     "BaichuanForCausalLM": AutoModelForCausalLM,
 }
 
-_alibi_models = ["bloom", "baichuan"]
-
 _BATCH_SIZES_TO_CAPTURE = [1, 2, 4] + [8 * i for i in range(1, 33)]
 
 
@@ -151,14 +149,6 @@ class InferenceEngine:
 
         pg_mesh = ProcessGroupMesh(self.inference_config.pp_size, self.inference_config.tp_size)
         tp_group = pg_mesh.get_group_along_axis(TP_AXIS)
-
-        self.inference_config.alibi_attn = False
-        if self.model_config.model_type in _alibi_models:
-            # Used for bloom, baichuan 13b and baichuan2 13b.
-            self.inference_config.alibi_attn = True
-            # Hardcode used to distinguish between baichuan 7b and baichuan 13b.(There might be a better way to handle this.)
-            if self.model_config.model_type == "baichuan" and self.model_config.hidden_size == 4096:
-                self.inference_config.alibi_attn = False
 
         self.model = self._shardformer(
             model,

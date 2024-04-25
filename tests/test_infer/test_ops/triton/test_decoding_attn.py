@@ -3,7 +3,7 @@ import pytest
 import torch
 from packaging import version
 
-from colossalai.inference.flash_decoding_utils import get_alibi_slopes
+from colossalai.inference.modeling.models.nopadding_baichuan import get_alibi_slopes
 from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
 from tests.test_infer.test_ops.triton.kernel_utils import (
