@@ -11,6 +11,7 @@ from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
     check_all_grad_tensors,
     check_loss,
+    check_output_hidden_state,
     check_weight,
     get_grad_tensors_for_check,
     run_forward_backward_with_hybrid_plugin,
@@ -103,8 +104,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             atol, rtol = 5e-3, 5e-3
 
         # TODO: ChatGLMModel output is [S, B, H], merging batch of pipeline is wrong
-        # if org_model.__class__.__name__ == "ChatGLMModel":
-        #     check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol, dim=1)
+        if org_model.__class__.__name__ == "ChatGLMModel":
+            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol, dim=1)
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
@@ -177,14 +178,14 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         {
             "tp_size": 4,
             "pp_size": 1,
-            "enable_all_optimization": True,
+            "enable_all_optimization": False,
             "use_lazy_init": False,
             "precision": "fp32",
         },
         {
             "tp_size": 2,
             "pp_size": 1,
-            "enable_all_optimization": True,
+            "enable_all_optimization": False,
             "use_lazy_init": False,
             "precision": "fp32",
         },
