@@ -117,6 +117,12 @@ def test_flash_decoding(
         alibi_mask = generate_alibi_mask(alibi_slopes, num_attn_heads, max_kv_len_in_b, q.device)
         attention_mask = attention_mask + alibi_mask
 
+        if q_len == 1:
+            if len(attention_mask.size()) == 4:
+                attention_mask = attention_mask[:, :, -1:, :]
+            else:
+                attention_mask = attention_mask[:, -1:, :]
+
     out_torch = torch_attn_ref(
         q, k_torch, v_torch, attention_mask, bsz, q_len, max_kv_len_in_b, num_attn_heads, num_kv_heads, HEAD_DIM
     )
