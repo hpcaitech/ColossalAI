@@ -310,13 +310,6 @@ if dist.get_world_size() > 1:
 
 2. When you use Shardformer to process classification models such as `GPT2ForSequenceClassification`, `ViTForImageClassification`, please ensure that the total number of labels should be integer multiple of tensor parallel size, otherwise Shardformer can't process the classifier layer correctly. A simple fix could be appending dummy labels in transformers config. This bug will be fixed in future version of Shardformer.
 
-3. The case of training ChatGLM-2 6B is a little special: since Huggingface transformers doesn't officially support ChatGLM at present, please import the configuration/model classes through
-    ```python
-    from colossalai.shardformer.modeling.chatglm2_6b.configuration_chatglm import ChatGLMConfig
-    from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
-    ```
-    when training ChatGLM-2 with Shardformer, and initialize your model with these imported classes.
-
 ## How Shardformer Works
 
 ### Main Idea
