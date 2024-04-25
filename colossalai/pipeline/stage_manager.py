@@ -216,13 +216,15 @@ class PipelineStageManager:
         yield
         self.model_chunk_id = old_model_chunk_id
 
-    def distribute_layers(self, num_layers: int) -> List[int]:
+    def distribute_layers(
+        self, num_layers: int, num_stages: Optional[int] = None, num_model_chunks: Optional[int] = None
+    ) -> List[int]:
         if self.num_layers_per_stage is not None:
             assert sum(self.num_layers_per_stage) == num_layers
             return self.num_layers_per_stage
 
-        num_stages = self.num_stages
-        num_model_chunks = self.num_model_chunks
+        num_stages = self.num_stages if num_stages is None else num_stages
+        num_model_chunks = self.num_model_chunks if num_model_chunks is None else num_model_chunks
         quotient = num_layers // (num_stages * num_model_chunks)
         remainder = num_layers % (num_stages * num_model_chunks)
 
