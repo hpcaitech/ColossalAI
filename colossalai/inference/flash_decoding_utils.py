@@ -60,4 +60,5 @@ class FDIntermTensors(metaclass=SingletonMeta):
         self._mid_output_lse = torch.empty(
             size=(max_batch_size, num_attn_heads, kv_max_split_num), dtype=dtype, device=device
         )
+
         self._tensors_initialized = True

@@ -2,6 +2,7 @@ import pytest
 import torch
 from packaging import version
 
+from colossalai.inference.modeling.models.nopadding_baichuan import get_alibi_slopes
 from colossalai.kernel.triton import context_attention_unpadded
 from colossalai.utils import get_current_device
 from tests.test_infer.test_ops.triton.kernel_utils import generate_caches_and_block_tables_v2, torch_attn_ref
@@ -19,8 +20,31 @@ TRITON_CUDA_SUPPORT = version.parse(torch.version.cuda) > version.parse("11.4")
 HEAD_DIM = 32
 
 
+def _fill_with_neg_inf(t):
+    return t.float().fill_(float("-inf")).type_as(t)
+
+
+# alibi mask calculation adapted from https://huggingface.co/baichuan-inc/Baichuan2-13B-Chat/blob/main/modeling_baichuan.py
+def generate_alibi_mask(slopes, num_heads, max_seq_len, device):
+    token_position = torch.arange(max_seq_len, device=device) - max_seq_len + 1
+    token_position = token_position.unsqueeze(0).unsqueeze(0).expand(num_heads, -1, -1)
+    diag = torch.diag(token_position[0])
+    token_position = token_position - diag.unsqueeze(0).unsqueeze(0).transpose(-1, -2)
+    alibi = slopes.unsqueeze(1).unsqueeze(1) * token_position
+    alibi = alibi.view(num_heads, 1, max_seq_len)
+    alibi_mask = torch.triu(_fill_with_neg_inf(torch.zeros([max_seq_len, max_seq_len], device=device)), 1)
+    alibi_mask = alibi_mask.unsqueeze(0) + alibi
+    return alibi_mask
+
+
 def torch_attn_unpad(
-    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, context_lengths: torch.Tensor, num_heads: int, num_kv_heads: int
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    context_lengths: torch.Tensor,
+    num_heads: int,
+    num_kv_heads: int,
+    slopes: torch.Tensor = None,
 ):
     # Process sequence one by one and concatenate them together.
     # q,k,v [num_tokens(sum(context_lengths)), num_heads, head_dim]
@@ -34,6 +58,10 @@ def torch_attn_unpad(
         seq_len = end_idx - start_idx
         mask = torch.tril(torch.ones(1, 1, seq_len, seq_len), diagonal=0).to(device=q.device)
         mask[mask == 0.0] = float("-inf")
+
+        if slopes != None:
+            alibi_mask = generate_alibi_mask(slopes, num_heads, seq_len, q.device)
+            mask = mask + alibi_mask
 
         torch_attn_ref_out = torch_attn_ref(
             q[start_idx:end_idx].unsqueeze(0).transpose(1, 2),
@@ -60,6 +88,7 @@ def torch_attn_unpad(
 @pytest.mark.parametrize("num_attn_heads", [16])
 @pytest.mark.parametrize("kv_group_num", [1, 2, 16])
 @pytest.mark.parametrize("same_context_len", [True, False])
+@pytest.mark.parametrize("use_alibi_slopes", [True, False])
 def test_context_attention(
     bsz: int,
     block_size: int,
@@ -67,6 +96,7 @@ def test_context_attention(
     num_attn_heads: int,
     kv_group_num: int,
     same_context_len: bool,
+    use_alibi_slopes: bool,
 ):
     torch.manual_seed(123)
     # It's necessary to clear cache here.
@@ -79,6 +109,10 @@ def test_context_attention(
     max_seq_len = max_num_blocks_per_seq * block_size
     dtype = torch.float16
     device = get_current_device()
+    alibi_slopes = None
+
+    if use_alibi_slopes:
+        alibi_slopes = get_alibi_slopes(num_attn_heads, device)
 
     if same_context_len:
         context_lengths = torch.tensor([max_seq_len for _ in range(bsz)], dtype=torch.int32, device=device)
@@ -100,12 +134,19 @@ def test_context_attention(
     _, num_heads, head_dim = q_unpad.shape
 
     out_triton = context_attention_unpadded(
-        q_unpad, k_unpad, v_unpad, k_cache_triton, v_cache_triton, context_lengths, block_tables, block_size
+        q_unpad,
+        k_unpad,
+        v_unpad,
+        k_cache_triton,
+        v_cache_triton,
+        context_lengths,
+        block_tables,
+        block_size,
+        alibi_slopes=alibi_slopes,
     )
 
     out_triton = out_triton.view(-1, num_heads, head_dim)
-
-    out_torch = torch_attn_unpad(q_unpad, k_unpad, v_unpad, context_lengths, num_attn_heads, num_kv_heads)
+    out_torch = torch_attn_unpad(q_unpad, k_unpad, v_unpad, context_lengths, num_attn_heads, num_kv_heads, alibi_slopes)
 
     assert out_torch.shape == out_triton.shape
     assert torch.allclose(out_torch, out_triton, atol=1e-3)
@@ -114,4 +155,4 @@ def test_context_attention(
 
 
 if __name__ == "__main__":
-    test_context_attention(4, 32, 8, 16, 1, True)
+    test_context_attention(4, 32, 8, 16, 1, True, True)

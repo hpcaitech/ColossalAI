@@ -64,10 +64,6 @@ def torch_attn_ref(
 
     assert attn_scores.shape == (bsz, num_heads, q_len, kv_len), "Invalid shape of attention scores"
     if attention_mask is not None:
-        if attention_mask.size() != (bsz, 1, q_len, kv_len):
-            raise ValueError(
-                f"Attention mask should be of size {(bsz, 1, q_len, kv_len)}, but is {attention_mask.size()}"
-            )
         attn_scores = attn_scores + attention_mask
 
     attn_weights = F.softmax(attn_scores.to(dtype=torch.float32), dim=-1).to(dtype=q.dtype)
