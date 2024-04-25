@@ -41,7 +41,8 @@ namespace attention {
 #define SHFL_SYNC(var, src_lane) __shfl_sync(uint32_t(-1), var, src_lane)
 
 // Q*K^T operation.
-template <int NUM_THREADS_PER_TOKEN, typename VecT, int N>
+template <int NUM_THREADS_PER_ROUNDS, int NUM_THREADS_PER_X, typename VecT,
+          int N>
 inline __device__ float qk_dot_(const VecT (&q)[N], const VecT (&k)[N]) {
   using A_vec = typename common::FloatVecTypeTrait<VecT>::Type;
   // Compute the parallel products for Q*K^T (treat vector lanes separately).
@@ -58,21 +59,27 @@ inline __device__ float qk_dot_(const VecT (&q)[N], const VecT (&k)[N]) {
   // Finalize the reduction across lanes.
   float qk = sum_vect(qk_vec);
 #pragma unroll
-  for (int mask = (NUM_THREADS_PER_TOKEN >> 1); mask > 0; mask >>= 1) {
+  for (int mask = (WARP_SIZE >> 1); mask >= NUM_THREADS_PER_ROUNDS;
+       mask >>= 1) {
+    qk += SHFL_XOR_SYNC(qk, mask);
+  }
+
+#pragma unroll
+  for (int mask = (NUM_THREADS_PER_X >> 1); mask > 0; mask >>= 1) {
     qk += SHFL_XOR_SYNC(qk, mask);
   }
   return qk;
 }
 
-template <typename T, int NUM_THREADS_PER_TOKEN>
+template <typename T, int NUM_THREADS_PER_ROUNDS, int NUM_THREADS_PER_X>
 struct Qk_dot {
   template <typename VecT, int N>
   static inline __device__ float dot(const VecT (&q)[N], const VecT (&k)[N]) {
-    return qk_dot_<NUM_THREADS_PER_TOKEN>(q, k);
+    return qk_dot_<NUM_THREADS_PER_ROUNDS, NUM_THREADS_PER_X>(q, k);
   }
 };
 
-template <int NUM_WARPS, int NUM_THREADS_PER_TOKEN>
+template <int NUM_WARPS, int NUM_THREADS_PER_ROUNDS, int NUM_THREADS_PER_X>
 inline __device__ float block_max(float* red_smem, float max) {
   int warp = threadIdx.x >> 5;
   int lane = threadIdx.x & 0x1f;
@@ -81,7 +88,8 @@ inline __device__ float block_max(float* red_smem, float max) {
 // for each warp, the 1st out of NUM_THREADS_PER_TOKEN thread already has the
 // max value among every NUM_THREADS_PER_TOKEN threads.
 #pragma unroll
-  for (int mask = (WARP_SIZE >> 1); mask >= NUM_THREADS_PER_TOKEN; mask >>= 1) {
+  for (int mask = (NUM_THREADS_PER_ROUNDS >> 1); mask >= NUM_THREADS_PER_X;
+       mask >>= 1) {
     max = fmaxf(max, SHFL_XOR_SYNC(max, mask));
   }
 
@@ -155,10 +163,12 @@ inline __device__ void block_sum(float* red_smem, VecT& acc) {
       if (lane < NUM_THREADS_PER_GROUP) {
         if constexpr (N == VEC_SIZE_8) {
           VecT* vdst = &((reinterpret_cast<VecT*>(dst))[lane]);
-          (reinterpret_cast<float4*>(vdst))[0] =
-              (reinterpret_cast<float4*>(acc_ptr))[0];
-          (reinterpret_cast<float4*>(vdst))[1] =
-              (reinterpret_cast<float4*>(acc_ptr))[1];
+          const int idx0 = (lane >> 2) & 0x1;
+          const int idx1 = idx0 ^ 0x1;
+          (reinterpret_cast<float4*>(vdst))[idx0] =
+              (reinterpret_cast<float4*>(acc_ptr))[idx0];
+          (reinterpret_cast<float4*>(vdst))[idx1] =
+              (reinterpret_cast<float4*>(acc_ptr))[idx1];
         } else {
           (reinterpret_cast<VecT*>(dst))[lane] = acc;
         }
@@ -173,10 +183,12 @@ inline __device__ void block_sum(float* red_smem, VecT& acc) {
         float* src_ptr = reinterpret_cast<float*>(&src_reg);
         if constexpr (N == VEC_SIZE_8) {
           VecT* vsrc = &((reinterpret_cast<VecT*>(src))[lane]);
-          (reinterpret_cast<float4*>(src_ptr))[0] =
-              (reinterpret_cast<float4*>(vsrc))[0];
-          (reinterpret_cast<float4*>(src_ptr))[1] =
-              (reinterpret_cast<float4*>(vsrc))[1];
+          const int idx0 = (lane >> 2) & 0x1;
+          const int idx1 = idx0 ^ 0x1;
+          (reinterpret_cast<float4*>(src_ptr))[idx0] =
+              (reinterpret_cast<float4*>(vsrc))[idx0];
+          (reinterpret_cast<float4*>(src_ptr))[idx1] =
+              (reinterpret_cast<float4*>(vsrc))[idx1];
         } else {
           src_reg = (reinterpret_cast<VecT*>(src))[lane];
         }

@@ -62,7 +62,7 @@ void flash_decoding_attention(
     torch::Tensor& out,    // [num_tokens, num_heads, head_size]
     torch::Tensor& query,  // [num_tokens, num_heads, head_size]
     torch::Tensor&
-        key_cache,  // [num_blocks, num_kv_heads, block_size, head_size]
+        key_cache,  // [num_blocks, num_kv_heads, head_size/x, block_size, x]
     torch::Tensor&
         value_cache,  // [num_blocks, num_kv_heads, block_size, head_size]
     torch::Tensor& context_lens,  // [num_tokens]

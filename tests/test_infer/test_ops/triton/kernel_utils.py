@@ -150,6 +150,50 @@ def mock_alloc_block_table_and_kvcache_v2(
     return block_tables
 
 
+def mock_alloc_block_table_and_kvcache_v3(
+    k: torch.Tensor,
+    v: torch.Tensor,
+    k_cache: torch.Tensor,
+    v_cache: torch.Tensor,
+    context_lengths: torch.Tensor,
+    num_seqs: int,
+    max_num_blocks_per_seq: int,
+    block_size: int,
+) -> torch.Tensor:
+    """Allocate block tables based on provided context lengths; and copy KV to blocked KV Cache."""
+    block_id = 0
+    block_tables = torch.full(size=(num_seqs, max_num_blocks_per_seq), fill_value=-1, dtype=torch.int32)
+    num_tokens_processed = 0
+
+    _, num_kv_heads, head_dim = k.shape
+
+    x = 16 // torch.tensor([], dtype=k.dtype).element_size()
+
+    for i, seq_len in enumerate(context_lengths.tolist()):
+        right_bound = (seq_len + block_size - 1) // block_size  # open bound
+        block_tables[i, :right_bound] = torch.arange(block_id, block_id + right_bound, dtype=torch.int32)
+        # Manually fill kv caches by copying from k and v
+        for i in range(right_bound):
+            if i == right_bound - 1:
+                allocated_locs = seq_len % block_size or block_size
+            else:
+                allocated_locs = block_size
+            # [block_size, num_kv_heads, head_dim/x, x]->[num_kv_heads, head_dim/x, block_size,x]
+            k_block = (
+                k[num_tokens_processed : num_tokens_processed + allocated_locs, :, :]
+                .reshape(allocated_locs, num_kv_heads, head_dim // x, x)
+                .permute(1, 2, 0, 3)
+            )
+            v_block = v[num_tokens_processed : num_tokens_processed + allocated_locs, :, :].permute(1, 0, 2)
+            k_cache[block_id, :, :, :allocated_locs, :] = k_block
+            v_cache[block_id, :, :allocated_locs, :] = v_block
+
+            num_tokens_processed += allocated_locs
+            block_id += 1
+
+    return block_tables
+
+
 def mock_alloc_block_table_and_kvcache_vllm(
     k: torch.Tensor,
     v: torch.Tensor,
@@ -246,6 +290,26 @@ def generate_caches_and_block_tables_v2(
     v_cache = torch.zeros(size=cache_shape, dtype=dtype, device=device)
     # Mock allocation on block tables as well as blocked kv caches
     block_tables = mock_alloc_block_table_and_kvcache_v2(
+        k_unpad, v_unpad, k_cache, v_cache, kv_lengths, bsz, max_num_blocks_per_seq, block_size
+    )
+    return k_cache, v_cache, block_tables
+
+
+def generate_caches_and_block_tables_v3(
+    k_unpad, v_unpad, kv_lengths, bsz, max_num_blocks_per_seq, block_size, dtype=torch.float16, device="cuda"
+) -> Tuple[torch.Tensor, ...]:
+    # Mock generation of k/v blocked caches and block tables from providied kv unpad and seq lengths
+    # k_unpad/v_unpad [num_total_tokens, num_kv_heads, head_dim]
+    _, num_kv_heads, head_dim = k_unpad.shape
+
+    x = 16 // torch.tensor([], dtype=dtype).element_size()
+
+    k_cache_shape = (bsz * max_num_blocks_per_seq, num_kv_heads, head_dim // x, block_size, x)
+    v_cache_shape = (bsz * max_num_blocks_per_seq, num_kv_heads, block_size, head_dim)
+    k_cache = torch.zeros(size=k_cache_shape, dtype=dtype, device=device)
+    v_cache = torch.zeros(size=v_cache_shape, dtype=dtype, device=device)
+    # Mock allocation on block tables as well as blocked kv caches
+    block_tables = mock_alloc_block_table_and_kvcache_v3(
         k_unpad, v_unpad, k_cache, v_cache, kv_lengths, bsz, max_num_blocks_per_seq, block_size
     )
     return k_cache, v_cache, block_tables

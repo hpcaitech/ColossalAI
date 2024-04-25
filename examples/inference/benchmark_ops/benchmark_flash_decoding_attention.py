@@ -5,6 +5,7 @@ from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
 from tests.test_infer.test_ops.triton.kernel_utils import (
     generate_caches_and_block_tables_v2,
+    generate_caches_and_block_tables_v3,
     generate_caches_and_block_tables_vllm,
 )
 
@@ -95,7 +96,11 @@ def benchmark_flash_decoding_attention(
         BATCH_SIZE, HEAD_SIZE, NUM_ATTN_HEADS, NUM_KV_HEADS, MAX_SEQ_LEN, dtype, device
     )
 
-    k_cache, v_cache, block_tables = generate_caches_and_block_tables_v2(
+    triton_k_cache, triton_v_cache, _ = generate_caches_and_block_tables_v2(
+        k_unpad, v_unpad, kv_seq_lengths, BATCH_SIZE, MAX_NUM_BLOCKS_PER_SEQ, BLOCK_SIZE, dtype, device
+    )
+
+    k_cache, v_cache, block_tables = generate_caches_and_block_tables_v3(
         k_unpad, v_unpad, kv_seq_lengths, BATCH_SIZE, MAX_NUM_BLOCKS_PER_SEQ, BLOCK_SIZE, dtype, device
     )
 
@@ -135,8 +140,8 @@ def benchmark_flash_decoding_attention(
     elif provider == "triton_flash_decoding_attention":
         fn = lambda: flash_decoding_attention(
             q.squeeze(2),
-            k_cache,
-            v_cache,
+            triton_k_cache,
+            triton_v_cache,
             kv_seq_lengths,
             block_tables,
             BLOCK_SIZE,

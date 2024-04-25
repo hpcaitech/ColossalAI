@@ -12,7 +12,7 @@ inference_ops = InferenceOpsLoader().load()
 from tests.test_infer.test_ops.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
     create_attention_mask,
-    generate_caches_and_block_tables_v2,
+    generate_caches_and_block_tables_v3,
     generate_caches_and_block_tables_vllm,
     torch_attn_ref,
 )
@@ -77,7 +77,7 @@ def test_flash_decoding_attention(
         BATCH_SIZE, HEAD_SIZE, NUM_ATTN_HEADS, NUM_KV_HEADS, MAX_SEQ_LEN, dtype, device
     )
 
-    k_cache, v_cache, block_tables = generate_caches_and_block_tables_v2(
+    k_cache, v_cache, block_tables = generate_caches_and_block_tables_v3(
         k_unpad, v_unpad, kv_seq_lengths, BATCH_SIZE, MAX_NUM_BLOCKS_PER_SEQ, BLOCK_SIZE, dtype, device
     )
 
