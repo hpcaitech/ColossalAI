@@ -453,6 +453,7 @@ class OpenMoeDecoderLayer(nn.Module):
                 load_balance_group_swap_factor=config.load_balance_group_swap_factor,
                 enable_kernel=config.enable_kernel,
                 enable_comm_overlap=config.enable_comm_overlap,
+                enable_hierarchical_comm=config.enable_hierarchical_alltoall,
             )
             self.pre_extra_mlp_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.extra_mlp = OpenMoeMLP(config)
@@ -1014,7 +1015,7 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
 
     def _calculate_router_loss(self, aux_loss: list = None, z_loss: list = None):
         if aux_loss is None or z_loss is None:
-            aux_loss, z_loss = MOE_MANAGER.get_loss()
+            aux_loss, z_loss = MOE_MANAGER.get_loss()  # TODO: remove
         assert len(aux_loss) == len(z_loss) == self.config.num_hidden_layers // self.config.moe_layer_interval
         aux_loss = self.config.router_aux_loss_factor * sum(aux_loss) / len(aux_loss)
         z_loss = self.config.router_z_loss_factor * sum(z_loss) / len(z_loss)

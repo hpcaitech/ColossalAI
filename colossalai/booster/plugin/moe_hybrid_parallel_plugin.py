@@ -107,8 +107,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         >>> model, optimizer, criterion, train_dataloader, _ = booster.boost(model, optimizer, criterion, train_dataloader)
 
     Args:
-        tp_size (int): The size of tensor parallelism. Tensor parallelism will not be used when tp_size is set to 1.
         pp_size (int): The number of pipeline stages in pipeline parallelism. Pipeline parallelism will not be used when pp_size is set to 1.
+        tp_size (int): The size of tensor parallelism. Tensor parallelism will not be used when tp_size is set to 1.
         precision (str, optional): Specifies the precision of parameters during training.
                                     Auto-mixied precision will be used when this argument is set to 'fp16' or 'bf16', otherwise model is trained with 'fp32'.
                                     Defaults to 'fp16'.
@@ -150,8 +150,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self,
         pp_size: int,
         ep_size: int,
-        tp_size: int = 1,
-        extra_dp_size: int = 1,
+        moe_dp_size: int = 1,
         precision: str = "fp16",
         zero_stage: int = 0,
         enable_all_optimization: bool = False,
@@ -183,23 +182,25 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         use_ep_inside: bool = True,
         custom_policy: Policy = None,
         checkpoint_io: Optional[MoECheckpointIO] = None,
+        tp_size: int = 1,
     ) -> None:
+        world_size = dist.get_world_size()
+        assert tp_size == 1, "Tensor parallel is not currently supported in MOE"
         assert (
-            dist.get_world_size() % (tp_size * pp_size) == 0
-        ), f"world size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
+            world_size % (tp_size * pp_size) == 0
+        ), f"world size {world_size} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
 
         if enable_sequence_parallelism:
             assert tp_size > 1, "Sequence parallelism must be enabled when using tensor parallelism"
         assert (
-            dist.get_world_size() % (tp_size * pp_size) == 0
-        ), f"world size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
+            world_size % (tp_size * pp_size) == 0
+        ), f"world size {world_size} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
         assert (
-            dist.get_world_size() % (tp_size * pp_size * ep_size) == 0
-        ), f"world size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size} * ep_size {ep_size}"
-        self.real_dp_size = dist.get_world_size() // (tp_size * pp_size * ep_size)
+            world_size % (tp_size * pp_size * ep_size) == 0
+        ), f"world size {world_size} is not divisible by tp_size {tp_size} * pp_size {pp_size} * ep_size {ep_size}"
+        self.dp_size = world_size // (tp_size * pp_size)
         self.tp_size = tp_size
         self.pp_size = pp_size
-        self.dp_size = dist.get_world_size() // (tp_size * pp_size)  # TODO: ? what about ep size
         self.ep_size = ep_size
         self.precision = precision
         self.zero_stage = zero_stage
@@ -210,37 +211,36 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
         self.checkpoint_io = checkpoint_io
+        # Process mesh for the minority non-moe params. Use global dp size.
+        # See https://hpc-ai.com/blog/enhanced-moe-parallelism-open-source-moe-model-training-can-be-9-times-more-efficient
         # we change pg mesh to (pp, dp, tp) for better moe performance
-        # self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size)
+        self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size)
 
-        # ==============================
-        # Remove dependency on MOE_MANAGER
-        # ==============================
-        # Variables updated by setup
-        self.parallel_info_dict = dict()
         self.use_ep_inside = use_ep_inside
-        # self.moe_info = get_moe_info(self.ep_size, self.real_dp_size, self.pp_size, ep_inside=self.use_ep_inside)
-        # self.pg_mesh = self.moe_info.pg
-
-        # sync moe in outer dp group, and sync other param in global dp group
-        if extra_dp_size > 1:
-            ep_size = self.dp_size // extra_dp_size
-            if use_ep_inside:
-                self.pg_mesh_moe = ProcessGroupMesh(self.pp_size, extra_dp_size, ep_size)
-                self.moe_extra_dp_group = self.pg_mesh_moe.get_group_along_axis(1)
-                if dist.get_rank() == 0:
-                    print(f"Zero Parallel: pp {self.pp_size}, outer_dp {extra_dp_size}, inner_dp {ep_size}")
-            else:
-                self.pg_mesh_moe = ProcessGroupMesh(self.pp_size, extra_dp_size, ep_size)
-                self.moe_extra_dp_group = self.pg_mesh_moe.get_group_along_axis(1)
-                if dist.get_rank() == 0:
-                    print(f"Zero Parallel: pp {self.pp_size}, outer_dp {ep_size}, inner_dp {extra_dp_size}")
+        # Use a smaller dp size for moe params to complement ep
+        # NOTE: removed global moe manager dependency
+        assert (
+            self.ep_size <= self.dp_size
+        ), f"Not enough devices({self.dp_size}) for expert parallelism size({self.ep_size})."
+        moe_dp_size = self.dp_size // self.ep_size
+        if use_ep_inside:
+            self.pg_mesh_moe = ProcessGroupMesh(self.pp_size, moe_dp_size, ep_size)
+            self.moe_extra_dp_group = self.pg_mesh_moe.get_group_along_axis(1)
+            self.ep_group = self.pg_mesh_moe.get_group_along_axis(2)
+            if dist.get_rank() == 0:
+                print(f"Zero Parallel: pp {self.pp_size}, outer_dp {moe_dp_size}, inner_dp {ep_size}")
         else:
-            self.moe_extra_dp_group = None
+            self.pg_mesh_moe = ProcessGroupMesh(self.pp_size, ep_size, moe_dp_size)
+            self.moe_extra_dp_group = self.pg_mesh_moe.get_group_along_axis(2)
+            self.ep_group = self.pg_mesh_moe.get_group_along_axis(1)
+            if dist.get_rank() == 0:
+                print(f"Zero Parallel: pp {self.pp_size}, outer_dp {ep_size}, inner_dp {moe_dp_size}")
+
+        self.custom_policy = custom_policy
 
         self.stage_manager = None
         self.schedule = None
-        self.custom_policy = custom_policy  # recursively pass moe info (process mesh)
+
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
             assert (
@@ -251,7 +251,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             self.schedule = OneForwardOneBackwardSchedule(
                 self.stage_manager, num_microbatches=num_microbatches, microbatch_size=microbatch_size
             )
-        self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
+        self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)  # TODO: support custom tp size for mixtral lm head
         self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
         self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
         # TODO: Currently moe only support partially sequence parallel
@@ -267,6 +267,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             enable_jit_fused=self.enable_jit_fused,
             enable_sequence_parallelism=enable_sequence_parallelism,
             enable_sequence_overlap=enable_sequence_overlap,
+            ep_group=self.ep_group,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
@@ -296,40 +297,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         )
 
         self.max_norm = max_norm
-
-    # ==============================
-    # Migration from MOE_MANAGER.get_info
-    # ==============================
-    # def get_info(self, num_experts: int, use_tp: bool = False) -> Tuple[int, MoeParallelInfo]:
-    #     """Calculate the Data Parallel Group and Expert Parallel Group.
-
-    #     Parameters
-    #     ----------
-    #     num_experts : int
-    #         The number experts
-
-    #     Returns
-    #     -------
-    #     int, MoeParallelInfo
-    #         number of local experts, the MoeParallelInfo of the current ep_size
-    #     """
-
-    #     dp_size = self.dp_size
-    #     ep_size = self.ep_size
-    #     pp_size = self.pp_size
-
-    #     # Calculate the number of experts for each GPU
-    #     num_local_experts = num_experts // ep_size
-
-    #     if not (ep_size in self.parallel_info_dict):
-    #         # self.parallel_info_dict[ep_size] = get_moe_info(ep_size, dp_size, pp_size, ep_inside=self.use_ep_inside)
-    #         if dist.get_rank() == 0:
-    #             if self.use_ep_inside:
-    #                 print(f"MoE Parallel: pp {pp_size}, dp {dp_size}, ep {ep_size}")
-    #             else:
-    #                 print(f"MoE Parallel: pp {pp_size}, ep {ep_size}, dp {dp_size}")
-
-    #     return num_local_experts, self.parallel_info_dict[ep_size]
 
     def prepare_dataloader(
         self, dataset, batch_size, shuffle=False, seed=1024, drop_last=False, pin_memory=False, num_workers=0, **kwargs

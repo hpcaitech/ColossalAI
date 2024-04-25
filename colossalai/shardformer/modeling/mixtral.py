@@ -1,13 +1,14 @@
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+
+# from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
+from torch.distributed import ProcessGroup
 from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
 
 from colossalai.lazy import LazyInitContext
 from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler, all_to_all_uneven
 from colossalai.shardformer.shard.utils import set_tensors_to_none
-from colossalai.tensor.moe_tensor.api import set_moe_tensor_info
-from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
 
 
 class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
@@ -15,9 +16,8 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         self.moe_info = None
         super().__init__(config)
 
-    def setup_ep(self, moe_info: MoeParallelInfo):
-        self.moe_info = moe_info  # TODO: remove
-        ep_group = moe_info.ep_group
+    def setup_ep(self, ep_group: ProcessGroup):
+        ep_group = ep_group
         self.ep_size = dist.get_world_size(ep_group) if ep_group is not None else 1
         self.ep_rank = dist.get_rank(ep_group) if ep_group is not None else 0
         assert self.num_experts % self.ep_size == 0
@@ -26,16 +26,16 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         self.expert_start_idx = self.ep_rank * self.num_experts_per_ep
         held_experts = self.experts[self.expert_start_idx : self.expert_start_idx + self.num_experts_per_ep]
         set_tensors_to_none(self.experts, exclude=set(held_experts))
-        # TODO: change to assign pg mesh for all modules
         for p in self.experts.parameters():
-            set_moe_tensor_info(p, moe_info)
+            # set_moe_tensor_info(p, moe_info)
+            p.ep_group = ep_group
 
     @staticmethod
-    def from_native_module(
-        module: MixtralSparseMoeBlock, moe_info: MoeParallelInfo, *args, **kwargs
-    ) -> "EPMixtralSparseMoeBlock":
+    def from_native_module(module: MixtralSparseMoeBlock, *args, **kwargs) -> "EPMixtralSparseMoeBlock":
         LazyInitContext.materialize(module)
         module.__class__ = EPMixtralSparseMoeBlock
+        if "ep_group" in kwargs:
+            module.setup_ep(kwargs["ep_group"])
         return module
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:

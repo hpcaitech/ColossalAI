@@ -17,7 +17,8 @@ def is_moe_tensor(tensor: torch.Tensor) -> bool:
     Returns:
         bool: Whether the given tensor is a moe tensor.
     """
-    return hasattr(tensor, "moe_info")
+    # return hasattr(tensor, "moe_info")
+    return hasattr(tensor, "ep_group")
 
 
 def set_moe_tensor_info(tensor: torch.Tensor, moe_info: MoeParallelInfo) -> None:

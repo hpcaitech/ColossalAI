@@ -67,7 +67,7 @@ class SparseMLP(nn.Module):
         load_balance_group_swap_factor: float = 0.4,
         enable_kernel: bool = False,
         enable_comm_overlap: bool = False,
-        enable_hierarchical_comm: bool = False,
+        enable_hierarchical_comm: bool = True,
         return_gate_logits: bool = False,
     ):
         super().__init__()
@@ -116,6 +116,7 @@ class SparseMLP(nn.Module):
             self.ep_size = get_ep_size(self.experts)
             self.ep_hierarchical_group = None
             if enable_hierarchical_comm:
+                # TODO: move to plugin
                 self.ep_intra_src_rank, *self.ep_hierarchical_group = create_ep_hierarchical_group(
                     get_ep_group_ranks(self.experts)
                 )

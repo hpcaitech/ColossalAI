@@ -42,22 +42,23 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
         self,
         dp_group: ProcessGroup,
         pp_group: ProcessGroup,
-        tp_group: ProcessGroup,
+        ep_group: ProcessGroup,
         zero_stage: int,
         verbose: bool = True,
+        tp_group: ProcessGroup = None,
     ) -> None:
         super().__init__(dp_group, pp_group, tp_group, zero_stage, verbose)
+        self.dp_group = dp_group
+        self.pp_group = pp_group
+        self.ep_group = ep_group
+        self.tp_group = tp_group
+        self.ep_size = dist.get_world_size(ep_group)
+
         # moe_info = MOE_MANAGER.parallel_info_dict[MOE_MANAGER.ep_size]
         # self.ep_group = moe_info.ep_group
         # self.ep_size = moe_info.ep_size
         # self.ep_rank = moe_info.ep_rank
         # self.real_dp_rank = moe_info.dp_rank
-
-    def set_moe_info(self, moe_info):
-        self.ep_group = moe_info.ep_group
-        self.ep_size = moe_info.ep_size
-        self.ep_rank = moe_info.ep_rank
-        self.real_dp_rank = moe_info.dp_rank
 
     @staticmethod
     def _model_sharder(

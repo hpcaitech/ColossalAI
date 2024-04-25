@@ -176,7 +176,7 @@ def main():
         use_ep_inside = False
         plugin = MoeHybridParallelPlugin(
             pp_size=1,
-            extra_dp_size=args.extra_dp_size,
+            moe_dp_size=args.extra_dp_size,
             use_ep_inside=use_ep_inside,
             **hybrid_dict,
         )

@@ -98,9 +98,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self._world_size = dist.get_world_size(group=self.dp_pg)
 
         # extra dp
-        # This group is used to sync moe param, dp_world_size = moe_duplicates * extra_dp_size.
+        # This group is used to sync moe param, dp_world_size = ep_size * extra_dp_size.
         # Non moe param will be sync by global dp pg, moe param will be sync by extra dp pg.
-        # Moe param grad is be split as non moe param by global dp pg, and grad will be merged in step.
+        # Moe param grad is split as non moe param by global dp pg, and grad will be merged in step.
         # And moe working and master param are split by extra dp pg.
         self.moe_extra_dp_pg = moe_extra_dp_process_group
         if self.moe_extra_dp_pg is not None:

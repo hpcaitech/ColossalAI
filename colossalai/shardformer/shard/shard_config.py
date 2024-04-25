@@ -44,6 +44,7 @@ class ShardConfig:
     parallel_output: bool = True
     gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
+    ep_group: Optional[ProcessGroup] = None
     # TODO padding vocab
     # make_vocab_size_divisible_by: int = 128
     # pipeline_parallel_size: int

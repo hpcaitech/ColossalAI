@@ -113,7 +113,7 @@ def get_model(parallel):
             pp_size=1,
             ep_size=2,
             zero_stage=2,
-            extra_dp_size=2,
+            moe_dp_size=2,
             custom_policy=OpenMoeForCausalLMPolicy(),
         )
     elif parallel == "hybrid":

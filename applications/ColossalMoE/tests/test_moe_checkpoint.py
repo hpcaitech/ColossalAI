@@ -77,7 +77,6 @@ def check_mixtral_moe_layer():
     model = deepcopy(orig_model)
     optimizer = Adam(model.parameters(), lr=1e-3)
     plugin = MoeHybridParallelPlugin(
-        tp_size=1,
         pp_size=2,
         ep_size=2,
         checkpoint_io=MixtralMoEHybridParallelCheckpointIO,
