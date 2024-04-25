@@ -114,7 +114,7 @@ class BloomModelInferPolicy(BloomForCausalLMPolicy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.h))
+        layers_per_stage = stage_manager.distribute_layers(len(module.h))
         if stage_manager.is_first_stage():
             held_layers.append(module.word_embeddings)
             held_layers.append(module.word_embeddings_layernorm)

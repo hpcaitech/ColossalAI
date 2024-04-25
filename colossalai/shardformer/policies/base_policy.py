@@ -12,7 +12,6 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 
 from ..layer.normalization import BaseLayerNorm
 from ..layer.parallel_module import ParallelModule
-from ..shard.grad_ckpt_config import PipelineGradientCheckpointConfig
 from ..shard.shard_config import ShardConfig
 
 __all__ = ["ParallelModule", "SubModuleReplacementDescription", "ModulePolicyDescription", "Policy"]
@@ -207,30 +206,3 @@ class Policy(ABC):
             and output_embedding is not None
             and id(input_embedding.weight) == id(output_embedding.weight)
         )
-
-    def distribute_layers(self, num_layers: int) -> List[int]:
-        assert self.shard_config.pipeline_stage_manager is not None
-        num_stages = self.shard_config.pipeline_stage_manager.num_stages
-        num_model_chunks = (
-            self.shard_config.pipeline_stage_manager.num_model_chunks
-            if self.shard_config.pipeline_stage_manager.is_interleave
-            else 1
-        )
-        grad_ckpt_config = self.shard_config.gradient_checkpoint_config
-        if isinstance(grad_ckpt_config, PipelineGradientCheckpointConfig):
-            grad_ckpt_config.setup_pipeline(num_layers, num_stages, num_model_chunks)
-            if grad_ckpt_config._customize_num_layers_per_stage:
-                return grad_ckpt_config.num_layers_per_stage
-
-        quotient = num_layers // (num_stages * num_model_chunks)
-        remainder = num_layers % (num_stages * num_model_chunks)
-
-        # calculate the num_layers per stage
-        layers_per_stage = [quotient] * num_stages * num_model_chunks
-
-        # deal with the rest layers
-        if remainder > 0:
-            start_position = (num_stages * num_model_chunks) // 2 - remainder // 2
-            for i in range(start_position, start_position + remainder):
-                layers_per_stage[i] += 1
-        return layers_per_stage

@@ -192,7 +192,7 @@ class GPTJPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.h))
+        layers_per_stage = stage_manager.distribute_layers(len(module.h))
         if stage_manager.is_first_stage():
             held_layers.append(module.wte)
             held_layers.append(module.drop)
@@ -213,7 +213,7 @@ class GPTJPolicy(Policy):
         else:
             module = self.model.transformer
 
-        layers_per_stage = self.distribute_layers(len(module.h))
+        layers_per_stage = stage_manager.distribute_layers(len(module.h))
         stage_index = stage_manager.get_stage_index(layers_per_stage)
         method_replacement = {
             "forward": partial(

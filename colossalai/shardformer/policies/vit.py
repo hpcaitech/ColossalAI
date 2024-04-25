@@ -134,7 +134,7 @@ class ViTPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.encoder.layer))
+        layers_per_stage = stage_manager.distribute_layers(len(module.encoder.layer))
         if stage_manager.is_first_stage():
             held_layers.append(module.embeddings)
         start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
@@ -149,7 +149,7 @@ class ViTPolicy(Policy):
             else:
                 module = self.model.vit
 
-            layers_per_stage = self.distribute_layers(len(module.encoder.layer))
+            layers_per_stage = stage_manager.distribute_layers(len(module.encoder.layer))
             stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {"forward": pipeline_forward(stage_manager=stage_manager, stage_index=stage_index)}
             self.append_or_create_method_replacement(

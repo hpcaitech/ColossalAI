@@ -264,14 +264,14 @@ class LlamaPolicy(Policy):
             module = self.model.model
 
         if stage_manager.is_interleave:
-            layers_per_stage = self.distribute_layers(len(module.layers))
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
             stage_manager.stage_indices = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(new_forward, stage_manager=stage_manager, shard_config=self.shard_config)
             }
 
         else:
-            layers_per_stage = self.distribute_layers(len(module.layers))
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
             stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(
@@ -294,7 +294,7 @@ class LlamaPolicy(Policy):
         held_layers = []
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
-            layers_per_stage = self.distribute_layers(len(module.layers))
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
             stage_indices = stage_manager.get_stage_index(layers_per_stage)
             if stage_manager.is_first_stage(ignore_chunk=True):
                 held_layers.append(module.embed_tokens)
@@ -304,7 +304,7 @@ class LlamaPolicy(Policy):
                 held_layers.append(module.norm)
 
         else:
-            layers_per_stage = self.distribute_layers(len(module.layers))
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
             if stage_manager.is_first_stage():
                 held_layers.append(module.embed_tokens)
             start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
