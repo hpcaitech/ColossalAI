@@ -6,11 +6,11 @@ from torch import Tensor, nn
 
 import colossalai.shardformer.layer as col_nn
 
-from ..layer.fused_ops import Bias_Gelu
 from ..modeling.gpt2 import (
     GPT2PipelineForwards,
     get_gpt2_flash_attention_forward,
     get_gpt_model_forward_for_flash_attn,
+    get_jit_fused_gpt2_mlp_forward,
     get_lm_forward_with_dist_cross_entropy,
     gpt2_sequence_parallel_forward_fn,
 )
@@ -37,10 +37,11 @@ class GPT2Policy(Policy):
         """
         self.tie_weight = self.tie_weight_check()
         self.origin_attn_implement = self.model.config._attn_implementation
+        self.enable_bias_gelu_fused = self.model.config.activation_function == "gelu"
         return self.model
 
     def module_policy(self):
-        from transformers.models.gpt2.modeling_gpt2 import GPT2Attention, GPT2Block, GPT2Model
+        from transformers.models.gpt2.modeling_gpt2 import GPT2MLP, GPT2Attention, GPT2Block, GPT2Model
 
         ATTN_IMPLEMENTATION = {
             "eager": GPT2Attention,
@@ -120,6 +121,7 @@ class GPT2Policy(Policy):
                             "n_fused": 1,
                             "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
+                            "skip_bias_add": self.enable_bias_gelu_fused,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -200,6 +202,14 @@ class GPT2Policy(Policy):
                 policy[GPT2Model].method_replacement = {
                     "forward": get_gpt_model_forward_for_flash_attn(self.shard_config)
                 }
+        if self.enable_bias_gelu_fused:
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_jit_fused_gpt2_mlp_forward(),
+                },
+                policy=policy,
+                target_key=GPT2MLP,
+            )
 
         if sp_mode is not None:
             policy[GPT2Model].method_replacement = {"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)}
@@ -207,32 +217,6 @@ class GPT2Policy(Policy):
         return policy
 
     def postprocess(self):
-        import torch
-
-        from colossalai.shardformer._utils import setattr_
-
-        def bias_gelu_substitute_gpt2(module):
-            target_linear = None
-            for name, child in module.named_children():
-                bias_gelu_substitute_gpt2(child)
-                if name == "c_fc" and isinstance(child, col_nn.GPT2FusedLinearConv1D_Col):
-                    target_linear = child
-                elif target_linear is not None:
-                    if name == "act":
-                        replace_sub_module = Bias_Gelu(target_linear.bias)
-                        target_linear.bias = None
-                        setattr_(module, "act", replace_sub_module)
-
-                        target_linear = None
-
-        def trial(module):
-            if torch.distributed.get_rank() == 0:
-                print(module.__class__.__name__)
-            for name, child in module.named_children():
-                trial(child)
-
-        bias_gelu_substitute_gpt2(self.model)
-        trial(self.model)
         return self.model
 
     def get_held_layers(self) -> List[nn.Module]:
