@@ -26,13 +26,7 @@ def setup_seed(seed):
 def check_inference_engine(use_engine=False, do_sample=False, use_cuda_kernel=False, prompt_template=None):
     setup_seed(20)
     tokenizer = AutoTokenizer.from_pretrained(BAICHUAN_MODEL_NAME_OR_PATH, use_fast=False, trust_remote_code=True)
-    model = (
-        AutoModelForCausalLM.from_pretrained(
-            BAICHUAN_MODEL_NAME_OR_PATH, torch_dtype=torch.bfloat16, trust_remote_code=True
-        )
-        .half()
-        .cuda()
-    )
+    model = AutoModelForCausalLM.from_pretrained(BAICHUAN_MODEL_NAME_OR_PATH, trust_remote_code=True).half().cuda()
     model = model.eval()
 
     inputs = [
@@ -41,8 +35,13 @@ def check_inference_engine(use_engine=False, do_sample=False, use_cuda_kernel=Fa
 
     output_len = 38
     do_sample = do_sample
-    top_p = 0.5
-    top_k = 50
+
+    if do_sample:
+        top_p = 0.5
+        top_k = 50
+    else:
+        top_p = None
+        top_k = None
 
     if use_engine:
         inference_config = InferenceConfig(
