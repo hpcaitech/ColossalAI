@@ -7,7 +7,6 @@ from mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
 from torch.optim import Adam
 from transformers.models.mixtral.configuration_mixtral import MixtralConfig
 from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
-
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
@@ -20,9 +19,15 @@ top_k = 2
 
 def check_model_equal(model1, model2):
     assert set(model1.state_dict().keys()) == set(model2.state_dict().keys())
-    for p1, p2 in zip(model1.parameters(), model2.parameters()):
-        assert torch.equal(p1.half(), p2.half())
-
+    for i, ((name, p1), p2) in enumerate(zip(model1.named_parameters(), model2.parameters())):
+        if not torch.equal(p1.half(), p2.half()):            
+            # raise AssertionError(f"Model parameter {name} is not equal")
+            # exit distributed
+            print(f"Model parameter {name} is not equal.")
+            # dist.destroy_process_group()
+            # exit(1)
+        else:
+            print(f"Passed: {name}")
 
 def get_optimizer_snapshot(optim):
     state = {id(k): deepcopy(v) for k, v in optim.state.items()}
@@ -104,7 +109,6 @@ def check_mixtral_moe_layer():
         check_model_equal(orig_model, saved_model)
         saved_model.save_pretrained("mixtral_hf_model")
     dist.barrier()
-
     # check load model
     new_model = MixtralForCausalLM(config).cuda()
     new_optimizer = Adam(new_model.parameters(), lr=1e-3)

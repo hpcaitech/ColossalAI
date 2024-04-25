@@ -215,15 +215,21 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         # See https://hpc-ai.com/blog/enhanced-moe-parallelism-open-source-moe-model-training-can-be-9-times-more-efficient
         # we change pg mesh to (pp, dp, tp) for better moe performance
         self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size)
-
-        self.use_ep_inside = use_ep_inside
+        self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)  # TODO: support custom tp size for mixtral lm head
+        self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
+        self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
+        # TODO: Currently moe only support partially sequence parallel
+        self.sp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
+        
+        
         # Use a smaller dp size for moe params to complement ep
         # NOTE: removed global moe manager dependency
         assert (
             self.ep_size <= self.dp_size
         ), f"Not enough devices({self.dp_size}) for expert parallelism size({self.ep_size})."
         moe_dp_size = self.dp_size // self.ep_size
-        if use_ep_inside:
+        self.use_ep_inside = use_ep_inside
+        if self.use_ep_inside:
             self.pg_mesh_moe = ProcessGroupMesh(self.pp_size, moe_dp_size, ep_size)
             self.moe_extra_dp_group = self.pg_mesh_moe.get_group_along_axis(1)
             self.ep_group = self.pg_mesh_moe.get_group_along_axis(2)
@@ -251,11 +257,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             self.schedule = OneForwardOneBackwardSchedule(
                 self.stage_manager, num_microbatches=num_microbatches, microbatch_size=microbatch_size
             )
-        self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)  # TODO: support custom tp size for mixtral lm head
-        self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
-        self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
-        # TODO: Currently moe only support partially sequence parallel
-        self.sp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,

@@ -59,7 +59,7 @@ def get_ep_group(tensor: torch.Tensor) -> ProcessGroup:
     Returns:
         torch.distributed.ProcessGroup: The expert parallel group of the given tensor.
     """
-    return tensor.moe_info.ep_group
+    return tensor.ep_group
 
 
 def get_ep_size(tensor: torch.Tensor) -> int:
@@ -72,7 +72,8 @@ def get_ep_size(tensor: torch.Tensor) -> int:
     Returns:
         int: The expert parallel size of the given tensor.
     """
-    return tensor.moe_info.ep_size
+    assert getattr(tensor, "ep_group") is not None , "The tensor does not have expert parallel group."
+    return dist.get_world_size(tensor.ep_group)
 
 
 def get_dp_size(tensor: torch.Tensor) -> int:
