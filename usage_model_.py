@@ -1,25 +1,19 @@
-import random
-
-import numpy as np
 import pytest
-import torch
-from transformers import AutoTokenizer, GenerationConfig, LlamaConfig, LlamaForCausalLM, BloomConfig, BloomModel, BloomForCausalLM
+from transformers import AutoTokenizer, BloomForCausalLM, GenerationConfig, LlamaForCausalLM
 
 import colossalai
-from colossalai.inference.config import _DEFAULT_PROMPT_TEMPLATES, InferenceConfig
+from colossalai.inference.config import InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
-from colossalai.inference.flash_decoding_utils import FDIntermTensors
-from colossalai.inference.modeling.models.bloom import BloomModel, BloomForCausalLM
+from colossalai.inference.modeling.models.bloom import BloomForCausalLM
 from colossalai.inference.modeling.policy.bloom import BloomModelInferPolicy
 from colossalai.inference.modeling.policy.nopadding_llama import NoPaddingLlamaModelInferPolicy
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
-from transformers import AutoTokenizer, AutoModelForCausalLM
 
 def check_llama_model_forward():
     # model_path_or_name = "/home/lixingjian/models/bloom-560m"
     model_path_or_name = "/home/lishenggui/projects/trt/models/Llama-2-7b-hf"
-    
+
     model = LlamaForCausalLM.from_pretrained(model_path_or_name).cuda()
     tokenizer = AutoTokenizer.from_pretrained(model_path_or_name)
 
@@ -50,13 +44,12 @@ def check_llama_model_forward():
 
 
 def check_bloom_model_forward():
-
     model_path_or_name = "/home/lixingjian/models/bloom-560m"
-    
+
     # model = ChatGLMForConditionalGeneration.from_pretrained(model_path_or_name, trust_remote_code=True)
     # tokenizer = AutoTokenizer.from_pretrained(model_path_or_name, trust_remote_code=True)
-    
-    model = BloomForCausalLM.from_pretrained(model_path_or_name)#.cuda()
+
+    model = BloomForCausalLM.from_pretrained(model_path_or_name)  # .cuda()
     tokenizer = AutoTokenizer.from_pretrained(model_path_or_name)
 
     inference_config = InferenceConfig(
